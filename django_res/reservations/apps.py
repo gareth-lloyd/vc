@@ -3,9 +3,9 @@ from __future__ import annotations
 from django.apps import AppConfig
 
 
-class CoreConfig(AppConfig):
+class ReservationsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "core"
+    name = "reservations"
 
     def ready(self) -> None:
-        from core import signals  # noqa: F401  (register pre_save handler)
+        from reservations import signals  # noqa: F401

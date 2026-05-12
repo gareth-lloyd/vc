@@ -3,9 +3,9 @@ from __future__ import annotations
 from django.apps import AppConfig
 
 
-class CoreConfig(AppConfig):
+class AccountsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "core"
+    name = "accounts"
 
     def ready(self) -> None:
-        from core import signals  # noqa: F401  (register pre_save handler)
+        from accounts import signals  # noqa: F401

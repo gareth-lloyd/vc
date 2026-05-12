@@ -18,15 +18,33 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.staticfiles",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.admin",
     "rest_framework",
+    "django_filters",
     "core",
+    "accounts",
+    "properties",
+    "pricing",
+    "reservations",
+    "payments",
+    "integrations",
+    "comms",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "core.middleware.AuditMiddleware",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
 
 ROOT_URLCONF = "villacollective.urls"
 WSGI_APPLICATION = "villacollective.wsgi.application"
@@ -37,7 +55,13 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
         "APP_DIRS": True,
-        "OPTIONS": {"context_processors": []},
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
     },
 ]
 
@@ -65,4 +89,31 @@ STORAGES = {
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+        "rest_framework.filters.SearchFilter",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 50,
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticatedOrReadOnly",
+    ],
+}
+
+# App-layer Fernet encryption for TOTP secrets / SMTP passwords / OAuth tokens.
+# Format: list of base64-encoded 32-byte keys; oldest decrypts, newest encrypts.
+FERNET_KEYS = env.list(
+    "FERNET_KEYS",
+    default=["wIZ6Ud8oONpJD0Q-uJ4UQAYBgr_xHsv_LBNw_xt4MhA="],
+)
+
+# Per-provider webhook secrets for HMAC verification.
+PAYMENT_WEBHOOK_SECRETS = {
+    "FLYWIRE": env.str("FLYWIRE_WEBHOOK_SECRET", default="dev-flywire-secret"),
+    "STRIPE": env.str("STRIPE_WEBHOOK_SECRET", default="dev-stripe-secret"),
 }

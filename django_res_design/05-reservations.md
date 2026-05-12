@@ -13,7 +13,7 @@ reservations/
 │   ├── enquiry.py      # Enquiry, EnquiryNote, EnquiryEvent
 │   ├── quotation.py    # Quotation, QuotationLine
 │   ├── booking.py      # Booking, BookingHold, BookingEvent, BookingNote
-│   ├── concierge.py    # ConciergeService, BookingConciergeItem
+│   ├── concierge.py    # BookingConciergeItem
 │   └── terms.py        # TermsVersion
 ├── services.py         # QuotationService, BookingService, HoldService
 ├── signals.py
@@ -154,8 +154,6 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `currency` — FK pricing.Currency PROTECT
 - `pricing_snapshot` — JSONField  # **copied from QuotationLine at creation, never recomputed**
 - `rental_price` — Decimal(12, 2)  # extracted for reports
-- `deposit_amount` — Decimal(12, 2)
-- `deposit_percentage` — Decimal(5, 2, null=True)
 - `discount` — Decimal(12, 2, default=0)
 - `adjustment` — Decimal(12, 2, default=0)  # one-off line item (concierge total feeds in here)
 - `balance_due` — Decimal(12, 2)  # computed at creation
@@ -178,6 +176,15 @@ Indexes: `(property, status, date_from)`, `(status, balance_due_at)`, `reference
 Constraints:
 - `CheckConstraint(date_from < date_to)`
 - Postgres `EXCLUDE USING gist` on `(property_id WITH =, daterange(date_from, date_to, '[)') WITH &&) WHERE status IN ('awaiting_deposit', 'deposit_paid', 'awaiting_balance', 'balance_paid', 'checked_in')` — DB-level double-booking prevention for active states.
+
+#### Deposit fields — single source of truth
+
+The legacy `VillaBooking.DepositAmount` / `DepositPercentage` columns are **not ported.** The deposit lives in two consistent places, neither of them on `Booking`:
+
+- **Deposit policy (config)** — `PropertyFinance.deposit_required` / `deposit_calculation_type` / `deposit_amount` (per `03-finance-config.md`). What the property charges. Read at booking-creation time by `payments.PaymentScheduler.create_for_booking()`.
+- **Deposit track (workflow + ledger)** — the `Payment(purpose=DEPOSIT)` row created by `PaymentScheduler` at booking-creation time. What this booking actually owes / has paid. `Payment.amount` is the deposit money figure; `Payment.status` is its lifecycle; the rendered booking-detail view reads from this row for deposit-state display.
+
+The API does not expose a denormalised `deposit_amount` on `Booking`. Consumers needing "the deposit row" hit `GET /bookings/{id}/deposit` (already specified in §2.10 of the API surface) or `GET /payments?booking=…&purpose=DEPOSIT`. The amount is also embedded inside `Booking.pricing_snapshot` (the locked-at-creation JSON breakdown), which is the immutable record of what the deposit was at the moment of confirmation — but the operational source of truth for "what is owed / what is paid" remains the `Payment(purpose=DEPOSIT)` row. See reconciliation issue #45.
 
 ### `BookingEvent(TimestampedModel)`
 Append-only state-machine audit. Replaces the drifting `VillaArchiveBooking`.
@@ -209,21 +216,17 @@ Lives here logically but documented in 06-availability.md.
 
 ## Concierge
 
-### `ConciergeService(AuditedModel)`
-Catalogue, can be property-scoped or global.
-- `property` — FK Property CASCADE, null=True (global if null)
-- `name`, `description`
-- `cost_per_unit` — Decimal(12, 2)
-- `unit` — TextChoices (`DAY`, `STAY`, `EVENT`, `HOUR`)
-- `currency` — FK Currency PROTECT
-- `is_active` — bool
+There is no separate `ConciergeService` catalogue model. Legacy `VillaConciergeServices` held exactly 2 tier-label rows ("Quintessential", "Signature"); a 2-row CRUD table doesn't earn its keep. The two tier labels collapse to a `ConciergeTier` TextChoices on `BookingConciergeItem`, and the per-item shape (name, description, unit price, unit, currency) moves directly onto the line item — which always varied per booking in practice. See reconciliation issue #34.
 
 ### `BookingConciergeItem(AuditedModel)`
 - `booking` — FK CASCADE
-- `service` — FK ConciergeService PROTECT
+- `tier` — TextChoices (`QUINTESSENTIAL`, `SIGNATURE`) — replaces legacy FK to `VillaConciergeServices`
+- `name` — CharField (e.g. "Private chef — opening night", "Daily housekeeping")
+- `description` — TextField(blank=True)
 - `quantity` — PositiveSmallInteger
-- `unit_price_snapshot` — Decimal(12, 2)  # locked at add time
-- `currency_snapshot` — CharField(3)
+- `unit` — TextChoices (`DAY`, `STAY`, `EVENT`, `HOUR`)
+- `unit_price` — Decimal(12, 2)  # snapshotted at add time; the row is the source of truth, no upstream catalogue to drift from
+- `currency` — FK Currency PROTECT
 - `status` — TextChoices (`REQUESTED`, `CONFIRMED`, `CANCELLED`, `DELIVERED`)
 - `notes` — TextField(blank=True)
 

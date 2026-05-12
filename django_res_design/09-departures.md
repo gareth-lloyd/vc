@@ -20,7 +20,7 @@ Disposition column legend:
 | `VillaMaster.Latitude/Longitude` (nvarchar) | `PropertyLocation.latitude/longitude` (Decimal(9,6)) | Replaced | Numeric, indexable |
 | `VillaMaster.ZohoId`, `SyncId`, `OldVillaId` | `integrations.SyncRecord` + `legacy_id` on Property | Moved | Domain models stay focused |
 | `VillaPropertyCategory` | `properties.PropertyCategory` | Renamed | — |
-| `VillaGroup` | `properties.PropertyGroup` + `GroupSettings` + group-level finance siblings | Renamed/Extended | Group now owns defaults |
+| `VillaGroup` | `properties.PropertyGroup` + `GroupSettings` + `GroupFinance` (single flat model per #36) | Renamed/Extended | Group now owns defaults; one finance row per group (no per-concern siblings) |
 | `VillaCountry` | `properties.Country` | Renamed | — |
 | `VillaRegion` | `properties.Region` | Renamed | — |
 | `VillaRoom` (+ bed counts) | `properties.Room` + `RoomBeds` (OneToOne) | Split | Beds split out; placement enum |
@@ -42,17 +42,20 @@ Disposition column legend:
 | `VillaStatus` (live DB seed: 4 rows — `live_online`, `live_offline`, `pending`, `archive`) | `Property.status` TextChoices (`DRAFT` / `ACTIVE` / `ARCHIVED`) | Replaced | Fixed 3-value enum. Mapping: `live_online` → `ACTIVE`, `pending` → `DRAFT`, `archive` → `ARCHIVED`, `live_offline` → `ARCHIVED` (with operator notice — the "temporarily not bookable" effect is now expressed via `PropertySettings.availability_default = UNAVAILABLE`, a separate axis from publication status). API verbs are `:activate` / `:archive` / `:restore` (not the earlier `:publish` / `:unpublish`). See reconciliation issue #23. |
 | `VillaMaster.WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`, plus the unmapped Blazor "Further information" textarea | `properties.PropertyDescription` rows keyed by `section` (`OVERVIEW` / `HOUSE_RULES` / `VILLA_INFO` / `FURTHER_INFO`) | Replaced | Flat columns become normalised child rows; one row per (property, section), sparse. Migration: `WebsiteDescription` → `OVERVIEW`; `HouseRules` → `HOUSE_RULES`; `FeatureDescription` + `RoomDescription` concatenated with paragraph break → `VILLA_INFO`; "Further information" content (Blazor-only, never had a column) → `FURTHER_INFO` only if surviving content is found. Backend `Property` model no longer carries these as flat columns. API `/properties/{id}/descriptions/{section}` is a 1:1 mirror of the table. See reconciliation issue #28. |
 
+| Legacy availability status code 20 ("Available – Enquire") | `PropertySettings.requires_enquiry_first` (nullable bool, inherits from group) | Replaced | Restores the legacy UX affordance ("quotable but not direct-bookable") without inflating `Property.status` past its 3-value (`DRAFT` / `ACTIVE` / `ARCHIVED`) shape. Public site reads this to gate the "Book now" button. |
+
 ## Finance domain
 
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
-| `VillaFinance` | `properties.PropertyFinance` anchor + 5 OneToOne children | Split | God object → focused models |
-| `VillaFinance.CommissionType/Amount/Note` | `Commission` model | Split | — |
-| `VillaFinance.TaxNumber/IsExempt/Percentage/IsDefaultTax` | `TaxPolicy` model (null = inherit) | Split | `IsDefault*` flag pattern dropped |
-| `VillaFinance.BankAcc*` | `BankAccount` model | Split | Often encrypted |
-| `VillaFinance.PaymentSchedule*` | `PaymentSchedule` model | Split | — |
-| `VillaFinance.SecurityDeposit*` | `SecurityDepositPolicy` model | Split | — |
-| `DepositType` | TextChoices on PaymentSchedule/SecurityDepositPolicy | Replaced | Fixed enum |
+| `VillaFinance` | `properties.PropertyFinance` (flat) + `properties.GroupFinance` (flat group floor) | Replaced | Single flat model per scope; concerns prefixed (`commission_*`, `tax_*`, `bank_*`, `deposit_*`/`interim_*`/`days_*`, `security_deposit_*`). Earlier draft had 5 OneToOne children plus 5 group mirrors; collapsed per reconciliation issue #36 — the "per-concern permissions" rationale doesn't apply at MVP staff-role granularity |
+| `VillaFinance.CommissionType/Amount/Note` | `PropertyFinance.commission_calculation_type` / `commission_amount` / `commission_note` (group counterpart on `GroupFinance`) | Merged | Inline on the flat model |
+| `VillaFinance.TaxNumber/IsExempt/Percentage/IsDefaultTax` | `PropertyFinance.tax_number` / `tax_is_exempt` / `tax_percentage` (null = inherit from `GroupFinance`) | Merged | `IsDefault*` flag pattern dropped |
+| `VillaFinance.BankAcc*` | `PropertyFinance.bank_*` fields (group default on `GroupFinance.bank_*`) | Merged | Sensitive fields tagged for `AuditLog` redaction; encrypted at rest |
+| `VillaFinance.PaymentSchedule*` | `PropertyFinance.deposit_*` / `interim_*` / `days_*` fields | Merged | — |
+| `VillaFinance.SecurityDeposit*` | `PropertyFinance.security_deposit_*` fields | Merged | — |
+| _(none — legacy had cancellation-policy fields scattered across UI text and no structured columns)_ | `PropertyFinance.cancellation_fee_amount` / `cancellation_fee_percent` / `cancellation_window_days` / `cancellation_notes` + `GroupFinance` mirror | Added | Makes the cancellation refund flow (`booking-cancellation.md`) computable. Consumed by `payments.RefundService.from_cancellation()` — see `07-payments.md`. |
+| `DepositType` | TextChoices on `PropertyFinance.deposit_calculation_type` / `security_deposit_calculation_type` | Replaced | Fixed enum |
 
 ## Pricing domain
 
@@ -89,6 +92,7 @@ Disposition column legend:
 | `TblVillaQuotationMaster` | — | Dropped | Legacy duplicate table |
 | `VillaBooking` | `reservations.Booking` (FK to QuotationLine, full state machine, pricing snapshot) | Replaced | Real FK + price-lock + state machine |
 | `VillaBooking.IsActive`/`Tbc`/`IsOwnerConfirmed`/`IsDepositePaid`/`IsBankPaid` booleans | `Booking.status` TextChoices | Merged | Single source of truth |
+| `VillaBooking.DepositAmount`, `VillaBooking.DepositPercentage` | `PropertyFinance.deposit_*` (config) + `Payment(purpose=DEPOSIT)` (workflow + ledger) + `Booking.pricing_snapshot` (immutable price-at-confirmation) | Dropped | Two sources of truth on the booking row were collapsed: the deposit *requirement* is computed from `PropertyFinance` at booking-creation time; the deposit *track* lives on the spawned `Payment(purpose=DEPOSIT)` row; the deposit *figure* is also embedded in the locked `pricing_snapshot`. `Booking` itself no longer carries either column. See reconciliation issue #45. |
 | `VillaBooking.Notes`, `VillaBooking.ConciergeNotes`, and the unmapped Blazor "Internal booking information" / "Villa notes" textareas | `reservations.BookingNote` (kinds `general` / `internal` / `concierge` / `villa`) | Collapsed | Per-row authorship, timestamps, and visibility gating; matches the `/bookings/{id}/notes` API surface. Migration: one non-empty source column → one seed `BookingNote` keyed by `kind` |
 | `VillaArchiveBooking` | `Booking.is_archived` flag (+ `archived_at`) on the canonical row; archive/restore audited via `BookingEvent` | Dropped/Replaced | No separate table. Archive is an operator-facing "tidy out of main list" flag, orthogonal to the state machine (the terminal post-stay state itself is `Booking.status='checked_out'`). See reconciliation issue #7. |
 | Date-change audit (legacy had none — `Booking.razor`'s `OnFromDateChange` overwrote `FromDate` in place; the `ModifyBooking` service emitted no per-change audit row; the live DB has no `VillaBookingDateHistory` / `BookingChange*` table) | `BookingEvent` row written by `Booking.modify_dates()` / `Booking.modify_guests()` with `meta={"from": [...], "to": [...], "from_snapshot": {...}, "to_snapshot": {...}}`; `Booking.pricing_snapshot` regenerated via `PricingEngine.quote()` | Added | New design enforces audit + pricing-snapshot regeneration on date/guest changes. Resolved in issue #7. |
@@ -96,8 +100,8 @@ Disposition column legend:
 | `CheckoutPersonalInfo`, `CheckoutAdditionalInfo` | Fields on Booking + Guest | Merged | — |
 | `VillaAvailability` (daily grid) | `BookingHold` + range queries on `Booking` + Postgres `EXCLUDE` constraints | Replaced | Range model, DB-enforced no-overlap |
 | `AvailabilityStatus` | `BookingStatus` + `BookingHold.reason` | Replaced | Explicit state machine |
-| `VillaBookingConcierge` (legacy: BookingId + Price + free-text Notes) | `reservations.BookingConciergeItem` (with FK to `ConciergeService`, quantity, snapshotted unit price, status) | Replaced | Legacy was free-text price + notes; new model types each item against a service catalogue |
-| `VillaConciergeServices` (legacy: 2 rows of tier-label strings) | `reservations.ConciergeService` (catalogue: name, description, cost_per_unit, unit, currency, property scoping) | Replaced | Legacy table only held service-tier labels; the catalogue is effectively a new design with the same name |
+| `VillaBookingConcierge` (legacy: BookingId + Price + free-text Notes) | `reservations.BookingConciergeItem` (tier TextChoices + per-item name/description/unit_price/unit/currency/quantity/status) | Replaced | Per-item shape moves onto the line; no upstream catalogue model |
+| `VillaConciergeServices` (legacy: 2 rows of tier-label strings) | `ConciergeTier` TextChoices (`QUINTESSENTIAL`, `SIGNATURE`) on `BookingConciergeItem` | Dropped | A 2-row lookup table doesn't earn its keep; legacy concierge items always carried per-row free-text price + notes anyway. No `ConciergeService` model; no `/concierge-services` API. See reconciliation issue #34. |
 | `VillaRentalAlternative`, `VillaPropertyMapAlternativeAndRentToTogether` | — | Dropped (future scope) | Multi-property bundling not in MVP; revisit |
 
 ## Payments
@@ -119,15 +123,15 @@ Disposition column legend:
 | `ZohoId` columns on every table | `integrations.SyncRecord` (generic FK) | Moved | Single observability point |
 | `SyncId`, `IsSync`, `IsSynced` booleans | `integrations.SyncRecord.status` + fingerprints | Moved | Drift detection, retry tracking |
 | `OldVillaId`, `OldId` | `legacy_id` (CharField, nullable, indexed) on each domain model | Renamed | One slot per model |
-| `VillaCodeSentHistory`, `VillaEmailLinkLog` | — | Dropped (future `comms` app) | Out of scope for this redesign |
-| `VcemailTemplate` | — | Dropped (future `comms` app) | Out of scope |
+| `VillaCodeSentHistory`, `VillaEmailLinkLog` | `comms.EmailLog` | Replaced | Append-only dispatch log with template version + correlation keys. See `10-comms.md`. |
+| `VcemailTemplate` | `comms.EmailTemplate` (versioned, DB-stored, file-seeded) | Replaced | Active template per `key`; admin edits bump `version`. See `10-comms.md`. |
 
 ## Accounts
 
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
 | `UserMaster` | `accounts.User(AbstractUser)` | Replaced | Standard Django auth, email login |
-| `UserMaster.SmtpAddress/User/Password/Port` | — | Dropped | Per-user SMTP was unused & a security liability |
+| `UserMaster.SmtpAddress/User/Password/Port` | `comms.SmtpProfile(scope=PERSONAL, owner=user, ...)` | Moved | Reinstated for the per-agent "send as" quotation flow specified in `workflows/11-integrations/transmission.md`. Credentials encrypted at rest (Fernet); only the `comms.EmailService` dispatcher reads them. See `10-comms.md` and the decisions log entry. |
 | `UserMaster.IsLock` | `User.is_active=False` | Replaced | Standard Django |
 | `UserMaster.IsSystemAdmin` | `User.is_superuser` | Replaced | Standard Django |
 
@@ -225,7 +229,7 @@ Other previously-soft-deletable models are reassigned as follows:
 
 - **`status` enum already in design (kept):** `Property` (DRAFT/ACTIVE/ARCHIVED), `Booking` (11 states), `Quotation` (DRAFT/SENT/ACCEPTED/EXPIRED/CANCELLED), `Enquiry` (NEW/CONTACTED/QUOTED/LOST/CONVERTED), `Refund` (PENDING/APPROVED/REJECTED/EXECUTING/SUCCEEDED/FAILED/CANCELLED), `Payment` (PENDING/PROCESSING/SUCCEEDED/FAILED/REFUNDED/CANCELLED/EXPIRED), `SecurityDeposit` (per-kind enum).
 - **`status` enum added:** `Contact` (`ACTIVE`/`INACTIVE`/`ANONYMIZED`), `Guest` (`ACTIVE`/`ARCHIVED`/`ANONYMIZED`).
-- **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `PropertyCategory`, `PropertyGroup`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `ConciergeService`, `EmailTemplate`, `SmtpProfile`.
+- **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `PropertyCategory`, `PropertyGroup`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `EmailTemplate`, `SmtpProfile`.
 - **Hard delete (CASCADE from owner, PROTECT from references):** `PropertyLocation`, `PropertyCapacity`, `PropertySettings`, `Room`, `RoomBeds`, `PropertyImage`, `PropertyNearbyPlace`, `ContactEmail`, `ContactPhone`, `CollectionMembership`, `PropertyContactAssignment`, `Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`, the group-level finance siblings.
 - **Append-only event/audit (never deleted):** `BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `SyncRun`, `SyncIssue`, `EmailLog`, `FxRate`, `AuditLog`.
 - **Terminal-timestamp lifecycle (already in design):** `BookingHold.released_at` (expired/released holds stay visible; only the partial `EXCLUDE` index treats them as inactive). `Booking.archived_at` (orthogonal operator-facing tidy-out flag; the underlying terminal `status` still tells the truth).

@@ -25,7 +25,7 @@ Lifecycle lives entirely in the `status` enum below — no soft delete. Terminal
 
 - `reference` — CharField(unique)  # e.g. `P-2026-000123`
 - `booking` — FK reservations.Booking PROTECT
-- `purpose` — TextChoices (`DEPOSIT`, `BALANCE`, `SECURITY_DEPOSIT`, `REFUND`, `ADJUSTMENT`)
+- `purpose` — TextChoices (`DEPOSIT`, `BALANCE`, `SECURITY_DEPOSIT`, `CONCIERGE`, `REFUND`, `ADJUSTMENT`)
 - `status` — TextChoices (`PENDING`, `PROCESSING`, `SUCCEEDED`, `FAILED`, `REFUNDED`, `CANCELLED`, `EXPIRED`, `WAIVED`)  # `WAIVED` is operator-applied to a scheduled `DEPOSIT` or `BALANCE` row that has been forgiven — see `:waive` transition below and reconciliation issue #24. `WAIVED` is terminal: the row is no longer collectible. Not applicable to `SECURITY_DEPOSIT` (which has its own track model — see `SecurityDeposit` below), `REFUND`, or `ADJUSTMENT`.
 - `amount` — Decimal(12, 2)
 - `currency` — FK pricing.Currency PROTECT
@@ -34,17 +34,17 @@ Lifecycle lives entirely in the `status` enum below — no soft delete. Terminal
 - `payment_method` — TextChoices (`CARD`, `BANK_TRANSFER`, `OTHER`)
 - `token` — CharField(blank=True)  # tokenised card if held
 - `signature` — CharField(blank=True)  # webhook signature for one-time receipts
-- `idempotency_key` — CharField(unique)
 - `due_at` — DateTimeField(null=True, blank=True)
 - `requested_at` — DateTimeField(null=True, blank=True)
 - `settled_at` — DateTimeField(null=True, blank=True)
 - `failure_reason` — CharField(blank=True)
 - `meta` — JSONField(default=dict)  # provider-specific blob
+- `concierge_item` — FK reservations.BookingConciergeItem SET_NULL, null=True, blank=True — set on `purpose=CONCIERGE` rows so each concierge invoice traces back to its source line item; null on every other purpose
 
 Indexes: `(booking, purpose)`, `(status, due_at)`, `provider_reference`.
 
 Constraints:
-- `UniqueConstraint(booking, purpose, condition=Q(status__in=["PENDING","PROCESSING","SUCCEEDED"]) & Q(purpose__in=["DEPOSIT","BALANCE"]), name="unique_active_payment_per_purpose")` — at most one active payment per (booking, purpose) for `DEPOSIT` and `BALANCE`. `SECURITY_DEPOSIT` is **not** constrained here: a single `SecurityDeposit` workflow may produce multiple `Payment(purpose=SECURITY_DEPOSIT)` rows (one for the pre-auth charge, one for a subsequent capture, one for a manual-BT receipt, etc.); the active-row invariant is enforced by the `SecurityDeposit` model itself (one active SD per booking). `REFUND` and `ADJUSTMENT` are also unconstrained for the same reason — one workflow may produce many gateway-transaction rows over retries.
+- `UniqueConstraint(booking, purpose, condition=Q(status__in=["PENDING","PROCESSING","SUCCEEDED"]) & Q(purpose__in=["DEPOSIT","BALANCE"]), name="unique_active_payment_per_purpose")` — at most one active payment per (booking, purpose) for `DEPOSIT` and `BALANCE`. `SECURITY_DEPOSIT` is **not** constrained here: a single `SecurityDeposit` workflow may produce multiple `Payment(purpose=SECURITY_DEPOSIT)` rows (one for the pre-auth charge, one for a subsequent capture, one for a manual-BT receipt, etc.); the active-row invariant is enforced by the `SecurityDeposit` model itself (one active SD per booking). `CONCIERGE`, `REFUND`, and `ADJUSTMENT` are also unconstrained — a booking may legitimately have many concierge invoices over the stay, and refunds/adjustments may produce many gateway-transaction rows over retries.
 
 #### Operator-applied transitions: `:waive` and `:mark-paid`
 
@@ -88,7 +88,6 @@ The legacy `Payment.status` enum cannot express the pre-auth lifecycle on its ow
 - `damage_claim` — FK reservations.DamageClaim SET_NULL, null=True, blank=True  # link to the structured claim that justifies a capture / partial refund. (`DamageClaim` lives in `reservations/` per `05-reservations.md`; documented separately if not yet covered there — open follow-up.)
 - `requested_by` — FK User SET_NULL, null=True, related_name="security_deposits_requested"
 - `requested_at` — DateTimeField(default=now)
-- `idempotency_key` — CharField(unique)
 - `meta` — JSONField(default=dict)
 
 Indexes: `(booking, status)`, `(status, release_scheduled_for)`, `(status, hold_expires_at)`.
@@ -171,7 +170,6 @@ A `Refund` is the **workflow object**. When it transitions to `EXECUTING` we cre
 - `cancelled_at` — DateTimeField(null=True, blank=True)
 - `settled_at` — DateTimeField(null=True, blank=True)  # gateway-confirmed success
 - `failure_reason` — CharField(blank=True)
-- `idempotency_key` — CharField(unique)
 - `meta` — JSONField(default=dict)
 
 Indexes: `(booking, status)`, `(status, requested_at)`, `against_payment`.
@@ -275,7 +273,6 @@ def create_for_booking(cls, booking) -> list[Payment]:
             amount=cls._calc_deposit(booking, schedule),
             due_at=now(),    # deposit is immediate
             currency=booking.currency,
-            idempotency_key=f"deposit:{booking.reference}",
         ))
     if schedule.interim_required:
         payments.append(...)
@@ -321,6 +318,23 @@ class RefundService:
         """APPROVED → EXECUTING. Creates one `Payment(purpose=REFUND,
         status=PROCESSING)` linked via `meta['refund_id']`, queues Celery
         `process_refund(refund_id)`."""
+
+    @classmethod
+    def from_cancellation(cls, booking, *, reason, requested_by) -> Refund | None:
+        """Opens a `Refund` row (in PENDING) sized as
+        `paid_total - cancellation_fee`, where `paid_total` is the sum of
+        `Payment(status=SUCCEEDED, purpose IN (DEPOSIT, BALANCE))` and
+        `cancellation_fee` is resolved from the property's
+        `CancellationPolicy` (see `03-finance-config.md`):
+
+            fee = max(cancellation_fee_amount,
+                      cancellation_fee_percent * paid_total)
+
+        Returns `None` (no refund row created) when `paid_total <= fee`.
+        Called by `Booking.cancel(reason)` on bookings that have any
+        SUCCEEDED inbound payment. Security-deposit money is **not**
+        rolled into this refund — the `SecurityDeposit` workflow runs
+        its own release/refund path and continues independently."""
 ```
 
 Webhook callbacks land on the spawned `Payment` row first (via the normal payment-webhook flow). The `payment_succeeded` / `payment_failed` signal handler in this service inspects `payment.meta['refund_id']`, looks up the `Refund`, and advances it `EXECUTING → SUCCEEDED|FAILED`. Refunds never get their own webhook URL — they ride on the Payment webhook pipeline.
@@ -373,7 +387,7 @@ The pre-auth gateway calls (hold / capture / void) run through Celery with retry
 1. **Persist first**: in a single atomic block, create `WebhookDelivery(provider, event_id, raw_body, headers, signature)`. The `UniqueConstraint(provider, event_id)` means a replay throws `IntegrityError` — catch it, return 200 with the previous delivery's result. Provider re-delivery is safe.
 2. **Verify signature**: HMAC-SHA256 over `raw_body` using `settings.PAYMENT_WEBHOOK_SECRETS[provider]`. Mark `signature_valid` on the delivery. On failure: log + return 401.
 3. **Enqueue**: dispatch a Celery task `process_webhook_delivery(delivery_id)`. Return 200 immediately so the provider doesn't time out on our business logic.
-4. **Process** (Celery): load delivery, parse payload via provider-specific parser to a normalised `ProviderEvent` dataclass (event_kind, payment_reference, amount, currency, settled_at, raw), look up the `Payment` by `idempotency_key` or `provider_reference`, apply a status transition via `Payment.transition_to(new_status, source="WEBHOOK", delivery=delivery)`. The transition writes a `PaymentEvent` and fires a Django signal.
+4. **Process** (Celery): load delivery, parse payload via provider-specific parser to a normalised `ProviderEvent` dataclass (event_kind, payment_reference, amount, currency, settled_at, raw), look up the `Payment` by `reference` or `provider_reference`, apply a status transition via `Payment.transition_to(new_status, source="WEBHOOK", delivery=delivery)`. The transition writes a `PaymentEvent` and fires a Django signal.
 5. **Retries**: Celery autoretries on transient errors with exponential backoff (max 6 attempts, ~1h). `WebhookDelivery.retry_count` tracks attempts. After exhaustion, alert via Sentry.
 
 ### Outbound calls
@@ -394,13 +408,40 @@ No reverse dependency: payments never imports reservations models. Reservations 
 ## Booking ↔ Payment coupling
 
 - `Payment.booking` is a real FK with `on_delete=PROTECT`. Deletion of a booking with payments is blocked; cancellation transitions the booking to `CANCELLED` and runs the refund flow. There is no soft-delete path — both `Payment` and `Refund` express their lifecycle via the `status` enum.
-- `Booking.balance_due` lives on the booking (denormalised total) but the authoritative outstanding amount is computed by summing payments by purpose+status. Service helper: `Booking.outstanding_balance() -> Decimal`.
+- `Booking.balance_due` lives on the booking (denormalised total) but the authoritative outstanding amount is computed by summing payments by purpose+status. Service helper: `Booking.outstanding_balance() -> Decimal`. `Payment(purpose=CONCIERGE)` rows are **excluded** from outstanding-balance maths — concierge invoices are tracked alongside the booking but settle independently of the deposit/balance schedule.
+- **Deposit fields**: `Booking` no longer carries `deposit_amount` / `deposit_percentage` columns (dropped per reconciliation issue #45). The deposit configuration lives on `PropertyFinance.deposit_*` (per `03-finance-config.md`); the deposit-track *state* lives on the `Payment(purpose=DEPOSIT)` row created by `PaymentScheduler.create_for_booking()`. `Booking.pricing_snapshot` retains the deposit figure at confirmation time as part of the locked-in JSON breakdown, but the operational source of truth for "what is owed / what is paid / what is waived" is the `Payment` row. API consumers read this via `GET /bookings/{id}/deposit` (§2.10) or `GET /payments?booking=…&purpose=DEPOSIT`.
+
+## Concierge payments
+
+`workflows/09-booking/booking-concierge.md` describes ad-hoc charges raised against a booking during the stay (extra airport transfer, in-villa chef, last-minute excursion). These don't fit the 3-tier deposit/balance/security schedule:
+
+```python
+class ConciergeService:  # in reservations/services.py — placed here for cross-ref
+    @classmethod
+    def request_payment(
+        cls,
+        *,
+        booking,
+        items: list[BookingConciergeItem],
+        due_at=None,
+        method="ONLINE_GATEWAY",
+        actor,
+    ) -> Payment:
+        """Create one Payment(purpose=CONCIERGE, status=PENDING) totalling
+        the items' snapshot prices. The first item's PK populates
+        Payment.concierge_item for traceability; additional items are
+        recorded on the PaymentLine set. Emits a `concierge_payment_requested`
+        signal consumed by `comms` to send the guest an invoice email."""
+```
+
+The Concierge service lives in `reservations/` so it can mutate `BookingConciergeItem.status`, but it talks to `payments` only by creating rows — no reverse import.
 
 ## New vs legacy
 
 - **`Refund` workflow** — the legacy app had no in-app refund concept at all (zero refund tables in `live-db-24-apr.sql`; no refund-related Blazor pages; cancellation-policy refund percentages were the only "refund" tokens in the schema). Operators issued refunds manually through the gateway dashboard with no audit trail. The new `Refund` model fills this gap and bakes in separation of duties (request vs approve vs execute). See `09-departures.md` for the legacy-mapping note.
 - **`SecurityDeposit` workflow** — mirrors `Refund`: a dedicated workflow model with its own state machine, distinct from the `Payment` ledger. Legacy `VillaFinance.SecurityDeposit*` config columns drove a flat `IsSDPaid` flag on `VillaBooking` with no lifecycle — no pre-auth state, no release scheduling, no claim audit. The new `SecurityDeposit` covers both the pre-auth-hold path (`AWAITING_DETAILS` / `PRE_AUTHED` / `RELEASED` / `CAPTURED` / `EXPIRED` / `FAILED`) and the BT-refundable path (`AWAITING_BT` / `HELD` / `REFUNDED` / `PARTIALLY_REFUNDED`). Gateway-transaction audit lives on spawned `Payment(purpose=SECURITY_DEPOSIT)` rows. BT refunds delegate to `Refund` so separation-of-duties applies uniformly. See reconciliation issue #25.
 - **`Payment.waive` / `Payment.mark_paid`** — operator-applied transitions on a scheduled deposit/balance `Payment` row, backing the API's `:waive` and `:mark-paid` actions. The legacy app handled both via free-text columns and a `IsBankPaid` boolean with no audit trail; the new model adds `WAIVED` as a terminal status and writes `PaymentEvent` rows for each transition. See reconciliation issue #24.
+- **Idempotency moved off the model** — the legacy `Payment.idempotency_key` column (and the parallel columns on `Refund` and `SecurityDeposit`) are removed. The generic `core.IdempotencyRecord` table + DRF middleware (see `00-conventions.md` "Idempotency") covers every unsafe POST including payment creation, refund creation, and security-deposit creation. The model dedup is no longer the responsibility of the payments app. See reconciliation issue #39.
 
 ## Dropped from legacy
 

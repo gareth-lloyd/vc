@@ -116,6 +116,7 @@ Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null mea
 - `property` — OneToOne CASCADE primary_key
 - `availability_default` — TextChoices (`AVAILABLE`, `UNAVAILABLE`, `ON_REQUEST`), null=True
 - `bookings_require_pre_approval` — BooleanField(null=True)
+- `requires_enquiry_first` — BooleanField(null=True) — when True the property is listed and quotable but the public site hides direct-book affordances; guests are routed through enquiry intake instead. Captures the legacy "Available – Enquire" status (code 20) without giving up the 3-value `Property.status` enum. Null = inherit from group.
 - `currency` — FK pricing.Currency PROTECT, null=True
 - `check_in_time` — TimeField(null=True, blank=True)
 - `check_out_time` — TimeField(null=True, blank=True)
@@ -135,8 +136,10 @@ def effective(self, attr: str):
 ```
 
 ### `GroupSettings`
-Same fields as `PropertySettings` but **non-nullable with defaults** — the group must provide a fallback for every inheritable field.
+Same fields as `PropertySettings` but **non-nullable with defaults** — the group is the inheritance floor and must provide a fallback for every inheritable field.
 - `group` — OneToOne PropertyGroup CASCADE primary_key
+
+Created automatically with the `PropertyGroup` (`post_save` signal) and lives for the group's lifetime. Operator-exposed at `GET/PATCH /property-groups/{id}/settings` (no `POST`/`DELETE` — the row is bound to the group). See reconciliation issue #37.
 
 ## Descriptions
 
@@ -182,7 +185,7 @@ Keeps the wide bed-count fields out of Room.
 ### `PropertyImage(AuditedModel)`
 Owned by `Property` (CASCADE). Removed = hard delete (also removes the underlying file via `post_delete` signal). The `is_active` field below toggles visibility on the website without deleting the row. **Single model, single `kind` field.** Replaces six bit-flags (`IsHero`, `IsInterior1`, `IsInterior2`, `IsExterior1`, `IsExterior2`, `IsGallary`).
 - `property` — FK CASCADE
-- `image` — `ImageField(upload_to="properties/%Y/%m/")`
+- `image` — `ImageField(upload_to="properties/%Y/%m/")` — stored on S3 via `django-storages` (see `00-conventions.md` "Storage backends"). Field declaration uses the standard Django `ImageField`; the storage backend swap is global, not per-field. Uploads land via the two-step `POST /uploads:sign` → client `PUT` to S3 → `POST /properties/{id}/images` flow (see `00-conventions.md` "Two-step signed upload" and reconciliation issue #40); direct streaming through Django is reserved for small files (< 5 MB) via `POST /uploads`.
 - `kind` — TextChoices (`HERO`, `INTERIOR`, `EXTERIOR`, `GALLERY`, `FLOOR_PLAN`)
 - `name` — CharField(blank=True)
 - `description` — TextField(blank=True)

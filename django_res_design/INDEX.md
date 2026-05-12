@@ -8,7 +8,7 @@ A detailed, implementation-ready Django data-model specification. Per-app file l
 
 See [`README.md`](./README.md) for the package's own index.
 
-Files: `00-conventions.md`, `01-accounts.md`, `02-properties.md`, `03-finance-config.md`, `04-pricing.md`, `05-reservations.md`, `06-availability.md`, `07-payments.md`, `08-integrations.md`, `09-departures.md`.
+Files: `00-conventions.md`, `01-accounts.md`, `02-properties.md`, `03-finance-config.md`, `04-pricing.md`, `05-reservations.md`, `06-availability.md`, `07-payments.md`, `08-integrations.md`, `09-departures.md`, `10-comms.md`, `10-decisions.md`.
 
 **Scope**: Backend models, fields, constraints, services. Database-enforced integrity, state machines, audit, soft-delete. Domain-by-domain (accounts, properties, pricing, reservations, availability, payments, integrations) with a per-table mapping of legacy → new in `09-departures.md`.
 

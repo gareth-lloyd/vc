@@ -10,15 +10,17 @@ Standard Django auth user, extended:
 - Inherits username, email, first_name, last_name, password, is_staff, is_superuser, is_active, date_joined.
 - `email` — override to `EmailField(unique=True)`; we authenticate by email in practice.
 - `phone` — `CharField(max_length=32, blank=True)`.
-- `tfa_method` — `TextChoices` (`NONE`, `TOTP`, `SMS`).
-- `tfa_secret` — `CharField(blank=True)` (encrypted at rest; use `django-fernet-fields` or app-layer encryption).
+- `tfa_method` — `TextChoices` (`NONE`, `TOTP`). `SMS` is **deferred** — the enum value is reserved (future-proofing) but not exposed in the API and not implemented in MVP. See reconciliation issue #43.
+- `tfa_secret` — `CharField(blank=True)` — base32-encoded TOTP shared secret (encrypted at rest; app-layer Fernet wrap with `settings.FERNET_KEYS`, same pattern as `comms.SmtpProfile` and `integrations.OAuthCredential`). Empty when `tfa_method=NONE`.
+- `tfa_enrolled_at` — `DateTimeField(null=True, blank=True)` — set on successful `:enroll`; cleared when `:disable` runs.
+- `tfa_recovery_codes` — `JSONField(default=list)` — list of hashed (bcrypt or pbkdf2 via Django's `make_password`) single-use recovery codes generated at enrollment. Plaintext is shown to the user **once** at the end of the `:enroll` flow; the API stores only hashes.
 - `last_login_ip` — `GenericIPAddressField(null=True, blank=True)`.
 - `role` — fixed `StaffRole` TextChoices (see "Staff roles" below).
 
 `USERNAME_FIELD = "email"`. Use a custom `UserManager` to require email at creation.
 
 Notes:
-- SMTP per-user config (`SmtpAddress`/`SmtpPassword` on the legacy `UserMaster`) — drop. System-wide email goes through one SMTP/SES configuration; per-user sending was unused and a security liability.
+- SMTP per-user config (`SmtpAddress`/`SmtpPassword` on the legacy `UserMaster`) — **preserved**, but moved into the `comms` app as a separate `SmtpProfile` model rather than four columns on `User`. The workflow at `workflows/11-integrations/transmission.md` requires quotation emails to send *as* the agent so guest replies land in the agent's inbox; a single shared SMTP/SES profile cannot deliver that. Stored credentials are encrypted at rest with the same Fernet pattern used for `tfa_secret`, scoped per user, and only used by the `comms.EmailService` dispatcher — they are never exposed to the API. See `10-comms.md`.
 - `IsSystemAdmin` is just Django's `is_superuser`.
 - `IsLock` collapses into `is_active=False`.
 
@@ -129,6 +131,118 @@ Standard Django permissions per model. Add three custom `Permission` rows on `Pr
 - `can_manage_availability` — block dates from the admin calendar
 
 Implement via DRF object-level permissions when the API layer is added.
+
+## Two-factor authentication
+
+API surface: `POST /auth/2fa:challenge`, `:verify`, `:enroll`, `:disable` (§2.1). See reconciliation issue #43.
+
+**TOTP only in MVP.** SMS-based 2FA is deferred — no provider integration (Twilio etc.) is wired in v1; the `SMS` enum value is reserved on `User.tfa_method` so a future migration doesn't have to rewrite the column, but `:enroll` only accepts `method=TOTP` and `:challenge` only dispatches for `method=TOTP`. Revisit SMS once an MVP-level reason appears.
+
+### Library
+
+- [`pyotp`](https://pyauth.github.io/pyotp/) — industry-standard, well-tested TOTP/HOTP implementation. Single dependency, no Django coupling, RFC 6238-compliant.
+- TOTP parameters: 30-second step, 6-digit codes, SHA-1 (the Google Authenticator default; tighter algorithms break older authenticator apps).
+- Drift tolerance: ±1 step on `:verify` (the standard 90-second window).
+
+### `accounts.services.TwoFactorService`
+
+```python
+class TwoFactorService:
+    @staticmethod
+    def enroll(user) -> EnrollmentPayload:
+        """Generate a fresh TOTP secret and recovery codes.
+
+        Stores the encrypted secret on User.tfa_secret (PENDING — not yet
+        confirmed) and the hashed recovery codes on User.tfa_recovery_codes.
+        Returns the plaintext secret + provisioning URI (otpauth://) +
+        plaintext recovery codes for one-time display to the user.
+
+        Does NOT set tfa_method=TOTP yet — that happens on the first
+        successful :verify against the new secret.
+        """
+
+    @staticmethod
+    def confirm_enrollment(user, code: str) -> bool:
+        """Verify the user's first TOTP code; on success, flip tfa_method
+        to TOTP and set tfa_enrolled_at. Failure leaves the pending
+        secret intact so the user can retry."""
+
+    @staticmethod
+    def challenge(user) -> ChallengeToken:
+        """Mint a short-lived challenge token (signed, expires in 5 min)
+        that the client posts back with the TOTP code at :verify. Used
+        in the post-password, pre-fully-authenticated state."""
+
+    @staticmethod
+    def verify(challenge_token: str, code: str) -> User:
+        """Validate the TOTP code (or a single-use recovery code) against
+        the user resolved from the challenge token. Returns the fully
+        authenticated user. Failed attempts increment a rate-limited
+        counter; 5 fails within 5 minutes locks 2FA for 15 minutes."""
+
+    @staticmethod
+    def disable(user, *, actor) -> None:
+        """Clear tfa_method back to NONE, blank tfa_secret, null
+        tfa_enrolled_at, empty tfa_recovery_codes. Writes an AuditLog
+        row. Requires the user's password to be re-entered at the
+        API layer (handled in the view, not the service)."""
+```
+
+The view dispatchers for `:challenge` / `:verify` / `:enroll` / `:disable` are thin DRF action endpoints that delegate to this service. The endpoint contract is documented in `04-rest-api-surface.md` §2.1 and stays unchanged by this issue.
+
+## Sessions
+
+API surface: `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, plus the admin-only `GET /users/{id}/sessions` and `DELETE /users/{id}/sessions/{session_id}` (§2.18). See reconciliation issue #41.
+
+**No new session model.** Use Django's default DB-backed session store (`django.contrib.sessions`, `SESSION_ENGINE = "django.contrib.sessions.backends.db"`); the `django_session` table is already queryable. JWT-only API auth would skip sessions entirely, but the admin UI and the magic-link / owner-portal flows both need a server-side session anchor for revocation (revoking a JWT post-issue is not natively possible). Mixed mode is fine — `auth.Session` covers the revocable surface; short-lived JWTs cover API calls.
+
+### `accounts.services.SessionService`
+
+Stateless helpers over `django.contrib.sessions.models.Session`:
+
+```python
+class SessionService:
+    @staticmethod
+    def list_for_user(user) -> list[SessionInfo]:
+        """Return non-expired sessions for the user.
+
+        Sessions don't carry a user FK natively; we filter by decoding
+        the session_data and matching `_auth_user_id`. For scale, we
+        also write a denormalised `accounts.UserSession(user, session_key,
+        created_at, last_seen_at, user_agent, ip)` row on login (post_login
+        signal) so listings are an indexed query rather than a full-table
+        decode. The Session table remains the source of truth for the
+        session itself; UserSession is a cached index.
+        """
+        ...
+
+    @staticmethod
+    def revoke(session_key: str, *, actor) -> None:
+        """Delete the django_session row and the UserSession index row;
+        write an AuditLog entry."""
+        ...
+
+    @staticmethod
+    def revoke_all_for_user(user, *, except_current: str | None = None, actor) -> int:
+        """Bulk revoke; used by 'sign out everywhere'."""
+        ...
+```
+
+### `accounts.UserSession(TimestampedModel)`
+
+Denormalised index over the Django session table — created on login (post-login signal), updated on each request (middleware), deleted alongside the Session on revoke.
+
+- `user` — FK User CASCADE, related_name="sessions"
+- `session_key` — `CharField(max_length=40, unique=True)` — mirrors `django_session.session_key`
+- `created_at` — `DateTimeField(auto_now_add=True)`
+- `last_seen_at` — `DateTimeField(auto_now=True)`
+- `user_agent` — `CharField(max_length=512, blank=True)`
+- `ip` — `GenericIPAddressField(null=True, blank=True)`
+- `revoked_at` — `DateTimeField(null=True, blank=True)` — set when revoked through the service; the underlying `Session` row is hard-deleted, but `UserSession` lingers briefly for audit then is cleaned up by `cleanup_revoked_sessions` (daily Celery beat).
+
+Indexes: `(user, last_seen_at)`.
+
+This keeps `GET /auth/sessions` and `GET /users/{id}/sessions` cheap (one indexed query), while revocation hits both tables in a single `transaction.atomic` so the underlying Django session is genuinely invalidated.
 
 ## Out of scope here
 

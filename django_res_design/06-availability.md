@@ -67,7 +67,7 @@ WHERE released_at IS NULL AND expires_at < now()
 RETURNING id, property_id, quotation_id;
 ```
 
-The returning rows fan out to a signal so listeners can react (e.g. email "your hold has expired" — implemented as future scope).
+The returning rows fan out a `hold_expired(hold)` Django signal. The `comms` app listens (see `10-comms.md`) and dispatches a `hold.expired` email to the agent who created the hold. Auto-expiry is **enabled from day one** — the legacy scheduler was `[DISABLED]` (see `workflows/06-availability/holds.md`), which forced manual cleanup. This Celery beat task replaces that gap.
 
 ## Booking state machine
 

@@ -54,6 +54,8 @@ integrations/   SyncRecord (generic FK to external systems — Zoho, etc.)
 | [07-payments.md](./07-payments.md) | Payment, PaymentEvent, WebhookDelivery, Flywire flow |
 | [08-integrations.md](./08-integrations.md) | SyncRecord, Zoho reconciliation |
 | [09-departures.md](./09-departures.md) | Table-by-table mapping of original → new (kept/merged/renamed/dropped) |
+| [10-comms.md](./10-comms.md) | `comms` app — SmtpProfile, EmailTemplate, EmailLog, EmailService; per-user SMTP send-as |
+| [10-decisions.md](./10-decisions.md) | Cross-reference log of design decisions vs workflows — live / deferred / dropped |
 
 ## Reading Order
 

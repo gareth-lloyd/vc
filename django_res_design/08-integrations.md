@@ -7,9 +7,9 @@ Pulls the integration/sync metadata (`ZohoId`, `SyncId`, `IsSync`, `OldVillaId`,
 ```
 integrations/
 ├── enums.py
-├── models.py          # SyncRecord, SyncRun, SyncIssue
-├── services.py        # SyncClient base, ZohoSyncClient, reconciliation services
-├── tasks.py           # Celery: push, pull, reconcile, retry
+├── models.py          # SyncRecord, SyncRun, SyncIssue, OAuthCredential
+├── services.py        # SyncClient base, ZohoSyncClient, OAuthService, reconciliation services
+├── tasks.py           # Celery: push, pull, reconcile, retry, refresh_oauth_tokens
 └── signals.py         # auto-create SyncRecord on domain model save (opt-in)
 ```
 
@@ -65,6 +65,31 @@ A specific problem during a run (drift, conflict, error). Surfaced to ops.
 
 Indexes: `(severity, resolved_at)`, `(kind, resolved_at)`.
 
+### `OAuthCredential(AuditedModel)`
+
+Token storage for OAuth-based integrations. Today only Zoho uses this; the model is provider-agnostic so future OAuth integrations (Mailchimp, HubSpot, etc.) add a `provider` enum value rather than a new table. See reconciliation issue #42.
+
+- `provider` — TextChoices (`ZOHO_CRM`, …) — extensible; reuses the same string values as `SyncRecord.provider` where they overlap
+- `account_label` — CharField(blank=True)  # operator-facing label ("Zoho CRM — sales@villacollective.com"); makes the admin row identifiable when multiple accounts/regions exist
+- `access_token` — TextField  # encrypted at rest (Fernet wrap, same pattern as `User.tfa_secret` / `SmtpProfile`)
+- `refresh_token` — TextField(blank=True)  # encrypted at rest; blank if the provider does not issue one
+- `token_type` — CharField(max_length=32, default="Bearer")
+- `expires_at` — DateTimeField  # access-token expiry; the refresh task fires when `now() + 5min >= expires_at`
+- `scope` — CharField(blank=True)  # space-separated scopes granted at consent
+- `account_id` — CharField(blank=True)  # provider-side account/org id (Zoho returns `api_domain` + `accounts_server` — store both via `meta`)
+- `connected_by` — FK User SET_NULL, null=True, related_name="oauth_connections"  # the staff user who completed the `:connect` flow
+- `connected_at` — DateTimeField(default=now)
+- `disconnected_at` — DateTimeField(null=True, blank=True)  # set when `:disconnect` revokes; row is kept for audit until cleaned up manually
+- `is_active` — BooleanField(default=True)  # `False` after `:disconnect` or after a refresh-token revocation by the provider
+- `meta` — JSONField(default=dict)  # provider-specific blob (Zoho `api_domain`, `accounts_server`, etc.)
+
+Constraints:
+- `UniqueConstraint(provider, condition=Q(is_active=True), name="unique_active_oauth_per_provider")` — exactly one active credential per provider at a time. `:connect` while one exists transitions the existing row to `is_active=False` and writes a new active row; the old row stays for audit.
+
+Indexes: `(provider, is_active)`, `(expires_at)` (used by the refresh-token Celery task).
+
+**Encryption**: `access_token` and `refresh_token` use app-layer Fernet encryption (the same pattern used by `User.tfa_secret` and `comms.SmtpProfile`). Keys are read from `settings.FERNET_KEYS` (rotated via a key list, oldest-first decrypt, newest-first encrypt). Tokens are never logged; admin views mask them with `"***"`. Sensitive-field edits flow into `AuditLog` (per `00-conventions.md`).
+
 ## Services
 
 ### `SyncClient` base
@@ -82,6 +107,51 @@ class SyncClient:
 
 ### `ZohoSyncClient`
 Pushes `Property`, `Quotation`, `Booking`, `Guest` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
+
+Auth: reads the active `OAuthCredential(provider=ZOHO_CRM, is_active=True)` row via `OAuthService.get_access_token("ZOHO_CRM")` on every call. If the access token is within 5 minutes of expiry, the service refreshes it inline against the Zoho `/oauth/v2/token` endpoint (grant_type=refresh_token), writes the new `access_token` + `expires_at` to the row, and returns the fresh token. If no active credential exists, the client raises `OAuthNotConnectedError` and the calling Celery task records a `SyncIssue(kind=VALIDATION, severity=ERROR, message="Zoho not connected — operator must run /zoho:connect")`.
+
+### `OAuthService`
+
+OAuth-flow orchestration. Backs the API surface `/zoho:connect` / `/zoho:disconnect` (§2.27); see reconciliation issue #42.
+
+```python
+class OAuthService:
+    def begin(self, provider: str, *, actor: User) -> str:
+        """Return the provider's authorization-code URL.
+
+        Generates a CSRF state token, persists it on a short-lived
+        cache entry keyed by user, and returns the URL the browser
+        should visit. The redirect-back endpoint posts the code +
+        state back here via `complete()`.
+        """
+
+    def complete(self, provider: str, code: str, state: str, *, actor: User) -> OAuthCredential:
+        """Exchange the authorization code for an access/refresh token pair.
+
+        Validates `state` against the cache, calls the provider's token
+        endpoint, transitions any existing active credential for this
+        provider to `is_active=False`, writes a new row with the encrypted
+        tokens, and returns it.
+        """
+
+    def disconnect(self, provider: str, *, actor: User) -> None:
+        """Revoke and deactivate the active credential.
+
+        Calls the provider's token-revocation endpoint (best-effort),
+        sets `is_active=False` and `disconnected_at=now()` on the row,
+        and writes an AuditLog entry.
+        """
+
+    def get_access_token(self, provider: str) -> str:
+        """Return a valid access token, refreshing inline if near expiry.
+
+        Used by all SyncClient subclasses. The refresh is wrapped in a
+        Postgres advisory lock keyed on `(provider, credential_id)` so
+        concurrent calls do not double-refresh.
+        """
+```
+
+A `refresh_oauth_tokens` Celery beat task (hourly) pre-emptively refreshes any active credential whose `expires_at` is within the next hour, so the synchronous-refresh fallback in `get_access_token` is rarely exercised.
 
 ### Reconciliation flow
 

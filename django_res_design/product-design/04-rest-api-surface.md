@@ -166,6 +166,19 @@ Backed by `properties.PropertyDescription` (per-property × per-section child ro
 | PATCH | `/properties/{id}/nearby/{poi_id}` | Update |
 | DELETE | `/properties/{id}/nearby/{poi_id}` | Remove |
 
+`NearbyPlaceType` (the FK target) is a small curated taxonomy exposed read-only at `GET /nearby-place-types` for dropdown population (see §2.3). No write CRUD in v1; seeded via data migration. See reconciliation issue #35.
+
+#### Change-over rules (allowed check-in weekdays)
+Per-property bounded set of weekdays on which a booking may start. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day) and `RateCard.changeover_weekday` (per-card override). See reconciliation issue #30.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/properties/{id}/change-over-rules` | List rules; filters: `?effective_on=` (YYYY-MM-DD; returns rules active on that date) |
+| POST | `/properties/{id}/change-over-rules` | Add rule (body: `{weekday, effective_from, effective_to?, notes?}`) |
+| GET | `/change-over-rules/{id}` | Detail (flat alias) |
+| PATCH | `/change-over-rules/{id}` | Update |
+| DELETE | `/change-over-rules/{id}` | Remove |
+
 #### Contact mapping (which contacts are linked to this villa)
 | Method | Path | Purpose |
 |---|---|---|
@@ -177,9 +190,9 @@ Backed by `properties.PropertyDescription` (per-property × per-section child ro
 #### Finance / settings on the villa
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval |
+| GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval. Null fields inherit from `/property-groups/{id}/settings`. |
 | PATCH | `/properties/{id}/settings` | Update settings |
-| GET | `/properties/{id}/finance` | Commission defaults, payout config |
+| GET | `/properties/{id}/finance` | Flat finance config: commission, tax, bank account, payment schedule, security-deposit policy. Null fields inherit from `/property-groups/{id}/finance`. See reconciliation issue #36 (5-OneToOne-children split collapsed to one flat model). |
 | PATCH | `/properties/{id}/finance` | Update |
 
 #### Collections
@@ -214,10 +227,12 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 | GET / PATCH / DELETE | `/property-categories/{id}` |
 
 #### Groups (portfolio/brand)
-| Method | Path |
-|---|---|
-| GET / POST | `/property-groups` |
-| GET / PATCH / DELETE | `/property-groups/{id}` |
+| Method | Path | Purpose |
+|---|---|---|
+| GET / POST | `/property-groups` | List / create |
+| GET / PATCH / DELETE | `/property-groups/{id}` | Detail |
+| GET / PATCH | `/property-groups/{id}/settings` | Group-level settings — the inheritance floor for `PropertySettings` null fields. Same fields as `/properties/{id}/settings`. Row is auto-created with the group; no `POST`/`DELETE`. See reconciliation issue #37. |
+| GET / PATCH | `/property-groups/{id}/finance` | Group-level finance config — the inheritance floor for `PropertyFinance` null fields. Single flat resource (commission / tax / bank account / payment schedule / security deposit policy), same shape as `/properties/{id}/finance`. Row is auto-created with the group; no `POST`/`DELETE`. See reconciliation issues #36 and #38. |
 
 #### Collections (marketing sets)
 | Method | Path | Purpose |
@@ -254,6 +269,13 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 | GET / POST | `/currencies` |
 | GET / PATCH / DELETE | `/currencies/{code}` |
 | GET | `/currencies/{code}/rates` | FX rates (if cached server-side) |
+
+#### Nearby place types
+Small curated taxonomy (airport, beach, restaurant, station, etc.) FK'd from `PropertyNearbyPlace`. Read-only in v1 — seeded via data migration; no write CRUD. The FE uses this to populate the type dropdown when adding a POI to a property. See reconciliation issue #35.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/nearby-place-types` | List active place types (returns `[{id, name, icon}]`) |
 
 #### Sites (multi-tenant brands)
 | Method | Path |
@@ -315,6 +337,22 @@ Tax and commission are **not** Extras — they live under property finance confi
 | DELETE | `/extras/{id}` | Archive |
 | POST | `/extras/{id}:duplicate` | Clone (optionally onto another property via body `target_property_id`) |
 
+#### Discounts (promo codes, length-of-stay, early-bird, last-minute, repeat-guest)
+Backed by `pricing.Discount` (see `04-pricing.md`). A discount attaches either to a single `RateCard` (`card` FK set) or to a whole property (`card` null, `property` set — used for property-wide promo codes that aren't tied to one rate card). The `code` field is unique across the system for `PROMO_CODE` rule kinds. See reconciliation issue #32.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/discounts` | List; filters: `property`, `card`, `rule_kind`, `code`, `is_active`, `valid_on=YYYY-MM-DD` |
+| POST | `/discounts` | Create (body must set either `card` or `property` — server enforces `card IS NOT NULL OR property IS NOT NULL`) |
+| GET | `/discounts/{id}` | Detail |
+| PATCH | `/discounts/{id}` | Update |
+| DELETE | `/discounts/{id}` | Delete (hard — historical bookings keep their pricing via `pricing_snapshot`) |
+| GET | `/rate-cards/{id}/discounts` | Nested list scoped to one rate card |
+| POST | `/rate-cards/{id}/discounts` | Create within a rate card (sets `card` from path) |
+| GET | `/properties/{id}/discounts` | Nested list of this property's discounts (both card-scoped and property-wide) |
+| POST | `/properties/{id}/discounts` | Create a property-wide discount (sets `property` from path, leaves `card` null) |
+| POST | `/discounts:lookup-code` | Validate a promo code without exposing the catalogue. Body: `{property_id, code, date_from, date_to, party}`. Response: `{discount_id, name, kind, amount, applies: true}` or 404. Used by the public quote / quotation-acceptance UI; rate-limited |
+
 #### Website price display
 | Method | Path | Purpose |
 |---|---|---|
@@ -325,7 +363,7 @@ Tax and commission are **not** Extras — they live under property finance confi
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
 | POST | `/pricing:quote` | Compute total for property + dates + guests + opt-in extras | Body accepts `opt_in_extras: [<extra_id>, ...]`; mandatory extras are applied automatically. Stateless calc, used by quotation UI |
-| POST | `/pricing:quote-bulk` | Compute for multiple villa/date combos | Used by multi-villa quote search |
+| POST | `/pricing:quote-bulk` | Compute prices for many `(property × dates × party)` tuples in one call — no quotation is created | Stateless. Body: `{requests: [{property_id, date_from, date_to, adults, children, opt_in_extras?}, ...], currency?}`. Response: `{quotes: [{property_id, available: bool, total, breakdown, ...}, ...]}`. Used by FE comparison tables / search-result cards that want to show prices alongside a list of properties without creating any persistent quotation state. **Distinct from** `/availability:search` (no price) and `/quotations:search-villas` (creates/updates a Quotation draft). See reconciliation issue #44. |
 
 ---
 
@@ -340,7 +378,7 @@ Calendar reads are the highest-RPS endpoint group; expect heavy caching.
 | PATCH | `/availability/{id}` | Update one record | |
 | DELETE | `/availability/{id}` | Clear block | |
 | GET | `/availability` | Multi-villa availability lookup | `?property_ids=&from=&to=` |
-| POST | `/availability:search` | Find villas matching date + guest criteria | filter: `region`, `country`, `min_bedrooms`, `features` |
+| POST | `/availability:search` | Find villas matching date + guest criteria — **availability only, no prices** | Body: `{date_from, date_to, adults, children, filters: {region?, country?, min_bedrooms?, features?, ...}}`. Response is a property list with available/blocked status per villa for the given window. **Distinct from** `/pricing:quote-bulk` (which computes prices) and `/quotations:search-villas` (which creates/updates a Quotation draft). See reconciliation issue #44. |
 | POST | `/availability:bulk-block` | Block range across many villas | admin |
 | POST | `/availability/{id}:extend-hold` | Extend a hold's expiration | |
 | POST | `/availability/{id}:release-hold` | Release a hold | |
@@ -398,7 +436,7 @@ Headers + line items; quote-send is a notable side-effecting action.
 #### Helper
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/quotations:search-villas` | Search villas suitable for a quote (date + guest + filter combo) — pricing-aware |
+| POST | `/quotations:search-villas` | Operator-facing villa shortlist for a `Quotation` draft — pricing-aware, **stateful** (attaches `QuotationLine` candidates to the quotation) | Body: `{quotation_id, date_from, date_to, adults, children, filters?}`. Response: `{lines: [QuotationLine, ...]}` (persisted; `is_selected=False` until the operator picks). The endpoint **creates/updates lines on the given quotation**, unlike `/availability:search` (no pricing, no state) and `/pricing:quote-bulk` (priced but stateless). See reconciliation issue #44. |
 
 ---
 
@@ -759,6 +797,20 @@ OTA channel-manager integration (Airbnb / Booking.com / VRBO inbound webhooks an
 
 ---
 
+### 2.29 Terms & Conditions Versions
+
+Append-only legal-copy versioning. `reservations.TermsVersion` rows are snapshotted by `Quotation.terms_version` and `Booking.terms_version` at creation, so older versions stay queryable for audit and dispute resolution. There is no `PATCH` or `DELETE` — correcting a published version means publishing a new one. See reconciliation issue #33.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/terms-versions` | List all versions (newest first); admin |
+| POST | `/terms-versions` | Create a new draft version (body: `{version, body_markdown}`); not yet `is_current` |
+| GET | `/terms-versions/current` | Resolver — returns the single row where `is_current=True`. Public-readable for quotation acceptance |
+| GET | `/terms-versions/{version}` | Detail by version slug (e.g. `2026-01`) |
+| POST | `/terms-versions/{version}:publish` | Atomically flip `is_current=True` on this row, `False` on the prior current row, set `published_at=now()` (idempotent — re-publishing the current row is a no-op) |
+
+---
+
 ## 3. State-Transition Action Inventory
 
 Consolidated list of named side-effecting actions, grouped by parent resource. All are `POST /{resource}/{id}:{action}`.
@@ -788,6 +840,10 @@ Consolidated list of named side-effecting actions, grouped by parent resource. A
 **Webhooks:** `replay` (admin replay of stored inbound).
 
 **Users:** `activate`, `reset-password`, `reset-2fa`.
+
+**Discounts:** `lookup-code` (POST /discounts:lookup-code — validate a promo code; rate-limited; see §2.4 and reconciliation issue #32).
+
+**Terms versions:** `publish` (POST /terms-versions/{version}:publish — atomic flip of `is_current`; see §2.29 and reconciliation issue #33).
 
 **Contacts:** `invite-portal`. Emails: `set-primary`.
 

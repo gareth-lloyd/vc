@@ -86,6 +86,8 @@ The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` �
 - `nightly` — Decimal(12, 2, null=True, blank=True)
 - `weekly` — Decimal(12, 2, null=True, blank=True)
 - `is_poa` — BooleanField(default=False)
+- `is_locked` — BooleanField(default=False) — preserves the rule against bulk recompute / re-import. Bulk services (any future "regenerate rates for season X" admin action, CSV re-import, FX-driven mass adjustment) skip locked rules. Individual edits via the admin / API are unaffected and clear the lock implicitly only when the operator confirms in the UI. Replaces the legacy `IsManualUpdate` flag from `workflows/04-pricing/rates.md`.
+- `is_approved` — BooleanField(default=True) — gates engine visibility. Staff-created rules default to `True`; bulk-imported rules land as `False` and require an explicit approval pass before `PricingEngine.quote()` will consider them. Replaces the legacy `IsApprove` workflow step.
 - `notes` — TextField(blank=True)
 
 Constraints (Postgres):
@@ -239,7 +241,7 @@ class PricingEngine:
 
 Steps:
 1. Resolve `RatePlan` for property + currency + date range.
-2. For each night in range: walk all `RateCard`s in the plan; within each card, pick the highest-priority `RateRule` matching date + party. The card whose rule has the highest priority wins (ties broken by card.sort_order). Validate the resulting card's `min_nights` / `max_nights` / `changeover_weekday` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` / `ChangeoverViolation` if the matched card's constraints fail.
+2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True`, then pick the highest-priority rule matching date + party. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` / `changeover_weekday` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` / `ChangeoverViolation` if the matched card's constraints fail.
 3. Build per-night `QuoteLine`s (carrying `card_id` and `rule_id` for traceability).
 4. Compute rate subtotal.
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).
@@ -249,7 +251,7 @@ Steps:
 9. Apply tax last from `property.finance.effective_tax_policy()` — tax base is rate subtotal + extras − discounts.
 10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist).
 
-The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`) — the calling reservations code maps these to user-facing errors.
+The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote.
 
 ### `pricing.services.FxConverter`
 ```python

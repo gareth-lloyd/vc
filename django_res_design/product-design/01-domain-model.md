@@ -67,8 +67,8 @@ Sub-resources (own models):
 **Settings** (split out): originally embedded directly on `VillaMaster`. Now `PropertySettings` 1:1:
 - `check_in_time`, `check_out_time`, `min_nights_rental`, `changeover_day` (enum: `mon` ... `sun` or `any`), `requires_pre_approval` (bool), `availability_type`.
 
-**Finance** (split out): `PropertyFinance` 1:1.
-- Commission defaults (`commission_type`, `commission_amount`), tax (`tax_rate`, `tax_exempt`), bank account fields, payment-schedule defaults (deposit %, interim %, balance days, SD config). Original `VillaFinance`.
+**Finance** (split out): `PropertyFinance` 1:1, with `GroupFinance` 1:1 on `PropertyGroup` as the inheritance floor.
+- Single flat model carrying commission (`commission_calculation_type`, `commission_amount`, `commission_note`), tax (`tax_number`, `tax_is_exempt`, `tax_percentage`), bank account (`bank_account_*` block), payment schedule (`deposit_*` / `interim_*` / `days_*_before_arrival`), and security-deposit policy (`security_deposit_*` block). All nullable on `PropertyFinance`; `null` = inherit from `GroupFinance`. Group-level fields are non-nullable with defaults. Original `VillaFinance`. The earlier 5-OneToOne-children split was collapsed; see reconciliation issue #36.
 
 ### PropertyCategory
 Original `VillaPropertyCategory`. Fields: `name`, `description`. Lookup.
@@ -113,6 +113,9 @@ External-platform IDs for a property. Fields: `property` (FK), `channel` (enum: 
 
 ### PropertyAlternative
 "Rent as alternative" or "Rent together" link to a related property. Fields: `property`, `alternative_property`, `relationship_type` (enum: `alternative` / `rent_together`), `order`. Original `VillaRentalAlternative`.
+
+### ChangeOverRule
+Per-property bounded set of allowed check-in weekdays. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Backed by `pricing.ChangeOverRule` (lives in the pricing app, FK to `Property`). Fields: `property` (FK), `weekday` (0=Mon ... 6=Sun), `effective_from`, `effective_to` (nullable for open-ended), `notes`. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day) and `RateCard.changeover_weekday` (per-card override that supersedes the property rule when set). Operator-facing CRUD at `/properties/{id}/change-over-rules` and the flat alias `/change-over-rules/{id}`; see reconciliation issue #30.
 
 ---
 
@@ -220,9 +223,9 @@ Aggregate denorm (kept in sync via signals):
 Note: `archived` is **not** a status value. It is a boolean flag (`Booking.is_archived` + `archived_at`) that tidies terminal-state bookings out of the operator's default list. Archive is orthogonal to status — a `cancelled` booking and a `checked_out` booking are both candidates for archival; both stay queryable. See `06-availability.md` for the full state machine and the `:archive`/`:restore`/`:modify-dates`/`:modify-guests`/`:resend-confirmation` semantics.
 
 ### ConciergeLineItem
-Original `VillaBookingConcierge` / `VillaConcierge` (the original had two parallel tables — collapsed here).
+Original `VillaBookingConcierge` / `VillaConcierge` (the original had two parallel tables — collapsed here). There is no upstream `ConciergeService` catalogue model: legacy `VillaConciergeServices` held only 2 tier-label rows ("Quintessential", "Signature"); those collapse to a `ConciergeTier` TextChoices on the line item and the per-item name/description/unit-price/unit/currency live directly on the row. See reconciliation issue #34.
 
-Fields: `booking` (FK), `service_type` (FK to a concierge taxonomy or free text), `description` (rich text), `currency` (FK), `price_amount`, `supplier` (FK to Contact, nullable), `supplier_cost_amount` (internal-only), `payment_timing` (`now` / `with_balance` / `on_completion` / `included`), `payment_status` (enum), `assigned_to` (FK to User, nullable), `scheduled_at`, `confirmed_at`, `notes`, `display_order`.
+Fields: `booking` (FK), `tier` (`quintessential` / `signature`), `name`, `description` (rich text), `quantity`, `unit` (`day` / `stay` / `event` / `hour`), `unit_price`, `currency` (FK), `supplier` (FK to Contact, nullable), `supplier_cost_amount` (internal-only), `payment_timing` (`now` / `with_balance` / `on_completion` / `included`), `payment_status` (enum), `assigned_to` (FK to User, nullable), `scheduled_at`, `confirmed_at`, `notes`, `display_order`.
 
 **Status** (`ConciergeLineItem.payment_status`): `awaiting`, `sent`, `paid`, `failed`, `included`, `refunded`.
 
@@ -238,6 +241,11 @@ The three-textarea legacy edit page is preserved as a UX by binding each textare
 
 ### BookingDocument
 Generated artefacts (confirmation PDF, contract, voucher). Fields: `booking` (FK), `kind` (`confirmation` / `contract` / `voucher` / `invoice` / `receipt`), `file_key` (S3 key), `generated_at`, `generated_by`, `sent_to_guest_at`.
+
+### TermsVersion
+Append-only versioning of the legal copy (T&Cs) shown at quotation acceptance and booking confirmation. Backed by `reservations.TermsVersion`. Fields: `version` (e.g. `2026-01`, unique slug), `body_markdown`, `published_at`, `is_current` (bool — unique constraint with condition `is_current=True` so exactly one row is current at any time).
+
+`Quotation.terms_version` and `Booking.terms_version` snapshot the version active at creation; older rows stay queryable for audit and dispute resolution. There is no `PATCH` or `DELETE` — correcting a published version means publishing a new one. Operator-facing surface is `GET/POST /terms-versions` + `POST /terms-versions/{version}:publish`; see §2.29 of `04-rest-api-surface.md` and reconciliation issue #33.
 
 ---
 
@@ -323,7 +331,7 @@ Fields: `booking` (FK, unique), `amount`, `currency`, `due_date`, `is_overdue` (
 ### SecurityDeposit (1:1 with Booking, when applicable)
 First-class workflow object. Mirrors the `Refund` pattern: this is the workflow row; gateway-transaction audit lives on spawned `Payment(purpose=SECURITY_DEPOSIT)` rows linked via `meta['security_deposit_id']`. Earlier drafts of this doc called this `SecurityDepositTrack` — renamed for symmetry with `Refund` and to reflect that the row is a workflow object, not a passive "track".
 
-Fields: `booking` (FK, unique when not deleted), `kind` (`pre_auth_hold` / `bt_refundable`), `amount`, `currency`, `due_at`, `hold_expires_at` (for pre-auths), `status`, `release_after_departure_days`, `release_scheduled_for`, `released_at`, `captured_amount` (nullable, set on partial/full claim), `refunded_amount` (nullable, set on BT refunds), `damage_claim` (nullable FK to `DamageClaim`), `requested_by` / `requested_at`, `idempotency_key`. When a property has no security deposit policy, no row is created — no `not_applicable` state.
+Fields: `booking` (FK, unique when not deleted), `kind` (`pre_auth_hold` / `bt_refundable`), `amount`, `currency`, `due_at`, `hold_expires_at` (for pre-auths), `status`, `release_after_departure_days`, `release_scheduled_for`, `released_at`, `captured_amount` (nullable, set on partial/full claim), `refunded_amount` (nullable, set on BT refunds), `damage_claim` (nullable FK to `DamageClaim`), `requested_by` / `requested_at`. When a property has no security deposit policy, no row is created — no `not_applicable` state. (Idempotency for the `:create` action lives in the generic `core.IdempotencyRecord` table, not on this model — see reconciliation issue #39.)
 
 **Status**:
 - Pre-auth hold path: `awaiting_details`, `pre_authed`, `released`, `captured`, `expired`, `failed`. Transitions: `:hold` (AWAITING_DETAILS → PRE_AUTHED), `:release` (PRE_AUTHED → RELEASED, manual or Celery beat), `:claim` (PRE_AUTHED → CAPTURED, requires `damage_claim` link), gateway timeout (PRE_AUTHED → EXPIRED).
@@ -344,7 +352,7 @@ Per-charge audit record of the card/bank instrument used. Fields: `guest` (FK), 
 ### Refund
 First-class workflow object for money flowing back to the guest. Owns the approve/reject/execute lifecycle; spawns one `PaymentEvent` (purpose=refund) per gateway transaction on execute.
 
-Fields: `booking` (FK), `against_payment` (FK PaymentEvent, nullable — the original inbound charge being refunded, when known), `purpose_track` (`deposit` / `balance` / `security` / `adjustment` / `goodwill`), `amount`, `currency`, `reason_code` (`cancellation` / `overpayment` / `goodwill` / `security_deposit_release` / `duplicate_charge` / `other`), `reason_notes`, `method` (`online_gateway` / `manual_bank_transfer` / `offline`), `requested_by`, `requested_at`, `approved_by`, `approved_at`, `rejected_by`, `rejected_at`, `rejection_reason`, `executed_by`, `executed_at`, `cancelled_at`, `settled_at`, `failure_reason`, `gateway_reference`, `status` (enum), `idempotency_key`. Multiple refunds may stack against one track or one inbound payment (partial refunds are modelled as multiple `Refund` rows, not as a status).
+Fields: `booking` (FK), `against_payment` (FK PaymentEvent, nullable — the original inbound charge being refunded, when known), `purpose_track` (`deposit` / `balance` / `security` / `adjustment` / `goodwill`), `amount`, `currency`, `reason_code` (`cancellation` / `overpayment` / `goodwill` / `security_deposit_release` / `duplicate_charge` / `other`), `reason_notes`, `method` (`online_gateway` / `manual_bank_transfer` / `offline`), `requested_by`, `requested_at`, `approved_by`, `approved_at`, `rejected_by`, `rejected_at`, `rejection_reason`, `executed_by`, `executed_at`, `cancelled_at`, `settled_at`, `failure_reason`, `gateway_reference`, `status` (enum). Multiple refunds may stack against one track or one inbound payment (partial refunds are modelled as multiple `Refund` rows, not as a status). (Idempotency for `:create` / `:execute` lives in the generic `core.IdempotencyRecord` table — see reconciliation issue #39.)
 
 **Status**: `pending`, `approved`, `rejected`, `executing`, `succeeded`, `failed`, `cancelled`.
 
@@ -452,7 +460,9 @@ Region (many)──── (1) Country
 
 Season (1) ──── (many) RateCard
 RateCard (1) ──── (many) RateRule
-RateCard (1) ──── (many) DiscountRule
+RateCard (1) ──── (many) DiscountRule       (card-scoped discounts)
+Property (1) ──── (many) DiscountRule       (property-wide promo codes; card null)
+Property (1) ──── (many) ChangeOverRule
 
 Enquiry (1) ──── (0..1) Quotation         (one quote per enquiry typically)
 Enquiry (1) ──── (many) EnquiryNote

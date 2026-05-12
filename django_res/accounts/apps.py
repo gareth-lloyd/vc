@@ -9,3 +9,19 @@ class AccountsConfig(AppConfig):
 
     def ready(self) -> None:
         from accounts import signals  # noqa: F401
+        from accounts.models import Contact
+        from core.audit import track
+
+        track(
+            Contact,
+            fields=[
+                "title",
+                "first_name",
+                "last_name",
+                "company",
+                "address_line_1",
+                "address_line_2",
+                "notes",
+                "status",
+            ],
+        )

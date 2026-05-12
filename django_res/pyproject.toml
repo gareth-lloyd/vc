@@ -47,6 +47,10 @@ ignore = [
     # DJ008 demands every Model define __str__; harmless to skip on append-only
     # / system-only models that never appear in admin lists.
     "DJ008",
+    # DJ001 (no null on CharField) — legacy_id and similar optional CharFields
+    # are deliberately nullable in this design to distinguish "not yet set"
+    # from "explicitly blank" without re-introducing a sentinel string.
+    "DJ001",
 ]
 
 [tool.ruff.lint.per-file-ignores]

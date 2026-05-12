@@ -1,0 +1,259 @@
+"""Views for the availability surface.
+
+`Availability` records are stored as `BookingHold` rows. The API exposes a
+calendar slice (GET) and write/update/delete on individual blocks plus
+search/bulk operations.
+
+Calendar reads come from `pricing.services.AvailabilityService` (computes
+per-day cell status) — keep all business logic out of the view.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any
+
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import generics, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from core.api import IsReservationsWriter
+from pricing.services import AvailabilityService
+from properties.models import Property
+from reservations.serializers.availability import (
+    AvailabilityBulkBlockSerializer,
+    AvailabilityExtendHoldSerializer,
+    AvailabilityRecordSerializer,
+    AvailabilitySearchSerializer,
+    AvailabilityWriteSerializer,
+)
+from reservations.services.holds import HoldService
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _default_expiry(reason: str) -> datetime:
+    """Reasonable default expiry for owner/maintenance/manual blocks.
+
+    These blocks are open-ended by nature; we expire them far in the future so
+    a hold is "live" until released or hard-edited.
+    """
+    return timezone.now() + timedelta(days=365 * 10)
+
+
+class PropertyAvailabilityView(APIView):
+    """`GET / POST /properties/{id}/availability`."""
+
+    def get_permissions(self) -> list[Any]:
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [IsReservationsWriter()]
+
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
+        range_start = _parse_date(request.query_params.get("from"))
+        range_end = _parse_date(request.query_params.get("to"))
+        if not range_start or not range_end:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": "`from` and `to` query params are required (YYYY-MM-DD)",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cells = AvailabilityService.calendar(property_obj, range_start, range_end)
+        data = [
+            {"date": day.isoformat(), "available": cell.available, "reason": cell.reason}
+            for day, cell in sorted(cells.items())
+        ]
+        return Response({"property_id": property_obj.pk, "cells": data})
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
+        serializer = AvailabilityWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        expires_at = data.get("expires_at") or _default_expiry(data["reason"])
+        hold = HoldService.place(
+            property=property_obj,
+            date_from=data["date_from"],
+            date_to=data["date_to"],
+            expires_at=expires_at,
+            reason=data["reason"],
+        )
+        return Response(
+            AvailabilityRecordSerializer(hold).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AvailabilityDetailView(generics.GenericAPIView):
+    """`PATCH / DELETE /availability/{id}`.
+
+    `DELETE` releases the hold (`released_at = now`); `PATCH` updates expiry /
+    dates without releasing.
+    """
+
+    serializer_class = AvailabilityRecordSerializer
+    permission_classes = [IsReservationsWriter]
+
+    def get_queryset(self) -> Any:
+        from reservations.models.booking import BookingHold
+
+        return BookingHold.objects.all()
+
+    def patch(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        hold = self.get_object()
+        for field in ("date_from", "date_to", "expires_at", "reason"):
+            if isinstance(request.data, dict) and field in request.data:
+                setattr(hold, field, request.data[field])
+        hold.save()
+        return Response(AvailabilityRecordSerializer(hold).data)
+
+    def delete(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        hold = self.get_object()
+        HoldService.release(hold)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AvailabilityMultiView(APIView):
+    """`GET /availability` — multi-villa lookup."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from reservations.models.booking import BookingHold
+
+        ids_param = request.query_params.get("property_ids", "")
+        property_ids = [int(part) for part in ids_param.split(",") if part.strip().isdigit()]
+        range_start = _parse_date(request.query_params.get("from"))
+        range_end = _parse_date(request.query_params.get("to"))
+        if not property_ids or not range_start or not range_end:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": "`property_ids`, `from`, `to` are required",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        holds = BookingHold.objects.filter(
+            property_id__in=property_ids,
+            released_at__isnull=True,
+            date_to__gt=range_start,
+            date_from__lt=range_end,
+        )
+        return Response({"records": AvailabilityRecordSerializer(holds, many=True).data})
+
+
+class AvailabilitySearchView(APIView):
+    """`POST /availability:search` — find villas free in a window."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from reservations.models.booking import BookingHold
+
+        serializer = AvailabilitySearchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        qs = Property.objects.all()
+        filters = data.get("filters") or {}
+        if region := filters.get("region"):
+            qs = qs.filter(region__slug=region)
+        if country := filters.get("country"):
+            qs = qs.filter(region__country__iso2__iexact=country)
+        if min_bedrooms := filters.get("min_bedrooms"):
+            qs = qs.filter(capacity__bedrooms__gte=int(min_bedrooms))
+        # Subtract villas with a blocking hold overlapping the window.
+        blocked = set(
+            BookingHold.objects.filter(
+                property__in=qs,
+                released_at__isnull=True,
+                date_to__gt=data["date_from"],
+                date_from__lt=data["date_to"],
+            ).values_list("property_id", flat=True)
+        )
+        result = [
+            {
+                "property_id": p.pk,
+                "available": p.pk not in blocked,
+                "name": p.display_name or p.name,
+                "slug": p.slug,
+            }
+            for p in qs
+        ]
+        return Response({"results": result})
+
+
+class AvailabilityBulkBlockView(APIView):
+    """`POST /availability:bulk-block`."""
+
+    permission_classes = [IsReservationsWriter]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = AvailabilityBulkBlockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        expires_at = data.get("expires_at") or _default_expiry(data["reason"])
+        records: list[Any] = []
+        for property_id in data["property_ids"]:
+            property_obj = get_object_or_404(Property, pk=property_id)
+            try:
+                hold = HoldService.place(
+                    property=property_obj,
+                    date_from=data["date_from"],
+                    date_to=data["date_to"],
+                    expires_at=expires_at,
+                    reason=data["reason"],
+                )
+                records.append(hold)
+            except Exception:
+                continue
+        return Response(
+            {"records": AvailabilityRecordSerializer(records, many=True).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AvailabilityExtendHoldView(APIView):
+    """`POST /availability/{id}:extend-hold`."""
+
+    permission_classes = [IsReservationsWriter]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from reservations.models.booking import BookingHold
+
+        hold = get_object_or_404(BookingHold, pk=self.kwargs["pk"])
+        serializer = AvailabilityExtendHoldSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        hold.expires_at = serializer.validated_data["expires_at"]
+        hold.save(update_fields=["expires_at", "updated_at"])
+        return Response(AvailabilityRecordSerializer(hold).data)
+
+
+class AvailabilityReleaseHoldView(APIView):
+    """`POST /availability/{id}:release-hold`."""
+
+    permission_classes = [IsReservationsWriter]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from reservations.models.booking import BookingHold
+
+        hold = get_object_or_404(BookingHold, pk=self.kwargs["pk"])
+        HoldService.release(hold)
+        return Response(AvailabilityRecordSerializer(hold).data)

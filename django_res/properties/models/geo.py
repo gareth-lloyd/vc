@@ -15,6 +15,7 @@ class Country(TimestampedModel):
     default_tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["sort_order", "name"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.urls import include, path
 
 urlpatterns = [
+    path("", include("core.urls")),
     path("", include("accounts.urls")),
     path("", include("properties.urls")),
     path("", include("pricing.urls")),

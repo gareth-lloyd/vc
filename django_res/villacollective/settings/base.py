@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "payments",
     "integrations",
     "comms",
+    "data_migration",
 ]
 
 MIDDLEWARE = [
@@ -72,6 +73,13 @@ DATABASES = {
     ),
 }
 
+# Optional read-only legacy SQL Server connection used by the `data_migration`
+# app. Only wired when LEGACY_DATABASE_URL is set, so dev/test/CI stay
+# single-DB by default.
+if _legacy_url := env.str("LEGACY_DATABASE_URL", default=""):
+    DATABASES["legacy"] = env.db_url_config(_legacy_url)
+    DATABASES["legacy"].setdefault("OPTIONS", {})
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LANGUAGE_CODE = "en-gb"
@@ -101,8 +109,9 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.BasicAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticatedOrReadOnly",
+        "rest_framework.permissions.IsAuthenticated",
     ],
+    "EXCEPTION_HANDLER": "core.api.exception_handler.canonical_exception_handler",
 }
 
 # App-layer Fernet encryption for TOTP secrets / SMTP passwords / OAuth tokens.

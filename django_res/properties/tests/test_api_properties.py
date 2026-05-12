@@ -1,0 +1,170 @@
+"""API tests for /properties — CRUD + lifecycle actions."""
+
+from __future__ import annotations
+
+import pytest
+from rest_framework.test import APIClient
+
+from accounts.models import User
+from properties.enums import PropertyStatus
+from properties.models import (
+    Property,
+    PropertyCategory,
+    PropertyGroup,
+    Region,
+)
+
+
+@pytest.mark.django_db
+def test_list_properties_requires_authentication(
+    api_client: APIClient, property_: Property
+) -> None:
+    response = api_client.get("/api/v1/properties")
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_list_properties_returns_results(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] >= 1
+    slugs = {row["slug"] for row in payload["results"]}
+    assert property_.slug in slugs
+
+
+@pytest.mark.django_db
+def test_create_property_as_staff(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/properties",
+        data={
+            "name": "Fresh Villa",
+            "display_name": "Fresh Villa",
+            "slug": "fresh-villa",
+            "category": category.pk,
+            "group": group.pk,
+            "region": region.pk,
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    payload = response.json()
+    assert payload["slug"] == "fresh-villa"
+    assert payload["status"] == PropertyStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+def test_create_property_rejected_for_viewer(
+    api_client: APIClient,
+    viewer: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    api_client.force_login(viewer)
+    response = api_client.post(
+        "/api/v1/properties",
+        data={
+            "name": "Fresh Villa",
+            "display_name": "Fresh Villa",
+            "slug": "fresh-villa",
+            "category": category.pk,
+            "group": group.pk,
+            "region": region.pk,
+        },
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_detail_by_id_or_slug(api_client: APIClient, staff: User, property_: Property) -> None:
+    api_client.force_login(staff)
+    by_id = api_client.get(f"/api/v1/properties/{property_.pk}")
+    by_slug = api_client.get(f"/api/v1/properties/{property_.slug}")
+    assert by_id.status_code == 200
+    assert by_slug.status_code == 200
+    assert by_id.json()["id"] == by_slug.json()["id"]
+
+
+@pytest.mark.django_db
+def test_patch_property(api_client: APIClient, staff: User, property_: Property) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"display_name": "Renamed Villa"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    property_.refresh_from_db()
+    assert property_.display_name == "Renamed Villa"
+
+
+@pytest.mark.django_db
+def test_activate_transitions_status(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:activate")
+    assert response.status_code == 200
+    property_.refresh_from_db()
+    assert property_.status == PropertyStatus.ACTIVE.value
+
+
+@pytest.mark.django_db
+def test_archive_then_restore(api_client: APIClient, staff: User, property_: Property) -> None:
+    api_client.force_login(staff)
+    api_client.post(f"/api/v1/properties/{property_.pk}:activate")
+    archived = api_client.post(f"/api/v1/properties/{property_.pk}:archive")
+    assert archived.status_code == 200
+    property_.refresh_from_db()
+    assert property_.status == PropertyStatus.ARCHIVED.value
+
+    restored = api_client.post(f"/api/v1/properties/{property_.pk}:restore")
+    assert restored.status_code == 200
+    property_.refresh_from_db()
+    assert property_.status == PropertyStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+def test_archive_from_archived_returns_409(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    property_.status = PropertyStatus.ARCHIVED.value
+    property_.save(update_fields=["status"])
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:archive")
+    assert response.status_code == 409
+    assert response.json()["code"] == "invalid_transition"
+
+
+@pytest.mark.django_db
+def test_duplicate_creates_new_property(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+    payload = response.json()
+    assert payload["id"] != property_.pk
+    assert payload["slug"] != property_.slug
+
+
+@pytest.mark.django_db
+def test_import_from_zoho_returns_501(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:import-from-zoho")
+    assert response.status_code == 501
+    assert response.json()["code"] == "not_implemented"

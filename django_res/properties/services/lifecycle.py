@@ -1,0 +1,139 @@
+"""Property lifecycle transitions and duplication.
+
+`Property.status` is a tiny state machine: draft → active, draft|active → archived,
+archived → draft (restore). All business logic for these transitions plus
+duplicate / collection-replace lives here so views stay thin.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from django.db import transaction
+
+from core.exceptions import InvalidTransition
+from properties.enums import PropertyStatus
+from properties.models import (
+    Collection,
+    CollectionMembership,
+    Property,
+    PropertyDescription,
+    PropertyImage,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+
+class PropertyLifecycleService:
+    """Pure-Python orchestration for Property state changes."""
+
+    @classmethod
+    @transaction.atomic
+    def activate(cls, property: Property) -> Property:
+        if property.status not in (PropertyStatus.DRAFT.value, PropertyStatus.ARCHIVED.value):
+            raise InvalidTransition(
+                property.status,
+                PropertyStatus.ACTIVE.value,
+                allowed=[PropertyStatus.DRAFT.value, PropertyStatus.ARCHIVED.value],
+            )
+        property.status = PropertyStatus.ACTIVE.value
+        property.save(update_fields=["status", "updated_at"])
+        return property
+
+    @classmethod
+    @transaction.atomic
+    def archive(cls, property: Property) -> Property:
+        if property.status not in (PropertyStatus.DRAFT.value, PropertyStatus.ACTIVE.value):
+            raise InvalidTransition(
+                property.status,
+                PropertyStatus.ARCHIVED.value,
+                allowed=[PropertyStatus.DRAFT.value, PropertyStatus.ACTIVE.value],
+            )
+        property.status = PropertyStatus.ARCHIVED.value
+        property.save(update_fields=["status", "updated_at"])
+        return property
+
+    @classmethod
+    @transaction.atomic
+    def restore(cls, property: Property) -> Property:
+        if property.status != PropertyStatus.ARCHIVED.value:
+            raise InvalidTransition(
+                property.status,
+                PropertyStatus.DRAFT.value,
+                allowed=[PropertyStatus.ARCHIVED.value],
+            )
+        property.status = PropertyStatus.DRAFT.value
+        property.save(update_fields=["status", "updated_at"])
+        return property
+
+    @classmethod
+    @transaction.atomic
+    def duplicate(cls, property: Property, *, new_slug: str | None = None) -> Property:
+        """Clone the villa + its descriptions and image rows.
+
+        Rate plans, bookings, holds, and finance config are intentionally not
+        cloned — the operator wires those up post-duplicate.
+        """
+        original_pk = property.pk
+        features = list(property.features.values_list("pk", flat=True))
+        clone = Property.objects.get(pk=original_pk)
+        clone.pk = None
+        clone.slug = new_slug or f"{property.slug}-copy"
+        clone.display_name = f"{property.display_name} (copy)"
+        clone.status = PropertyStatus.DRAFT.value
+        clone.save()
+        if features:
+            clone.features.set(features)
+        for desc in PropertyDescription.objects.filter(property_id=original_pk):
+            PropertyDescription.objects.create(
+                property=clone,
+                section=desc.section,
+                body=desc.body,
+            )
+        for image in PropertyImage.objects.filter(property_id=original_pk):
+            PropertyImage.objects.create(
+                property=clone,
+                image=image.image,
+                kind=image.kind,
+                name=image.name,
+                description=image.description,
+                sort_order=image.sort_order,
+                is_active=image.is_active,
+            )
+        return clone
+
+    # ------------------------------------------------------------------
+    # Collection membership replace
+    # ------------------------------------------------------------------
+    @classmethod
+    @transaction.atomic
+    def replace_collection_memberships(
+        cls,
+        property: Property,
+        memberships: Iterable[dict[str, Any]],
+    ) -> list[CollectionMembership]:
+        """Upsert the requested memberships and remove any not in the request."""
+        keep_ids: list[int] = []
+        result: list[CollectionMembership] = []
+        for entry in memberships:
+            collection = cls._resolve_collection(entry["collection"])
+            membership, _ = CollectionMembership.objects.update_or_create(
+                property=property,
+                collection=collection,
+                defaults={
+                    "sort_order": entry.get("sort_order", 0),
+                    "featured_until": entry.get("featured_until"),
+                    "description": entry.get("description", ""),
+                },
+            )
+            keep_ids.append(membership.pk)
+            result.append(membership)
+        CollectionMembership.objects.filter(property=property).exclude(pk__in=keep_ids).delete()
+        return result
+
+    @staticmethod
+    def _resolve_collection(value: str | int) -> Collection:
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+            return Collection.objects.get(pk=int(value))
+        return Collection.objects.get(slug=value)

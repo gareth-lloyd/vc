@@ -1,0 +1,289 @@
+"""`SecurityDepositService` — coordinates the `SecurityDeposit` workflow.
+
+Owns the state-machine transitions, permission shape and the creation of
+downstream `Payment(purpose=SECURITY_DEPOSIT)` rows that record the
+gateway transactions. The model itself never talks to the gateway.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from decimal import Decimal
+from typing import Any
+
+from django.db import transaction
+from django.utils import timezone
+
+from payments.enums import (
+    PaymentMethod,
+    PaymentProvider,
+    PaymentPurpose,
+    PaymentStatus,
+    SecurityDepositKind,
+    SecurityDepositStatus,
+)
+from payments.models.payment import Payment
+from payments.models.security_deposit import SecurityDeposit
+
+
+class SecurityDepositService:
+    """Service-layer façade over the SecurityDeposit state machine."""
+
+    # ------------------------------------------------------------------
+    # Creation
+    # ------------------------------------------------------------------
+    @classmethod
+    def create_for_booking(cls, booking: Any) -> SecurityDeposit | None:
+        """Open an SD workflow row at booking creation if the policy requires it.
+
+        Returns the new `SecurityDeposit` row, or `None` if no SD is required
+        by the property's `SecurityDepositPolicy`.
+        """
+        finance = booking.property.finance
+        policy = finance.effective_security_deposit_policy()
+        if not policy.get("required"):
+            return None
+
+        amount = cls._size_sd(booking=booking, policy=policy)
+        if amount <= 0:
+            return None
+
+        kind = cls._kind_from_policy_method(policy.get("payment_method"))
+        initial_status = (
+            SecurityDepositStatus.AWAITING_DETAILS.value
+            if kind == SecurityDepositKind.PRE_AUTH_HOLD.value
+            else SecurityDepositStatus.AWAITING_BT.value
+        )
+
+        due_at = cls._due_at(
+            booking,
+            days_before=policy.get("days_due_before_arrival"),
+        )
+        release_after = policy.get("days_refunded_after_departure")
+        release_for = cls._release_scheduled_for(
+            booking,
+            days_after=release_after,
+        )
+
+        sd = SecurityDeposit.objects.create(
+            booking=booking,
+            kind=kind,
+            amount=amount,
+            currency=booking.currency,
+            status=initial_status,
+            due_at=due_at,
+            release_after_departure_days=release_after,
+            release_scheduled_for=release_for,
+        )
+        return sd
+
+    # ------------------------------------------------------------------
+    # Transitions
+    # ------------------------------------------------------------------
+    @classmethod
+    @transaction.atomic
+    def hold(
+        cls,
+        sd: SecurityDeposit,
+        *,
+        gateway_response: dict[str, Any],
+        actor: Any = None,
+    ) -> SecurityDeposit:
+        """Pre-auth path: AWAITING_DETAILS → PRE_AUTHED.
+
+        Creates a `Payment(purpose=SECURITY_DEPOSIT, status=SUCCEEDED)`
+        recording the pre-auth charge.
+        """
+        if sd.kind != SecurityDepositKind.PRE_AUTH_HOLD.value:
+            raise ValueError(f"SD {sd.reference}: :hold only valid for PRE_AUTH_HOLD kind")
+        hold_expires_at = gateway_response.get("hold_expires_at")
+        provider = gateway_response.get("provider", PaymentProvider.FLYWIRE.value)
+        provider_reference = gateway_response.get("provider_reference", "")
+
+        Payment.objects.create(
+            booking=sd.booking,
+            purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+            status=PaymentStatus.SUCCEEDED.value,
+            amount=sd.amount,
+            currency=sd.currency,
+            provider=provider,
+            provider_reference=provider_reference,
+            payment_method=PaymentMethod.CARD.value,
+            settled_at=timezone.now(),
+            meta={"security_deposit_id": sd.pk, "kind": "PRE_AUTH_HOLD"},
+        )
+
+        if hold_expires_at:
+            sd.hold_expires_at = hold_expires_at
+            sd.save(update_fields=["hold_expires_at", "updated_at"])
+
+        return sd.transition_to_pre_authed(actor=actor)
+
+    @classmethod
+    @transaction.atomic
+    def mark_paid(
+        cls,
+        sd: SecurityDeposit,
+        *,
+        amount: Decimal,
+        paid_at: datetime,
+        method: str,
+        reference: str,
+        actor: Any = None,
+    ) -> SecurityDeposit:
+        """BT-refundable path: AWAITING_BT → HELD.
+
+        Records a manual bank-transfer receipt by creating a
+        `Payment(provider=MANUAL_BANK_TRANSFER, status=SUCCEEDED)`.
+        """
+        if sd.kind != SecurityDepositKind.BT_REFUNDABLE.value:
+            raise ValueError(f"SD {sd.reference}: :mark-paid only valid for BT_REFUNDABLE kind")
+
+        Payment.objects.create(
+            booking=sd.booking,
+            purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+            status=PaymentStatus.SUCCEEDED.value,
+            amount=amount,
+            currency=sd.currency,
+            provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
+            provider_reference=reference,
+            payment_method=method,
+            settled_at=paid_at,
+            meta={"security_deposit_id": sd.pk, "kind": "BT_HELD"},
+        )
+
+        return sd.transition_to_held(actor=actor)
+
+    @classmethod
+    @transaction.atomic
+    def release(cls, sd: SecurityDeposit, *, actor: Any = None) -> SecurityDeposit:
+        """PRE_AUTHED → RELEASED   (void hold via gateway)
+        HELD       → REFUNDED   (open & execute Refund)
+        """
+        if sd.kind == SecurityDepositKind.BT_REFUNDABLE.value:
+            # BT release delegates to the Refund workflow so separation of
+            # duties applies uniformly. We open the Refund here; in
+            # production the operator-facing flow would `:approve` and
+            # `:execute` separately.
+            from payments.enums import (
+                RefundMethod,
+                RefundPurposeTrack,
+                RefundReasonCode,
+            )
+            from payments.services.refund import RefundService
+
+            inbound_payment = (
+                Payment.objects.filter(
+                    booking=sd.booking,
+                    purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                    status=PaymentStatus.SUCCEEDED.value,
+                    provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
+                )
+                .order_by("-settled_at")
+                .first()
+            )
+            RefundService.request(
+                booking=sd.booking,
+                amount=sd.amount,
+                currency=sd.currency,
+                purpose_track=RefundPurposeTrack.SECURITY_DEPOSIT.value,
+                reason_code=RefundReasonCode.SECURITY_DEPOSIT_RELEASE.value,
+                method=RefundMethod.MANUAL_BANK_TRANSFER.value,
+                against_payment=inbound_payment,
+                requested_by=actor,
+                security_deposit=sd,
+            )
+            # No approve/execute step here — the calling task or operator
+            # workflow drives those (and bears the audit). We surface the
+            # transition on the SD itself so callers can observe the lifecycle.
+        return sd.transition_to_released(actor=actor)
+
+    @classmethod
+    @transaction.atomic
+    def claim(
+        cls,
+        sd: SecurityDeposit,
+        *,
+        damage_claim: Any,
+        captured_amount: Decimal,
+        actor: Any = None,
+    ) -> SecurityDeposit:
+        """PRE_AUTHED → CAPTURED          (gateway capture)
+        HELD       → PARTIALLY_REFUNDED (Refund for the residual)
+        """
+        if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
+            Payment.objects.create(
+                booking=sd.booking,
+                purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                status=PaymentStatus.SUCCEEDED.value,
+                amount=captured_amount,
+                currency=sd.currency,
+                provider=PaymentProvider.FLYWIRE.value,
+                payment_method=PaymentMethod.CARD.value,
+                settled_at=timezone.now(),
+                meta={"security_deposit_id": sd.pk, "kind": "CAPTURE"},
+            )
+            return sd.transition_to_captured(
+                captured_amount=captured_amount,
+                damage_claim=damage_claim,
+                actor=actor,
+            )
+        return sd.transition_to_partially_refunded(
+            captured_amount=captured_amount,
+            damage_claim=damage_claim,
+            actor=actor,
+        )
+
+    @classmethod
+    @transaction.atomic
+    def expire(cls, sd: SecurityDeposit, *, actor: Any = None) -> SecurityDeposit:
+        """PRE_AUTHED → EXPIRED   (system: gateway voided hold)
+        AWAITING_BT → FAILED    (system: BT never arrived by due_at)
+        """
+        return sd.transition_to_expired(actor=actor)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _kind_from_policy_method(method: str | None) -> str:
+        """Map a `SecurityDepositPaymentMethod` value to a `SecurityDepositKind`."""
+        if method == "bank_transfer":
+            return SecurityDepositKind.BT_REFUNDABLE.value
+        # `card_hold` and `card_charge` both flow through the pre-auth path
+        # for v1; differentiation lands when CARD_CHARGE captures up-front.
+        return SecurityDepositKind.PRE_AUTH_HOLD.value
+
+    @staticmethod
+    def _size_sd(*, booking: Any, policy: dict[str, Any]) -> Decimal:
+        amount = policy.get("amount")
+        if amount is None:
+            return Decimal("0.00")
+        value = Decimal(str(amount))
+        if policy.get("calculation_type") == "percent":
+            base = Decimal(str(getattr(booking, "balance_due", 0)))
+            return (base * value / Decimal(100)).quantize(Decimal("0.01"))
+        return value.quantize(Decimal("0.01"))
+
+    @staticmethod
+    def _due_at(booking: Any, *, days_before: int | None) -> datetime | None:
+        if days_before is None:
+            return None
+        date_from = getattr(booking, "date_from", None)
+        if date_from is None:
+            return None
+        target = date_from - timedelta(days=int(days_before))
+        return datetime.combine(
+            target,
+            datetime.min.time(),
+            tzinfo=timezone.get_current_timezone(),
+        )
+
+    @staticmethod
+    def _release_scheduled_for(booking: Any, *, days_after: int | None) -> Any:
+        if days_after is None:
+            return None
+        date_to = getattr(booking, "date_to", None)
+        if date_to is None:
+            return None
+        return date_to + timedelta(days=int(days_after))

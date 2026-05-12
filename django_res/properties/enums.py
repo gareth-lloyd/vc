@@ -67,6 +67,33 @@ class FeatureServiceType(models.TextChoices):
     PAID_ADDON = "paid_addon", "Paid add-on"
 
 
+class CommissionCalcType(models.TextChoices):
+    PERCENT = "percent", "Percent"
+    FIXED = "fixed", "Fixed"
+
+
+class DepositCalcType(models.TextChoices):
+    PERCENT = "percent", "Percent"
+    FIXED = "fixed", "Fixed"
+
+
+class SecurityDepositCalcType(models.TextChoices):
+    PERCENT = "percent", "Percent"
+    FIXED = "fixed", "Fixed"
+
+
+class SecurityDepositCalcFrom(models.TextChoices):
+    NIGHTLY = "nightly", "Nightly"
+    WEEKLY = "weekly", "Weekly"
+    TOTAL_STAY = "total_stay", "Total stay"
+
+
+class SecurityDepositPaymentMethod(models.TextChoices):
+    CARD_HOLD = "card_hold", "Card hold"
+    CARD_CHARGE = "card_charge", "Card charge"
+    BANK_TRANSFER = "bank_transfer", "Bank transfer"
+
+
 # Note on contact roles: the role used by `PropertyContactAssignment` is the
 # `accounts.ContactRole` TextChoices. No properties-local enum is defined; the
 # assignment model references the accounts enum directly. The user-supplied

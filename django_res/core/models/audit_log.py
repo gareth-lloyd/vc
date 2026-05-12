@@ -5,6 +5,7 @@ import uuid
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 
@@ -27,7 +28,7 @@ class AuditLog(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    field_diffs = models.JSONField(default=dict)
+    field_diffs = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 

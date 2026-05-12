@@ -10,6 +10,7 @@ from properties.models.features import (
     Feature,
     FeatureCategory,
 )
+from properties.models.finance import GroupFinance, PropertyFinance
 from properties.models.geo import (
     Country,
     NearbyPlaceType,
@@ -29,6 +30,7 @@ __all__ = [
     "Country",
     "Feature",
     "FeatureCategory",
+    "GroupFinance",
     "GroupSettings",
     "NearbyPlaceType",
     "Property",
@@ -36,6 +38,7 @@ __all__ = [
     "PropertyCategory",
     "PropertyContactAssignment",
     "PropertyDescription",
+    "PropertyFinance",
     "PropertyGroup",
     "PropertyImage",
     "PropertyLocation",

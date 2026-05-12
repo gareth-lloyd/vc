@@ -1,0 +1,14 @@
+"""Test settings — used by pytest and CI."""
+
+from __future__ import annotations
+
+from .base import *  # noqa: F403
+
+DEBUG = False
+SECRET_KEY = "test-insecure-key"
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.middleware.common.CommonMiddleware",
+]

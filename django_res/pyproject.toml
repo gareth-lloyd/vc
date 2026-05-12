@@ -1,0 +1,64 @@
+[project]
+name = "villacollective"
+version = "0.1.0"
+description = "Villa Collective reservation system — Django REST API"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=5.2,<5.3",
+    "djangorestframework>=3.16",
+    "gunicorn>=23.0",
+    "psycopg[binary]>=3.2",
+    "dj-database-url>=2.3",
+    "whitenoise>=6.8",
+    "django-environ>=0.12",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "factory-boy>=3.3",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle + pyflakes
+    "I",            # isort
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "DJ",           # django
+    "RUF",          # ruff-specific
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+disallow_untyped_defs = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+exclude = ["migrations/"]
+
+[tool.django-stubs]
+django_settings_module = "villacollective.settings.test"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "villacollective.settings.test"
+python_files = ["test_*.py", "tests.py"]
+addopts = "-ra --strict-markers"

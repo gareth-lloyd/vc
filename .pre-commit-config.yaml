@@ -1,0 +1,70 @@
+# Quality gate for Villa Collective.
+#
+# Hooks run on `git commit` (lint / format / typecheck) and on `git push`
+# (tests). Never bypass with --no-verify; fix the underlying issue instead.
+#
+# Setup:
+#   uv tool install pre-commit
+#   pre-commit install --hook-type pre-commit --hook-type pre-push
+
+default_stages: [pre-commit]
+
+repos:
+  # ---- Python (ruff) ----
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-format
+        files: ^django_res/.*\.py$
+      - id: ruff
+        args: [--fix]
+        files: ^django_res/.*\.py$
+
+  # ---- Whole-project local hooks ----
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (django_res)
+        language: system
+        types: [python]
+        files: ^django_res/.*\.py$
+        pass_filenames: false
+        entry: bash -c 'cd django_res && uv run mypy .'
+
+      - id: prettier
+        name: prettier (frontend)
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|md|yml|yaml|css|html)$
+        pass_filenames: false
+        entry: bash -c 'cd frontend && npx prettier --check .'
+
+      - id: eslint
+        name: eslint (frontend)
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+        entry: bash -c 'cd frontend && npm run -s lint'
+
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+        entry: bash -c 'cd frontend && npm run -s typecheck'
+
+      # ---- Pre-push (slower) ----
+      - id: pytest
+        name: pytest (django_res)
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        entry: bash -c 'cd django_res && uv run pytest -q'
+
+      - id: vitest
+        name: vitest (frontend)
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        entry: bash -c 'cd frontend && npm test -- --run'

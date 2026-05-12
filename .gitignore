@@ -1,2 +1,37 @@
 ResSystem/
 .DS_Store
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+
+# Env files (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# pre-commit
+.pre-commit-cache/

@@ -12,8 +12,8 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from core.models.base import AuditedModel
+from core.refs import generate_reference
 from reservations.enums import QuotationStatus
-from reservations.models._reference import generate_reference
 
 
 class Quotation(AuditedModel):

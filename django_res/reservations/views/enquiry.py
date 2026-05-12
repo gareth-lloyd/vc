@@ -27,7 +27,7 @@ from reservations.serializers import (
 class EnquiryViewSet(viewsets.ModelViewSet):
     """`/enquiries` CRUD plus colon-verb action endpoints."""
 
-    queryset = Enquiry.objects.all()
+    queryset = Enquiry.objects.select_related("guest", "property", "region", "agent", "assigned_to")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = EnquiryFilter
     ordering_fields = ["created_at", "updated_at", "status"]

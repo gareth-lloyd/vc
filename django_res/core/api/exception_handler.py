@@ -39,7 +39,7 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
                 "detail": str(exc) or "Domain error",
                 "field_errors": {},
             },
-            status=status.HTTP_409_CONFLICT,
+            status=getattr(exc, "status_code", status.HTTP_409_CONFLICT),
         )
 
     response = drf_default_handler(exc, context)

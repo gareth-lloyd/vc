@@ -20,6 +20,7 @@ from django.db import models, transaction
 from django.db.models import Q
 
 from core.models.base import AuditedModel
+from core.refs import generate_reference
 from payments import signals as payment_signals
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
@@ -29,7 +30,6 @@ from payments.enums import (
     PaymentPurpose,
     PaymentStatus,
 )
-from payments.models._reference import generate_reference
 
 if TYPE_CHECKING:
     from payments.models.payment_event import PaymentEvent

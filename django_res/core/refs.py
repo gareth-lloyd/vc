@@ -1,6 +1,8 @@
-"""Reference-number generation for `Payment`, `Refund`, `SecurityDeposit`.
+"""Short, year-prefixed, unique-per-model reference-number generator.
 
-Mirrors `reservations.models._reference` — short, year-prefixed, unique-per-model.
+Used by Enquiry / Quotation / Booking / Payment / Refund / SecurityDeposit.
+Collision retry uses a UUID4-derived suffix; a millisecond-resolution
+timestamp on the happy path keeps refs short.
 """
 
 from __future__ import annotations
@@ -24,9 +26,9 @@ def _uuid_suffix() -> str:
 
 
 def generate_reference(prefix: str, *, model: type[Model] | None = None) -> str:
-    """Build a short reference like `P-2026-123456`.
+    """Build a short reference like `B-2026-123456`.
 
-    If `model` is provided, falls back to a UUID-suffix on collision.
+    If `model` is provided, retry once with a UUID-derived suffix on collision.
     """
     year = timezone.now().year
     candidate = f"{prefix}-{year}-{_now_suffix()}"

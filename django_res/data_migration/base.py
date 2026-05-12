@@ -30,16 +30,6 @@ class LoadReport:
     errors: list[tuple[str, str]] = field(default_factory=list)
     duration_s: float = 0.0
 
-    def as_row(self) -> tuple[str, int, int, int, int, str]:
-        return (
-            self.loader,
-            self.created,
-            self.updated,
-            self.skipped,
-            len(self.errors),
-            f"{self.duration_s:.2f}s",
-        )
-
 
 class BaseLoader:
     """Subclass per legacy → new mapping.

@@ -24,6 +24,7 @@ from payments.enums import (
 )
 from payments.models.payment import Payment
 from payments.models.security_deposit import SecurityDeposit
+from properties.enums import SecurityDepositCalcType, SecurityDepositPaymentMethod
 
 
 class SecurityDepositService:
@@ -248,7 +249,7 @@ class SecurityDepositService:
     @staticmethod
     def _kind_from_policy_method(method: str | None) -> str:
         """Map a `SecurityDepositPaymentMethod` value to a `SecurityDepositKind`."""
-        if method == "bank_transfer":
+        if method == SecurityDepositPaymentMethod.BANK_TRANSFER.value:
             return SecurityDepositKind.BT_REFUNDABLE.value
         # `card_hold` and `card_charge` both flow through the pre-auth path
         # for v1; differentiation lands when CARD_CHARGE captures up-front.
@@ -260,7 +261,7 @@ class SecurityDepositService:
         if amount is None:
             return Decimal("0.00")
         value = Decimal(str(amount))
-        if policy.get("calculation_type") == "percent":
+        if policy.get("calculation_type") == SecurityDepositCalcType.PERCENT.value:
             base = Decimal(str(getattr(booking, "balance_due", 0)))
             return (base * value / Decimal(100)).quantize(Decimal("0.01"))
         return value.quantize(Decimal("0.01"))

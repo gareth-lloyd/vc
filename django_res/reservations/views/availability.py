@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
+from core.exceptions import DomainError
 from pricing.services import AvailabilityService
 from properties.models import Property
 from reservations.serializers.availability import (
@@ -210,22 +211,32 @@ class AvailabilityBulkBlockView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         expires_at = data.get("expires_at") or _default_expiry(data["reason"])
+        property_ids = list(data["property_ids"])
+        properties = Property.objects.in_bulk(property_ids)
         records: list[Any] = []
-        for property_id in data["property_ids"]:
-            property_obj = get_object_or_404(Property, pk=property_id)
-            try:
-                hold = HoldService.place(
-                    property=property_obj,
-                    date_from=data["date_from"],
-                    date_to=data["date_to"],
-                    expires_at=expires_at,
-                    reason=data["reason"],
-                )
-                records.append(hold)
-            except Exception:
+        failures: list[dict[str, Any]] = []
+        for property_id in property_ids:
+            property_obj = properties.get(property_id)
+            if property_obj is None:
+                failures.append({"property_id": property_id, "error": "not_found"})
                 continue
+            try:
+                records.append(
+                    HoldService.place(
+                        property=property_obj,
+                        date_from=data["date_from"],
+                        date_to=data["date_to"],
+                        expires_at=expires_at,
+                        reason=data["reason"],
+                    )
+                )
+            except DomainError as exc:
+                failures.append({"property_id": property_id, "code": exc.code, "detail": str(exc)})
         return Response(
-            {"records": AvailabilityRecordSerializer(records, many=True).data},
+            {
+                "records": AvailabilityRecordSerializer(records, many=True).data,
+                "failures": failures,
+            },
             status=status.HTTP_201_CREATED,
         )
 

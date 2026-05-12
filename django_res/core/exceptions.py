@@ -9,9 +9,15 @@ from __future__ import annotations
 
 
 class DomainError(Exception):
-    """Base class for typed domain errors."""
+    """Base class for typed domain errors.
+
+    The HTTP `status_code` defaults to 409 (Conflict) — the canonical "state
+    refused this operation" code. Subclasses that represent malformed input
+    rather than a state mismatch should override it to 400.
+    """
 
     code: str = "domain_error"
+    status_code: int = 409
 
 
 class InvalidTransition(DomainError):
@@ -56,3 +62,20 @@ class OverlappingBooking(DomainError):
 
 class OAuthNotConnectedError(DomainError):
     code = "oauth_not_connected"
+
+
+class NoPendingPayment(DomainError):
+    code = "no_pending_payment"
+
+
+class InvalidPaymentState(DomainError):
+    code = "invalid_state"
+
+
+class NoActiveSecurityDeposit(DomainError):
+    code = "no_active_sd"
+
+
+class UnknownAction(DomainError):
+    code = "unknown_action"
+    status_code = 400

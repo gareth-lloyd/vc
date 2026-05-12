@@ -25,7 +25,6 @@ def legacy_cursor() -> Iterator[Any]:
 
 
 def rows_as_dicts(cursor: Any) -> Iterator[dict[str, Any]]:
-    """Yield each row from a cursor as a column-name → value dict."""
     columns = [col[0] for col in cursor.description]
     for row in cursor:
         yield dict(zip(columns, row, strict=True))

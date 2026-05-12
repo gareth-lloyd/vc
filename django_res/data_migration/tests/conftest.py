@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 
@@ -14,5 +16,5 @@ def villa_country_row() -> dict[str, object]:
         "Code": 33,
         "CountryOrder": 5,
         "IsActive": True,
-        "TaxRate": "20.00",
+        "TaxRate": Decimal("20.00"),
     }

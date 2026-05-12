@@ -15,7 +15,7 @@ def test_transform_maps_legacy_fields(villa_country_row: dict[str, object]) -> N
         "iso2": "FR",
         "iso3": "FRA",
         "dial_code": "+33",
-        "default_tax_rate": "20.00",
+        "default_tax_rate": Decimal("20.00"),
         "sort_order": 5,
         "is_active": True,
     }

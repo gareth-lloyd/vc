@@ -26,35 +26,40 @@ class TrackSerializer(serializers.Serializer[None]):
 
     @classmethod
     def for_booking_purpose(cls, *, booking: Any, purpose: str) -> dict[str, Any]:
-        """Build the dict the serializer renders."""
+        """Build the dict the serializer renders.
+
+        Materialises the booking+purpose Payment rows once and partitions /
+        aggregates in Python — every track GET runs through this so the
+        single-query budget matters.
+        """
         from payments.enums import PaymentStatus
         from payments.models import Payment
 
-        rows = Payment.objects.filter(booking=booking, purpose=purpose)
-        scheduled = rows.exclude(
-            status__in=(
-                PaymentStatus.CANCELLED.value,
-                PaymentStatus.EXPIRED.value,
-                PaymentStatus.FAILED.value,
-            )
+        rows = list(
+            Payment.objects.filter(booking=booking, purpose=purpose).order_by("-created_at")
         )
-        scheduled_amount = sum(
-            (Decimal(p.amount) for p in scheduled),
-            start=Decimal("0"),
-        )
+        terminal_non_active = {
+            PaymentStatus.CANCELLED.value,
+            PaymentStatus.EXPIRED.value,
+            PaymentStatus.FAILED.value,
+        }
+        scheduled = [p for p in rows if p.status not in terminal_non_active]
+        scheduled_amount = sum((Decimal(p.amount) for p in scheduled), start=Decimal("0"))
         paid_amount = sum(
-            (Decimal(p.amount) for p in rows.filter(status=PaymentStatus.SUCCEEDED.value)),
+            (Decimal(p.amount) for p in rows if p.status == PaymentStatus.SUCCEEDED.value),
             start=Decimal("0"),
         )
-        next_due = scheduled.exclude(due_at__isnull=True).order_by("due_at").first()
-        # Status: the most-recent meaningful row drives it.
-        latest = rows.order_by("-created_at").first()
-        status = latest.status if latest else "none"
+        with_due = sorted(
+            (p for p in scheduled if p.due_at is not None),
+            key=lambda p: p.due_at,  # type: ignore[arg-type,return-value]
+        )
+        next_due = with_due[0] if with_due else None
+        latest = rows[0] if rows else None  # rows are already ordered by -created_at
         return {
             "booking": booking.pk,
             "purpose": purpose,
             "scheduled_amount": scheduled_amount,
             "paid_amount": paid_amount,
             "due_at": next_due.due_at if next_due else None,
-            "status": status,
+            "status": latest.status if latest else "none",
         }

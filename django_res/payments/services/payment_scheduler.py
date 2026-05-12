@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
+from properties.enums import DepositCalcType
 
 
 class PaymentScheduler:
@@ -136,7 +137,7 @@ class PaymentScheduler:
         if amount is None:
             return Decimal("0.00")
         value = Decimal(str(amount))
-        if calculation_type == "percent":
+        if calculation_type == DepositCalcType.PERCENT.value:
             return (base * value / Decimal(100)).quantize(Decimal("0.01"))
         # FIXED or unknown → take the value verbatim.
         return value.quantize(Decimal("0.01"))

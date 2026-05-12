@@ -10,6 +10,7 @@ from django.db import models, transaction
 from core.exceptions import InvalidTransition
 from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
+from core.refs import generate_reference
 from reservations.enums import (
     EnquiryEventKind,
     EnquiryNoteKind,
@@ -18,7 +19,6 @@ from reservations.enums import (
     EnquiryStatus,
     EventSource,
 )
-from reservations.models._reference import generate_reference
 
 if TYPE_CHECKING:
     from reservations.models.quotation import Quotation

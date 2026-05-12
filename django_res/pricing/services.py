@@ -412,18 +412,17 @@ class PricingEngine:
         # ----- Step 4: rate subtotal -----
         rate_subtotal = sum((ln.nightly for ln in lines), Decimal("0")).quantize(Decimal("0.01"))
 
-        # ----- Step 5: mandatory extras -----
+        # ----- Step 5: mandatory + opt-in extras (one query, partition in Python) -----
         extras_applied: list[AppliedExtra] = []
-        extras_qs = Extra.objects.filter(
-            property=property,
-            is_active=True,
-            currency=currency,
-        )
-        mandatory = [e for e in extras_qs.filter(is_mandatory=True)]
         opt_in_ids = set(opt_in_extras or [])
-        opt_in = [e for e in extras_qs.filter(is_mandatory=False, pk__in=opt_in_ids)]
+        all_extras = list(
+            Extra.objects.filter(property=property, is_active=True, currency=currency)
+        )
+        applicable_extras = [
+            e for e in all_extras if e.is_mandatory or (not e.is_mandatory and e.pk in opt_in_ids)
+        ]
 
-        for extra in (*mandatory, *opt_in):
+        for extra in applicable_extras:
             if not _date_ranges_overlap(date_from, date_to, extra.applies_from, extra.applies_to):
                 continue
             if extra.min_party is not None and party < extra.min_party:

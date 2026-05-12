@@ -8,9 +8,12 @@ core/migrations.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class CIEmailField(models.EmailField):
@@ -51,11 +54,12 @@ class EncryptedTextField(models.TextField):
         try:
             return decrypt(value)
         except Exception:
-            # If decryption fails it almost always means the row was written
-            # with a key that has been rotated out. Surface the ciphertext
-            # rather than raise so admin pages still render — services that
-            # care will fail validating downstream.
-            return value
+            # Decryption failure usually means the row was written with a
+            # Fernet key that's been rotated out. Log loudly and return None
+            # so downstream consumers can't accidentally treat ciphertext as
+            # plaintext (which would be a real security hazard if leaked).
+            logger.exception("EncryptedTextField decryption failed; returning None")
+            return None
 
     def get_prep_value(self, value: Any) -> Any:
         if value in (None, ""):

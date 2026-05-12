@@ -15,6 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.models.base import AuditedModel
+from core.refs import generate_reference
 from payments import signals as payment_signals
 from payments.enums import (
     TERMINAL_SD_STATUSES,
@@ -22,7 +23,6 @@ from payments.enums import (
     SecurityDepositKind,
     SecurityDepositStatus,
 )
-from payments.models._reference import generate_reference
 
 if TYPE_CHECKING:
     from payments.models.payment_event import PaymentEvent

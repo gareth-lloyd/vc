@@ -14,9 +14,12 @@ from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from core.api.responses import not_implemented_response
+from payments.enums import PaymentMethod
+from reservations.enums import QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
 from reservations.serializers import (
+    BookingDetailSerializer,
     QuotationDetailSerializer,
     QuotationLineSerializer,
     QuotationLineWriteSerializer,
@@ -101,17 +104,15 @@ class QuotationViewSet(viewsets.ModelViewSet):
             )
         line = get_object_or_404(QuotationLine, pk=line_id, quotation=quotation)
         # Accept the line (transitions quotation to ACCEPTED) before creating the booking.
-        if quotation.status == "sent":
+        if quotation.status == QuotationStatus.SENT:
             quotation.accept(line)
         booking = BookingService.create_from_quotation_line(
             line,
             terms_version=quotation.terms_version,
-            payment_method=request.data.get("payment_method", "card"),
+            payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
             agent=quotation.agent,
             actor=request.user,
         )
-        from reservations.serializers import BookingDetailSerializer
-
         return Response(
             BookingDetailSerializer(booking).data,
             status=status.HTTP_201_CREATED,

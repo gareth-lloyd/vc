@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from core.models.base import AuditedModel, TimestampedModel
+from core.refs import generate_reference
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
     TERMINAL_BOOKING_STATUSES,
@@ -29,7 +30,6 @@ from reservations.enums import (
     EventSource,
     PaymentMethod,
 )
-from reservations.models._reference import generate_reference
 
 if TYPE_CHECKING:
     from datetime import date as date_type

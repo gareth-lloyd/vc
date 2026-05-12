@@ -80,6 +80,17 @@ External calls: endpoint URL pattern, auth scheme, request payload field names, 
 ### Data transformations for storage
 How raw input becomes the stored row: hashing, currency conversion (e.g., GBP×100 cents), date parsing, JSON encoding, slug generation, enum mapping.
 
+### Idempotency
+**Required heading for every workflow whose trigger is a webhook, an integration push, a scheduler tick, or any retryable network call.** Other workflows may omit it.
+
+State the dedupe strategy explicitly:
+- What is the **idempotency key**? (provider event id, `(BookingId, EventType)`, request UUID, `(QuotationNo, ToDate)`, …)
+- Where is it stored? (`WebhookDelivery.provider_event_id`, `SyncRecord.fingerprint`, …)
+- What happens on a duplicate? (short-circuit and return prior result / no-op / error)
+- Is the underlying operation **commutative** (last-write-wins is fine) or **non-commutative** (must dedupe)?
+
+"It's idempotent" without naming the key or the storage is not a valid answer. Webhooks without dedupe are not idempotent; they are duplicable. The Django port should make this gap impossible to ship — `WebhookDelivery` and `SyncRecord` exist precisely so every integration declares its key.
+
 ### Failure modes
 What can go wrong and how the legacy system reacts. Includes "silent failure" cases — they are not endorsements.
 
@@ -94,7 +105,8 @@ Some workflows are short enough that they fit in a few lines; others have all se
 - **Field names** are formatted as `FieldName` (inline code) and preserve the legacy casing/spelling.
 - **Stored procedures** are formatted as `sp_villaEnquire` (inline code).
 - **Status codes** — when the legacy system uses a magic integer (e.g., availability statuses 10/20/30/40/50/60/70), the file calls out the meaning the first time it appears and then references the number.
-- **Bracket-tag for issues** the redesign should consider: `[STUB]` (referenced but not committed), `[DISABLED]` (commented out), `[SECURITY]` (issue worth flagging), `[TYPO]` (legacy misspelling preserved). These appear inline so they survive grepping.
+- **Bracket-tag for issues** the redesign should consider: `[STUB]` (referenced but not committed), `[DISABLED]` (commented out), `[SECURITY]` (issue worth flagging), `[CORRECTNESS]` (logical/atomicity defect in legacy code), `[TYPO]` (legacy misspelling preserved). These appear inline so they survive grepping.
+- **Legacy spelling** is the source of truth in workflow specs (so the spec greps against the .NET source). The preserve-vs-rename decision for each typo lives in `../09-departures.md` → "Legacy typo registry". Do not silently use the cleaned-up spelling in a workflow spec — that hides a real cross-talk hazard (see `SecurityDepositDays{Defunded,Refunded}AfterDeparture`).
 
 ## Numbering rationale
 

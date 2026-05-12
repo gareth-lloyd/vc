@@ -270,44 +270,53 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 
 ### 2.4 Pricing
 
-Both flat and nested access patterns. Seasons are scoped to a property; rate cards are scoped to a season; occupancy bands to a rate card.
+Three-level hierarchy: **Season → Rate Card → Rate Rule**. Seasons are scoped to a property; rate cards live inside a season; rate rules carry the actual prices (one row per date sub-range × party-size band). Occupancy bands are not a separate resource — they are sibling rate rules sharing a date range with different party ranges. Date ranges are not a separate resource — they are columns on rate rule.
+
+Backed by `pricing.RatePlan` (= Season), `pricing.RateCard`, and `pricing.RateRule` respectively.
 
 #### Seasons
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/properties/{id}/seasons` | List seasons for villa |
 | POST | `/properties/{id}/seasons` | Create season |
-| GET | `/seasons/{id}` | Detail (flat alias) |
+| GET | `/seasons/{id}` | Detail (flat alias) — includes nested rate cards (with their rules inlined) |
 | PATCH | `/seasons/{id}` | Update |
 | DELETE | `/seasons/{id}` | Delete |
-| POST | `/seasons/{id}:duplicate` | Clone with rate cards |
-
-#### Season date ranges
-| Method | Path |
-|---|---|
-| GET / POST | `/seasons/{id}/date-ranges` |
-| PATCH / DELETE | `/seasons/{id}/date-ranges/{range_id}` |
+| POST | `/seasons/{id}:duplicate` | Clone with rate cards + rules |
 
 #### Rate cards
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/seasons/{id}/rate-cards` | List rate cards in season |
-| POST | `/seasons/{id}/rate-cards` | Create |
-| GET | `/rate-cards/{id}` | Detail |
-| PATCH | `/rate-cards/{id}` | Update |
+| POST | `/seasons/{id}/rate-cards` | Create (may include initial rules in body) |
+| GET | `/rate-cards/{id}` | Detail (flat alias) — rules inlined by default |
+| PATCH | `/rate-cards/{id}` | Update card metadata; rules can be replaced via nested array if `?replace_rules=true` |
 | DELETE | `/rate-cards/{id}` | Delete |
+| POST | `/rate-cards/{id}:duplicate` | Clone within or across seasons |
 
-#### Occupancy bands
-| Method | Path |
-|---|---|
-| GET / POST | `/rate-cards/{id}/occupancy-bands` |
-| PATCH / DELETE | `/rate-cards/{id}/occupancy-bands/{band_id}` |
+#### Rate rules (price rows)
+Granular CRUD for individual rules. Use these when adding a single occupancy band or splitting a date sub-range without rewriting the whole card.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/rate-cards/{id}/rules` | List rules in card |
+| POST | `/rate-cards/{id}/rules` | Add rule |
+| GET | `/rules/{id}` | Detail (flat alias) |
+| PATCH | `/rules/{id}` | Update |
+| DELETE | `/rules/{id}` | Delete |
 
-#### Extras (cleaning fee, pet fee, etc.)
-| Method | Path |
-|---|---|
-| GET / POST | `/properties/{id}/extras` |
-| GET / PATCH / DELETE | `/extras/{id}` |
+#### Extras (cleaning fee, pet fee, heating, linen, extra-bed, etc.)
+Property-scoped catalogue of named charges added at quote time. Backed by `pricing.Extra` (see `04-pricing.md`). Each extra has a kind (`CLEANING`, `PET_FEE`, `HEATING`, `LINEN`, `EXTRA_BED`, `SERVICE_FEE`, `RESORT_FEE`, `OTHER`), a calc method, an amount, optional date and party-size windows, and an `is_mandatory` flag.
+
+Tax and commission are **not** Extras — they live under property finance config (`/properties/{id}/finance`) and are applied automatically by the pricing engine.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/properties/{id}/extras` | List extras for villa; filters: `kind`, `is_mandatory`, `is_active` |
+| POST | `/properties/{id}/extras` | Create |
+| GET | `/extras/{id}` | Detail (flat alias) |
+| PATCH | `/extras/{id}` | Update |
+| DELETE | `/extras/{id}` | Archive |
+| POST | `/extras/{id}:duplicate` | Clone (optionally onto another property via body `target_property_id`) |
 
 #### Website price display
 | Method | Path | Purpose |
@@ -318,7 +327,7 @@ Both flat and nested access patterns. Seasons are scoped to a property; rate car
 #### Pricing computation helper
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
-| POST | `/pricing:quote` | Compute total for property + dates + guests + extras | Stateless calc, used by quotation UI |
+| POST | `/pricing:quote` | Compute total for property + dates + guests + opt-in extras | Body accepts `opt_in_extras: [<extra_id>, ...]`; mandatory extras are applied automatically. Stateless calc, used by quotation UI |
 | POST | `/pricing:quote-bulk` | Compute for multiple villa/date combos | Used by multi-villa quote search |
 
 ---

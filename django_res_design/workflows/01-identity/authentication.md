@@ -55,12 +55,12 @@ Workflows that establish and tear down the user's authenticated session, and tha
 2. Load email template `EMAIL_AUTH_CODE_TEMPLATE` from disk.
 3. Substitute `{:InterfaceGatewayURL:}`, `{:AuthCode:}`, `{:InterfaceURL:}`.
 4. `EmailService.SentEmail(emailConfig)` via the user-or-global SMTP profile.
-5. `sp_crud_auth_code` with `@Action=INSERT`, `@AuthType='TWO_FACTOR_AUTH'`, `@ContactType=10`, `@AuthCode={code}`, `@ExpireAt = now + 2h`.
+5. `sp_crud_auth_code` (`live-db-24-apr.sql:109840+`) with `@Action=INSERT`, `@AuthType='TWO_FACTOR_AUTH'`, `@ContactType=10`, `@AuthCode={code}`, `@ExpireAt = now + 2h`.
+   - **Single-active-code invariant.** Before INSERT, the SP runs `DELETE FROM VillaCodeSentHistory WHERE UserId=@UserId AND AuthType=@AuthType`. This is the legacy system's only flood / replay defence: a previous unused code is destroyed when a new one is issued, so only the latest code is ever valid. This contradicts the "Old codes are not invalidated" caveat that previously sat on this workflow — the *prior code for the same `(UserId, AuthType)`* is invalidated; but a code issued for one `AuthType` does not invalidate codes of a different type.
 
 ### Outputs / side effects
-- **DB write:** new `VillaCodeSentHistories` row (code stored **plaintext** `[SECURITY]`).
+- **DB write:** prior `(UserId, AuthType)` rows in `VillaCodeSentHistory` are **deleted**, then a new row is inserted. Code stored **plaintext** `[SECURITY]`.
 - **Email out:** via SMTP.
-- Old codes are not invalidated — multiple in-flight codes will validate.
 
 ### Failure modes
 - Template missing → throws.

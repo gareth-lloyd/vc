@@ -18,8 +18,10 @@ Every business-relevant entity has `deleted_at` (nullable) and `deleted_by` (FK 
 ### Audit timestamps
 `created_at`, `created_by`, `updated_at`, `updated_by` on every entity. `updated_at` doubles as the etag for concurrency control on PATCH/PUT.
 
-### Multi-tenancy via site
-A `Site` FK is on every operationally-scoped entity (`Property`, `Enquiry`, `Quotation`, `Booking`, `Guest`, `Contact`, `EmailTemplate`, `EmailLog`). Queries filter by the caller's site context unless the caller has cross-site permission. The original `VillaSite` table maps directly.
+### Not multi-tenant
+This is a single-tenant application. There is no `Site` model and no `site` FK on any entity. Investigation of the legacy production database confirmed the `VillaSite` migration was never deployed; the original `vw_villa_sites` view was an *outbound publishing-target registry* (one back-office fans listings out to multiple WordPress storefronts via REST), not a tenant partition.
+
+Where the inbound channel matters for reporting, entities carry a flat `site_source` TextChoices field (currently on `Enquiry` and `Booking`). Outbound fan-out to WordPress storefronts is modelled as `integrations.SyncRecord` with provider `WORDPRESS_SITE` (see `08-integrations.md`). Owner-portal scoping is per-`Contact` via `ContactPropertyMapping` — not tenancy.
 
 ### Money fields
 Stored as **`Decimal(12, 2) amount + 3-char ISO `currency_code`** — never a bare number. The current original column `Price` becomes `(price_amount, price_currency)`. Reports that aggregate across currencies require an explicit FX policy (snapshot at booking creation? real-time? — open question in `06-verification.md`).
@@ -34,7 +36,7 @@ All timestamps stored UTC. `Property.timezone` is the property's IANA timezone (
 Numeric `BigAutoField` PKs for entities frequently referenced in URLs (`Booking.id`, `Property.id`). UUIDs for entities where leaking sequential IDs is undesirable (`MagicLink`, `WebhookEvent`, `AuditLog`).
 
 ### Reference numbers
-`Booking.reference` (e.g., `BK-12345`) and `Quotation.reference` (e.g., `Q-184`) are user-facing alphanumeric strings, generated per-site with a prefix from `Site.booking_prefix`. Separate from the internal PK.
+`Booking.reference` (e.g., `BK-12345`) and `Quotation.reference` (e.g., `Q-184`) are user-facing alphanumeric strings. Prefixes (`BK`, `Q`) live in `SystemDefaults`. Separate from the internal PK.
 
 ---
 
@@ -43,7 +45,7 @@ Numeric `BigAutoField` PKs for entities frequently referenced in URLs (`Booking.
 ### Property
 The rentable unit (a villa). Replaces `VillaMaster`.
 
-Key fields: `name`, `display_name`, `slug`, `status` (enum), `category` (FK), `site` (FK), `property_group` (FK), `region` (FK), `country` (FK), `currency` (FK), `timezone`, `latitude`, `longitude`, `address_*` fields, `licence_number`, `bedrooms`, `bathrooms`, `ensuites`, `guests`, `additional_guests`, `max_occupancy` (derived), `size_sqm`, `slug`.
+Key fields: `name`, `display_name`, `slug`, `status` (enum), `category` (FK), `property_group` (FK), `region` (FK), `country` (FK), `currency` (FK), `timezone`, `latitude`, `longitude`, `address_*` fields, `licence_number`, `bedrooms`, `bathrooms`, `ensuites`, `guests`, `additional_guests`, `max_occupancy` (derived), `size_sqm`, `slug`.
 
 Sub-resources (own models):
 - `PropertyImage` — image with role tags (`hero`, `interior_1`, `exterior_1`, `gallery`), order, alt text, caption, signed-URL key. Original `VillaPropertyImage`.
@@ -95,11 +97,6 @@ Type of nearby point (restaurant, beach, airport). Original `VillaNearByLocation
 ### Currency
 `code` (ISO-3 PK), `name`, `symbol`, `symbol_position` (`before` / `after`), `is_default`, `display_order`. Original `VillaCurrency`.
 
-### Site
-Multi-tenant white-label brand. `slug` (PK), `name`, `url`, `api_key` (rotated), `booking_prefix` (e.g., `BK`), `quote_prefix` (e.g., `Q`), `default_currency` (FK), `default_locale`. Original `VillaSite`.
-
-`SiteSettings` 1:1 holds template overrides, branding, etc.
-
 ### PriceDisplayConfig
 Public website price display per property: POA flag, min/max price, currency symbol placement. Original `VillaWebsitePricing` and `VillaMapping` (collapsed — these overlapped).
 
@@ -113,33 +110,42 @@ External-platform IDs for a property. Fields: `property` (FK), `channel` (enum: 
 
 ## 2. Pricing cluster
 
+Three-level model: **Season → RateCard → RateRule**. Naming choice: keep operator-facing "Season" and "RateCard" terms throughout the UI and API; backend models are `pricing.RatePlan` (= Season), `pricing.RateCard`, and `pricing.RateRule` (see `../04-pricing.md`).
+
+Note: an earlier draft of this doc described `SeasonDateRange` and `OccupancyBand` as first-class entities. They have been removed because production data showed both were vestigial (96% of legacy seasons had one date range; only 3% of rate rows used occupancy banding). Their roles are absorbed into multiple sibling `RateRule` rows on the same card.
+
 ### Season
-Named pricing period for a property. Original `VillaSeason`.
+Named pricing period for a property. Original `VillaSeason`. Holds metadata only — no prices.
 
-Fields: `property` (FK), `name`, `notes`, `inclusion` (free amenities text), `carried_rates` (bool — inherits rate cards from referenced season), `parent_season` (nullable FK, for carried rates).
-
-### SeasonDateRange
-A season covers one-or-more disjoint date ranges. Original `VillaSeasonDate`.
-
-Fields: `season` (FK), `from_date`, `to_date`.
+Fields: `property` (FK), `name`, `notes`, `inclusion` (free amenities text), `currency` (FK), `price_basis` (`gross` / `net`), `effective_from`, `effective_to` (nullable), `is_active`. `carried_rates` and `parent_season` are out of scope unless required by a real workflow — defer.
 
 ### RateCard
-The actual price card within a season. Original `VillaSeasonRate`.
+The operator's editable unit within a season — what they think of as "the summer week price". Attaches min/max nights, changeover restriction, and discount rules. Original `VillaSeasonRate` (the "card-level" parts).
 
-Fields: `season` (FK), `name`, `description`, `currency` (FK), `from_date`, `to_date`, `total_nights_min` (minimum stay for this card), `party_size` (nullable), `price_type` (`weekly` / `nightly`), `weekly_amount`, `nightly_amount`, `commission_type` (`percent` / `fixed` / `poa`), `commission_amount`, `commission_note`, `tax_rate_percent`, `tax_amount`, `is_tax_exempt`, `is_available`, `is_poa`, `discount_*` fields, `is_occupancy_priced` (bool — drives OccupancyBand lookups), `is_extra` (bool — distinguishes add-ons), `is_approved`.
+Fields: `season` (FK), `name`, `description`, `min_nights`, `max_nights` (nullable), `changeover_weekday` (nullable; overrides property changeover rule), `sort_order`, `is_active`, `notes`.
 
-### OccupancyBand
-Price modifier per guest-count range, attached to a `RateCard` when `is_occupancy_priced=true`. Original `VillaOccupencyPrice`.
+The card has **no date range or price of its own** — those live on its child `RateRule` rows.
 
-Fields: `rate_card` (FK), `occupancy_from`, `occupancy_to`, `price_amount`.
+### RateRule
+A price row inside a card: a (date sub-range × party-size band) → nightly/weekly price. Original `VillaSeasonRate` (the "price-row" parts) + `VillaSeasonDate` + `VillaOccupencyPrice`.
+
+Fields: `card` (FK), `date_from`, `date_to`, `min_party`, `max_party`, `priority`, `nightly` (nullable), `weekly` (nullable), `is_poa`, `notes`.
+
+A card with one price = one rule. A card with three occupancy bands = three rules sharing date range with disjoint `(min_party, max_party)`. A card whose price covers two disjoint date sub-ranges = two rules sharing party range with disjoint dates.
 
 ### Extra
-Property-level add-on charge (cleaning fee, pet fee, heating). Modelled as RateCard with `is_extra=true` if convenient, OR as a separate `Extra` entity — implementation choice. The API surface treats them separately at `GET /properties/{id}/extras`.
+Property-level catalogue of named charges added at quote time: cleaning fee, pet fee, heating, linen, extra-bed, resort fee, etc. Backed by `pricing.Extra`.
+
+Fields: `property` (FK), `name`, `description`, `kind` (`cleaning` / `pet_fee` / `heating` / `linen` / `extra_bed` / `service_fee` / `resort_fee` / `other`), `calc` (`fixed_per_stay` / `fixed_per_night` / `fixed_per_person` / `fixed_per_person_per_night` / `percent_of_subtotal`), `amount`, `currency` (FK), `is_mandatory`, `applies_from`, `applies_to` (nullable date window — seasonality), `min_party`, `max_party` (nullable — e.g. extra-bed for 5+ guests), `sort_order`, `is_active`, `notes`.
+
+Mandatory extras are applied automatically when their date and party windows match. Optional extras are surfaced in the quote UI for selection and passed through as `opt_in_extras` to the pricing engine.
+
+Tax and commission are **not** Extras — they live on `PropertyFinance` (config) and are applied by the pricing engine via the `PropertyFinance.effective_*` resolvers.
 
 ### DiscountRule
-First-class entity for length-of-stay / early-bird / repeat-guest discounts, instead of the original's flag-soup on `VillaSeasonRate`. Fields: `rate_card` (FK), `kind` (`length_of_stay` / `early_bird` / `last_minute` / `repeat_guest`), `priority`, `threshold_value`, `threshold_unit`, `discount_type` (`percent` / `fixed`), `discount_value`, `floor_amount` (for last-minute), `notes`.
+First-class entity for length-of-stay / early-bird / last-minute / repeat-guest / promo-code discounts, instead of the original's flag-soup on `VillaSeasonRate`. Backed by `pricing.Discount`. Attaches at the rate-card level (with property-level fallback for property-wide promo codes).
 
-(This is a small improvement over the original; the original packed several discount fields into `VillaSeasonRate` flat.)
+Fields: `card` (FK, nullable), `property` (FK, used when `card` null), `name`, `code` (nullable), `rule_kind` (`length_of_stay` / `early_bird` / `last_minute` / `repeat_guest` / `promo_code`), `kind` (`percent` / `fixed`), `amount`, `min_nights`, `threshold_days` (for early-bird / last-minute), `valid_from`, `valid_to`, `max_uses`, `uses_count`, `is_active`.
 
 ---
 
@@ -148,7 +154,7 @@ First-class entity for length-of-stay / early-bird / repeat-guest discounts, ins
 ### Enquiry
 Inbound lead, sometimes pre-quotation. Original `VillaEnquire`.
 
-Fields: `site` (FK), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable), `guest` (FK to Guest), `referral_code`, `agent` (FK to Contact, nullable), `zoho_id`.
+Fields: `site_source` (enum — which inbound channel/WP storefront produced the lead), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable), `guest` (FK to Guest), `referral_code`, `agent` (FK to Contact, nullable), `zoho_id`.
 
 Trip-search constraints (denormalised for query speed):
 - `from_date`, `to_date`, `dates_flexible` (bool), `flex_days`, `adults`, `children`, `infants`, `min_bedrooms`, `max_bedrooms`, `country` (FK), `regions` (M2M), `features` (M2M), `budget_min_amount`, `budget_max_amount`, `budget_currency`.
@@ -162,7 +168,7 @@ Tracking: `reference` (e.g., `E-1234`), `user_feedback`, `lost_reason`, `closed_
 ### Quotation
 Header for a multi-villa quote. Original `VillaQuotationMaster`.
 
-Fields: `site` (FK), `enquiry` (FK, nullable), `guest` (FK), `agent` (FK to Contact, nullable), `reference` (e.g., `Q-184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
+Fields: `enquiry` (FK, nullable), `guest` (FK), `agent` (FK to Contact, nullable), `reference` (e.g., `Q-184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
 
 **Status**: `draft`, `sent`, `viewed`, `converted`, `withdrawn`, `lost`.
 
@@ -178,7 +184,7 @@ Fields: `quotation` (FK), `property` (FK), `from_date`, `to_date`, `nights`, `pr
 ### Booking
 The confirmed reservation. Original `VillaBooking`.
 
-Fields: `site` (FK), `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable), `reference` (e.g., `BK-2391`), `status` (enum), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `concierge_notes`, `internal_notes`, `villa_notes` (passed to property manager), `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
+Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable), `reference` (e.g., `BK-2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `concierge_notes`, `internal_notes`, `villa_notes` (passed to property manager), `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
 
 Aggregate denorm (kept in sync via signals):
 - `total_amount`, `paid_amount`, `outstanding_amount` (booking summary right-rail).
@@ -227,7 +233,6 @@ Fields: `property` (FK), `date` (or `from_date` + `to_date` if we model ranges �
 - `booked_provisional` (deposit unpaid)
 - `booked_pending_approval` (owner approval pending)
 - `booked` (confirmed)
-- `booked_vc` (booking from another VC site sharing inventory)
 - `unavailable` (with `reason` subtype)
 
 Hold-expiry is processed by a Celery beat job — no client endpoint.
@@ -266,7 +271,7 @@ Fields: `title`, `first_name`, `last_name`, `email`, `phone`, `country` (FK), `r
 `Guest.bookings` reverse, `Guest.enquiries` reverse, `Guest.quotations` reverse.
 
 ### User
-Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_admin`, `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`. Linked optionally to a `Contact` (for owner-portal users). Site memberships via `UserSiteMembership` (M2M with `role` and `permission_overrides`).
+Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_admin`, `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`, `role` (FK or enum). Linked optionally to a `Contact` (for owner-portal users).
 
 `Role` — named permission set. Fields: `name`, `description`, `permissions` (JSON list of permission keys, or M2M).
 
@@ -327,7 +332,7 @@ Named template (Strict / Moderate / Flexible) + per-villa override. Fields: `nam
 ## 8. Communications cluster
 
 ### EmailTemplate
-Versioned, site-scoped. Fields: `site` (FK, nullable for system defaults), `key` (e.g., `deposit_request`, `booking_confirmation`, `owner_approval_request`), `subject_template`, `body_template` (rich text or markdown), `is_active`, `version`. The original maintained these in `wwwroot/templates/email/` as HTML files; we move them into the DB for runtime editing.
+Versioned. Fields: `key` (e.g., `deposit_request`, `booking_confirmation`, `owner_approval_request`), `subject_template`, `body_template` (rich text or markdown), `is_active`, `version`. The original maintained these in `wwwroot/templates/email/` as HTML files; we move them into the DB for runtime editing.
 
 ### EmailLog
 Every sent email. Fields: `template` (FK), `to_email`, `cc_emails`, `bcc_emails`, `subject_rendered`, `body_rendered`, `booking` (FK, nullable), `enquiry` (FK, nullable), `quotation` (FK, nullable), `gateway_message_id`, `status` (enum: `queued` / `sent` / `delivered` / `opened` / `bounced` / `failed`), `sent_at`, `delivered_at`, `opened_at`, `bounce_reason`.
@@ -345,7 +350,7 @@ Fields: `kind` (`magic_link` / `2fa_code` / `password_reset`), `recipient_email`
 Fields: `kind` (`contacts` / `properties` / `enquiries` / `quotations` / `bookings`), `status`, `started_at`, `finished_at`, `records_processed`, `records_failed`, `error_summary`, `triggered_by`.
 
 ### ChannelSyncJob
-Outbound sync to OTAs. Fields: `channel` (`airbnb` / `booking_com` / `vrbo`), `property` (FK, nullable for site-wide), `kind` (`availability` / `rates` / `content`), `status`, similar metadata.
+Outbound sync to OTAs. Fields: `channel` (`airbnb` / `booking_com` / `vrbo`), `property` (FK, nullable for portfolio-wide), `kind` (`availability` / `rates` / `content`), `status`, similar metadata.
 
 ### WebhookEvent
 Inbound webhook audit log. Fields: `provider` (`stripe` / `airbnb` / `booking_com` / `vrbo` / `zoho` / `other`), `event_type`, `external_id`, `payload` (JSON), `signature_valid` (bool), `processed_at`, `processing_status` (`pending` / `processed` / `failed` / `replayed`), `error_message`.
@@ -377,7 +382,7 @@ Fields: `recipient` (FK User), `kind`, `title`, `body`, `link`, `is_read`, `crea
 Per-user, per-kind, per-channel. Fields: `user` (FK), `kind`, `channel` (`email` / `in_app` / `slack`), `is_enabled`.
 
 ### FeatureFlag
-Fields: `key`, `description`, `is_enabled_default`, `enabled_for_users` (M2M), `enabled_for_sites` (M2M), `rollout_percent`. Read-through with caching.
+Fields: `key`, `description`, `is_enabled_default`, `enabled_for_users` (M2M), `rollout_percent`. Read-through with caching.
 
 ### SystemDefaults
 Global key/value config. Replaces `VillaConfigPropertyDefault` (which was actually system-level defaults misnamed). Fields: `key`, `value` (JSON), `description`. Admin only.
@@ -387,10 +392,6 @@ Global key/value config. Replaces `VillaConfigPropertyDefault` (which was actual
 ## Relationship summary (cardinalities that matter)
 
 ```
-Site (1) ──── (many) Property
-Site (1) ──── (many) Enquiry
-Site (1) ──── (many) Booking
-
 Property (1) ──── (many) PropertyImage
 Property (1) ──── (many) PropertyRoom
 Property (1) ──── (many) PropertyDescription
@@ -413,9 +414,8 @@ Property (many)──── (1) PropertyCategory
 
 Region (many)──── (1) Country
 
-Season (1) ──── (many) SeasonDateRange
 Season (1) ──── (many) RateCard
-RateCard (1) ──── (many) OccupancyBand
+RateCard (1) ──── (many) RateRule
 RateCard (1) ──── (many) DiscountRule
 
 Enquiry (1) ──── (0..1) Quotation         (one quote per enquiry typically)
@@ -449,7 +449,6 @@ Guest (1) ──── (many) Enquiry
 Guest (1) ──── (many) Quotation
 Guest (1) ──── (many) PaymentInstrument
 
-User (many)──(many) Site                  (via UserSiteMembership, with role)
 User (1) ──── (many) UserSession
 User (1) ──── (many) Notification
 
@@ -464,6 +463,7 @@ For the migration script's reference.
 
 | Original table | Disposition |
 |---|---|
+| `VillaSite` | Dropped. Was never used as a tenant partition in production (migration never deployed); legacy `vw_villa_sites` was an outbound WordPress publishing-target registry, modelled now via `integrations.SyncRecord` with `provider=WORDPRESS_SITE`. The inbound-channel signal lives on `Enquiry.site_source` / `Booking.site_source` enums. |
 | `VillaMaster` | Split into `Property` + `PropertySettings` + `PropertyFinance` + `PriceDisplayConfig`. |
 | `VillaConfigPropertyDefault` | Renamed `SystemDefaults` (it was system-level despite the name). |
 | `VillaWebsitePricing` | Collapsed with `VillaMapping` into `PriceDisplayConfig`. |

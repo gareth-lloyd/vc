@@ -41,7 +41,7 @@ The `VillaFinance` god-object carries five distinct concerns: commission, tax, b
 - `SecurityDepositAmountTypeId` (FK `CalculationType` — % vs fixed)
 - `SecurityDepositAmount`
 - `SecurityDepositCalculateFromId` (FK `CalculationType` — basis: rental amount, balance, etc.)
-- `SecurityDepositDaysDueBeforeArrival`, `SecurityDepositDaysRefundedAfterDeparture`
+- `SecurityDepositDaysDueBeforeArrival`, `SecurityDepositDaysDefundedAfterDeparture` `[TYPO]` — the real column name on `VillaMaster` / `VillaConfigPropertyDefault` (`live-db-24-apr.sql:61420`) is **`SecurityDepositDaysDefundedAfterDeparture`** (should be `Refunded`). `PropertyService2.cs:200` reads the typo column from the row and assigns it to a C# property called `SecurityDepositDaysRefundedAfterDeparture` — so the typo is the source of truth and the "correct" name only exists in the .NET model. The Django port must read from the typo column and rename on migration; do **not** assume the clean name maps to a real column without an explicit rename.
 - `IsDefaultSecDep`
 
 ### Process

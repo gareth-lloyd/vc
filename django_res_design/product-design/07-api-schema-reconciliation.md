@@ -26,17 +26,60 @@ Status legend:
 
 ---
 
-### #2 — Pricing namespace: API exposes `/seasons` → `/rate-cards` → `/occupancy-bands`; backend has only `RatePlan` → `RateRule`. — **Open**
+### #2 — Pricing namespace: API exposed 4-level `/seasons` → `/date-ranges` → `/rate-cards` → `/occupancy-bands`; backend had only 2-level `RatePlan` → `RateRule`. — **Resolved**
 
-- **API surface (§2.4):** `/properties/{id}/seasons` → `/seasons/{id}/date-ranges` → `/seasons/{id}/rate-cards` → `/rate-cards/{id}/occupancy-bands`. Four nested resources.
-- **Backend (`04-pricing.md`):** `RatePlan` → `RateRule` only. Date ranges and party (occupancy) ranges are inline columns on `RateRule`. `VillaSeasonDate` and `VillaOccupencyPrice` were explicitly merged into `RateRule` per `09-departures.md`.
-- **Decision needed:** rename API to `/rate-plans` / `/rate-rules` and drop the date-range and occupancy-band sub-paths, OR re-introduce separate `RateCard` / `OccupancyBand` / `SeasonDateRange` models.
+- **API surface (§2.4 original):** `/properties/{id}/seasons` → `/seasons/{id}/date-ranges` → `/seasons/{id}/rate-cards` → `/rate-cards/{id}/occupancy-bands`. Four nested resources.
+- **Backend original (`04-pricing.md`):** `RatePlan` → `RateRule`. Date ranges and party (occupancy) ranges were inline columns on `RateRule`.
+- **Investigation (live DB `live-db-24-apr.sql`):**
+  - `VillaSeason`: 710 rows
+  - `VillaSeasonDates`: 736 rows → **1.04 ranges per season** (96% of seasons have exactly one date range)
+  - `VillaSeasonRate`: 8,665 rows (the workhorse — carries date range, party size, price)
+  - `VillaOccupencyPrice`: 263 rows → **only 3% of rate rows use occupancy banding**
 
-### #3 — "Extras" (cleaning/pet fee): API resource has no backing model. — **Open**
+  Product UX (`03-workflows.md` flow 13) confirms operator mental model is "Season form with N rate-card rows; occupancy bands are a table inside the card".
 
-- **API:** `/properties/{id}/extras`, `/extras/{id}` CRUD.
-- **Backend:** No `Extra` model. Closest is `pricing.Surcharge` (`kind=CLEANING|SERVICE_FEE|RESORT_FEE`) scoped to a `RatePlan`, not a `Property`. Not exposed via API.
-- **Decision needed:** treat extras as a flat alias for property-scoped surcharges (then `Surcharge` needs to be FK-able to `Property`) or introduce a new model.
+- **Decision (Option C — middle ground):**
+  1. Adopt a **three-level** model: **`RatePlan` (= Season) → `RateCard` → `RateRule`**.
+  2. `RateCard` is added as the operator-mental unit (name, min/max nights, changeover, sort order). It has no prices of its own.
+  3. `RateRule` is the price row (date range, party range, nightly/weekly, priority). One per (date sub-range × party-size band) inside a card. Sibling rules sharing a date range with disjoint `(min_party, max_party)` express occupancy bands; sibling rules sharing party range with disjoint dates express multi-range cards.
+  4. `SeasonDateRange` is **not** a separate table/resource — vestigial in production.
+  5. `OccupancyBand` is **not** a separate table/resource — vestigial in production.
+  6. The `EXCLUDE` GIST constraint on `RateRule` is scoped to `card_id` instead of `plan_id`. Cross-card overlap is allowed and resolved by `priority` in `PricingEngine.quote()`.
+  7. `Discount` FK moves from `RatePlan` to `RateCard` (with property-level fallback when `card` is null for property-wide promo codes). Adds `rule_kind` TextChoices (`LENGTH_OF_STAY`, `EARLY_BIRD`, `LAST_MINUTE`, `REPEAT_GUEST`, `PROMO_CODE`) and `threshold_days`.
+  8. **API renames:**
+     - Keep `/properties/{id}/seasons`, `/seasons/{id}` — operator-facing term.
+     - Keep `/seasons/{id}/rate-cards`, `/rate-cards/{id}` — backed by new `RateCard` model.
+     - **Delete** `/seasons/{id}/date-ranges/*` and `/rate-cards/{id}/occupancy-bands/*`.
+     - **Add** `/rate-cards/{id}/rules` and `/rules/{id}` for granular price-row CRUD; default detail responses inline rules.
+- **Follow-ups:**
+  - `04-pricing.md` updated: added `RateCard`, repointed `RateRule.card` FK, repointed `Discount.card` FK, updated PricingEngine steps. ✓
+  - `09-departures.md` updated: legacy mapping table reflects new shape. ✓
+  - `product-design/01-domain-model.md` updated: dropped `SeasonDateRange` and `OccupancyBand` entities; reshaped relationship diagram. ✓
+  - `product-design/04-rest-api-surface.md` §2.4 updated. ✓
+  - Surcharge scoping (RatePlan vs RateCard) deferred to issue #31.
+
+### #3 — "Extras" (cleaning/pet/heating fees): API resource had no backing model. — **Resolved**
+
+- **API original:** `/properties/{id}/extras`, `/extras/{id}` CRUD (kinds implied: cleaning, pet, heating, linen, extra-bed).
+- **Backend original:** No `Extra` model. The closest was `pricing.Surcharge` (kinds `TAX`, `COMMISSION`, `CLEANING`, `SERVICE_FEE`, `RESORT_FEE`), scoped to `RatePlan`. Not exposed via API.
+- **Investigation (live DB `live-db-24-apr.sql`):**
+  - 122 `VillaSeasonRate` rows with `IsExTra=1`. Inspecting names: "+2 pax", "+4 pax", "+with Main House", "Guest house extra", "Chef included", "Cook" — these are **optional rate-card uplifts** (extra capacity, guest-house add-ons, service tiers), not cleaning/pet fees.
+  - `VillaConciergeServices`: only 2 rows ("Quintessential", "Signature") — service-tier labels, not a catalogue.
+  - `VillaBookingConcierge`: per-booking line items with `Price` + free-text `Notes`. The only place cleaning fees etc. could live, and they did so unstructured.
+  - **No structured cleaning/pet/heating fee model exists in legacy.** The product spec's "extras" is therefore a new requirement.
+  - Identified a separate defect: tax & commission are modelled in two places — `PropertyFinance.TaxPolicy` / `PropertyFinance.Commission` (per `03-finance-config.md`) AND `Surcharge(kind=TAX|COMMISSION)` (per `04-pricing.md` original). PricingEngine docstring used Surcharge; PropertyFinance was unused at quote time.
+- **Decision:**
+  1. **Add `pricing.Extra`** — property-scoped catalogue of named charges. Fields: name, description, kind (`CLEANING`/`PET_FEE`/`HEATING`/`LINEN`/`EXTRA_BED`/`SERVICE_FEE`/`RESORT_FEE`/`OTHER`), calc (`FIXED_PER_STAY`/`FIXED_PER_NIGHT`/`FIXED_PER_PERSON`/`FIXED_PER_PERSON_PER_NIGHT`/`PERCENT_OF_SUBTOTAL`), amount, currency, `is_mandatory`, `applies_from`/`applies_to` for seasonality, `min_party`/`max_party` for party-size gating, sort_order, is_active.
+  2. **Retire `pricing.Surcharge`** entirely. Tax/commission read via `PropertyFinance.effective_tax_policy()` / `effective_commission()` (already in `03-finance-config.md`); cleaning/service/resort fold into `Extra`.
+  3. **No per-card scoping on `Extra`** — product UX renders extras inside the rate-card form, but that's an editing affordance, not the storage shape. Seasonality is expressed via the date window; party-size variation via the party window. Defer per-card overrides until a real requirement appears.
+  4. **PricingEngine flow** updated: rate subtotal → mandatory extras → opt-in extras → discounts → commission → tax. Tax base is rate subtotal + extras − discounts.
+  5. **API:** keep `/properties/{id}/extras` and `/extras/{id}` plus `/extras/{id}:duplicate`. `/pricing:quote` body accepts `opt_in_extras: [<extra_id>, ...]`; mandatory extras apply automatically.
+- **Follow-ups:**
+  - `04-pricing.md` updated: removed `Surcharge` section; added `Extra` model; updated PricingEngine `Quote` dataclass and steps. ✓
+  - `09-departures.md` updated: removed Surcharge from mapping; split `IsExTra=1` legacy rows into "capacity uplifts → extra RateRule rows" and "named charges → Extra rows"; reconciled `VillaConciergeService` duplicate listing. ✓
+  - `product-design/01-domain-model.md` updated: `Extra` section reflects the resolved design. ✓
+  - `product-design/04-rest-api-surface.md` §2.4 updated. ✓
+  - Closes the "Surcharge scoping" follow-up that was queued from issue #2.
 
 ### #4 — Notes: API is a collection; backend is single TextFields. — **Open**
 
@@ -127,7 +170,7 @@ Status legend:
 | # | Backend entity | API gap | Status |
 |---|---|---|---|
 | 30 | `ChangeOverRule` (per-property check-in weekdays) | No CRUD | **Open** |
-| 31 | `Surcharge` per `RatePlan` | No CRUD | **Open** |
+| 31 | ~~`Surcharge` per `RatePlan`~~ — model retired in issue #3; `Extra` replaces it and now has CRUD via `/properties/{id}/extras` | — | **Resolved (by #3)** |
 | 32 | `Discount` | No CRUD or code-lookup | **Open** |
 | 33 | `TermsVersion` | No CRUD | **Open** |
 | 34 | `ConciergeService` catalogue | Only booking-nested items exposed | **Open** |
@@ -157,3 +200,5 @@ Status legend:
 | Date | Issue | Decision | Notes |
 |---|---|---|---|
 | 2026-05-12 | #1 | Drop `/sites` from API. Keep `site_source` enum. WP fan-out via integrations. | Confirmed against `live-db-24-apr.sql` — multi-tenancy never deployed; `VillaSite` was WP publishing-target registry. |
+| 2026-05-12 | #2 | Adopt three-level `RatePlan → RateCard → RateRule`. Drop `SeasonDateRange` and `OccupancyBand` as first-class entities. Move `Discount` FK to `RateCard`. Rename API: keep `/seasons` + `/rate-cards`, delete `/date-ranges` + `/occupancy-bands`, add `/rate-cards/{id}/rules`. | Production data showed `VillaSeasonDates` (1.04/season) and `VillaOccupencyPrice` (3% of rates) were vestigial. Three-level honors operator mental model from workflows §13. |
+| 2026-05-12 | #3 | Add `pricing.Extra` (property-scoped catalogue: cleaning/pet/heating/linen/extra-bed/etc., with mandatory-vs-opt-in flag and date+party windows). Retire `pricing.Surcharge`. Tax & commission read from `PropertyFinance` resolvers. Closes follow-up #31. | Legacy never tracked cleaning fees as structured data — `IsExTra=1` rate rows were capacity uplifts, not fees. Surcharge model conflated config (tax/commission) with charges. |

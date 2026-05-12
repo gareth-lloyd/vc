@@ -62,11 +62,11 @@ The overview and operational-settings workflows on a property. Each operates on 
 
 ### Process
 1. Validate both `> 0`; else return.
-2. **Raw SQL** (`PropertyService.cs:564`):
+2. **Raw SQL** (`PropertyService.cs:565`, via `RawSqlQuery` with C# string interpolation):
    ```sql
    UPDATE VillaMaster SET ViilaStatus = {StatusId}, SyncId = 0 WHERE Id = {PropertyId}
    ```
-   `[TYPO]` column name `ViilaStatus` (double-i).
+   `[TYPO]` column name `ViilaStatus` (double-i, preserved through the entire VillaMaster row — see `live-db-24-apr.sql:79246` for live data confirming the column name).
 3. If sync allowed: `UpdateSyncId(ResModule.VILLA, ..., UPDATE)` and `VillaSync` with `Data="STATUS_DETAILS"`.
 
 ### Outputs / side effects
@@ -74,7 +74,7 @@ The overview and operational-settings workflows on a property. Each operates on 
 - **Outbound push:** villa sync, status variant.
 
 ### Failure modes
-- **SQL injection risk** `[SECURITY]` — raw SQL with string concatenation. `PropertyId` and `StatusId` are parsed `int`s before the call so the risk is mitigated in practice, but the pattern is unsafe.
+- **Raw-SQL pattern** `[SECURITY]` — verified at `PropertyService.cs:565`. Inputs flow through C# `int` parameters before interpolation, so the practical injection surface is nil; the pattern is unsafe by convention only. Django port must use ORM / parameterised SQL — do **not** carry the C# interpolation idiom forward.
 
 ### Open questions
 - Column `ViilaStatus` is a typo — fix during migration.

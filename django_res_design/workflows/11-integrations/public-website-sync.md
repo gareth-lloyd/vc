@@ -304,10 +304,24 @@ Full booking object including personal info, payment schedule, villa details.
 - Full log of request/response per call.
 - Returns boolean success.
 
+### Idempotency
+- **Not idempotent and not resumable.** The sequence is run inline by one HTTP request handler with no per-step persisted state — if step 7 fails, steps 1-6 have already run (and may have written back slug / post-id state to local rows) and there is no marker to skip them on a re-run. A retry re-pushes every record.
+- The Django redesign should fan this out into 13 × N (modules × sites) Celery tasks, each keyed by `(SyncRecord.kind, target_id, site_id)`. The orchestration becomes an idempotent "ensure every (kind, target, site) has a successful SyncRecord within the last N hours" loop, not a fragile linear sequence.
+
 ### Failure modes
 - Any step's failure is logged but does not abort the sequence.
 - No partial-resync mode — must run the whole thing.
 
+### Response-shape gap
+
+Of the 13 sub-workflows above, only the per-villa `VILLA_SYNC` (`PostId` + `Url` write-back) and `BOOKING_IMPORT` (`Data.Url` + `Data.BookingId` write-back) have a documented response shape. The other 11 read the response as `Response` with no documented field expectations; treat the response as "any 2xx is success" until the WordPress endpoints are inspected directly.
+
+The Django port must:
+1. For each `WP_Sync_*` endpoint, capture the WordPress-side handler signature in `workflows/11-integrations/public-website-sync.md` next to the sub-workflow.
+2. Define a typed `pydantic` response model per endpoint so unexpected shapes raise rather than silently succeed.
+3. Treat any endpoint where the response shape is unknown as **opaque** — store the raw body in `WebhookDelivery.response_payload` for at least 30 days so an operator can reconstruct what WordPress was returning.
+
 ### Open questions
 - Idempotent, retryable per-module Celery tasks (one task per `(module, site)` pair) replace this sequence cleanly.
 - Add progress reporting and per-module success / failure metrics.
+- Owner of the WordPress-side endpoint schemas — confirm whether the WP plugin source is reachable from this repo.

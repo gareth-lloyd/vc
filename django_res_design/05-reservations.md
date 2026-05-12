@@ -10,9 +10,9 @@ reservations/
 ├── models/
 │   ├── __init__.py
 │   ├── guest.py        # Guest
-│   ├── enquiry.py      # Enquiry
+│   ├── enquiry.py      # Enquiry, EnquiryNote
 │   ├── quotation.py    # Quotation, QuotationLine
-│   ├── booking.py      # Booking, BookingHold, BookingEvent
+│   ├── booking.py      # Booking, BookingHold, BookingEvent, BookingNote
 │   ├── concierge.py    # ConciergeService, BookingConciergeItem
 │   └── terms.py        # TermsVersion
 ├── services.py         # QuotationService, BookingService, HoldService
@@ -62,12 +62,26 @@ Anonymous / unstructured inquiry from website or agent. **Kept separate from Quo
 - `agent` — FK accounts.Contact SET_NULL, null=True
 - `site_source` — TextChoices (`MAIN_WEBSITE`, `AGENT_PORTAL`, `EMAIL_INBOUND`, `PHONE`, `OTHER`)
 - `status` — TextChoices (`NEW`, `CONTACTED`, `QUOTED`, `LOST`, `CONVERTED`)
-- `notes` — TextField(blank=True)
-- `internal_notes` — TextField(blank=True)
+- `inbound_message` — TextField(blank=True) — the original message the lead submitted via the public form (single field, write-once at capture, treated as immutable provenance)
 
 Indexes: `(status, created_at)`, `email`, `(property, date_from)`.
 
+Note collection is via `EnquiryNote` (see below). Operator scratchpads (legacy `Notes`, `PreferencesNote`, `internal_notes`) collapse into `EnquiryNote` rows with `kind` discriminator.
+
 When a quotation is created from an enquiry, set `enquiry.status = QUOTED` and `quotation.enquiry = enquiry`. Conversion to a booking sets `enquiry.status = CONVERTED`.
+
+### `EnquiryNote(TimestampedModel)`
+Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.
+
+- `enquiry` — FK Enquiry CASCADE
+- `author` — FK User SET_NULL, null=True
+- `kind` — TextChoices (`GENERAL`, `INTERNAL`, `PREFERENCES`)  # `GENERAL` is the customer-facing scratchpad; `INTERNAL` is the back-office-only counterpart; `PREFERENCES` carries the legacy `PreferencesNote` content
+- `body` — TextField  # rich text / markdown; renderer determined client-side
+- `is_pinned` — bool(default=False)  # optional, pins to top of timeline view
+
+Indexes: `(enquiry, created_at)`.
+
+Ordering: `created_at` ascending. Editing rewrites the same row (PATCH); deletion is hard (no soft-delete — the audit lives in `AuditLog`).
 
 ## Quotation
 
@@ -81,8 +95,8 @@ When a quotation is created from an enquiry, set `enquiry.status = QUOTED` and `
 - `status` — TextChoices (`DRAFT`, `SENT`, `ACCEPTED`, `EXPIRED`, `CANCELLED`)
 - `expires_at` — DateTimeField
 - `terms_version` — FK TermsVersion PROTECT
-- `notes`, `preferences_note` — TextField(blank=True)
-- `internal_notes` — TextField(blank=True)
+
+Quotation-level notes are reached through the source `Enquiry` (via `EnquiryNote`) and the destination `Booking` (via `BookingNote`). The header carries no free-text columns — operators add commentary on the enquiry before the quote is sent and on the booking after it converts. Per-line operator notes are still allowed (`QuotationLine.notes` below) because they are scoped to one option in a multi-villa quote.
 
 Transitions: `send()` (DRAFT→SENT, sets `expires_at` if null), `accept(line)` (SENT→ACCEPTED, marks one line `is_selected=True`, triggers Booking creation), `expire()` (Celery), `cancel(reason)`.
 
@@ -126,7 +140,6 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `terms_version` — FK TermsVersion PROTECT
 - `terms_accepted_at` — DateTimeField
 - `payment_method` — TextChoices (`CARD`, `BANK_TRANSFER`)
-- `notes`, `internal_notes`, `concierge_notes` — TextField(blank=True)
 - `cancel_reason` — TextField(blank=True)
 - `cancelled_at` — DateTimeField(null=True, blank=True)
 - `legacy_id` — nullable, indexed

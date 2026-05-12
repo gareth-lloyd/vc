@@ -16,7 +16,7 @@ services:
     rootDir: django_res
     autoDeploy: true
     branch: main
-    buildCommand: pip install uv && uv sync --frozen
+    buildCommand: pip install uv && uv sync --frozen && uv run python manage.py collectstatic --noinput
     preDeployCommand: uv run python manage.py migrate --noinput
     startCommand: uv run gunicorn villacollective.wsgi:application --bind 0.0.0.0:$PORT --workers $WEB_CONCURRENCY
     healthCheckPath: /api/health/

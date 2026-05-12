@@ -17,19 +17,20 @@ How the legacy system priced a quotation request. This is the synthesis workflow
    - Execute `sp_getQuotationData` with filters → returns candidate villas with base info (currency, commission, tax, etc.).
 2. **For each candidate villa**:
    a. **Availability** — `sp_getAvailability(villaId, fromDate, toDate)` → list of blocked nights (statuses 30/40/50/60). The engine considers everything else available.
-   b. **Rates** — `sp_getQuotationPrices(villaId, fromDate, toDate)` → applicable `VillaSeasonRate` rows.
-   c. **Rate selection per night** (the inner loop):
+   b. **Changeover-day shift** (`ResService.cs:2028-2041`) — if `item.SettingChangeoverDayId != -1` (i.e. the property has a fixed weekly changeover), the engine advances `startDate` forward day-by-day until `startDate.DayOfWeek == SettingChangeoverDayId`, then uses the shifted date for the pricing window. Sentinel `-1` means "open / flexible" and is exposed to the caller as `item.ChangeOverDay = "open/flexible"`. The shift is silent — the caller does not see how many nights were dropped.
+   c. **Rates** — `sp_getQuotationPrices(villaId, fromDate, toDate)` → applicable `VillaSeasonRate` rows.
+   d. **Rate selection per night** (the inner loop):
       - For each night between `FromDate` and `ToDate`, find the rate whose `[FromDate, ToDate]` covers the night.
       - If `rate.IsOccupationPrice == true`: load `VillaOccupancyPrice` bands for the rate. Match by `OccupencyFrom <= Guests <= OccupencyTo`. Use the matching band's `OccupencyPrice` as the nightly price. (First-match-by-row when bands overlap.)
       - Else: use `rate.WeeklyPrice / 7` as nightly.
-   d. **Accumulate `weeklyPrice`** = sum of all nightly prices in the period.
-   e. **Apply commission**: per `RatesModel.Calculate()`:
+   e. **Accumulate `weeklyPrice`** = sum of all nightly prices in the period.
+   f. **Apply commission**: per `RatesModel.Calculate()`:
       - If `CommissionType == 10` (percentage): `commission = weeklyPrice × Commission / 100`.
       - Else (fixed): `commission = Commission`.
-   f. **Apply tax**: if `!IsTaxExempt`: `tax = net × TaxPercentage / 100`.
-   g. **Apply discount**: if `IsDiscount` and `nights >= DiscountNight`: subtract `DiscountRate × applicable basis`.
-   h. **POA flag**: if `rate.IsPOA == true`, suppress the price in the result (set marker for "Price On Application").
-   i. **Availability flags**: set `IsBook=true` if any covered night has booking-status; `IsHold=true` if any has hold-status; result still returned (allows quoting on partially-blocked dates with a warning).
+   g. **Apply tax**: if `!IsTaxExempt`: `tax = net × TaxPercentage / 100`.
+   h. **Apply discount**: if `IsDiscount` and `nights >= DiscountNight`: subtract `DiscountRate × applicable basis`.
+   i. **POA flag**: if `rate.IsPOA == true`, suppress the price in the result (set marker for "Price On Application").
+   j. **Availability flags**: set `IsBook=true` if any covered night has booking-status; `IsHold=true` if any has hold-status; result still returned (allows quoting on partially-blocked dates with a warning).
 3. **Filter** results by guest count (must fit `Guests`), min/max price band, feature presence.
 4. **Return** `List<QuotationPageModel>` — each villa with its computed `QuotationPriceModel` (Gross, Currency, Inclusion, IsBook, IsHold).
 
@@ -53,4 +54,4 @@ How the legacy system priced a quotation request. This is the synthesis workflow
   - Centralise commission / tax / discount math in a `Quote` value object rather than the rate row.
   - Surface POA and partial-block clearly in the API response.
 - FX rate is **never applied** in the legacy engine — each villa quotes in its own currency. If the redesign needs cross-currency totals, an FxRate table and conversion service are needed.
-- The engine doesn't consider **changeover-day** constraints despite the data existing — this is a known gap.
+- The legacy engine **does** apply changeover-day adjustment (`ResService.cs:2028-2041`), but only by silently advancing the `startDate` — it does not reject the request, surface the dropped nights, or attempt the symmetric trailing trim. The Django port should reject (or explicitly snap-and-warn) requests whose `from_date` does not fall on the property's changeover day, rather than mutating the inputs invisibly.

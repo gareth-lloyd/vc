@@ -15,7 +15,7 @@ Four independent configuration sections, each on its own tab in `/config` (`Page
 - `apikey` (system-wide API key used for callbacks from external systems, e.g., the scheduler trigger)
 
 ### Process
-1. `SP_CRUD_VILLACONFIGGENERAL` with `@Action=INSERT` (UPDATE path commented in the form).
+1. `SP_CRUD_VILLACONFIGGENERAL` with `@Action=INSERT`. The Blazor form only emits `INSERT`, but the SP body (`live-db-24-apr.sql:110311+`) accepts both `INSERT` and `UPDATE` (`IF @action = 'INSERT' or @action = 'UPDATE'`). The "INSERT-only" restriction is a UI-layer choice, not a SP-layer one.
 
 ### Outputs / side effects
 - **DB write:** `VillaConfigGeneral`.
@@ -109,7 +109,7 @@ Payment schedule defaults (the 3-tier system):
 
 Security deposit defaults:
 - `SecurityDepositRequired`, `SecurityDepositAmountType`, `SecurityDepositAmount`
-- `SecurityDepositCalculateFrom`, `SecurityDepositDaysDefundedAfterDeparture` `[TYPO]` (intended `Refunded`)
+- `SecurityDepositCalculateFrom`, `SecurityDepositDaysDefundedAfterDeparture` `[TYPO]` (intended `Refunded`) — see the cross-talk note in `../03-catalog/property-finance.md`: `PropertyService2.cs:200` reads the typo column from the DB row and assigns it into a C# property named `SecurityDepositDaysRefundedAfterDeparture`. The DB column is the typo; the .NET model name is the clean version. The Django port must map the legacy typo column to a clean field name with a `RenameField` migration — do not invert which name is real.
 
 ### Process
 1. `SP_CRUD_VillaConfigPropertyDefault` with `@Action=INSERT` (the form only writes; SP handles upsert via singleton-row pattern).

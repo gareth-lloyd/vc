@@ -55,16 +55,21 @@ Disposition column legend:
 
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
-| `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container; cleaner semantics |
-| `VillaSeasonRate` | `pricing.RateRule` | Replaced | Single rule with date range + party range + priority |
-| `VillaSeasonDate` | Folded into `RateRule.date_from/date_to` | Merged | One row replaces the join |
-| `VillaOccupencyPrice` | Folded into `RateRule.min_party/max_party` | Merged | Same row + range query |
+| `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container (name, notes, inclusion, currency, envelope dates) |
+| — (legacy had no equivalent) | `pricing.RateCard` | Added | Operator-mental-unit: name, min/max nights, changeover, discount profile. Sits between Plan and Rule. |
+| `VillaSeasonRate` | `pricing.RateRule` | Replaced | Price row with date range + party range + priority; one card has many rules (one per band / disjoint sub-range) |
+| `VillaSeasonDate` | Folded into `RateRule.date_from/date_to` | Merged | Production data showed ~1.0 ranges per season; separate table was vestigial |
+| `VillaOccupencyPrice` | Folded into sibling `RateRule` rows on the same card | Merged | Only 3% of legacy rates used banding; sibling rules with disjoint party ranges express the same shape |
 | `VillaWebsitePricing`, `VillaMapping` | `pricing.VillaPricingSummary` (signal-rebuilt cache, named explicitly) | Replaced | Honest about being a cache; single owner |
 | `VillaCurrency` | `pricing.Currency` | Renamed | — |
 | `ChangeOverDays` | `pricing.ChangeOverRule` (per-property, date-bounded) + enforcement in service | Replaced | Was unused as a constraint in legacy |
-| `CalculationType` | TextChoices on RateRule / Surcharge | Replaced | Fixed enum |
+| `CalculationType` | TextChoices on `RateRule` and `Extra.calc` | Replaced | Fixed enum |
 | `sp_getQuotationData` (500+ LOC stored proc) | `pricing.services.PricingEngine.quote()` returning `Quote` dataclass | Replaced | Testable, composable, snapshotable |
-| Tax/commission/discount fields on rate | `Surcharge` model + `Discount` model | Replaced | Composable, queryable |
+| Tax fields on rate | `properties.PropertyFinance.TaxPolicy` (config) + resolver call in PricingEngine | Moved | Tax is property/group configuration, not a per-rate row |
+| Commission fields on rate | `properties.PropertyFinance.Commission` (config) + resolver call in PricingEngine | Moved | Same — config, not per-rate |
+| Discount fields on rate | `pricing.Discount` (scoped to RateCard, with `rule_kind` for early-bird / last-minute / length-of-stay / repeat-guest / promo-code) | Replaced | Composable, queryable, separates rule types |
+| `VillaSeasonRate.IsExTra=1` rows (capacity uplifts, service tiers — 122 rows) | Two destinations: (a) capacity uplifts become additional `RateRule` rows with appropriate party ranges; (b) named property charges (cleaning / pet / heating / linen / extra-bed) become `pricing.Extra` rows | Split | Legacy conflated two concepts; new model separates capacity-pricing from add-on charges |
+| Cleaning / pet / heating / linen fees (never structured in legacy — lived as free-text notes on `VillaBookingConcierge`) | `pricing.Extra` | Added | First-class typed entity for what legacy spread across rate-row notes and concierge free text |
 
 ## Reservations / availability
 
@@ -84,8 +89,8 @@ Disposition column legend:
 | `CheckoutPersonalInfo`, `CheckoutAdditionalInfo` | Fields on Booking + Guest | Merged | — |
 | `VillaAvailability` (daily grid) | `BookingHold` + range queries on `Booking` + Postgres `EXCLUDE` constraints | Replaced | Range model, DB-enforced no-overlap |
 | `AvailabilityStatus` | `BookingStatus` + `BookingHold.reason` | Replaced | Explicit state machine |
-| `VillaConcierge` | `reservations.BookingConciergeItem` | Renamed | — |
-| `VillaConciergeService` | `reservations.ConciergeService` | Renamed | — |
+| `VillaBookingConcierge` (legacy: BookingId + Price + free-text Notes) | `reservations.BookingConciergeItem` (with FK to `ConciergeService`, quantity, snapshotted unit price, status) | Replaced | Legacy was free-text price + notes; new model types each item against a service catalogue |
+| `VillaConciergeServices` (legacy: 2 rows of tier-label strings) | `reservations.ConciergeService` (catalogue: name, description, cost_per_unit, unit, currency, property scoping) | Replaced | Legacy table only held service-tier labels; the catalogue is effectively a new design with the same name |
 | `VillaRentalAlternative`, `VillaPropertyMapAlternativeAndRentToTogether` | — | Dropped (future scope) | Multi-property bundling not in MVP; revisit |
 
 ## Payments
@@ -134,6 +139,54 @@ Disposition column legend:
 | Three payment status enums | One model with `purpose` + `status` |
 | Hardcoded webhook prefix parsing | Provider-slug URL routing |
 | Per-row ZohoId / SyncId | `integrations.SyncRecord` |
+
+## Legacy typo registry — preserve-vs-rename plan
+
+The legacy system carries a number of misspellings into table/column names, SP names, enum constants, Zoho module identifiers, and even UI strings. Each is either **preserve-for-compat** (legacy data or external systems depend on the exact spelling) or **rename-with-migration** (a clean Django name with a `RenameField` migration on cutover). Pick once per typo and never invert it.
+
+The Django port refers to entities by the **new** name; the legacy spec text in `workflows/**` preserves the **legacy** name (so the workflow specs remain greppable against the .NET source). The redesign tables in this file are the only place where the two columns sit side by side.
+
+| Legacy spelling | Intended spelling | Where it appears | Disposition |
+|---|---|---|---|
+| `VILLLA_MASTER` (three L's) | `VILLA_MASTER` | Zoho module identifier; `ResApiService.cs:1007,1015`; SQL switch in `live-db-24-apr.sql:116743` | **Preserve.** The Zoho organisation already has records keyed under this module name. Renaming requires a Zoho-side migration we are not scoping. Treat as a frozen integration artifact; the Django integration layer maps `integrations.SyncRecord.zoho_module = "VILLLA_MASTER"` and nothing in the domain layer ever sees the typo. |
+| `EnquireSaurce` | `EnquireSource` / `enquiry_source` | `ResService.cs:2391`; throughout enquiry workflows | **Rename.** Internal field, no external dependency. Migration: `RenameField` on cutover. |
+| `ViilaStatus` (double-i) | `VillaStatus` / `status` | `VillaMaster` column (`live-db-24-apr.sql:79246`); read sites throughout `PropertyService.cs` | **Rename.** Becomes `Property.status` (TextChoices); the integer `ViilaStatus` is replaced wholesale by an enum (`09-departures.md` Property domain). |
+| `BedChildrens` | `BedChildren` / `child_beds` | `PropertyRoomsModal.cs:28`; `RoomBeds` legacy schema | **Rename.** Becomes `RoomBeds.child_beds`. |
+| `OccupencyPrice`, `OccupencyFrom`, `OccupencyTo` | `OccupancyPrice` / `occupancy_price`, etc. | `VillaOccupencyPrice` table; `PropertyService.cs:1101-1130` | **Folded** (see Pricing domain row for `VillaOccupencyPrice`) — disappears with the table; no rename needed. |
+| `IsApprove` | `IsApproved` / `is_approved` | Booking flow | **Rename.** Becomes a `BookingStatus` value rather than a boolean. |
+| `SchedullerJob` | `SchedulerJob` | `SchedullerJob.cs:16-69` (currently `[DISABLED]`) | **Rename.** Replaced by Celery beat tasks; the class itself doesn't survive. |
+| `VIllaConcierges` (capital-I, lowercase-l) | `VillaConcierges` | UPDATE statement at `ResApiService.cs:791` (slug write) | **Rename.** Becomes `reservations.BookingConciergeItem`. |
+| `IsEnsuit` | `IsEnsuite` / `is_ensuite` | `PropertyService2.cs:282`; `Room` schema | **Rename.** |
+| `SecurityDepositDaysDefundedAfterDeparture` | `SecurityDepositDaysRefundedAfterDeparture` / `refund_days_after_departure` | `VillaConfigPropertyDefault`, `VillaConfigGeneral`, `VillaMaster` (`live-db-24-apr.sql:61420`); `PropertyService2.cs:200` reads the typo and assigns to a clean .NET property name | **Rename.** Critical: the DB column is the typo; the C# model name is the clean version. The Django port reads the typo column and renames on migration. Do not invert. See cross-talk note in `workflows/03-catalog/property-finance.md`. |
+| `Categeroy` (UI string only) | `Category` | `Tags.razor:254` ("Please select Categeroy") | **Rename.** UI-only typo; no data implications. |
+| `PrefferedMethod` (double-f) | `PreferredMethod` / `preferred_contact_method` | `ResService.cs:1864` (`GetContactParams`) | **Rename.** Contact preference field. |
+| `GetEqnuireDetails` | `GetEnquireDetails` / `get_enquiry` | `ResService.cs:2660` | **Rename.** Method name; no DB column. Disappears in service layer rewrite. |
+| `Tele` (in `VillaContactTele`) | `Phone` | `accounts.ContactPhone` | **Rename** (already captured in main Accounts table). |
+| `IsGallary` | `IsGallery` | `VillaPropertyImage` legacy column | **Replaced** (already captured in Property domain — fixed by `kind` TextChoices). |
+
+**Convention:** when a workflow spec mentions a legacy typo, it uses the legacy spelling and tags it with `[TYPO]` inline so a grep for `[TYPO]` finds every preserve-vs-rename decision site. The disposition for each is then this table.
+
+## Legacy security debt — must-fix on Django port
+
+These findings are confirmed-in-code (line-cited) issues the Django redesign **must not carry forward**. Cross-referenced from the per-workflow specs.
+
+| # | Finding | Legacy locus | Workflow spec | Django requirement |
+|---|---|---|---|---|
+| 1 | Flywire API key hardcoded in source (`ApiToken = "S2EyL25NWnU5Ynl0T2lXSi91Q1pjdz09"`) | `ResService.cs:320`, `ResApiService.cs:1195` | `workflows/10-payment/payment-preauth.md` | Pull from secret manager (env vars in dev, AWS Secrets Manager / Vault in prod). Never check secrets into the repo. Rotate the leaked key. |
+| 2 | Flywire **sandbox** URL hardcoded as the active endpoint (`Url = "https://api-platform-sandbox.flywire.com/"`) | `ResService.cs:320` | `workflows/10-payment/payment-preauth.md` | Environment-configured base URL; the live env never points at sandbox. Add a startup assertion that `settings.FLYWIRE_BASE_URL` is non-sandbox when `DJANGO_ENV == "production"`. |
+| 3 | Payment webhook accepts **unsigned** payloads — the `Digest()` HMAC helper exists but is never invoked from the handler | `PaymentController.cs:98-143` (handler), `:275-290` (helper) | `workflows/10-payment/payment-collection.md`, `workflows/11-integrations/flywire-gateway.md` | Verify HMAC before any side effect. Reject (HTTP 401) on missing or mismatched signature. Persist `WebhookDelivery.signature_valid` for audit. |
+| 4 | Payment webhook has **no idempotency check** — duplicate deliveries cause duplicate state changes; the data model has a `Payment.idempotency_key` slot but it is never read or written | `ResService.cs:4374-4467` | `workflows/10-payment/payment-collection.md` | Look up `WebhookDelivery` by provider event id before processing; short-circuit duplicates. See "Idempotency" heading in `workflows/00-taxonomy.md`. |
+| 5 | Every outbound transactional email BCC'd to a third-party Gmail (`connectusinfowaydemo12@gmail.com`) | `EmailService.cs:71` | `workflows/11-integrations/email-delivery.md` | Remove. Replace with structured per-message logging to a privacy-reviewed sink. |
+| 6 | Email bodies (including guest PII and payment amounts) written to disk via `Utilities.WriteResLogFile` | `EmailService.cs:122`, `PaymentController.cs:140`, `ResService.cs:4464` | `workflows/11-integrations/email-delivery.md`, `workflows/10-payment/payment-collection.md` | Log message-id and recipient only; never the body. If a debug log is genuinely needed, gate it behind a temporary feature flag and a fixed retention window. |
+| 7 | Email/Zoho/WordPress side effects from the webhook are **fire-and-forget** (`Task.Run` with no DLQ); transient failures vanish silently | `ResService.cs:2395-2400` (Zoho enquiry push), webhook handler downstreams | `workflows/07-enquiry/enquiry-intake.md`, `workflows/10-payment/payment-collection.md` | Queue side effects via Celery with retry + DLQ. Every integration declares its dedupe strategy (see template). |
+| 8 | Two-write transitions (`SP_SAVE_BOOKING_INFO` then `sp_villaAvailability`; `sp_delete_booking` then `sp_villaAvailability`) run with **no transaction wrapper** — partial failure produces an inconsistent calendar | `ResService.cs:3242-3249`, `ResService.cs:913-931` | `workflows/06-availability/booking-status-transitions.md` | Wrap in `transaction.atomic()`, or eliminate the daily-grid mirror entirely. |
+| 9 | Scheduler entirely commented out (payment reminders, hold expiry, balance flagging not running in production) | `SchedullerJob.cs:16-69` | `workflows/12-automation/scheduler-jobs.md` | Re-implement as Celery beat tasks; each task declares its idempotency / concurrency story. |
+| 10 | Raw-SQL UPDATE on `VillaMaster.ViilaStatus` via C# string interpolation (params are int-typed so injection risk is nil in practice, but the pattern is unsafe) | `PropertyService.cs:565` | `workflows/03-catalog/property-master.md` | Use ORM or parameterised SQL. Never carry the C# interpolation idiom forward. |
+
+Findings overturned during verification (kept here as a historical caveat so they are not re-raised by future audits):
+
+- **"Tokenised charge stored as plaintext"** — false. No `TokenisedCharge` column exists on `VillaPaymentDetails` (`live-db-24-apr.sql:1912-1926`).
+- **"`sp_getAvailability` mutates `VillaAvailability` as a side effect of a read"** — false. The `DELETE` statements operate on a procedure-local `@temp_table` table variable (`live-db-24-apr.sql:111935`). See `workflows/06-availability/availability-check.md` for the corrected note.
 
 ## What we did *not* break
 

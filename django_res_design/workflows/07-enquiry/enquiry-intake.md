@@ -42,15 +42,50 @@ The two paths by which an enquiry enters the system. They share most of the code
 - `Length_of_Stay` = `(ToDate - FromDate).TotalDays + " nights"` is computed at Zoho-push time, not stored.
 - Status starts at 1.
 
+### Idempotency
+- **Not idempotent.** No dedupe key — a duplicate POST creates a duplicate `VillaEnquire` row with a fresh `EnquiryNo`. The public website's client-side debounce is the only guard. The Django port should accept a client-supplied `Idempotency-Key` header per RFC draft and short-circuit duplicates at the controller; or fall back to a fuzzy duplicate-key on `(Email, FromDate, ToDate, sha1(payload))` checked within a short window.
+
 ### Failure modes
 - Network failure on SP → caller exception, no enquiry, no emails.
 - Email service down → emails fail silently; enquiry persists, Zoho push happens.
-- Zoho API down → enquiry persists, no Zoho record; **no retry** captured.
+- Zoho API down → enquiry persists, no Zoho record; **no retry** captured. See sub-workflow `ENQUIRY.INTAKE.ZOHO_PUSH` below.
 - Required-fields validation: trust the caller (public website performs client-side validation). The SP accepts almost anything.
 
 ### Open questions
 - Three of the field/column names have typos preserved (`EnquireSaurce`, `PlateFormId`, `EnquireArgs` itself). Rename in the redesign.
-- Zoho push **must** be retried on failure — push it through a Celery task with retry/back-off.
+- Zoho push **must** be retried on failure — push it through a Celery task with retry/back-off (specified in `ENQUIRY.INTAKE.ZOHO_PUSH`).
+
+---
+
+## Zoho push (sub-workflow of enquiry intake)
+
+**ID:** `ENQUIRY.INTAKE.ZOHO_PUSH`
+**Trigger:** Spawned as fire-and-forget background work at the end of `ENQUIRY.INTAKE.WEBSITE` / `ENQUIRY.INTAKE.STAFF`.
+**Actor:** System.
+**Legacy locus:** `ResService.cs:2395-2400` — wrapped in `Task.Run(async () => { ... })` with **no `await`**, no continuation, no exception handler. The `Task` is dropped on the floor; any exception is swallowed by the .NET task scheduler and never surfaces.
+
+### Inputs
+- The `EnquireId` from the just-inserted enquiry row, plus the constructed `Zoho_VillaEnquireData` payload (see `INTEGRATIONS.ZOHO.PUSH_ENQUIRY` in `11-integrations/zoho-crm.md`).
+
+### Process
+1. `_apiService.PushZohoEnqueireAsyncNew(obj)` POSTs to the Zoho CRM API under module `VILLA_ENQUIRY`.
+
+### Outputs / side effects
+- On success: `VillaEnquire.ZohoId` is updated (via the integration path).
+- On failure: **nothing happens**. No retry, no DLQ, no row in any error table, no log entry beyond whatever `_apiService` itself catches internally.
+
+### Idempotency
+- The push uses the `EnquireId` as the natural key on the Zoho side; a duplicate replay would either upsert or produce a duplicate Zoho record depending on the module's dedupe config. **The legacy code does not verify Zoho's dedupe behaviour.** Django port should treat this as non-idempotent until proven otherwise.
+
+### Failure modes
+- **Silent loss on Zoho outage** `[CORRECTNESS]` — the most common production failure mode. Enquiries land in the legacy DB but never reach Zoho; sales staff working from the Zoho dashboard miss them entirely.
+- OAuth token expiry → the `_apiService` retries 3 times internally (`ResApiService.cs:1227-1276`, retry behaviour loose; see Zoho spec) then gives up.
+
+### Django redesign requirement
+- Replace `Task.Run(...)` with a Celery task: `tasks.push_enquiry_to_zoho.delay(enquiry_id)` after the `Enquiry` row commits.
+- Task is keyed by `(SyncRecord.kind="ZOHO_ENQUIRY", target_id=enquiry.id)`; status transitions through `pending → in_progress → succeeded | failed`.
+- Failure path: exponential back-off (Celery `autoretry_for`, `max_retries=5`, `retry_backoff=True`, `retry_jitter=True`); after exhaustion, raise to a DLQ table (`integrations.FailedSync`) for operator triage.
+- Idempotency: the Celery task is keyed on `SyncRecord.id`; the worker takes a `select_for_update` on the row before pushing, so concurrent worker replays are linearised.
 
 ---
 

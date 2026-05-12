@@ -43,7 +43,7 @@ Optional:
 
 ### Process
 
-1. **Validate**: `sp_check_availability` for the requested range (excluding this booking's id on update), reject any payment already recorded, ensure user session still valid, at least one adult/child or `IsTBC` checked, balance due date < arrival date.
+1. **Validate**: `sp_check_availability` for the requested range (excluding this booking's id on update), reject any payment already recorded, ensure user session still valid, at least one adult/child or `IsTBC` checked, balance due date < arrival date. See sub-workflow `BOOKING.CREATE.DOUBLE_BOOKING_GUARD` below for the SP call site and parameter order.
 
 2. **Compute payment breakdown** (`Booking.razor:720-762`):
    - `adjustedAmount = RentalPrice + Adjustment - Discount`
@@ -105,3 +105,37 @@ Optional:
 - The order of operations is risky: DB writes happen *before* the WordPress/Zoho/email steps and there's no rollback if any of those fail.
 - The "Full payment short-circuit" math should be wrapped in a dedicated `PaymentScheduleBuilder` service.
 - `[TYPO]` to fix in models: `InteralNotes`, `DisclountValue`, `DepsitPaymentStatus`.
+
+---
+
+## Double-booking guard (`sp_check_availability`)
+
+**ID:** `BOOKING.CREATE.DOUBLE_BOOKING_GUARD`
+**Trigger:** Step 1 of `BOOKING.LIFECYCLE.CREATE_FROM_QUOTATION`. Also invoked from `quotation` flows (the same SP backs validation in several places).
+**Actor:** System.
+**Legacy locus:** `ResService.cs:3205` — `ExecuteSelectCommand("sp_check_availability", param)` (called by name as a string literal, not via the `EDbQuery` enum). The call uses **positional parameters**; parameter order matters and is not visible at the call site.
+
+### Inputs (positional)
+1. `@FromDate` (DATETIME)
+2. `@ToDate` (DATETIME)
+3. `@VillaId` (int)
+4. `@BookingId` (int, optional) — when non-zero, excludes that booking from the overlap check so the engine doesn't flag the booking-being-edited as a conflict with itself.
+
+The SP body is not in committed source (it lives in production SQL Server only); the parameter order above is inferred from the C# call site at `:3205`. **Confirm before any port.**
+
+### Process
+1. SP joins `VillaBooking` and `VillaAvailability` over the range.
+2. Returns rows iff an overlapping booking/hold exists.
+
+### Outputs / side effects
+- Read-only.
+- Caller treats *any* returned row as "blocked" and surfaces "Selected booking date already booked for another user".
+
+### Idempotency
+- Read-only; idempotency is not applicable. Safe to retry without side effects.
+
+### Failure modes
+- **Race window** `[CORRECTNESS]` — the guard runs at step 1, but the write (`SP_SAVE_BOOKING_INFO`) is at step 3. Two concurrent operators can both pass the guard and both commit; nothing in the SP layer prevents the overlap once both writes land. The Django port should use a `daterange` `EXCLUDE` constraint (via `btree_gist`) on `Booking` to push the no-overlap invariant into the DB and let it raise on collision.
+
+### Open questions
+- Document the SP body explicitly once it is recovered from prod (no commit currently captures it).

@@ -1,0 +1,9 @@
+Hi {{ guest_first_name }},
+
+Thanks for booking {{ property_name }} from {{ date_from }} to {{ date_to }}.
+Your reference is {{ booking_reference }}.
+
+We'll be in touch with arrival details closer to your stay.
+
+Best,
+The Villa Collective team

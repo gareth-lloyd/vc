@@ -114,6 +114,11 @@ class Contact(AuditedModel):
             related_model = rel.related_model
             if related_model is None or isinstance(related_model, str):
                 continue
+            # Skip M2M reverse relations: the through model shows up separately
+            # as its own FK relation and is rewritten there. .update() on an
+            # M2M field raises FieldError because it isn't a column.
+            if rel.many_to_many:
+                continue
             field_name = rel.field.name
             related_model._default_manager.filter(**{field_name: self}).update(
                 **{field_name: target}

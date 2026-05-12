@@ -8,4 +8,6 @@ class CommsConfig(AppConfig):
     name = "comms"
 
     def ready(self) -> None:
-        from comms import signals  # noqa: F401
+        from comms import signals
+
+        signals._register()

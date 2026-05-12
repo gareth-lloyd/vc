@@ -1,0 +1,8 @@
+Hi {{ guest_first_name }},
+
+Please find your quotation for {{ property_name }} attached.
+
+Reply to this email and I'll be glad to help with any questions.
+
+Best,
+{{ agent_name }}

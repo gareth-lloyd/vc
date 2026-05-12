@@ -11,7 +11,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Version is path-based (`/api/v1/`, `/api/v2/`). Minor additive changes are unversioned; breaking changes bump the major.
 - Public-facing read endpoints (consumed by the marketing site or partner SPAs) are nested under `/api/v1/public/` with a separate auth/anon contract.
 - Webhook receivers live under `/api/v1/webhooks/` and use signature-based auth, not the session/JWT auth.
-- iCal feeds and other signed-URL endpoints live under `/api/v1/feeds/`.
+- Signed-URL endpoints (when any land — none in v1; iCal feeds deferred to v1.1 per reconciliation issue #12) live under `/api/v1/feeds/`.
 
 ### Resource naming
 - Plural, lowercase, hyphenated (`/properties`, `/rate-cards`, `/email-templates`).
@@ -27,7 +27,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 
 ### Pagination
 - Cursor pagination by default for endpoints expected to grow unbounded (`bookings`, `enquiries`, `email-logs`, `audit-log`, `payments`, `availability`).
-- Page-number pagination for small bounded lists (`regions`, `countries`, `features`, `tags`, `currencies`, `roles`).
+- Page-number pagination for small bounded lists (`regions`, `countries`, `features`, `currencies`, `roles`).
 - Standard query params: `?cursor=`, `?limit=` (cursor); `?page=`, `?page_size=` (page). `limit` capped server-side.
 - All list responses include `next` / `previous` and a `count` for page-number style.
 
@@ -57,8 +57,8 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Action endpoints return the updated resource (or a job handle if async).
 
 ### Webhooks
-- Inbound: `POST /webhooks/{provider}` (stripe, zoho, airbnb, booking, vrbo). HMAC signature header verified.
-- Outbound webhooks (we emit) are configured via `/webhook-subscriptions` resource.
+- Inbound: `POST /webhooks/{provider}` (stripe, zoho). HMAC signature header verified. (OTA inbound — airbnb/booking.com/vrbo — is future scope; see reconciliation issue #11.)
+- Outbound webhooks (we emit) are not part of MVP — no `/webhook-subscriptions` resource. Internal integrations (Zoho push, WordPress fan-out) run via Celery jobs configured through `/system/integrations`. See reconciliation issue #17.
 
 ### File upload
 - Two-step: `POST /uploads:sign` returns a signed S3 (or equivalent) URL the client PUTs to. Then the client `POST`s the resulting key to the consuming resource (e.g., `POST /properties/{id}/images`).
@@ -114,11 +114,11 @@ Core CRUD plus heavy sub-resource surface. Property is the most-edited entity in
 | POST | `/properties` | Create | staff |
 | GET | `/properties/{id}` | Detail | accepts numeric id or slug |
 | PATCH | `/properties/{id}` | Partial update | |
-| DELETE | `/properties/{id}` | Archive (soft delete) | |
-| POST | `/properties/{id}:restore` | Un-archive | |
+| DELETE | `/properties/{id}` | Soft-delete ("should not have existed"). **Distinct from `:archive`** — `:archive` is a lifecycle state for retired properties (still queryable); `DELETE` is for data-quality cleanup. See reconciliation issue #23. | |
+| POST | `/properties/{id}:restore` | Return an archived property to `status = draft`. Allowed only from `archived`. (Distinct from `DELETE /properties/{id}`'s soft-delete reversal, which isn't exposed as an action — once a property is hard-deleted via the cleanup tooling, it stays gone.) |
 | POST | `/properties/{id}:duplicate` | Clone villa with sub-resources | |
-| POST | `/properties/{id}:publish` | Status transition draft → live | |
-| POST | `/properties/{id}:unpublish` | Status transition live → draft | |
+| POST | `/properties/{id}:activate` | Set `status = active`. Allowed from `draft` or `archived`. |
+| POST | `/properties/{id}:archive` | Set `status = archived`. Allowed from `draft` or `active`. State-machine verb on `Property.status`. (Distinct from `Booking:archive`, which is a flag mutation — different concepts, intentionally same verb name because both move the row "out of the active set".) |
 
 #### Images
 | Method | Path | Purpose |
@@ -147,18 +147,16 @@ Core CRUD plus heavy sub-resource surface. Property is the most-edited entity in
 | POST | `/properties/{id}/features` | Add one |
 | DELETE | `/properties/{id}/features/{feature_id}` | Remove |
 
-#### Tags
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/properties/{id}/tags` | Service-type metadata tags |
-| PUT | `/properties/{id}/tags` | Replace set |
-
 #### Descriptions (rich text blocks)
+
+Backed by `properties.PropertyDescription` (per-property × per-section child rows; see `02-properties.md`). Sections are a fixed enum: `overview`, `house-rules`, `villa-info`, `further-info`. Sections are sparse — a property may have zero, one, or all four rows. `PUT` upserts (creates or replaces); `DELETE` removes the row (server returns empty body for the section). The flat columns the legacy `VillaMaster` carried (`WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`) are migrated into rows of this child table — see reconciliation issue #28.
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/properties/{id}/descriptions` | All description sections (overview, house-rules, villa-info, further-info) |
-| PUT | `/properties/{id}/descriptions/{section}` | Upsert one section |
-| GET | `/properties/{id}/descriptions/{section}` | Fetch one |
+| GET | `/properties/{id}/descriptions` | All present description sections, each `{section, body, updated_at}` |
+| GET | `/properties/{id}/descriptions/{section}` | Fetch one; 404 if not present |
+| PUT | `/properties/{id}/descriptions/{section}` | Upsert one section (`{body}` only — section comes from the path) |
+| DELETE | `/properties/{id}/descriptions/{section}` | Remove the row for this section |
 
 #### Nearby points-of-interest
 | Method | Path | Purpose |
@@ -185,18 +183,23 @@ Core CRUD plus heavy sub-resource surface. Property is the most-edited entity in
 | PATCH | `/properties/{id}/finance` | Update |
 
 #### Collections
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/properties/{id}/collections` | Collections this property is in |
-| PUT | `/properties/{id}/collections` | Replace set |
 
-#### Importers / channel mappings
+`CollectionMembership` (the through model — see `02-properties.md`) carries `sort_order`, `featured_until`, and a per-membership `description`. A naive `PUT` with a bare id-list would silently discard those fields on every replace, so the body shape is an array of **membership objects**, not ids. The PUT is a full-set replace: memberships present in the request body are upserted (created or updated) keyed by `collection` slug/id; memberships absent from the request body are removed. Use `POST` / `DELETE` on the singular nested path below for non-destructive single-membership edits. See reconciliation issue #29.
+
+| Method | Path | Purpose | Body |
+|---|---|---|---|
+| GET | `/properties/{id}/collections` | List memberships for this property, each `{collection, sort_order, featured_until, description}` | — |
+| PUT | `/properties/{id}/collections` | Full-set replace of memberships | `[{collection: <slug-or-id>, sort_order: int, featured_until: date \| null, description: str}, ...]` |
+| POST | `/properties/{id}/collections` | Attach to one collection (idempotent on `collection`) | `{collection, sort_order, featured_until, description}` |
+| PATCH | `/properties/{id}/collections/{collection}` | Update one membership's through-fields | `{sort_order?, featured_until?, description?}` |
+| DELETE | `/properties/{id}/collections/{collection}` | Detach from one collection | — |
+
+#### Importers
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/properties/{id}/channel-mappings` | Airbnb/Booking.com/VRBO external IDs |
-| PUT | `/properties/{id}/channel-mappings` | Upsert |
-| POST | `/properties/{id}/channel-mappings:sync` | Trigger outbound sync to channel partners |
 | POST | `/properties/{id}:import-from-zoho` | Pull from Zoho CRM |
+
+> Channel-manager mappings (Airbnb / Booking.com / VRBO external IDs and outbound sync) are out of MVP scope; see reconciliation issue #11. The domain model retains `PropertyChannelMapping` as a forward-looking entity but no endpoints are exposed in v1.
 
 ---
 
@@ -221,8 +224,8 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 |---|---|---|
 | GET / POST | `/collections` | |
 | GET / PATCH / DELETE | `/collections/{slug}` | |
-| GET | `/collections/{slug}/properties` | Properties in this collection |
-| PUT | `/collections/{slug}/properties` | Replace set (bulk attach) |
+| GET | `/collections/{slug}/properties` | Properties in this collection, each `{property, sort_order, featured_until, description}` |
+| PUT | `/collections/{slug}/properties` | Full-set replace of memberships. Body: `[{property: <id-or-slug>, sort_order, featured_until, description}, ...]` — same through-field semantics as `/properties/{id}/collections` (see §2.2 and reconciliation issue #29). |
 
 #### Features (amenities)
 | Method | Path |
@@ -231,12 +234,6 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 | GET / PATCH / DELETE | `/features/{id}` |
 | GET / POST | `/feature-categories` |
 | GET / PATCH / DELETE | `/feature-categories/{id}` |
-
-#### Tags
-| Method | Path |
-|---|---|
-| GET / POST | `/tags` |
-| GET / PATCH / DELETE | `/tags/{id}` |
 
 #### Regions
 | Method | Path |
@@ -411,26 +408,29 @@ The most action-heavy resource group. Lifecycle actions are POST verbs.
 
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
-| GET | `/bookings` | List | filters: `status`, `property`, `guest`, `site`, `check_in_after/before`, `check_out_after/before`, `assigned_to`, `q`; `ordering=`; `include=property,guest,payments` |
+| GET | `/bookings` | List | filters: `status`, `property`, `guest`, `site`, `check_in_after/before`, `check_out_after/before`, `assigned_to`, `q`; `ordering=`; `include=property,guest,payments`. Default manager hides `is_archived=True` rows — use `/bookings/archived` for those. |
 | POST | `/bookings` | Create | |
 | GET | `/bookings/{id}` | Detail | |
 | PATCH | `/bookings/{id}` | Update non-state fields | |
-| DELETE | `/bookings/{id}` | Soft-archive | |
+| _(no DELETE)_ | `/bookings/{id}` | Bookings are not deletable. Mistakes are corrected via `:cancel` with a reason, then `:archive` to tidy the row out of the default list; the underlying record always survives for audit. | |
 
 #### State transitions (side-effecting)
+
+State-machine semantics, allowed-from sets, and side effects are defined in `django_res_design/06-availability.md`. The API surface mirrors that machine; do not add actions here without a corresponding backend transition.
+
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/bookings/{id}:confirm` | Move provisional → confirmed |
-| POST | `/bookings/{id}:cancel` | Cancel (with reason) |
-| POST | `/bookings/{id}:owner-approve` | Owner-portal approval |
-| POST | `/bookings/{id}:owner-decline` | Owner-portal decline |
-| POST | `/bookings/{id}:modify-dates` | Date change with availability + pricing re-check |
-| POST | `/bookings/{id}:modify-guests` | Guest-count change |
-| POST | `/bookings/{id}:archive` | Move to archive table |
-| POST | `/bookings/{id}:restore` | Restore from archive |
-| POST | `/bookings/{id}:check-in` | Mark guest checked in |
-| POST | `/bookings/{id}:check-out` | Mark guest checked out |
-| POST | `/bookings/{id}:resend-confirmation` | Re-send confirmation email |
+| POST | `/bookings/{id}:confirm` | Alias for `:owner-approve` on bookings that require approval; otherwise advances `awaiting_deposit` workflows. |
+| POST | `/bookings/{id}:cancel` | Cancel (with reason). Allowed from any non-terminal state; refund and hold-release handled by the service. |
+| POST | `/bookings/{id}:owner-approve` | Owner-portal approval: `pending_owner_approval` → `awaiting_deposit`. |
+| POST | `/bookings/{id}:owner-decline` | Owner-portal decline: `pending_owner_approval` → `declined`. |
+| POST | `/bookings/{id}:modify-dates` | Date change. Acquires a fresh `BookingHold` on the new range, re-runs availability + change-over check, regenerates `pricing_snapshot`, and recomputes `balance_due` / `balance_due_at`. No status change. Refused from `checked_in` and from terminal states. |
+| POST | `/bookings/{id}:modify-guests` | Party-size change. Re-runs the pricing engine because party size can resolve to a different rate rule (occupancy band). No status change. Refused from `checked_in` and from terminal states. |
+| POST | `/bookings/{id}:archive` | Sets `is_archived = True` (and `archived_at`). Allowed only from terminal states (`checked_out`, `cancelled`, `expired`, `declined`). Orthogonal to `status`; **not** soft-delete. |
+| POST | `/bookings/{id}:restore` | Sets `is_archived = False`. Returns booking to main list at its existing terminal status. |
+| POST | `/bookings/{id}:check-in` | `balance_paid` → `checked_in`. |
+| POST | `/bookings/{id}:check-out` | `checked_in` → `checked_out`. Manual operator action; the same backend method is invoked by a Celery beat task that auto-completes overdue stays. |
+| POST | `/bookings/{id}:resend-confirmation` | Idempotent re-send of the latest confirmation email. No state change. |
 
 #### Archive bookings (separate read surface)
 | Method | Path | Purpose |
@@ -540,13 +540,12 @@ Mirrors deposit track exactly, replacing `deposit` with `balance` in every path.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/payments` | Global list across tracks; filters `track`, `gateway`, `status`, `currency`, date ranges |
+| GET | `/payments` | Global list across tracks; filters `purpose` (`DEPOSIT`/`BALANCE`/`SECURITY_DEPOSIT`/`REFUND`/`ADJUSTMENT`), `gateway`, `status`, `currency`, date ranges |
 | GET | `/payments/{id}` | Detail |
-| GET | `/payment-methods` | List stored instruments/tokens for a guest |
-| POST | `/guests/{id}/payment-methods` | Tokenize new instrument |
-| DELETE | `/guests/{id}/payment-methods/{pm_id}` | Detach |
-| GET | `/checkouts/{id}` | Settlement record detail |
-| GET | `/checkouts` | List settlement records |
+
+> Stored payment instruments (`/payment-methods`, `/guests/{id}/payment-methods`) are out of MVP scope; v1 captures cards per-transaction via the gateway's hosted fields, with no vaulted multi-method picker. The backend's `PaymentInstrument` model is retained as a one-row-per-charge audit record, not a reusable wallet. See reconciliation issue #13.
+
+> The legacy `/checkouts` endpoint (which mirrored `VillaCheckoutDetail` — the 3-tier payment-schedule ledger of deposit / rental balance / security deposit rows) is **dropped**. Those rows are now `Payment(purpose ∈ {DEPOSIT, BALANCE, SECURITY_DEPOSIT})`; query via `GET /payments?purpose=…&booking=…` or the nested track endpoints under `/bookings/{id}/deposit`, `/balance`, `/security` (§2.12). See reconciliation issue #6.
 
 ---
 
@@ -617,30 +616,27 @@ Distinct from `contacts`. These are the booking-side customers.
 | POST | `/users/{id}:reset-2fa` | Clear 2FA enrollment |
 | GET | `/users/{id}/sessions` | Active sessions |
 | DELETE | `/users/{id}/sessions/{session_id}` | Revoke |
-| GET | `/roles` | List |
-| POST | `/roles` | Create |
-| GET | `/roles/{id}` | Detail with permission set |
-| PATCH | `/roles/{id}` | Update |
-| DELETE | `/roles/{id}` | Remove |
-| GET | `/permissions` | Catalogue of available permission keys |
+| GET | `/roles` | Read-only enum listing of the fixed `StaffRole` values (`ADMIN`, `RESERVATIONS`, `ACCOUNTS`, `VIEWER`). For populating the `?role=` filter and the user-edit dropdown. No POST/PATCH/DELETE — roles are fixed in code. |
+
+Roles in this rebuild are a fixed `User.role` enum, not editable. The legacy `VillaRoles` table was the *contact-property* role lookup (Owner/Agent/Villa Admin/Villa Manager/Management Co), surfaced via `/contact-property-mappings` and `/properties/{id}/contacts`, **not** a staff-role table. The legacy app had no editable staff-role concept — staff power was a single `UserMaster.IsSystemAdmin` flag. See reconciliation issue #9 and `09-departures.md` for the mapping.
+
+For per-caller capability introspection use `GET /auth/permissions` (§2.0); fine-grained server-side permission checks ride on Django's built-in `auth.Permission` framework (per-model + the three custom `Property` permissions documented in `django_res_design/01-accounts.md`).
 
 ---
 
 ### 2.19 Email Templates & Email Logs
 
+Transactional comms (booking confirmation, deposit request, owner-approval request, magic-link dispatch) are MVP — they're load-bearing for the booking workflow — but the **template-editing CMS is not**. Templates ship as code/seed data in v1; editable templates and a test-send harness are deferred to v1.1. The log surface is forensic-essential and stays. See reconciliation issue #10.
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/email-templates` | List; filter `category`, `site` |
-| POST | `/email-templates` | Create |
-| GET | `/email-templates/{id}` | Detail |
-| PATCH | `/email-templates/{id}` | Update |
-| DELETE | `/email-templates/{id}` | Remove |
-| POST | `/email-templates/{id}:preview` | Render with sample context |
-| POST | `/email-templates/{id}:test-send` | Send to a test address |
+| GET | `/email-templates` | Read-only list of seeded templates; filter `key`, `is_active`. No POST/PATCH/DELETE in v1. |
+| GET | `/email-templates/{id}` | Detail (read-only) |
 | GET | `/email-logs` | List sent emails; filters: `booking`, `enquiry`, `guest`, `template`, `status`, date ranges |
 | GET | `/email-logs/{id}` | Detail incl. rendered body |
-| POST | `/email-logs/{id}:resend` | Re-send |
 | GET | `/code-auth-logs` | Magic-link/code dispatch log |
+
+> Deferred to v1.1: `POST/PATCH/DELETE /email-templates`, `/email-templates/{id}:preview`, `/email-templates/{id}:test-send`, `/email-logs/{id}:resend`, `/email-logs/bulk-resend`. Operator-driven re-send and template editing belong in a follow-up `comms` app spec.
 
 ---
 
@@ -688,12 +684,11 @@ Convention: `POST /{resource}/bulk` for create/update, `POST /{resource}/bulk-de
 |---|---|---|
 | POST | `/properties/bulk` | Bulk create/update |
 | POST | `/properties/bulk-delete` | |
-| POST | `/properties/bulk:tag` | Apply tag/feature/collection to many |
+| POST | `/properties/bulk:tag` | Apply feature/collection to many |
 | POST | `/availability/bulk-block` | (also listed in 2.5) |
 | POST | `/rate-cards/bulk` | Mass-create rate cards across seasons |
 | POST | `/contacts/bulk-import` | CSV import (async) |
 | POST | `/guests/bulk-import` | CSV import (async) |
-| POST | `/email-logs/bulk-resend` | |
 
 ---
 
@@ -707,35 +702,19 @@ Convention: `POST /{resource}/bulk` for create/update, `POST /{resource}/bulk-de
 
 ---
 
-### 2.24 iCal Feeds (signed URL, read-only)
+### 2.24 iCal Feeds — deferred to v1.1
 
-| Method | Path | Purpose | Auth |
-|---|---|---|---|
-| GET | `/feeds/properties/{id}/ical` | iCal feed for a single villa | signed-URL token |
-| GET | `/feeds/contacts/{id}/ical` | Owner's combined villas feed | signed-URL token |
-| POST | `/properties/{id}/feeds/ical:rotate-token` | Rotate the signed URL | staff |
-| GET | `/properties/{id}/feeds/ical` | Get current signed URL (admin view) | staff |
+iCal export of availability/bookings is **not part of MVP**. No backend model is specified for signed feed tokens, and there is no day-1 ops requirement for OTA-style calendar subscription. Revisit when OTA channel integration (issue #11) is scoped. See reconciliation issue #12.
+
+(Endpoints removed from v1: `GET /feeds/properties/{id}/ical`, `GET /feeds/contacts/{id}/ical`, `POST /properties/{id}/feeds/ical:rotate-token`, `GET /properties/{id}/feeds/ical`.)
 
 ---
 
-### 2.25 Channel Sync
+### 2.25 Channel Sync — out of MVP scope
 
-#### Inbound (channels push to us)
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/webhooks/airbnb` | Inbound webhook |
-| POST | `/webhooks/booking` | |
-| POST | `/webhooks/vrbo` | |
-| GET | `/channel-sync/inbound-log` | Audit of inbound events |
+OTA channel-manager integration (Airbnb / Booking.com / VRBO inbound webhooks and outbound availability/rate push) is **future scope** and not part of v1. There is no backend channel-sync service, no `ChannelSyncJob` workflow wired beyond the model stub, and no day-1 ops dependency on OTA presence. Revisit as a discrete project. See reconciliation issue #11.
 
-#### Outbound (we push)
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/channel-sync/status` | Per-property channel sync state |
-| POST | `/channel-sync:sync-property` | Trigger sync for a single property |
-| POST | `/channel-sync:sync-all` | Site-wide trigger (admin) |
-| GET | `/channel-sync/jobs` | Recent sync jobs |
-| GET | `/channel-sync/jobs/{id}` | Job detail |
+(Endpoints removed from v1: `POST /webhooks/airbnb`, `POST /webhooks/booking`, `POST /webhooks/vrbo`, `GET /channel-sync/inbound-log`, `GET /channel-sync/status`, `POST /channel-sync:sync-property`, `POST /channel-sync:sync-all`, `GET /channel-sync/jobs`, `GET /channel-sync/jobs/{id}`.)
 
 ---
 
@@ -770,11 +749,13 @@ Convention: `POST /{resource}/bulk` for create/update, `POST /{resource}/bulk-de
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/system/settings` | Global config |
+| GET | `/system/settings` | Global config (read of `SystemDefaults`) |
 | PATCH | `/system/settings` | Update |
-| GET | `/system/integrations` | Integration list + health |
-| GET | `/system/integrations/{key}` | Detail |
-| POST | `/system/integrations/{key}:test` | Connectivity test |
+| GET | `/system/integrations` | Integration list + last-sync health for the configured providers (Zoho, WordPress fan-out, payment gateway). Admin-only. |
+| GET | `/system/integrations/{key}` | Detail (credentials surfaced redacted) |
+| POST | `/system/integrations/{key}:test` | Connectivity test (e.g., Zoho ping, WP API auth, Stripe key validity) |
+
+> Backed by per-provider configuration carried on `SystemDefaults` keys plus the existing `ZohoSyncJob` / sync-record state. No new top-level `Integration` model is required for MVP; if config-row identity becomes important post-v1, promote `key` to a dedicated table. See reconciliation issue #21.
 
 ---
 
@@ -782,7 +763,7 @@ Convention: `POST /{resource}/bulk` for create/update, `POST /{resource}/bulk-de
 
 Consolidated list of named side-effecting actions, grouped by parent resource. All are `POST /{resource}/{id}:{action}`.
 
-**Properties:** `publish`, `unpublish`, `duplicate`, `restore`, `import-from-zoho`. Image sub-action: `reorder`, `set-hero`.
+**Properties:** `activate`, `archive`, `duplicate`, `restore`, `import-from-zoho`. (`activate` / `archive` drive `Property.status ∈ {draft, active, archived}` — see reconciliation issue #23. The prior `:publish` / `:unpublish` verbs are dropped.) Image sub-action: `reorder`, `set-hero`.
 
 **Enquiries:** `assign`, `convert`, `close`, `reopen`.
 
@@ -798,9 +779,9 @@ Consolidated list of named side-effecting actions, grouped by parent resource. A
 
 **Availability:** `extend-hold`, `release-hold`, `bulk-block`.
 
-**Email templates:** `preview`, `test-send`. Logs: `resend`, `bulk-resend`.
+**Email templates / logs:** _(no MVP actions — template editing, `preview`, `test-send`, `resend`, `bulk-resend` deferred to v1.1; see §2.19 and reconciliation issue #10.)_
 
-**Channel sync:** `sync-property`, `sync-all`.
+**Channel sync:** _(out of MVP scope — see §2.25 and reconciliation issue #11.)_
 
 **Zoho:** `connect`, `disconnect`, `sync-contacts`, `sync-properties`, `sync-enquiries`. Jobs: `retry`.
 
@@ -851,11 +832,12 @@ Consolidated list of named side-effecting actions, grouped by parent resource. A
 | PATCH | `/notification-preferences` | Update |
 
 ### Feature flags
+Backed by the `FeatureFlag` entity (see `01-domain-model.md` §11). Minimal surface — internal infra, not customer-facing.
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/feature-flags` | Caller's effective flags |
-| GET | `/feature-flags/all` | All flags (admin) |
-| PATCH | `/feature-flags/{key}` | Update (admin) |
+| GET | `/feature-flags` | Caller's effective flags (resolves `is_enabled_default`, per-user override, rollout cohort). Admin can pass `?all=true` to see the full catalogue. |
+| PATCH | `/feature-flags/{key}` | Update flag definition (admin only) |
 
 ### Uploads
 | Method | Path | Purpose |
@@ -869,6 +851,6 @@ The marketing-site read surface lives under `/api/v1/public/` and exposes a cura
 - `GET /public/properties`, `GET /public/properties/{slug}`
 - `GET /public/regions`, `GET /public/regions/{slug}/properties`
 - `GET /public/collections`, `GET /public/collections/{slug}/properties`
-- `GET /public/features`, `GET /public/tags`
+- `GET /public/features`
 - `POST /public/enquiries`
 - `POST /public/availability:search`, `POST /public/pricing:quote`

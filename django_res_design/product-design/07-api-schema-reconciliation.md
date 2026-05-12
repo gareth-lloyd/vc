@@ -81,87 +81,335 @@ Status legend:
   - `product-design/04-rest-api-surface.md` §2.4 updated. ✓
   - Closes the "Surcharge scoping" follow-up that was queued from issue #2.
 
-### #4 — Notes: API is a collection; backend is single TextFields. — **Open**
+### #4 — Notes: API is a collection; backend is single TextFields. — **Resolved**
 
 - **API:** `GET/POST /bookings/{id}/notes`, `PATCH/DELETE /bookings/{id}/notes/{note_id}`. Same for enquiries.
-- **Backend:** `Booking.notes`, `Booking.internal_notes`, `Booking.concierge_notes`, `Enquiry.notes`, `Enquiry.internal_notes` — all single `TextField` columns.
-- **Decision needed:** add a `Note` model (or per-domain `BookingNote` / `EnquiryNote`) with author, kind, timestamps.
+- **Backend (original):** `Booking.notes`, `Booking.internal_notes`, `Booking.concierge_notes`, `Booking.villa_notes`; `Enquiry.notes`, `Enquiry.internal_notes`, `Enquiry.preferences_note` — all single `TextField` columns. Inconsistently, `product-design/01-domain-model.md` §4 already declared a `BookingNote(booking, author, body, is_internal)` entity, in tension with the flat columns above.
+- **Investigation:**
+  - **Legacy schema** (`ResSystem/Database/DbScript.sql` and live dump `live-db-24-apr.sql`): `VillaBooking` carries exactly two note columns (`Notes`, `ConciergeNotes`); `VillaEnquire` carries one (`Notes`) plus the unrelated guest-form `PreferencesNote`. No legacy `*Note` child table; no append-only structure; no per-edit authorship.
+  - **Legacy UI** (`NewResSystem/Pages/Bookings/Booking.razor`): three side-by-side rich-text editors — "Customer Notes (Internal)", "Booking summary information", "Internal booking information" — each bound to a single column on the model with overwrite semantics. There is no add-note workflow, no list, no timeline. Concurrent edits clobber.
+  - **Live data:** 5 booking rows (test data) with short single-paragraph notes; 453 enquiry rows where `Notes` is the guest's original web-form message, not an operator stream.
+  - **API direction of travel:** the spec already commits to a collection (`POST /notes`, `note_id` path segment, `PATCH/DELETE`). The activity timeline (`/bookings/{id}/activity`) expects authored, timestamped entries.
+  - **Improvements over original** (`product-design/05-improvements-over-original.md`): the rebuild explicitly upgrades audit coverage; per-note authorship and timestamps are the minimum hygiene the legacy lacked.
+- **Decision:**
+  1. Adopt per-domain note collections — `reservations.BookingNote` and `reservations.EnquiryNote` — as the canonical store. **Drop all flat note `TextField` columns** from `Booking`, `Enquiry`, and `Quotation`.
+  2. `BookingNote` carries: `booking` FK, `author` FK User SET_NULL, `kind` TextChoices (`GENERAL` / `INTERNAL` / `CONCIERGE` / `VILLA`), `body` TextField, `is_pinned`, `visibility` TextChoices (`STAFF_ONLY` / `OWNER` / `GUEST`), `created_at`, `updated_at`. Hard-delete on remove; mutation audit lives in `AuditLog`.
+  3. `EnquiryNote` carries: `enquiry` FK, `author` FK User SET_NULL, `kind` TextChoices (`GENERAL` / `INTERNAL` / `PREFERENCES`), `body`, `is_pinned`, `created_at`, `updated_at`. Same audit treatment.
+  4. **`Enquiry.inbound_message`** (new, immutable single `TextField`) preserves the guest's original web-form message as provenance — it is *not* a note. The 453 legacy `VillaEnquire.Notes` rows migrate here, not into `EnquiryNote`.
+  5. `Quotation` loses its flat note columns entirely; quotation-level commentary lives on the source `Enquiry` (via `EnquiryNote`) and the destination `Booking` (via `BookingNote`). `QuotationLine.notes` (per-villa option) survives — it is intrinsically per-line, not a stream.
+  6. **API:** keep `/bookings/{id}/notes`, `/bookings/{id}/notes/{note_id}`, `/enquiries/{id}/notes`, `/enquiries/{id}/notes/{note_id}` exactly as already specified. `?kind=` filter on GET supports the legacy three-textarea UI as three pre-filtered tabs over one collection.
+  7. **Migration:** each non-empty legacy text column becomes one seed `BookingNote` / `EnquiryNote` row, `kind` derived from the source column, `author` set to a system user, `created_at` = `VillaBooking.UpdatedAt` (or `CreatedAt` fallback). `VillaEnquire.Notes` migrates to `Enquiry.inbound_message` (one column move, no fan-out).
+  8. **Reconciliation:** the pre-existing partial `BookingNote` entity in `product-design/01-domain-model.md` §4 is the right idea but was under-specified — extend it with `kind`, `visibility`, `is_pinned`, drop `is_internal` (subsumed by `kind` + `visibility`), and remove the conflicting flat columns from the `Booking` field list.
+- **Follow-ups:**
+  - `05-reservations.md` updated: dropped flat note columns from `Enquiry`, `Quotation`, `Booking`; added `BookingNote` and `EnquiryNote` model sections; added `Enquiry.inbound_message`. ✓
+  - `product-design/01-domain-model.md` updated: reshaped `BookingNote`, added `EnquiryNote`, removed flat columns from `Booking` and `Enquiry`, added `Enquiry`↔`EnquiryNote` to relationship summary. ✓
+  - `09-departures.md` updated: legacy mapping rows for `VillaBooking.Notes`/`ConciergeNotes` and `VillaEnquire.Notes`/`PreferencesNote` now point to the new entities with migration instructions. ✓
+  - `product-design/04-rest-api-surface.md` §2.6 and §2.8 already correct — no edit needed.
 
-### #5 — Refunds: API has approval workflow; backend has none. — **Open**
+### #5 — Refunds: API has approval workflow; backend has none. — **Resolved**
 
-- **API (§2.13):** `/refunds` first-class resource with `:approve`, `:reject`, `:execute`, `:cancel` (four-state workflow).
-- **Backend:** Refund is `Payment.purpose=REFUND` with `Payment.status` (PENDING/PROCESSING/SUCCEEDED/FAILED/...). No APPROVED, REJECTED, no separation of approval from execution.
-- **Decision needed:** add `Refund` table with own state machine, or extend `Payment.status` with approval intermediate states.
+- **API (§2.13):** `/refunds` first-class resource with `:approve`, `:reject`, `:execute`, `:cancel`.
+- **Backend original:** Refund was `Payment.purpose=REFUND` with `Payment.status` (PENDING/PROCESSING/SUCCEEDED/FAILED/...). No APPROVED, REJECTED, no separation of approval from execution.
+- **Investigation:**
+  - **Legacy DB** (`live-db-24-apr.sql`, UTF-16 LE): zero refund tables. No `VillaRefund`, no `RefundStatus`, no `RefundedBy`, no `RefundApproved`, no `RefundAmount`. The only "refund" tokens in the schema are config knobs (`SecurityDepositDaysRefundedAfterDeparture`) and cancellation-policy refund-percent tiers — none of which represent an actual refund record.
+  - **Legacy UI** (`ResSystem/*.razor`): no Blazor page references a refund concept. There is no in-app refund workflow, no approval step, no refund list, no refund audit.
+  - **Conclusion**: refunds in the legacy system were issued manually through the gateway dashboard, with no in-app trail. There is no legacy constraint on the new design.
+  - **Product-side domain model** (`product-design/01-domain-model.md` §7): already declares a `Refund` entity with `requested_by`, `approved_by`, `executed_at`, and a status enum including `pending`, `approved`, `executing`, `succeeded`, `failed`, `cancelled`. The backend doc was lagging.
+- **Decision:**
+  1. Adopt a **dedicated `payments.Refund` model** as the workflow object — separate from `Payment`. Approving a refund and executing it are distinct authority gates; collapsing them into `Payment.status` would conflate workflow state (`APPROVED`, `REJECTED`) with money-movement state (`PROCESSING`, `SUCCEEDED`) on a single row and lose the ability to enforce requester ≠ approver.
+  2. **State machine**: `PENDING → APPROVED → EXECUTING → SUCCEEDED`, with terminal branches `REJECTED` (from `PENDING`), `CANCELLED` (from `PENDING` or `APPROVED`), and `FAILED` (from `EXECUTING`). Seven states total. `EXECUTING` is the outbox state — the Celery task is in flight.
+  3. **Workflow object vs gateway transaction split**: `Refund` is the workflow object. On `:execute`, the service creates one `Payment(purpose=REFUND, status=PROCESSING)` row linked via `meta['refund_id']` to record the actual gateway call. Webhook callbacks land on the Payment row; the `payment_refunded` signal advances the linked Refund.
+  4. **Separation of duties** enforced in the service layer: `approved_by != requested_by` (override permission `payments.refund.self_approve` for low-value refunds). `executed_by` may equal `approved_by` by default; orgs that want a third actor enforce that in policy.
+  5. **Partial refunds** are expressed as multiple `Refund` rows against the same booking/payment — not as a status. The service layer asserts that the cumulative non-failed refund total against an inbound `Payment` does not exceed its amount.
+  6. **`PaymentEvent` audit** is extended to be polymorphic over `Payment` / `Refund` with a check constraint that exactly one FK is set. Refund transitions write `PaymentEvent` rows alongside Payment transitions.
+  7. **Unique constraint relaxation**: the `unique_active_payment_per_purpose` constraint on `Payment` now excludes `purpose IN (REFUND, ADJUSTMENT)`, because one Refund workflow may legitimately produce more than one `Payment(purpose=REFUND)` row over retries.
+  8. **API**: existing §2.13 endpoints (`/refunds`, `POST /bookings/{id}/refunds`, `:approve`, `:reject`, `:execute`, `:cancel`) are kept verbatim — they already match the chosen state machine.
+- **Follow-ups:**
+  - `07-payments.md` updated: added `Refund` model section with state machine table; extended `PaymentEvent` to polymorphic Payment/Refund FK; relaxed the active-payment unique constraint; rewrote `RefundService` API; added a "New vs legacy" note. ✓
+  - `09-departures.md` updated: Payments mapping table records that `Refund` is wholly new (no legacy mapping). ✓
+  - `product-design/01-domain-model.md` updated: `Refund` entity field list and status enum aligned to backend model; added explicit state-machine summary and separation-of-duties note; dropped `partially_refunded` status (modelled as multiple `Refund` rows instead). ✓
+  - `product-design/04-rest-api-surface.md` §2.13 already correct — no edit needed.
 
-### #6 — Settlement records ("checkouts"): API endpoint maps to nothing. — **Open**
+### #6 — Settlement records ("checkouts"): API endpoint maps to nothing. — **Resolved**
 
-- **API:** `/checkouts/{id}`, `/checkouts` — described as "Settlement record detail".
-- **Backend:** `VillaCheckoutDetail` was dropped/split per `09-departures.md`; fields distributed across Booking/Guest/Payment. No new "settlement" model.
-- **Decision needed:** clarify intent (gateway-side payout reconciliation? Guest check-in records?) and either add a model or remove the endpoint.
+- **API original:** `GET /checkouts/{id}`, `GET /checkouts` listed inside §2.14 Payments (flat, cross-booking) with the gloss "Settlement record detail".
+- **Backend:** No "settlement" model. `09-departures.md` previously said `VillaCheckoutDetail` was "split across Booking/Guest/Payment" — that was imprecise.
+- **Investigation:**
+  - **Legacy schema** (`ResSystem/Database/Data/VillaCheckoutDetail.cs`): the columns are `Id`, `BookingRefNo`, `BookingId`, `Amount`, `CheckoutDate`, `Description`, `IsDeposit`, `PaymentStatus`, `PaymentId`, `PayerAmt`, `PayerCurrency`, `IsOfflinePayment`, `PaymentMethod`, `IsActive`, plus timestamps. Despite the name, **none of these fields relate to guest check-in/out** (no key-handover time, no arrival/departure event) and **none relate to gateway payout reconciliation** (no payout id, no reconciliation date, no net-of-fees ledger). They are scheduled-payment ledger fields.
+  - **Legacy domain code** (`NewResSystem.Core/Services/Bookings/BookingInfoModels.cs`): a sibling `EmailCheckoutDetailsArgs` DTO carries the exact same shape plus `DueDate` and `ArrivalDate`, and the adjacent `CheckoutPaymentType` enum has only three values — `INITIAL_PAYMENT_DUE`, `RENTAL_BALANCE_PAYMENT`, `SECURITY_DEPOSIT`. The legacy SP `sp_getCheckoutDetailsById` (in `live-db-24-apr.sql`) computes IPD/RB/SD amounts and due-dates by joining `VillaBooking` ⋈ `VillaFinance` — i.e. it derives the payment schedule from finance config, not from any settlement concept.
+  - **Conclusion:** `VillaCheckoutDetail` was the legacy **3-tier payment-schedule ledger** — one row per (booking × payment-due track) for the three tracks `DEPOSIT` / `BALANCE` / `SECURITY_DEPOSIT`. It is a 1:1 mirror of the new `payments.Payment(purpose=…)` model. The Django port's `Payment.purpose` enum (`DEPOSIT` / `BALANCE` / `SECURITY_DEPOSIT` / `REFUND` / `ADJUSTMENT`) is a strict superset; the `UniqueConstraint` "one active Payment per (booking, purpose)" exactly preserves the legacy one-row-per-track invariant. Nothing further to model.
+  - **Live data:** the live dump (`live-db-24-apr.sql`) actually contains **no `VillaCheckoutDetail` table at all** — only the stored procedure `sp_getCheckoutDetailsById` survives, and that proc reads from `VillaBooking` / `VillaFinance` / `VillaBookingDetails`, not from `VillaCheckoutDetail`. The table is either a deprecated holdover from an earlier schema or was never deployed to prod; either way, there is zero production data to migrate.
+- **Decision:**
+  1. **Drop `GET /checkouts/{id}` and `GET /checkouts` from the API spec.** They are a legacy naming relic that duplicates `/payments` filtered by `purpose`.
+  2. Where consumers want "the deposit / rental balance / security deposit row for a booking", use the nested track endpoints already defined in §2.12 (`/bookings/{id}/deposit`, `/balance`, `/security`) or the flat list `GET /payments?booking=…&purpose=…`.
+  3. The `purpose` filter is added to `GET /payments` listing parameters.
+  4. The `Payment.purpose` enum already covers all three legacy "checkout payment types" (`INITIAL_PAYMENT_DUE` → `DEPOSIT`, `RENTAL_BALANCE_PAYMENT` → `BALANCE`, `SECURITY_DEPOSIT` → `SECURITY_DEPOSIT`). No model changes required.
+  5. No new "settlement" or "payout-reconciliation" model is added. Owner-side payouts, gateway-side fee reconciliation, and accounting ledger entries are all out of MVP scope; revisit if/when an owner-payout workflow lands.
+- **Follow-ups:**
+  - `product-design/04-rest-api-surface.md` §2.14 updated: removed the two `/checkouts*` rows; documented the dropped endpoint and added `purpose` to the `/payments` filter list. ✓
+  - `09-departures.md` updated: legacy mapping row for `VillaCheckoutDetail` rewritten to point explicitly at `payments.Payment` with the rationale and the legacy-vs-new field correspondence. ✓
+  - `product-design/01-domain-model.md` updated: legacy mapping row corrected (was "Collapsed into PaymentEvent" — should be "Replaced by `payments.Payment` rows"); `VillaPaymentDetail` row also clarified (Payment + PaymentEvent split, per issue #5). ✓
 
-### #7 — Booking state machine missing transitions. — **Open**
+### #7 — Booking state machine missing transitions. — **Resolved**
 
-- **Missing transitions for API actions:** `:modify-dates`, `:modify-guests`, `:check-out` (backend uses automatic `complete()` on `date_to`), `:archive` / `:restore` (overlaps with `SoftDeleteModel.delete()` — what's the difference?), `:resend-confirmation`.
-- **Decision needed:** add transitions to `BookingStatus` / `Booking` methods, or remove the actions from the API. Date-change is non-trivial — needs hold acquisition, availability re-check, pricing-snapshot regeneration.
+- **API surface (§2.8):** `:confirm`, `:cancel`, `:owner-approve`, `:owner-decline`, `:modify-dates`, `:modify-guests`, `:archive`, `:restore`, `:check-in`, `:check-out`, `:resend-confirmation` (11 colon-verbs total).
+- **Backend (`06-availability.md`) before this issue:** `submit`, `auto_accept`, `owner_approve`, `owner_decline`, `record_deposit`, `arm_balance`, `record_balance`, `check_in`, `complete()` (system on `date_to` → `COMPLETED`), `cancel`, `expire`. **No** `modify_dates`, `modify_guests`, `archive`, `restore`, `resend_confirmation_email`; `:check-out` had no manual operator path.
+- **Investigation:**
+  - **Legacy date-change audit:** the live DB dump (`live-db-24-apr.sql`) contains **no** `VillaBookingDateHistory`, `VillaBookingChange`, `DateChangedAt`, `OriginalFromDate`, or `PreviousAmount` columns. The Blazor `Booking.razor` page binds `FromDate`/`ToDate` directly to the model via `OnFromDateChange` and posts through `ResService.ModifyBooking` — overwrite semantics, zero per-change audit. The rebuild's audit obligation is **new design**, not a legacy port.
+  - **Legacy check-out:** no manual "mark checked out" UI exists. Departures were date-driven (the equivalent of the proposed beat task). The new `:check-out` is therefore a manual override added for early/late departures; the auto-completion beat task uses the same backend method.
+  - **Legacy resend-confirmation:** `BookingInfo.razor:155` exposes "Resend Booking Summary" — direct evidence the workflow exists in legacy. Keep the API action; back it with a non-state-mutating method.
+  - **Legacy archive:** `VillaArchiveBooking` table exists in legacy and is read by `GetArchiveBooking` in `ResService.cs`. It is an *operator-facing visibility* concept — bookings disappear from the main list and surface under an archive view — **not** a "this record shouldn't have existed" delete. The current rebuild already covers this with `Booking.is_archived` plus the separate `/bookings/archived` read surface, but the field was missing from `05-reservations.md` and the archive-vs-status distinction was undocumented. (Soft delete has since been eliminated entirely — see `09-departures.md` "Soft delete eliminated" — so archive is now simply orthogonal to the `status` enum, with no third axis to reconcile against.)
+  - **`archived` vs `completed` enum collision:** `product-design/01-domain-model.md` §4 listed both `completed` and `archived` as status values; `06-availability.md` had only `COMPLETED` (no `archived`); meanwhile `05-reservations.md`'s model treated "delete" as a separate concept. Three slightly different shapes for what should be one decision. (The follow-up soft-delete-elimination work removed the third axis entirely — bookings now express lifecycle solely through `status` + the `is_archived` flag.)
+- **Decision:**
+  1. **Rename the terminal post-stay state** `BookingStatus.COMPLETED` → `BookingStatus.CHECKED_OUT` and **rename the transition** `complete()` → `check_out()`. The transition is the same code path whether invoked manually by an operator (early/late departure) or by the auto-completion Celery beat task on `date_to`. The product-design `01-domain-model.md` enum is realigned to the backend (single source of truth).
+  2. **Add `:modify-dates`** as a non-state-mutating audited method `Booking.modify_dates(date_from, date_to, *, actor, reason)`. Allowed from `AWAITING_DEPOSIT`, `DEPOSIT_PAID`, `AWAITING_BALANCE`, `BALANCE_PAID` (refused from `CHECKED_IN` and terminal states). Acquires a short-lived `BookingHold` on the new range, runs the availability + change-over check, re-runs `PricingEngine.quote(...)`, replaces `pricing_snapshot`, recomputes `rental_price` / `balance_due` / `balance_due_at`, releases the prior hold, and writes a `BookingEvent` with `meta={"from": [...], "to": [...], "from_snapshot": {...}, "to_snapshot": {...}}`. `from_status == to_status` on the event (the state machine doesn't advance).
+  3. **Add `:modify-guests`** symmetrically as `Booking.modify_guests(adults, children, infants, *, actor, reason)`. Re-runs the pricing engine (party-size can resolve to a different `RateRule` / occupancy band). Same allowed-from window and audit shape. No status change.
+  4. **Add `:archive`/`:restore`** as flag mutations: `Booking.is_archived` (bool, default False) and `Booking.archived_at` (DateTimeField, null=True) added to the model. `archive()` allowed only from terminal states (`CHECKED_OUT`, `CANCELLED`, `EXPIRED`, `DECLINED`); `restore()` allowed when `is_archived=True`. The default `/bookings` list filters `is_archived=False` at the call site; `/bookings/archived` is the inverse query. Drop `archived` from the `Booking.status` enum (it was duplicating the flag). There is no `DELETE /bookings/{id}` — once a booking exists it is preserved for audit; correction goes via `:cancel` then `:archive` (see also `09-departures.md` "Soft delete eliminated").
+  5. **Add `:resend-confirmation`** as a non-state-mutating idempotent action `Booking.send_confirmation_email(*, actor)`. Writes a `BookingEvent` with `meta={"resent_confirmation": true}` and (when the future `comms` app lands) a row to the email log. No status change. Matches the legacy "Resend Booking Summary" button.
+  6. **Keep `:confirm`** as an alias that dispatches to the appropriate underlying transition (`owner_approve()` when in `PENDING_OWNER_APPROVAL`; advances `AWAITING_DEPOSIT` workflows otherwise). It's primarily a UX convenience; the service layer routes.
+  7. The full transition table (including the new methods) lives in `06-availability.md` as the single source of truth; the API spec mirrors it and is forbidden from adding actions without a corresponding backend transition.
+- **Follow-ups:**
+  - `06-availability.md` updated: renamed `COMPLETED` → `CHECKED_OUT` and `complete()` → `check_out()`; added "Non-transition mutations" subsection covering `modify_dates`, `modify_guests`, `archive`, `restore`, `send_confirmation_email`; documented archive vs soft-delete distinction. ✓
+  - `05-reservations.md` updated: added `is_archived` and `archived_at` to `Booking` field list; extended the Services bullet list with the new methods; fixed the "Dropped from legacy" line to reflect that `VillaArchiveBooking` maps to `is_archived`, not `status='COMPLETED'`. ✓
+  - `product-design/01-domain-model.md` updated: realigned the `Booking.status` enum to match `06-availability.md` (single source of truth); dropped `archived` as a status value; rewrote the `ArchiveBooking` paragraph to spell out the flag-vs-soft-delete distinction. ✓
+  - `product-design/04-rest-api-surface.md` §2.8 updated: rewrote the state-transitions table with per-action semantics; clarified that `DELETE /bookings/{id}` is soft-delete (not archive); pointed readers at `06-availability.md` for the canonical state machine. ✓
+  - `09-departures.md` updated: rewrote the `VillaArchiveBooking` row; added a new row documenting that per-change audit on date/guest modifications is a **new design** (legacy had none). ✓
+  - **Cross-check:** the `BookingHold` model is already specified in `06-availability.md` §A — `:modify-dates` reuses it. No new model required.
 
-### #8 — `Tag` top-level resource doesn't exist. — **Open**
+### #8 — `Tag` top-level resource doesn't exist. — **Resolved**
 
-- **API:** `/tags` CRUD, `/properties/{id}/tags`, distinct from features.
-- **Backend:** No `Tag` model. `Feature.service_type` is a TextChoices on `Feature` (AMENITY / INCLUDED_SERVICE / PAID_ADDON).
-- **Decision needed:** add a `Tag` model + M2M, or repurpose `Feature.service_type` and document the rename.
+- **API original:** `/tags` CRUD (§2.3) plus `/properties/{id}/tags` GET/PUT (§2.2), `/public/tags`, `/properties/bulk:tag`. Glossed as "service-type metadata tags, distinct from features."
+- **Backend:** No `Tag` model. `Feature.service_type` is a TextChoices on `Feature` (`AMENITY` / `INCLUDED_SERVICE` / `PAID_ADDON`). `product-design/01-domain-model.md` §1 carried a stub `Tag` entity ("Service-type metadata tag (similar to Feature but separate domain — used for back-office classification). Original `Tags`.") that was in tension with the backend.
+- **Investigation:**
+  - **Legacy schema:** No `Tags` / `VillaTags` table exists in any legacy SQL artifact. Confirmed against `live-db-24-apr.sql` (production dump, UTF-16 LE, ~96 MB), `ResSystem/Database/Scripts/VillaDb.sql`, and `ResSystem/Database/DbScript.sql` — zero matches for `CREATE TABLE [Tags]`, `[VillaTags]`, `TagId`, or any FK referencing a tag table. The `Tag` row in `01-domain-model.md` annotated "Original `Tags`" was a mis-citation; there is no `Tags` table to be original to.
+  - **Legacy UI:** `ResSystem/NewResSystem/Pages/Others/Tags.razor` exists and is mounted at `@page "/tags"`. Reading the file (~454 lines) shows it is a **CRUD form over `VillaFeatures`** that calls `ResService.GetFeatures` / `ResService.ModifyFeatures` and exposes a `ServiceType` dropdown with two values: `ContactService = 10` and `PropertyFeature = 20`. The grid columns are id / icon / name / description / categories — exactly the `VillaFeatures` shape. The label "Tags" is operator-facing branding for the back-office segmentation; the storage is `VillaFeatures` with a `ServiceType` discriminator.
+  - **Other tag-named code:** `PropertyFeaturesContent.razor` uses `_lstTags` / `_lstCategoryTags` as local variable names but the data type is `PropertyFeaturesModal` / `ResSelectItems<int>` — same story, "tag" is UI vocabulary over the features table. `Booking.razor` mentions "Villa Information (tags and description)" as a UI label, not a separate resource.
+  - **Domain semantics:** The legacy two-value enum (`ContactService` / `PropertyFeature`) is a strict subset of the new three-value `Feature.service_type` enum (`AMENITY` / `INCLUDED_SERVICE` / `PAID_ADDON`). The new design already covers this discriminator with finer granularity.
+  - **No back-office label semantics surface anywhere.** The brief speculated about labels like "needs-photo-refresh" or "premium-tier"; nothing in the legacy schema, the Blazor pages, or the .NET services suggests such operator-applied free-form labels exist. The legacy "Tags" is purely a feature-catalogue admin view, not a labelling system.
+- **Decision (Option b — fold and drop):**
+  1. **No `Tag` model.** No `PropertyTag` junction. No M2M from Property to Tag.
+  2. **Drop the `/tags` API resource entirely:** `GET / POST /tags`, `GET / PATCH / DELETE /tags/{id}`, `GET / PUT /properties/{id}/tags`, `GET /public/tags`. Remove "tags" from the page-number pagination list in §1.
+  3. The legacy "Tags" admin page is reproduced by `/features` with the existing `service_type` filter; the FE can render a "Tags" tab over `/features?service_type=INCLUDED_SERVICE` (or whatever segment maps to the legacy `ContactService` row) without any new endpoint.
+  4. `/properties/bulk:tag` keeps its name (it's a generic verb in our API for "apply a labelled set to many") but its semantics narrow to feature/collection application, not tag application. Renamed to clarify.
+  5. **Domain-model fix:** the `Tag` entity stub in `product-design/01-domain-model.md` §1 is removed; the `Feature` entry gets an explanatory paragraph about `service_type` and a pointer to this issue.
+- **Follow-ups:**
+  - `product-design/04-rest-api-surface.md` updated: removed `/properties/{id}/tags` block (§2.2), removed `/tags` CRUD block (§2.3), dropped "tags" from the page-number pagination list (§1), dropped `GET /public/tags`, narrowed `/properties/bulk:tag` gloss. ✓
+  - `product-design/01-domain-model.md` updated: removed the `Tag` entity; added explanatory paragraph to `Feature (amenity)` describing `service_type` and the legacy "Tags" page; fixed two downstream mentions of "tags handle this" in the `PropertyContactAssignment` section and legacy mapping table that were predicated on a `Tag` model existing. ✓
+  - `02-properties.md` updated: added a note under the `Feature` model explaining that the legacy `/tags` Blazor page is a `VillaFeatures` view and absorbed by `/features` with the existing `service_type` filter. ✓
+  - `09-departures.md` updated: new row in the Property domain mapping table documenting that the legacy "Tags" admin page maps to `Feature` filtered by `service_type` — no `Tags` table exists in the legacy schema. ✓
 
-### #9 — Roles table doesn't exist. — **Open**
+### #9 — Roles table doesn't exist. — **Resolved**
 
-- **API:** `/roles` full CRUD with permission sets, plus `/permissions` catalogue.
-- **Backend:** Plain Django permissions; legacy `VillaRole` replaced by `accounts.ContactRole` TextChoices. No editable `Role` table.
-- **Decision needed:** if admin UI needs editable roles, add `Role` model and groups; otherwise expose Django's `auth.Group` and trim API.
+- **API original:** `/roles` full CRUD (`GET`/`POST`/`PATCH`/`DELETE`) with permission sets, plus `GET /permissions` catalogue (§2.18).
+- **Backend:** Plain Django `auth.Permission`; legacy `VillaRoles` already replaced by `accounts.ContactRole` TextChoices (per `09-departures.md`). No editable staff `Role` table; `product-design/01-domain-model.md` §6 had a stub `Role` entity ("named permission set, fields name/description/permissions") that conflicted with both `01-accounts.md` and `09-departures.md`.
+- **Naming pitfall — two distinct "role" concepts:**
+  1. **Staff role** — what back-office capability does a logged-in `User` have? This is what `/roles` API §2.18 is talking about (it sits under "Users & Roles" and the `?role=` filter is on `/users`).
+  2. **Contact role** — how is a `Contact` related to a `Property` (owner / manager / agent / housekeeper / owner's-rep)? Already modelled as `accounts.ContactRole` TextChoices on `PropertyContactAssignment`. Exposed via `/properties/{id}/contacts` and `/contact-property-mappings`. **Not** what `/roles` API refers to.
+- **Investigation:**
+  - **Legacy `VillaRoles` table** (`live-db-24-apr.sql`, UTF-16 LE): 5 static rows — `(1, 'Owner', 10)`, `(2, 'Agent', 20)`, `(3, 'Villa Admin', 40)`, `(4, 'Villa Manager', 50)`, `(5, 'Management Company', 80)`. Schema: `Id` / `Name` / `Code` / `IsActive`. FK'd **from `VillaContactMap.RoleId` and `VillaContactRoleMapping.RoleId`** — i.e. it is the **contact-to-property** role lookup. Never referenced from `UserMaster`. Operators added zero custom rows in production: the 5 rows are the seed data and have stayed unchanged since the schema was first deployed.
+  - **Legacy staff-role concept**: the `UserMaster` table has no role FK and no role enum. Staff power is a **single `IsSystemAdmin` boolean** (and a passive `IsActive` / `IsLock`). The .NET service layer (`NewResSystem.Core/Services/Users/UsersViewModel.cs` exposes a single `IsAdmin` bool; `UserService.cs:142` writes it to `@IsSystemAdmin`). No `RoleManager`, no `AspNetRoles` table, no permission claims. Two-tier permissions in production: superuser vs everyone-else.
+  - **Conclusion**: the legacy app demonstrates zero operator demand for editable staff roles over four-plus years of production use. There is no legacy migration burden — there is no legacy staff-role data to migrate.
+- **Decision (Option b — fixed enum, trim API):**
+  1. **`User.role`** becomes a hard-coded `StaffRole` TextChoices with four values: `ADMIN` (full access; replaces legacy `IsSystemAdmin=1`), `RESERVATIONS` (bookings/enquiries/guests/comms), `ACCOUNTS` (payments/refunds/finance), `VIEWER` (read-only across the back office). The split below `ADMIN` is a modest improvement over the legacy two-tier model and lets the FE hide irrelevant nav.
+  2. **No editable `Role` model.** No `RolePermission` junction. The enum-stub in `product-design/01-domain-model.md` §6 (`Role — named permission set ... permissions (JSON list ... or M2M)`) is removed.
+  3. **Each enum value maps to a Django `auth.Group`** of the same name, created via a data migration. The Group owns the actual `auth.Permission` rows. Switching `User.role` re-attaches the user to the matching Group. Runtime checks use Django's standard framework (`user.has_perm("reservations.add_booking")`). The three custom Property-level permissions in `01-accounts.md` (`can_view_finance`, `can_approve_booking`, `can_manage_availability`) are wired into the Groups via the migration.
+  4. **API trims:**
+     - **Drop** `POST /roles`, `PATCH /roles/{id}`, `DELETE /roles/{id}`, `GET /roles/{id}` (no detail view — the role is the enum value).
+     - **Drop** `GET /permissions`. Per-caller capability introspection rides on the existing `GET /auth/permissions` (§2.0). Server-side checks ride on Django's `auth.Permission` registry; no client-facing catalogue endpoint.
+     - **Keep** `GET /roles` as a read-only enum listing (`[{"value": "admin", "label": "Admin"}, ...]`) so the FE can populate `?role=` filter on `/users` and the user-edit dropdown. Page-number pagination per §1.
+     - `?role=` filter on `/users` validates against the enum.
+  5. **Future escape hatch**: if business asks for custom roles, replace `User.role` enum with a `Role` FK to a new model that wraps the existing Groups, and unlock the CRUD verbs on `/roles`. The API surface (`GET /roles`) stays compatible; no breaking change for the FE filter.
+- **Follow-ups:**
+  - `01-accounts.md` updated: added `User.role` field; rewrote the "Roles" section to distinguish staff roles (new `StaffRole` enum) from contact roles (existing `ContactRole`); documented `auth.Group` mapping and legacy migration (`IsSystemAdmin=1` → `ADMIN`; `IsSystemAdmin=0` → `RESERVATIONS`). ✓
+  - `09-departures.md` updated: clarified the `VillaRoles` row to spell out it's the *contact-to-property* role lookup (5 static seed rows); added a new row mapping `UserMaster.IsSystemAdmin` → `User.role` with the migration default. ✓
+  - `product-design/01-domain-model.md` §6 updated: replaced `User.role (FK or enum)` with explicit `StaffRole` TextChoices; removed the conflicting `Role — named permission set` paragraph; added an explicit warning distinguishing `User.role` from `PropertyContactAssignment.role`. Replaced legacy `is_admin` field reference with Django's built-in `is_superuser`. ✓
+  - `product-design/04-rest-api-surface.md` §2.18 updated: dropped `POST/PATCH/DELETE /roles`, `GET /roles/{id}`, and `GET /permissions`; kept `GET /roles` as read-only enum listing; added explanatory note about the two role concepts and pointer to `01-accounts.md` and this issue. ✓
 
 ---
 
 ## B. Out-of-scope creep (API includes deferred features)
 
-| # | API surface | Backend status | Status |
-|---|---|---|---|
-| 10 | `/email-templates`, `/email-logs`, `:preview`, `:test-send`, `:resend`, `/code-auth-logs` (§2.19) | `VcemailTemplate`, `VillaCodeSentHistory`, `VillaEmailLinkLog` — Dropped (future comms app) | **Open** |
-| 11 | `/channel-mappings`, `/webhooks/airbnb`, `/webhooks/booking`, `/webhooks/vrbo`, `:sync`, `/channel-sync/*` (§2.25) | Channel manager integrations — future scope | **Open** |
-| 12 | `/feeds/properties/{id}/ical`, rotate-token (§2.24) | Not modelled | **Open** |
-| 13 | `/payment-methods`, `/guests/{id}/payment-methods` (§2.14) | "BookingPaymentMethod if multi-method ever lands" — explicitly deferred | **Open** |
-| 14 | `/notifications`, `/notification-preferences` (§4) | Not modelled | **Open** |
-| 15 | `/feature-flags` (§4) | Not modelled | **Open** |
-| 16 | `/exports`, `/jobs/{id}` (§2.21) | Not modelled | **Open** |
-| 17 | `/webhook-subscriptions` (outbound) (§1) | Not modelled | **Open** |
-| 18 | `/bookings/{id}/documents:generate` (contract/voucher PDF) (§2.8) | Not modelled | **Open** |
-| 19 | `/quotations/{id}/pdf` (§2.7) | Not modelled | **Open** |
-| 20 | `/audit-log` global + `/{resource}/{id}/audit-log` alias (§4) | Only domain-specific `BookingEvent`, `PaymentEvent`; no generic audit log | **Open** |
-| 21 | `/system/integrations`, `:test` (§2.28) | Not modelled | **Open** |
-| 22 | `GuestPreference` (implied) | Dropped — can re-add later | **Open** |
+Section B is scope triage: each row is a feature whose API spec appears in `04-rest-api-surface.md` but whose backend either has no model, has a model declared but no service, or has been explicitly deferred. Decisions are KISS-biased — default toward DROP/DEFER unless the feature is load-bearing for MVP. Where a feature has an entity declared in `01-domain-model.md` and is operationally essential, KEEP+MODEL records the commitment without expanding the entity spec inline (the model entry stands).
 
-**Group decision needed:** trim API spec to what the data model supports for MVP, or commit to scope-expanding the backend.
+### #10 — Email templates + logs + code-auth log. — **Resolved (split)**
+
+- **API surface:** `/email-templates` CRUD + `:preview` + `:test-send`, `/email-logs` + `:resend`, `/email-logs/bulk-resend`, `/code-auth-logs` (§2.19).
+- **Backend:** `01-domain-model.md` §8 declares `EmailTemplate`, `EmailLog`, `CodeAuthLog`. `09-departures.md` notes the underlying comms app is "future scope".
+- **Decision (split):** Transactional comms (booking confirmation, deposit request, owner-approval request, magic-link dispatch) are MVP-load-bearing — the booking workflow does not function without them. The **template-editing CMS is not.**
+  1. **KEEP+MODEL** the read/log surface: `GET /email-templates`, `GET /email-templates/{id}` (read-only, seeded), `GET /email-logs`, `GET /email-logs/{id}`, `GET /code-auth-logs`. Logs are forensic-essential.
+  2. **DROP / DEFER (v1.1):** `POST/PATCH/DELETE /email-templates`, `:preview`, `:test-send`, `:resend`, `/email-logs/bulk-resend`. Templates ship as code/seed data in v1.
+  3. Send pipeline is implementation, not surface: emails are dispatched by service-layer calls inside booking/quotation/payment workflows. No public "send email" endpoint.
+- **Follow-ups:** `04-rest-api-surface.md` §2.19 trimmed; bulk-resend row removed from §2.22; §3 action-inventory line replaced with deferred-note. ✓ Comms app spec is a v1.1 ticket — captures editable templates, ad-hoc resend, and a test-send harness.
+
+### #11 — Channel-manager integrations (Airbnb / Booking.com / VRBO). — **Resolved (DROP)**
+
+- **API surface:** `/properties/{id}/channel-mappings` (§2.2), `/webhooks/airbnb|booking|vrbo`, `/channel-sync/*` (§2.25).
+- **Backend:** `ChannelSyncJob` declared in `01-domain-model.md` §9 as a stub; `PropertyChannelMapping` declared in §1 as a placeholder. No service layer, no inbound webhook plumbing.
+- **Decision:** **DROP** all OTA endpoints. Channel-manager integration is a discrete v1.x project with its own product scoping, contract negotiation, and sync engine — folding it into MVP would dwarf every other workstream. Domain-model stubs remain as forward-looking entities; no endpoints in v1.
+- **Follow-ups:** `04-rest-api-surface.md` §2.2 importers block trimmed (channel-mappings rows removed, Zoho importer kept); §2.25 replaced with deferred-note; §3 action-inventory updated; §1 webhooks note rewritten. ✓ v1.x ticket: scope OTA channel-manager integration end-to-end.
+
+### #12 — iCal feeds (per-property + per-owner). — **Resolved (DEFER)**
+
+- **API surface:** `/feeds/properties/{id}/ical`, `/feeds/contacts/{id}/ical`, `:rotate-token` (§2.24).
+- **Backend:** Not modelled. No `FeedToken` entity, no rotation surface, no signed-URL infra.
+- **Decision:** **DEFER to v1.1.** Single feature with modest scope, but no MVP ops dependency and OTA-style calendar subscription is most useful when channel-manager integration (issue #11) lands. Revisit alongside that effort.
+- **Follow-ups:** `04-rest-api-surface.md` §2.24 replaced with deferred-note. ✓ v1.1 ticket: iCal export feeds with signed-URL token rotation.
+
+### #13 — Stored payment methods / wallet. — **Resolved (DROP)**
+
+- **API surface:** `/payment-methods`, `POST /guests/{id}/payment-methods`, `DELETE …/{pm_id}` (§2.14).
+- **Backend:** Already explicitly deferred per backend note ("`BookingPaymentMethod` if multi-method ever lands"); the new `PaymentInstrument` model is a per-charge audit record, not a reusable wallet.
+- **Decision:** **DROP.** v1 captures cards per-transaction via the gateway's hosted fields. Multi-method wallet is a discrete future feature. Domain model `PaymentInstrument` note updated to reflect single-use-audit semantics.
+- **Follow-ups:** `04-rest-api-surface.md` §2.14 payment-methods rows removed; `01-domain-model.md` `PaymentInstrument` paragraph clarified to reflect per-charge audit semantics in v1. ✓
+
+### #14 — In-app notifications + per-user preferences. — **Resolved (KEEP+MODEL)**
+
+- **API surface:** `/notifications`, `:mark-read`, `:mark-all-read`, `/notification-preferences` (§4).
+- **Backend:** `01-domain-model.md` §11 declares both `Notification` and `NotificationPreference`. Backend docs lacked a service-layer notes section but the entities exist.
+- **Decision:** **KEEP+MODEL.** In-app notifications are operationally essential for the booking workflow — owners need a non-email signal that they have a pending booking to approve, ops staff need deposit-paid/balance-paid alerts, and the preference table is the unsubscribe surface. The entities are already declared; backend service layer is a fill-in, not a new model.
+- **Follow-ups:** API surface stands as specified. Backend gap: a `notifications` app spec is needed — capture event-to-notification mapping (which booking transitions fan out to which recipients) in a follow-up. Not blocking MVP API contract.
+
+### #15 — Feature flags. — **Resolved (KEEP+MODEL, trimmed)**
+
+- **API surface:** `GET /feature-flags`, `GET /feature-flags/all`, `PATCH /feature-flags/{key}` (§4).
+- **Backend:** `01-domain-model.md` §11 declares `FeatureFlag` (`key`, `description`, `is_enabled_default`, `enabled_for_users` M2M, `rollout_percent`).
+- **Decision:** **KEEP+MODEL** but trim. Internal infra, not customer-facing — minimal surface. Collapse `/feature-flags/all` into a `?all=true` query param on the main list endpoint.
+- **Follow-ups:** `04-rest-api-surface.md` §4 feature-flags trimmed to two endpoints. ✓
+
+### #16 — Exports + generic async job surface. — **Resolved (KEEP+MODEL)**
+
+- **API surface:** `/exports` CRUD, `/jobs/{id}`, `/jobs/{id}:cancel` (§2.21).
+- **Backend:** `01-domain-model.md` §10 declares `Export`, `ReportRun`, `ScheduledReport`. Reports are MVP (owner statements, commissions, tax, refunds, enquiry-funnel — already in §2.20).
+- **Decision:** **KEEP+MODEL.** Reports are operational essentials; exporting them as CSV/PDF/XLSX is the obvious next step and the generic `/jobs/{id}` polling surface is also reused by document generation (issue #18) and bulk imports.
+- **Follow-ups:** API surface stands. Backend gap: `Export` and `ReportRun` need a thin service-layer spec (where files land — S3 key convention, expiry) — capture in a follow-up backend doc.
+
+### #17 — Outbound webhook subscriptions. — **Resolved (DROP)**
+
+- **API surface:** `/webhook-subscriptions` resource referenced in §1 webhooks convention.
+- **Backend:** Not modelled.
+- **Decision:** **DROP.** Outbound webhook fan-out (notifying third parties of our state changes) is future scope. Internal integrations (Zoho push, WordPress fan-out from issue #1) run via Celery jobs configured through `/system/integrations`, not via a customer-facing subscription model.
+- **Follow-ups:** `04-rest-api-surface.md` §1 webhook convention rewritten to remove the `/webhook-subscriptions` reference. ✓
+
+### #18 — Booking document generation (contract / voucher PDF). — **Resolved (KEEP+MODEL)**
+
+- **API surface:** `GET /bookings/{id}/documents`, `POST :generate`, `GET /bookings/{id}/documents/{doc_id}` (§2.8).
+- **Backend:** `01-domain-model.md` §4 declares `BookingDocument` (`kind ∈ {confirmation, contract, voucher, invoice, receipt}`, `file_key`, `generated_at/by`, `sent_to_guest_at`).
+- **Decision:** **KEEP+MODEL.** Operationally essential — confirmation PDFs and contracts are part of the booking flow, not optional. The entity is already declared and small. Generation is async via the generic `/jobs/{id}` surface (issue #16).
+- **Follow-ups:** API surface stands. Backend gap: PDF rendering pipeline (template + WeasyPrint or similar) is implementation — flag in backend doc as a v1 deliverable, not a model gap.
+
+### #19 — Quotation PDF. — **Resolved (KEEP+MODEL)**
+
+- **API surface:** `/quotations/{id}/pdf` (§2.7).
+- **Backend:** Not separately modelled; rendered on-demand from `Quotation` + `QuotationLine`.
+- **Decision:** **KEEP+MODEL.** Operationally essential — quotations are sent to guests as PDFs; the legacy app does this. No new model required — the PDF is a render of existing data. If we want to cache rendered output we can borrow `BookingDocument` shape under a `QuotationDocument` later, but v1 renders synchronously on request.
+- **Follow-ups:** API surface stands. Implementation note: same PDF pipeline as #18.
+
+### #20 — Audit log (global + per-resource alias). — **Resolved (KEEP+MODEL)**
+
+- **API surface:** `GET /audit-log`, `GET /audit-log/{id}`, `GET /{resource}/{id}/audit-log` (§4).
+- **Backend:** `01-domain-model.md` §11 declares `AuditLog` as "the single source of truth for who-changed-what" with `actor`, `entity_kind`, `entity_id`, `before/after`, `correlation_id`. Domain-specific event tables (`BookingEvent`, `PaymentEvent`) coexist as workflow-specific audit streams.
+- **Decision:** **KEEP+MODEL.** The entity is declared and is referenced repeatedly by resolved issues (#4 — note mutation audit, #7 — date-change audit). Compliance and ops need a queryable cross-entity audit. `BookingEvent` / `PaymentEvent` stay as workflow-state audit (status transitions, money movement); `AuditLog` is the generic record for everything else (field edits, archive/restore, note CRUD, role changes).
+- **Follow-ups:** API surface stands. Backend gap: service-layer convention for emitting `AuditLog` rows (a `record_change(entity, before, after, actor, action)` helper) — capture in a backend follow-up.
+
+### #21 — System integrations admin. — **Resolved (KEEP+MODEL, minimal)**
+
+- **API surface:** `GET /system/integrations`, `GET /system/integrations/{key}`, `POST :test` (§2.28).
+- **Backend:** Not modelled; config lives in `SystemDefaults` keys.
+- **Decision:** **KEEP+MODEL** minimally. Required by the issue #1 resolution (WordPress fan-out configured via `system/integrations`) and the Zoho OAuth flow. No new top-level `Integration` entity for MVP — config-row identity is the `key`, backed by `SystemDefaults` rows + the existing `ZohoSyncJob` / `SyncRecord` state. Promote to a real entity if config-row identity becomes load-bearing post-v1.
+- **Follow-ups:** `04-rest-api-surface.md` §2.28 expanded with intent note. ✓
+
+### #22 — `GuestPreference` model. — **Resolved (closed)**
+
+- **API surface:** Not exposed (no `/guests/{id}/preferences` endpoint in §2.17).
+- **Backend:** Explicitly dropped per `09-departures.md`.
+- **Decision:** **Closed.** Nothing to do — backend dropped it and the API never exposed it. The brief flagged it for completeness; verification confirms no action required. Re-add as a sub-resource of `/guests/{id}` if a real requirement appears post-v1.
+- **Follow-ups:** None.
 
 ---
 
 ## C. Workflow & semantic mismatches
 
-### #23 — Property status values disagree. — **Open**
-- API: `:publish` = "draft → live", `:unpublish` = "live → draft". Backend: `DRAFT | ACTIVE | OFFLINE | ARCHIVED`. No `LIVE`. Pick one name.
+### #23 — Property status values disagree. — **Resolved**
+- **API original:** `POST /properties/{id}:publish` ("draft → live"), `:unpublish` ("live → draft").
+- **Backend original:** `Property.status ∈ {DRAFT, ACTIVE, OFFLINE, ARCHIVED}` (4 values; product-design said 3, backend doc had 4 — the cross-cut had drifted).
+- **Investigation:** Legacy `VillaStatus` lookup table (live DB dump) seeds exactly 4 rows: `live_online`, `live_offline`, `pending`, `archive`. `live_offline` is the only one with no obvious 3-value mapping — but its operational meaning ("published but not currently bookable") is already covered by `PropertySettings.availability_default = UNAVAILABLE`, which is a separate axis (publication vs bookability).
+- **Decision:** Standardise on `ACTIVE` (Django convention; "live" is web-jargon). Collapse `Property.status` to **three** values: `DRAFT` / `ACTIVE` / `ARCHIVED`. Drop `OFFLINE`. API verbs become `:activate` (any → `active`) and `:archive` (any → `archived`); `:restore` un-archives back to `draft`. `:publish` / `:unpublish` removed. Legacy migration: `live_online`→`ACTIVE`, `pending`→`DRAFT`, `archive`→`ARCHIVED`, `live_offline`→`ARCHIVED` (with a note in the migration that the operator can re-`:activate` if the property is being temporarily withheld via settings instead).
+- **Follow-ups:**
+  - `02-properties.md` updated: `Property.status` enum trimmed to three values with explanatory note; legacy-mapping bullet expanded. ✓
+  - `product-design/01-domain-model.md` §1 updated: status note expanded to call out the dropped `OFFLINE` value, the legacy `live_offline` mapping, and the new API verbs. ✓
+  - `product-design/04-rest-api-surface.md` §2.2 and §3 action-inventory updated: `:publish` / `:unpublish` replaced with `:activate` / `:archive`. ✓
+  - `09-departures.md` `VillaStatus` row rewritten with the 4→3 mapping and rationale. ✓
 
-### #24 — Payment "tracks" terminology: `:waive` and `:mark-paid` have no backend transitions. — **Open**
-- API: `/bookings/{id}/deposit`, `/balance`, `/security` parallel resources, with `:waive` and `:mark-paid` actions. Backend: `Payment.purpose = DEPOSIT | BALANCE | SECURITY_DEPOSIT | REFUND | ADJUSTMENT`. No `WAIVED` status; `:mark-paid` implies a manual provider path not fleshed out beyond `provider=MANUAL_BANK_TRANSFER`.
+### #24 — Payment `:waive` and `:mark-paid` have no backend transitions. — **Resolved**
+- **API:** `POST /bookings/{id}/deposit:waive`, `/balance:waive`, and `:mark-paid` on deposit / balance / security tracks (§2.10–2.12).
+- **Backend original:** `Payment.status` had no `WAIVED` value and no `mark_paid()` transition; `:mark-paid` was a hand-wave that "implied" `provider=MANUAL_BANK_TRANSFER` without spelling out the lifecycle.
+- **Decision:**
+  1. **Add `WAIVED` to `Payment.status`** as a terminal state (applies to `DEPOSIT` and `BALANCE` purposes only; `SECURITY_DEPOSIT` lives on its own workflow model — see issue #25). `:waive` is an operator action gated by `payments.payment.waive` permission; transition is `PENDING|PROCESSING → WAIVED`. Side effect: fire `payment_waived(payment)` signal which advances the booking exactly as `payment_succeeded` would (the booking workflow doesn't care whether the money actually moved; only that the receivable is resolved).
+  2. **`:mark-paid` is a manual-payment shortcut**, not a generic "force to SUCCEEDED" — it writes the manual receipt onto the existing scheduled `Payment` row. Transition is `PENDING → SUCCEEDED` with `provider=MANUAL_BANK_TRANSFER` (or `OTHER` for cash / cheque), `settled_at=paid_at`, `provider_reference` from input. Fires the normal `payment_succeeded` signal so reservations advances `record_deposit` / `record_balance` consistently.
+  3. **PaymentEvent** records both transitions with `kind ∈ {WAIVED, MARK_PAID}`.
+  4. For the **security-deposit** track, `:mark-paid` does **not** act on a `Payment` row — it advances the parent `SecurityDeposit` workflow (issue #25) along the BT-refundable path. The security track has no `:waive` action (a property either has a SD policy or it doesn't; if not, no SD row is ever created).
+- **Follow-ups:**
+  - `07-payments.md` updated: added `WAIVED` to `Payment.status`; added the "Operator-applied transitions" subsection with the transition table; added `payment_waived` to the signal contract; new-vs-legacy entry. ✓
+  - `product-design/01-domain-model.md` §7 `PaymentEvent` status enum extended with `waived` and explanatory note. ✓
+  - `product-design/04-rest-api-surface.md` §2.10–2.12 already correct — no edit needed.
 
-### #25 — Security deposit pre-auth hold lifecycle. — **Open**
-- API: `:hold`, `:release`, `:claim` on a security-deposit payment. Backend: `Payment.status` doesn't distinguish AUTHORIZED / HELD / CAPTURED — only PENDING / PROCESSING / SUCCEEDED. Pre-auth flow needs explicit states.
+### #25 — Security-deposit pre-auth hold lifecycle. — **Resolved**
+- **API:** `POST /bookings/{id}/security/payments/{id}:hold`, `:release`, `:claim`, plus `:mark-paid` on the parent track.
+- **Backend original:** `Payment.status` only had `PENDING` / `PROCESSING` / `SUCCEEDED` — no `AUTHORIZED` / `HELD` / `CAPTURED`. Pre-auth flow had no representation. `01-domain-model.md` §7 already declared a `SecurityDepositTrack` model with the right enum shape; the backend `07-payments.md` was the lagging side.
+- **Decision:** Mirror the `Refund` pattern (issue #5). Promote security-deposit to a **first-class workflow model `SecurityDeposit`** with its own state machine; the gateway-transaction audit lives on spawned `Payment(purpose=SECURITY_DEPOSIT)` rows linked via `meta['security_deposit_id']`.
+  1. Single model with `kind` (`PRE_AUTH_HOLD` / `BT_REFUNDABLE`) discriminating the two operational paths. `kind` is immutable after creation.
+  2. **Pre-auth path** states: `AWAITING_DETAILS` → `PRE_AUTHED` → (`RELEASED` | `CAPTURED` | `EXPIRED`); `FAILED` from any non-terminal. `:hold`, `:release`, `:claim` are the operator actions; `EXPIRED` is system-driven via Celery beat when `hold_expires_at` passes.
+  3. **BT refundable path** states: `AWAITING_BT` → `HELD` → (`REFUNDED` | `PARTIALLY_REFUNDED`); `FAILED` from `AWAITING_BT` on timeout. `:mark-paid` records the manual BT receipt (creates a `Payment(provider=MANUAL_BANK_TRANSFER, status=SUCCEEDED, purpose=SECURITY_DEPOSIT)`); release at post-departure delegates to the `Refund` workflow (`purpose_track=SECURITY_DEPOSIT`) so separation-of-duties applies uniformly.
+  4. `PaymentEvent` extended to a **3-FK polymorphic** audit (one of `payment` / `refund` / `security_deposit` set per row).
+  5. The pre-auth `:claim` does **not** route through `Refund` (it captures against an existing authorization, not a money-return movement). BT path partial refunds **do** route through `Refund` (because they involve returning money to the guest).
+  6. `01-domain-model.md` §7 renamed `SecurityDepositTrack` → `SecurityDeposit` to match the new workflow shape; dropped the synthetic `not_applicable` status (when no SD is required, no row exists).
+  7. `Payment.UniqueConstraint(active per purpose)` is relaxed for `SECURITY_DEPOSIT` (one workflow can spawn multiple `Payment` rows over its life — pre-auth + capture, or manual-BT + refund). One active `SecurityDeposit` per `Booking` is enforced on the workflow model.
+- **Follow-ups:**
+  - `07-payments.md` updated: new `SecurityDeposit` model section with two state machine tables; `SecurityDepositService` skeleton; `PaymentEvent` extended to 3-FK polymorphic; signal contract extended (`security_deposit_released`, `security_deposit_expired`); unique-constraint scope tightened to `DEPOSIT`/`BALANCE` only; new-vs-legacy entry. ✓
+  - `product-design/01-domain-model.md` §7 updated: `SecurityDepositTrack` renamed to `SecurityDeposit`; field list and status enums aligned to backend; transition summary added; relationship summary cardinality changed from `1..1` to `0..1`. ✓
+  - `product-design/04-rest-api-surface.md` §2.12 already correct — no edit needed (action verbs were already `:hold` / `:release` / `:claim`).
+  - **Cross-cutting:** SecurityDeposit now mirrors Refund — both are workflow models with state machines; `Payment` is the gateway-transaction ledger underneath. Same pattern as issue #5.
 
-### #26 — `assigned_to` filter has no backing field. — **Open**
-- API: `?assigned_to=` filter on `/bookings`, `/enquiries`, plus `:assign` action. Backend: `Booking.agent` and `Enquiry.agent` exist (FK to `Contact`), but no `assigned_to` FK to `User`. Rename the filter or add an internal assignee FK.
+### #26 — `assigned_to` filter has no backing field. — **Resolved**
+- **API:** `?assigned_to=` filter on `GET /enquiries` and `GET /bookings`; `:assign` action on both.
+- **Backend original:** `Booking.agent` and `Enquiry.agent` exist (FK to `Contact`), but no FK to `User` for an internal staff owner. The two concepts had silently merged.
+- **Decision:** Add `assigned_to` FK to `User` on both `Enquiry` and `Booking` (nullable, `SET_NULL`, `related_name="assigned_{enquiries,bookings}"`). `agent` and `assigned_to` are kept as **two distinct fields** representing two distinct concepts:
+  - `agent` — **external** intermediary (Contact FK): a travel agent or booking representative acting *on behalf of the guest*. Already populated by the legacy data; represents the relationship the platform brokers.
+  - `assigned_to` — **internal** staff owner (User FK): which Canary-side staff member owns the work. Backs the API filter and the `:assign` action.
+  Renaming the filter to `?agent=` (collapsing the two) would lose the distinction; legacy data already has both concepts (the agent contact is real, and operators have long wanted an internal-owner field — `UserMaster.AssignedToBookingsView` exists but is unused in legacy code, confirming the gap).
+- **Follow-ups:**
+  - `05-reservations.md` updated: `Enquiry.assigned_to` and `Booking.assigned_to` field bullets added; `agent` field comments clarified. ✓
+  - `product-design/01-domain-model.md` §3 (Enquiry) and §4 (Booking) field lists updated with both fields and the internal-vs-external note. Relationship summary extended. ✓
+  - `product-design/04-rest-api-surface.md` already correct — `?assigned_to=` filter and `:assign` action need no change.
 
-### #27 — Enquiry has no activity timeline. — **Open**
-- API: `GET /enquiries/{id}/activity`. Backend: `BookingEvent` exists; no `EnquiryEvent`. Status changes on Enquiry aren't audited.
+### #27 — Enquiry has no activity timeline. — **Resolved**
+- **API:** `GET /enquiries/{id}/activity`.
+- **Backend original:** `BookingEvent` exists; no `EnquiryEvent`. Issue #20 just established that `AuditLog` is for everything; domain-specific event tables exist for hot timelines (Booking, Payment) where structured queries matter.
+- **Decision:** Add `EnquiryEvent` mirroring `BookingEvent`. Same shape: `(enquiry, from_status, to_status, kind, actor, source, reason, meta)`. `kind` enum gives the activity stream queryable categories (`STATUS_CHANGE`, `ASSIGNED`, `UNASSIGNED`, `CONTACTED`, `QUOTE_SENT`, `CONVERTED`, `LOST`, `REOPENED`, `NOTE_ADDED`). `NOTE_ADDED` is the only event-kind written outside a transition method (emitted by an `EnquiryNote.post_save` signal). The cross-cutting `AuditLog` continues to record field-level edits; `EnquiryEvent` is the workflow-state + assignment timeline.
+- **Follow-ups:**
+  - `05-reservations.md` updated: `EnquiryEvent` model section added under Enquiry; file layout updated to include it in `enquiry.py`. ✓
+  - `product-design/01-domain-model.md` §3 relationship summary extended with `Enquiry (1) ── (many) EnquiryEvent`. ✓
+  - `product-design/04-rest-api-surface.md` already correct — endpoint exists.
+  - Consistent with issue #20: domain-specific event tables (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`) for hot timelines; generic `AuditLog` for everything else.
 
-### #28 — Property descriptions: API sub-resource vs backend flat columns. — **Open**
-- API: `/properties/{id}/descriptions/{section}` where `section ∈ {overview, house-rules, villa-info, further-info}`. Backend: `Property.overview`, `Property.house_rules`, `Property.feature_description`, `Property.room_description`, `Property.notes` — flat columns, section names don't 1:1 match. Decide: serializer mapping or normalise to `PropertyDescription(section, body)` child table.
+### #28 — Property descriptions API vs backend flat columns. — **Resolved**
+- **API:** `/properties/{id}/descriptions/{section}` with `section ∈ {overview, house-rules, villa-info, further-info}`.
+- **Backend original:** `Property` carried flat columns `overview`, `house_rules`, `feature_description`, `room_description`, `notes` — five columns, names didn't 1:1 match the API's four sections. `01-domain-model.md` §1 already declared a `PropertyDescription` sub-resource model; the backend `02-properties.md` was the lagging side.
+- **Decision:** Adopt the normalised `PropertyDescription(property, section, body)` child table. Drop the flat columns from `Property`. Section enum is fixed (`OVERVIEW`, `HOUSE_RULES`, `VILLA_INFO`, `FURTHER_INFO`); kebab-cased on the API path. `VILLA_INFO` absorbs the two legacy columns (`feature_description` + `room_description` concatenated at migration — the two-column split was a UX artefact, not a semantic distinction). Constraint: `UniqueConstraint(property, section)`. Sections are sparse: a property may have zero, one, or all four rows. API gains a `DELETE /properties/{id}/descriptions/{section}` to remove a row.
+- **Follow-ups:**
+  - `02-properties.md` updated: `Property` model field list trimmed of the five flat columns; new `Descriptions` section with the `PropertyDescription` model and migration mapping; file layout updated with `descriptions.py`; dropped-section bullet added. ✓
+  - `product-design/01-domain-model.md` §1 `PropertyDescription` sub-resource bullet expanded with the no-flat-column note and pointer to this issue. ✓
+  - `product-design/04-rest-api-surface.md` §2.2 Descriptions table re-written with explanatory prose and `DELETE` row added. ✓
+  - `09-departures.md` new mapping row added for the flat-column-to-`PropertyDescription` migration. ✓
 
-### #29 — Collections membership PUT replace loses through-fields. — **Open**
-- API: `PUT /properties/{id}/collections` replaces the set. Backend: `CollectionMembership` is an explicit through model with `sort_order`, `featured_until`, `description`. Naive PUT will lose those fields; need a body shape that preserves them or a partial-update verb.
+### #29 — Collections membership PUT loses through-fields. — **Resolved**
+- **API:** `PUT /properties/{id}/collections` (and the mirror `PUT /collections/{slug}/properties`).
+- **Backend:** `CollectionMembership` is an explicit through model with `sort_order`, `featured_until`, `description`. A naive `PUT [<id>, ...]` would silently zero those fields on every replace.
+- **Decision:** Keep `PUT` (full-set replace is the convenient verb for "drag-and-drop reorder + edit per-row attrs in one call") but change the body shape to an array of **membership objects**, not ids: `[{collection: <slug-or-id>, sort_order, featured_until, description}, ...]`. Add singular non-destructive paths for fine-grained edits: `POST /properties/{id}/collections` (attach one), `PATCH /properties/{id}/collections/{collection}` (edit through-fields), `DELETE /properties/{id}/collections/{collection}` (detach one). Mirror semantics on `/collections/{slug}/properties`.
+- **Follow-ups:**
+  - `02-properties.md` updated: `CollectionMembership` constraint section gets a note pointing at the API body shape. ✓
+  - `product-design/04-rest-api-surface.md` §2.2 Collections block expanded with prose, body shape, and the new singular `POST` / `PATCH` / `DELETE` rows; §2.3 mirror endpoint clarified. ✓
+  - `product-design/01-domain-model.md` already correct (the through model is described accurately in §1 already).
 
 ---
 
@@ -202,3 +450,29 @@ Status legend:
 | 2026-05-12 | #1 | Drop `/sites` from API. Keep `site_source` enum. WP fan-out via integrations. | Confirmed against `live-db-24-apr.sql` — multi-tenancy never deployed; `VillaSite` was WP publishing-target registry. |
 | 2026-05-12 | #2 | Adopt three-level `RatePlan → RateCard → RateRule`. Drop `SeasonDateRange` and `OccupancyBand` as first-class entities. Move `Discount` FK to `RateCard`. Rename API: keep `/seasons` + `/rate-cards`, delete `/date-ranges` + `/occupancy-bands`, add `/rate-cards/{id}/rules`. | Production data showed `VillaSeasonDates` (1.04/season) and `VillaOccupencyPrice` (3% of rates) were vestigial. Three-level honors operator mental model from workflows §13. |
 | 2026-05-12 | #3 | Add `pricing.Extra` (property-scoped catalogue: cleaning/pet/heating/linen/extra-bed/etc., with mandatory-vs-opt-in flag and date+party windows). Retire `pricing.Surcharge`. Tax & commission read from `PropertyFinance` resolvers. Closes follow-up #31. | Legacy never tracked cleaning fees as structured data — `IsExTra=1` rate rows were capacity uplifts, not fees. Surcharge model conflated config (tax/commission) with charges. |
+| 2026-05-12 | #4 | Adopt `BookingNote` and `EnquiryNote` collections (per-domain, with `kind` / `author` / `visibility` / timestamps). Drop all flat note `TextField` columns from `Booking`, `Enquiry`, `Quotation`. Preserve the guest's original web-form message as `Enquiry.inbound_message` (provenance, not a note). Keep API as specified. | Legacy shape was overwrite-only textareas with no authorship; API already commits to a collection; per-row audit aligns with the project's "improvements over original" goal. The three-textarea legacy UI survives as three `?kind=`-filtered tabs over one collection. |
+| 2026-05-12 | #5 | Add dedicated `payments.Refund` workflow model with 7-state machine (`PENDING` → `APPROVED` → `EXECUTING` → `SUCCEEDED`/`FAILED`, plus terminal `REJECTED`/`CANCELLED`). Refund is the workflow object; `:execute` spawns `Payment(purpose=REFUND)` row for the gateway transaction. Separation of duties: `approved_by != requested_by`. Partial refunds = multiple Refund rows, not a status. `PaymentEvent` extended to polymorphic Payment/Refund audit. Active-payment unique constraint relaxed for `REFUND`/`ADJUSTMENT`. API §2.13 already aligned. | Legacy DB has zero refund tables/columns and no Blazor refund pages — refunds were issued manually outside the app, so no legacy constraint. Product-side domain model already declared a `Refund` entity; backend doc was the lagging side. Collapsing approval into `Payment.status` would conflate workflow state with money-movement state on one row and prevent enforcing requester ≠ approver. |
+| 2026-05-12 | #6 | Drop `GET /checkouts/{id}` and `GET /checkouts` from the API spec. Add `purpose` filter to `GET /payments`. No new "settlement" model. | `VillaCheckoutDetail` was not a hospitality check-in/out record nor a gateway-payout reconciliation table — its columns and the sibling `CheckoutPaymentType` enum (`INITIAL_PAYMENT_DUE` / `RENTAL_BALANCE_PAYMENT` / `SECURITY_DEPOSIT`) show it was the 3-tier scheduled-payment ledger, already 1:1 covered by `payments.Payment(purpose=…)`. `/checkouts` was a legacy-name relic duplicating `/payments?purpose=…`. The live DB dump contains no `VillaCheckoutDetail` rows — only an unrelated stored procedure of similar name survives. Owner-side payouts and gateway-fee reconciliation are out of MVP scope. |
+| 2026-05-12 | #7 | Keep all 11 Booking colon-verbs. Rename terminal state `COMPLETED` → `CHECKED_OUT` (and method `complete()` → `check_out()`); single backend method serves both the manual `:check-out` action and the auto-completion beat task. Add `Booking.modify_dates()` and `Booking.modify_guests()` as non-state-mutating audited methods that re-run the pricing engine and regenerate `pricing_snapshot`; both refused from `CHECKED_IN` and terminal states. Add `is_archived` + `archived_at` flag on `Booking` (orthogonal to `status`, distinct from soft-delete) backing `:archive` / `:restore`; drop `archived` from the status enum. Add idempotent `send_confirmation_email()` for `:resend-confirmation` (matches legacy "Resend Booking Summary" button). | Legacy has zero date-change audit (no `VillaBookingDateHistory` / `BookingChange*` table, `OnFromDateChange` overwrites in place) so the new audit + snapshot-regeneration behaviour is new design. Legacy lacks a manual check-out UI (date-driven only) — the new `:check-out` is an operator override that converges on the same backend method as the beat task. Legacy `VillaArchiveBooking` and `BookingInfo.razor`'s "Resend Booking Summary" button confirm archive and resend workflows exist. `BookingHold` reused for the re-availability check on date changes — no new model needed. |
+| 2026-05-12 | #8 | Drop the `Tag` resource entirely. No `Tag` model, no `PropertyTag` junction. Remove `/tags`, `/properties/{id}/tags`, `/public/tags`. The legacy "Tags" admin page is a `VillaFeatures` CRUD view segmented by a `ServiceType` enum (`ContactService` / `PropertyFeature`) — there is no `Tags` table in the legacy schema. The new `Feature.service_type` TextChoices covers the discriminator with finer granularity, so `/features?service_type=…` reproduces the legacy admin surface. | Confirmed across `live-db-24-apr.sql`, `VillaDb.sql`, `DbScript.sql`: zero `Tags`/`VillaTags` CREATE TABLE matches and no FKs to such a table. `Tags.razor` (mounted at `/tags`) calls `ResService.ModifyFeatures` against `VillaFeatures` rows. The `Tag` stub in `01-domain-model.md` was a mis-citation ("Original `Tags`" pointed to a non-existent table). |
+| 2026-05-12 | #9 | Adopt fixed `User.role` `StaffRole` TextChoices (`ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER`) backed by a Django `auth.Group` per value. No editable `Role` model. Trim API: drop `POST/PATCH/DELETE /roles`, `GET /roles/{id}`, and `GET /permissions`; keep `GET /roles` as a read-only enum listing for FE dropdowns. Reuse `GET /auth/permissions` for per-caller capability introspection. Legacy `UserMaster.IsSystemAdmin=1` → `ADMIN`; `0` → `RESERVATIONS` at migration. Distinct from `accounts.ContactRole` (the contact-to-property role; that's the real successor to legacy `VillaRoles` and untouched by this issue). | Legacy `UserMaster` has no staff-role concept beyond `IsSystemAdmin` bool; `.NET` code uses a single `IsAdmin` flag. Legacy `VillaRoles` (5 static rows: Owner / Agent / Villa Admin / Villa Manager / Management Co) is FK'd from `VillaContactMap`, not `UserMaster` — it's a *contact* role, already handled by `accounts.ContactRole`. Zero production demand for custom staff roles. Django Groups give us the escape hatch (swap enum for FK to wrap existing Groups if needed). |
+| 2026-05-12 | #10 | Split. KEEP+MODEL the read/log surface (`GET /email-templates`, `GET /email-logs`, `GET /code-auth-logs`) — forensic essentials. DROP/DEFER template editing, `:preview`, `:test-send`, `:resend`, `/email-logs/bulk-resend` to v1.1. Templates ship as seed data; sends are service-layer calls. | Transactional comms are MVP-load-bearing; the editing CMS is not. Entities already declared in `01-domain-model.md` §8. Follow-up: comms app spec for v1.1. |
+| 2026-05-12 | #11 | DROP. Channel-manager integration (Airbnb / Booking.com / VRBO inbound + outbound) is a discrete v1.x project. Remove `/properties/{id}/channel-mappings*`, OTA inbound webhooks, and the entire `/channel-sync/*` family. Keep `PropertyChannelMapping` / `ChannelSyncJob` as forward-looking entity stubs. | Backend has no service layer; folding into MVP dwarfs every other workstream. |
+| 2026-05-12 | #12 | DEFER to v1.1. Remove `/feeds/properties/{id}/ical`, `/feeds/contacts/{id}/ical`, `:rotate-token`. No `FeedToken` entity, no MVP ops dependency. Revisit alongside channel-manager work. | Modest scope feature but not load-bearing day-1; better grouped with OTA calendar work. |
+| 2026-05-12 | #13 | DROP. Remove `/payment-methods` and `/guests/{id}/payment-methods` endpoints. v1 captures cards per-transaction via gateway hosted fields. `PaymentInstrument` becomes a per-charge audit record; multi-method wallet revisits post-v1. | Already explicitly deferred by backend; no MVP ops need for a stored wallet. |
+| 2026-05-12 | #14 | KEEP+MODEL. In-app notifications are operationally essential (owner approval signals, ops staff payment alerts). Entities `Notification` and `NotificationPreference` already declared in `01-domain-model.md` §11. API surface stands. | Backend service-layer spec (event-to-notification mapping) is a v1 follow-up, not a model gap. |
+| 2026-05-12 | #15 | KEEP+MODEL, trimmed. `FeatureFlag` entity already declared. Collapse `/feature-flags/all` into `?all=true` on the main endpoint; keep `GET /feature-flags` and admin `PATCH /feature-flags/{key}`. | Internal infra, not customer-facing — minimal surface. |
+| 2026-05-12 | #16 | KEEP+MODEL. Reports are MVP (owner statements, commissions, tax, refunds, enquiry-funnel). `Export`, `ReportRun`, `ScheduledReport` already declared in `01-domain-model.md` §10. Generic `/jobs/{id}` polling reused by exports and document generation (#18). | Backend follow-up: thin service-layer spec for S3 key convention and file expiry. |
+| 2026-05-12 | #17 | DROP. Outbound webhook subscriptions are future scope. Internal integrations (Zoho push, WordPress fan-out) run as Celery jobs configured through `/system/integrations`, not customer-facing subscriptions. | Rewrote §1 webhook convention to remove `/webhook-subscriptions` reference. |
+| 2026-05-12 | #18 | KEEP+MODEL. Confirmation/contract/voucher PDFs are MVP operational essentials. `BookingDocument` entity already declared in `01-domain-model.md` §4. API surface stands; async generation rides the `/jobs/{id}` surface from #16. | PDF rendering pipeline (WeasyPrint or similar) is implementation, not a model gap. |
+| 2026-05-12 | #19 | KEEP+MODEL. Quotation PDF is operationally essential — quotations are sent to guests. Single endpoint, synchronous render from `Quotation` + `QuotationLine`. No new model. | Shares PDF pipeline with #18. |
+| 2026-05-12 | #20 | KEEP+MODEL. `AuditLog` entity already declared in `01-domain-model.md` §11 and is referenced by issues #4 and #7. `BookingEvent` / `PaymentEvent` stay as workflow-state audit; `AuditLog` is the generic cross-entity record. API surface stands. | Backend follow-up: service-layer helper `record_change(entity, before, after, actor, action)`. |
+| 2026-05-12 | #21 | KEEP+MODEL minimal. Required by issue #1 resolution (WordPress fan-out config) and Zoho OAuth. Config-row identity is the `key`, backed by `SystemDefaults` + existing `ZohoSyncJob` / `SyncRecord` state — no new top-level `Integration` entity in v1. Promote post-v1 if needed. | §2.28 expanded with intent note. |
+| 2026-05-12 | #22 | Closed (no action). `GuestPreference` was dropped backend-side and never exposed in the API. Verified `/guests/{id}/preferences` does not appear in §2.17. Re-add as a sub-resource if a real requirement appears post-v1. | Listed for completeness only. |
+| 2026-05-12 | #23 | Standardise on `ACTIVE`. Drop `OFFLINE`. `Property.status ∈ {DRAFT, ACTIVE, ARCHIVED}` (3 values). API verbs become `:activate` / `:archive` / `:restore`; `:publish` / `:unpublish` removed. Legacy `live_offline` collapses to `ARCHIVED` — "temporarily not bookable" is `PropertySettings.availability_default = UNAVAILABLE` (separate axis). | Live DB `VillaStatus` seed: 4 rows (`live_online`, `live_offline`, `pending`, `archive`). Backend doc had drifted to 4 values; product-design said 3 — aligned to 3 with a `PropertySettings`-based path for the unbookable-but-published state. |
+| 2026-05-12 | #24 | Add `WAIVED` as a terminal `Payment.status` for `DEPOSIT` / `BALANCE`. `:waive` (`PENDING\|PROCESSING → WAIVED`) fires `payment_waived` signal which advances the booking like `payment_succeeded`. `:mark-paid` (`PENDING → SUCCEEDED`) is the manual-receipt shortcut — sets `provider=MANUAL_BANK_TRANSFER` (or `OTHER`), `settled_at=paid_at`. Security-deposit `:mark-paid` advances the parent `SecurityDeposit` workflow (issue #25), not a `Payment` row; security track has no `:waive`. | Both API actions now have first-class backend transitions with `PaymentEvent` audit. Workflow stays consistent: the booking advances whether the receivable was paid, waived, or manually credited. |
+| 2026-05-12 | #25 | Add `payments.SecurityDeposit` workflow model mirroring `Refund`. `kind ∈ {PRE_AUTH_HOLD, BT_REFUNDABLE}` discriminates the two operational paths. Pre-auth path: `AWAITING_DETAILS → PRE_AUTHED → {RELEASED, CAPTURED, EXPIRED}` with `:hold` / `:release` / `:claim`. BT path: `AWAITING_BT → HELD → {REFUNDED, PARTIALLY_REFUNDED}` with `:mark-paid` / `:release` (delegates to `Refund`) / `:claim` (delegates to `Refund` for the refund portion). `PaymentEvent` extended to 3-FK polymorphic (`payment` / `refund` / `security_deposit`). `Payment.UniqueConstraint(active per purpose)` narrowed to `DEPOSIT` / `BALANCE` only — SD spawns multiple `Payment` rows over its life. | Mirrors issue #5 (Refund) pattern: workflow row owns the state machine; `Payment` rows are the gateway-transaction ledger underneath. BT refunds route through `Refund` so separation-of-duties applies uniformly. `01-domain-model.md` had already declared a `SecurityDepositTrack` with the right enum; backend was the lagging side — same shape, renamed to `SecurityDeposit` for parallelism with `Refund`. |
+| 2026-05-12 | #26 | Add `assigned_to` FK to `User` on both `Enquiry` and `Booking` (nullable, SET_NULL). Keep `agent` FK to `Contact` as the **external** intermediary; `assigned_to` is the **internal** staff owner. Two distinct concepts that had silently merged. Backs the `?assigned_to=` filter and `:assign` action. | Renaming the filter to `?agent=` would lose the distinction between "travel agent acting for the guest" (external) and "Canary staff member who owns this work" (internal). Legacy data has both concepts. |
+| 2026-05-12 | #27 | Add `reservations.EnquiryEvent` mirroring `BookingEvent`. Same shape: `(enquiry, from_status, to_status, kind, actor, source, reason, meta)`. `kind` TextChoices (`STATUS_CHANGE`, `ASSIGNED`, `UNASSIGNED`, `CONTACTED`, `QUOTE_SENT`, `CONVERTED`, `LOST`, `REOPENED`, `NOTE_ADDED`). `NOTE_ADDED` emitted by `EnquiryNote.post_save` signal; all other kinds written by `Enquiry` transition methods inside `transaction.atomic`. | Consistent with issue #20: domain-specific event tables for hot timelines (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`); generic `AuditLog` for everything else. `/enquiries/{id}/activity` reads from `EnquiryEvent`. |
+| 2026-05-12 | #28 | Adopt the normalised `properties.PropertyDescription(property, section, body)` child table with `UniqueConstraint(property, section)`. Section TextChoices fixed at `OVERVIEW` / `HOUSE_RULES` / `VILLA_INFO` / `FURTHER_INFO`. Drop flat columns `Property.overview` / `house_rules` / `feature_description` / `room_description` / `notes`. Migration: `WebsiteDescription` → `OVERVIEW`; `HouseRules` → `HOUSE_RULES`; `FeatureDescription` + `RoomDescription` concatenated → `VILLA_INFO`; legacy "Further information" Blazor textarea → `FURTHER_INFO` if content survives. API gains `DELETE /properties/{id}/descriptions/{section}`. | `01-domain-model.md` already declared `PropertyDescription` as a sub-resource; backend `02-properties.md` was the lagging side. The legacy two-column split (`FeatureDescription` + `RoomDescription`) was a UX artefact, not a semantic distinction — collapsed to one `VILLA_INFO` row. |
+| 2026-05-12 | #29 | Keep `PUT /properties/{id}/collections` as the full-set replace verb, but change the body shape from `[<collection_id>, ...]` to `[{collection: <slug-or-id>, sort_order, featured_until, description}, ...]` — through-fields are carried explicitly so the replace doesn't silently zero them. Add singular non-destructive paths: `POST /properties/{id}/collections`, `PATCH /properties/{id}/collections/{collection}`, `DELETE /properties/{id}/collections/{collection}`. Mirror semantics on `/collections/{slug}/properties`. | `CollectionMembership` is an explicit through model with curation metadata; a bare-id PUT would silently lose `sort_order`, `featured_until`, and the per-membership `description` on every replace. Object-shape PUT preserves them; singular paths support fine-grained edits without round-tripping the whole set. |

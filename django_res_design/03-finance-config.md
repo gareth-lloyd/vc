@@ -11,7 +11,7 @@ Splits the legacy `VillaFinance` god object (commission + tax + bank account + p
 
 ## Anchor
 
-### `PropertyFinance(SoftDeleteModel)`
+### `PropertyFinance(AuditedModel)`
 - `property` — OneToOne Property CASCADE primary_key
 - `season` — FK `pricing.RatePlan` SET_NULL, null=True (legacy `SeasonId`; ties finance to a rate plan in rare cases)
 - `contact` — FK accounts.Contact PROTECT, null=True — financial recipient (owner who gets paid)
@@ -27,13 +27,13 @@ Reverse:
 
 ## Children
 
-### `Commission(SoftDeleteModel)`
+### `Commission(AuditedModel)`
 - `finance` — OneToOne PropertyFinance CASCADE primary_key
 - `calculation_type` — TextChoices (`PERCENT`, `FIXED`), null=True
 - `amount` — DecimalField(12, 2, null=True, blank=True)
 - `note` — TextField(blank=True)
 
-### `TaxPolicy(SoftDeleteModel)`
+### `TaxPolicy(AuditedModel)`
 - `finance` — OneToOne primary_key
 - `tax_number` — CharField(blank=True)
 - `is_exempt` — BooleanField(null=True)
@@ -41,7 +41,7 @@ Reverse:
 
 `null` `is_exempt` and `null` percentage → inherit from group / country default.
 
-### `BankAccount(SoftDeleteModel)`
+### `BankAccount(AuditedModel)`
 - `finance` — OneToOne primary_key
 - `account_name` — CharField(blank=True)
 - `account_number` — CharField(blank=True)
@@ -53,7 +53,7 @@ Reverse:
 
 Encrypt at rest if PII/secrets policy demands (app-layer Fernet wrap on save).
 
-### `PaymentSchedule(SoftDeleteModel)`
+### `PaymentSchedule(AuditedModel)`
 - `finance` — OneToOne primary_key
 - `deposit_required` — BooleanField(null=True)
 - `deposit_calculation_type` — TextChoices (`PERCENT`, `FIXED`), null=True
@@ -66,7 +66,7 @@ Encrypt at rest if PII/secrets policy demands (app-layer Fernet wrap on save).
 
 Used by `payments.PaymentScheduler` to derive due dates at booking-creation time.
 
-### `SecurityDepositPolicy(SoftDeleteModel)`
+### `SecurityDepositPolicy(AuditedModel)`
 - `finance` — OneToOne primary_key
 - `is_required` — BooleanField(null=True)
 - `amount_calculation_type` — TextChoices (`PERCENT`, `FIXED`), null=True
@@ -80,11 +80,11 @@ Used by `payments.PaymentScheduler` to derive due dates at booking-creation time
 
 Each child has a `Group*` sibling on PropertyGroup. Same fields, **non-nullable with sensible defaults** — the group is the floor.
 
-- `GroupCommission(SoftDeleteModel)` — `group` OneToOne PropertyGroup CASCADE primary_key + same fields, required
-- `GroupTaxPolicy` — same
-- `GroupBankAccount` — same (the group's default payout account, can be overridden per property)
-- `GroupPaymentSchedule` — same
-- `GroupSecurityDepositPolicy` — same
+- `GroupCommission(AuditedModel)` — `group` OneToOne PropertyGroup CASCADE primary_key + same fields, required
+- `GroupTaxPolicy(AuditedModel)` — same
+- `GroupBankAccount(AuditedModel)` — same (the group's default payout account, can be overridden per property)
+- `GroupPaymentSchedule(AuditedModel)` — same
+- `GroupSecurityDepositPolicy(AuditedModel)` — same
 
 ## Resolver
 
@@ -109,6 +109,15 @@ def effective(self, child_name: str, field: str):
 ```
 
 Pricing engine and booking flow call resolvers; nothing reads `getattr(finance.commission, 'amount')` directly.
+
+## Lifecycle and audit history
+
+Finance configuration is "current state", not a transactional log. Edits update each row in place.
+
+- **No soft delete.** Per `00-conventions.md`, `PropertyFinance` and its OneToOne children inherit from `AuditedModel` only. There is no `deleted_at` column, no hidden manager.
+- **Hard delete cascades** from `PropertyFinance` to its five children when a property's finance setup is dismantled. Group-level finance siblings CASCADE from `PropertyGroup`. In practice this only happens when the property itself is hard-deleted; ARCHIVED properties keep their finance rows intact so historical reporting still resolves them.
+- **Financial history reconstruction** is the responsibility of `Booking.pricing_snapshot`. That JSONField captures the commission %, tax %, surcharges, and Extras resolved at booking-creation time via the `PricingEngine`. Owner-statement and reconciliation reports read from snapshots, not by looking up "the commission rate as of date X" from a history table. The live `PropertyFinance.Commission.amount` is always "current state".
+- **"Who changed commission from 10% to 12%?"** is answered by `AuditLog` rows. The finance app calls `core.audit.track(Commission, fields=["calculation_type", "amount", "note"])` in `apps.ready()`; the same for `TaxPolicy`, `PaymentSchedule`, `SecurityDepositPolicy`, and `BankAccount`. A `pre_save` signal emits an `AuditLog` row keyed by content type + object id with `field_diffs` containing the before/after pair per changed field. Sensitive fields on `BankAccount` (`account_number`, `iban`, `bic`, `sort_code`) are tagged for redaction: the diff value is replaced with `"[REDACTED]"` before write, so the fact of the change is recorded without leaking the cleartext IBAN into the audit table. Encryption-at-rest on the live row continues to cover the PII concern.
 
 ## Why split
 

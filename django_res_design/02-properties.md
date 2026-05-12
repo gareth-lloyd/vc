@@ -14,6 +14,7 @@ properties/
 │   ├── location.py     # PropertyLocation
 │   ├── capacity.py     # PropertyCapacity
 │   ├── settings.py     # PropertySettings, PropertyGroup, GroupSettings
+│   ├── descriptions.py # PropertyDescription
 │   ├── rooms.py        # Room, RoomBeds
 │   ├── images.py       # PropertyImage
 │   ├── features.py     # Feature, FeatureCategory, Collection, CollectionMembership
@@ -59,22 +60,18 @@ Editable lookup (villa, apartment, chalet, lodge…).
 - `slug` — SlugField
 - `sort_order` — int
 
-### `PropertyGroup(SoftDeleteModel)`
-Organisational grouping (e.g. a brand sub-portfolio).
+### `PropertyGroup(AuditedModel)`
+Organisational grouping (e.g. a brand sub-portfolio). Lifecycle: `is_active` boolean. Hard-deletion is blocked by `PROTECT` FK from `Property`.
 - `name` — CharField, unique
 - `description` — TextField(blank=True)
 
-### `Property(SoftDeleteModel)`
-Thin aggregate root.
+### `Property(AuditedModel)`
+Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft delete. Retiring a property uses `status=ARCHIVED`; reviewing the catalogue uses `?status=` filtering, never a hidden manager.
 - `name` — CharField
 - `display_name` — CharField
 - `slug` — SlugField, unique
-- `overview` — TextField(blank=True)
-- `house_rules` — TextField(blank=True)
-- `feature_description`, `room_description` — TextField(blank=True)
-- `notes` — TextField(blank=True)
 - `licence_number` — CharField(blank=True)
-- `status` — `TextChoices` (`DRAFT`, `ACTIVE`, `OFFLINE`, `ARCHIVED`)
+- `status` — `TextChoices` (`DRAFT`, `ACTIVE`, `ARCHIVED`) — three values only. `DRAFT` = work-in-progress, hidden from publish targets and search. `ACTIVE` = published, bookable, fanned out to integrations. `ARCHIVED` = retired (decommissioned, end-of-contract, sold). The legacy `live_offline` row collapses into `ARCHIVED`; operators reach the legacy "temporarily not bookable" effect by setting `PropertySettings.availability_default = UNAVAILABLE`, which is a separate axis. See reconciliation issue #23.
 - `channel` — `TextChoices` (`DIRECT`, `AGENT`, `WHITE_LABEL`, `INTERNAL`)
 - `category` — FK PropertyCategory PROTECT
 - `group` — FK PropertyGroup PROTECT
@@ -90,7 +87,9 @@ Indexes: `slug` (unique), `status`, `(region, status)`, `group`.
 
 Each holds a distinct concern. OneToOne keeps the joins narrow and lets each form/admin inline target one concern.
 
-### `PropertyLocation(SoftDeleteModel)`
+### `PropertyLocation(AuditedModel)`
+Owned by `Property` (CASCADE OneToOne) — no independent lifecycle. Hard-deleted with its parent.
+
 - `property` — OneToOneField(Property, on_delete=CASCADE, primary_key=True)
 - `address_line_1`, `address_line_2`, `address_line_3` — CharField(blank=True)
 - `post_code` — CharField(blank=True)
@@ -102,15 +101,17 @@ Each holds a distinct concern. OneToOne keeps the joins narrow and lets each for
 
 Replaces lat/lng as `nvarchar(500)` in legacy.
 
-### `PropertyCapacity(SoftDeleteModel)`
+### `PropertyCapacity(AuditedModel)`
+Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent.
+
 - `property` — OneToOne CASCADE primary_key
 - `guests` — PositiveSmallInteger
 - `additional_guests` — PositiveSmallInteger (default 0)
 - `bedrooms`, `ensuites`, `bathrooms` — PositiveSmallInteger
 - `size_sqm` — DecimalField(8, 2, null=True, blank=True)
 
-### `PropertySettings(SoftDeleteModel)`
-**Null means inherit from group.** Replaces the legacy `IsDefaultSetting*` boolean salad.
+### `PropertySettings(AuditedModel)`
+Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null means inherit from group.** Replaces the legacy `IsDefaultSetting*` boolean salad.
 
 - `property` — OneToOne CASCADE primary_key
 - `availability_default` — TextChoices (`AVAILABLE`, `UNAVAILABLE`, `ON_REQUEST`), null=True
@@ -137,9 +138,31 @@ def effective(self, attr: str):
 Same fields as `PropertySettings` but **non-nullable with defaults** — the group must provide a fallback for every inheritable field.
 - `group` — OneToOne PropertyGroup CASCADE primary_key
 
+## Descriptions
+
+### `PropertyDescription(AuditedModel)`
+Normalised rich-text content blocks for the marketing-copy sections of a property. Replaces the legacy flat columns `VillaMaster.WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`, and the unmapped Blazor "Further information" textarea. The API surface (`/properties/{id}/descriptions/{section}`) is a 1:1 mirror of this child table — one row per section per property.
+
+- `property` — FK Property CASCADE
+- `section` — TextChoices (`OVERVIEW`, `HOUSE_RULES`, `VILLA_INFO`, `FURTHER_INFO`) — exactly four fixed sections; the API path segments (`overview`, `house-rules`, `villa-info`, `further-info`) are the kebab-cased serialisation of these enum values
+- `body` — TextField(blank=True) — markdown / rich text; renderer determined client-side
+- `legacy_id` — nullable, indexed
+
+Constraint: `UniqueConstraint(property, section, name="one_description_per_section")` — at most one row per (property, section).
+
+Section mapping for migration:
+- `VillaMaster.WebsiteDescription` → `section=OVERVIEW`
+- `VillaMaster.HouseRules` → `section=HOUSE_RULES`
+- `VillaMaster.FeatureDescription` + `VillaMaster.RoomDescription` → concatenated into `section=VILLA_INFO` (with a paragraph break — the legacy two-column split was a UX artefact, not a semantic distinction; the new UI renders one editor for villa info)
+- legacy "Further information" textarea (Blazor-only, unmapped to a column) → `section=FURTHER_INFO` if any content survives the migration audit; otherwise the row is omitted (sections are sparse — a property may have zero, one, or all four)
+
+See reconciliation issue #28.
+
 ## Rooms
 
-### `Room(SoftDeleteModel)`
+### `Room(AuditedModel)`
+Owned by `Property` (CASCADE FK). Hard-deleted with its parent or directly when an operator removes a room.
+
 - `property` — FK CASCADE
 - `name` — CharField (e.g. "Master Suite", "Garden Room")
 - `placement` — TextChoices (`MAIN_HOUSE`, `GUEST_HOUSE`, `POOL_HOUSE`, `ANNEX`, `OTHER`) — replaces `VillaRoomsPlacement` lookup (set is fixed)
@@ -156,8 +179,8 @@ Keeps the wide bed-count fields out of Room.
 
 ## Images
 
-### `PropertyImage(SoftDeleteModel)`
-**Single model, single `kind` field.** Replaces six bit-flags (`IsHero`, `IsInterior1`, `IsInterior2`, `IsExterior1`, `IsExterior2`, `IsGallary`).
+### `PropertyImage(AuditedModel)`
+Owned by `Property` (CASCADE). Removed = hard delete (also removes the underlying file via `post_delete` signal). The `is_active` field below toggles visibility on the website without deleting the row. **Single model, single `kind` field.** Replaces six bit-flags (`IsHero`, `IsInterior1`, `IsInterior2`, `IsExterior1`, `IsExterior2`, `IsGallary`).
 - `property` — FK CASCADE
 - `image` — `ImageField(upload_to="properties/%Y/%m/")`
 - `kind` — TextChoices (`HERO`, `INTERIOR`, `EXTERIOR`, `GALLERY`, `FLOOR_PLAN`)
@@ -183,9 +206,13 @@ Convenience: `Property.hero_image` as a method returning `images.filter(kind="HE
 
 Property ↔ Feature is plain `ManyToManyField` (auto-through). No per-link metadata in the legacy mapping table beyond audit; plain M2M wins.
 
+`service_type` segments the catalogue. The legacy `Tags.razor` admin page (mounted at `/tags`) was a `VillaFeatures` CRUD view filtered by a `ServiceType` enum — there is no separate `Tags` table in the legacy schema. The new design absorbs that admin surface into `/features` with a `?service_type=` filter; there is no `Tag` model, no `PropertyTag` junction, and no `/tags` API resource. See reconciliation issue #8 in `product-design/07-api-schema-reconciliation.md`.
+
 ## Collections (curated marketing groups)
 
-### `Collection(SoftDeleteModel)`
+### `Collection(AuditedModel)`
+Lifecycle: `is_active` boolean (already on the model). Hard-deletion is permitted because `CollectionMembership` is CASCADE — removing a collection cleanly removes its memberships, which is desired behaviour. Operators wanting to "hide" a collection without losing memberships toggle `is_active=False` instead.
+
 - `name`, `slug`, `description`, `cover_image`, `sort_order`, `is_active`
 
 ### `CollectionMembership(TimestampedModel)`
@@ -198,15 +225,17 @@ Explicit through — collections are curated, ordered, and time-bound.
 
 Constraint: `UniqueConstraint(collection, property)`.
 
+The through model carries curation metadata that a naive `PUT /properties/{id}/collections` set-replace would silently drop. The API contract is therefore an array of objects, not an array of ids — see reconciliation issue #29 and the API spec at `product-design/04-rest-api-surface.md` §2.2.
+
 ## Property–Contact assignment
 
-### `PropertyContactAssignment(SoftDeleteModel)`
-Through model linking properties to `accounts.Contact`.
+### `PropertyContactAssignment(AuditedModel)`
+Through model linking properties to `accounts.Contact`. Lifecycle is the `end_date` field: an open-ended assignment has `end_date IS NULL`; ending the relationship sets `end_date` to the last date the contact held the role. The row is never hidden; queries that want the current set filter `end_date IS NULL`.
 - `property` — FK CASCADE
 - `contact` — FK accounts.Contact PROTECT
 - `role` — TextChoices `accounts.ContactRole`
 - `start_date` — DateField(null=True, blank=True)
-- `end_date` — DateField(null=True, blank=True)
+- `end_date` — DateField(null=True, blank=True) — null = open-ended; set to a date when the assignment terminates
 - `is_primary` — BooleanField(default=False)
 
 Constraints:
@@ -224,6 +253,7 @@ contacts = M2M("accounts.Contact", through="PropertyContactAssignment", related_
 - `IsSync`, `SyncId`, `IsSynced` per-row — moved to `integrations.SyncRecord`
 - `ZohoId` on every model — moved to `SyncRecord`
 - `OldVillaId` / `OldId` — generalised to `legacy_id` on every domain model
-- `VillaStatus` lookup table — collapsed to TextChoices on `Property.status`
+- `VillaStatus` lookup table — collapsed to TextChoices on `Property.status` (`DRAFT` / `ACTIVE` / `ARCHIVED`); legacy 4-row set collapses to 3 values (`live_online` → `ACTIVE`, `pending` → `DRAFT`, `archive` → `ARCHIVED`, `live_offline` → `ARCHIVED` — the "live but not currently bookable" effect is now `PropertySettings.availability_default = UNAVAILABLE`). See reconciliation issue #23.
+- `VillaMaster.WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`, plus the unmapped Blazor "Further information" textarea — moved to `PropertyDescription` rows keyed by `section`. The flat-column fields are removed from `Property`. See reconciliation issue #28.
 - `AvailabilityStatus` / `ChangeOverDays` / `CalculationType` lookup tables — collapsed to TextChoices
 - `VillaRole` lookup table — TextChoices in accounts

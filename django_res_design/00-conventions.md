@@ -4,12 +4,11 @@ Shared rules that every app obeys. Put the abstract bases in a `core` app (no mo
 
 ## Abstract base models
 
-A three-link chain. Concrete models pick the level they need.
+A two-link chain. Concrete models pick the level they need. **There is no `SoftDeleteModel` in this codebase** — see "Lifecycle, not soft delete" below.
 
 ```
 TimestampedModel       (auto timestamps)
   ↑ AuditedModel       (+ created_by / updated_by)
-    ↑ SoftDeleteModel  (+ deleted_at / deleted_by + filtering manager)
 ```
 
 ### `TimestampedModel`
@@ -20,29 +19,56 @@ TimestampedModel       (auto timestamps)
 - `created_by` — `ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=PROTECT, related_name='+')`
 - `updated_by` — same shape
 
-### `SoftDeleteModel(AuditedModel)`
-- `deleted_at` — `DateTimeField(null=True, blank=True, db_index=True)`
-- `deleted_by` — `ForeignKey(User, null=True, blank=True, on_delete=PROTECT, related_name='+')`
-- `objects = SoftDeleteManager()` — filters `deleted_at__isnull=True` by default
-- `all_objects = models.Manager()` — full unfiltered access for admin/recovery
-- `delete()` — overridden to set timestamps; `hard_delete()` exposes real DB delete
-
 ## Which base to use
 
 | Model kind | Base |
 |---|---|
 | Lookup tables staff curate (`Country`, `Region`, `Currency`, `Feature`, `Collection`, `PropertyCategory`) | `TimestampedModel` + `is_active` bool |
-| All user-editable domain models | `SoftDeleteModel` |
-| Append-only audit / event tables (`BookingEvent`, `PaymentEvent`, `WebhookDelivery`, `FxRate`) | `TimestampedModel` only (never deleted) |
+| All user-editable domain models | `AuditedModel` |
+| Append-only audit / event tables (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `FxRate`, `EmailLog`, `SyncRun`, `SyncIssue`) | `TimestampedModel` only (never deleted) |
 | Pure-data junctions with no user lifecycle (`CollectionMembership`) | `TimestampedModel` |
 | Fixed enumerations (Status, Channel, Role, Kind) | **No table** — `models.TextChoices` |
 
+## Lifecycle, not soft delete
+
+Opaque hidden rows (`deleted_at IS NOT NULL`, hidden by a default manager) are not allowed. Every model's lifecycle is expressed via an explicit, queryable, visible signal. Pick the right pattern per concern:
+
+| Need | Pattern |
+|---|---|
+| Lifecycle states (draft / active / archived / cancelled / expired / declined / anonymized) | `status` TextChoices on the model; add a dated timestamp for state entry (`archived_at`, `cancelled_at`, `settled_at`) when audit demands it |
+| On/off toggle for lookups and catalogues | `is_active` BooleanField; apply an `is_active=True` default manager scope **only when reads require it** (most lookup tables don't — read-time filtering is fine and avoids the surprise of a hidden manager) |
+| Owned child rows | hard delete via CASCADE from the parent |
+| Cross-aggregate references | `on_delete=PROTECT` — the FK forbids deleting a row that has downstream usage |
+| Audit history of state transitions | append-only event tables (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`) — never deleted |
+| Audit history of sensitive-config field edits | per-model `AuditLog` row written by a `pre_save` signal (see below) |
+| Personal-data removal under GDPR | **anonymization-in-place**: an explicit service method (`Contact.anonymize()`, `Guest.anonymize()`) overwrites PII fields with sentinels (`"[REDACTED]"`, `"redacted-{id}@anonymized.local"`, empty strings) and sets `status=ANONYMIZED`. The row stays so FK integrity on historical bookings is preserved; the fact of anonymization is **visible**, not hidden |
+| Merging duplicate records | explicit service method (`Contact.merge(target)`, `Guest.merge(target)`) — rewrites every FK pointing at `self` to point at `target`, writes one `AuditLog` row per rewrite, then **hard-deletes** `self`. No tombstone row, no `merged_into` self-FK |
+| "Wrong record, undo" with no downstream rows | hard delete — the `PROTECT` FKs upstream already gate this |
+
+If you reach for "hide this row from default queries", stop and name the lifecycle state instead.
+
+### `AuditLog`
+
+A single per-app table that captures sensitive-field edits as an append-only diff stream. Used in particular by `properties.PropertyFinance` and its children (`Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`) and by `accounts.Contact` for PII-relevant fields.
+
+- `id` — UUID
+- `content_type` — FK `ContentType` (the model whose row changed)
+- `object_id` — string PK of the row
+- `actor` — FK User SET_NULL, null=True
+- `field_diffs` — JSONField — `{field_name: [old_value, new_value], ...}`; redacted for fields tagged sensitive (e.g. `iban`, `account_number` write a `"[REDACTED]"` sentinel rather than the cleartext value)
+- `correlation_id` — UUID, groups related changes in one operation
+- `created_at` — DateTimeField(auto_now_add)
+
+Indexes: `(content_type, object_id, created_at)`, `(actor, created_at)`.
+
+The signal handler reads `pre_save` for any model that registers itself with `core.audit.track(Commission, fields=[...])`. Models don't grow a per-model history table; they emit diffs into the shared `AuditLog` keyed by content type.
+
 ## Audit middleware
 
-Populate `created_by`/`updated_by`/`deleted_by` automatically. Threadlocal pattern:
+Populate `created_by`/`updated_by` automatically. Threadlocal pattern:
 
 - `core.middleware.AuditMiddleware` — stores `request.user` on a thread-local at request start; clears it at response.
-- `core.signals` — `pre_save` handler reads the thread-local, populates `created_by` (if pk is None) and `updated_by`. `pre_delete` handler (or override in `SoftDeleteModel.delete()`) populates `deleted_by`.
+- `core.signals` — `pre_save` handler reads the thread-local, populates `created_by` (if pk is None) and `updated_by`. The same handler emits an `AuditLog` row for any model registered via `core.audit.track(...)`.
 - For management commands / Celery tasks, expose a context manager: `with current_user_as(user): ...`.
 
 ## Naming
@@ -109,12 +135,11 @@ appname/
 - Views/forms add presentation-layer validation only.
 - Never put business invariants in JS/template land.
 
-## Soft-delete and cascade
+## FK on_delete defaults
 
-When a parent has soft-delete and a child has a FK:
-- `on_delete=PROTECT` is the default — don't let admins delete a property that has bookings.
-- `on_delete=CASCADE` only for true ownership relationships (Property → PropertyLocation OneToOne, Quotation → QuotationLine, Payment → PaymentEvent).
-- Soft-delete is not propagated automatically; if a property is archived, bookings remain queryable. The manager filtering means it disappears from default UIs without orphaning history.
+- `on_delete=PROTECT` is the default — never let a delete cascade silently across aggregates.
+- `on_delete=CASCADE` only for true ownership relationships within one aggregate (Property → PropertyLocation OneToOne, Quotation → QuotationLine, PropertyFinance → Commission).
+- "Archive" the parent (set `status=ARCHIVED`) when you want it out of the default list without orphaning history; children stay live and queryable. Lifecycle transitions never produce hidden rows.
 
 ## Migrations hygiene
 

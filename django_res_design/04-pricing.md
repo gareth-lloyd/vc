@@ -47,7 +47,9 @@ Three levels: **RatePlan → RateCard → RateRule**. Each level carries the met
 
 This three-level split honours the operator mental model (see `product-design/03-workflows.md` flow 13) without re-introducing the legacy `VillaSeasonDate` table — date ranges live on `RateRule`. Production data confirms this is the right shape: 96% of legacy seasons had a single date range; only 3% of rate rows had occupancy bands, so a separate band table is unjustified.
 
-### `RatePlan(SoftDeleteModel)`
+**Lifecycle.** Every rate model is `AuditedModel` only. Retiring a plan/card/rule is done by toggling `is_active=False` (already on `RatePlan` / `RateCard`) or by setting `effective_to` to a past date (`RateRule.date_from`/`date_to` already bound applicability). Historical bookings keep their pricing via `Booking.pricing_snapshot`, so a previously-active rate that is now switched off does not retroactively change any booking's recorded price. Hard delete is permitted for "rule entered in error" cases (no FK from `Booking` to `RateRule` — bookings reference only their snapshot).
+
+### `RatePlan(AuditedModel)`
 Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. Carries no prices.
 - `property` — FK properties.Property PROTECT
 - `name` — CharField (e.g. "Summer 2026", "2026 Agent Net")
@@ -59,7 +61,7 @@ Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. 
 - `notes` — TextField(blank=True)
 - `inclusion` — TextField(blank=True) — free-text "what's included" copy (e.g. chef, daily housekeeping)
 
-### `RateCard(SoftDeleteModel)`
+### `RateCard(AuditedModel)`
 The operator-facing rate-card unit; the level at which length-of-stay rules, discounts, and changeover restrictions attach. Has no prices of its own — those live on child `RateRule`s.
 - `plan` — FK RatePlan CASCADE
 - `name` — CharField (e.g. "Peak weeks", "Shoulder")
@@ -73,7 +75,7 @@ The operator-facing rate-card unit; the level at which length-of-stay rules, dis
 
 Index: `(plan, sort_order)`.
 
-### `RateRule(SoftDeleteModel)`
+### `RateRule(AuditedModel)`
 The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` × `VillaSeasonDate`.
 - `card` — FK RateCard CASCADE
 - `date_from` — DateField
@@ -102,7 +104,7 @@ A card whose price applies to multiple non-contiguous date ranges is represented
 
 ## Extras
 
-### `Extra(SoftDeleteModel)`
+### `Extra(AuditedModel)`
 Property-scoped catalogue of named charges that get added at quote time: cleaning fee, pet fee, heating, linen, extra-bed fee, resort fee, etc. Replaces (a) what the product UX calls "extras", and (b) the obsoleted `Surcharge(kind=CLEANING|SERVICE_FEE|RESORT_FEE)` slot in earlier drafts.
 
 Tax and commission are **not** Extras — they live on `properties.PropertyFinance.TaxPolicy` and `properties.PropertyFinance.Commission` (per `03-finance-config.md`) and are read by the pricing engine via the `PropertyFinance.effective_*` resolvers.
@@ -141,7 +143,7 @@ The product UX (`product-design/03-workflows.md` flow 13) renders extras inside 
 
 ## Discounts
 
-### `Discount(SoftDeleteModel)`
+### `Discount(AuditedModel)`
 Promo/code discounts and rate-card-level rules (early-bird, last-minute, length-of-stay, repeat-guest). One-off booking discounts go on `Booking.adjustment`, not here.
 - `card` — FK RateCard CASCADE, null=True (null = property-wide, e.g. a promo code that's not tied to a single card)
 - `property` — FK Property CASCADE (denorm for query simplicity when `card` is null; equals `card.plan.property` when card is set)
@@ -161,7 +163,7 @@ Constraint: `CheckConstraint(card IS NOT NULL OR property IS NOT NULL)`.
 
 ## Change-over rules
 
-### `ChangeOverRule(SoftDeleteModel)`
+### `ChangeOverRule(AuditedModel)`
 Enforces which weekdays a booking can start. Replaces unused legacy `ChangeOverDays` lookup.
 - `property` — FK Property CASCADE
 - `weekday` — PositiveSmallInteger (0=Mon, 6=Sun)

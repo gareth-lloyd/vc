@@ -12,8 +12,17 @@ This is **not** the migration file — Django models are generated in the implem
 
 Apply to every entity unless noted.
 
-### Soft delete
-Every business-relevant entity has `deleted_at` (nullable) and `deleted_by` (FK to `User`, nullable). The default manager filters these out. A separate `all_objects` manager exposes them for admin / audit needs. Truly hard delete only for GDPR erasure (`Guest:anonymize`).
+### Lifecycle (no soft delete)
+There is no soft-delete pattern anywhere — no `deleted_at` column, no `all_objects` manager, no `SoftDeleteModel` base class. Every entity's lifecycle is expressed as something a SQL query can see directly:
+
+- **`status` TextChoices** for state-machine models (`Property`, `Booking`, `Quotation`, `Enquiry`, `Refund`, `Payment`, `Contact`, `Guest`, `SecurityDeposit`) — with dated entry timestamps (`archived_at`, `cancelled_at`, `anonymized_at`) when audit demands them.
+- **`is_active` boolean** for catalogue/lookup toggles (`Country`, `Region`, `Currency`, `Feature`, `Collection`, `RatePlan`, `RateCard`, `Extra`, `Discount`, etc.).
+- **Hard delete** for owned child rows (CASCADE from owner; PROTECT from cross-aggregate references blocks accidents).
+- **Append-only event tables** (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookEvent`, `AuditLog`) for history.
+- **GDPR erasure** uses anonymization-in-place (`Contact.anonymize()`, `Guest.anonymize()`): PII fields overwritten with sentinels, `status=ANONYMIZED`, row preserved for FK integrity on historical bookings.
+- **Merge** flows (`Contact.merge(target)`, `Guest.merge(target)`) rewrite FKs then hard-delete the merged-from row, with an `AuditLog` entry per rewrite.
+
+See `../00-conventions.md` and `../09-departures.md` ("Soft delete eliminated") for full rationale and per-model assignments.
 
 ### Audit timestamps
 `created_at`, `created_by`, `updated_at`, `updated_by` on every entity. `updated_at` doubles as the etag for concurrency control on PATCH/PUT.
@@ -50,10 +59,10 @@ Key fields: `name`, `display_name`, `slug`, `status` (enum), `category` (FK), `p
 Sub-resources (own models):
 - `PropertyImage` — image with role tags (`hero`, `interior_1`, `exterior_1`, `gallery`), order, alt text, caption, signed-URL key. Original `VillaPropertyImage`.
 - `PropertyRoom` — bedroom with bed config (`bed_double_count`, `bed_single_count`, `bed_bunk_count`, `bed_sofa_count`, `is_ensuite`, `placement`, `order`). Original `VillaRoom` + `VillaRoomsPlacement` (collapsed).
-- `PropertyDescription` — rich-text section keyed by `section` enum (`overview` / `house_rules` / `villa_info` / `further_info`). One row per section per property.
+- `PropertyDescription` — rich-text section keyed by `section` enum (`overview` / `house_rules` / `villa_info` / `further_info`). One row per section per property. The backend `Property` carries **no** flat `overview` / `house_rules` / `feature_description` / `room_description` / `notes` text columns — the API `/properties/{id}/descriptions/{section}` (§2.2) is a 1:1 mirror of this child table. See reconciliation issue #28 for the flat-column migration.
 - `NearbyPOI` — name, type (FK to `POIType`), distance_km, drive_time_min, lat/lng, description. Original `VillaNearBy`.
 
-**Status** (`Property.status`): `draft`, `active`, `archived`. (Simpler than the original `VillaStatus` lookup table.)
+**Status** (`Property.status`): `draft`, `active`, `archived`. (Simpler than the original `VillaStatus` lookup table, which had four rows: `live_online`, `live_offline`, `pending`, `archive`. The new design collapses `live_offline` into `archived` — "temporarily not bookable" is expressed via `PropertySettings.availability_default = UNAVAILABLE` instead, which is a separate axis. API actions: `POST /properties/{id}:activate` (any → `active`) and `POST /properties/{id}:archive` (any → `archived`); `POST /properties/{id}:restore` returns an archived property to `draft`. The earlier `:publish` / `:unpublish` verbs are dropped in favour of these state-machine-aligned names. See reconciliation issue #23.)
 
 **Settings** (split out): originally embedded directly on `VillaMaster`. Now `PropertySettings` 1:1:
 - `check_in_time`, `check_out_time`, `min_nights_rental`, `changeover_day` (enum: `mon` ... `sun` or `any`), `requires_pre_approval` (bool), `availability_type`.
@@ -75,15 +84,14 @@ Curated marketing set (e.g., "Luxury Villas", "Pet-Friendly"). Fields: `name`, `
 ### Feature (amenity)
 Field-able amenity (Pool, Sea view, WiFi). Fields: `name`, `description`, `service_type`, `icon` (FK), `default_order`. Original `VillaFeature`.
 
+`service_type` discriminates the row's domain: `AMENITY` (property feature), `INCLUDED_SERVICE` (contact-service / concierge tier), `PAID_ADDON` (purchasable add-on). The legacy "Tags" admin page (`Tags.razor` at `/tags`) was a *view of `VillaFeatures`* filtered/segmented by this discriminator — there was no separate `Tags` table. See reconciliation issue #8.
+
 ### FeatureCategory
 Grouping for features (Indoor / Outdoor / Connectivity / ...). Fields: `name`, `description`, `icon`, `order`.
 
 **Junction**: `FeatureToCategory` (feature, category). Original `VillaFeaturesCategoryMapping`.
 
 **Property–Feature junction**: `PropertyFeature` — (property, feature, category_override, description_override, order, is_active). Original `VillaFeaturesMapping`.
-
-### Tag
-Service-type metadata tag (similar to Feature but separate domain — used for back-office classification). Original `Tags`.
 
 ### POIType
 Type of nearby point (restaurant, beach, airport). Original `VillaNearByLocationType`.
@@ -154,16 +162,21 @@ Fields: `card` (FK, nullable), `property` (FK, used when `card` null), `name`, `
 ### Enquiry
 Inbound lead, sometimes pre-quotation. Original `VillaEnquire`.
 
-Fields: `site_source` (enum — which inbound channel/WP storefront produced the lead), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable), `guest` (FK to Guest), `referral_code`, `agent` (FK to Contact, nullable), `zoho_id`.
+Fields: `site_source` (enum — which inbound channel/WP storefront produced the lead), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`), `guest` (FK to Guest), `referral_code`, `agent` (FK to Contact, nullable — **external** agent / intermediary representing the guest), `zoho_id`. See reconciliation issue #26 for the two-field rationale.
 
 Trip-search constraints (denormalised for query speed):
 - `from_date`, `to_date`, `dates_flexible` (bool), `flex_days`, `adults`, `children`, `infants`, `min_bedrooms`, `max_bedrooms`, `country` (FK), `regions` (M2M), `features` (M2M), `budget_min_amount`, `budget_max_amount`, `budget_currency`.
 
-Free-form: `notes` (rich text), `preferences_note`.
+Provenance: `inbound_message` (the original message body the lead submitted via the public form — single immutable field, captured at creation). Operator notes are not stored on the Enquiry row — see `EnquiryNote` below.
 
 Tracking: `reference` (e.g., `E-1234`), `user_feedback`, `lost_reason`, `closed_at`.
 
 **Status**: `draft`, `new`, `qualifying`, `quote_sent`, `won`, `lost`.
+
+### EnquiryNote
+Operator-added note attached to an enquiry. Replaces the legacy `VillaEnquire.Notes` and `PreferencesNote` flat columns, which the original Blazor UI rendered as overwrite-only textareas with no authorship or audit trail.
+
+Fields: `enquiry` (FK), `author` (FK User), `kind` (`general` / `internal` / `preferences`), `body` (rich text), `is_pinned`, `created_at`, `updated_at`. Mutation audit lives in `AuditLog`; the row itself is hard-deleted on remove.
 
 ### Quotation
 Header for a multi-villa quote. Original `VillaQuotationMaster`.
@@ -184,22 +197,27 @@ Fields: `quotation` (FK), `property` (FK), `from_date`, `to_date`, `nights`, `pr
 ### Booking
 The confirmed reservation. Original `VillaBooking`.
 
-Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable), `reference` (e.g., `BK-2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `concierge_notes`, `internal_notes`, `villa_notes` (passed to property manager), `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
+Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable — **external** agent / intermediary), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`. Backs `?assigned_to=` filter and `:assign` action — see reconciliation issue #26), `reference` (e.g., `BK-2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
+
+Note: operator notes (legacy `Notes`, `ConciergeNotes`, internal-notes, villa-notes textareas) are not stored as flat columns. They live in `BookingNote` (below), keyed by `kind`.
 
 Aggregate denorm (kept in sync via signals):
 - `total_amount`, `paid_amount`, `outstanding_amount` (booking summary right-rail).
 
-**Status** (`Booking.status`):
+**Status** (`Booking.status`) — single source of truth lives in `06-availability.md`:
 - `draft`
-- `underway` (created, deposit not yet paid)
-- `deposit_paid_pending_approval` (deposit paid, awaiting owner approval)
-- `deposit_paid` (deposit paid, owner approved or no approval required)
-- `confirmed` (balance paid)
+- `pending_owner_approval` (when property requires it)
+- `awaiting_deposit`
+- `deposit_paid`
+- `awaiting_balance`
+- `balance_paid`
 - `checked_in`
-- `checked_out`
-- `completed` (post-departure, all settled)
-- `cancelled` (with sub-state for reason category)
-- `archived`
+- `checked_out` (terminal — post-stay; reached via manual `check_out()` or beat-task auto-completion)
+- `cancelled` (with sub-state for reason category) — terminal
+- `expired` (deposit deadline missed) — terminal
+- `declined` (owner rejected pending approval) — terminal
+
+Note: `archived` is **not** a status value. It is a boolean flag (`Booking.is_archived` + `archived_at`) that tidies terminal-state bookings out of the operator's default list. Archive is orthogonal to status — a `cancelled` booking and a `checked_out` booking are both candidates for archival; both stay queryable. See `06-availability.md` for the full state machine and the `:archive`/`:restore`/`:modify-dates`/`:modify-guests`/`:resend-confirmation` semantics.
 
 ### ConciergeLineItem
 Original `VillaBookingConcierge` / `VillaConcierge` (the original had two parallel tables — collapsed here).
@@ -209,10 +227,14 @@ Fields: `booking` (FK), `service_type` (FK to a concierge taxonomy or free text)
 **Status** (`ConciergeLineItem.payment_status`): `awaiting`, `sent`, `paid`, `failed`, `included`, `refunded`.
 
 ### ArchiveBooking
-Soft-delete with separate read surface. Could be a separate table OR a flag on Booking with `archived_at`. Recommendation: a flag with separate manager, exposed as `/bookings/archived` for tidiness. The original had a real archive table; we don't need to perpetuate that.
+Resolved (issue #7): a flag on `Booking` (`is_archived` + `archived_at`), not a separate table. A dedicated queryset filter exposes the archived set at `/bookings/archived`. Operator-facing actions live on the main resource as `POST /bookings/{id}:archive` / `:restore` and are only permitted from terminal states (`checked_out`, `cancelled`, `expired`, `declined`). There is no `DELETE /bookings/{id}` — once a booking exists it is preserved for audit; mistakes are corrected via `:cancel` with an explanatory reason. The legacy `VillaArchiveBooking` table is dropped.
 
 ### BookingNote
-Free-text notes attached to a booking. Fields: `booking` (FK), `author` (FK User), `body` (rich text), `is_internal` (bool — internal vs guest-visible).
+Operator-added note attached to a booking. Canonical store for what the legacy schema spread across `VillaBooking.Notes`, `VillaBooking.ConciergeNotes`, and the unmapped Blazor "Internal booking information" / "Villa notes" textareas.
+
+Fields: `booking` (FK), `author` (FK User), `kind` (`general` / `internal` / `concierge` / `villa`), `body` (rich text), `is_pinned`, `visibility` (`staff_only` / `owner` / `guest`), `created_at`, `updated_at`. Mutation audit lives in `AuditLog`; the row itself is hard-deleted on remove.
+
+The three-textarea legacy edit page is preserved as a UX by binding each textarea to a `kind`-filtered subset of the collection.
 
 ### BookingDocument
 Generated artefacts (confirmation PDF, contract, voucher). Fields: `booking` (FK), `kind` (`confirmation` / `contract` / `voucher` / `invoice` / `receipt`), `file_key` (S3 key), `generated_at`, `generated_by`, `sent_to_guest_at`.
@@ -261,7 +283,7 @@ Permission flags (only consulted when `role=custom`; otherwise role implies):
 
 When a role preset is chosen, the booleans are still set (computed from the role) but the UI hides them behind a `Customize` toggle. If the user customises, `role` switches to `custom` and the displayed label becomes "Owner (custom)" or similar.
 
-**Dropped from original**: `VillaContactMap` (overlapped), `VillaContactRoleMapping` (rolled into the `role` field), `VillaContactGroupMap` (use `ContactPropertyMapping` with property=null indicating group-level? — actually drop; tags handle this).
+**Dropped from original**: `VillaContactMap` (overlapped), `VillaContactRoleMapping` (rolled into the `role` field), `VillaContactGroupMap` (dropped — group-level contact assignment was unused in legacy; if a real need surfaces, add a `PropertyGroup` FK on `ContactPropertyMapping` or a sibling table).
 
 ### Guest
 Booking-side customer (separate from `Contact`). Original `VillaClientDetail`.
@@ -271,9 +293,11 @@ Fields: `title`, `first_name`, `last_name`, `email`, `phone`, `country` (FK), `r
 `Guest.bookings` reverse, `Guest.enquiries` reverse, `Guest.quotations` reverse.
 
 ### User
-Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_admin`, `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`, `role` (FK or enum). Linked optionally to a `Contact` (for owner-portal users).
+Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_superuser` (Django built-in — replaces legacy `IsSystemAdmin`), `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`, `role` (fixed `StaffRole` TextChoices: `ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER`). Linked optionally to a `Contact` (for owner-portal users).
 
-`Role` — named permission set. Fields: `name`, `description`, `permissions` (JSON list of permission keys, or M2M).
+`User.role` is a hard-coded enum, not a row in a table. Each enum value maps to a fixed Django `auth.Group` (created via migration) that carries the actual `auth.Permission` rows. Admin UI exposes the enum as a read-only `/roles` list and `?role=` filter; there is no `/roles` CRUD. The legacy app had no editable staff-role table either — staff power was a single `UserMaster.IsSystemAdmin` boolean. See reconciliation issue #9.
+
+**Do not confuse `User.role` (staff capability) with `PropertyContactAssignment.role` (how a `Contact` relates to a `Property`: owner / manager / agent / housekeeper / owner's-rep — the `accounts.ContactRole` enum, §6 below).** They are different concepts; only `User.role` is what `/roles` API refers to.
 
 `UserSession` — active sessions for self-management.
 
@@ -296,28 +320,40 @@ Fields: `booking` (FK, unique), `amount`, `currency`, `due_date`, `is_overdue` (
 
 **Status**: same as deposit, plus `overdue`-tagged via separate flag (state and overdue are independent in this design — improvement #18).
 
-### SecurityDepositTrack (1:1 with Booking)
-Fields: `booking` (FK, unique), `kind` (`pre_auth_hold` / `bt_refundable` / `none`), `amount`, `currency`, `due_date`, `hold_expires_at` (for pre-auths), `status`, `release_after_departure_days`, `release_at`, `damage_claim_id` (nullable FK to `DamagesClaim`).
+### SecurityDeposit (1:1 with Booking, when applicable)
+First-class workflow object. Mirrors the `Refund` pattern: this is the workflow row; gateway-transaction audit lives on spawned `Payment(purpose=SECURITY_DEPOSIT)` rows linked via `meta['security_deposit_id']`. Earlier drafts of this doc called this `SecurityDepositTrack` — renamed for symmetry with `Refund` and to reflect that the row is a workflow object, not a passive "track".
+
+Fields: `booking` (FK, unique when not deleted), `kind` (`pre_auth_hold` / `bt_refundable`), `amount`, `currency`, `due_at`, `hold_expires_at` (for pre-auths), `status`, `release_after_departure_days`, `release_scheduled_for`, `released_at`, `captured_amount` (nullable, set on partial/full claim), `refunded_amount` (nullable, set on BT refunds), `damage_claim` (nullable FK to `DamageClaim`), `requested_by` / `requested_at`, `idempotency_key`. When a property has no security deposit policy, no row is created — no `not_applicable` state.
 
 **Status**:
-- Pre-auth hold path: `awaiting_details`, `pre_authed`, `released`, `captured`, `expired`, `failed`.
-- BT refundable path: `awaiting_bt`, `held`, `refunded`, `partially_refunded`.
-- None: `not_applicable`.
+- Pre-auth hold path: `awaiting_details`, `pre_authed`, `released`, `captured`, `expired`, `failed`. Transitions: `:hold` (AWAITING_DETAILS → PRE_AUTHED), `:release` (PRE_AUTHED → RELEASED, manual or Celery beat), `:claim` (PRE_AUTHED → CAPTURED, requires `damage_claim` link), gateway timeout (PRE_AUTHED → EXPIRED).
+- BT refundable path: `awaiting_bt`, `held`, `refunded`, `partially_refunded`. Transitions: `:mark-paid` (AWAITING_BT → HELD, records a manual `Payment(provider=MANUAL_BANK_TRANSFER, status=SUCCEEDED)`), `:release` (HELD → REFUNDED, opens and executes a `Refund(purpose_track=SECURITY_DEPOSIT)`), `:claim` (HELD → PARTIALLY_REFUNDED, opens a refund for `amount - captured_amount`).
+
+API: `/bookings/{id}/security` and `/bookings/{id}/security/payments/{id}:hold|:release|:claim` (§2.12); `:mark-paid` advances the SD row (not a `Payment.mark_paid` call), creating the manual-BT `Payment` row underneath. See reconciliation issue #25. BT refunds reuse the `Refund` workflow so separation-of-duties applies uniformly.
 
 ### PaymentEvent
 A single payment attempt / transaction. Replaces `VillaPaymentDetail` + `VillaCheckoutDetail` (collapsed).
 
 Fields: `track` (polymorphic FK or three nullable FKs to the three tracks above), `gateway` (enum: `stripe` / `manual_bt` / `manual_cash` / `manual_cheque` / `other`), `external_reference` (gateway charge id), `amount`, `currency`, `payer_amount` (what payer actually paid, may differ due to fees), `payer_currency`, `payment_method` (`card` / `bt` / `cheque` / `cash`), `status` (enum), `error_message`, `processed_at`, `idempotency_key`.
 
-**Status**: `pending`, `succeeded`, `failed`, `refunded`, `disputed`, `voided`, `expired`.
+**Status**: `pending`, `succeeded`, `failed`, `refunded`, `disputed`, `voided`, `expired`, `waived`. `waived` is operator-applied to a scheduled `DEPOSIT` or `BALANCE` row (the `:waive` API action) — terminal, no money moves; the booking advances as if the payment had succeeded. `:mark-paid` is a separate transition that writes a manual receipt (`provider=MANUAL_BANK_TRANSFER`, `status=succeeded`); not a status of its own. See reconciliation issue #24.
 
 ### PaymentInstrument
-Stored card/bank token for a guest. Fields: `guest` (FK), `gateway`, `gateway_token`, `last_four`, `brand`, `expiry_month`, `expiry_year`, `is_default`, `created_at`. Original `VillaPayment`.
+Per-charge audit record of the card/bank instrument used. Fields: `guest` (FK), `gateway`, `gateway_token`, `last_four`, `brand`, `expiry_month`, `expiry_year`, `created_at`. Original `VillaPayment`. **Note:** v1 does not expose a multi-method wallet to operators or guests — `PaymentMethod` API endpoints are deferred (see reconciliation issue #13). Records are write-once metadata attached to a `PaymentEvent`, not a reusable selection list; the `is_default` flag and tokenize/detach surfaces revisit when multi-method picker is in scope.
 
 ### Refund
-Fields: `booking` (FK), `track_kind` (`deposit` / `balance` / `security` / `concierge`), `track_id` (FK to relevant track), `amount`, `currency`, `reason_taxonomy`, `reason_notes`, `requested_by`, `approved_by`, `executed_at`, `gateway_reference`, `method` (`online` / `offline`), `status` (enum). Multiple refunds may stack against one track.
+First-class workflow object for money flowing back to the guest. Owns the approve/reject/execute lifecycle; spawns one `PaymentEvent` (purpose=refund) per gateway transaction on execute.
 
-**Status**: `pending`, `approved`, `executing`, `succeeded`, `failed`, `cancelled`, `partially_refunded`.
+Fields: `booking` (FK), `against_payment` (FK PaymentEvent, nullable — the original inbound charge being refunded, when known), `purpose_track` (`deposit` / `balance` / `security` / `adjustment` / `goodwill`), `amount`, `currency`, `reason_code` (`cancellation` / `overpayment` / `goodwill` / `security_deposit_release` / `duplicate_charge` / `other`), `reason_notes`, `method` (`online_gateway` / `manual_bank_transfer` / `offline`), `requested_by`, `requested_at`, `approved_by`, `approved_at`, `rejected_by`, `rejected_at`, `rejection_reason`, `executed_by`, `executed_at`, `cancelled_at`, `settled_at`, `failure_reason`, `gateway_reference`, `status` (enum), `idempotency_key`. Multiple refunds may stack against one track or one inbound payment (partial refunds are modelled as multiple `Refund` rows, not as a status).
+
+**Status**: `pending`, `approved`, `rejected`, `executing`, `succeeded`, `failed`, `cancelled`.
+
+**State machine** (terminal states: `rejected`, `cancelled`, `succeeded`, `failed`):
+`pending` → `approved` (`:approve`) | `rejected` (`:reject`) | `cancelled` (`:cancel`)
+`approved` → `executing` (`:execute`) | `cancelled` (`:cancel`)
+`executing` → `succeeded` (gateway webhook success) | `failed` (gateway webhook failure / Celery exhaustion)
+
+**Separation of duties**: `approved_by` must differ from `requested_by` (override permission `payments.refund.self_approve` for small-value refunds; enforced in the service layer). `executed_by` may equal `approved_by` by default; orgs that need a third actor enforce that in policy.
 
 ### DamagesClaim
 For security-deposit captures. Fields: `booking` (FK), `description`, `amount`, `itemized_lines` (JSON list or related table), `photos` (M2M to uploaded file keys), `created_by`, `accepted_by_guest_at`.
@@ -419,6 +455,9 @@ RateCard (1) ──── (many) RateRule
 RateCard (1) ──── (many) DiscountRule
 
 Enquiry (1) ──── (0..1) Quotation         (one quote per enquiry typically)
+Enquiry (1) ──── (many) EnquiryNote
+Enquiry (1) ──── (many) EnquiryEvent      (state-machine + assignment timeline)
+Enquiry (many)──── (0..1) User            (assigned_to — internal staff owner)
 Quotation (1) ──── (many) QuotationLine
 QuotationLine (many)── (1) Property
 Enquiry (many)──── (1) Guest
@@ -426,11 +465,12 @@ Enquiry (many)──── (1) Guest
 Booking (many)──── (1) Property
 Booking (many)──── (1) Guest              (lead guest)
 Booking (0..1)──── (0..1) Guest           (payer if different)
-Booking (many)──── (0..1) Contact         (agent)
+Booking (many)──── (0..1) Contact         (agent — external)
+Booking (many)──── (0..1) User            (assigned_to — internal staff owner)
 Booking (many)──── (0..1) Quotation
 Booking (1) ──── (1) DepositPaymentTrack
 Booking (1) ──── (1) BalancePaymentTrack
-Booking (1) ──── (1) SecurityDepositTrack
+Booking (0..1)── (0..1) SecurityDeposit   (when property requires one)
 Booking (1) ──── (many) ConciergeLineItem
 Booking (1) ──── (many) BookingNote
 Booking (1) ──── (many) BookingDocument
@@ -470,12 +510,12 @@ For the migration script's reference.
 | `VillaMapping` | Collapsed into `PriceDisplayConfig`. |
 | `VillaContactMap` | Dropped; overlapped with `VillaContactMapping`. |
 | `VillaContactRoleMapping` | Dropped; role rolled into `ContactPropertyMapping.role`. |
-| `VillaContactGroupMap` | Dropped; tags handle this. |
+| `VillaContactGroupMap` | Dropped; group-level contact assignment was unused in legacy. |
 | `VillaArchiveBooking` | Dropped as separate table; `Booking.is_archived` flag instead. |
 | `VillaCodeSentHistory` | Collapsed with `VillaEmailLinkLog` into `CodeAuthLog`. |
 | `VillaEmailLinkLog` | Collapsed into `CodeAuthLog`. |
-| `VillaCheckoutDetail` | Collapsed into `PaymentEvent`. |
-| `VillaPaymentDetail` | Collapsed into `PaymentEvent`. |
+| `VillaCheckoutDetail` | Replaced by `payments.Payment` rows (one per `purpose ∈ {DEPOSIT, BALANCE, SECURITY_DEPOSIT}` per booking). Legacy `/checkouts` endpoint dropped; query via `/payments?purpose=…`. |
+| `VillaPaymentDetail` | Collapsed into `payments.Payment` (+ `payments.PaymentEvent` for the audit stream). |
 | `VillaPayment` | Renamed `PaymentInstrument`. |
 | `VillaPaymentStatus` | Dropped as separate lookup table; enum on `PaymentEvent.status`. |
 | `VillaBookingConcierge` + `VillaConcierge` | Collapsed into `ConciergeLineItem`. |

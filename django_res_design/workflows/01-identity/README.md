@@ -31,4 +31,4 @@ Authentication, authorization state, password lifecycle, and admin user manageme
 - Password reset codes (4-hour TTL GUIDs) are stored in plaintext — same `[SECURITY]` issue.
 - Each user has their own SMTP credentials stored in `UserMaster` in plaintext — `[SECURITY]`. Consider whether per-user SMTP is still a requirement (it underpins quotation emails sent "from" the agent) and if so use encrypted-at-rest credentials or a vault.
 - Mixed cookie-auth (Razor Pages) + Blazor circuit-auth (via `AuthenticationStateProvider`) is a transitional artifact. Pure Django auth removes the seam.
-- Soft-delete with restore via INSERT-after-existing-email is a hack (`SELECTEXITS` → `RESTORE` action). Django redesign should use explicit `is_active`/`deleted_at` with admin UI for reactivation.
+- Soft-delete with restore via INSERT-after-existing-email is a hack (`SELECTEXITS` → `RESTORE` action). Django redesign uses explicit `is_active` toggling with an admin UI for reactivation; there is no `deleted_at` column.

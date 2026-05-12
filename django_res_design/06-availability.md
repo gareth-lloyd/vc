@@ -4,8 +4,10 @@ The legacy system stored availability as one row per villa per day in `VillaAvai
 
 ## Availability strategy: range queries, not a daily grid
 
-### `BookingHold(SoftDeleteModel)` (in `reservations.models.booking`)
+### `BookingHold(AuditedModel)` (in `reservations.models.booking`)
 A soft reservation while a quotation is open or a booking awaits deposit. Replaces the legacy `OnHold` (status=40) rows in the daily grid.
+
+**Lifecycle is the `released_at` timestamp**, not a soft-delete flag. Live holds satisfy `released_at IS NULL AND expires_at > now()`; expired or manually released holds carry a `released_at` value and are visible to any query that wants them (the partial `EXCLUDE` index simply excludes them from the no-overlap rule). The Celery `expire_holds` beat task sets `released_at = now()` on expired rows — it does not delete them.
 
 - `property` — FK properties.Property CASCADE
 - `quotation` — FK Quotation CASCADE, null=True
@@ -53,7 +55,7 @@ Implementation of `is_available`:
 ```
 created (QuotationService.create_from_enquiry)
   → released_at set      (released by HoldService.release on quotation cancel/expire/booking)
-  → expires_at reached    (Celery beat task soft-deletes / sets released_at)
+  → expires_at reached    (Celery beat task sets released_at = now())
 ```
 
 A Celery beat task `reservations.tasks.expire_holds` runs every minute:
@@ -86,11 +88,13 @@ class BookingStatus(models.TextChoices):
     AWAITING_BALANCE = "awaiting_balance"
     BALANCE_PAID = "balance_paid"
     CHECKED_IN = "checked_in"
-    COMPLETED = "completed"
+    CHECKED_OUT = "checked_out"  # final post-stay state (replaces the older `COMPLETED`); reached by manual `check_out()` or the auto-completion beat task
     CANCELLED = "cancelled"
     EXPIRED = "expired"
     DECLINED = "declined"     # owner rejection of a pending approval
 ```
+
+`is_archived` is a separate boolean flag on `Booking` (with `archived_at` timestamp) — **not** a status value. Archive is orthogonal to the state machine: it tidies a terminal-state booking out of the operator's default list view. See `:archive` / `:restore` below.
 
 ### Transition table
 
@@ -104,11 +108,23 @@ class BookingStatus(models.TextChoices):
 | `arm_balance()` | DEPOSIT_PAID | AWAITING_BALANCE | beat task | When within `balance_due_at` window |
 | `record_balance(payment)` | AWAITING_BALANCE, DEPOSIT_PAID | BALANCE_PAID | payments signal | |
 | `check_in()` | BALANCE_PAID | CHECKED_IN | admin / on date | |
-| `complete()` | CHECKED_IN | COMPLETED | system on `date_to` | Triggers security-deposit refund flow |
+| `check_out()` | CHECKED_IN | CHECKED_OUT | admin / system beat task on `date_to` | Triggers security-deposit refund flow. Same method whether called manually by ops (early/late departures) or by the auto-completion beat job — both paths converge on `CHECKED_OUT`. |
 | `cancel(reason)` | DRAFT, PENDING_OWNER_APPROVAL, AWAITING_DEPOSIT, DEPOSIT_PAID, AWAITING_BALANCE, BALANCE_PAID, CHECKED_IN | CANCELLED | guest/agent/admin | Refund policy + hold release handled in cancel logic |
 | `expire()` | AWAITING_DEPOSIT | EXPIRED | beat task | When deposit deadline passes |
 
-Terminal states: `COMPLETED`, `CANCELLED`, `EXPIRED`, `DECLINED`.
+Terminal states: `CHECKED_OUT`, `CANCELLED`, `EXPIRED`, `DECLINED`.
+
+### Non-transition mutations (audited, but `status` unchanged)
+
+These methods on `Booking` write a `BookingEvent` row (with `from_status == to_status`) for audit but do not advance the state machine. They re-validate availability and/or re-run the pricing engine as appropriate.
+
+| Method | Allowed from | Behaviour |
+|---|---|---|
+| `modify_dates(date_from, date_to, *, actor, reason)` | AWAITING_DEPOSIT, DEPOSIT_PAID, AWAITING_BALANCE, BALANCE_PAID | Acquires a short-lived `BookingHold` on the new range, asserts availability (must respect change-over rule), re-runs `PricingEngine.quote(...)` against the new range, replaces `pricing_snapshot`, recomputes `rental_price` / `balance_due` / `balance_due_at`. Releases the prior date hold. Writes a `BookingEvent` with `meta={"from": [date_from, date_to], "to": [...], "from_snapshot": {...}, "to_snapshot": {...}}`. Refused once `status == CHECKED_IN` (use `cancel` + re-book instead) or from terminal states. |
+| `modify_guests(adults, children, infants, *, actor, reason)` | every state up to and including BALANCE_PAID (not from CHECKED_IN or terminal states) | Updates party-size fields; re-runs `PricingEngine.quote(...)` because party size can resolve to a different `RateRule` (occupancy band) and re-derives `rental_price` / `balance_due`. Writes a `BookingEvent` with `meta={"from": {...}, "to": {...}, "from_snapshot": {...}, "to_snapshot": {...}}`. |
+| `archive(*, actor)` | Terminal states only: `CHECKED_OUT`, `CANCELLED`, `EXPIRED`, `DECLINED` | Sets `is_archived = True`, `archived_at = now()`. Booking disappears from the default `/bookings` list (operator filter) and surfaces under `/bookings/archived`. Writes a `BookingEvent` with `meta={"archived": true}`. Archive is an explicit, queryable flag — not a hidden row. |
+| `restore(*, actor)` | `is_archived == True` (any underlying `status`) | Sets `is_archived = False`, clears `archived_at`. Booking returns to the main list at its existing terminal `status`. Writes a `BookingEvent` with `meta={"archived": false}`. |
+| `send_confirmation_email(*, actor)` | any non-terminal active state once a confirmation has been issued at least once | Idempotent re-send of the latest confirmation email. No state mutation; writes a row to the comms log (when the future `comms` app lands) and a `BookingEvent` with `meta={"resent_confirmation": true}` for audit. Matches the legacy "Resend Booking Summary" button on `BookingInfo.razor`. |
 
 ### Active states (used by DB exclude constraint)
 

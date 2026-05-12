@@ -28,16 +28,19 @@ Disposition column legend:
 | `VillaPropertyImage` (with `IsHero`/`IsInterior1/2`/`IsExterior1/2`/`IsGallary`) | `properties.PropertyImage` + `kind` TextChoices + `UniqueConstraint(hero)` | Replaced | One enum field, validated; `IsGallary` typo fixed |
 | `VillaFeature`, `VillaFeaturesCategory` | `properties.Feature` + `FeatureCategory` | Renamed | — |
 | `VillaFeaturesMapping` | M2M `Property.features` (plain through) | Replaced | No per-link metadata in legacy; auto-through is enough |
+| Legacy "Tags" admin page (`Tags.razor` at `/tags`) | `properties.Feature` filtered by `service_type` | Dropped | There is no `Tags` / `VillaTags` table in the legacy schema — confirmed against `live-db-24-apr.sql`, `VillaDb.sql`, and `DbScript.sql` (zero `CREATE TABLE` matches). The `/tags` Blazor page is a `VillaFeatures` CRUD form segmented by a `ServiceType` enum (`ContactService=10`, `PropertyFeature=20`) and persists via `ResService.ModifyFeatures`. The new design covers the same discriminator (with finer granularity) via `Feature.service_type` TextChoices (`AMENITY` / `INCLUDED_SERVICE` / `PAID_ADDON`). No `Tag` model, no `PropertyTag` junction, no `/tags` API resource. See reconciliation issue #8. |
 | `VillaCollection` | `properties.Collection` | Renamed | — |
 | `VillaCollectionsMapping` | `properties.CollectionMembership` (explicit through) | Renamed/Extended | Retains sort order + featured_until |
 | `VillaNearBy`, `VillaNearByLocationType` | `properties.PropertyNearbyPlace` + `NearbyPlaceType` | Renamed | — |
 | `VillaContact` | `accounts.Contact` | Moved | Lives in accounts; address/preferred-method cleaned up |
 | `VillaContactEmail`, `VillaContactTele` | `accounts.ContactEmail`, `accounts.ContactPhone` | Renamed | `Tele` → `Phone` |
 | `VillaContactRoleMapping` | `properties.PropertyContactAssignment` (with role, dates, primary) | Renamed/Extended | Adds start_date/end_date |
-| `VillaRole` | `accounts.ContactRole` TextChoices | Replaced | Fixed enum |
+| `VillaRoles` | `accounts.ContactRole` TextChoices | Replaced | 5 static rows in legacy (`Owner`, `Agent`, `Villa Admin`, `Villa Manager`, `Management Company`), FK'd from `VillaContactMap` — this is the *contact-to-property* role, not a staff role. New enum is `OWNER` / `MANAGER` / `AGENT` / `HOUSEKEEPER` / `OWNERS_REPRESENTATIVE`. See reconciliation issue #9. |
+| `UserMaster.IsSystemAdmin` (bool) | `accounts.User.role` (fixed `StaffRole` TextChoices: `ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER`) + Django `auth.Group` per enum value | Replaced | Legacy had no staff-role concept beyond `IsSystemAdmin`. Migration: `IsSystemAdmin=1` → `ADMIN`; `IsSystemAdmin=0` → `RESERVATIONS` (operator can subsequently lower to `ACCOUNTS` / `VIEWER`). No editable role table — see reconciliation issue #9. |
 | `VillaContactGroupMap`, `VillaContactMap`, `VillaContactMapping` | — | Dropped | Duplicates in legacy schema |
 | `VillaSite` | `Enquiry.site_source`, `Booking.site_source` (TextChoices) | Replaced | Was effectively an enum |
-| `VillaStatus` | `Property.status` TextChoices | Replaced | Fixed enum |
+| `VillaStatus` (live DB seed: 4 rows — `live_online`, `live_offline`, `pending`, `archive`) | `Property.status` TextChoices (`DRAFT` / `ACTIVE` / `ARCHIVED`) | Replaced | Fixed 3-value enum. Mapping: `live_online` → `ACTIVE`, `pending` → `DRAFT`, `archive` → `ARCHIVED`, `live_offline` → `ARCHIVED` (with operator notice — the "temporarily not bookable" effect is now expressed via `PropertySettings.availability_default = UNAVAILABLE`, a separate axis from publication status). API verbs are `:activate` / `:archive` / `:restore` (not the earlier `:publish` / `:unpublish`). See reconciliation issue #23. |
+| `VillaMaster.WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`, plus the unmapped Blazor "Further information" textarea | `properties.PropertyDescription` rows keyed by `section` (`OVERVIEW` / `HOUSE_RULES` / `VILLA_INFO` / `FURTHER_INFO`) | Replaced | Flat columns become normalised child rows; one row per (property, section), sparse. Migration: `WebsiteDescription` → `OVERVIEW`; `HouseRules` → `HOUSE_RULES`; `FeatureDescription` + `RoomDescription` concatenated with paragraph break → `VILLA_INFO`; "Further information" content (Blazor-only, never had a column) → `FURTHER_INFO` only if surviving content is found. Backend `Property` model no longer carries these as flat columns. API `/properties/{id}/descriptions/{section}` is a 1:1 mirror of the table. See reconciliation issue #28. |
 
 ## Finance domain
 
@@ -76,6 +79,8 @@ Disposition column legend:
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
 | `VillaEnquire` | `reservations.Enquiry` + `Guest` (split) | Split | Guest split out; status enum cleaned |
+| `VillaEnquire.Notes` (guest-submitted) | `Enquiry.inbound_message` (single immutable TextField) | Renamed | Captures the original web-form message as provenance, not a note |
+| `VillaEnquire.PreferencesNote` + any operator scratchpad usage of `Notes` | `reservations.EnquiryNote` (kinds `general` / `internal` / `preferences`) | Collapsed | Per-row authorship and timestamps; matches the `/enquiries/{id}/notes` API surface |
 | `EnquireStatus` | `Enquiry.status` TextChoices | Replaced | — |
 | `VillaClientDetail` | `reservations.Guest` (unified with Enquiry guest fields) | Merged | One Guest entity, with optional User OneToOne |
 | `VillaClientPrefMaster`, `ClientPreferenceDetail` | `Guest.notes` initially; future scope `GuestPreference` model | Dropped | Underused in legacy; can re-add later |
@@ -84,8 +89,10 @@ Disposition column legend:
 | `TblVillaQuotationMaster` | — | Dropped | Legacy duplicate table |
 | `VillaBooking` | `reservations.Booking` (FK to QuotationLine, full state machine, pricing snapshot) | Replaced | Real FK + price-lock + state machine |
 | `VillaBooking.IsActive`/`Tbc`/`IsOwnerConfirmed`/`IsDepositePaid`/`IsBankPaid` booleans | `Booking.status` TextChoices | Merged | Single source of truth |
-| `VillaArchiveBooking` | `Booking.status=COMPLETED` + `BookingEvent` history | Dropped/Replaced | No drift, full audit |
-| `VillaCheckoutDetail` | Fields distributed across Booking, Guest, Payment | Split | — |
+| `VillaBooking.Notes`, `VillaBooking.ConciergeNotes`, and the unmapped Blazor "Internal booking information" / "Villa notes" textareas | `reservations.BookingNote` (kinds `general` / `internal` / `concierge` / `villa`) | Collapsed | Per-row authorship, timestamps, and visibility gating; matches the `/bookings/{id}/notes` API surface. Migration: one non-empty source column → one seed `BookingNote` keyed by `kind` |
+| `VillaArchiveBooking` | `Booking.is_archived` flag (+ `archived_at`) on the canonical row; archive/restore audited via `BookingEvent` | Dropped/Replaced | No separate table. Archive is an operator-facing "tidy out of main list" flag, orthogonal to the state machine (the terminal post-stay state itself is `Booking.status='checked_out'`). See reconciliation issue #7. |
+| Date-change audit (legacy had none — `Booking.razor`'s `OnFromDateChange` overwrote `FromDate` in place; the `ModifyBooking` service emitted no per-change audit row; the live DB has no `VillaBookingDateHistory` / `BookingChange*` table) | `BookingEvent` row written by `Booking.modify_dates()` / `Booking.modify_guests()` with `meta={"from": [...], "to": [...], "from_snapshot": {...}, "to_snapshot": {...}}`; `Booking.pricing_snapshot` regenerated via `PricingEngine.quote()` | Added | New design enforces audit + pricing-snapshot regeneration on date/guest changes. Resolved in issue #7. |
+| `VillaCheckoutDetail` | `payments.Payment` (one row per `purpose ∈ {DEPOSIT, BALANCE, SECURITY_DEPOSIT}` per booking) | Replaced | Despite the name, `VillaCheckoutDetail` was not a hospitality check-in/out record nor a gateway settlement table — it was the 3-tier **payment-schedule ledger** (one row per scheduled due: Initial Payment Due, Rental Balance Payment, Security Deposit), with `Amount` / `PaymentStatus` / `PaymentId` / `PaymentMethod` / `Description` columns. Confirmed by `VillaCheckoutDetail.cs` and `CheckoutPaymentType` enum in `BookingInfoModels.cs`. The new `Payment` model (purpose × status × due_at) is a strict superset. The legacy `/checkouts` API endpoint is dropped (see reconciliation issue #6); queries land on `/payments?purpose=…` instead. |
 | `CheckoutPersonalInfo`, `CheckoutAdditionalInfo` | Fields on Booking + Guest | Merged | — |
 | `VillaAvailability` (daily grid) | `BookingHold` + range queries on `Booking` + Postgres `EXCLUDE` constraints | Replaced | Range model, DB-enforced no-overlap |
 | `AvailabilityStatus` | `BookingStatus` + `BookingHold.reason` | Replaced | Explicit state machine |
@@ -101,8 +108,9 @@ Disposition column legend:
 | `VillaPaymentDetail` | `payments.PaymentLine` | Renamed | — |
 | `VillaPaymentStatus` | `Payment.status` TextChoices | Replaced | Fixed enum |
 | `InitialPaymentStatus`, `BalancePaymentStatus`, `DepsitPaymentStatus` (three enums) | `Payment.purpose` + `Payment.status` | Merged | Three enums collapse into one model with a purpose field |
-| `PaymentStatusLog` | `payments.PaymentEvent` | Renamed/Extended | Append-only with delivery FK |
+| `PaymentStatusLog` | `payments.PaymentEvent` | Renamed/Extended | Append-only with delivery FK; now also audits `Refund` transitions via a polymorphic `payment` / `refund` FK |
 | Flywire webhook (hardcoded VC prefix) | `payments.WebhookDelivery` + `/webhooks/payments/<provider_slug>/` URL routing + Celery dispatch | Replaced | Persist-first idempotent, multi-provider safe |
+| _(none — no legacy refund table)_ | `payments.Refund` with four-state workflow (`PENDING` → `APPROVED` → `EXECUTING` → `SUCCEEDED`/`FAILED`, plus terminal `REJECTED`/`CANCELLED`) | New | Legacy DB has zero refund tables/columns and no Blazor refund pages — refunds were issued manually through the gateway dashboard with no in-app audit. The new model enforces separation of duties (requester ≠ approver) and produces `Payment(purpose=REFUND)` rows on `:execute` for the gateway transaction. |
 
 ## Integrations
 
@@ -129,7 +137,7 @@ Disposition column legend:
 |---|---|
 | Mixed `CreateAt`/`CreatedAt`/`UpdateAt`/`UpdatedAt`/`UpdtedAt` (typos) | `TimestampedModel.created_at` / `updated_at` |
 | Mixed `CreatedBy`/`UpdatedBy` (int or string) | `AuditedModel.created_by` / `updated_by` FK to User |
-| Mixed `DeletedAt`/`DeletedBy` | `SoftDeleteModel.deleted_at` / `deleted_by` |
+| Mixed `DeletedAt`/`DeletedBy` on every table | **Eliminated.** Lifecycle is always explicit (`status` TextChoices, `is_active`, `archived_at`/`cancelled_at`, or hard delete). Sensitive-config field-edit history lives in `AuditLog`. See "Soft delete eliminated" below. |
 | CSV string foreign keys (`FeatureIds`, `RegionIds`, `CountryId`) | Proper M2M and FK |
 | Booleans for inheritance (`IsDefaultSetting*`) | Nullable fields + `effective()` resolver |
 | Bit flags for image kinds | Single `kind` TextChoices + UniqueConstraint |
@@ -187,6 +195,40 @@ Findings overturned during verification (kept here as a historical caveat so the
 
 - **"Tokenised charge stored as plaintext"** — false. No `TokenisedCharge` column exists on `VillaPaymentDetails` (`live-db-24-apr.sql:1912-1926`).
 - **"`sp_getAvailability` mutates `VillaAvailability` as a side effect of a read"** — false. The `DELETE` statements operate on a procedure-local `@temp_table` table variable (`live-db-24-apr.sql:111935`). See `workflows/06-availability/availability-check.md` for the corrected note.
+
+## Soft delete eliminated
+
+The legacy convention slapped `DeletedAt`/`DeletedBy` on every table. The new design removes the entire pattern: there is no `SoftDeleteModel` base class, no `deleted_at` column anywhere, no `all_objects` manager. Lifecycle is always expressed as something the operator (and any SQL query) can see directly.
+
+Per-concern patterns (full rules in `00-conventions.md`):
+
+| Need | Pattern |
+|---|---|
+| Lifecycle states (draft / active / archived / cancelled / expired / declined / anonymized) | `status` TextChoices on the model, with `archived_at` / `cancelled_at` / `anonymized_at` timestamps for state-entry audit when needed |
+| On/off toggle for lookups & catalogues | `is_active` BooleanField; default operator queries filter at the call site |
+| Owned child rows | hard delete via CASCADE from the parent |
+| Cross-aggregate references | `on_delete=PROTECT` blocks accidental deletion |
+| Audit history of state transitions | append-only event tables (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`) — never deleted |
+| Audit history of sensitive-config field edits | per-model `AuditLog` row written by a `pre_save` signal |
+| Personal-data removal under GDPR | **anonymization-in-place** via `Contact.anonymize()` / `Guest.anonymize()`; row stays for FK integrity, `status=ANONYMIZED` |
+| Duplicate records | `Contact.merge(target)` / `Guest.merge(target)` rewrite FKs then **hard-delete** the merged-from row; `AuditLog` is the only trail |
+
+The three cases previously held out as "legitimate soft-delete uses" all resolve cleanly:
+
+**1. `Contact`** — gains a `status` enum (`ACTIVE`, `INACTIVE`, `ANONYMIZED`). "Wrong contact, no relationships yet" → hard delete (PROTECT FK from `PropertyContactAssignment` gates this). "Contact retired" → `status=INACTIVE`. "Merge duplicates" → `merge(target)` rewrites FKs and hard-deletes the merged-from row with an `AuditLog` entry per rewrite. "GDPR forget-me" → `anonymize()` overwrites PII fields with sentinels and sets `status=ANONYMIZED`; row stays for historical FK integrity.
+
+**2. `Guest`** — same pattern (`status` enum: `ACTIVE`, `ARCHIVED`, `ANONYMIZED`). `Guest.merge` is destructive (rewrites FKs on `Enquiry` / `Quotation` / `Booking`, hard-deletes self, writes `AuditLog`). The legacy `merged_into` self-FK is dropped — merge is final, and the `AuditLog` is the trail.
+
+**3. `PropertyFinance` and its OneToOne children** (`Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`) — configuration rows, not transactional state. Edits update in place. Hard delete cascades from `PropertyFinance` to its children. Owner-statement reconstruction relies on `Booking.pricing_snapshot` (which captures commission / tax / Extras at booking-creation time via the PricingEngine), not on a history of `PropertyFinance` rows. "Who changed commission from 10% to 12%?" is answered by `AuditLog` rows written by a `pre_save` signal scoped to financial-config models. `BankAccount` edits log redacted-field diffs (no cleartext IBAN in the audit table).
+
+Other previously-soft-deletable models are reassigned as follows:
+
+- **`status` enum already in design (kept):** `Property` (DRAFT/ACTIVE/ARCHIVED), `Booking` (11 states), `Quotation` (DRAFT/SENT/ACCEPTED/EXPIRED/CANCELLED), `Enquiry` (NEW/CONTACTED/QUOTED/LOST/CONVERTED), `Refund` (PENDING/APPROVED/REJECTED/EXECUTING/SUCCEEDED/FAILED/CANCELLED), `Payment` (PENDING/PROCESSING/SUCCEEDED/FAILED/REFUNDED/CANCELLED/EXPIRED), `SecurityDeposit` (per-kind enum).
+- **`status` enum added:** `Contact` (`ACTIVE`/`INACTIVE`/`ANONYMIZED`), `Guest` (`ACTIVE`/`ARCHIVED`/`ANONYMIZED`).
+- **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `PropertyCategory`, `PropertyGroup`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `ConciergeService`, `EmailTemplate`, `SmtpProfile`.
+- **Hard delete (CASCADE from owner, PROTECT from references):** `PropertyLocation`, `PropertyCapacity`, `PropertySettings`, `Room`, `RoomBeds`, `PropertyImage`, `PropertyNearbyPlace`, `ContactEmail`, `ContactPhone`, `CollectionMembership`, `PropertyContactAssignment`, `Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`, the group-level finance siblings.
+- **Append-only event/audit (never deleted):** `BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `SyncRun`, `SyncIssue`, `EmailLog`, `FxRate`, `AuditLog`.
+- **Terminal-timestamp lifecycle (already in design):** `BookingHold.released_at` (expired/released holds stay visible; only the partial `EXCLUDE` index treats them as inactive). `Booking.archived_at` (orthogonal operator-facing tidy-out flag; the underlying terminal `status` still tells the truth).
 
 ## What we did *not* break
 

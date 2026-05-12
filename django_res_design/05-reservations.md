@@ -161,6 +161,20 @@ Append-only state-machine audit. Replaces the drifting `VillaArchiveBooking`.
 
 Booking history is `events.order_by('created_at')` — no drift, full provenance.
 
+### `BookingNote(TimestampedModel)`
+Append-able operator notes attached to a booking. Replaces the legacy single `VillaBooking.Notes`, `ConciergeNotes`, and the "Customer Notes (Internal)" / "Booking summary information" / "Internal booking information" textareas that the legacy Blazor `Booking.razor` page bound to flat columns with no authorship.
+
+- `booking` — FK Booking CASCADE
+- `author` — FK User SET_NULL, null=True
+- `kind` — TextChoices (`GENERAL`, `INTERNAL`, `CONCIERGE`, `VILLA`)  # `GENERAL` ≈ legacy "Notes" / booking summary; `INTERNAL` ≈ legacy "Internal booking information"; `CONCIERGE` ≈ legacy `ConciergeNotes`; `VILLA` is the property-manager-visible operations note carried over from the original "Villa notes" textarea
+- `body` — TextField  # rich text / markdown
+- `is_pinned` — bool(default=False)
+- `visibility` — TextChoices (`STAFF_ONLY`, `OWNER`, `GUEST`)  # gates who sees the note on portals / docs; `STAFF_ONLY` is the default
+
+Indexes: `(booking, created_at)`, `(booking, kind)`.
+
+Ordering: `created_at` ascending. Editing rewrites the same row (PATCH); deletion is hard. The full mutation audit lives in `AuditLog`.
+
 ### `BookingHold`
 Lives here logically but documented in 06-availability.md.
 

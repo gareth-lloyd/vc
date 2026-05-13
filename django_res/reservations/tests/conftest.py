@@ -6,7 +6,7 @@ Quotations and Bookings without coupling to every upstream factory.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -14,7 +14,7 @@ import pytest
 from django.utils import timezone
 
 from pricing.models import Currency, RateCard, RatePlan, RateRule
-from reservations.models import Guest, TermsVersion
+from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -97,4 +97,27 @@ def terms(db: None) -> TermsVersion:
         body_markdown="**T&Cs**",
         published_at=timezone.now(),
         is_current=True,
+    )
+
+
+@pytest.fixture
+def quotation_line(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> QuotationLine:
+    quotation = Quotation.objects.create(
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    return QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
     )

@@ -80,6 +80,72 @@ chain. Any viewset surfacing Quotation/QuotationLine must
 `.exclude(legacy_id__startswith="booking-")` in `get_queryset()` — see
 `QuotationViewSet` in `reservations/views/quotation.py`.
 
+### State-mutating services accept `idempotency_key`
+
+Any service that *creates* a row in response to an external trigger
+(webhook, scheduled job, operator UI submit) takes an optional
+`idempotency_key: str | None` and short-circuits the second call.
+Webhooks retry, operators double-click — the second call must be a
+no-op that returns the original row, not a duplicate write.
+
+Implementation lives in `core/idempotency.py`:
+
+- `find_by_meta_key(queryset, key)` looks up an existing row keyed by
+  `meta["idempotency_key"]`. Scope the queryset before calling (one
+  booking, one provider — not the whole table).
+- `stamp_meta(meta, key)` returns a fresh `meta` dict with the key
+  stamped on it; pass straight to `.create()`.
+
+`None` means "no idempotency requested" — internal callers (tests,
+management commands, ad-hoc shell) stay ceremony-free.
+
+Some entry points have a natural idempotency key already: a `Booking`
+is uniquely tied to a `QuotationLine`, so
+`BookingService.create_from_quotation_line` checks for an existing
+booking by FK before opening a new one. Prefer the natural key when it
+exists; fall back to the `meta` key otherwise.
+
+Reference implementations: `RefundService.request`,
+`RefundService.execute`, `BookingService.create_from_quotation_line`.
+
+### AuditLog registration is part of model definition
+
+Any model whose business-logic docstring or anonymisation flow claims an
+AuditLog trail — and any PII-bearing or money-bearing model — must be
+registered via `core.audit.track(Model, fields=[...], sensitive=[...])`
+in its app's `AppConfig.ready()`. Treat registration as load-bearing
+alongside the migration that creates the model.
+
+Field lists stay tight: track lifecycle, PII, and money columns; skip
+chatty timestamps (Django's `auto_now` already noises every save) and
+free-form JSON blobs whose internal shape isn't actionable in an audit
+review (e.g. `Booking.pricing_snapshot`).
+
+`core/tests/test_audit_registry.py` pins the registered set. To
+deregister, update `EXPECTED_TRACKED_MODELS` in the same commit and
+explain the call in this file.
+
+### Viewset querysets declare their FK reads
+
+Every `ViewSet.get_queryset()` must `select_related()` the FKs the serializer
+walks and `prefetch_related()` the reverses / m2m it walks. The list endpoint
+must serve a single row and a hundred rows in the same constant query count.
+A bare `Model.objects.all()` is a bug even when the current serializer
+returns FKs as PKs — the moment someone adds a nested representation or a
+`SerializerMethodField` the N+1 lurks.
+
+Pin the bound with `core.tests.assert_max_queries` in a regression test
+on at least one list endpoint per app:
+
+    from core.tests import assert_max_queries
+
+    with assert_max_queries(10):
+        api_client.get("/api/v1/payments")
+
+Reference: `payments/views/payment.py`, `payments/views/refund.py`, and the
+existing `select_related` discipline in `reservations/views/booking.py`,
+`properties/views/property.py`, `pricing/views/rate.py`.
+
 ### Test fixtures — `get_or_create` for canonical countries
 
 Migration `properties.0009` pre-seeds 249 ISO-3166 countries with

@@ -26,4 +26,8 @@ class PaymentViewSet(
     ordering = ["-created_at"]
 
     def get_queryset(self) -> Any:
-        return Payment.objects.all()
+        return Payment.objects.select_related(
+            "booking",
+            "currency",
+            "concierge_item",
+        )

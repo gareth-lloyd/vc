@@ -60,7 +60,16 @@ class RefundViewSet(
     ordering = ["-created_at"]
 
     def get_queryset(self) -> Any:
-        return Refund.objects.all()
+        return Refund.objects.select_related(
+            "booking",
+            "currency",
+            "against_payment",
+            "requested_by",
+            "approved_by",
+            "rejected_by",
+            "executed_by",
+            "security_deposit",
+        )
 
     # ------------------------------------------------------------------
     # Action endpoints

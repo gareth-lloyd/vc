@@ -29,7 +29,19 @@ class BookingService:
         agent: Any = None,
         actor: Any = None,
     ) -> Booking:
-        """Copy the line's pricing snapshot, build a Booking, release holds."""
+        """Copy the line's pricing snapshot, build a Booking, release holds.
+
+        Idempotent on `quotation_line`: a `QuotationLine` represents a
+        single guest commitment, so a retry from the same accept-quotation
+        webhook (or a double-clicked staff UI) returns the existing
+        Booking instead of opening a second one. The hold release and
+        BookingEvent emission are skipped in that case — both ran on the
+        first call.
+        """
+        existing = Booking.objects.filter(quotation_line=quotation_line).first()
+        if existing is not None:
+            return existing
+
         quotation = quotation_line.quotation
         property_ = quotation_line.property
         snapshot = dict(quotation_line.pricing_snapshot or {})

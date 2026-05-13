@@ -22,6 +22,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from core.idempotency import find_by_meta_key, stamp_meta
 from payments.enums import (
     PaymentPurpose,
     PaymentStatus,
@@ -77,13 +78,25 @@ class RefundService:
         against_payment: Payment | None = None,
         requested_by: Any = None,
         security_deposit: SecurityDeposit | None = None,
+        idempotency_key: str | None = None,
     ) -> Refund:
         """Open a refund in PENDING.
 
         Validates the cumulative refund total against
         `against_payment.amount` (if set) so partial-refund stacks can't
         over-refund.
+
+        Pass `idempotency_key` from webhooks or operator UIs that may
+        retry: a second `request(...)` with the same key + booking
+        returns the original Refund untouched instead of double-opening.
         """
+        existing = find_by_meta_key(
+            Refund.objects.filter(booking=booking),
+            idempotency_key,
+        )
+        if existing is not None:
+            return existing
+
         if amount is None or Decimal(str(amount)) <= 0:
             raise ValueError("Refund amount must be positive")
 
@@ -114,6 +127,7 @@ class RefundService:
             method=method,
             requested_by=requested_by,
             security_deposit=security_deposit,
+            meta=stamp_meta(None, idempotency_key),
         )
         return refund
 
@@ -199,7 +213,16 @@ class RefundService:
         Creates one `Payment(purpose=REFUND, status=PROCESSING)` linked
         via `meta['refund_id']`. Would normally enqueue
         `process_refund.delay(refund.id)`; we just create the row here.
+
+        Idempotent on `refund.pk`: a second `execute` call (e.g. a
+        webhook retry) skips re-creating the outbound `Payment` if one
+        already exists for this refund, and short-circuits when the
+        refund has already left APPROVED.
         """
+        if refund.status == RefundStatus.EXECUTING.value:
+            # Already executed — likely a webhook retry. Return the
+            # current row without re-firing the outbound Payment.
+            return refund
         if refund.status != RefundStatus.APPROVED.value:
             raise ValueError(f"Refund {refund.reference}: cannot :execute from {refund.status!r}")
         if not _actor_has_perm(actor, PERM_EXECUTE):
@@ -224,15 +247,22 @@ class RefundService:
         # Mint the gateway-bound Payment row. The Refund FK lives on
         # `Payment.meta`; the reverse direction is `Refund.against_payment`
         # which points to the original *inbound* payment, not the outbound
-        # refund payment.
-        Payment.objects.create(
+        # refund payment. Guard against duplicates from concurrent
+        # execute attempts that raced past the status check above.
+        outbound_exists = Payment.objects.filter(
             booking=refund.booking,
             purpose=PaymentPurpose.REFUND.value,
-            status=PaymentStatus.PROCESSING.value,
-            amount=refund.amount,
-            currency=refund.currency,
-            meta={"refund_id": refund.pk},
-        )
+            meta__refund_id=refund.pk,
+        ).exists()
+        if not outbound_exists:
+            Payment.objects.create(
+                booking=refund.booking,
+                purpose=PaymentPurpose.REFUND.value,
+                status=PaymentStatus.PROCESSING.value,
+                amount=refund.amount,
+                currency=refund.currency,
+                meta={"refund_id": refund.pk},
+            )
 
         # TODO: queue Celery `process_refund(refund.id)` — for now we just
         # record the EXECUTING state and rely on the webhook pipeline (or a

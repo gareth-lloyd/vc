@@ -206,6 +206,117 @@ def test_from_cancellation__computes_refundable_minus_fee(
 
 
 @pytest.mark.django_db
+def test_request__is_idempotent_when_same_key_supplied(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+) -> None:
+    """A second :request with the same key returns the first Refund.
+
+    Webhook retries from the payment gateway are the canonical retry
+    path — the gateway can deliver the same event twice. Without an
+    idempotency guard the second delivery would either open a duplicate
+    refund or fail the cumulative-amount check.
+    """
+    key = "evt_abc123"
+    first = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+        idempotency_key=key,
+    )
+    second = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+        idempotency_key=key,
+    )
+    assert second.pk == first.pk
+    assert Refund.objects.filter(booking=booking).count() == 1
+    assert first.meta["idempotency_key"] == key
+
+
+@pytest.mark.django_db
+def test_request__no_key_means_no_idempotency(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+) -> None:
+    """Without `idempotency_key`, repeat calls behave as before — two rows.
+
+    Internal callers (tests, management commands) that don't propagate
+    an external trigger ID must remain free to open multiple refunds.
+    """
+    first = RefundService.request(
+        booking=booking,
+        amount=Decimal("50.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    second = RefundService.request(
+        booking=booking,
+        amount=Decimal("75.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    assert second.pk != first.pk
+    assert Refund.objects.filter(booking=booking).count() == 2
+
+
+@pytest.mark.django_db
+def test_execute__is_idempotent_on_refund_pk(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+    approver: Any,
+) -> None:
+    """Re-executing the same Refund must not mint a duplicate outbound Payment.
+
+    Once :execute fires, the refund moves to EXECUTING and the gateway
+    Payment row is created. A retry (webhook re-delivery, double-click)
+    must return the refund as-is and leave the Payment count at one.
+    """
+    _grant(approver, "approve_refund", "execute_refund", "self_approve_refund")
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    RefundService.approve(refund, actor=approver)
+    RefundService.execute(refund, actor=approver)
+    RefundService.execute(refund, actor=approver)  # retry
+
+    outbound = Payment.objects.filter(
+        booking=booking,
+        purpose=PaymentPurpose.REFUND.value,
+    )
+    assert outbound.count() == 1
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.EXECUTING.value
+
+
+@pytest.mark.django_db
 def test_from_cancellation__returns_none_when_fee_consumes_paid_total(
     booking: Any,
     property_: Any,

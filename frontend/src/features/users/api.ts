@@ -1,11 +1,18 @@
-import { apiGet } from "@/lib/api/client";
+import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
-import { userListResponseSchema, type UserFilters, type UserSummary } from "./schemas";
+import type { UserId } from "@/lib/query/keys";
+import {
+  userDetailSchema,
+  userListResponseSchema,
+  type UserCreateInput,
+  type UserDetail,
+  type UserFilters,
+  type UserSummary,
+  type UserUpdateInput,
+} from "./schemas";
 
 function toQuery(filters: UserFilters): QueryParams {
-  // `role` is comma-separated for caller convenience; convert to repeated
-  // `?role=` params to match django-filter's `exact` lookup.
   const roles = filters.role
     ? filters.role
         .split(",")
@@ -16,6 +23,7 @@ function toQuery(filters: UserFilters): QueryParams {
     role: roles && roles.length ? roles : undefined,
     is_active: filters.is_active,
     search: filters.search || undefined,
+    ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
   };
 }
@@ -23,4 +31,32 @@ function toQuery(filters: UserFilters): QueryParams {
 export async function fetchUsers(filters: UserFilters): Promise<Paginated<UserSummary>> {
   const data = await apiGet<unknown>("/users", { query: toQuery(filters) });
   return userListResponseSchema.parse(data);
+}
+
+export async function fetchUser(id: UserId): Promise<UserDetail> {
+  const data = await apiGet<unknown>(`/users/${id}`);
+  return userDetailSchema.parse(data);
+}
+
+export async function createUser(body: UserCreateInput): Promise<UserDetail> {
+  const data = await apiSend<unknown>("POST", "/users", body);
+  return userDetailSchema.parse(data);
+}
+
+export async function updateUser(id: UserId, body: Partial<UserUpdateInput>): Promise<UserDetail> {
+  const data = await apiSend<unknown>("PATCH", `/users/${id}`, body);
+  return userDetailSchema.parse(data);
+}
+
+export async function deactivateUser(id: UserId): Promise<void> {
+  await apiSend<void>("DELETE", `/users/${id}`);
+}
+
+export async function activateUser(id: UserId): Promise<UserDetail> {
+  const data = await apiSend<unknown>("POST", `/users/${id}:activate`);
+  return userDetailSchema.parse(data);
+}
+
+export async function reset2fa(id: UserId): Promise<void> {
+  await apiSend<unknown>("POST", `/users/${id}:reset-2fa`);
 }

@@ -76,4 +76,31 @@ export const queryKeys = {
     all: () => ["audit"] as const,
     list: <F>(filters: F) => ["audit", "list", filters] as const,
   },
+  countries: {
+    all: () => ["countries"] as const,
+    lists: () => ["countries", "list"] as const,
+    list: <F>(filters: F) => ["countries", "list", filters] as const,
+    detail: (iso2: string) => ["countries", "detail", iso2] as const,
+  },
+  currencies: {
+    all: () => ["currencies"] as const,
+    lists: () => ["currencies", "list"] as const,
+    list: <F>(filters: F) => ["currencies", "list", filters] as const,
+    detail: (code: string) => ["currencies", "detail", code] as const,
+  },
+  tagFeatures: {
+    all: () => ["features"] as const,
+    lists: () => ["features", "list"] as const,
+    list: <F>(filters: F) => ["features", "list", filters] as const,
+    detail: (id: number | string) => ["features", "detail", id] as const,
+  },
+  tagFeatureCategories: {
+    all: () => ["feature-categories"] as const,
+    lists: () => ["feature-categories", "list"] as const,
+    list: <F>(filters: F) => ["feature-categories", "list", filters] as const,
+    detail: (id: number | string) => ["feature-categories", "detail", id] as const,
+  },
+  systemSettings: {
+    all: () => ["system", "settings"] as const,
+  },
 } as const;

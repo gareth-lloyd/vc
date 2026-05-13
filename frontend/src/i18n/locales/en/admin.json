@@ -1,0 +1,336 @@
+{
+  "common": {
+    "breadcrumb_root": "Admin",
+    "actions": {
+      "new": "New",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "add_key": "Add key"
+    },
+    "errors": {
+      "load_failed": "Couldn't load.",
+      "admin_role_required": "You need the Admin role.",
+      "admin_role_required_redirect": "Admin role required."
+    }
+  },
+  "users": {
+    "title": "Users",
+    "description": "Manage staff accounts, roles, and 2FA.",
+    "new_button": "New user",
+    "columns": {
+      "email": "Email",
+      "name": "Name",
+      "role": "Role",
+      "is_active": "Active",
+      "last_login": "Last login",
+      "created_at": "Created"
+    },
+    "filters": {
+      "role_any": "Any role",
+      "role_label": "Filter by role",
+      "active_any": "Any status",
+      "active_yes": "Active",
+      "active_no": "Inactive",
+      "active_label": "Filter by active",
+      "search_placeholder": "Search by name or email…"
+    },
+    "row_actions": {
+      "menu_label": "Open row actions",
+      "edit": "Edit",
+      "reset_2fa": "Reset 2FA",
+      "activate": "Activate",
+      "deactivate": "Deactivate"
+    },
+    "roles": {
+      "admin": "Admin",
+      "reservations": "Reservations",
+      "accounts": "Accounts",
+      "viewer": "Viewer"
+    },
+    "is_active": {
+      "yes": "Active",
+      "no": "Inactive"
+    },
+    "dialog": {
+      "create_title": "New user",
+      "edit_title": "Edit user",
+      "fields": {
+        "email": "Email",
+        "first_name": "First name",
+        "last_name": "Last name",
+        "role": "Role",
+        "password": "Password",
+        "password_hint": "At least 8 characters",
+        "is_active": "Active"
+      },
+      "submit_create": "Create user",
+      "submit_edit": "Save",
+      "submit_busy": "Saving…"
+    },
+    "confirm_reset_2fa": {
+      "title": "Reset 2FA?",
+      "description": "The user will need to re-enrol on next sign-in.",
+      "confirm": "Reset 2FA"
+    },
+    "confirm_activate": {
+      "title": "Activate user?",
+      "description": "The user will be able to sign in again.",
+      "confirm": "Activate"
+    },
+    "confirm_deactivate": {
+      "title": "Deactivate user?",
+      "description": "The user will lose access immediately.",
+      "confirm": "Deactivate"
+    },
+    "toasts": {
+      "created": "User created",
+      "updated": "User updated",
+      "activated": "User activated",
+      "deactivated": "User deactivated",
+      "reset_2fa": "2FA reset"
+    },
+    "empty": {
+      "title": "No users match these filters",
+      "description": "Try clearing the search or filters."
+    },
+    "errors": {
+      "load_failed": "Couldn't load users."
+    }
+  },
+  "countries": {
+    "title": "Countries",
+    "description": "ISO-3166 countries used across properties and addresses.",
+    "new_button": "New country",
+    "columns": {
+      "iso2": "ISO-2",
+      "name": "Name",
+      "iso3": "ISO-3",
+      "dial_code": "Dial code",
+      "sort_order": "Sort",
+      "is_active": "Active"
+    },
+    "filters": {
+      "search_placeholder": "Search by name or ISO code…"
+    },
+    "dialog": {
+      "create_title": "New country",
+      "edit_title": "Edit country",
+      "fields": {
+        "iso2": "ISO-2",
+        "name": "Name",
+        "iso3": "ISO-3",
+        "dial_code": "Dial code",
+        "default_tax_rate": "Default tax rate",
+        "sort_order": "Sort order",
+        "is_active": "Active"
+      },
+      "submit_create": "Create country",
+      "submit_edit": "Save",
+      "submit_busy": "Saving…"
+    },
+    "confirm_delete": {
+      "title": "Delete country?",
+      "description": "This will remove the country. Properties referencing it will lose their country link.",
+      "confirm": "Delete"
+    },
+    "toasts": {
+      "created": "Country created",
+      "updated": "Country updated",
+      "deleted": "Country deleted"
+    },
+    "empty": {
+      "title": "No countries match these filters",
+      "description": "Try clearing the search."
+    },
+    "errors": {
+      "load_failed": "Couldn't load countries."
+    }
+  },
+  "currencies": {
+    "title": "Currencies",
+    "description": "Currencies available for pricing and bookings.",
+    "new_button": "New currency",
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "symbol": "Symbol",
+      "decimal_places": "Decimals",
+      "is_active": "Active"
+    },
+    "filters": {
+      "search_placeholder": "Search by code or name…"
+    },
+    "dialog": {
+      "create_title": "New currency",
+      "edit_title": "Edit currency",
+      "fields": {
+        "code": "Code",
+        "name": "Name",
+        "symbol": "Symbol",
+        "decimal_places": "Decimal places",
+        "is_active": "Active"
+      },
+      "submit_create": "Create currency",
+      "submit_edit": "Save",
+      "submit_busy": "Saving…"
+    },
+    "confirm_delete": {
+      "title": "Delete currency?",
+      "description": "This will remove the currency from the system.",
+      "confirm": "Delete"
+    },
+    "toasts": {
+      "created": "Currency created",
+      "updated": "Currency updated",
+      "deleted": "Currency deleted"
+    },
+    "empty": {
+      "title": "No currencies match these filters",
+      "description": "Try clearing the search."
+    },
+    "errors": {
+      "load_failed": "Couldn't load currencies."
+    }
+  },
+  "tags": {
+    "title": "Tags",
+    "description": "Feature categories and features used across the property library.",
+    "categories": {
+      "section_title": "Feature categories",
+      "new_button": "New category",
+      "columns": {
+        "name": "Name",
+        "slug": "Slug",
+        "sort_order": "Sort",
+        "is_active": "Active"
+      },
+      "dialog": {
+        "create_title": "New feature category",
+        "edit_title": "Edit feature category",
+        "fields": {
+          "name": "Name",
+          "slug": "Slug",
+          "description": "Description",
+          "icon": "Icon",
+          "sort_order": "Sort order",
+          "is_active": "Active"
+        },
+        "submit_create": "Create category",
+        "submit_edit": "Save",
+        "submit_busy": "Saving…"
+      },
+      "confirm_delete": {
+        "title": "Delete category?",
+        "description": "This category will be removed. Features assigned to it must be moved first.",
+        "confirm": "Delete"
+      },
+      "toasts": {
+        "created": "Category created",
+        "updated": "Category updated",
+        "deleted": "Category deleted"
+      },
+      "empty": {
+        "title": "No categories yet",
+        "description": "Create one to start grouping features."
+      },
+      "errors": {
+        "load_failed": "Couldn't load categories."
+      }
+    },
+    "features": {
+      "section_title": "Features",
+      "new_button": "New feature",
+      "columns": {
+        "name": "Name",
+        "category": "Category",
+        "slug": "Slug",
+        "kind": "Kind",
+        "sort_order": "Sort",
+        "is_active": "Active"
+      },
+      "filters": {
+        "category_any": "All categories",
+        "category_label": "Filter by category"
+      },
+      "service_type": {
+        "amenity": "Amenity",
+        "included_service": "Included service",
+        "paid_addon": "Paid add-on"
+      },
+      "dialog": {
+        "create_title": "New feature",
+        "edit_title": "Edit feature",
+        "fields": {
+          "name": "Name",
+          "slug": "Slug",
+          "category": "Category",
+          "service_type": "Kind",
+          "description": "Description",
+          "icon": "Icon",
+          "sort_order": "Sort order",
+          "is_active": "Active"
+        },
+        "submit_create": "Create feature",
+        "submit_edit": "Save",
+        "submit_busy": "Saving…"
+      },
+      "confirm_delete": {
+        "title": "Delete feature?",
+        "description": "This feature will be removed from the catalogue.",
+        "confirm": "Delete"
+      },
+      "toasts": {
+        "created": "Feature created",
+        "updated": "Feature updated",
+        "deleted": "Feature deleted"
+      },
+      "empty": {
+        "title": "No features yet",
+        "description": "Create a feature to associate it with properties."
+      },
+      "errors": {
+        "load_failed": "Couldn't load features."
+      }
+    }
+  },
+  "system": {
+    "title": "System settings",
+    "description": "Free-form key/value configuration used by the platform.",
+    "updated_at_label": "Last updated",
+    "key": "Key",
+    "value": "Value",
+    "add_key_dialog": {
+      "title": "Add setting",
+      "key_label": "Key",
+      "value_label": "Value",
+      "key_placeholder": "feature_flag.new_dashboard",
+      "value_placeholder": "true",
+      "submit": "Add",
+      "submit_busy": "Adding…",
+      "errors": {
+        "key_required": "Key is required",
+        "key_duplicate": "Key already exists"
+      }
+    },
+    "actions": {
+      "save_all": "Save changes",
+      "save_busy": "Saving…",
+      "add_key": "Add setting",
+      "delete_row": "Delete",
+      "discard": "Discard changes"
+    },
+    "toasts": {
+      "updated": "Settings updated"
+    },
+    "empty": {
+      "title": "No settings yet",
+      "description": "Add a key to get started."
+    },
+    "errors": {
+      "load_failed": "Couldn't load settings.",
+      "save_failed": "Couldn't save settings."
+    }
+  }
+}

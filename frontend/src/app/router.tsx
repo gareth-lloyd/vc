@@ -1,6 +1,11 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
-import { RequireAuth } from "./guards";
+import { RequireAdmin, RequireAuth } from "./guards";
+import { UsersAdminPage } from "@/features/admin/users/UsersAdminPage";
+import { CountriesAdminPage } from "@/features/admin/countries/CountriesAdminPage";
+import { CurrenciesAdminPage } from "@/features/admin/currencies/CurrenciesAdminPage";
+import { TagsAdminPage } from "@/features/admin/tags/TagsAdminPage";
+import { SystemAdminPage } from "@/features/admin/system/SystemAdminPage";
 import { BootGate } from "./boot";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
@@ -121,6 +126,16 @@ export const router = createBrowserRouter([
               { path: "/quotations", element: <QuotationsListPage /> },
               { path: "/quotations/:id", element: <QuotationDetailLayout /> },
               { path: "/bookings", element: <BookingsListPage /> },
+              {
+                element: <RequireAdmin />,
+                children: [
+                  { path: "/admin/users", element: <UsersAdminPage /> },
+                  { path: "/admin/countries", element: <CountriesAdminPage /> },
+                  { path: "/admin/currencies", element: <CurrenciesAdminPage /> },
+                  { path: "/admin/tags", element: <TagsAdminPage /> },
+                  { path: "/admin/system", element: <SystemAdminPage /> },
+                ],
+              },
               {
                 path: "/bookings/:id",
                 element: <BookingDetailLayout />,

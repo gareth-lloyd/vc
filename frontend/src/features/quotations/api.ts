@@ -167,6 +167,39 @@ export async function createQuotationLine(
   return quotationLineSchema.parse(data);
 }
 
+export async function updateQuotationLine(
+  quotationId: QuotationId,
+  lineId: number,
+  body: Partial<QuotationLineWriteInput>,
+): Promise<QuotationLine> {
+  const data = await apiSend<unknown>("PATCH", `/quotations/${quotationId}/lines/${lineId}`, body);
+  return quotationLineSchema.parse(data);
+}
+
+export async function deleteQuotationLine(quotationId: QuotationId, lineId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/quotations/${quotationId}/lines/${lineId}`);
+}
+
+// ----------------------------------------------------------------------
+// Quotation lifecycle actions — send / duplicate / withdraw.
+// (`convert` lands in Stage 3 alongside the booking-create wizard.)
+// ----------------------------------------------------------------------
+
+export async function sendQuotation(id: QuotationId): Promise<QuotationDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:send`);
+  return quotationDetailSchema.parse(data);
+}
+
+export async function duplicateQuotation(id: QuotationId): Promise<QuotationDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:duplicate`);
+  return quotationDetailSchema.parse(data);
+}
+
+export async function withdrawQuotation(id: QuotationId, reason: string): Promise<QuotationDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:withdraw`, { reason });
+  return quotationDetailSchema.parse(data);
+}
+
 // ----------------------------------------------------------------------
 // Supporting lookups.
 // ----------------------------------------------------------------------

@@ -5,11 +5,16 @@ import {
   createGuest,
   createQuotation,
   createQuotationLine,
+  deleteQuotationLine,
+  duplicateQuotation,
   fetchCurrentTermsVersion,
   fetchQuotation,
   fetchQuotationLines,
   fetchQuotations,
   searchQuoteOptions,
+  sendQuotation,
+  updateQuotationLine,
+  withdrawQuotation,
 } from "./api";
 import type {
   QuotationFilters,
@@ -83,3 +88,68 @@ export type CreateQuotationFromBuilderInput = {
   header: QuotationWriteInput;
   lines: QuotationLineWriteInput[];
 };
+
+// ----------------------------------------------------------------------
+// Lifecycle action hooks — send / duplicate / withdraw.
+// ----------------------------------------------------------------------
+
+function invalidateQuotation(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(id) });
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+}
+
+export function useSendQuotation(id: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sendQuotation(id),
+    onSuccess: (quotation) => {
+      invalidateQuotation(qc, id);
+      // Parent enquiry status flips to QUOTED — refresh that view too.
+      if (quotation.enquiry != null) {
+        qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
+        qc.invalidateQueries({ queryKey: queryKeys.enquiries.activity(quotation.enquiry) });
+      }
+    },
+  });
+}
+
+export function useDuplicateQuotation(id: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => duplicateQuotation(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+    },
+  });
+}
+
+export function useWithdrawQuotation(id: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => withdrawQuotation(id, reason),
+    onSuccess: () => invalidateQuotation(qc, id),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Line CRUD hooks — update / delete a single line.
+// (Create is already covered by `useCreateQuotationLine` / `SaveQuoteDialog`.)
+// ----------------------------------------------------------------------
+
+export function useUpdateQuotationLine(quotationId: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, body }: { lineId: number; body: Partial<QuotationLineWriteInput> }) =>
+      updateQuotationLine(quotationId, lineId, body),
+    onSuccess: () => invalidateQuotation(qc, quotationId),
+  });
+}
+
+export function useDeleteQuotationLine(quotationId: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lineId: number) => deleteQuotationLine(quotationId, lineId),
+    onSuccess: () => invalidateQuotation(qc, quotationId),
+  });
+}

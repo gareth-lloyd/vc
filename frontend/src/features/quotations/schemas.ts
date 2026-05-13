@@ -129,8 +129,8 @@ export const quotationLineWriteInputSchema = z.object({
   date_to: z.string().min(1),
   adults: z.number().int().min(1),
   children: z.number().int().min(0),
-  is_manual: z.boolean().optional().default(false),
-  notes: z.string().optional().default(""),
+  is_manual: z.boolean(),
+  notes: z.string(),
 });
 export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSchema>;
 

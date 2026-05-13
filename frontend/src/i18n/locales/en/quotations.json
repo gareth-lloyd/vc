@@ -49,10 +49,15 @@
         "dates": "Dates",
         "guests": "Guests",
         "total": "Total",
-        "selected": "Selected"
+        "selected": "Selected",
+        "actions": "Actions"
       },
       "selected_yes": "Yes",
-      "selected_no": "No"
+      "selected_no": "No",
+      "actions": {
+        "edit": "Edit",
+        "remove": "Remove"
+      }
     },
     "errors": {
       "not_found": "Quotation not found",
@@ -63,10 +68,71 @@
     "actions": {
       "section_label": "Actions",
       "send": "Send to guest",
+      "send_again": "Mark sent again",
       "duplicate": "Duplicate",
+      "duplicating": "Duplicating…",
       "convert": "Convert to booking",
       "withdraw": "Withdraw",
-      "coming_soon": "Quote actions are coming in a future phase."
+      "coming_soon": "Quote actions are coming in a future phase.",
+      "disable_reasons": {
+        "no_role": "Reservations role required.",
+        "not_draft": "Only draft quotes can be sent.",
+        "terminal": "Already accepted, cancelled, or expired.",
+        "convert_pending": "Convert-to-booking lands in the next step."
+      }
+    },
+    "dialogs": {
+      "send": {
+        "title": "Send quotation",
+        "description": "Mark {{reference}} as sent. The parent enquiry will move to Quoted.",
+        "cancel": "Cancel",
+        "confirm": "Mark sent",
+        "sending": "Sending…",
+        "toasts": {
+          "success": "Quotation sent",
+          "failed": "Couldn't send quotation."
+        }
+      },
+      "duplicate": {
+        "toasts": {
+          "success": "Quotation duplicated",
+          "failed": "Couldn't duplicate quotation."
+        }
+      },
+      "withdraw": {
+        "title": "Withdraw quotation",
+        "description": "Cancel {{reference}}. The guest will no longer be able to accept this quote.",
+        "reason_label": "Reason (optional)",
+        "reason_placeholder": "e.g. Quote superseded by a new option.",
+        "cancel": "Keep open",
+        "confirm": "Withdraw",
+        "withdrawing": "Withdrawing…",
+        "toasts": {
+          "success": "Quotation withdrawn",
+          "failed": "Couldn't withdraw quotation."
+        }
+      },
+      "line_edit": {
+        "title": "Edit line",
+        "description": "Adjust the dates, party size, or notes. The server will re-price on save.",
+        "notes_label": "Notes",
+        "cancel": "Cancel",
+        "confirm": "Save changes",
+        "saving": "Saving…",
+        "toasts": {
+          "success": "Line updated",
+          "failed": "Couldn't update line."
+        }
+      },
+      "line_delete": {
+        "title": "Remove this line?",
+        "description": "The line will be deleted from the quotation. This can't be undone.",
+        "confirm": "Remove line",
+        "toasts": {
+          "success": "Line removed",
+          "failed": "Couldn't remove line."
+        }
+      }
     }
   },
   "builder": {

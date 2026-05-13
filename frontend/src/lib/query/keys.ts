@@ -20,6 +20,10 @@ export const queryKeys = {
     extras: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "extras"] as const,
     discounts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "discounts"] as const,
     contacts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "contacts"] as const,
+    holds: (propertyId: number, from: string, to: string) =>
+      ["properties", "detail", propertyId, "holds", from, to] as const,
+    bookingsInRange: (propertyId: number, from: string, to: string) =>
+      ["properties", "detail", propertyId, "bookings", from, to] as const,
   },
   contacts: {
     detail: (id: ContactId) => ["contacts", "detail", id] as const,

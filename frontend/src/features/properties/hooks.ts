@@ -5,11 +5,13 @@ import {
   fetchContact,
   fetchProperties,
   fetchProperty,
+  fetchPropertyBookingsForRange,
   fetchPropertyContacts,
   fetchPropertyDescriptions,
   fetchPropertyDiscounts,
   fetchPropertyExtras,
   fetchPropertyFeatures,
+  fetchPropertyHolds,
   fetchPropertyRooms,
   fetchPropertySeasons,
   fetchSeasonDetail,
@@ -65,4 +67,24 @@ export function usePropertyContacts(idOrSlug: PropertyId | undefined) {
 
 export function useContact(id: ContactId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.contacts.detail, fetchContact));
+}
+
+export function usePropertyHolds(propertyId: number | undefined, from: string, to: string) {
+  return useQuery({
+    queryKey: queryKeys.properties.holds(propertyId!, from, to),
+    queryFn: () => fetchPropertyHolds(propertyId!, from, to),
+    enabled: propertyId != null,
+  });
+}
+
+export function usePropertyBookingsForRange(
+  propertyId: number | undefined,
+  from: string,
+  to: string,
+) {
+  return useQuery({
+    queryKey: queryKeys.properties.bookingsInRange(propertyId!, from, to),
+    queryFn: () => fetchPropertyBookingsForRange(propertyId!, from, to),
+    enabled: propertyId != null,
+  });
 }

@@ -1,9 +1,11 @@
 import { apiGet } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import {
+  availabilityHoldsResponseSchema,
   contactSchema,
   discountsResponseSchema,
   extrasResponseSchema,
+  propertyBookingsResponseSchema,
   propertyContactsResponseSchema,
   propertyDescriptionsResponseSchema,
   propertyDetailSchema,
@@ -12,9 +14,11 @@ import {
   propertyRoomsResponseSchema,
   ratePlanDetailSchema,
   ratePlansResponseSchema,
+  type AvailabilityHold,
   type Contact,
   type Discount,
   type Extra,
+  type PropertyBookingItem,
   type PropertyContactAssignment,
   type PropertyDescription,
   type PropertyDetail,
@@ -99,4 +103,26 @@ export async function fetchPropertyContacts(
 export async function fetchContact(id: ContactId): Promise<Contact> {
   const data = await apiGet<unknown>(`/contacts/${id}`);
   return contactSchema.parse(data);
+}
+
+export async function fetchPropertyHolds(
+  propertyId: number,
+  from: string,
+  to: string,
+): Promise<AvailabilityHold[]> {
+  const data = await apiGet<unknown>("/availability", {
+    query: { property_ids: propertyId, from, to },
+  });
+  return availabilityHoldsResponseSchema.parse(data).records;
+}
+
+export async function fetchPropertyBookingsForRange(
+  propertyId: number,
+  from: string,
+  to: string,
+): Promise<Paginated<PropertyBookingItem>> {
+  const data = await apiGet<unknown>("/bookings", {
+    query: { property: propertyId, check_in_before: to, check_out_after: from },
+  });
+  return propertyBookingsResponseSchema.parse(data);
 }

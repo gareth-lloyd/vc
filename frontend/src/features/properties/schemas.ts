@@ -188,6 +188,34 @@ export const contactPhoneSchema = z.object({
 });
 export type ContactPhone = z.infer<typeof contactPhoneSchema>;
 
+export const availabilityHoldSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  date_from: z.string(),
+  date_to: z.string(),
+  expires_at: z.string().nullable().optional(),
+  released_at: z.string().nullable().optional(),
+  reason: z.string(),
+  created_at: z.string().nullable().optional(),
+});
+export type AvailabilityHold = z.infer<typeof availabilityHoldSchema>;
+
+export const availabilityHoldsResponseSchema = z.object({
+  records: z.array(availabilityHoldSchema),
+});
+
+export const propertyBookingItemSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  status: z.string(),
+  date_from: z.string(),
+  date_to: z.string(),
+  guest_name: z.string().nullable().optional(),
+});
+export type PropertyBookingItem = z.infer<typeof propertyBookingItemSchema>;
+
+export const propertyBookingsResponseSchema = paginated(propertyBookingItemSchema);
+
 export const contactSchema = z.object({
   id: z.number(),
   title: z.string().nullable().optional(),

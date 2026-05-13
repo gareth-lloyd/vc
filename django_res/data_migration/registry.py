@@ -10,6 +10,7 @@ from data_migration.base import BaseLoader
 from data_migration.loaders.bookings import BookingLoader, PaymentLoader
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.finance import (
+    GroupFinanceLoader,
     PropertyFinanceLoader,
     QuotationLineLoader,
     QuotationLoader,
@@ -27,6 +28,10 @@ from data_migration.loaders.people import (
     ContactLoader,
     ContactPhoneLoader,
     UserLoader,
+)
+from data_migration.loaders.preferences import (
+    GuestPreferenceLoader,
+    GuestPreferenceTypeLoader,
 )
 from data_migration.loaders.pricing import RatePlanLoader, RateRuleLoader
 from data_migration.loaders.properties import (
@@ -71,8 +76,11 @@ LOADERS: dict[str, type[BaseLoader]] = {
     RateRuleLoader.name: RateRuleLoader,
     PropertyContactAssignmentLoader.name: PropertyContactAssignmentLoader,
     GuestLoader.name: GuestLoader,
+    GuestPreferenceTypeLoader.name: GuestPreferenceTypeLoader,
+    GuestPreferenceLoader.name: GuestPreferenceLoader,
     EnquiryLoader.name: EnquiryLoader,
     PropertyFinanceLoader.name: PropertyFinanceLoader,
+    GroupFinanceLoader.name: GroupFinanceLoader,
     QuotationLoader.name: QuotationLoader,
     QuotationLineLoader.name: QuotationLineLoader,
     BookingLoader.name: BookingLoader,

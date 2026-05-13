@@ -25,6 +25,15 @@ class Command(BaseCommand):
             action="store_true",
             help="List registered loaders and exit.",
         )
+        parser.add_argument(
+            "--since",
+            default=None,
+            help=(
+                "ISO-8601 datetime. Loaders append "
+                "`AND UpdatedAt > @since` to their legacy query so we only "
+                "fetch rows changed during the cutover window."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         if options["list"]:
@@ -45,7 +54,8 @@ class Command(BaseCommand):
                 f"Unknown loader(s): {', '.join(unknown)}. Known: {', '.join(LOADERS) or '(none)'}",
             )
 
-        reports = [LOADERS[name]().load() for name in names]
+        since = options.get("since")
+        reports = [LOADERS[name](since=since).load() for name in names]
         self._print_summary(reports)
 
     def _print_summary(self, reports: list[LoadReport]) -> None:

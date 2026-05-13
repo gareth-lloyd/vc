@@ -39,7 +39,10 @@ def property_(db: None) -> Property:
         Region,
     )
 
-    country = Country.objects.create(name="United Kingdom", iso2="GB", iso3="GBR")
+    country, _ = Country.objects.get_or_create(
+        iso2="GB",
+        defaults={"name": "United Kingdom", "iso3": "GBR"},
+    )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
     category = PropertyCategory.objects.create(name="Villa", slug="villa")
     group = PropertyGroup.objects.create(name="Test group")

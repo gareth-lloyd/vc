@@ -14,6 +14,12 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders.sentinels import (
+    unknown_country,
+    unknown_group,
+    unknown_region,
+)
+from pricing.models.currency import Currency
 from properties.enums import (
     AvailabilityDefault,
     DescriptionSection,
@@ -62,6 +68,16 @@ class PropertyGroupLoader(BaseLoader):
         if group is None:
             return
         GroupSettings.objects.get_or_create(group=group)
+        self._group_finance_loader().sync_one(group, report)
+
+    def _group_finance_loader(self) -> Any:
+        # Reused across rows so its internal legacy-template cache survives.
+        # Local import to break the data_migration.loaders.finance cycle.
+        if not hasattr(self, "_group_finance_loader_cache"):
+            from data_migration.loaders.finance import GroupFinanceLoader
+
+            self._group_finance_loader_cache = GroupFinanceLoader()
+        return self._group_finance_loader_cache
 
 
 _PROPERTY_STATUS_MAP = {
@@ -129,8 +145,10 @@ class PropertyLoader(BaseLoader):
             if row.get("Category")
             else None
         )
-        if region is None or group is None:
-            return None
+        if region is None:
+            region = self._sentinel_region()
+        if group is None:
+            group = self._sentinel_group()
         if category is None:
             # Fall back to first available; create a sentinel if none exist.
             category = PropertyCategory.objects.first()
@@ -173,6 +191,18 @@ class PropertyLoader(BaseLoader):
             self._write_settings(prop, row)
             self._write_descriptions(prop, row)
 
+    def _sentinel_region(self) -> Region:
+        # 1:N rows in the source data hit this fallback; resolving the
+        # sentinel once per loader saves ~3 queries per missing-FK property.
+        if not hasattr(self, "_sentinel_region_cache"):
+            self._sentinel_region_cache = unknown_region(unknown_country())
+        return self._sentinel_region_cache
+
+    def _sentinel_group(self) -> PropertyGroup:
+        if not hasattr(self, "_sentinel_group_cache"):
+            self._sentinel_group_cache = unknown_group()
+        return self._sentinel_group_cache
+
     def _write_location(self, prop: Property, row: dict[str, Any]) -> None:
         country = prop.region.country
         PropertyLocation.objects.update_or_create(
@@ -206,6 +236,11 @@ class PropertyLoader(BaseLoader):
 
     def _write_settings(self, prop: Property, row: dict[str, Any]) -> None:
         changeover = _DAY_MAP.get(row.get("SettingChangeoverDayId") or 0)
+        currency = (
+            Currency.objects.filter(legacy_id=str(row["SettingCurrencyId"])).first()
+            if row.get("SettingCurrencyId")
+            else None
+        )
         PropertySettings.objects.update_or_create(
             property=prop,
             defaults={
@@ -214,6 +249,7 @@ class PropertyLoader(BaseLoader):
                     row.get("SettingIsBookingsRequirePreApproval"),
                 ),
                 "requires_enquiry_first": False,
+                "currency": currency,
                 "check_in_time": row.get("SettingCheckInTime"),
                 "check_out_time": row.get("SettingCheckOutTime"),
                 "changeover_day": changeover,

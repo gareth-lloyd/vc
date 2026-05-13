@@ -1,14 +1,13 @@
-"""PropertyFinance + Quotation loaders.
+"""PropertyFinance + GroupFinance + Quotation loaders.
 
-VillaFinance -> PropertyFinance (per-property; group/parent inheritance
-left at defaults). Tiny QuotationMaster (19 rows) and Lines (23) round out
-the data. A default TermsVersion is created if none exists so Quotation's
-PROTECT FK resolves.
-
-Booking + Payment loaders are skipped intentionally: only 3 bookings and
-1 payment in the live snapshot, with heavy FK requirements (quotation_line,
-terms_version, etc.) and the EXCLUDE-constraint risk. Easier for ops to
-re-key them post-migration.
+VillaFinance is a multi-purpose table:
+- `VillaId > 0` rows → per-property `PropertyFinance` (PropertyFinanceLoader).
+- `VillaId IS NULL/0, ContactId NOT NULL, ParentId NULL` rows are per-contact
+  defaults. We mirror them onto `GroupFinance` for each PropertyGroup whose
+  primary OWNER assignment matches that contact. GroupFinanceLoader is
+  invoked from `PropertyGroupLoader._process_row`.
+- `VillaId IS NULL/0, ParentId NOT NULL` rows are parent-child overrides;
+  not migrated (no schema equivalent).
 """
 
 from __future__ import annotations
@@ -19,8 +18,10 @@ from typing import Any
 
 from django.utils import timezone
 
+from accounts.enums import ContactRole
 from accounts.models import Contact
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from pricing.models.currency import Currency
 from properties.enums import (
     CommissionCalcType,
@@ -29,8 +30,9 @@ from properties.enums import (
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
-from properties.models.finance import PropertyFinance
-from properties.models.property import Property
+from properties.models.contacts import PropertyContactAssignment
+from properties.models.finance import GroupFinance, PropertyFinance
+from properties.models.property import Property, PropertyGroup
 from reservations.enums import QuotationStatus
 from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
@@ -54,6 +56,23 @@ _SEC_DEPOSIT_FROM_MAP = {
     3: SecurityDepositCalcFrom.TOTAL_STAY,
 }
 
+_VILLAFINANCE_COLUMNS = (
+    "Id, VillaId, ContactId, ParentId, CommissionTypeId, CommissionAmount, "
+    "CommissionNote, TaxNumber, TaxExempt, TaxPercentage, "
+    "BankAccAccountname, BankAccAccountnumber, BankAccAccountSortCode, "
+    "BankAccAccountIBAN, BankAccAccountBIC, BankAccAddres1, BankAccAddres2, "
+    "BankAccPostCode, BankAccTown, "
+    "PaymentScheduleIsDepositRequired, PaymentScheduleDepositTypeId, "
+    "PaymentScheduleDepositAmount, "
+    "PaymentScheduleIsInterimRequired, PaymentScheduleInterimTypeId, "
+    "PaymentScheduleInterimAmount, "
+    "PaymentScheduleDaysInterimDueBeforeArrival, "
+    "PaymentScheduleDaysBalanceDueBeforeArrival, "
+    "SecurityDepositIsRequired, SecurityDepositAmountTypeId, "
+    "SecurityDepositAmount, SecurityDepositCalculateFromId, "
+    "SecurityDepositDaysDueBeforeArrival, SecurityDepositDaysRefundedAfterDeparture"
+)
+
 
 def _decimal(v: Any) -> Decimal | None:
     if v is None:
@@ -62,6 +81,83 @@ def _decimal(v: Any) -> Decimal | None:
         return Decimal(str(v))
     except Exception:
         return None
+
+
+def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
+    """Translate a VillaFinance row into model-field defaults.
+
+    Shared between PropertyFinance (all fields nullable) and GroupFinance
+    (mostly non-nullable with defaults). Caller is responsible for stripping
+    `None`s if writing to GroupFinance.
+    """
+    defaults: dict[str, Any] = {
+        "commission_calculation_type": _COMMISSION_TYPE_MAP.get(
+            row.get("CommissionTypeId") or 0,
+        ),
+        "commission_amount": _decimal(row.get("CommissionAmount")),
+        "commission_note": (row.get("CommissionNote") or "")[:1000],
+        "tax_number": (row.get("TaxNumber") or "")[:64],
+        "tax_is_exempt": (bool(row["TaxExempt"]) if row.get("TaxExempt") is not None else None),
+        "tax_percentage": _decimal(row.get("TaxPercentage")),
+        "bank_account_name": (row.get("BankAccAccountname") or "")[:128],
+        "bank_account_number": (row.get("BankAccAccountnumber") or "")[:255],
+        "bank_sort_code": (row.get("BankAccAccountSortCode") or "")[:255],
+        "bank_iban": (row.get("BankAccAccountIBAN") or "")[:255],
+        "bank_bic": (row.get("BankAccAccountBIC") or "")[:255],
+        "bank_address_line_1": (row.get("BankAccAddres1") or "")[:255],
+        "bank_address_line_2": (row.get("BankAccAddres2") or "")[:255],
+        "bank_post_code": (row.get("BankAccPostCode") or "")[:32],
+        "bank_city": (row.get("BankAccTown") or "")[:128],
+        "deposit_required": (
+            bool(row["PaymentScheduleIsDepositRequired"])
+            if row.get("PaymentScheduleIsDepositRequired") is not None
+            else None
+        ),
+        "deposit_calculation_type": _DEPOSIT_TYPE_MAP.get(
+            row.get("PaymentScheduleDepositTypeId") or 0,
+        ),
+        "deposit_amount": _decimal(row.get("PaymentScheduleDepositAmount")),
+        "interim_required": (
+            bool(row["PaymentScheduleIsInterimRequired"])
+            if row.get("PaymentScheduleIsInterimRequired") is not None
+            else None
+        ),
+        "interim_calculation_type": _DEPOSIT_TYPE_MAP.get(
+            row.get("PaymentScheduleInterimTypeId") or 0,
+        ),
+        "interim_amount": _decimal(row.get("PaymentScheduleInterimAmount")),
+        "days_interim_due_before_arrival": row.get(
+            "PaymentScheduleDaysInterimDueBeforeArrival",
+        ),
+        "days_balance_due_before_arrival": row.get(
+            "PaymentScheduleDaysBalanceDueBeforeArrival",
+        ),
+        "security_deposit_required": (
+            bool(row["SecurityDepositIsRequired"])
+            if row.get("SecurityDepositIsRequired") is not None
+            else None
+        ),
+        "security_deposit_calculation_type": _SEC_DEPOSIT_TYPE_MAP.get(
+            row.get("SecurityDepositAmountTypeId") or 0,
+        ),
+        "security_deposit_amount": _decimal(row.get("SecurityDepositAmount")),
+        "security_deposit_calculate_from": _SEC_DEPOSIT_FROM_MAP.get(
+            row.get("SecurityDepositCalculateFromId") or 0,
+        ),
+        "security_deposit_days_due_before_arrival": row.get(
+            "SecurityDepositDaysDueBeforeArrival",
+        ),
+        "security_deposit_days_refunded_after_departure": row.get(
+            "SecurityDepositDaysRefundedAfterDeparture",
+        ),
+        "security_deposit_payment_method": SecurityDepositPaymentMethod.BANK_TRANSFER,
+    }
+    # Drop negative numerics (legacy junk).
+    for k in list(defaults):
+        v = defaults[k]
+        if isinstance(v, (int, Decimal)) and v < 0:
+            defaults[k] = None
+    return defaults
 
 
 class PropertyFinanceLoader(BaseLoader):
@@ -73,23 +169,7 @@ class PropertyFinanceLoader(BaseLoader):
 
     name = "property_finance"
     target_model = PropertyFinance
-    legacy_query = (
-        "SELECT Id, VillaId, ContactId, CommissionTypeId, CommissionAmount, "
-        "CommissionNote, TaxNumber, TaxExempt, TaxPercentage, "
-        "BankAccAccountname, BankAccAccountnumber, BankAccAccountSortCode, "
-        "BankAccAccountIBAN, BankAccAccountBIC, BankAccAddres1, BankAccAddres2, "
-        "BankAccPostCode, BankAccTown, "
-        "PaymentScheduleIsDepositRequired, PaymentScheduleDepositTypeId, "
-        "PaymentScheduleDepositAmount, "
-        "PaymentScheduleIsInterimRequired, PaymentScheduleInterimTypeId, "
-        "PaymentScheduleInterimAmount, "
-        "PaymentScheduleDaysInterimDueBeforeArrival, "
-        "PaymentScheduleDaysBalanceDueBeforeArrival, "
-        "SecurityDepositIsRequired, SecurityDepositAmountTypeId, "
-        "SecurityDepositAmount, SecurityDepositCalculateFromId, "
-        "SecurityDepositDaysDueBeforeArrival, SecurityDepositDaysRefundedAfterDeparture "
-        "FROM VillaFinance WHERE VillaId IS NOT NULL"
-    )
+    legacy_query = f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance WHERE VillaId IS NOT NULL"
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
@@ -101,80 +181,115 @@ class PropertyFinanceLoader(BaseLoader):
             if row.get("ContactId")
             else None
         )
-
-        defaults: dict[str, Any] = {
-            "contact": contact,
-            "commission_calculation_type": _COMMISSION_TYPE_MAP.get(
-                row.get("CommissionTypeId") or 0,
-            ),
-            "commission_amount": _decimal(row.get("CommissionAmount")),
-            "commission_note": (row.get("CommissionNote") or "")[:1000],
-            "tax_number": (row.get("TaxNumber") or "")[:64],
-            "tax_is_exempt": (bool(row["TaxExempt"]) if row.get("TaxExempt") is not None else None),
-            "tax_percentage": _decimal(row.get("TaxPercentage")),
-            "bank_account_name": (row.get("BankAccAccountname") or "")[:128],
-            "bank_account_number": (row.get("BankAccAccountnumber") or "")[:255],
-            "bank_sort_code": (row.get("BankAccAccountSortCode") or "")[:255],
-            "bank_iban": (row.get("BankAccAccountIBAN") or "")[:255],
-            "bank_bic": (row.get("BankAccAccountBIC") or "")[:255],
-            "bank_address_line_1": (row.get("BankAccAddres1") or "")[:255],
-            "bank_address_line_2": (row.get("BankAccAddres2") or "")[:255],
-            "bank_post_code": (row.get("BankAccPostCode") or "")[:32],
-            "bank_city": (row.get("BankAccTown") or "")[:128],
-            "deposit_required": (
-                bool(row["PaymentScheduleIsDepositRequired"])
-                if row.get("PaymentScheduleIsDepositRequired") is not None
-                else None
-            ),
-            "deposit_calculation_type": _DEPOSIT_TYPE_MAP.get(
-                row.get("PaymentScheduleDepositTypeId") or 0,
-            ),
-            "deposit_amount": _decimal(row.get("PaymentScheduleDepositAmount")),
-            "interim_required": (
-                bool(row["PaymentScheduleIsInterimRequired"])
-                if row.get("PaymentScheduleIsInterimRequired") is not None
-                else None
-            ),
-            "interim_calculation_type": _DEPOSIT_TYPE_MAP.get(
-                row.get("PaymentScheduleInterimTypeId") or 0,
-            ),
-            "interim_amount": _decimal(row.get("PaymentScheduleInterimAmount")),
-            "days_interim_due_before_arrival": row.get(
-                "PaymentScheduleDaysInterimDueBeforeArrival",
-            ),
-            "days_balance_due_before_arrival": row.get(
-                "PaymentScheduleDaysBalanceDueBeforeArrival",
-            ),
-            "security_deposit_required": (
-                bool(row["SecurityDepositIsRequired"])
-                if row.get("SecurityDepositIsRequired") is not None
-                else None
-            ),
-            "security_deposit_calculation_type": _SEC_DEPOSIT_TYPE_MAP.get(
-                row.get("SecurityDepositAmountTypeId") or 0,
-            ),
-            "security_deposit_amount": _decimal(row.get("SecurityDepositAmount")),
-            "security_deposit_calculate_from": _SEC_DEPOSIT_FROM_MAP.get(
-                row.get("SecurityDepositCalculateFromId") or 0,
-            ),
-            "security_deposit_days_due_before_arrival": row.get(
-                "SecurityDepositDaysDueBeforeArrival",
-            ),
-            "security_deposit_days_refunded_after_departure": row.get(
-                "SecurityDepositDaysRefundedAfterDeparture",
-            ),
-            "security_deposit_payment_method": SecurityDepositPaymentMethod.BANK_TRANSFER,
-        }
-        # Drop keys whose values are negative numbers (legacy junk).
-        for k in list(defaults):
-            v = defaults[k]
-            if isinstance(v, (int, Decimal)) and v < 0:
-                defaults[k] = None
+        defaults = _finance_defaults(row)
+        defaults["contact"] = contact
 
         _, created = PropertyFinance.objects.update_or_create(
             property=prop,
             defaults=defaults,
         )
+        if created:
+            report.created += 1
+        else:
+            report.updated += 1
+
+
+def _fetch_contact_default_finance() -> dict[str, dict[str, Any]]:
+    """Pull all per-contact default VillaFinance rows, keyed by legacy ContactId.
+
+    These are rows with `VillaId IS NULL/0, ContactId IS NOT NULL,
+    ParentId IS NULL`. If a contact has multiple such rows, the first one
+    wins.
+    """
+    query = (
+        f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance "
+        "WHERE (VillaId IS NULL OR VillaId = 0) "
+        "AND ContactId IS NOT NULL AND ParentId IS NULL"
+    )
+    by_contact: dict[str, dict[str, Any]] = {}
+    with legacy_cursor() as cursor:
+        cursor.execute(query)
+        for row in rows_as_dicts(cursor):
+            cid = str(row["ContactId"])
+            by_contact.setdefault(cid, row)
+    return by_contact
+
+
+class GroupFinanceLoader(BaseLoader):
+    """For each PropertyGroup, mirror the primary OWNER contact's default
+    finance row onto `GroupFinance`. Falls back to schema defaults if no
+    matching legacy template exists.
+
+    Not normally invoked directly; runs from
+    `PropertyGroupLoader._process_row` so freshly-loaded groups get a
+    GroupFinance row in the same pass. Can be run standalone via the
+    registry to refresh existing groups.
+    """
+
+    name = "group_finance"
+    target_model = GroupFinance
+    legacy_query = ""
+
+    def load(self) -> LoadReport:
+        import time as _t
+
+        report = LoadReport(loader=self.name)
+        started = _t.monotonic()
+        for group in PropertyGroup.objects.all():
+            self._sync_group(group, self._by_contact(), report)
+        report.duration_s = _t.monotonic() - started
+        return report
+
+    def sync_one(self, group: PropertyGroup, report: LoadReport) -> None:
+        self._sync_group(group, self._by_contact(), report)
+
+    def _by_contact(self) -> dict[str, dict[str, Any]]:
+        # Cached per instance — when invoked once per group from
+        # PropertyGroupLoader, this avoids one legacy-DB round trip per group.
+        if not hasattr(self, "_by_contact_cache"):
+            self._by_contact_cache = _fetch_contact_default_finance()
+        return self._by_contact_cache
+
+    def _sync_group(
+        self,
+        group: PropertyGroup,
+        by_contact: dict[str, dict[str, Any]],
+        report: LoadReport,
+    ) -> None:
+        owner_contact = (
+            PropertyContactAssignment.objects.filter(
+                property__group=group,
+                role=ContactRole.OWNER,
+                is_primary=True,
+            )
+            .select_related("contact")
+            .values_list("contact__legacy_id", "contact_id")
+            .first()
+        )
+        if owner_contact is None:
+            owner_contact = (
+                PropertyContactAssignment.objects.filter(
+                    property__group=group, role=ContactRole.OWNER
+                )
+                .select_related("contact")
+                .values_list("contact__legacy_id", "contact_id")
+                .first()
+            )
+
+        defaults: dict[str, Any] = {}
+        owner_pk: int | None = None
+        if owner_contact and owner_contact[0]:
+            owner_pk = owner_contact[1]
+            template = by_contact.get(owner_contact[0])
+            if template is not None:
+                # GroupFinance fields are mostly non-nullable; only copy
+                # values that actually parsed (i.e. drop None).
+                defaults = {k: v for k, v in _finance_defaults(template).items() if v is not None}
+
+        if owner_pk is not None:
+            defaults["contact_id"] = owner_pk
+
+        _, created = GroupFinance.objects.update_or_create(group=group, defaults=defaults)
         if created:
             report.created += 1
         else:
@@ -207,11 +322,13 @@ class QuotationLoader(BaseLoader):
         guest = Guest.objects.filter(legacy_id=str(row.get("ClientDetailsId") or "")).first()
         if guest is None:
             return None
-        currency = (
-            Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
-            if row.get("CurrencyId")
-            else Currency.objects.first()
-        )
+        currency: Currency | None = None
+        if row.get("CurrencyId"):
+            currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
+        if currency is None:
+            # Legacy currencies were deduplicated (e.g. only one EUR row kept);
+            # fall back to the first available currency so the quotation loads.
+            currency = Currency.objects.first()
         if currency is None:
             return None
         agent = (

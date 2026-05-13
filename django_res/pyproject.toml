@@ -16,6 +16,7 @@ dependencies = [
     "cryptography>=48.0.0",
     "pillow>=12.2.0",
     "pymssql>=2.3.13",
+    "django-countries>=8.2.0",
 ]
 
 [dependency-groups]

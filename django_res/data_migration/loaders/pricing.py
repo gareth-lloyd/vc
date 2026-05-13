@@ -42,6 +42,18 @@ def _to_decimal(v: Any) -> Decimal | None:
         return None
 
 
+def _resolve_property_currency(prop: Property) -> Currency | None:
+    """Resolve currency via the canonical PropertySettings.effective() chain,
+    with a table-wide first-row fallback when neither property nor group
+    has one configured.
+    """
+    try:
+        currency = prop.settings.effective("currency")
+    except Exception:
+        currency = None
+    return currency or Currency.objects.first()
+
+
 class RatePlanLoader(BaseLoader):
     """VillaSeason -> RatePlan + default RateCard.
 
@@ -68,7 +80,9 @@ class RatePlanLoader(BaseLoader):
             return None
         currency = Currency.objects.filter(legacy_id=str(row.get("CurrencyId") or "")).first()
         if currency is None:
-            currency = Currency.objects.first()
+            # Prefer the property/group's own configured currency; only fall
+            # back to the table-wide first row when neither is set.
+            currency = _resolve_property_currency(prop)
             if currency is None:
                 return None
         effective_from = row.get("DateFrom") or date(2020, 1, 1)

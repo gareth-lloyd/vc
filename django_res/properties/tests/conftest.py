@@ -65,7 +65,11 @@ def group(db: None) -> PropertyGroup:
 
 @pytest.fixture
 def country(db: None) -> Country:
-    return Country.objects.create(name="United Kingdom", iso2="GB", iso3="GBR")
+    country, _ = Country.objects.get_or_create(
+        iso2="GB",
+        defaults={"name": "United Kingdom", "iso3": "GBR"},
+    )
+    return country
 
 
 @pytest.fixture

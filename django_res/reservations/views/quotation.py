@@ -32,7 +32,11 @@ from reservations.services.bookings import BookingService
 class QuotationViewSet(viewsets.ModelViewSet):
     """`/quotations` CRUD + colon-verb actions."""
 
-    queryset = Quotation.objects.all()
+    # Booking-synthesised quotations (`legacy_id` prefixed `booking-`) are
+    # internal fixtures created by the data-migration loader so legacy bookings
+    # can satisfy the QuotationLine PROTECT FK. They aren't real quotes and
+    # must not surface in the public API.
+    queryset = Quotation.objects.exclude(legacy_id__startswith="booking-")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter
     ordering_fields = ["created_at", "updated_at", "status"]
@@ -138,7 +142,11 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsReservationsWriter]
 
     def get_queryset(self) -> Any:
-        return QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"]).order_by("pk")
+        return (
+            QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"])
+            .exclude(legacy_id__startswith="booking-")
+            .order_by("pk")
+        )
 
     def get_serializer_class(self) -> type:
         if self.action in ("create", "update", "partial_update"):

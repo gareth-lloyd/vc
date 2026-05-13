@@ -1,67 +1,60 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 
-from data_migration.loaders.country import CountryLoader
+from data_migration.base import LoadReport
+from data_migration.loaders.country import CountryLoader, _resolve_iso2
 from properties.models.geo import Country
 
 
-def test_transform_maps_legacy_fields(villa_country_row: dict[str, object]) -> None:
-    kwargs = CountryLoader().transform(villa_country_row)
-    assert kwargs == {
-        "name": "France",
-        "iso2": "FR",
-        "iso3": "FRA",
-        "dial_code": "+33",
-        "default_tax_rate": Decimal("20.00"),
-        "sort_order": 5,
-        "is_active": True,
-    }
+def test_resolve_iso2_prefers_raw_when_valid() -> None:
+    assert _resolve_iso2("France", "FR") == "FR"
 
 
-def test_transform_skips_rows_without_iso_codes(
-    villa_country_row: dict[str, object],
-) -> None:
-    villa_country_row["ShortName1"] = None
-    assert CountryLoader().transform(villa_country_row) is None
+def test_resolve_iso2_falls_back_to_name_lookup() -> None:
+    # Legacy row had no iso2 — django-countries should resolve by name.
+    assert _resolve_iso2("United Kingdom", "") == "GB"
+    assert _resolve_iso2("Greece", "") == "GR"
 
 
-def test_transform_handles_null_optional_fields() -> None:
-    row: dict[str, object] = {
-        "Id": 7,
-        "Name": "  Spain  ",
-        "ShortName1": "ES",
-        "ShortName2": "ESP",
-        "Code": None,
-        "CountryOrder": None,
-        "IsActive": None,
-        "TaxRate": None,
-    }
-    kwargs = CountryLoader().transform(row)
-    assert kwargs is not None
-    assert kwargs["name"] == "Spain"
-    assert kwargs["dial_code"] == ""
-    assert kwargs["default_tax_rate"] == Decimal("0")
-    assert kwargs["sort_order"] == 0
-    assert kwargs["is_active"] is False
+def test_resolve_iso2_returns_none_for_garbage_names() -> None:
+    assert _resolve_iso2("ACF", "") is None
+    assert _resolve_iso2("", "") is None
 
 
 @pytest.mark.django_db
-def test_upsert_creates_then_updates(villa_country_row: dict[str, object]) -> None:
-    """End-to-end: drive the loader's row processor with a fixture row and
-    confirm it creates on first call, updates on second."""
-    from data_migration.base import LoadReport
+def test_upsert_merges_onto_existing_iso2_row(villa_country_row: dict[str, object]) -> None:
+    """The ISO-3166 seed pre-creates the canonical FR row with no legacy_id.
+    Running CountryLoader should attach the legacy_id rather than INSERT.
+    """
+    seeded = Country.objects.get(iso2="FR")
+    assert seeded.legacy_id is None
 
     loader = CountryLoader()
     report = LoadReport(loader=loader.name)
-
     loader._process_row(villa_country_row, report)
-    assert report.created == 1 and report.updated == 0
-    assert Country.objects.get(legacy_id="42").iso2 == "FR"
 
-    villa_country_row["Name"] = "France (renamed)"
-    loader._process_row(villa_country_row, report)
-    assert report.created == 1 and report.updated == 1
-    assert Country.objects.get(legacy_id="42").name == "France (renamed)"
+    seeded.refresh_from_db()
+    assert seeded.legacy_id == "42"
+    assert report.updated == 1 and report.created == 0
+
+
+@pytest.mark.django_db
+def test_legacy_row_without_iso_attaches_to_unknown_sentinel() -> None:
+    loader = CountryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._process_row(
+        {
+            "Id": 99,
+            "Name": "Garbage Country",
+            "ShortName1": "",
+            "ShortName2": "",
+            "Code": None,
+            "CountryOrder": 0,
+            "IsActive": True,
+            "TaxRate": None,
+        },
+        report,
+    )
+    sentinel = Country.objects.filter(iso2="XX").get()
+    assert sentinel.legacy_id == "99"

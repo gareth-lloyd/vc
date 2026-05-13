@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, ClassVar
 
 from django.db import transaction
@@ -36,22 +37,46 @@ class BaseLoader:
 
     Subclasses must set `name`, `legacy_query`, `target_model`, and override
     `transform(row)` to produce kwargs for the upsert (or `None` to skip).
+
+    `since`: an ISO-8601 datetime string. When set, the loader appends
+    ``AND UpdatedAt > @since`` to its legacy query (subclasses with a
+    custom WHERE clause must include the placeholder ``-- /*SINCE*/`` if
+    they want it threaded in automatically). Loaders that target legacy
+    tables without an `UpdatedAt` column should override `_apply_since` to
+    no-op.
     """
 
     name: ClassVar[str] = ""
     legacy_query: ClassVar[str] = ""
     target_model: ClassVar[type[Model]]
     legacy_pk_column: ClassVar[str] = "Id"
+    since_column: ClassVar[str] = "UpdatedAt"
+
+    def __init__(self, since: str | None = None) -> None:
+        # Validate up-front so an invalid CLI arg fails fast and so the
+        # parsed value can be safely re-formatted into SQL below.
+        self.since: datetime | None = datetime.fromisoformat(since) if since else None
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         raise NotImplementedError
+
+    def _apply_since(self, query: str) -> str:
+        if not self.since:
+            return query
+        # since is a validated datetime, formatted to SQL Server's literal
+        # format — not user-supplied SQL.
+        literal = self.since.strftime("%Y-%m-%dT%H:%M:%S")
+        clause = f"{self.since_column} > '{literal}'"
+        if " where " in query.lower():
+            return f"{query} AND {clause}"
+        return f"{query} WHERE {clause}"
 
     def load(self) -> LoadReport:
         report = LoadReport(loader=self.name)
         started = time.monotonic()
 
         with legacy_cursor() as cursor:
-            cursor.execute(self.legacy_query)
+            cursor.execute(self._apply_since(self.legacy_query))
             rows = list(rows_as_dicts(cursor))
 
         with transaction.atomic():

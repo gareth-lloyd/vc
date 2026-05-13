@@ -8,12 +8,13 @@ the new schema has a single FK; we pick the first mapping per feature.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader
 from data_migration.declarative import DeclarativeLoader
+from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import Country, NearbyPlaceType, Region
@@ -28,13 +29,27 @@ class RegionLoader(DeclarativeLoader):
         "Name": "name",
         "Slug": "slug",
     }
-    fk_map = {"CountryId": (Country, "country")}
-    skip_if_missing_fk = True
+    # Country is resolved manually in transform_extra so we can fall back to
+    # the unknown sentinel when the legacy CountryId doesn't match anything.
+    fk_map: ClassVar[dict[str, tuple[type[Any], str]]] = {}
+
+    @property
+    def legacy_query(self) -> str:  # type: ignore[override]
+        return "SELECT Id, Name, Slug, CountryId FROM VillaRegion"
 
     def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
         kwargs["name"] = (kwargs.get("name") or "").strip()
         if not kwargs["name"]:
             return None
+        legacy_country_id = row.get("CountryId")
+        country = (
+            Country.objects.filter(legacy_id=str(legacy_country_id)).first()
+            if legacy_country_id is not None
+            else None
+        )
+        if country is None:
+            country = unknown_country()
+        kwargs["country"] = country
         base_slug = (kwargs.get("slug") or "").strip() or slugify(kwargs["name"])
         kwargs["slug"] = (base_slug[:120] + f"-{row['Id']}") if base_slug else f"region-{row['Id']}"
         kwargs["is_active"] = True

@@ -11,6 +11,7 @@ from reservations.models.booking import (
 from reservations.models.concierge import BookingConciergeItem
 from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.models.guest import Guest
+from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
 
@@ -24,6 +25,8 @@ __all__ = [
     "EnquiryEvent",
     "EnquiryNote",
     "Guest",
+    "GuestPreference",
+    "GuestPreferenceType",
     "Quotation",
     "QuotationLine",
     "TermsVersion",

@@ -17,7 +17,7 @@
     },
     "coming_soon": {
       "new_button": "New quote",
-      "tooltip": "The quote builder is coming in a future phase."
+      "tooltip": "Start a new quote from an enquiry."
     }
   },
   "detail": {
@@ -67,6 +67,99 @@
       "convert": "Convert to booking",
       "withdraw": "Withdraw",
       "coming_soon": "Quote actions are coming in a future phase."
+    }
+  },
+  "builder": {
+    "title": "New quotation",
+    "subtitle": "From enquiry {{reference}}",
+    "breadcrumb_self": "New",
+    "errors": {
+      "no_enquiry_title": "An enquiry is required",
+      "no_enquiry_description": "Start the quote builder from an enquiry's \"Convert to quote\" action.",
+      "enquiry_not_found": "Enquiry not found",
+      "enquiry_not_found_description": "It may have been deleted or you may not have access.",
+      "enquiry_load_failed": "Couldn't load this enquiry",
+      "enquiry_load_failed_description": "Try again or head back to the list.",
+      "search_failed": "Couldn't search options. Try again."
+    },
+    "criteria": {
+      "title": "Search options",
+      "aria_label": "Search criteria",
+      "date_from": "From",
+      "date_to": "To",
+      "adults": "Adults",
+      "children": "Children",
+      "country": "Country (ISO-2)",
+      "country_placeholder": "e.g. ES",
+      "region": "Region",
+      "region_placeholder": "slug or id",
+      "min_bedrooms": "Min bedrooms",
+      "max_bedrooms": "Max bedrooms",
+      "q": "Name search",
+      "q_placeholder": "e.g. Villa Sol",
+      "search": "Search options",
+      "searching": "Searching…"
+    },
+    "results": {
+      "title": "Results",
+      "total": "Total",
+      "add": "Add to quote",
+      "added": "Added",
+      "idle": {
+        "title": "Run a search to see priced options",
+        "description": "Enter dates and any filters above, then submit."
+      },
+      "empty": {
+        "title": "No villas match these criteria",
+        "description": "Widen the date range, drop a filter, or check region/country."
+      },
+      "unavailable_count_one": "{{count}} option unavailable for these dates",
+      "unavailable_count_other": "{{count}} options unavailable for these dates"
+    },
+    "staged": {
+      "title": "Staged lines",
+      "empty": {
+        "title": "Nothing staged yet",
+        "description": "Add priced options from the results list."
+      },
+      "columns": {
+        "property": "Property",
+        "dates": "Dates",
+        "guests": "Guests",
+        "total": "Total",
+        "actions": "Actions"
+      },
+      "remove": "Remove"
+    },
+    "rail": {
+      "staged_title": "This quote",
+      "staged_count_one": "{{count}} line staged",
+      "staged_count_other": "{{count}} lines staged",
+      "save": "Save quote",
+      "back_to_enquiry": "Back to enquiry"
+    },
+    "save": {
+      "title": "Save quotation",
+      "description_one": "Persist this quote with {{count}} line. The server will re-price each line.",
+      "description_other": "Persist this quote with {{count}} lines. The server will re-price each line.",
+      "currency": "Currency",
+      "expires_at": "Expires at",
+      "expires_hint": "After this date the quote stops being honourable.",
+      "cancel": "Cancel",
+      "confirm": "Save quote",
+      "saving": "Saving…",
+      "placeholder_first_name": "Guest",
+      "placeholder_last_name": "(unknown)",
+      "errors": {
+        "no_enquiry": "Enquiry is missing — reload the page.",
+        "no_lines": "Add at least one line before saving.",
+        "no_currency": "Pick a currency.",
+        "no_terms": "No current terms version is published. Ask an admin to publish one.",
+        "unknown": "Couldn't save the quotation. Please try again."
+      },
+      "toasts": {
+        "success": "Quotation saved"
+      }
     }
   }
 }

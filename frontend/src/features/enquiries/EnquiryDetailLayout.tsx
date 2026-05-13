@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -43,21 +42,14 @@ interface EnquiryActionsProps {
 }
 
 function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
-  const { t } = useTranslation("enquiries");
   const navigate = useNavigate();
   const hasRole = useHasReservationsRole();
 
   const isClosed = enquiry.status === "lost";
   const isFinal = enquiry.status === "converted" || enquiry.status === "lost";
 
-  // The backend `:convert` action *links* an existing quotation to the
-  // enquiry — it doesn't create one. Until the Quote Builder lands the
-  // pragmatic UX is to drop the operator on the filtered quotations list
-  // for this enquiry, so they can see existing quotes or (eventually)
-  // create a new one.
   const handleConvertClick = () => {
-    toast.success(t("convert.toasts.redirect"));
-    navigate(`/quotations?enquiry=${enquiry.id}`);
+    navigate(`/quotations/new?enquiry=${enquiry.id}`);
   };
 
   return (

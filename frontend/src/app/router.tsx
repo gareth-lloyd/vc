@@ -11,6 +11,8 @@ import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
 import { PricingTab } from "@/features/properties/tabs/PricingTab";
 import { PeopleTab } from "@/features/properties/tabs/PeopleTab";
 import { AvailabilityTab } from "@/features/properties/tabs/AvailabilityTab";
+import { MediaTab as PropertyMediaTab } from "@/features/properties/tabs/MediaTab";
+import { SettingsTab as PropertySettingsTab } from "@/features/properties/tabs/SettingsTab";
 import { BookingsListPage } from "@/features/bookings/BookingsListPage";
 import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDetailLayout";
 import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
@@ -32,7 +34,14 @@ import { QuotationDetailLayout } from "@/features/quotations/QuotationDetailLayo
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
-const REAL_PROPERTY_TABS = new Set<string>(["details", "pricing", "people", "availability"]);
+const REAL_PROPERTY_TABS = new Set<string>([
+  "details",
+  "pricing",
+  "people",
+  "availability",
+  "media",
+  "settings",
+]);
 const propertyPlaceholderRoutes = PROPERTY_TABS.filter((t) => !REAL_PROPERTY_TABS.has(t.slug)).map(
   (t) => ({
     path: t.slug,
@@ -78,6 +87,8 @@ export const router = createBrowserRouter([
                   { path: "pricing", element: <PricingTab /> },
                   { path: "people", element: <PeopleTab /> },
                   { path: "availability", element: <AvailabilityTab /> },
+                  { path: "media", element: <PropertyMediaTab /> },
+                  { path: "settings", element: <PropertySettingsTab /> },
                   ...propertyPlaceholderRoutes,
                 ],
               },

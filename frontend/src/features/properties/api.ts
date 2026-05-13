@@ -9,8 +9,12 @@ import {
   propertyDescriptionsResponseSchema,
   propertyDetailSchema,
   propertyFeaturesResponseSchema,
+  propertyFinanceSchema,
+  propertyImageSchema,
+  propertyImagesResponseSchema,
   propertyListResponseSchema,
   propertyRoomsResponseSchema,
+  propertySettingsSchema,
   ratePlanDetailSchema,
   ratePlansResponseSchema,
   type AvailabilityHold,
@@ -24,8 +28,14 @@ import {
   type PropertyDetail,
   type PropertyFeature,
   type PropertyFilters,
+  type PropertyFinance,
+  type PropertyFinanceWriteInput,
+  type PropertyImage,
+  type PropertyImageWriteInput,
   type PropertyListItem,
   type PropertyRoom,
+  type PropertySettings,
+  type PropertySettingsWriteInput,
   type RatePlan,
   type RatePlanDetail,
 } from "./schemas";
@@ -148,4 +158,89 @@ export async function deletePropertyContact(
   mappingId: number,
 ): Promise<void> {
   await apiSend<void>("DELETE", `/properties/${propertyId}/contacts/${mappingId}`);
+}
+
+export async function fetchPropertyImages(propertyId: number): Promise<Paginated<PropertyImage>> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/images`);
+  return propertyImagesResponseSchema.parse(data);
+}
+
+export async function createPropertyImage(
+  propertyId: number,
+  body: PropertyImageWriteInput,
+): Promise<PropertyImage> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/images`, body);
+  return propertyImageSchema.parse(data);
+}
+
+export async function updatePropertyImage(
+  propertyId: number,
+  imageId: number,
+  body: Partial<{
+    kind: string;
+    name: string;
+    description: string;
+    sort_order: number;
+    is_active: boolean;
+  }>,
+): Promise<PropertyImage> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/images/${imageId}`, body);
+  return propertyImageSchema.parse(data);
+}
+
+export async function deletePropertyImage(propertyId: number, imageId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/properties/${propertyId}/images/${imageId}`);
+}
+
+export async function reorderPropertyImages(propertyId: number, imageIds: number[]): Promise<void> {
+  await apiSend<unknown>("POST", `/properties/${propertyId}/images:reorder`, {
+    image_ids: imageIds,
+  });
+}
+
+export async function setPropertyImageHero(propertyId: number, imageId: number): Promise<void> {
+  await apiSend<unknown>("POST", `/properties/${propertyId}/images:set-hero`, {
+    image_id: imageId,
+  });
+}
+
+export async function fetchPropertySettings(propertyId: number): Promise<PropertySettings> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/settings`);
+  return propertySettingsSchema.parse(data);
+}
+
+export async function updatePropertySettings(
+  propertyId: number,
+  body: PropertySettingsWriteInput,
+): Promise<PropertySettings> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/settings`, body);
+  return propertySettingsSchema.parse(data);
+}
+
+export async function fetchPropertyFinance(propertyId: number): Promise<PropertyFinance> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/finance`);
+  return propertyFinanceSchema.parse(data);
+}
+
+export async function updatePropertyFinance(
+  propertyId: number,
+  body: PropertyFinanceWriteInput,
+): Promise<PropertyFinance> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/finance`, body);
+  return propertyFinanceSchema.parse(data);
+}
+
+export async function activateProperty(idOrSlug: PropertyId): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("POST", `/properties/${idOrSlug}:activate`);
+  return propertyDetailSchema.parse(data);
+}
+
+export async function archiveProperty(idOrSlug: PropertyId): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("POST", `/properties/${idOrSlug}:archive`);
+  return propertyDetailSchema.parse(data);
+}
+
+export async function restoreProperty(idOrSlug: PropertyId): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("POST", `/properties/${idOrSlug}:restore`);
+  return propertyDetailSchema.parse(data);
 }

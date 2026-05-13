@@ -200,6 +200,151 @@ export type PropertyBookingItem = z.infer<typeof propertyBookingItemSchema>;
 
 export const propertyBookingsResponseSchema = paginated(propertyBookingItemSchema);
 
+export const PROPERTY_IMAGE_KINDS = [
+  "hero",
+  "interior",
+  "exterior",
+  "gallery",
+  "floor_plan",
+] as const;
+export type PropertyImageKind = (typeof PROPERTY_IMAGE_KINDS)[number];
+
+export const PROPERTY_IMAGE_KIND_LABELS: Record<PropertyImageKind, string> = {
+  hero: "Hero",
+  interior: "Interior",
+  exterior: "Exterior",
+  gallery: "Gallery",
+  floor_plan: "Floor plan",
+};
+
+export const propertyImageSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  image: z.string().nullable().optional(),
+  kind: z.string(),
+  name: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  sort_order: z.number().nullable().optional(),
+  is_active: z.boolean().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type PropertyImage = z.infer<typeof propertyImageSchema>;
+
+export const propertyImagesResponseSchema = paginated(propertyImageSchema);
+
+export const propertyImageWriteInputSchema = z.object({
+  key: z.string().trim().min(1, { message: "properties:errors.image_key_required" }).max(512),
+  kind: z.enum(PROPERTY_IMAGE_KINDS),
+  name: z.string().trim().max(255).optional(),
+  description: z.string().trim().optional(),
+  sort_order: z.number().int().min(0).optional(),
+  is_active: z.boolean().optional(),
+});
+export type PropertyImageWriteInput = z.infer<typeof propertyImageWriteInputSchema>;
+
+export const PROPERTY_AVAILABILITY_DEFAULTS = ["available", "unavailable", "on_request"] as const;
+export const PROPERTY_CHANGEOVER_DAYS = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+  "any",
+] as const;
+export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
+
+export const propertySettingsSchema = z.object({
+  property: z.number(),
+  availability_default: z.string().nullable().optional(),
+  bookings_require_pre_approval: z.boolean().nullable().optional(),
+  requires_enquiry_first: z.boolean().nullable().optional(),
+  currency: z.number().nullable().optional(),
+  check_in_time: z.string().nullable().optional(),
+  check_out_time: z.string().nullable().optional(),
+  changeover_day: z.string().nullable().optional(),
+  min_nights_rental: z.number().nullable().optional(),
+  min_nights_rental_note: z.string().nullable().optional(),
+  prices_entered_as: z.string().nullable().optional(),
+});
+export type PropertySettings = z.infer<typeof propertySettingsSchema>;
+
+export const propertySettingsWriteInputSchema = z.object({
+  availability_default: z.string().nullable().optional(),
+  bookings_require_pre_approval: z.boolean().nullable().optional(),
+  requires_enquiry_first: z.boolean().nullable().optional(),
+  currency: z.number().nullable().optional(),
+  check_in_time: z.string().nullable().optional(),
+  check_out_time: z.string().nullable().optional(),
+  changeover_day: z.string().nullable().optional(),
+  min_nights_rental: z.number().int().min(0).nullable().optional(),
+  min_nights_rental_note: z.string().nullable().optional(),
+  prices_entered_as: z.string().nullable().optional(),
+});
+export type PropertySettingsWriteInput = z.infer<typeof propertySettingsWriteInputSchema>;
+
+export const propertyFinanceSchema = z.object({
+  property: z.number(),
+  commission_calculation_type: z.string().nullable().optional(),
+  commission_amount: z.string().nullable().optional(),
+  commission_note: z.string().nullable().optional(),
+  tax_number: z.string().nullable().optional(),
+  tax_is_exempt: z.boolean().nullable().optional(),
+  tax_percentage: z.string().nullable().optional(),
+  bank_account_name: z.string().nullable().optional(),
+  bank_name: z.string().nullable().optional(),
+  bank_address_line_1: z.string().nullable().optional(),
+  bank_address_line_2: z.string().nullable().optional(),
+  bank_post_code: z.string().nullable().optional(),
+  bank_city: z.string().nullable().optional(),
+  deposit_required: z.boolean().nullable().optional(),
+  deposit_calculation_type: z.string().nullable().optional(),
+  deposit_amount: z.string().nullable().optional(),
+  interim_required: z.boolean().nullable().optional(),
+  interim_calculation_type: z.string().nullable().optional(),
+  interim_amount: z.string().nullable().optional(),
+  days_interim_due_before_arrival: z.number().nullable().optional(),
+  days_balance_due_before_arrival: z.number().nullable().optional(),
+  security_deposit_required: z.boolean().nullable().optional(),
+  security_deposit_calculation_type: z.string().nullable().optional(),
+  security_deposit_amount: z.string().nullable().optional(),
+  security_deposit_calculate_from: z.string().nullable().optional(),
+  security_deposit_days_due_before_arrival: z.number().nullable().optional(),
+  security_deposit_days_refunded_after_departure: z.number().nullable().optional(),
+  security_deposit_payment_method: z.string().nullable().optional(),
+  cancellation_fee_amount: z.string().nullable().optional(),
+  cancellation_fee_percent: z.string().nullable().optional(),
+  cancellation_window_days: z.number().nullable().optional(),
+  cancellation_notes: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  season: z.number().nullable().optional(),
+  contact: z.number().nullable().optional(),
+  parent: z.number().nullable().optional(),
+});
+export type PropertyFinance = z.infer<typeof propertyFinanceSchema>;
+
+export const propertyFinanceWriteInputSchema = z.object({
+  commission_calculation_type: z.string().nullable().optional(),
+  commission_amount: z.string().nullable().optional(),
+  commission_note: z.string().nullable().optional(),
+  tax_number: z.string().nullable().optional(),
+  tax_is_exempt: z.boolean().nullable().optional(),
+  tax_percentage: z.string().nullable().optional(),
+  deposit_required: z.boolean().nullable().optional(),
+  deposit_calculation_type: z.string().nullable().optional(),
+  deposit_amount: z.string().nullable().optional(),
+  days_balance_due_before_arrival: z.number().int().min(0).nullable().optional(),
+  security_deposit_required: z.boolean().nullable().optional(),
+  security_deposit_calculation_type: z.string().nullable().optional(),
+  security_deposit_amount: z.string().nullable().optional(),
+  cancellation_fee_percent: z.string().nullable().optional(),
+  cancellation_window_days: z.number().int().min(0).nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+export type PropertyFinanceWriteInput = z.infer<typeof propertyFinanceWriteInputSchema>;
+
 export const propertyContactAssignmentWriteInputSchema = z.object({
   contact: z.number().int(),
   role: z.string().trim().max(120).optional(),

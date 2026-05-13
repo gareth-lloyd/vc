@@ -1,1 +1,174 @@
-{}
+{
+  "media": {
+    "title": "Media",
+    "add_button": "Add image",
+    "add_button_disabled_tooltip": "You need the Reservations role to add images.",
+    "empty": {
+      "title": "No images yet",
+      "description": "Add a hero shot or gallery image to get started."
+    },
+    "errors": {
+      "load_failed": "Couldn't load images."
+    },
+    "card": {
+      "hero_badge": "Hero",
+      "inactive_badge": "Inactive",
+      "menu_label": "Actions",
+      "set_hero": "Set as hero",
+      "edit": "Edit",
+      "delete": "Delete",
+      "no_thumbnail": "No preview",
+      "drag_handle_label": "Drag to reorder"
+    },
+    "toasts": {
+      "created": "Image added",
+      "updated": "Image updated",
+      "deleted": "Image removed",
+      "hero_set": "Hero image updated",
+      "reordered": "Images reordered",
+      "create_failed": "Couldn't add image",
+      "update_failed": "Couldn't update image",
+      "delete_failed": "Couldn't remove image",
+      "reorder_failed": "Couldn't reorder images"
+    },
+    "delete_confirm": {
+      "title": "Remove image?",
+      "description": "This image will be permanently removed from the property.",
+      "confirm": "Remove"
+    },
+    "dialog": {
+      "create_title": "Add image",
+      "edit_title": "Edit image",
+      "s3_note": "Paste the S3 key for the uploaded image. Direct upload is coming in a later phase.",
+      "fields": {
+        "key": "S3 key",
+        "key_placeholder": "properties/2026/05/villa-front.jpg",
+        "kind": "Kind",
+        "name": "Name",
+        "name_placeholder": "Front facade",
+        "description": "Description",
+        "description_placeholder": "Optional caption or alt text"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "operational": {
+      "title": "Operational settings",
+      "description": "Defaults that drive availability and booking behaviour.",
+      "fields": {
+        "availability_default": "Availability default",
+        "bookings_require_pre_approval": "Bookings require pre-approval",
+        "requires_enquiry_first": "Requires enquiry first",
+        "check_in_time": "Check-in time",
+        "check_out_time": "Check-out time",
+        "changeover_day": "Changeover day",
+        "min_nights_rental": "Minimum nights",
+        "min_nights_rental_note": "Minimum nights note",
+        "prices_entered_as": "Prices entered as"
+      },
+      "save": "Save settings",
+      "saving": "Saving…",
+      "saved": "Settings saved",
+      "save_failed": "Couldn't save settings"
+    },
+    "finance": {
+      "title": "Finance configuration",
+      "description": "Commission, deposit, security, and cancellation rules.",
+      "fields": {
+        "commission_calculation_type": "Commission type",
+        "commission_amount": "Commission amount",
+        "commission_note": "Commission note",
+        "tax_number": "Tax number",
+        "tax_is_exempt": "Tax exempt",
+        "tax_percentage": "Tax %",
+        "deposit_required": "Deposit required",
+        "deposit_calculation_type": "Deposit type",
+        "deposit_amount": "Deposit amount",
+        "days_balance_due_before_arrival": "Balance due days before arrival",
+        "security_deposit_required": "Security deposit required",
+        "security_deposit_calculation_type": "Security deposit type",
+        "security_deposit_amount": "Security deposit amount",
+        "cancellation_fee_percent": "Cancellation fee %",
+        "cancellation_window_days": "Cancellation window (days)",
+        "notes": "Finance notes"
+      },
+      "save": "Save finance",
+      "saving": "Saving…",
+      "saved": "Finance saved",
+      "save_failed": "Couldn't save finance"
+    },
+    "lifecycle": {
+      "title": "Lifecycle",
+      "description": "Activate, archive, or restore this property.",
+      "current_status": "Current status",
+      "actions": {
+        "activate": "Activate",
+        "archive": "Archive",
+        "restore": "Restore"
+      },
+      "confirm": {
+        "activate_title": "Activate property?",
+        "activate_description": "Activating makes this property bookable in the operator UI.",
+        "archive_title": "Archive property?",
+        "archive_description": "Archiving hides this property from default lists. Bookings remain intact.",
+        "restore_title": "Restore property?",
+        "restore_description": "Restoring moves this property back to active."
+      },
+      "toasts": {
+        "activated": "Property activated",
+        "archived": "Property archived",
+        "restored": "Property restored",
+        "failed": "Couldn't update status"
+      },
+      "role_required": "You need the Reservations role for lifecycle actions."
+    },
+    "errors": {
+      "load_failed": "Couldn't load settings."
+    },
+    "role_required_save": "You need the Reservations role to edit."
+  },
+  "image_kinds": {
+    "hero": "Hero",
+    "interior": "Interior",
+    "exterior": "Exterior",
+    "gallery": "Gallery",
+    "floor_plan": "Floor plan"
+  },
+  "availability_defaults": {
+    "available": "Available",
+    "unavailable": "Unavailable",
+    "on_request": "On request"
+  },
+  "changeover_days": {
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+    "sat": "Saturday",
+    "sun": "Sunday",
+    "any": "Any day"
+  },
+  "price_bases": {
+    "gross": "Gross",
+    "net": "Net"
+  },
+  "calc_types": {
+    "percent": "Percent",
+    "fixed": "Fixed"
+  },
+  "errors": {
+    "image_key_required": "S3 key is required",
+    "load_failed": "Couldn't load."
+  },
+  "common": {
+    "inherit": "Inherit",
+    "unset": "—"
+  }
+}

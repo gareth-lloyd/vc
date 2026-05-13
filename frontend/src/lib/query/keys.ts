@@ -27,6 +27,7 @@ export const queryKeys = {
   },
   contacts: {
     detail: (id: ContactId) => ["contacts", "detail", id] as const,
+    search: (q: string) => ["contacts", "search", q] as const,
   },
   bookings: {
     all: () => ["bookings"] as const,

@@ -216,6 +216,49 @@ export type PropertyBookingItem = z.infer<typeof propertyBookingItemSchema>;
 
 export const propertyBookingsResponseSchema = paginated(propertyBookingItemSchema);
 
+export const propertyContactAssignmentWriteInputSchema = z.object({
+  contact: z.number().int(),
+  role: z.string().trim().max(120).optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  is_primary: z.boolean().optional(),
+});
+export type PropertyContactAssignmentWriteInput = z.infer<
+  typeof propertyContactAssignmentWriteInputSchema
+>;
+
+export const contactEmailWriteInputSchema = z.object({
+  email: z.string().email("Enter a valid email").max(254),
+  label: z.string().trim().max(40).optional(),
+  is_primary: z.boolean().optional(),
+});
+export type ContactEmailWriteInput = z.infer<typeof contactEmailWriteInputSchema>;
+
+export const contactPhoneWriteInputSchema = z.object({
+  number: z.string().trim().min(1, "Required").max(40),
+  label: z.string().trim().max(40).optional(),
+  is_primary: z.boolean().optional(),
+});
+export type ContactPhoneWriteInput = z.infer<typeof contactPhoneWriteInputSchema>;
+
+export const contactWriteInputSchema = z
+  .object({
+    title: z.string().trim().max(40).optional(),
+    first_name: z.string().trim().max(80).optional(),
+    last_name: z.string().trim().max(80).optional(),
+    company: z.string().trim().max(160).optional(),
+    website_url: z.string().trim().max(255).optional(),
+    preferred_method: z.string().trim().max(40).optional(),
+    address_line_1: z.string().trim().max(255).optional(),
+    address_line_2: z.string().trim().max(255).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .refine((v) => v.first_name || v.last_name || v.company, {
+    message: "At least a name or company is required",
+    path: ["first_name"],
+  });
+export type ContactWriteInput = z.infer<typeof contactWriteInputSchema>;
+
 export const contactSchema = z.object({
   id: z.number(),
   title: z.string().nullable().optional(),

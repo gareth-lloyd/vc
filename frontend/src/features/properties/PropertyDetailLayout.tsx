@@ -6,6 +6,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { QuickActions, type QuickAction } from "@/components/feedback/QuickActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
+import { ApiError } from "@/lib/api/errors";
 import { useProperty } from "./hooks";
 
 export const PROPERTY_TABS = [
@@ -38,12 +39,17 @@ export function PropertyDetailLayout() {
   }
 
   if (query.isError || !query.data) {
+    const is404 = query.error instanceof ApiError && query.error.status === 404;
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load this property"
-          description="Try again or head back to the list."
-          onRetry={() => query.refetch()}
+          title={is404 ? "Property not found" : "Couldn't load this property"}
+          description={
+            is404
+              ? "It may have been deleted or you may not have access."
+              : "Try again or head back to the list."
+          }
+          onRetry={is404 ? undefined : () => query.refetch()}
         />
       </div>
     );

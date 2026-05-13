@@ -97,4 +97,47 @@ describe("PropertiesListPage", () => {
     await userEvent.click(await screen.findByText("Casa Norte"));
     await waitFor(() => expect(screen.getByText("Detail: casa-norte")).toBeInTheDocument());
   });
+
+  it("falls back to numeric id when slug is whitespace-only", async () => {
+    const whitespaceSlugs = {
+      ...fixture,
+      results: [{ id: 42, name: "Blank Slug Villa", slug: "   ", status: "active" }],
+      count: 1,
+    };
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(whitespaceSlugs)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+        <Route path="/properties/:id/details" element={<div>Detail: 42</div>} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await userEvent.click(await screen.findByText("Blank Slug Villa"));
+    await waitFor(() => expect(screen.getByText("Detail: 42")).toBeInTheDocument());
+  });
+
+  it("falls back to numeric id when slug is a full URL", async () => {
+    const urlSlugs = {
+      ...fixture,
+      results: [
+        {
+          id: 436,
+          name: "URL Slug Villa",
+          slug: "https://www.villacollective.com/mallorca/-436",
+          status: "active",
+        },
+      ],
+      count: 1,
+    };
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(urlSlugs)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+        <Route path="/properties/:id/details" element={<div>Detail: 436</div>} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await userEvent.click(await screen.findByText("URL Slug Villa"));
+    await waitFor(() => expect(screen.getByText("Detail: 436")).toBeInTheDocument());
+  });
 });

@@ -112,8 +112,9 @@ export function PropertiesListPage() {
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
 
   const handleRowClick = (row: PropertyListItem) => {
-    const lookup = row.slug || row.id;
-    navigate(`/properties/${lookup}/details`);
+    const slug = row.slug?.trim();
+    const isValidSlug = slug && !slug.includes("/");
+    navigate(`/properties/${isValidSlug ? slug : row.id}/details`);
   };
 
   return (

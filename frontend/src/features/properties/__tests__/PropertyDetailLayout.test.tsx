@@ -117,6 +117,48 @@ describe("PropertyDetailLayout", () => {
   });
 });
 
+describe("error differentiation", () => {
+  it("shows 'Property not found' on 404 without a retry button", async () => {
+    server.use(
+      http.get("/api/v1/properties/nonexistent", () =>
+        HttpResponse.json({ detail: "Not found." }, { status: 404 }),
+      ),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties/:id" element={<PropertyDetailLayout />}>
+          <Route index element={<Navigate to="details" replace />} />
+          <Route path="details" element={<DetailsTab />} />
+        </Route>
+      </Routes>,
+      { route: "/properties/nonexistent/details" },
+    );
+    expect(await screen.findByText("Property not found")).toBeInTheDocument();
+    expect(screen.getByText(/may have been deleted/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  it("shows 'Couldn't load this property' on 500 with a retry button", async () => {
+    server.use(
+      http.get("/api/v1/properties/broken", () =>
+        HttpResponse.json({ detail: "Server error" }, { status: 500 }),
+      ),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties/:id" element={<PropertyDetailLayout />}>
+          <Route index element={<Navigate to="details" replace />} />
+          <Route path="details" element={<DetailsTab />} />
+        </Route>
+      </Routes>,
+      { route: "/properties/broken/details" },
+    );
+    expect(await screen.findByText("Couldn't load this property")).toBeInTheDocument();
+    expect(screen.getByText(/try again/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+});
+
 describe("RequireAuth guard interaction is handled by the higher-level router", () => {
   it("placeholder — covered in higher-level integration", async () => {
     await userEvent.setup();

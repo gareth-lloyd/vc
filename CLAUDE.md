@@ -32,6 +32,12 @@ trees are scaffolded). Keep this file principles-only.
    - **Frontend:** `eslint` + `prettier` + `tsc --noEmit` configured before
      the first real commit of React code.
 
+5. **No soft delete.** No `SoftDeleteModel` / `deleted_at` columns.
+   Express lifecycle via a `status` enum (`DRAFT` / `ACTIVE` / `ARCHIVED`),
+   an `is_active` bool, an `archived_at` timestamp, or a hard delete with
+   an `AuditLog` trail. See `accounts.Contact.merge` for the canonical
+   hard-delete pattern.
+
 ## Quality gate (non-negotiable)
 
 Before any commit:
@@ -76,6 +82,10 @@ the loop. If a hook fails, fix the underlying problem.
 
 - Read `django_res_design/INDEX.md` before designing new backend models or
   endpoints — the spec is detailed and authoritative.
+- Before changing anything in `django_res/data_migration/` or adding new
+  loaders, read `django_res/data_migration/CUTOVER.md` and the
+  conventions in `django_res/CLAUDE.md`. The package is the executable
+  spec for the legacy → Postgres shape and must stay idempotent.
 - When the spec and code disagree, surface the disagreement to the user;
   do not silently choose one side.
 - Prefer small, incremental, test-backed commits over large landings.

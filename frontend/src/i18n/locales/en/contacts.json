@@ -1,1 +1,9 @@
-{}
+{
+  "audit": {
+    "title": "Audit",
+    "empty": {
+      "title": "No audit entries for this contact yet",
+      "description": "Changes to this contact will appear here."
+    }
+  }
+}

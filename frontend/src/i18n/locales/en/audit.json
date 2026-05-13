@@ -1,0 +1,37 @@
+{
+  "entry": {
+    "by": "by {{actor}}",
+    "system_actor": "System",
+    "show_changes": "Show changes",
+    "hide_changes": "Hide changes",
+    "no_changes": "No field changes recorded."
+  },
+  "fields": {
+    "actor": "Actor",
+    "action": "Action",
+    "created_at": "When",
+    "field_diffs": "Changes"
+  },
+  "actions": {
+    "previous_page": "Previous",
+    "next_page": "Next"
+  },
+  "empty": {
+    "title": "No audit entries",
+    "description": "Audit entries will appear here once changes are recorded."
+  },
+  "errors": {
+    "load_failed": "Couldn't load audit entries",
+    "permission_denied_title": "Audit log requires admin permission",
+    "permission_denied_description": "Ask an administrator to grant you access to the audit log."
+  },
+  "labels": {
+    "create": "Created",
+    "update": "Updated",
+    "delete": "Deleted",
+    "archive": "Archived",
+    "restore": "Restored",
+    "merge": "Merged",
+    "default": "Change"
+  }
+}

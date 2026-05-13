@@ -1,0 +1,141 @@
+import { http, HttpResponse } from "msw";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { afterEach, describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { server } from "@/test/msw/server";
+import { renderWithProviders } from "@/test/render";
+import { ContactDetailLayout } from "../ContactDetailLayout";
+import { AuditTab } from "../tabs/AuditTab";
+
+const CONTACT_ID = 7;
+
+const contactFixture = {
+  id: CONTACT_ID,
+  title: "Dr",
+  first_name: "Ada",
+  last_name: "Lovelace",
+  company: "Analytical Engines",
+  website_url: "https://example.com",
+  preferred_method: "email",
+  address_line_1: "1 Babbage Way",
+  address_line_2: null,
+  notes: "",
+  status: "active",
+  emails: [{ id: 11, email: "ada@example.com", label: "work", is_primary: true }],
+  phones: [],
+};
+
+interface AuditEntryFixture {
+  id: string;
+  entity_type: string;
+  object_id: string;
+  actor: number | null;
+  actor_email: string | null;
+  field_diffs: Record<string, unknown>;
+  correlation_id: string | null;
+  created_at: string;
+}
+
+function entry(overrides: Partial<AuditEntryFixture> = {}): AuditEntryFixture {
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    entity_type: "accounts.contact",
+    object_id: String(CONTACT_ID),
+    actor: 1,
+    actor_email: "ops@example.com",
+    field_diffs: { first_name: { from: "A", to: "B" } },
+    correlation_id: null,
+    created_at: "2026-05-10T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function listResponse(entries: AuditEntryFixture[], opts: { next?: string | null } = {}) {
+  return {
+    count: entries.length,
+    next: opts.next ?? null,
+    previous: null,
+    results: entries,
+  };
+}
+
+function setup(route = `/contacts/${CONTACT_ID}/audit`) {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/contacts/:id" element={<ContactDetailLayout />}>
+        <Route index element={<Navigate to="audit" replace />} />
+        <Route path="audit" element={<AuditTab />} />
+      </Route>
+    </Routes>,
+    { route },
+  );
+}
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+describe("AuditTab", () => {
+  it("renders entries and expands field diffs", async () => {
+    server.use(
+      http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
+      http.get("/api/v1/audit-log", () =>
+        HttpResponse.json(
+          listResponse([entry({ id: "a", field_diffs: { first_name: { from: "A", to: "B" } } })]),
+        ),
+      ),
+    );
+    setup();
+
+    await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument());
+    expect(screen.getByText(/ops@example\.com/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /show changes/i }));
+    expect(screen.getByText(/"first_name"/)).toBeInTheDocument();
+  });
+
+  it("renders an empty state when there are no entries", async () => {
+    server.use(
+      http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
+      http.get("/api/v1/audit-log", () => HttpResponse.json(listResponse([]))),
+    );
+    setup();
+    expect(await screen.findByText(/no audit entries/i)).toBeInTheDocument();
+  });
+
+  it("renders a permission notice on 403", async () => {
+    server.use(
+      http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
+      http.get("/api/v1/audit-log", () =>
+        HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+      ),
+    );
+    setup();
+    expect(await screen.findByText(/Audit log requires admin permission/i)).toBeInTheDocument();
+  });
+
+  it("shows pagination controls when next is present", async () => {
+    server.use(
+      http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
+      http.get("/api/v1/audit-log", () =>
+        HttpResponse.json(listResponse([entry({ id: "a" })], { next: "/api/v1/audit-log?page=2" })),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
+  });
+
+  it("creates the correct entry-type label for create diffs", async () => {
+    server.use(
+      http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
+      http.get("/api/v1/audit-log", () =>
+        HttpResponse.json(listResponse([entry({ id: "c", field_diffs: { __created__: true } })])),
+      ),
+    );
+    setup();
+    expect(await screen.findByText("Created")).toBeInTheDocument();
+  });
+});

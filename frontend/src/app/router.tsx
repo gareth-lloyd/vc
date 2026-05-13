@@ -20,10 +20,12 @@ import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/Time
 import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
 import { PaymentsTab as BookingPaymentsTab } from "@/features/bookings/tabs/PaymentsTab";
 import { ConciergeTab as BookingConciergeTab } from "@/features/bookings/tabs/ConciergeTab";
+import { FinanceTab as BookingFinanceTab } from "@/features/bookings/tabs/FinanceTab";
 import { ContactsListPage } from "@/features/contacts/ContactsListPage";
 import { ContactDetailLayout } from "@/features/contacts/ContactDetailLayout";
 import { DetailsTab as ContactDetailsTab } from "@/features/contacts/tabs/DetailsTab";
 import { PropertiesTab as ContactPropertiesTab } from "@/features/contacts/tabs/PropertiesTab";
+import { AuditTab as ContactAuditTab } from "@/features/contacts/tabs/AuditTab";
 import { EnquiriesListPage } from "@/features/enquiries/EnquiriesListPage";
 import { EnquiryDetailLayout } from "@/features/enquiries/EnquiryDetailLayout";
 import { DetailsTab as EnquiryDetailsTab } from "@/features/enquiries/tabs/DetailsTab";
@@ -55,6 +57,7 @@ const REAL_BOOKING_TABS = new Set<string>([
   "notes",
   "payments",
   "concierge",
+  "finance",
 ]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
@@ -101,7 +104,7 @@ export const router = createBrowserRouter([
                   { path: "details", element: <ContactDetailsTab /> },
                   { path: "properties", element: <ContactPropertiesTab /> },
                   { path: "notes", element: <ComingSoonTab tabName="Notes" /> },
-                  { path: "audit", element: <ComingSoonTab tabName="Audit" /> },
+                  { path: "audit", element: <ContactAuditTab /> },
                 ],
               },
               { path: "/enquiries", element: <EnquiriesListPage /> },
@@ -128,6 +131,7 @@ export const router = createBrowserRouter([
                   { path: "notes", element: <BookingNotesTab /> },
                   { path: "payments", element: <BookingPaymentsTab /> },
                   { path: "concierge", element: <BookingConciergeTab /> },
+                  { path: "finance", element: <BookingFinanceTab /> },
                   ...bookingPlaceholderRoutes,
                 ],
               },

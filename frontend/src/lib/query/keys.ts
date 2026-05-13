@@ -72,4 +72,8 @@ export const queryKeys = {
     detail: (id: QuotationId) => ["quotations", "detail", id] as const,
     lines: (id: QuotationId) => ["quotations", "detail", id, "lines"] as const,
   },
+  audit: {
+    all: () => ["audit"] as const,
+    list: <F>(filters: F) => ["audit", "list", filters] as const,
+  },
 } as const;

@@ -1,1 +1,35 @@
-{}
+{
+  "finance": {
+    "title": "Finance",
+    "fields": {
+      "rate_subtotal": "Rate subtotal",
+      "nights": "Nights",
+      "nightly_rate": "Nightly rate",
+      "extras_total": "Extras",
+      "discount": "Discount",
+      "commission": "Commission",
+      "tax": "Tax",
+      "fees": "Fees",
+      "adjustments": "Adjustments",
+      "deposit": "Deposit",
+      "balance": "Balance",
+      "security": "Security deposit",
+      "total": "Grand total",
+      "currency": "Currency",
+      "party": "Party",
+      "dates": "Dates"
+    },
+    "lines": {
+      "title": "Line items",
+      "label": "Label",
+      "quantity": "Quantity",
+      "unit_price": "Unit price",
+      "total": "Total"
+    },
+    "alert": "Line-item editing coming in a later phase. Recalculate via Modify dates / Modify guests on the Overview tab.",
+    "empty": {
+      "title": "Pricing snapshot not available",
+      "description": "This booking has no pricing snapshot to display."
+    }
+  }
+}

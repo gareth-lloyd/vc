@@ -12,6 +12,7 @@ import bookingsEn from "./locales/en/bookings.json";
 import enquiriesEn from "./locales/en/enquiries.json";
 import usersEn from "./locales/en/users.json";
 import quotationsEn from "./locales/en/quotations.json";
+import auditEn from "./locales/en/audit.json";
 
 export const SUPPORTED_LANGUAGES = ["en"] as const;
 export const DEFAULT_LANGUAGE: (typeof SUPPORTED_LANGUAGES)[number] = "en";
@@ -25,6 +26,7 @@ export const I18N_NAMESPACES = [
   "enquiries",
   "users",
   "quotations",
+  "audit",
 ] as const;
 
 const supportedLngs: string[] = [...SUPPORTED_LANGUAGES];
@@ -44,6 +46,7 @@ void i18n
         enquiries: enquiriesEn,
         users: usersEn,
         quotations: quotationsEn,
+        audit: auditEn,
       },
     },
     fallbackLng: DEFAULT_LANGUAGE,

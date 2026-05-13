@@ -47,6 +47,48 @@ export const bookingListItemSchema = z.object({
 });
 export type BookingListItem = z.infer<typeof bookingListItemSchema>;
 
+export const pricingSnapshotLineSchema = z
+  .object({
+    label: z.string().optional().nullable(),
+    description: z.string().optional().nullable(),
+    quantity: z.union([z.number(), z.string()]).optional().nullable(),
+    unit_price: z.union([z.number(), z.string()]).optional().nullable(),
+    total: z.union([z.number(), z.string()]).optional().nullable(),
+    kind: z.string().optional().nullable(),
+    date: z.string().optional().nullable(),
+  })
+  .passthrough();
+export type PricingSnapshotLine = z.infer<typeof pricingSnapshotLineSchema>;
+
+export const pricingSnapshotSchema = z
+  .object({
+    property_id: z.union([z.number(), z.string()]).optional().nullable(),
+    currency_code: z.string().optional().nullable(),
+    date_from: z.string().optional().nullable(),
+    date_to: z.string().optional().nullable(),
+    lines: z.array(pricingSnapshotLineSchema).optional().nullable(),
+    rate_subtotal: z.union([z.number(), z.string()]).optional().nullable(),
+    nightly_rate: z.union([z.number(), z.string()]).optional().nullable(),
+    nights: z.union([z.number(), z.string()]).optional().nullable(),
+    extras: z.array(pricingSnapshotLineSchema).optional().nullable(),
+    extras_total: z.union([z.number(), z.string()]).optional().nullable(),
+    fees: z.union([z.number(), z.string()]).optional().nullable(),
+    adjustments: z.union([z.number(), z.string()]).optional().nullable(),
+    discount: z.union([z.number(), z.string()]).optional().nullable(),
+    commission: z.union([z.number(), z.string()]).optional().nullable(),
+    tax: z.union([z.number(), z.string()]).optional().nullable(),
+    taxes: z.union([z.number(), z.string()]).optional().nullable(),
+    deposit: z.union([z.number(), z.string()]).optional().nullable(),
+    deposit_percent: z.union([z.number(), z.string()]).optional().nullable(),
+    balance: z.union([z.number(), z.string()]).optional().nullable(),
+    security: z.union([z.number(), z.string()]).optional().nullable(),
+    security_deposit: z.union([z.number(), z.string()]).optional().nullable(),
+    total: z.union([z.number(), z.string()]).optional().nullable(),
+    grand_total: z.union([z.number(), z.string()]).optional().nullable(),
+  })
+  .passthrough();
+export type PricingSnapshot = z.infer<typeof pricingSnapshotSchema>;
+
 export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),

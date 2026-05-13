@@ -35,9 +35,9 @@ Patterns already in the code. New work should mirror them.
 `legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)`
 on any model with a legacy origin. It is migration metadata only —
 never the natural key for application lookups. Use `iso2` for Country,
-`code` for Currency, `slug` for Region, etc. Examples:
-`accounts/models/contact.py:51`, `properties/models/geo.py:18`,
-`pricing/models/currency.py:18`.
+`code` for Currency, `slug` for Region, etc. Existing examples live on
+`accounts.Contact`, `properties.Country`/`Region`, and
+`pricing.Currency`.
 
 ### Loaders are idempotent upserts keyed on `legacy_id`
 
@@ -58,8 +58,7 @@ this; new loaders touching geo or group FKs should too.
 
 ### Inheritance — call `effective(field)`
 
-`PropertySettings.effective(attr)` (`properties/models/settings.py:79`)
-and `PropertyFinance.effective(field)` (`properties/models/finance.py:36`)
+`PropertySettings.effective(attr)` and `PropertyFinance.effective(field)`
 are the canonical property-→-group resolvers. Don't hand-roll the
 chain — wrap them when an outer fallback is needed (see
 `_resolve_property_currency` in `data_migration/loaders/pricing.py`).
@@ -68,9 +67,8 @@ chain — wrap them when an outer fallback is needed (see
 
 The `_meta.related_objects` walk is the canonical way to rewrite FKs
 across the schema before hard-deleting a row. References:
-`accounts/models/contact.py:Contact.merge` (line ~100),
-`reservations/models/guest.py:Guest.merge` (line ~106),
-`data_migration/management/commands/merge_country.py`. Always inside
+`accounts.Contact.merge`, `reservations.Guest.merge`, and the
+`merge_country` management command. Always inside
 `transaction.atomic()`. Skip `rel.many_to_many` — the through-model FK
 shows up separately and gets rewritten there.
 
@@ -80,7 +78,7 @@ shows up separately and gets rewritten there.
 prefixed `booking-` so legacy bookings can satisfy the PROTECT FK
 chain. Any viewset surfacing Quotation/QuotationLine must
 `.exclude(legacy_id__startswith="booking-")` in `get_queryset()` — see
-`reservations/views/quotation.py:QuotationViewSet`.
+`QuotationViewSet` in `reservations/views/quotation.py`.
 
 ### Test fixtures — `get_or_create` for canonical countries
 

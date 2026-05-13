@@ -1,1 +1,33 @@
-{}
+{
+  "assign": {
+    "title": "Assign enquiry",
+    "description": "Pick an operator to own this enquiry. Choose Unassigned to remove the current assignee.",
+    "fields": {
+      "operator": "Operator"
+    },
+    "placeholders": {
+      "search": "Search operators by name or email…",
+      "select": "Select an operator"
+    },
+    "options": {
+      "unassigned": "Unassigned"
+    },
+    "empty": "No operators match that search.",
+    "errors": {
+      "load_failed": "Couldn't load operators. Try again."
+    },
+    "actions": {
+      "submit": "Assign",
+      "submitting": "Saving…"
+    },
+    "toasts": {
+      "assigned": "Enquiry assigned",
+      "unassigned": "Enquiry unassigned"
+    }
+  },
+  "convert": {
+    "toasts": {
+      "redirect": "Opening quotations for this enquiry"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "list": {
+    "title": "Quotations",
+    "breadcrumb_root": "Operations",
+    "breadcrumb_self": "Quotations",
+    "search_placeholder": "Search by reference or guest…",
+    "filters": {
+      "status_any": "Any status",
+      "status_label": "Filter by status"
+    },
+    "empty": {
+      "title": "No quotations match these filters",
+      "description": "Try clearing the search or status filter."
+    },
+    "errors": {
+      "load_failed": "Couldn't load quotations."
+    },
+    "coming_soon": {
+      "new_button": "New quote",
+      "tooltip": "The quote builder is coming in a future phase."
+    }
+  },
+  "detail": {
+    "breadcrumb_root": "Operations",
+    "breadcrumb_list": "Quotations",
+    "summary": {
+      "title": "Summary",
+      "reference": "Reference",
+      "status": "Status",
+      "enquiry": "Enquiry",
+      "guest": "Guest",
+      "agent": "Agent",
+      "currency": "Currency",
+      "expires_at": "Expires",
+      "created_at": "Created",
+      "updated_at": "Updated",
+      "unset": "—"
+    },
+    "lines": {
+      "title": "Lines",
+      "empty": "This quotation has no lines yet.",
+      "loading": "Loading lines…",
+      "errors": {
+        "load_failed": "Couldn't load lines."
+      },
+      "columns": {
+        "id": "#",
+        "property": "Property",
+        "dates": "Dates",
+        "guests": "Guests",
+        "total": "Total",
+        "selected": "Selected"
+      },
+      "selected_yes": "Yes",
+      "selected_no": "No"
+    },
+    "errors": {
+      "not_found": "Quotation not found",
+      "not_found_description": "It may have been deleted or you may not have access.",
+      "load_failed": "Couldn't load this quotation",
+      "load_failed_description": "Try again or head back to the list."
+    },
+    "actions": {
+      "section_label": "Actions",
+      "send": "Send to guest",
+      "duplicate": "Duplicate",
+      "convert": "Convert to booking",
+      "withdraw": "Withdraw",
+      "coming_soon": "Quote actions are coming in a future phase."
+    }
+  }
+}

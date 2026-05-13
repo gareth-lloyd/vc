@@ -27,6 +27,8 @@ import { EnquiryDetailLayout } from "@/features/enquiries/EnquiryDetailLayout";
 import { DetailsTab as EnquiryDetailsTab } from "@/features/enquiries/tabs/DetailsTab";
 import { ActivityTab as EnquiryActivityTab } from "@/features/enquiries/tabs/ActivityTab";
 import { NotesTab as EnquiryNotesTab } from "@/features/enquiries/tabs/NotesTab";
+import { QuotationsListPage } from "@/features/quotations/QuotationsListPage";
+import { QuotationDetailLayout } from "@/features/quotations/QuotationDetailLayout";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -102,6 +104,8 @@ export const router = createBrowserRouter([
                   { path: "notes", element: <EnquiryNotesTab /> },
                 ],
               },
+              { path: "/quotations", element: <QuotationsListPage /> },
+              { path: "/quotations/:id", element: <QuotationDetailLayout /> },
               { path: "/bookings", element: <BookingsListPage /> },
               {
                 path: "/bookings/:id",

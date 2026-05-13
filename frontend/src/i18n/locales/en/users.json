@@ -1,0 +1,9 @@
+{
+  "picker": {
+    "placeholder": "Select an operator",
+    "search_placeholder": "Search operators by name or email…",
+    "loading": "Loading operators…",
+    "empty": "No operators match that search.",
+    "error": "Couldn't load operators. Try again."
+  }
+}

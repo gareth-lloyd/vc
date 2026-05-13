@@ -3,6 +3,8 @@ export type BookingId = string | number;
 export type SeasonId = string | number;
 export type ContactId = string | number;
 export type EnquiryId = string | number;
+export type UserId = string | number;
+export type QuotationId = string | number;
 
 export const queryKeys = {
   auth: {
@@ -53,5 +55,18 @@ export const queryKeys = {
     detail: (id: EnquiryId) => ["enquiries", "detail", id] as const,
     activity: (id: EnquiryId) => ["enquiries", "detail", id, "activity"] as const,
     notes: (id: EnquiryId) => ["enquiries", "detail", id, "notes"] as const,
+  },
+  users: {
+    all: () => ["users"] as const,
+    lists: () => ["users", "list"] as const,
+    list: <F>(filters: F) => ["users", "list", filters] as const,
+    detail: (id: UserId) => ["users", "detail", id] as const,
+  },
+  quotations: {
+    all: () => ["quotations"] as const,
+    lists: () => ["quotations", "list"] as const,
+    list: <F>(filters: F) => ["quotations", "list", filters] as const,
+    detail: (id: QuotationId) => ["quotations", "detail", id] as const,
+    lines: (id: QuotationId) => ["quotations", "detail", id, "lines"] as const,
   },
 } as const;

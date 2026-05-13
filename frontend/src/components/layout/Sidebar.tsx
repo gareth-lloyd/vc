@@ -1,6 +1,20 @@
 import { NavLink } from "react-router-dom";
-import { Home, Building2, CalendarCheck, MessageSquare, Users } from "lucide-react";
+import {
+  Banknote,
+  Building2,
+  CalendarCheck,
+  FileText,
+  Globe,
+  Home,
+  MessageSquare,
+  Settings,
+  Tags,
+  Users,
+  UsersRound,
+} from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
+import { useTranslation } from "react-i18next";
+import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 import { cn } from "@/lib/cn";
 
 interface NavItem {
@@ -8,16 +22,6 @@ interface NavItem {
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
 }
-
-const OPERATIONS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: Home },
-  { to: "/enquiries", label: "Enquiries", icon: MessageSquare },
-  { to: "/bookings", label: "Bookings", icon: CalendarCheck },
-];
-const LIBRARY: NavItem[] = [
-  { to: "/properties", label: "Properties", icon: Building2 },
-  { to: "/contacts", label: "Contacts", icon: Users },
-];
 
 function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
   return (
@@ -50,10 +54,32 @@ function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
 }
 
 export function Sidebar() {
+  const { t } = useTranslation("common");
+  const isAdmin = useHasAdminRole();
+
+  const operations: NavItem[] = [
+    { to: "/dashboard", label: t("nav.dashboard"), icon: Home },
+    { to: "/enquiries", label: t("nav.enquiries"), icon: MessageSquare },
+    { to: "/quotations", label: t("nav.quotes"), icon: FileText },
+    { to: "/bookings", label: t("nav.bookings"), icon: CalendarCheck },
+  ];
+  const library: NavItem[] = [
+    { to: "/properties", label: t("nav.properties"), icon: Building2 },
+    { to: "/contacts", label: t("nav.contacts"), icon: Users },
+  ];
+  const admin: NavItem[] = [
+    { to: "/admin/users", label: t("nav.users"), icon: UsersRound },
+    { to: "/admin/countries", label: t("nav.countries"), icon: Globe },
+    { to: "/admin/currencies", label: t("nav.currencies"), icon: Banknote },
+    { to: "/admin/tags", label: t("nav.tags"), icon: Tags },
+    { to: "/admin/system", label: t("nav.system"), icon: Settings },
+  ];
+
   return (
     <nav className="bg-card border-border w-60 shrink-0 border-r">
-      <NavSection heading="Operations" items={OPERATIONS} />
-      <NavSection heading="Library" items={LIBRARY} />
+      <NavSection heading={t("nav.groups.operations")} items={operations} />
+      <NavSection heading={t("nav.groups.library")} items={library} />
+      {isAdmin && <NavSection heading={t("nav.groups.admin")} items={admin} />}
     </nav>
   );
 }

@@ -656,22 +656,8 @@ function LifecycleActions({ property, canWrite }: { property: PropertyDetail; ca
       </Tooltip>
     );
 
-  const confirmTitle =
-    pending === "activate"
-      ? t("settings.lifecycle.confirm.activate_title")
-      : pending === "archive"
-        ? t("settings.lifecycle.confirm.archive_title")
-        : pending === "restore"
-          ? t("settings.lifecycle.confirm.restore_title")
-          : "";
-  const confirmDescription =
-    pending === "activate"
-      ? t("settings.lifecycle.confirm.activate_description")
-      : pending === "archive"
-        ? t("settings.lifecycle.confirm.archive_description")
-        : pending === "restore"
-          ? t("settings.lifecycle.confirm.restore_description")
-          : "";
+  const confirmTitle = pending ? t(`settings.lifecycle.confirm.${pending}_title`) : "";
+  const confirmDescription = pending ? t(`settings.lifecycle.confirm.${pending}_description`) : "";
   const busy = activate.isPending || archive.isPending || restore.isPending;
 
   return (

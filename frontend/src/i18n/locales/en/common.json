@@ -20,6 +20,24 @@
     "loading": "Loading…",
     "empty": "Nothing here yet."
   },
+  "nav": {
+    "groups": {
+      "operations": "Operations",
+      "library": "Library",
+      "admin": "Admin"
+    },
+    "dashboard": "Dashboard",
+    "enquiries": "Enquiries",
+    "quotes": "Quotes",
+    "bookings": "Bookings",
+    "properties": "Properties",
+    "contacts": "Contacts",
+    "users": "Users",
+    "countries": "Countries",
+    "currencies": "Currencies",
+    "tags": "Tags",
+    "system": "System"
+  },
   "zod": {
     "invalid_type": "Required",
     "invalid_email": "Enter a valid email",

@@ -66,17 +66,3 @@ export interface FeatureFilters {
 export interface FeatureCategoryFilters {
   page?: number;
 }
-
-export const featureCategoryQueryKeys = {
-  all: () => ["feature-categories"] as const,
-  lists: () => ["feature-categories", "list"] as const,
-  list: <F>(filters: F) => ["feature-categories", "list", filters] as const,
-  detail: (id: number | string) => ["feature-categories", "detail", id] as const,
-};
-
-export const featureQueryKeys = {
-  all: () => ["features"] as const,
-  lists: () => ["features", "list"] as const,
-  list: <F>(filters: F) => ["features", "list", filters] as const,
-  detail: (id: number | string) => ["features", "detail", id] as const,
-};

@@ -350,3 +350,63 @@ def test_booking_transitioned_signal_fires(booking: Booking) -> None:
 @pytest.mark.django_db
 def test_reference_auto_generated(booking: Booking) -> None:
     assert booking.reference.startswith("B-")
+
+
+# ---------------------------------------------------------------------------
+# CheckConstraint invariants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_cancelled_at_requires_cancelled_status(booking: Booking) -> None:
+    with pytest.raises(Exception, match="booking_cancelled_at_implies_cancelled_status"):
+        Booking.objects.filter(pk=booking.pk).update(
+            cancelled_at=timezone.now(),
+            status=BookingStatus.DRAFT.value,
+        )
+
+
+@pytest.mark.django_db
+def test_cancelled_at_allowed_when_status_cancelled(booking: Booking) -> None:
+    Booking.objects.filter(pk=booking.pk).update(
+        cancelled_at=timezone.now(),
+        status=BookingStatus.CANCELLED.value,
+    )
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.CANCELLED.value
+    assert booking.cancelled_at is not None
+
+
+@pytest.mark.django_db
+def test_archived_at_requires_terminal_status(booking: Booking) -> None:
+    with pytest.raises(Exception, match="booking_archived_at_requires_terminal_status"):
+        Booking.objects.filter(pk=booking.pk).update(
+            archived_at=timezone.now(),
+            status=BookingStatus.DRAFT.value,
+        )
+
+
+@pytest.mark.django_db
+def test_archived_at_allowed_on_terminal_status(booking: Booking) -> None:
+    Booking.objects.filter(pk=booking.pk).update(
+        archived_at=timezone.now(),
+        status=BookingStatus.CHECKED_OUT.value,
+    )
+    booking.refresh_from_db()
+    assert booking.archived_at is not None
+
+
+@pytest.mark.django_db
+def test_cancel_transition_satisfies_constraint(booking: Booking) -> None:
+    booking.cancel("test reason")
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.CANCELLED.value
+    assert booking.cancelled_at is not None
+
+
+@pytest.mark.django_db
+def test_archive_transition_satisfies_constraint(booking: Booking) -> None:
+    booking.cancel("test reason")
+    booking.archive()
+    booking.refresh_from_db()
+    assert booking.archived_at is not None

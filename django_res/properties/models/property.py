@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from django.db import models
@@ -106,6 +107,19 @@ class Property(AuditedModel):
 
     def __str__(self) -> str:
         return self.display_name or self.name
+
+    def balance_due_at(self, date_from: date | None) -> date | None:
+        """Derive balance-due date from the property's effective payment schedule."""
+        if date_from is None:
+            return None
+        finance = getattr(self, "finance", None)
+        if finance is None:
+            return None
+        schedule = finance.effective_payment_schedule()
+        days_before = schedule.get("days_balance_due_before_arrival")
+        if days_before is None:
+            return None
+        return date_from - timedelta(days=int(days_before))
 
     def hero_image(self) -> PropertyImage | None:
         """Return the property's active hero image, if any."""

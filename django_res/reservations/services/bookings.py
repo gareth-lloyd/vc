@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -54,7 +53,7 @@ class BookingService:
             else BookingStatus.AWAITING_DEPOSIT.value
         )
 
-        balance_due_at = cls._compute_balance_due_at(property_, quotation_line.date_from)
+        balance_due_at = property_.balance_due_at(quotation_line.date_from)
         total = cls._decimal(snapshot.get("total", quotation_line.total))
 
         booking = Booking.objects.create(
@@ -116,18 +115,3 @@ class BookingService:
             return bool(resolver("bookings_require_pre_approval"))
         except AttributeError:
             return False
-
-    @staticmethod
-    def _compute_balance_due_at(property_: Any, date_from: Any) -> Any:
-        """Derive `balance_due_at` from the property's effective payment schedule."""
-        finance = getattr(property_, "finance", None)
-        if finance is None:
-            return None
-        try:
-            schedule = finance.effective_payment_schedule()
-        except AttributeError:
-            return None
-        days_before = schedule.get("days_balance_due_before_arrival")
-        if days_before is None:
-            return None
-        return date_from - timedelta(days=int(days_before))

@@ -108,6 +108,16 @@ exists; fall back to the `meta` key otherwise.
 Reference implementations: `RefundService.request`,
 `RefundService.execute`, `BookingService.create_from_quotation_line`.
 
+### Service-layer permission checks
+
+State-mutating services take an `actor` kwarg and call
+`actor_has_perm(actor, perm)` (from `core.api.permissions`) for every
+transition. `actor=None` is the documented sentinel for system callers
+(tests, management commands, background workers) and is granted
+unconditionally.
+
+Reference implementation: `payments/services/refund.py`.
+
 ### AuditLog registration is part of model definition
 
 Any model whose business-logic docstring or anonymisation flow claims an
@@ -171,6 +181,25 @@ fixtures rather than the legacy DB. Reference style:
 `test_rate_rule_loader.py`, `test_property_loader.py`. Mark
 `@pytest.mark.django_db` only when the test exercises the new Postgres
 schema (sentinel rows, `get_or_create` semantics).
+
+### API versioning
+
+v1 is mutable while the only consumer is the in-house SPA. Breaking
+changes (renamed/removed fields, changed status codes, changed error
+shapes) require a note in the commit message and a corresponding
+frontend PR landing in the same window. The trigger to fork `/api/v2/`
+is *"the API gets a second consumer we don't control"* — until then,
+edit v1 in place rather than versioning forward.
+
+### List / detail / write serializer split
+
+Prefer separate serializers when the read response would otherwise carry
+write-only fields, when nested reads are heavier than the write payload,
+or when list and detail want different depth (e.g., list shows guest
+name; detail nests full guest). Reuse a single serializer only when read
+and write shapes are identical. Reference:
+`reservations/views/booking.py` (`BookingListSerializer` /
+`BookingDetailSerializer` / `BookingWriteSerializer`).
 
 ## Principles
 

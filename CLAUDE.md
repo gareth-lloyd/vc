@@ -51,11 +51,14 @@ the loop. If a hook fails, fix the underlying problem.
 
 ## Repo layout
 
-- `django_res/` — Django REST API (target backend, currently empty).
-- (frontend dir TBD) — Vite + React + TypeScript SPA.
-- `django_res_design/` — **Read this first.** Detailed design specs for the
-  rebuild: models, conventions, REST surface, workflows, departures from
-  legacy. Start at `django_res_design/INDEX.md`.
+- `django_res/` — Django REST API. Models, services, DRF surface, and the
+  `data_migration/` package that ports the legacy SQL Server dump into
+  Postgres. See `django_res/CLAUDE.md` for backend specifics and
+  `django_res/data_migration/CUTOVER.md` for the legacy-cutover playbook.
+- `frontend/` — Vite + React + TypeScript SPA.
+- `django_res_design/` — Detailed design specs for the rebuild: models,
+  conventions, REST surface, workflows, departures from legacy. Start at
+  `django_res_design/INDEX.md`.
 - `ResSystem/` — **Read-only** legacy .NET app. Reference only; do not
   modify. Source of truth for behaviour we're reproducing.
 - `investigation/` — ad-hoc investigation notes.

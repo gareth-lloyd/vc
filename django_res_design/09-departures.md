@@ -21,7 +21,7 @@ Disposition column legend:
 | `VillaMaster.ZohoId`, `SyncId`, `OldVillaId` | `integrations.SyncRecord` + `legacy_id` on Property | Moved | Domain models stay focused |
 | `VillaPropertyCategory` | `properties.PropertyCategory` | Renamed | — |
 | `VillaGroup` | `properties.PropertyGroup` + `GroupSettings` + `GroupFinance` (single flat model per #36) | Renamed/Extended | Group now owns defaults; one finance row per group (no per-concern siblings) |
-| `VillaCountry` | `properties.Country` | Renamed | — |
+| `VillaCountry` | `properties.Country` | Renamed | Canonical ISO-3166 rows are seeded via `django-countries` (migration `properties.0009`); legacy `VillaCountry` rows merge onto them by iso2 (with name-lookup fallback for rows missing ISO codes). Unrecognised rows collapse onto the `unknown_country()` sentinel so downstream FKs still resolve. |
 | `VillaRegion` | `properties.Region` | Renamed | — |
 | `VillaRoom` (+ bed counts) | `properties.Room` + `RoomBeds` (OneToOne) | Split | Beds split out; placement enum |
 | `VillaRoomsPlacement` | `Room.placement` TextChoices | Replaced | Fixed set; no table needed |
@@ -86,7 +86,8 @@ Disposition column legend:
 | `VillaEnquire.PreferencesNote` + any operator scratchpad usage of `Notes` | `reservations.EnquiryNote` (kinds `general` / `internal` / `preferences`) | Collapsed | Per-row authorship and timestamps; matches the `/enquiries/{id}/notes` API surface |
 | `EnquireStatus` | `Enquiry.status` TextChoices | Replaced | — |
 | `VillaClientDetail` | `reservations.Guest` (unified with Enquiry guest fields) | Merged | One Guest entity, with optional User OneToOne |
-| `VillaClientPrefMaster`, `ClientPreferenceDetail` | `Guest.notes` initially; future scope `GuestPreference` model | Dropped | Underused in legacy; can re-add later |
+| `VillaClientPrefMaster` | `reservations.GuestPreferenceType` | Renamed | Declarative field-rename (13 rows: bed types and similar). |
+| `ClientPreferenceDetails` | `reservations.GuestPreference` | Renamed | One row per (guest, type, optional quotation). Duplicate triples collapse to the first occurrence on import (~93 of 167 legacy rows). |
 | `VillaQuotationMaster` | `reservations.Quotation` | Renamed | — |
 | `VillaQuotationDetail` | `reservations.QuotationLine` + `pricing_snapshot` JSON | Renamed/Extended | Adds price snapshot |
 | `TblVillaQuotationMaster` | — | Dropped | Legacy duplicate table |

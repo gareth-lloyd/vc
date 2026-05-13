@@ -11,6 +11,7 @@ reservations/
 │   ├── __init__.py
 │   ├── guest.py        # Guest
 │   ├── enquiry.py      # Enquiry, EnquiryNote, EnquiryEvent
+│   ├── preferences.py  # GuestPreferenceType, GuestPreference
 │   ├── quotation.py    # Quotation, QuotationLine
 │   ├── booking.py      # Booking, BookingHold, BookingEvent, BookingNote
 │   ├── concierge.py    # BookingConciergeItem
@@ -48,6 +49,24 @@ Indexes: `(status, last_name, first_name)`, `email`.
 - **Guest no longer relevant but bookings exist** — set `status=ARCHIVED`. Still queryable; hidden from default operator search only by an explicit `?status=` filter at the call site, not a hidden manager.
 - **`Guest.merge(target: Guest)`** — destructive. Atomically rewrites FKs on `Enquiry`, `Quotation`, `Booking` (and any `BookingConciergeItem` reached via `Booking`) from `self` to `target`. Writes one `AuditLog` row per rewrite. Then **hard-deletes** `self`. There is no `merged_into` self-FK and no surviving tombstone — the `AuditLog` is the only trail.
 - **`Guest.anonymize()`** — overwrites `first_name`, `last_name`, `email` (replaced with `"redacted-{id}@anonymized.local"`), `phone` (empty), `address_line_1`, `address_line_2`, `town`, `post_code`, `notes`; clears `marketing_consent`; sets `status=ANONYMIZED`, `anonymized_at=now()`. Bookings retain the FK pointing at the anonymized row. Reporting that should exclude anonymized guests filters `status` explicitly.
+
+### `GuestPreferenceType(TimestampedModel)`
+Operator-curated catalogue of guest preferences (legacy `VillaClientPrefMaster` — bed configurations, dietary, etc.).
+
+- `name` — CharField(unique=True)
+- `is_active` — bool(default=True)
+- `legacy_id` — nullable, indexed
+
+### `GuestPreference(TimestampedModel)`
+A typed preference attached to a guest, optionally scoped to a quotation when captured during quoting.
+
+- `guest` — FK Guest CASCADE, `related_name="preferences"`
+- `preference_type` — FK GuestPreferenceType PROTECT
+- `quotation` — FK Quotation SET_NULL, null=True, blank=True, `related_name="guest_preferences"`
+- `notes` — TextField(blank=True)
+- `legacy_id` — nullable, indexed
+
+Constraints: `UniqueConstraint(guest, preference_type, quotation)`.
 
 ## Enquiry
 

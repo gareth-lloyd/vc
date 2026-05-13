@@ -2,7 +2,7 @@
 
 A specification for re-implementing the Villa Collective reservation platform as a pure-Django + Postgres application. The current system (`../ResSystem/`) is a .NET 6 / EF Core / SQL Server stack carrying substantial structural debt. This redesign aims for **moderate departures**: fix the structural issues, preserve the product shape and workflows.
 
-This is a **fresh design** — legacy data migration is out of scope. Documents are detailed enough to implement directly but contain no executable code.
+This package is the **design specification**, not the migration plan: documents are detailed enough to implement directly but contain no executable code. Legacy data does carry over — see [09-departures.md](./09-departures.md) for the table-by-table mapping and `../django_res/data_migration/` for the loaders that execute it (`./manage.py loadlegacy --all`, `reconcile_legacy`, `merge_country`; full playbook in `../django_res/data_migration/CUTOVER.md`).
 
 ## Product
 

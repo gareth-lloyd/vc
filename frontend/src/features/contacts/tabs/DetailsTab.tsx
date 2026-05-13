@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
 function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: boolean }) {
+  const { t } = useTranslation("contacts");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ContactEmail | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -38,10 +40,10 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
     if (deletingId == null) return;
     try {
       await deleteEmail.mutateAsync({ emailId: deletingId });
-      toast.success("Email removed");
+      toast.success(t("toasts.email_removed"));
       setDeletingId(null);
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Failed to remove email";
+      const message = error instanceof ApiError ? error.detail : t("toasts.email_remove_failed");
       toast.error(message);
     }
   };
@@ -50,32 +52,32 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
     try {
       await setPrimary.mutateAsync({ emailId });
     } catch {
-      toast.error("Failed to set primary");
+      toast.error(t("toasts.set_primary_failed"));
     }
   };
 
   const addButton = canWrite ? (
     <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-      Add email
+      {t("actions.add_email")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button size="sm" variant="outline" disabled>
-            Add email
+            {t("actions.add_email")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Reservations role required</TooltipContent>
+      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
     </Tooltip>
   );
 
   return (
-    <Section title="Emails">
+    <Section title={t("headings.emails")}>
       <div className="flex items-center justify-end">{addButton}</div>
       {contact.emails.length === 0 ? (
-        <EmptyState title="No emails yet" />
+        <EmptyState title={t("empty.emails")} />
       ) : (
         <ul className="border-border bg-card divide-border divide-y rounded-lg border">
           {contact.emails.map((e) => (
@@ -85,27 +87,31 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
                 {e.label ? (
                   <span className="text-muted-foreground/70 text-xs uppercase">{e.label}</span>
                 ) : null}
-                {e.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+                {e.is_primary ? (
+                  <Badge variant="outline">{t("common:status.primary")}</Badge>
+                ) : null}
               </div>
               {canWrite ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm">
-                      Actions
+                      {t("actions.actions_menu_aria")}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setEditing(e)}>Edit</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(e)}>
+                      {t("common:actions.edit")}
+                    </DropdownMenuItem>
                     {!e.is_primary ? (
                       <DropdownMenuItem onClick={() => handleSetPrimary(e.id)}>
-                        Set as primary
+                        {t("actions.set_as_primary")}
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem
                       className="text-destructive"
                       onClick={() => setDeletingId(e.id)}
                     >
-                      Remove
+                      {t("common:actions.remove")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -137,9 +143,9 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
           open
           onOpenChange={(o) => !o && setDeletingId(null)}
           onConfirm={handleDelete}
-          title="Remove email?"
-          description="This email address will be permanently removed from this contact."
-          confirmLabel="Remove"
+          title={t("confirm.remove_email_title")}
+          description={t("confirm.remove_email_body")}
+          confirmLabel={t("common:actions.remove")}
           destructive
           busy={deleteEmail.isPending}
         />
@@ -149,6 +155,7 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
 }
 
 function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: boolean }) {
+  const { t } = useTranslation("contacts");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ContactPhone | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -159,10 +166,10 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
     if (deletingId == null) return;
     try {
       await deletePhone.mutateAsync({ phoneId: deletingId });
-      toast.success("Phone removed");
+      toast.success(t("toasts.phone_removed"));
       setDeletingId(null);
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Failed to remove phone";
+      const message = error instanceof ApiError ? error.detail : t("toasts.phone_remove_failed");
       toast.error(message);
     }
   };
@@ -171,32 +178,32 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
     try {
       await setPrimary.mutateAsync({ phoneId });
     } catch {
-      toast.error("Failed to set primary");
+      toast.error(t("toasts.set_primary_failed"));
     }
   };
 
   const addButton = canWrite ? (
     <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-      Add phone
+      {t("actions.add_phone")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button size="sm" variant="outline" disabled>
-            Add phone
+            {t("actions.add_phone")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Reservations role required</TooltipContent>
+      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
     </Tooltip>
   );
 
   return (
-    <Section title="Phones">
+    <Section title={t("headings.phones")}>
       <div className="flex items-center justify-end">{addButton}</div>
       {contact.phones.length === 0 ? (
-        <EmptyState title="No phones yet" />
+        <EmptyState title={t("empty.phones")} />
       ) : (
         <ul className="border-border bg-card divide-border divide-y rounded-lg border">
           {contact.phones.map((p) => (
@@ -206,27 +213,31 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
                 {p.label ? (
                   <span className="text-muted-foreground/70 text-xs uppercase">{p.label}</span>
                 ) : null}
-                {p.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+                {p.is_primary ? (
+                  <Badge variant="outline">{t("common:status.primary")}</Badge>
+                ) : null}
               </div>
               {canWrite ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm">
-                      Actions
+                      {t("actions.actions_menu_aria")}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setEditing(p)}>Edit</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(p)}>
+                      {t("common:actions.edit")}
+                    </DropdownMenuItem>
                     {!p.is_primary ? (
                       <DropdownMenuItem onClick={() => handleSetPrimary(p.id)}>
-                        Set as primary
+                        {t("actions.set_as_primary")}
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem
                       className="text-destructive"
                       onClick={() => setDeletingId(p.id)}
                     >
-                      Remove
+                      {t("common:actions.remove")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -258,9 +269,9 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
           open
           onOpenChange={(o) => !o && setDeletingId(null)}
           onConfirm={handleDelete}
-          title="Remove phone?"
-          description="This phone number will be permanently removed from this contact."
-          confirmLabel="Remove"
+          title={t("confirm.remove_phone_title")}
+          description={t("confirm.remove_phone_body")}
+          confirmLabel={t("common:actions.remove")}
           destructive
           busy={deletePhone.isPending}
         />
@@ -270,19 +281,20 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
 }
 
 export function DetailsTab() {
+  const { t } = useTranslation("contacts");
   const { contact } = useOutletContext<ContactOutletContext>();
   const canWrite = useHasReservationsRole();
 
   return (
     <div className="space-y-8 p-6">
-      <Section title="Overview">
+      <Section title={t("headings.overview")}>
         <FactList>
-          <FactRow label="Title" value={contact.title || "—"} />
-          <FactRow label="First name" value={contact.first_name || "—"} />
-          <FactRow label="Last name" value={contact.last_name || "—"} />
-          <FactRow label="Company" value={contact.company || "—"} />
+          <FactRow label={t("fields.title")} value={contact.title || "—"} />
+          <FactRow label={t("fields.first_name")} value={contact.first_name || "—"} />
+          <FactRow label={t("fields.last_name")} value={contact.last_name || "—"} />
+          <FactRow label={t("fields.company")} value={contact.company || "—"} />
           <FactRow
-            label="Website"
+            label={t("fields.website")}
             value={
               contact.website_url ? (
                 <a
@@ -298,11 +310,11 @@ export function DetailsTab() {
               )
             }
           />
-          <FactRow label="Preferred method" value={contact.preferred_method || "—"} />
-          <FactRow label="Address line 1" value={contact.address_line_1 || "—"} />
-          <FactRow label="Address line 2" value={contact.address_line_2 || "—"} />
+          <FactRow label={t("fields.preferred_method")} value={contact.preferred_method || "—"} />
+          <FactRow label={t("fields.address_line_1")} value={contact.address_line_1 || "—"} />
+          <FactRow label={t("fields.address_line_2")} value={contact.address_line_2 || "—"} />
           <FactRow
-            label="Notes"
+            label={t("fields.notes")}
             value={
               contact.notes ? <span className="whitespace-pre-line">{contact.notes}</span> : "—"
             }

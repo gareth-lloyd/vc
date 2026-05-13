@@ -1,11 +1,13 @@
 {
   "actions": {
     "save": "Save",
+    "saving": "Saving…",
     "cancel": "Cancel",
     "confirm": "Confirm",
     "create": "Create",
     "edit": "Edit",
     "delete": "Delete",
+    "remove": "Remove",
     "close": "Close",
     "retry": "Retry"
   },
@@ -19,6 +21,12 @@
   "states": {
     "loading": "Loading…",
     "empty": "Nothing here yet."
+  },
+  "status": {
+    "primary": "Primary"
+  },
+  "tooltips": {
+    "reservations_role_required": "Reservations role required"
   },
   "nav": {
     "groups": {

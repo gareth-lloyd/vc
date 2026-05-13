@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -15,6 +16,7 @@ interface ContactPickerProps {
 }
 
 export function ContactPicker({ value, onChange, onCreateNew, disabled }: ContactPickerProps) {
+  const { t } = useTranslation("contacts");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -51,35 +53,35 @@ export function ContactPicker({ value, onChange, onCreateNew, disabled }: Contac
           className="w-full justify-start font-normal"
           disabled={disabled}
         >
-          {value ? contactDisplayName(value) : "Select a contact…"}
+          {value ? contactDisplayName(value) : t("placeholders.picker_trigger")}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start">
         <div className="p-2">
           <Input
             ref={inputRef}
-            placeholder="Search contacts…"
+            placeholder={t("placeholders.picker_search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search contacts"
+            aria-label={t("aria.picker_search")}
           />
         </div>
         <div className="max-h-60 overflow-y-auto">
           {debouncedSearch.length < 2 ? (
-            <p className="text-muted-foreground px-3 py-2 text-sm">
-              Type at least 2 characters to search
-            </p>
+            <p className="text-muted-foreground px-3 py-2 text-sm">{t("empty.picker_min_chars")}</p>
           ) : query.isLoading ? (
             <div className="space-y-2 p-2">
               <Skeleton className="h-8 w-full" />
               <Skeleton className="h-8 w-full" />
             </div>
           ) : query.isError ? (
-            <p className="text-destructive px-3 py-2 text-sm">Search failed</p>
+            <p className="text-destructive px-3 py-2 text-sm">{t("errors.picker_search_failed")}</p>
           ) : query.data?.results.length === 0 ? (
-            <p className="text-muted-foreground px-3 py-2 text-sm">No contacts found</p>
+            <p className="text-muted-foreground px-3 py-2 text-sm">
+              {t("empty.picker_no_results")}
+            </p>
           ) : (
-            <ul role="listbox" aria-label="Search results">
+            <ul role="listbox" aria-label={t("aria.picker_results")}>
               {query.data?.results.map((c) => (
                 <li key={c.id}>
                   <button
@@ -112,7 +114,7 @@ export function ContactPicker({ value, onChange, onCreateNew, disabled }: Contac
                 onCreateNew();
               }}
             >
-              + Create new contact
+              {t("actions.create_new_inline")}
             </Button>
           </div>
         ) : null}

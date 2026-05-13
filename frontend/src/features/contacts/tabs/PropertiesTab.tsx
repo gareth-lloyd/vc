@@ -1,5 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
+import i18n from "@/i18n";
 import { DataTable } from "@/components/data/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -14,7 +16,7 @@ const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 const columns: ColumnDef<ContactPropertyAssignment>[] = [
   {
     id: "property",
-    header: "Property",
+    header: () => i18n.t("contacts:fields.property"),
     enableSorting: false,
     cell: ({ row }) => {
       const { property_slug, property_id } = row.original;
@@ -25,7 +27,7 @@ const columns: ColumnDef<ContactPropertyAssignment>[] = [
   },
   {
     accessorKey: "role",
-    header: "Role",
+    header: () => i18n.t("contacts:fields.role"),
     enableSorting: false,
     cell: ({ getValue }) => {
       const value = getValue<string | null | undefined>();
@@ -35,14 +37,18 @@ const columns: ColumnDef<ContactPropertyAssignment>[] = [
   },
   {
     accessorKey: "is_primary",
-    header: "Primary",
+    header: () => i18n.t("contacts:fields.primary"),
     enableSorting: false,
     cell: ({ getValue }) =>
-      getValue<boolean>() ? <Badge variant="secondary">Primary</Badge> : MUTED_DASH,
+      getValue<boolean>() ? (
+        <Badge variant="secondary">{i18n.t("common:status.primary")}</Badge>
+      ) : (
+        MUTED_DASH
+      ),
   },
   {
     accessorKey: "start_date",
-    header: "Start",
+    header: () => i18n.t("contacts:fields.start"),
     enableSorting: false,
     cell: ({ getValue }) => (
       <span className="text-sm">{formatDate(getValue<string | null>())}</span>
@@ -50,7 +56,7 @@ const columns: ColumnDef<ContactPropertyAssignment>[] = [
   },
   {
     accessorKey: "end_date",
-    header: "End",
+    header: () => i18n.t("contacts:fields.end"),
     enableSorting: false,
     cell: ({ getValue }) => (
       <span className="text-sm">{formatDate(getValue<string | null>())}</span>
@@ -59,6 +65,7 @@ const columns: ColumnDef<ContactPropertyAssignment>[] = [
 ];
 
 export function PropertiesTab() {
+  const { t } = useTranslation("contacts");
   const { contact } = useOutletContext<ContactOutletContext>();
   const navigate = useNavigate();
   const query = useContactProperties(contact.id);
@@ -67,8 +74,8 @@ export function PropertiesTab() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load properties"
-          description="Try again."
+          title={t("errors.load_properties_failed")}
+          description={t("errors.load_properties_retry")}
           onRetry={() => query.refetch()}
         />
       </div>
@@ -84,7 +91,9 @@ export function PropertiesTab() {
 
   return (
     <div className="space-y-4 p-6">
-      <h2 className="text-foreground text-lg font-semibold">Property assignments</h2>
+      <h2 className="text-foreground text-lg font-semibold">
+        {t("headings.property_assignments")}
+      </h2>
       <DataTable
         columns={columns}
         data={rows}
@@ -96,7 +105,7 @@ export function PropertiesTab() {
         onPageChange={() => {}}
         onRowClick={handleRowClick}
         rowKey={(row) => row.id}
-        emptyContent={<EmptyState title="No property assignments" />}
+        emptyContent={<EmptyState title={t("empty.property_assignments")} />}
       />
     </div>
   );

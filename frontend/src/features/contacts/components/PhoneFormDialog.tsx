@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ function defaultsFromPhone(p: ContactPhone): ContactPhoneWriteInput {
 }
 
 export function PhoneFormDialog(props: PhoneFormDialogProps) {
+  const { t } = useTranslation("contacts");
   const { contactId, open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -78,31 +80,38 @@ export function PhoneFormDialog(props: PhoneFormDialogProps) {
       } else {
         await updateMutation.mutateAsync({ phoneId: props.phone.id, input: values });
       }
-      toast.success(isCreate ? "Phone added" : "Phone updated");
+      toast.success(isCreate ? t("toasts.phone_added") : t("toasts.phone_updated"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
+
+  let submitLabel: string;
+  if (submitting) submitLabel = t("common:actions.saving");
+  else if (isCreate) submitLabel = t("actions.add_phone");
+  else submitLabel = t("common:actions.save");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Add phone" : "Edit phone"}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? t("headings.add_phone_dialog") : t("headings.edit_phone_dialog")}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="contact-phone">Phone number</Label>
+            <Label htmlFor="contact-phone">{t("fields.phone_number")}</Label>
             <Input
               id="contact-phone"
               type="tel"
-              placeholder="+34 600 123 456"
+              placeholder={t("placeholders.phone")}
               autoFocus
               {...form.register("number")}
               aria-invalid={!!form.formState.errors.number}
@@ -115,8 +124,12 @@ export function PhoneFormDialog(props: PhoneFormDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone-label">Label</Label>
-            <Input id="phone-label" placeholder="e.g. mobile, office" {...form.register("label")} />
+            <Label htmlFor="phone-label">{t("fields.label")}</Label>
+            <Input
+              id="phone-label"
+              placeholder={t("placeholders.phone_label")}
+              {...form.register("label")}
+            />
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -124,7 +137,7 @@ export function PhoneFormDialog(props: PhoneFormDialogProps) {
               checked={!!form.watch("is_primary")}
               onCheckedChange={(v) => form.setValue("is_primary", v === true)}
             />
-            <span>Primary phone</span>
+            <span>{t("checkboxes.primary_phone")}</span>
           </label>
 
           {topLevelError ? (
@@ -143,10 +156,10 @@ export function PhoneFormDialog(props: PhoneFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Add phone" : "Save"}
+              {submitLabel}
             </Button>
           </div>
         </form>

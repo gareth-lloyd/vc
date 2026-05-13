@@ -1,4 +1,5 @@
 import { z } from "zod";
+import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
 export const contactEmailSchema = z.object({
@@ -18,14 +19,14 @@ export const contactPhoneSchema = z.object({
 export type ContactPhone = z.infer<typeof contactPhoneSchema>;
 
 export const contactEmailWriteInputSchema = z.object({
-  email: z.string().email("Enter a valid email").max(254),
+  email: z.string().email(i18n.t("common:zod.invalid_email")).max(254),
   label: z.string().trim().max(40).optional(),
   is_primary: z.boolean().optional(),
 });
 export type ContactEmailWriteInput = z.infer<typeof contactEmailWriteInputSchema>;
 
 export const contactPhoneWriteInputSchema = z.object({
-  number: z.string().trim().min(1, "Required").max(40),
+  number: z.string().trim().min(1, i18n.t("common:errors.field_required")).max(40),
   label: z.string().trim().max(40).optional(),
   is_primary: z.boolean().optional(),
 });
@@ -44,7 +45,7 @@ export const contactWriteInputSchema = z
     notes: z.string().trim().max(2000).optional(),
   })
   .refine((v) => v.first_name || v.last_name || v.company, {
-    message: "At least a name or company is required",
+    message: i18n.t("contacts:errors.name_or_company_required"),
     path: ["first_name"],
   });
 export type ContactWriteInput = z.infer<typeof contactWriteInputSchema>;

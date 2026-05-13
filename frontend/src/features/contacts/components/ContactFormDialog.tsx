@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -58,6 +59,7 @@ function defaultsFromContact(c: Contact): ContactWriteInput {
 }
 
 export function ContactFormDialog(props: ContactFormDialogProps) {
+  const { t } = useTranslation("contacts");
   const { open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -84,11 +86,11 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
     try {
       if (isCreate) {
         const created = await createMutation.mutateAsync(values);
-        toast.success("Contact created");
+        toast.success(t("toasts.created"));
         props.onCreated?.(created);
       } else {
         await updateMutation.mutateAsync(values);
-        toast.success("Contact updated");
+        toast.success(t("toasts.updated"));
       }
       onOpenChange(false);
     } catch (error) {
@@ -96,7 +98,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -105,16 +107,22 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Create contact" : "Edit contact"}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? t("headings.create_dialog") : t("headings.edit_dialog")}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="contact-title">Title</Label>
-              <Input id="contact-title" placeholder="Mr, Ms…" {...form.register("title")} />
+              <Label htmlFor="contact-title">{t("fields.title")}</Label>
+              <Input
+                id="contact-title"
+                placeholder={t("placeholders.title")}
+                {...form.register("title")}
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contact-first-name">First name</Label>
+              <Label htmlFor="contact-first-name">{t("fields.first_name")}</Label>
               <Input id="contact-first-name" {...form.register("first_name")} />
               {form.formState.errors.first_name ? (
                 <p className="text-destructive text-sm" role="alert">
@@ -123,43 +131,45 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contact-last-name">Last name</Label>
+              <Label htmlFor="contact-last-name">{t("fields.last_name")}</Label>
               <Input id="contact-last-name" {...form.register("last_name")} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contact-company">Company</Label>
+            <Label htmlFor="contact-company">{t("fields.company")}</Label>
             <Input id="contact-company" {...form.register("company")} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="contact-website">Website</Label>
+              <Label htmlFor="contact-website">{t("fields.website")}</Label>
               <Input id="contact-website" {...form.register("website_url")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contact-preferred-method">Preferred contact method</Label>
+              <Label htmlFor="contact-preferred-method">
+                {t("fields.preferred_contact_method")}
+              </Label>
               <Input
                 id="contact-preferred-method"
-                placeholder="email, phone…"
+                placeholder={t("placeholders.preferred_method")}
                 {...form.register("preferred_method")}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contact-address-1">Address line 1</Label>
+            <Label htmlFor="contact-address-1">{t("fields.address_line_1")}</Label>
             <Input id="contact-address-1" {...form.register("address_line_1")} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contact-address-2">Address line 2</Label>
+            <Label htmlFor="contact-address-2">{t("fields.address_line_2")}</Label>
             <Input id="contact-address-2" {...form.register("address_line_2")} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contact-notes">Notes</Label>
+            <Label htmlFor="contact-notes">{t("fields.notes")}</Label>
             <Textarea id="contact-notes" rows={3} {...form.register("notes")} />
           </div>
 
@@ -179,10 +189,14 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Create contact" : "Save"}
+              {submitting
+                ? t("common:actions.saving")
+                : isCreate
+                  ? t("actions.create")
+                  : t("common:actions.save")}
             </Button>
           </div>
         </form>

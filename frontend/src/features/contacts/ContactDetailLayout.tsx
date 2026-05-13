@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -17,18 +18,21 @@ import { contactDisplayName } from "./display";
 import { ContactFormDialog } from "./components/ContactFormDialog";
 import type { Contact } from "./schemas";
 
-export const CONTACT_TABS = [
-  { slug: "details", label: "Details" },
-  { slug: "properties", label: "Properties" },
-  { slug: "notes", label: "Notes" },
-  { slug: "audit", label: "Audit" },
+const CONTACT_TABS = [
+  { slug: "details", labelKey: "tabs.details" },
+  { slug: "properties", labelKey: "tabs.properties" },
+  { slug: "notes", labelKey: "tabs.notes" },
+  { slug: "audit", labelKey: "tabs.audit" },
 ] as const;
+export type ContactTabSlug = (typeof CONTACT_TABS)[number]["slug"];
+export const CONTACT_TAB_SLUGS: readonly ContactTabSlug[] = CONTACT_TABS.map((t) => t.slug);
 
 export interface ContactOutletContext {
   contact: Contact;
 }
 
 function HeaderActions({ contact }: { contact: Contact }) {
+  const { t } = useTranslation("contacts");
   const navigate = useNavigate();
   const canWrite = useHasReservationsRole();
   const [editOpen, setEditOpen] = useState(false);
@@ -38,45 +42,45 @@ function HeaderActions({ contact }: { contact: Contact }) {
   const handleDelete = async () => {
     try {
       await deleteMutation.mutateAsync();
-      toast.success("Contact deleted");
+      toast.success(t("toasts.deleted"));
       navigate("/contacts");
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Something went wrong";
+      const message = error instanceof ApiError ? error.detail : t("common:errors.generic");
       toast.error(message);
     }
   };
 
   const editButton = canWrite ? (
     <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-      Edit
+      {t("common:actions.edit")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button variant="outline" size="sm" disabled>
-            Edit
+            {t("common:actions.edit")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Reservations role required</TooltipContent>
+      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
     </Tooltip>
   );
 
   const deleteButton = canWrite ? (
     <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
-      Delete
+      {t("common:actions.delete")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button variant="destructive" size="sm" disabled>
-            Delete
+            {t("common:actions.delete")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Reservations role required</TooltipContent>
+      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
     </Tooltip>
   );
 
@@ -98,9 +102,9 @@ function HeaderActions({ contact }: { contact: Contact }) {
           open={deleteOpen}
           onOpenChange={setDeleteOpen}
           onConfirm={handleDelete}
-          title="Delete this contact?"
-          description="This will permanently remove the contact and their email/phone records."
-          confirmLabel="Delete"
+          title={t("confirm.delete_title")}
+          description={t("confirm.delete_body")}
+          confirmLabel={t("common:actions.delete")}
           destructive
           busy={deleteMutation.isPending}
         />
@@ -125,6 +129,7 @@ function RailSummary({ contact }: { contact: Contact }) {
 }
 
 export function ContactDetailLayout() {
+  const { t } = useTranslation("contacts");
   const { id } = useParams<{ id: string }>();
   const query = useContact(id);
 
@@ -143,11 +148,9 @@ export function ContactDetailLayout() {
     return (
       <div className="p-6">
         <ErrorState
-          title={is404 ? "Contact not found" : "Couldn't load this contact"}
+          title={is404 ? t("errors.detail_not_found_title") : t("errors.detail_load_failed_title")}
           description={
-            is404
-              ? "It may have been deleted or you may not have access."
-              : "Try again or head back to the list."
+            is404 ? t("errors.detail_not_found_body") : t("errors.detail_load_failed_body")
           }
           onRetry={is404 ? undefined : () => query.refetch()}
         />
@@ -165,12 +168,12 @@ export function ContactDetailLayout() {
         subtitle={
           contact.company && (contact.first_name || contact.last_name) ? contact.company : undefined
         }
-        breadcrumbs={[{ label: "Contacts", to: "/contacts" }, { label: name }]}
+        breadcrumbs={[{ label: t("headings.list_title"), to: "/contacts" }, { label: name }]}
         actions={<HeaderActions contact={contact} />}
       />
 
       <div className="border-border border-b px-6">
-        <nav className="flex gap-1" aria-label="Contact sections">
+        <nav className="flex gap-1" aria-label={t("headings.sections_aria")}>
           {CONTACT_TABS.map((tab) => (
             <NavLink
               key={tab.slug}
@@ -184,7 +187,7 @@ export function ContactDetailLayout() {
                 )
               }
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </NavLink>
           ))}
         </nav>

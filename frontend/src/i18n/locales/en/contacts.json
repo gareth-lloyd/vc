@@ -1,9 +1,135 @@
 {
+  "aria": {
+    "picker_search": "Search contacts",
+    "picker_results": "Search results"
+  },
   "audit": {
     "title": "Audit",
     "empty": {
       "title": "No audit entries for this contact yet",
       "description": "Changes to this contact will appear here."
     }
+  },
+  "headings": {
+    "list_title": "Contacts",
+    "library": "Library",
+    "create_dialog": "Create contact",
+    "edit_dialog": "Edit contact",
+    "add_email_dialog": "Add email",
+    "edit_email_dialog": "Edit email",
+    "add_phone_dialog": "Add phone",
+    "edit_phone_dialog": "Edit phone",
+    "overview": "Overview",
+    "emails": "Emails",
+    "phones": "Phones",
+    "property_assignments": "Property assignments",
+    "sections_aria": "Contact sections"
+  },
+  "tabs": {
+    "details": "Details",
+    "properties": "Properties",
+    "notes": "Notes",
+    "audit": "Audit"
+  },
+  "actions": {
+    "new": "New contact",
+    "create": "Create contact",
+    "add_email": "Add email",
+    "add_phone": "Add phone",
+    "set_as_primary": "Set as primary",
+    "actions_menu_aria": "Actions",
+    "create_new_inline": "+ Create new contact"
+  },
+  "fields": {
+    "name": "Name",
+    "company": "Company",
+    "email": "Email",
+    "phone": "Phone",
+    "status": "Status",
+    "title": "Title",
+    "first_name": "First name",
+    "last_name": "Last name",
+    "website": "Website",
+    "preferred_contact_method": "Preferred contact method",
+    "preferred_method": "Preferred method",
+    "address_line_1": "Address line 1",
+    "address_line_2": "Address line 2",
+    "notes": "Notes",
+    "label": "Label",
+    "phone_number": "Phone number",
+    "property": "Property",
+    "role": "Role",
+    "primary": "Primary",
+    "start": "Start",
+    "end": "End"
+  },
+  "placeholders": {
+    "search": "Search by name, company, or email…",
+    "title": "Mr, Ms…",
+    "preferred_method": "email, phone…",
+    "email": "name@example.com",
+    "phone": "+34 600 123 456",
+    "email_label": "e.g. work, personal",
+    "phone_label": "e.g. mobile, office",
+    "picker_trigger": "Select a contact…",
+    "picker_search": "Search contacts…"
+  },
+  "status": {
+    "any": "Any status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "archived": "Archived"
+  },
+  "checkboxes": {
+    "primary_email": "Primary email",
+    "primary_phone": "Primary phone"
+  },
+  "toasts": {
+    "created": "Contact created",
+    "updated": "Contact updated",
+    "deleted": "Contact deleted",
+    "email_added": "Email added",
+    "email_updated": "Email updated",
+    "email_removed": "Email removed",
+    "phone_added": "Phone added",
+    "phone_updated": "Phone updated",
+    "phone_removed": "Phone removed",
+    "email_remove_failed": "Failed to remove email",
+    "phone_remove_failed": "Failed to remove phone",
+    "set_primary_failed": "Failed to set primary"
+  },
+  "empty": {
+    "list_title": "No contacts match these filters",
+    "list_hint": "Try clearing the search or changing the status filter.",
+    "emails": "No emails yet",
+    "phones": "No phones yet",
+    "property_assignments": "No property assignments",
+    "picker_min_chars": "Type at least 2 characters to search",
+    "picker_no_results": "No contacts found"
+  },
+  "errors": {
+    "load_failed": "Couldn't load contacts.",
+    "load_properties_failed": "Couldn't load properties",
+    "load_properties_retry": "Try again.",
+    "picker_search_failed": "Search failed",
+    "detail_not_found_title": "Contact not found",
+    "detail_load_failed_title": "Couldn't load this contact",
+    "detail_not_found_body": "It may have been deleted or you may not have access.",
+    "detail_load_failed_body": "Try again or head back to the list.",
+    "name_or_company_required": "At least a name or company is required"
+  },
+  "tooltips": {
+    "create_role_required": "You need the Reservations role to create contacts"
+  },
+  "confirm": {
+    "delete_title": "Delete this contact?",
+    "delete_body": "This will permanently remove the contact and their email/phone records.",
+    "remove_email_title": "Remove email?",
+    "remove_email_body": "This email address will be permanently removed from this contact.",
+    "remove_phone_title": "Remove phone?",
+    "remove_phone_body": "This phone number will be permanently removed from this contact."
+  },
+  "fallback": {
+    "name_with_id": "Contact #{{id}}"
   }
 }

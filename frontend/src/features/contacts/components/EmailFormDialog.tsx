@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ function defaultsFromEmail(e: ContactEmail): ContactEmailWriteInput {
 }
 
 export function EmailFormDialog(props: EmailFormDialogProps) {
+  const { t } = useTranslation("contacts");
   const { contactId, open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -78,31 +80,38 @@ export function EmailFormDialog(props: EmailFormDialogProps) {
       } else {
         await updateMutation.mutateAsync({ emailId: props.email.id, input: values });
       }
-      toast.success(isCreate ? "Email added" : "Email updated");
+      toast.success(isCreate ? t("toasts.email_added") : t("toasts.email_updated"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
+
+  let submitLabel: string;
+  if (submitting) submitLabel = t("common:actions.saving");
+  else if (isCreate) submitLabel = t("actions.add_email");
+  else submitLabel = t("common:actions.save");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Add email" : "Edit email"}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? t("headings.add_email_dialog") : t("headings.edit_email_dialog")}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="contact-email">Email</Label>
+            <Label htmlFor="contact-email">{t("fields.email")}</Label>
             <Input
               id="contact-email"
               type="email"
-              placeholder="name@example.com"
+              placeholder={t("placeholders.email")}
               autoFocus
               {...form.register("email")}
               aria-invalid={!!form.formState.errors.email}
@@ -115,8 +124,12 @@ export function EmailFormDialog(props: EmailFormDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email-label">Label</Label>
-            <Input id="email-label" placeholder="e.g. work, personal" {...form.register("label")} />
+            <Label htmlFor="email-label">{t("fields.label")}</Label>
+            <Input
+              id="email-label"
+              placeholder={t("placeholders.email_label")}
+              {...form.register("label")}
+            />
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -124,7 +137,7 @@ export function EmailFormDialog(props: EmailFormDialogProps) {
               checked={!!form.watch("is_primary")}
               onCheckedChange={(v) => form.setValue("is_primary", v === true)}
             />
-            <span>Primary email</span>
+            <span>{t("checkboxes.primary_email")}</span>
           </label>
 
           {topLevelError ? (
@@ -143,10 +156,10 @@ export function EmailFormDialog(props: EmailFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Add email" : "Save"}
+              {submitLabel}
             </Button>
           </div>
         </form>

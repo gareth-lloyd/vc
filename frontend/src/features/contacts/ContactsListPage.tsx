@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -25,13 +26,6 @@ import type { ContactFilters, ContactListItem } from "./schemas";
 const ALL_VALUE = "__all__";
 const CONTACTS_PAGE_SIZE = 50;
 
-const STATUS_OPTIONS = [
-  { value: ALL_VALUE, label: "Any status" },
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "archived", label: "Archived" },
-];
-
 function paramsToFilters(params: URLSearchParams): ContactFilters {
   const page = Number(params.get("page") ?? "1");
   return {
@@ -43,6 +37,7 @@ function paramsToFilters(params: URLSearchParams): ContactFilters {
 }
 
 export function ContactsListPage() {
+  const { t } = useTranslation("contacts");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
@@ -50,6 +45,13 @@ export function ContactsListPage() {
   const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
   const canWrite = useHasReservationsRole();
+
+  const statusOptions = [
+    { value: ALL_VALUE, label: t("status.any") },
+    { value: "active", label: t("status.active") },
+    { value: "inactive", label: t("status.inactive") },
+    { value: "archived", label: t("status.archived") },
+  ];
 
   useEffect(() => {
     setSearch(filters.q ?? "");
@@ -112,33 +114,33 @@ export function ContactsListPage() {
 
   const newButton = canWrite ? (
     <Button size="sm" onClick={() => setCreateOpen(true)}>
-      New contact
+      {t("actions.new")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button size="sm" disabled>
-            New contact
+            {t("actions.new")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>You need the Reservations role to create contacts</TooltipContent>
+      <TooltipContent>{t("tooltips.create_role_required")}</TooltipContent>
     </Tooltip>
   );
 
   return (
     <div>
       <PageHeader
-        title="Contacts"
-        breadcrumbs={[{ label: "Library" }, { label: "Contacts" }]}
+        title={t("headings.list_title")}
+        breadcrumbs={[{ label: t("headings.library") }, { label: t("headings.list_title") }]}
         actions={newButton}
       />
       <div className="space-y-4 p-6">
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search by name, company, or email…"
+          searchPlaceholder={t("placeholders.search")}
           filters={
             <Select
               value={filters.status ?? ALL_VALUE}
@@ -148,7 +150,7 @@ export function ContactsListPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {STATUS_OPTIONS.map((o) => (
+                {statusOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
@@ -160,7 +162,7 @@ export function ContactsListPage() {
 
         {query.isError ? (
           <ErrorState
-            description="Couldn't load contacts."
+            description={t("errors.load_failed")}
             onRetry={() => query.refetch()}
             retrying={query.isFetching}
           />
@@ -178,10 +180,7 @@ export function ContactsListPage() {
             onRowClick={handleRowClick}
             rowKey={(row) => row.id}
             emptyContent={
-              <EmptyState
-                title="No contacts match these filters"
-                description="Try clearing the search or changing the status filter."
-              />
+              <EmptyState title={t("empty.list_title")} description={t("empty.list_hint")} />
             }
           />
         )}

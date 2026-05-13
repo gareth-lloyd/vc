@@ -1,4 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
+import i18n from "@/i18n";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { contactDisplayName } from "./display";
 import type { ContactListItem } from "./schemas";
@@ -20,7 +21,7 @@ function primaryPhone(row: ContactListItem): string | null {
 export const contactColumns: ColumnDef<ContactListItem>[] = [
   {
     id: "name",
-    header: "Name",
+    header: () => i18n.t("contacts:fields.name"),
     enableSorting: false,
     cell: ({ row }) => {
       const c = row.original;
@@ -38,7 +39,7 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
   },
   {
     accessorKey: "company",
-    header: "Company",
+    header: () => i18n.t("contacts:fields.company"),
     enableSorting: false,
     cell: ({ row }) => {
       const company = row.original.company;
@@ -50,7 +51,7 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
   },
   {
     id: "primary_email",
-    header: "Email",
+    header: () => i18n.t("contacts:fields.email"),
     enableSorting: false,
     cell: ({ row }) => {
       const value = primaryEmail(row.original);
@@ -59,7 +60,7 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
   },
   {
     id: "primary_phone",
-    header: "Phone",
+    header: () => i18n.t("contacts:fields.phone"),
     enableSorting: false,
     cell: ({ row }) => {
       const value = primaryPhone(row.original);
@@ -68,7 +69,7 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: () => i18n.t("contacts:fields.status"),
     enableSorting: false,
     cell: ({ getValue }) => {
       const value = getValue<string | null | undefined>();

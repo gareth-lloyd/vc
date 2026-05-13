@@ -66,6 +66,17 @@ export const contactSchema = z.object({
 });
 export type Contact = z.infer<typeof contactSchema>;
 
+export const contactPropertyAssignmentSchema = z.object({
+  id: z.number(),
+  property_id: z.number(),
+  property_slug: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
+  is_primary: z.boolean().optional(),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+});
+export type ContactPropertyAssignment = z.infer<typeof contactPropertyAssignmentSchema>;
+
 export const contactListItemSchema = z.object({
   id: z.number(),
   title: z.string().nullable().optional(),
@@ -73,8 +84,14 @@ export const contactListItemSchema = z.object({
   last_name: z.string().nullable().optional(),
   company: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
+  // The backend returns the full ContactSerializer shape for list responses,
+  // so emails/phones come through as arrays. We accept the convenience
+  // `primary_email` / `primary_phone` strings too in case the list serializer
+  // is later trimmed.
   primary_email: z.string().nullable().optional(),
   primary_phone: z.string().nullable().optional(),
+  emails: z.array(contactEmailSchema).optional().default([]),
+  phones: z.array(contactPhoneSchema).optional().default([]),
 });
 export type ContactListItem = z.infer<typeof contactListItemSchema>;
 

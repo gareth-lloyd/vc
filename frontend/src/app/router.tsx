@@ -16,6 +16,10 @@ import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDe
 import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
 import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/TimelineTab";
 import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
+import { ContactsListPage } from "@/features/contacts/ContactsListPage";
+import { ContactDetailLayout } from "@/features/contacts/ContactDetailLayout";
+import { DetailsTab as ContactDetailsTab } from "@/features/contacts/tabs/DetailsTab";
+import { PropertiesTab as ContactPropertiesTab } from "@/features/contacts/tabs/PropertiesTab";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -60,6 +64,18 @@ export const router = createBrowserRouter([
                   { path: "people", element: <PeopleTab /> },
                   { path: "availability", element: <AvailabilityTab /> },
                   ...propertyPlaceholderRoutes,
+                ],
+              },
+              { path: "/contacts", element: <ContactsListPage /> },
+              {
+                path: "/contacts/:id",
+                element: <ContactDetailLayout />,
+                children: [
+                  { index: true, element: <Navigate to="details" replace /> },
+                  { path: "details", element: <ContactDetailsTab /> },
+                  { path: "properties", element: <ContactPropertiesTab /> },
+                  { path: "notes", element: <ComingSoonTab tabName="Notes" /> },
+                  { path: "audit", element: <ComingSoonTab tabName="Audit" /> },
                 ],
               },
               { path: "/bookings", element: <BookingsListPage /> },

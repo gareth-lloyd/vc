@@ -9,6 +9,7 @@ import {
   deleteContactEmail,
   deleteContactPhone,
   fetchContact,
+  fetchContactProperties,
   fetchContacts,
   searchContacts,
   setPrimaryContactEmail,
@@ -33,6 +34,10 @@ export function useContacts(filters: ContactFilters) {
 
 export function useContact(id: ContactId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.contacts.detail, fetchContact));
+}
+
+export function useContactProperties(id: ContactId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.contacts.properties, fetchContactProperties));
 }
 
 export function useSearchContacts(query: string) {

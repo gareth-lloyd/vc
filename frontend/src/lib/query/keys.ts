@@ -31,6 +31,7 @@ export const queryKeys = {
     lists: () => ["contacts", "list"] as const,
     list: <F>(filters: F) => ["contacts", "list", filters] as const,
     detail: (id: ContactId) => ["contacts", "detail", id] as const,
+    properties: (id: ContactId) => ["contacts", "detail", id, "properties"] as const,
     search: (q: string) => ["contacts", "search", q] as const,
   },
   bookings: {

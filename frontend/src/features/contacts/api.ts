@@ -2,9 +2,11 @@ import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { ContactId } from "@/lib/query/keys";
+import { z } from "zod";
 import {
   contactEmailSchema,
   contactPhoneSchema,
+  contactPropertyAssignmentSchema,
   contactSchema,
   contactsListResponseSchema,
   type Contact,
@@ -14,6 +16,7 @@ import {
   type ContactListItem,
   type ContactPhone,
   type ContactPhoneWriteInput,
+  type ContactPropertyAssignment,
   type ContactWriteInput,
 } from "./schemas";
 import { paginated } from "@/lib/api/pagination";
@@ -35,6 +38,13 @@ export async function fetchContacts(filters: ContactFilters): Promise<Paginated<
 export async function fetchContact(id: ContactId): Promise<Contact> {
   const data = await apiGet<unknown>(`/contacts/${id}`);
   return contactSchema.parse(data);
+}
+
+export async function fetchContactProperties(
+  contactId: ContactId,
+): Promise<ContactPropertyAssignment[]> {
+  const data = await apiGet<unknown>(`/contacts/${contactId}/properties`);
+  return z.array(contactPropertyAssignmentSchema).parse(data);
 }
 
 export async function searchContacts(query: string): Promise<Paginated<Contact>> {

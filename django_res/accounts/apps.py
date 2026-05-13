@@ -41,6 +41,7 @@ class AccountsConfig(AppConfig):
                 "tfa_secret",
                 "tfa_enrolled_at",
                 "last_login_ip",
+                "preferred_language",
             ],
             sensitive=["tfa_secret"],
         )

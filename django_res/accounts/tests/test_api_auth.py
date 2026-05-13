@@ -85,6 +85,32 @@ def test_me_requires_auth(api_client: APIClient) -> None:
 
 
 @pytest.mark.django_db
+def test_me_exposes_preferred_language_default(api_client: APIClient, user: User) -> None:
+    api_client.force_login(user)
+
+    response = api_client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    assert response.json()["preferred_language"] == "en"
+
+
+@pytest.mark.django_db
+def test_me_patch_updates_preferred_language(api_client: APIClient, user: User) -> None:
+    api_client.force_login(user)
+
+    response = api_client.patch(
+        "/api/v1/auth/me",
+        {"preferred_language": "es"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["preferred_language"] == "es"
+    user.refresh_from_db()
+    assert user.preferred_language == "es"
+
+
+@pytest.mark.django_db
 def test_password_change_updates_password(api_client: APIClient, user: User, password: str) -> None:
     api_client.force_login(user)
 

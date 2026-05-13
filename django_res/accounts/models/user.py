@@ -31,6 +31,10 @@ class User(AbstractUser):
         default=StaffRole.VIEWER,
     )
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    # BCP-47 tag (e.g. "en", "es", "pt-BR"). Source of truth for the SPA's
+    # active locale; the frontend pulls it from /auth/me on login and PATCHes
+    # it when the user picks a different language.
+    preferred_language = models.CharField(max_length=8, default="en")
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

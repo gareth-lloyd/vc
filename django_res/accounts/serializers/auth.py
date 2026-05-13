@@ -37,6 +37,7 @@ class UserMeSerializer(serializers.ModelSerializer[User]):
             "tfa_method",
             "tfa_enrolled_at",
             "last_login",
+            "preferred_language",
         ]
         read_only_fields = [
             "id",

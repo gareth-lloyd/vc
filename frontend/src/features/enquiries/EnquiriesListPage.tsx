@@ -160,7 +160,7 @@ export function EnquiriesListPage() {
     navigate(`/enquiries/${row.id}/details`);
   };
 
-  const handleMove = (itemId: string, fromColId: string, toColId: string) => {
+  const handleMove = (itemId: string, _fromColId: string, toColId: string) => {
     const enquiry = query.data?.results.find((e) => String(e.id) === itemId);
     if (!enquiry) return;
     const target = enquiryStatusSchema.safeParse(toColId);
@@ -184,8 +184,6 @@ export function EnquiriesListPage() {
         },
       },
     );
-    // Mark fromColId as used so eslint doesn't complain (helpful for future).
-    void fromColId;
   };
 
   const newButton = (

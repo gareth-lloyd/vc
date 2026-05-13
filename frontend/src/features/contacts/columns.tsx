@@ -5,10 +5,6 @@ import type { ContactListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 
-// Backend list responses currently return the full ContactSerializer shape,
-// so we derive primaries from inline emails/phones — but also honour the
-// convenience `primary_email`/`primary_phone` strings if the serializer is
-// later trimmed.
 function primaryEmail(row: ContactListItem): string | null {
   if (row.primary_email) return row.primary_email;
   if (!row.emails?.length) return null;

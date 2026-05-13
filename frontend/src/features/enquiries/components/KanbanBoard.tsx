@@ -21,9 +21,7 @@ export interface KanbanColumn<T> {
 interface KanbanBoardProps<T> {
   columns: KanbanColumn<T>[];
   renderCard: (item: T) => ReactNode;
-  // Called with the moved item id + the column ids it moved between.
-  // The board does not mutate state itself — parent owns the data + does
-  // the optimistic update / rollback.
+  // Board doesn't mutate state — parent owns the data and the optimistic update/rollback.
   onMoveItem?: (itemId: string, fromColId: string, toColId: string) => void;
   getItemId: (item: T) => string;
 }

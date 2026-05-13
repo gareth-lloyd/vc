@@ -14,7 +14,7 @@ import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { useConvertEnquiry, useEnquiry, useReopenEnquiry } from "./hooks";
+import { useEnquiry, useReopenEnquiry } from "./hooks";
 import { AssignDialog } from "./components/AssignDialog";
 import { CloseDialog } from "./components/CloseDialog";
 import { ENQUIRY_SOURCE_LABELS, ENQUIRY_STATUS_LABELS, type EnquiryDetail } from "./schemas";
@@ -43,18 +43,13 @@ interface EnquiryActionsProps {
 
 function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   const hasRole = useHasReservationsRole();
-  const convertMutation = useConvertEnquiry(enquiry.id);
 
   const isClosed = enquiry.status === "lost";
   const isFinal = enquiry.status === "converted" || enquiry.status === "lost";
 
-  const handleConvertClick = async () => {
-    // The Quote feature isn't built yet, so we can't supply a quotation id.
-    // Tell the user we're not ready and bail. Once /quotes lands this should
-    // open a picker / wizard.
+  const handleConvertClick = () => {
+    // /quotes isn't built yet; once it lands this should open a picker / wizard.
     toast.info("Convert to quote — the quote page is coming soon.");
-    // Mark mutation as used so it survives codegen/eslint.
-    void convertMutation;
   };
 
   return (

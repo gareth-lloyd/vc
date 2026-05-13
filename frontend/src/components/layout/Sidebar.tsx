@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, Building2, CalendarCheck } from "lucide-react";
+import { Home, Building2, CalendarCheck, MessageSquare, Users } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { cn } from "@/lib/cn";
 
@@ -11,9 +11,13 @@ interface NavItem {
 
 const OPERATIONS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: Home },
+  { to: "/enquiries", label: "Enquiries", icon: MessageSquare },
   { to: "/bookings", label: "Bookings", icon: CalendarCheck },
 ];
-const LIBRARY: NavItem[] = [{ to: "/properties", label: "Properties", icon: Building2 }];
+const LIBRARY: NavItem[] = [
+  { to: "/properties", label: "Properties", icon: Building2 },
+  { to: "/contacts", label: "Contacts", icon: Users },
+];
 
 function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
   return (

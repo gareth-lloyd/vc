@@ -1,0 +1,31 @@
+{
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "close": "Close",
+    "retry": "Retry"
+  },
+  "errors": {
+    "generic": "Something went wrong",
+    "field_required": "Required",
+    "load_failed": "Couldn't load.",
+    "reservations_role_required": "Reservations role required.",
+    "reservations_role_required_create": "You need the Reservations role to create."
+  },
+  "states": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet."
+  },
+  "zod": {
+    "invalid_type": "Required",
+    "invalid_email": "Enter a valid email",
+    "too_small": "Must be at least {{minimum}} characters",
+    "too_big": "Must be at most {{maximum}} characters",
+    "invalid_string": "Invalid value",
+    "custom": "Invalid value"
+  }
+}

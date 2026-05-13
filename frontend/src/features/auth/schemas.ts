@@ -1,8 +1,13 @@
 import { z } from "zod";
 
+import i18n from "@/i18n";
+
+// Validation messages are resolved at module load. English-only at launch;
+// when a second locale lands, schemas can move to per-validation lookup via
+// the global zodErrorMap (path-based routing) or rebuild on language change.
 export const loginInputSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
+  email: z.string().email({ message: i18n.t("auth:errors.invalid_email") }),
+  password: z.string().min(1, { message: i18n.t("auth:errors.password_required") }),
   remember: z.boolean().optional(),
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
@@ -20,6 +25,7 @@ export const userMeSchema = z.object({
   tfa_method: z.string().nullable().optional(),
   tfa_enrolled_at: z.string().nullable().optional(),
   last_login: z.string().nullable().optional(),
+  preferred_language: z.string().default("en"),
 });
 export type UserMe = z.infer<typeof userMeSchema>;
 

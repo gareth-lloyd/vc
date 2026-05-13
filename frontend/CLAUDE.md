@@ -96,6 +96,42 @@ and branch on `status`:
 
 Reference: `PropertyDetailLayout.tsx`.
 
+### Internationalization (i18n)
+
+react-i18next is wired up app-wide. Every user-facing string goes
+through `t()`; no raw English literals in JSX, toasts, placeholders,
+schema messages, or empty states.
+
+- **Locale source of truth**: `User.preferred_language` on the backend
+  (exposed via `GET/PATCH /auth/me`). `useLanguageSync` (mounted inside
+  `AppProviders`) reflects the authenticated user's value into
+  i18next. Anonymous visitors fall back to `localStorage["vc.lang"]`
+  then `navigator.language` via i18next-browser-languagedetector.
+- **Namespaces**: one per feature plus `common`. Components call
+  `const { t } = useTranslation("contacts")` and reach into `common`
+  for shared strings (`t("common:actions.save")`).
+- **Locale JSON files** live in `src/i18n/locales/<lang>/<namespace>.json`.
+  Keys are nested under `actions.*`, `fields.*`, `placeholders.*`,
+  `toasts.*`, `empty.*`, `errors.*`. Duplicate strings between features
+  rather than reaching across namespaces — translators want each
+  feature self-contained.
+- **Zod messages are keys, not English**. The error map in
+  `src/i18n/zodErrorMap.ts` resolves Zod's default codes against
+  `common:zod.*`. For explicit messages on `.min`, `.email`, `.refine`
+  etc., pass a fully-qualified i18n key:
+  `z.string().min(1, { message: "auth:errors.password_required" })`.
+- **Date/number formatting** goes through `src/lib/format/*.ts`. Never
+  call `toLocaleString` or `format(...)` directly in components; the
+  helpers pick up the active locale.
+- **Tests** wrap children in `I18nextProvider` via `renderWithProviders`
+  with English loaded. Assertions can target the English copy
+  (`getByText("New contact")`) — they exercise the real translation
+  layer, not a stub.
+- **Adding a language**: drop new JSON files under
+  `src/i18n/locales/<lang>/`, extend `SUPPORTED_LANGUAGES` in
+  `src/i18n/index.ts`, register a `date-fns` locale in
+  `src/lib/format/date.ts`, and add the option to the language picker.
+
 ### Slug safety
 
 Some property `slug` fields contain full URLs instead of simple slugs.

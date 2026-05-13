@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,7 @@ import { useLogin } from "./hooks";
 import { useNextPath } from "./useNextPath";
 
 export function LoginPage() {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const nextPath = useNextPath();
 
@@ -40,8 +42,8 @@ export function LoginPage() {
   });
 
   useEffect(() => {
-    document.title = "Sign in · Villa Collective";
-  }, []);
+    document.title = t("login.page_title");
+  }, [t]);
 
   return (
     <div className="bg-muted/30 flex min-h-screen items-center justify-center px-4">
@@ -51,12 +53,12 @@ export function LoginPage() {
         noValidate
       >
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Villa Collective management</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("login.title")}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t("login.subtitle")}</p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t("login.fields.email")}</Label>
           <Input
             id="email"
             type="email"
@@ -73,7 +75,7 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{t("login.fields.password")}</Label>
           <Input
             id="password"
             type="password"
@@ -94,10 +96,10 @@ export function LoginPage() {
               checked={!!rememberCtrl.field.value}
               onCheckedChange={(v) => rememberCtrl.field.onChange(v === true)}
             />
-            <span>Remember device</span>
+            <span>{t("login.remember_device")}</span>
           </label>
           <Link to="/forgot-password" className="text-muted-foreground text-sm hover:underline">
-            Forgot password?
+            {t("login.forgot_password")}
           </Link>
         </div>
 
@@ -111,7 +113,7 @@ export function LoginPage() {
         ) : null}
 
         <Button type="submit" className="w-full" disabled={login.isPending}>
-          {login.isPending ? "Signing in…" : "Sign in"}
+          {login.isPending ? t("login.submitting") : t("login.submit")}
         </Button>
       </form>
     </div>

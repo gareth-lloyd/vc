@@ -51,6 +51,7 @@ function makeUser(overrides: Partial<UserMe> = {}): UserMe {
     is_active: true,
     is_staff: true,
     is_superuser: false,
+    preferred_language: "en",
     ...overrides,
   };
 }

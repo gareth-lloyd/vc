@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,7 @@ import { useAuthStore } from "./store";
 import { useNextPath } from "./useNextPath";
 
 export function TfaChallengePage() {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const nextPath = useNextPath();
   const pending = useAuthStore((s) => s.pendingTfa);
@@ -17,8 +19,8 @@ export function TfaChallengePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Two-factor · Villa Collective";
-  }, []);
+    document.title = t("tfa.page_title");
+  }, [t]);
 
   if (!pending) {
     return <Navigate to="/login" replace />;
@@ -31,7 +33,7 @@ export function TfaChallengePage() {
       await verify.mutateAsync({ challenge_token: pending.challengeToken, code });
       navigate(nextPath, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : "Verification failed");
+      setError(err instanceof ApiError ? err.detail : t("tfa.verification_failed"));
     }
   };
 
@@ -43,14 +45,12 @@ export function TfaChallengePage() {
         noValidate
       >
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Two-factor code</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Enter the 6-digit code from your authenticator app.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("tfa.title")}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t("tfa.prompt")}</p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="code">Code</Label>
+          <Label htmlFor="code">{t("tfa.code_label")}</Label>
           <Input
             id="code"
             inputMode="numeric"
@@ -72,7 +72,7 @@ export function TfaChallengePage() {
         ) : null}
 
         <Button type="submit" className="w-full" disabled={verify.isPending || code.length < 4}>
-          {verify.isPending ? "Verifying…" : "Verify"}
+          {verify.isPending ? t("tfa.submitting") : t("tfa.submit")}
         </Button>
       </form>
     </div>

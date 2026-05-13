@@ -158,22 +158,181 @@ export const modifyGuestsInputSchema = z.object({
 });
 export type ModifyGuestsInput = z.infer<typeof modifyGuestsInputSchema>;
 
+export const conciergeStatusSchema = z.enum(["requested", "confirmed", "cancelled", "delivered"]);
+export type ConciergeStatus = z.infer<typeof conciergeStatusSchema>;
+
+export const conciergeTierSchema = z.enum(["quintessential", "signature"]);
+export type ConciergeTier = z.infer<typeof conciergeTierSchema>;
+
+export const conciergeUnitSchema = z.enum(["day", "stay", "event", "hour"]);
+export type ConciergeUnit = z.infer<typeof conciergeUnitSchema>;
+
 export const bookingConciergeItemSchema = z.object({
   id: z.number(),
   booking: z.number().optional(),
-  tier: z.string(),
+  tier: conciergeTierSchema,
   name: z.string(),
   description: z.string().optional().default(""),
   quantity: z.number(),
-  unit: z.string(),
+  unit: conciergeUnitSchema,
   unit_price: z.string(),
   currency: z.number(),
-  status: z.string(),
+  status: conciergeStatusSchema,
   notes: z.string().optional().default(""),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
 });
 export type BookingConciergeItem = z.infer<typeof bookingConciergeItemSchema>;
 
 export const bookingConciergeItemsResponseSchema = paginated(bookingConciergeItemSchema);
+
+export const conciergeItemWriteInputSchema = z.object({
+  tier: conciergeTierSchema,
+  name: z.string().trim().min(1, "Name is required").max(200),
+  description: z.string().trim().max(2000),
+  quantity: z.number().int().min(1, "At least 1"),
+  unit: conciergeUnitSchema,
+  unit_price: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal like 100.00"),
+  currency: z.number().int(),
+  notes: z.string().trim().max(2000),
+});
+export type ConciergeItemWriteInput = z.infer<typeof conciergeItemWriteInputSchema>;
+
+export const CONCIERGE_STATUS_LABELS: Record<ConciergeStatus, string> = {
+  requested: "Requested",
+  confirmed: "Confirmed",
+  cancelled: "Cancelled",
+  delivered: "Delivered",
+};
+
+export const CONCIERGE_TIER_LABELS: Record<ConciergeTier, string> = {
+  quintessential: "Quintessential",
+  signature: "Signature",
+};
+
+export const CONCIERGE_UNIT_LABELS: Record<ConciergeUnit, string> = {
+  day: "Day",
+  stay: "Stay",
+  event: "Event",
+  hour: "Hour",
+};
+
+export const CONCIERGE_TIER_OPTIONS = conciergeTierSchema.options.map((value) => ({
+  value,
+  label: CONCIERGE_TIER_LABELS[value],
+}));
+
+export const CONCIERGE_UNIT_OPTIONS = conciergeUnitSchema.options.map((value) => ({
+  value,
+  label: CONCIERGE_UNIT_LABELS[value],
+}));
+
+// ----------------------------------------------------------------------
+// Payment tracks (deposit / balance / security)
+// ----------------------------------------------------------------------
+
+export const paymentTrackStatusSchema = z.enum([
+  "pending",
+  "processing",
+  "succeeded",
+  "failed",
+  "refunded",
+  "cancelled",
+  "expired",
+  "waived",
+  "none",
+]);
+export type PaymentTrackStatus = z.infer<typeof paymentTrackStatusSchema>;
+
+export const paymentPurposeSchema = z.enum([
+  "deposit",
+  "balance",
+  "security_deposit",
+  "concierge",
+  "refund",
+  "adjustment",
+]);
+export type PaymentPurpose = z.infer<typeof paymentPurposeSchema>;
+
+export const paymentTrackSchema = z.object({
+  booking: z.number(),
+  purpose: paymentPurposeSchema,
+  scheduled_amount: z.string(),
+  paid_amount: z.string(),
+  due_at: z.string().nullable(),
+  status: paymentTrackStatusSchema,
+});
+export type PaymentTrack = z.infer<typeof paymentTrackSchema>;
+
+export const paymentRecordSchema = z.object({
+  id: z.number(),
+  reference: z.string().nullable().optional(),
+  booking: z.number(),
+  purpose: paymentPurposeSchema,
+  status: paymentTrackStatusSchema,
+  amount: z.string(),
+  currency: z.number(),
+  provider: z.string().nullable().optional(),
+  provider_reference: z.string().nullable().optional(),
+  payment_method: z.string().nullable().optional(),
+  due_at: z.string().nullable().optional(),
+  requested_at: z.string().nullable().optional(),
+  settled_at: z.string().nullable().optional(),
+  failure_reason: z.string().nullable().optional(),
+  meta: z.record(z.string(), z.unknown()).optional().default({}),
+  concierge_item: z.number().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type PaymentRecord = z.infer<typeof paymentRecordSchema>;
+
+export const paymentRecordsListSchema = z.array(paymentRecordSchema);
+
+export const PAYMENT_TRACK_STATUS_LABELS: Record<PaymentTrackStatus, string> = {
+  pending: "Pending",
+  processing: "Processing",
+  succeeded: "Paid",
+  failed: "Failed",
+  refunded: "Refunded",
+  cancelled: "Cancelled",
+  expired: "Expired",
+  waived: "Waived",
+  none: "Not scheduled",
+};
+
+export const paymentMethodSchema = z.enum(["card", "bank_transfer", "other"]);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  other: "Other",
+};
+
+export const PAYMENT_METHOD_OPTIONS = paymentMethodSchema.options.map((value) => ({
+  value,
+  label: PAYMENT_METHOD_LABELS[value],
+}));
+
+export const markPaidInputSchema = z.object({
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal like 1000.00"),
+  paid_at: z.string().min(1, "Required"),
+  method: paymentMethodSchema,
+  reference: z.string().trim().max(120),
+  notes: z.string().trim().max(500),
+});
+export type MarkPaidInput = z.infer<typeof markPaidInputSchema>;
+
+export const waiveTrackInputSchema = z.object({
+  reason: z.string().trim().max(500),
+});
+export type WaiveTrackInput = z.infer<typeof waiveTrackInputSchema>;
 
 export interface BookingFilters {
   q?: string;

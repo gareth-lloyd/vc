@@ -16,10 +16,17 @@ import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDe
 import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
 import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/TimelineTab";
 import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
+import { PaymentsTab as BookingPaymentsTab } from "@/features/bookings/tabs/PaymentsTab";
+import { ConciergeTab as BookingConciergeTab } from "@/features/bookings/tabs/ConciergeTab";
 import { ContactsListPage } from "@/features/contacts/ContactsListPage";
 import { ContactDetailLayout } from "@/features/contacts/ContactDetailLayout";
 import { DetailsTab as ContactDetailsTab } from "@/features/contacts/tabs/DetailsTab";
 import { PropertiesTab as ContactPropertiesTab } from "@/features/contacts/tabs/PropertiesTab";
+import { EnquiriesListPage } from "@/features/enquiries/EnquiriesListPage";
+import { EnquiryDetailLayout } from "@/features/enquiries/EnquiryDetailLayout";
+import { DetailsTab as EnquiryDetailsTab } from "@/features/enquiries/tabs/DetailsTab";
+import { ActivityTab as EnquiryActivityTab } from "@/features/enquiries/tabs/ActivityTab";
+import { NotesTab as EnquiryNotesTab } from "@/features/enquiries/tabs/NotesTab";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -31,7 +38,13 @@ const propertyPlaceholderRoutes = PROPERTY_TABS.filter((t) => !REAL_PROPERTY_TAB
   }),
 );
 
-const REAL_BOOKING_TABS = new Set<string>(["overview", "timeline", "notes"]);
+const REAL_BOOKING_TABS = new Set<string>([
+  "overview",
+  "timeline",
+  "notes",
+  "payments",
+  "concierge",
+]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
     path: t.slug,
@@ -78,6 +91,17 @@ export const router = createBrowserRouter([
                   { path: "audit", element: <ComingSoonTab tabName="Audit" /> },
                 ],
               },
+              { path: "/enquiries", element: <EnquiriesListPage /> },
+              {
+                path: "/enquiries/:id",
+                element: <EnquiryDetailLayout />,
+                children: [
+                  { index: true, element: <Navigate to="details" replace /> },
+                  { path: "details", element: <EnquiryDetailsTab /> },
+                  { path: "activity", element: <EnquiryActivityTab /> },
+                  { path: "notes", element: <EnquiryNotesTab /> },
+                ],
+              },
               { path: "/bookings", element: <BookingsListPage /> },
               {
                 path: "/bookings/:id",
@@ -87,6 +111,8 @@ export const router = createBrowserRouter([
                   { path: "overview", element: <BookingOverviewTab /> },
                   { path: "timeline", element: <BookingTimelineTab /> },
                   { path: "notes", element: <BookingNotesTab /> },
+                  { path: "payments", element: <BookingPaymentsTab /> },
+                  { path: "concierge", element: <BookingConciergeTab /> },
                   ...bookingPlaceholderRoutes,
                 ],
               },

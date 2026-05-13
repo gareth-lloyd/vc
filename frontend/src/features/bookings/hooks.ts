@@ -10,18 +10,30 @@ import {
   checkInBooking,
   checkOutBooking,
   confirmBooking,
+  confirmConciergeItem,
   createBookingNote,
+  createConciergeItem,
   declineBooking,
   deleteBookingNote,
+  deleteConciergeItem,
+  fetchBalanceTrack,
   fetchBooking,
   fetchBookingActivity,
+  fetchBookingConciergeItems,
   fetchBookingNotes,
   fetchBookings,
+  fetchDepositTrack,
+  fetchSecurityTrack,
+  markPaid,
   modifyBookingDates,
   modifyBookingGuests,
+  requestPayment,
   resendBookingConfirmation,
   restoreBooking,
   updateBookingNote,
+  updateConciergeItem,
+  waiveTrack,
+  type TrackName,
 } from "./api";
 import type {
   BookingDetail,
@@ -29,9 +41,12 @@ import type {
   BookingNote,
   BookingNoteWriteInput,
   CancelBookingInput,
+  ConciergeItemWriteInput,
   DeclineBookingInput,
+  MarkPaidInput,
   ModifyDatesInput,
   ModifyGuestsInput,
+  WaiveTrackInput,
 } from "./schemas";
 
 export const BOOKINGS_PAGE_SIZE = 50;
@@ -182,6 +197,121 @@ export function useResendBookingConfirmation(bookingId: BookingId) {
   return useMutation({
     mutationFn: () => resendBookingConfirmation(bookingId),
     onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Payment tracks
+// ----------------------------------------------------------------------
+
+const TRACK_KEY: Record<TrackName, (id: BookingId) => readonly unknown[]> = {
+  deposit: queryKeys.bookings.deposit,
+  balance: queryKeys.bookings.balance,
+  security: queryKeys.bookings.security,
+};
+
+const TRACK_FETCHER = {
+  deposit: fetchDepositTrack,
+  balance: fetchBalanceTrack,
+  security: fetchSecurityTrack,
+} as const;
+
+export function useDepositTrack(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.deposit, fetchDepositTrack));
+}
+
+export function useBalanceTrack(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.balance, fetchBalanceTrack));
+}
+
+export function useSecurityTrack(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.security, fetchSecurityTrack));
+}
+
+function invalidateTrack(queryClient: QueryClient, bookingId: BookingId, track: TrackName): void {
+  queryClient.invalidateQueries({ queryKey: TRACK_KEY[track](bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
+}
+
+export function useRequestPayment(bookingId: BookingId, track: TrackName) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => requestPayment(bookingId, track),
+    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+  });
+}
+
+export function useMarkPaid(bookingId: BookingId, track: TrackName) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MarkPaidInput) => markPaid(bookingId, track, input),
+    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+  });
+}
+
+export function useWaiveTrack(bookingId: BookingId, track: TrackName) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WaiveTrackInput) => waiveTrack(bookingId, track, input),
+    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+  });
+}
+
+// Re-export the existing fetcher map and trackName name for downstream tests.
+export { TRACK_FETCHER };
+
+// ----------------------------------------------------------------------
+// Concierge items
+// ----------------------------------------------------------------------
+
+export function useBookingConciergeItems(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.conciergeItems, fetchBookingConciergeItems));
+}
+
+export function useCreateConciergeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConciergeItemWriteInput) => createConciergeItem(bookingId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.conciergeItems(bookingId) });
+    },
+  });
+}
+
+interface UpdateConciergeVars {
+  itemId: number;
+  input: Partial<ConciergeItemWriteInput>;
+}
+
+export function useUpdateConciergeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, input }: UpdateConciergeVars) =>
+      updateConciergeItem(bookingId, itemId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.conciergeItems(bookingId) });
+    },
+  });
+}
+
+export function useDeleteConciergeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId }: { itemId: number }) => deleteConciergeItem(bookingId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.conciergeItems(bookingId) });
+    },
+  });
+}
+
+export function useConfirmConciergeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId }: { itemId: number }) => confirmConciergeItem(bookingId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.conciergeItems(bookingId) });
+    },
   });
 }
 

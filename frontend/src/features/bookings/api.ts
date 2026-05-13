@@ -4,11 +4,14 @@ import type { Paginated } from "@/types/api";
 import type { BookingId } from "@/lib/query/keys";
 import {
   bookingActivityResponseSchema,
+  bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
   bookingListResponseSchema,
   bookingNoteSchema,
   bookingNotesResponseSchema,
+  paymentRecordsListSchema,
+  paymentTrackSchema,
   type BookingConciergeItem,
   type BookingDetail,
   type BookingEvent,
@@ -17,10 +20,17 @@ import {
   type BookingNote,
   type BookingNoteWriteInput,
   type CancelBookingInput,
+  type ConciergeItemWriteInput,
   type DeclineBookingInput,
+  type MarkPaidInput,
   type ModifyDatesInput,
   type ModifyGuestsInput,
+  type PaymentRecord,
+  type PaymentTrack,
+  type WaiveTrackInput,
 } from "./schemas";
+
+export type TrackName = "deposit" | "balance" | "security";
 
 function toQuery(filters: BookingFilters): QueryParams {
   return {
@@ -140,4 +150,94 @@ export async function checkOutBooking(id: BookingId): Promise<BookingDetail> {
 export async function resendBookingConfirmation(id: BookingId): Promise<BookingDetail> {
   const data = await apiSend<unknown>("POST", `/bookings/${id}:resend-confirmation`);
   return bookingDetailSchema.parse(data);
+}
+
+// ----------------------------------------------------------------------
+// Payment tracks
+// ----------------------------------------------------------------------
+
+export async function fetchDepositTrack(id: BookingId): Promise<PaymentTrack> {
+  const data = await apiGet<unknown>(`/bookings/${id}/deposit`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function fetchBalanceTrack(id: BookingId): Promise<PaymentTrack> {
+  const data = await apiGet<unknown>(`/bookings/${id}/balance`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function fetchSecurityTrack(id: BookingId): Promise<PaymentTrack> {
+  const data = await apiGet<unknown>(`/bookings/${id}/security`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function fetchTrackPayments(
+  id: BookingId,
+  track: TrackName,
+): Promise<PaymentRecord[]> {
+  const data = await apiGet<unknown>(`/bookings/${id}/${track}/payments`);
+  return paymentRecordsListSchema.parse(data);
+}
+
+export async function requestPayment(id: BookingId, track: TrackName): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/${track}:request-payment`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function markPaid(
+  id: BookingId,
+  track: TrackName,
+  body: MarkPaidInput,
+): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/${track}:mark-paid`, body);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function waiveTrack(
+  id: BookingId,
+  track: TrackName,
+  body: WaiveTrackInput,
+): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/${track}:waive`, body);
+  return paymentTrackSchema.parse(data);
+}
+
+// ----------------------------------------------------------------------
+// Concierge items
+// ----------------------------------------------------------------------
+
+export async function createConciergeItem(
+  bookingId: BookingId,
+  body: ConciergeItemWriteInput,
+): Promise<BookingConciergeItem> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/concierge-items`, body);
+  return bookingConciergeItemSchema.parse(data);
+}
+
+export async function updateConciergeItem(
+  bookingId: BookingId,
+  itemId: number,
+  body: Partial<ConciergeItemWriteInput>,
+): Promise<BookingConciergeItem> {
+  const data = await apiSend<unknown>(
+    "PATCH",
+    `/bookings/${bookingId}/concierge-items/${itemId}`,
+    body,
+  );
+  return bookingConciergeItemSchema.parse(data);
+}
+
+export async function deleteConciergeItem(bookingId: BookingId, itemId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/bookings/${bookingId}/concierge-items/${itemId}`);
+}
+
+export async function confirmConciergeItem(
+  bookingId: BookingId,
+  itemId: number,
+): Promise<BookingConciergeItem> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/concierge-items/${itemId}:confirm`,
+  );
+  return bookingConciergeItemSchema.parse(data);
 }

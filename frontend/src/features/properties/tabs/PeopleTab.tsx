@@ -18,36 +18,24 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { formatDate } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { useDeletePropertyContact, usePropertyContacts } from "../hooks";
 import {
   useContact,
   useDeleteContactEmail,
   useDeleteContactPhone,
-  useDeletePropertyContact,
-  usePropertyContacts,
   useSetPrimaryContactEmail,
   useSetPrimaryContactPhone,
-} from "../hooks";
-import type {
-  Contact,
-  ContactEmail,
-  ContactPhone,
-  PropertyContactAssignment,
-  PropertyDetail,
-} from "../schemas";
+} from "@/features/contacts/hooks";
+import type { Contact, ContactEmail, ContactPhone } from "@/features/contacts/schemas";
+import { contactDisplayName } from "@/features/contacts/display";
+import { ContactFormDialog } from "@/features/contacts/components/ContactFormDialog";
+import { EmailFormDialog } from "@/features/contacts/components/EmailFormDialog";
+import { PhoneFormDialog } from "@/features/contacts/components/PhoneFormDialog";
+import type { PropertyContactAssignment, PropertyDetail } from "../schemas";
 import { AssignmentFormDialog } from "../components/AssignmentFormDialog";
-import { ContactFormDialog } from "../components/ContactFormDialog";
-import { EmailFormDialog } from "../components/EmailFormDialog";
-import { PhoneFormDialog } from "../components/PhoneFormDialog";
 
 interface PeopleContext {
   property: PropertyDetail;
-}
-
-export function contactDisplayName(contact: Contact): string {
-  const full = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
-  if (full) return full;
-  if (contact.company) return contact.company;
-  return `Contact #${contact.id}`;
 }
 
 function displayName(contact: Contact | undefined, fallbackId: number): string {

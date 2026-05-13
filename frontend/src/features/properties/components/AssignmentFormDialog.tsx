@@ -13,11 +13,11 @@ import type { PropertyId } from "@/lib/query/keys";
 import { useCreatePropertyContact, useUpdatePropertyContact } from "../hooks";
 import {
   propertyContactAssignmentWriteInputSchema,
-  type Contact,
   type PropertyContactAssignment,
   type PropertyContactAssignmentWriteInput,
 } from "../schemas";
-import { ContactPicker } from "./ContactPicker";
+import type { Contact } from "@/features/contacts/schemas";
+import { ContactPicker } from "@/features/contacts/components/ContactPicker";
 
 interface CommonProps {
   propertyId: PropertyId;

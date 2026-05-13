@@ -1,12 +1,7 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
-import { paginated } from "@/lib/api/pagination";
 import {
   availabilityHoldsResponseSchema,
-  contactSchema,
-  type ContactEmailWriteInput,
-  type ContactPhoneWriteInput,
-  type ContactWriteInput,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
@@ -19,11 +14,6 @@ import {
   ratePlanDetailSchema,
   ratePlansResponseSchema,
   type AvailabilityHold,
-  type Contact,
-  type ContactEmail,
-  type ContactPhone,
-  contactEmailSchema,
-  contactPhoneSchema,
   type Discount,
   type Extra,
   type PropertyBookingItem,
@@ -40,7 +30,7 @@ import {
   type RatePlanDetail,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
-import type { ContactId, PropertyId, SeasonId } from "@/lib/query/keys";
+import type { PropertyId, SeasonId } from "@/lib/query/keys";
 
 function toQuery(filters: PropertyFilters): QueryParams {
   return {
@@ -110,11 +100,6 @@ export async function fetchPropertyContacts(
   return propertyContactsResponseSchema.parse(data);
 }
 
-export async function fetchContact(id: ContactId): Promise<Contact> {
-  const data = await apiGet<unknown>(`/contacts/${id}`);
-  return contactSchema.parse(data);
-}
-
 export async function fetchPropertyHolds(
   propertyId: number,
   from: string,
@@ -135,11 +120,6 @@ export async function fetchPropertyBookingsForRange(
     query: { property: propertyId, check_in_before: to, check_out_after: from },
   });
   return propertyBookingsResponseSchema.parse(data);
-}
-
-export async function searchContacts(query: string): Promise<Paginated<Contact>> {
-  const data = await apiGet<unknown>("/contacts", { query: { q: query } });
-  return paginated(contactSchema).parse(data);
 }
 
 export async function createPropertyContact(
@@ -168,81 +148,4 @@ export async function deletePropertyContact(
   mappingId: number,
 ): Promise<void> {
   await apiSend<void>("DELETE", `/properties/${propertyId}/contacts/${mappingId}`);
-}
-
-export async function createContactEmail(
-  contactId: ContactId,
-  body: ContactEmailWriteInput,
-): Promise<ContactEmail> {
-  const data = await apiSend<unknown>("POST", `/contacts/${contactId}/emails`, body);
-  return contactEmailSchema.parse(data);
-}
-
-export async function updateContactEmail(
-  contactId: ContactId,
-  emailId: number,
-  body: Partial<ContactEmailWriteInput>,
-): Promise<ContactEmail> {
-  const data = await apiSend<unknown>("PATCH", `/contacts/${contactId}/emails/${emailId}`, body);
-  return contactEmailSchema.parse(data);
-}
-
-export async function deleteContactEmail(contactId: ContactId, emailId: number): Promise<void> {
-  await apiSend<void>("DELETE", `/contacts/${contactId}/emails/${emailId}`);
-}
-
-export async function setPrimaryContactEmail(
-  contactId: ContactId,
-  emailId: number,
-): Promise<ContactEmail> {
-  const data = await apiSend<unknown>(
-    "POST",
-    `/contacts/${contactId}/emails/${emailId}:set-primary`,
-  );
-  return contactEmailSchema.parse(data);
-}
-
-export async function createContactPhone(
-  contactId: ContactId,
-  body: ContactPhoneWriteInput,
-): Promise<ContactPhone> {
-  const data = await apiSend<unknown>("POST", `/contacts/${contactId}/phones`, body);
-  return contactPhoneSchema.parse(data);
-}
-
-export async function updateContactPhone(
-  contactId: ContactId,
-  phoneId: number,
-  body: Partial<ContactPhoneWriteInput>,
-): Promise<ContactPhone> {
-  const data = await apiSend<unknown>("PATCH", `/contacts/${contactId}/phones/${phoneId}`, body);
-  return contactPhoneSchema.parse(data);
-}
-
-export async function deleteContactPhone(contactId: ContactId, phoneId: number): Promise<void> {
-  await apiSend<void>("DELETE", `/contacts/${contactId}/phones/${phoneId}`);
-}
-
-export async function setPrimaryContactPhone(
-  contactId: ContactId,
-  phoneId: number,
-): Promise<ContactPhone> {
-  const data = await apiSend<unknown>(
-    "POST",
-    `/contacts/${contactId}/phones/${phoneId}:set-primary`,
-  );
-  return contactPhoneSchema.parse(data);
-}
-
-export async function createContact(body: ContactWriteInput): Promise<Contact> {
-  const data = await apiSend<unknown>("POST", "/contacts", body);
-  return contactSchema.parse(data);
-}
-
-export async function updateContact(
-  contactId: ContactId,
-  body: Partial<ContactWriteInput>,
-): Promise<Contact> {
-  const data = await apiSend<unknown>("PATCH", `/contacts/${contactId}`, body);
-  return contactSchema.parse(data);
 }

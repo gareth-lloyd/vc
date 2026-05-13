@@ -2,6 +2,7 @@ export type PropertyId = string | number;
 export type BookingId = string | number;
 export type SeasonId = string | number;
 export type ContactId = string | number;
+export type EnquiryId = string | number;
 
 export const queryKeys = {
   auth: {
@@ -26,6 +27,9 @@ export const queryKeys = {
       ["properties", "detail", propertyId, "bookings", from, to] as const,
   },
   contacts: {
+    all: () => ["contacts"] as const,
+    lists: () => ["contacts", "list"] as const,
+    list: <F>(filters: F) => ["contacts", "list", filters] as const,
     detail: (id: ContactId) => ["contacts", "detail", id] as const,
     search: (q: string) => ["contacts", "search", q] as const,
   },
@@ -37,5 +41,16 @@ export const queryKeys = {
     activity: (id: BookingId) => ["bookings", "detail", id, "activity"] as const,
     notes: (id: BookingId) => ["bookings", "detail", id, "notes"] as const,
     conciergeItems: (id: BookingId) => ["bookings", "detail", id, "concierge-items"] as const,
+    deposit: (id: BookingId) => ["bookings", "detail", id, "deposit"] as const,
+    balance: (id: BookingId) => ["bookings", "detail", id, "balance"] as const,
+    security: (id: BookingId) => ["bookings", "detail", id, "security"] as const,
+  },
+  enquiries: {
+    all: () => ["enquiries"] as const,
+    lists: () => ["enquiries", "list"] as const,
+    list: <F>(filters: F) => ["enquiries", "list", filters] as const,
+    detail: (id: EnquiryId) => ["enquiries", "detail", id] as const,
+    activity: (id: EnquiryId) => ["enquiries", "detail", id, "activity"] as const,
+    notes: (id: EnquiryId) => ["enquiries", "detail", id, "notes"] as const,
   },
 } as const;

@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSearchContacts } from "../hooks";
 import type { Contact } from "../schemas";
-import { contactDisplayName } from "../tabs/PeopleTab";
+import { contactDisplayName } from "../display";
 
 interface ContactPickerProps {
   value: Contact | null;

@@ -37,6 +37,7 @@ class Region(TimestampedModel):
     slug = models.SlugField(max_length=128)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [
@@ -56,6 +57,7 @@ class NearbyPlaceType(TimestampedModel):
 
     name = models.CharField(max_length=128, unique=True)
     icon = models.CharField(max_length=128, blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["name"]
@@ -81,6 +83,7 @@ class PropertyNearbyPlace(TimestampedModel):
     distance_km = models.DecimalField(max_digits=6, decimal_places=2)
     notes = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["property_id", "sort_order", "name"]

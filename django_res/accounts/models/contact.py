@@ -131,6 +131,7 @@ class ContactEmail(TimestampedModel):
     email = CIEmailField()
     label = models.CharField(max_length=16, choices=EmailLabel.choices, default=EmailLabel.PRIMARY)
     is_primary = models.BooleanField(default=False)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [
@@ -151,6 +152,7 @@ class ContactPhone(TimestampedModel):
     number = models.CharField(max_length=32)
     label = models.CharField(max_length=16, choices=PhoneLabel.choices, default=PhoneLabel.MOBILE)
     is_primary = models.BooleanField(default=False)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [

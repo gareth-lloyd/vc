@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.admin",
+    "django.contrib.postgres",
     "rest_framework",
     "django_filters",
     "core",
@@ -69,16 +70,13 @@ TEMPLATES = [
 DATABASES = {
     "default": env.db_url(
         "DATABASE_URL",
-        default="sqlite:///" + str(BASE_DIR / "db.sqlite3"),
+        default="postgres://villa:villa@localhost:55432/villacollective",
     ),
 }
 
-# Optional read-only legacy SQL Server connection used by the `data_migration`
-# app. Only wired when LEGACY_DATABASE_URL is set, so dev/test/CI stay
-# single-DB by default.
-if _legacy_url := env.str("LEGACY_DATABASE_URL", default=""):
-    DATABASES["legacy"] = env.db_url_config(_legacy_url)
-    DATABASES["legacy"].setdefault("OPTIONS", {})
+# Legacy SQL Server access (data_migration app) is handled outside Django's
+# DATABASES — see data_migration.legacy_db — to avoid the MS ODBC system
+# dependency. Set LEGACY_DATABASE_URL when running loaders.
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

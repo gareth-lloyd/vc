@@ -1,5 +1,14 @@
 # Django REST API
 
+## Local setup
+
+1. `docker compose up -d` (from repo root) — starts Postgres at `localhost:55432`.
+2. `cp .env.example .env` (or export `DATABASE_URL` directly).
+3. `uv sync`
+4. `uv run python manage.py migrate`
+5. `uv run pytest` — tests run against the same Postgres instance
+   (pytest-django creates and drops `test_villacollective` automatically).
+
 ## Principles
 
 1. This is a Django REST framework app to support the Villa Collective management suite.

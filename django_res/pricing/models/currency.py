@@ -15,6 +15,7 @@ class Currency(TimestampedModel):
     symbol = models.CharField(max_length=8, blank=True)
     decimal_places = models.PositiveSmallIntegerField(default=2)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["code"]

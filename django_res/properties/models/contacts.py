@@ -31,6 +31,7 @@ class PropertyContactAssignment(AuditedModel):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     is_primary = models.BooleanField(default=False)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [

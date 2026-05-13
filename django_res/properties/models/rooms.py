@@ -24,6 +24,7 @@ class Room(AuditedModel):
     vc_notes = models.TextField(blank=True)
     is_ensuite = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["property_id", "sort_order", "name"]

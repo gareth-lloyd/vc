@@ -153,6 +153,7 @@ class QuotationLine(AuditedModel):
     is_selected = models.BooleanField(default=False)
     is_manual = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [

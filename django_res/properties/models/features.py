@@ -15,6 +15,7 @@ class FeatureCategory(TimestampedModel):
     icon = models.CharField(max_length=128, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -43,6 +44,7 @@ class Feature(TimestampedModel):
         choices=FeatureServiceType.choices,
         default=FeatureServiceType.AMENITY,
     )
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["category_id", "sort_order", "name"]
@@ -64,6 +66,7 @@ class Collection(AuditedModel):
     )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -88,6 +91,7 @@ class CollectionMembership(TimestampedModel):
     sort_order = models.PositiveIntegerField(default=0)
     featured_until = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [

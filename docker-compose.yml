@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    container_name: villacollective-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: villa
+      POSTGRES_PASSWORD: villa
+      POSTGRES_DB: villacollective
+    ports:
+      - "55432:5432"
+    volumes:
+      - villa_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U villa -d villacollective"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  villa_pgdata:

@@ -42,6 +42,7 @@ def _apply_reverse(apps, schema_editor) -> None:  # type: ignore[no-untyped-def]
 class Migration(migrations.Migration):
     dependencies = [
         ("pricing", "0002_initial"),
+        ("core", "0004_postgres_extensions"),
     ]
 
     operations = [

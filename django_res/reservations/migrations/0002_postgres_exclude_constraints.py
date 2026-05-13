@@ -2,8 +2,11 @@
 
 Together they make double-booking impossible at the DB level:
 
-- `bookinghold_no_overlap_live`: no two *live* holds overlap on the same
-  property (`released_at IS NULL AND expires_at > now()`).
+- `bookinghold_no_overlap_live`: no two unreleased holds overlap on the same
+  property. The original design also gated on `expires_at > now()`, but
+  Postgres rejects non-IMMUTABLE functions inside index predicates, so the
+  time check is delegated to the application sweeper (which sets
+  `released_at` when expiring a hold).
 - `booking_no_overlap_active`: no two *active-state* bookings overlap on
   the same property.
 
@@ -23,7 +26,7 @@ _HOLD_FORWARD_SQL_PG = (
     "EXCLUDE USING gist ("
     "property_id WITH =, "
     "daterange(date_from, date_to, '[)') WITH &&"
-    ") WHERE (released_at IS NULL AND expires_at > now());"
+    ") WHERE (released_at IS NULL);"
 )
 
 _HOLD_REVERSE_SQL_PG = (
@@ -64,6 +67,7 @@ def _apply_reverse(apps, schema_editor) -> None:  # type: ignore[no-untyped-def]
 class Migration(migrations.Migration):
     dependencies = [
         ("reservations", "0001_initial"),
+        ("core", "0004_postgres_extensions"),
     ]
 
     operations = [

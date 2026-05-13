@@ -75,6 +75,7 @@ class Payment(AuditedModel):
     settled_at = models.DateTimeField(null=True, blank=True)
     failure_reason = models.CharField(max_length=255, blank=True)
     meta = models.JSONField(default=dict, blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     concierge_item = models.ForeignKey(
         "reservations.BookingConciergeItem",
         on_delete=models.SET_NULL,

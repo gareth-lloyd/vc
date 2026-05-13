@@ -18,6 +18,7 @@ class PropertyCategory(TimestampedModel):
     slug = models.SlugField(max_length=128, unique=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["sort_order", "name"]

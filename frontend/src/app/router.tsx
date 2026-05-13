@@ -1,0 +1,73 @@
+import { createBrowserRouter, Navigate } from "react-router-dom";
+import { AppShell } from "@/components/layout/AppShell";
+import { RequireAuth } from "./guards";
+import { BootGate } from "./boot";
+import { LoginPage } from "@/features/auth/LoginPage";
+import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
+import { DashboardPlaceholderPage } from "@/features/dashboard/DashboardPlaceholderPage";
+import { PropertiesListPage } from "@/features/properties/PropertiesListPage";
+import { PROPERTY_TABS, PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
+import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
+import { BookingsListPage } from "@/features/bookings/BookingsListPage";
+import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDetailLayout";
+import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
+import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/TimelineTab";
+import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
+import { NotFoundPage } from "./NotFoundPage";
+
+const propertyTabRoutes = PROPERTY_TABS.filter((t) => t.slug !== "details").map((t) => ({
+  path: t.slug,
+  element: <ComingSoonTab tabName={t.label} />,
+}));
+
+const REAL_BOOKING_TABS = new Set<string>(["overview", "timeline"]);
+const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
+  (t) => ({
+    path: t.slug,
+    element: <ComingSoonTab tabName={t.label} />,
+  }),
+);
+
+export const router = createBrowserRouter([
+  {
+    element: <BootGate />,
+    children: [
+      { path: "/", element: <Navigate to="/dashboard" replace /> },
+      { path: "/login", element: <LoginPage /> },
+      { path: "/login/2fa", element: <TfaChallengePage /> },
+      {
+        element: <RequireAuth />,
+        children: [
+          {
+            element: <AppShell />,
+            children: [
+              { path: "/dashboard", element: <DashboardPlaceholderPage /> },
+              { path: "/properties", element: <PropertiesListPage /> },
+              {
+                path: "/properties/:id",
+                element: <PropertyDetailLayout />,
+                children: [
+                  { index: true, element: <Navigate to="details" replace /> },
+                  { path: "details", element: <DetailsTab /> },
+                  ...propertyTabRoutes,
+                ],
+              },
+              { path: "/bookings", element: <BookingsListPage /> },
+              {
+                path: "/bookings/:id",
+                element: <BookingDetailLayout />,
+                children: [
+                  { index: true, element: <Navigate to="overview" replace /> },
+                  { path: "overview", element: <BookingOverviewTab /> },
+                  { path: "timeline", element: <BookingTimelineTab /> },
+                  ...bookingPlaceholderRoutes,
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { path: "*", element: <NotFoundPage /> },
+    ],
+  },
+]);

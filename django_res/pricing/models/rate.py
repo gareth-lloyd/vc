@@ -32,6 +32,7 @@ class RatePlan(AuditedModel):
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     inclusion = models.TextField(blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["property", "-effective_from"]
@@ -60,6 +61,7 @@ class RateCard(AuditedModel):
     sort_order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["plan", "sort_order", "name"]
@@ -90,6 +92,7 @@ class RateRule(AuditedModel):
     is_locked = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["card", "-priority", "date_from"]

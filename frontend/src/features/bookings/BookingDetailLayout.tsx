@@ -4,28 +4,23 @@ import { TwoColumn } from "@/components/layout/TwoColumn";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { QuickActions, type QuickAction } from "@/components/feedback/QuickActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useBooking } from "./hooks";
+import { BookingActions } from "./components/BookingActions";
 import type { BookingDetail } from "./schemas";
 
 export const BOOKING_TABS = [
   { slug: "overview", label: "Overview" },
   { slug: "timeline", label: "Timeline" },
+  { slug: "notes", label: "Notes" },
   { slug: "finance", label: "Finance" },
   { slug: "payments", label: "Payments" },
   { slug: "concierge", label: "Concierge" },
   { slug: "owner", label: "Owner" },
 ] as const;
-
-const QUICK_ACTIONS: readonly QuickAction[] = [
-  { label: "Send to guest" },
-  { label: "Send to owner" },
-  { label: "Cancel booking" },
-];
 
 function RailSummary({ booking }: { booking: BookingDetail }) {
   const currency = booking.currency_code ?? null;
@@ -50,7 +45,7 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
         <FactRow label="Paid" value={Number.isFinite(paid) ? formatMoney(paid, currency) : "—"} />
         <FactRow label="Due" value={formatMoney(booking.balance_due, currency)} />
       </FactList>
-      <QuickActions actions={QUICK_ACTIONS} />
+      <BookingActions booking={booking} />
     </div>
   );
 }

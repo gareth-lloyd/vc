@@ -36,6 +36,7 @@ describe("queryKeys", () => {
 
   it("bookings keys branch off detail consistently", () => {
     expect(queryKeys.bookings.all()).toEqual(["bookings"]);
+    expect(queryKeys.bookings.lists()).toEqual(["bookings", "list"]);
     expect(queryKeys.bookings.list({ q: "x" })).toEqual(["bookings", "list", { q: "x" }]);
     expect(queryKeys.bookings.detail(7)).toEqual(["bookings", "detail", 7]);
     expect(queryKeys.bookings.activity(7)).toEqual(["bookings", "detail", 7, "activity"]);

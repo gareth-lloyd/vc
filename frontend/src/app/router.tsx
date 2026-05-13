@@ -12,6 +12,7 @@ import { BookingsListPage } from "@/features/bookings/BookingsListPage";
 import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDetailLayout";
 import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
 import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/TimelineTab";
+import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -20,7 +21,7 @@ const propertyTabRoutes = PROPERTY_TABS.filter((t) => t.slug !== "details").map(
   element: <ComingSoonTab tabName={t.label} />,
 }));
 
-const REAL_BOOKING_TABS = new Set<string>(["overview", "timeline"]);
+const REAL_BOOKING_TABS = new Set<string>(["overview", "timeline", "notes"]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
     path: t.slug,
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
                   { index: true, element: <Navigate to="overview" replace /> },
                   { path: "overview", element: <BookingOverviewTab /> },
                   { path: "timeline", element: <BookingTimelineTab /> },
+                  { path: "notes", element: <BookingNotesTab /> },
                   ...bookingPlaceholderRoutes,
                 ],
               },

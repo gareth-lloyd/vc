@@ -77,20 +77,62 @@ export type BookingEvent = z.infer<typeof bookingEventSchema>;
 
 export const bookingActivityResponseSchema = paginated(bookingEventSchema);
 
+export const bookingNoteKindSchema = z.enum(["general", "internal", "concierge", "villa"]);
+export type BookingNoteKind = z.infer<typeof bookingNoteKindSchema>;
+
+export const bookingNoteVisibilitySchema = z.enum(["staff_only", "owner", "guest"]);
+export type BookingNoteVisibility = z.infer<typeof bookingNoteVisibilitySchema>;
+
 export const bookingNoteSchema = z.object({
   id: z.number(),
   booking: z.number().optional(),
   author: z.number().nullable().optional(),
-  kind: z.string(),
+  kind: bookingNoteKindSchema,
   body: z.string(),
   is_pinned: z.boolean().optional().default(false),
-  visibility: z.string(),
+  visibility: bookingNoteVisibilitySchema,
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
 export type BookingNote = z.infer<typeof bookingNoteSchema>;
 
 export const bookingNotesResponseSchema = paginated(bookingNoteSchema);
+
+export const bookingNoteWriteInputSchema = z.object({
+  kind: bookingNoteKindSchema,
+  visibility: bookingNoteVisibilitySchema,
+  body: z.string().trim().min(1, "Body is required").max(10_000),
+  is_pinned: z.boolean(),
+});
+export type BookingNoteWriteInput = z.infer<typeof bookingNoteWriteInputSchema>;
+
+export const BOOKING_NOTE_KIND_LABELS: Record<BookingNoteKind, string> = {
+  general: "General",
+  internal: "Internal",
+  concierge: "Concierge",
+  villa: "Villa",
+};
+
+export const BOOKING_NOTE_VISIBILITY_LABELS: Record<BookingNoteVisibility, string> = {
+  staff_only: "Staff only",
+  owner: "Owner",
+  guest: "Guest",
+};
+
+export const BOOKING_NOTE_KIND_OPTIONS = bookingNoteKindSchema.options.map((value) => ({
+  value,
+  label: BOOKING_NOTE_KIND_LABELS[value],
+}));
+
+export const BOOKING_NOTE_VISIBILITY_OPTIONS = bookingNoteVisibilitySchema.options.map((value) => ({
+  value,
+  label: BOOKING_NOTE_VISIBILITY_LABELS[value],
+}));
+
+export const cancelBookingInputSchema = z.object({
+  reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+});
+export type CancelBookingInput = z.infer<typeof cancelBookingInputSchema>;
 
 export const bookingConciergeItemSchema = z.object({
   id: z.number(),

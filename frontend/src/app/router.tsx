@@ -8,6 +8,8 @@ import { DashboardPlaceholderPage } from "@/features/dashboard/DashboardPlacehol
 import { PropertiesListPage } from "@/features/properties/PropertiesListPage";
 import { PROPERTY_TABS, PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
 import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
+import { PricingTab } from "@/features/properties/tabs/PricingTab";
+import { PeopleTab } from "@/features/properties/tabs/PeopleTab";
 import { BookingsListPage } from "@/features/bookings/BookingsListPage";
 import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDetailLayout";
 import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
@@ -16,10 +18,13 @@ import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
 
-const propertyTabRoutes = PROPERTY_TABS.filter((t) => t.slug !== "details").map((t) => ({
-  path: t.slug,
-  element: <ComingSoonTab tabName={t.label} />,
-}));
+const REAL_PROPERTY_TABS = new Set<string>(["details", "pricing", "people"]);
+const propertyPlaceholderRoutes = PROPERTY_TABS.filter((t) => !REAL_PROPERTY_TABS.has(t.slug)).map(
+  (t) => ({
+    path: t.slug,
+    element: <ComingSoonTab tabName={t.label} />,
+  }),
+);
 
 const REAL_BOOKING_TABS = new Set<string>(["overview", "timeline", "notes"]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
@@ -50,7 +55,9 @@ export const router = createBrowserRouter([
                 children: [
                   { index: true, element: <Navigate to="details" replace /> },
                   { path: "details", element: <DetailsTab /> },
-                  ...propertyTabRoutes,
+                  { path: "pricing", element: <PricingTab /> },
+                  { path: "people", element: <PeopleTab /> },
+                  ...propertyPlaceholderRoutes,
                 ],
               },
               { path: "/bookings", element: <BookingsListPage /> },

@@ -6,7 +6,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "@/test/msw/server";
 import { queryKeys } from "@/lib/query/keys";
 import { ApiError } from "@/lib/api/errors";
-import { useCancelBooking, useConfirmBooking } from "../hooks";
+import {
+  useArchiveBooking,
+  useCancelBooking,
+  useCheckInBooking,
+  useCheckOutBooking,
+  useConfirmBooking,
+  useDeclineBooking,
+  useModifyBookingDates,
+  useModifyBookingGuests,
+  useResendBookingConfirmation,
+  useRestoreBooking,
+} from "../hooks";
 import type { BookingDetail } from "../schemas";
 
 vi.mock("sonner", () => ({
@@ -168,5 +179,209 @@ describe("useCancelBooking", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).fieldErrors).toEqual({ reason: ["Too long"] });
+  });
+});
+
+async function assertActionHook<TVars>(opts: {
+  result: { current: { mutateAsync: (v: TVars) => Promise<unknown> } };
+  client: QueryClient;
+  path: string;
+  args: TVars;
+  expectedBody: unknown;
+  responseStatus: BookingDetail["status"];
+  detailKey: ReturnType<typeof queryKeys.bookings.detail>;
+  listKey: ReturnType<typeof queryKeys.bookings.list>;
+  pathTracker: { value: string | null };
+  bodyTracker: { value: unknown };
+}) {
+  await act(async () => {
+    await opts.result.current.mutateAsync(opts.args);
+  });
+
+  expect(opts.pathTracker.value).toBe(`/api/v1/bookings/${BOOKING_ID}${opts.path}`);
+  expect(opts.bodyTracker.value).toEqual(opts.expectedBody);
+  expect(opts.client.getQueryData<BookingDetail>(opts.detailKey)?.status).toBe(opts.responseStatus);
+  expect(opts.client.getQueryState(opts.listKey)?.isInvalidated).toBe(true);
+  expect(opts.client.getQueryState(opts.detailKey)?.isInvalidated).toBe(false);
+}
+
+function setupActionFixture(verbPath: string, responseStatus: BookingDetail["status"]) {
+  const client = createClient();
+  const detailKey = queryKeys.bookings.detail(BOOKING_ID);
+  const listKey = queryKeys.bookings.list({ q: "x" });
+  client.setQueryData(detailKey, makeBookingDetail());
+  client.setQueryData(listKey, { count: 0, next: null, previous: null, results: [] });
+
+  const pathTracker = { value: null as string | null };
+  const bodyTracker = { value: "unread" as unknown };
+  server.use(
+    http.post(`/api/v1/bookings/${BOOKING_ID}${verbPath}`, async ({ request }) => {
+      pathTracker.value = new URL(request.url).pathname;
+      const text = await request.text();
+      bodyTracker.value = text === "" ? null : JSON.parse(text);
+      return HttpResponse.json(makeBookingDetail({ status: responseStatus }));
+    }),
+  );
+
+  return { client, detailKey, listKey, pathTracker, bodyTracker };
+}
+
+describe("booking action hooks — happy paths", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("useDeclineBooking POSTs :owner-decline with reason", async () => {
+    const fx = setupActionFixture(":owner-decline", "declined");
+    const { result } = renderHook(() => useDeclineBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":owner-decline",
+      args: { reason: "owner declined" },
+      expectedBody: { reason: "owner declined" },
+      responseStatus: "declined",
+    });
+  });
+
+  it("useModifyBookingDates POSTs :modify-dates with date_from/date_to/reason", async () => {
+    const fx = setupActionFixture(":modify-dates", "deposit_paid");
+    const { result } = renderHook(() => useModifyBookingDates(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":modify-dates",
+      args: { date_from: "2026-07-10", date_to: "2026-07-17", reason: "guest req" },
+      expectedBody: { date_from: "2026-07-10", date_to: "2026-07-17", reason: "guest req" },
+      responseStatus: "deposit_paid",
+    });
+  });
+
+  it("useModifyBookingGuests POSTs :modify-guests with adults/children", async () => {
+    const fx = setupActionFixture(":modify-guests", "deposit_paid");
+    const { result } = renderHook(() => useModifyBookingGuests(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":modify-guests",
+      args: { adults: 3, children: 1 },
+      expectedBody: { adults: 3, children: 1 },
+      responseStatus: "deposit_paid",
+    });
+  });
+
+  it("useArchiveBooking POSTs :archive with no body", async () => {
+    const fx = setupActionFixture(":archive", "checked_out");
+    const { result } = renderHook(() => useArchiveBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":archive",
+      args: undefined,
+      expectedBody: null,
+      responseStatus: "checked_out",
+    });
+  });
+
+  it("useRestoreBooking POSTs :restore with no body", async () => {
+    const fx = setupActionFixture(":restore", "checked_out");
+    const { result } = renderHook(() => useRestoreBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":restore",
+      args: undefined,
+      expectedBody: null,
+      responseStatus: "checked_out",
+    });
+  });
+
+  it("useCheckInBooking POSTs :check-in with no body", async () => {
+    const fx = setupActionFixture(":check-in", "checked_in");
+    const { result } = renderHook(() => useCheckInBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":check-in",
+      args: undefined,
+      expectedBody: null,
+      responseStatus: "checked_in",
+    });
+  });
+
+  it("useCheckOutBooking POSTs :check-out with no body", async () => {
+    const fx = setupActionFixture(":check-out", "checked_out");
+    const { result } = renderHook(() => useCheckOutBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":check-out",
+      args: undefined,
+      expectedBody: null,
+      responseStatus: "checked_out",
+    });
+  });
+
+  it("useResendBookingConfirmation POSTs :resend-confirmation with no body", async () => {
+    const fx = setupActionFixture(":resend-confirmation", "awaiting_deposit");
+    const { result } = renderHook(() => useResendBookingConfirmation(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+    await assertActionHook({
+      result,
+      ...fx,
+      path: ":resend-confirmation",
+      args: undefined,
+      expectedBody: null,
+      responseStatus: "awaiting_deposit",
+    });
+  });
+});
+
+describe("useDeclineBooking error envelope", () => {
+  it("rejects with an ApiError on 400 so callers can apply field errors", async () => {
+    const client = createClient();
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}:owner-decline`, () =>
+        HttpResponse.json(
+          {
+            code: "invalid",
+            detail: "Validation failed",
+            field_errors: { reason: ["Required"] },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const { result } = renderHook(() => useDeclineBooking(BOOKING_ID), {
+      wrapper: wrapperWith(client),
+    });
+
+    let error: unknown = null;
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({ reason: "" });
+      } catch (e) {
+        error = e;
+      }
+    });
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).fieldErrors).toEqual({ reason: ["Required"] });
   });
 });

@@ -1,20 +1,32 @@
 import { apiGet } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import {
+  contactSchema,
+  discountsResponseSchema,
+  extrasResponseSchema,
+  propertyContactsResponseSchema,
   propertyDescriptionsResponseSchema,
   propertyDetailSchema,
   propertyFeaturesResponseSchema,
   propertyListResponseSchema,
   propertyRoomsResponseSchema,
+  ratePlanDetailSchema,
+  ratePlansResponseSchema,
+  type Contact,
+  type Discount,
+  type Extra,
+  type PropertyContactAssignment,
   type PropertyDescription,
   type PropertyDetail,
   type PropertyFeature,
   type PropertyFilters,
   type PropertyListItem,
   type PropertyRoom,
+  type RatePlan,
+  type RatePlanDetail,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
-import type { PropertyId } from "@/lib/query/keys";
+import type { ContactId, PropertyId, SeasonId } from "@/lib/query/keys";
 
 function toQuery(filters: PropertyFilters): QueryParams {
   return {
@@ -55,4 +67,36 @@ export async function fetchPropertyFeatures(
 export async function fetchPropertyRooms(idOrSlug: PropertyId): Promise<Paginated<PropertyRoom>> {
   const data = await apiGet<unknown>(`/properties/${idOrSlug}/rooms`);
   return propertyRoomsResponseSchema.parse(data);
+}
+
+export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Paginated<RatePlan>> {
+  const data = await apiGet<unknown>(`/properties/${idOrSlug}/seasons`);
+  return ratePlansResponseSchema.parse(data);
+}
+
+export async function fetchSeasonDetail(seasonId: SeasonId): Promise<RatePlanDetail> {
+  const data = await apiGet<unknown>(`/seasons/${seasonId}`);
+  return ratePlanDetailSchema.parse(data);
+}
+
+export async function fetchPropertyExtras(idOrSlug: PropertyId): Promise<Paginated<Extra>> {
+  const data = await apiGet<unknown>(`/properties/${idOrSlug}/extras`);
+  return extrasResponseSchema.parse(data);
+}
+
+export async function fetchPropertyDiscounts(idOrSlug: PropertyId): Promise<Paginated<Discount>> {
+  const data = await apiGet<unknown>(`/properties/${idOrSlug}/discounts`);
+  return discountsResponseSchema.parse(data);
+}
+
+export async function fetchPropertyContacts(
+  idOrSlug: PropertyId,
+): Promise<Paginated<PropertyContactAssignment>> {
+  const data = await apiGet<unknown>(`/properties/${idOrSlug}/contacts`);
+  return propertyContactsResponseSchema.parse(data);
+}
+
+export async function fetchContact(id: ContactId): Promise<Contact> {
+  const data = await apiGet<unknown>(`/contacts/${id}`);
+  return contactSchema.parse(data);
 }

@@ -10,6 +10,9 @@ import {
   bookingNoteWriteInputSchema,
   bookingStatusSchema,
   cancelBookingInputSchema,
+  declineBookingInputSchema,
+  modifyDatesInputSchema,
+  modifyGuestsInputSchema,
 } from "../schemas";
 
 const baseListItem = {
@@ -252,5 +255,99 @@ describe("cancelBookingInputSchema", () => {
   it("accepts a reason at exactly 500 characters", () => {
     const result = cancelBookingInputSchema.safeParse({ reason: "x".repeat(500) });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("declineBookingInputSchema", () => {
+  it("rejects an empty reason", () => {
+    expect(declineBookingInputSchema.safeParse({ reason: "" }).success).toBe(false);
+  });
+
+  it("rejects a whitespace-only reason", () => {
+    expect(declineBookingInputSchema.safeParse({ reason: "   " }).success).toBe(false);
+  });
+
+  it("trims and accepts a valid reason", () => {
+    expect(declineBookingInputSchema.parse({ reason: "  owner declined  " }).reason).toBe(
+      "owner declined",
+    );
+  });
+
+  it("rejects a reason over 500 characters", () => {
+    expect(declineBookingInputSchema.safeParse({ reason: "x".repeat(501) }).success).toBe(false);
+  });
+});
+
+describe("modifyDatesInputSchema", () => {
+  it("rejects when date_to is before date_from", () => {
+    expect(
+      modifyDatesInputSchema.safeParse({
+        date_from: "2026-07-10",
+        date_to: "2026-07-05",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects when date_to equals date_from", () => {
+    expect(
+      modifyDatesInputSchema.safeParse({
+        date_from: "2026-07-10",
+        date_to: "2026-07-10",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts when date_to is after date_from", () => {
+    const parsed = modifyDatesInputSchema.parse({
+      date_from: "2026-07-10",
+      date_to: "2026-07-17",
+    });
+    expect(parsed.date_from).toBe("2026-07-10");
+    expect(parsed.date_to).toBe("2026-07-17");
+  });
+
+  it("accepts an optional reason", () => {
+    const parsed = modifyDatesInputSchema.parse({
+      date_from: "2026-07-10",
+      date_to: "2026-07-17",
+      reason: "guest request",
+    });
+    expect(parsed.reason).toBe("guest request");
+  });
+
+  it("rejects missing dates", () => {
+    expect(modifyDatesInputSchema.safeParse({ date_from: "", date_to: "2026-07-17" }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("modifyGuestsInputSchema", () => {
+  it("rejects adults < 1", () => {
+    expect(modifyGuestsInputSchema.safeParse({ adults: 0 }).success).toBe(false);
+  });
+
+  it("rejects non-integer adults", () => {
+    expect(modifyGuestsInputSchema.safeParse({ adults: 2.5 }).success).toBe(false);
+  });
+
+  it("rejects negative children", () => {
+    expect(modifyGuestsInputSchema.safeParse({ adults: 2, children: -1 }).success).toBe(false);
+  });
+
+  it("accepts adults with optional children and reason", () => {
+    const parsed = modifyGuestsInputSchema.parse({
+      adults: 3,
+      children: 1,
+      reason: "extra guest",
+    });
+    expect(parsed.adults).toBe(3);
+    expect(parsed.children).toBe(1);
+    expect(parsed.reason).toBe("extra guest");
+  });
+
+  it("accepts adults alone", () => {
+    const parsed = modifyGuestsInputSchema.parse({ adults: 2 });
+    expect(parsed.adults).toBe(2);
   });
 });

@@ -17,6 +17,9 @@ import {
   type BookingNote,
   type BookingNoteWriteInput,
   type CancelBookingInput,
+  type DeclineBookingInput,
+  type ModifyDatesInput,
+  type ModifyGuestsInput,
 } from "./schemas";
 
 function toQuery(filters: BookingFilters): QueryParams {
@@ -87,5 +90,54 @@ export async function cancelBooking(
   body: CancelBookingInput,
 ): Promise<BookingDetail> {
   const data = await apiSend<unknown>("POST", `/bookings/${id}:cancel`, body);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function declineBooking(
+  id: BookingId,
+  body: DeclineBookingInput,
+): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:owner-decline`, body);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function modifyBookingDates(
+  id: BookingId,
+  body: ModifyDatesInput,
+): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:modify-dates`, body);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function modifyBookingGuests(
+  id: BookingId,
+  body: ModifyGuestsInput,
+): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:modify-guests`, body);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function archiveBooking(id: BookingId): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:archive`);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function restoreBooking(id: BookingId): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:restore`);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function checkInBooking(id: BookingId): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:check-in`);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function checkOutBooking(id: BookingId): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:check-out`);
+  return bookingDetailSchema.parse(data);
+}
+
+export async function resendBookingConfirmation(id: BookingId): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:resend-confirmation`);
   return bookingDetailSchema.parse(data);
 }

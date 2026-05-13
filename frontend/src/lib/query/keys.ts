@@ -1,5 +1,7 @@
 export type PropertyId = string | number;
 export type BookingId = string | number;
+export type SeasonId = string | number;
+export type ContactId = string | number;
 
 export const queryKeys = {
   auth: {
@@ -13,6 +15,14 @@ export const queryKeys = {
       ["properties", "detail", idOrSlug, "descriptions"] as const,
     features: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "features"] as const,
     rooms: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "rooms"] as const,
+    seasons: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "seasons"] as const,
+    seasonDetail: (seasonId: SeasonId) => ["properties", "seasons", "detail", seasonId] as const,
+    extras: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "extras"] as const,
+    discounts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "discounts"] as const,
+    contacts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "contacts"] as const,
+  },
+  contacts: {
+    detail: (id: ContactId) => ["contacts", "detail", id] as const,
   },
   bookings: {
     all: () => ["bookings"] as const,

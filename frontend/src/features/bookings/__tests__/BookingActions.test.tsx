@@ -85,11 +85,13 @@ afterEach(() => {
 });
 
 describe("BookingActions — disabled-state matrix", () => {
-  it("disables both buttons when the user lacks the reservations role", () => {
+  it("disables all primary buttons and the dropdown trigger when the user lacks the reservations role", () => {
     asViewerUser();
     renderWithProviders(<BookingActions booking={makeBookingDetail({ status: "draft" })} />);
     expect(screen.getByRole("button", { name: /confirm booking/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /cancel booking/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /owner decline/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /more actions/i })).toBeDisabled();
   });
 
   it("disables confirm but enables cancel on a status outside the confirm whitelist", () => {
@@ -265,5 +267,118 @@ describe("BookingActions — cancel flow", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("BookingActions — owner decline flow", () => {
+  it("opens decline dialog, POSTs typed reason, toasts success", async () => {
+    asReservationsUser();
+    const user = userEvent.setup();
+    const queryClient = createCachingClient();
+    queryClient.setQueryData(
+      queryKeys.bookings.detail(BOOKING_ID),
+      makeBookingDetail({ status: "pending_owner_approval" }),
+    );
+
+    let receivedBody: unknown = null;
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}:owner-decline`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(makeBookingDetail({ status: "declined" }));
+      }),
+    );
+
+    renderWithProviders(
+      <BookingActions booking={makeBookingDetail({ status: "pending_owner_approval" })} />,
+      { queryClient },
+    );
+
+    await user.click(screen.getByRole("button", { name: /owner decline/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/reason/i), "owner not available");
+    await user.click(within(dialog).getByRole("button", { name: /^decline booking$/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(receivedBody).toEqual({ reason: "owner not available" });
+  });
+});
+
+describe("BookingActions — More actions dropdown", () => {
+  it("lists secondary actions with status-aware enablement", async () => {
+    asReservationsUser();
+    const user = userEvent.setup();
+    renderWithProviders(<BookingActions booking={makeBookingDetail({ status: "checked_out" })} />);
+
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+
+    expect(screen.getByRole("menuitem", { name: /archive booking/i })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /modify dates/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /resend confirmation/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("archive action opens a confirm dialog and POSTs on confirm", async () => {
+    asReservationsUser();
+    const user = userEvent.setup();
+    const queryClient = createCachingClient();
+    queryClient.setQueryData(
+      queryKeys.bookings.detail(BOOKING_ID),
+      makeBookingDetail({ status: "checked_out", is_archived: false }),
+    );
+
+    let called = false;
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}:archive`, () => {
+        called = true;
+        return HttpResponse.json(makeBookingDetail({ status: "checked_out", is_archived: true }));
+      }),
+    );
+
+    renderWithProviders(
+      <BookingActions booking={makeBookingDetail({ status: "checked_out", is_archived: false })} />,
+      { queryClient },
+    );
+
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /archive booking/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^archive$/i }));
+
+    await waitFor(() => expect(called).toBe(true));
+    expect(toast.success).toHaveBeenCalled();
+    expect(
+      queryClient.getQueryData<BookingDetail>(queryKeys.bookings.detail(BOOKING_ID))?.is_archived,
+    ).toBe(true);
+  });
+
+  it("resend confirmation toasts on error", async () => {
+    asReservationsUser();
+    const user = userEvent.setup();
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}:resend-confirmation`, () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    renderWithProviders(
+      <BookingActions booking={makeBookingDetail({ status: "awaiting_deposit" })} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /resend confirmation/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^resend$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 });

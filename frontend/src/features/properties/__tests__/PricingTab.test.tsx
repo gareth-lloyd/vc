@@ -1,0 +1,227 @@
+import { http, HttpResponse } from "msw";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { server } from "@/test/msw/server";
+import { renderWithProviders } from "@/test/render";
+import { drfPage } from "@/test/drf";
+import { PropertyDetailLayout } from "../PropertyDetailLayout";
+import { PricingTab } from "../tabs/PricingTab";
+
+const propertyFixture = {
+  id: 5,
+  name: "Casa Norte",
+  display_name: "Casa Norte",
+  slug: "casa-norte",
+  licence_number: "ETV-1234",
+  status: "active",
+  channel: "direct",
+  category: null,
+  group: null,
+  region: null,
+  feature_ids: [],
+  legacy_id: null,
+  created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2026-05-01T00:00:00Z",
+};
+
+function installBaseHandlers() {
+  server.use(http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)));
+}
+
+function setup() {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/properties/:id" element={<PropertyDetailLayout />}>
+        <Route index element={<Navigate to="pricing" replace />} />
+        <Route path="pricing" element={<PricingTab />} />
+      </Route>
+    </Routes>,
+    { route: "/properties/casa-norte/pricing" },
+  );
+}
+
+describe("PricingTab", () => {
+  it("renders seasons, extras and discounts", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 11,
+              property: 5,
+              name: "Summer 2026",
+              currency: "EUR",
+              price_basis: "per_night",
+              effective_from: "2026-06-01",
+              effective_to: "2026-09-30",
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/extras", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 21,
+              property: 5,
+              name: "Cleaning fee",
+              kind: "service",
+              calc: "flat",
+              amount: "120.00",
+              currency: "EUR",
+              is_mandatory: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/discounts", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 31,
+              property: 5,
+              name: "Early bird",
+              code: "EARLY10",
+              kind: "percent",
+              amount: "10.00",
+              rule_kind: "code",
+              valid_from: "2026-01-01",
+              valid_to: "2026-04-30",
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+    );
+
+    setup();
+
+    expect(await screen.findByText("Summer 2026")).toBeInTheDocument();
+    expect(await screen.findByText("Cleaning fee")).toBeInTheDocument();
+    expect(await screen.findByText("Early bird")).toBeInTheDocument();
+    expect(screen.getByText("EARLY10")).toBeInTheDocument();
+  });
+
+  it("drills into a season to show rate cards and rules, then navigates back", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 11,
+              property: 5,
+              name: "Summer 2026",
+              currency: "EUR",
+              price_basis: "per_night",
+              effective_from: "2026-06-01",
+              effective_to: "2026-09-30",
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/seasons/11", () =>
+        HttpResponse.json({
+          id: 11,
+          property: 5,
+          name: "Summer 2026",
+          currency: "EUR",
+          price_basis: "per_night",
+          effective_from: "2026-06-01",
+          effective_to: "2026-09-30",
+          is_active: true,
+          cards: [
+            {
+              id: 100,
+              plan: 11,
+              name: "Standard",
+              description: "Default card",
+              min_nights: 7,
+              max_nights: 30,
+              is_active: true,
+              rules: [
+                {
+                  id: 200,
+                  card: 100,
+                  date_from: "2026-06-01",
+                  date_to: "2026-07-31",
+                  min_party: 2,
+                  max_party: 8,
+                  nightly: "350.00",
+                  weekly: "2100.00",
+                  is_poa: false,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    expect(await screen.findByText("Standard")).toBeInTheDocument();
+    expect(screen.getByText("Default card")).toBeInTheDocument();
+    expect(screen.getByText(/Nights 7–30/i)).toBeInTheDocument();
+    expect(screen.getByText("350.00")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Back to seasons/i }));
+    await waitFor(() => expect(screen.queryByText("Standard")).not.toBeInTheDocument());
+    expect(screen.getByText("Summer 2026")).toBeInTheDocument();
+  });
+
+  it("renders empty states when there are no seasons, extras, or discounts", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+    );
+
+    setup();
+
+    expect(await screen.findByText(/No seasons defined/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No extras/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No discounts/i)).toBeInTheDocument();
+  });
+
+  it("renders an error state for a failing section while other sections still render", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () =>
+        HttpResponse.json({}, { status: 500 }),
+      ),
+      http.get("/api/v1/properties/casa-norte/extras", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 21,
+              property: 5,
+              name: "Cleaning fee",
+              kind: "service",
+              calc: "flat",
+              amount: "120.00",
+              currency: "EUR",
+              is_mandatory: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+    );
+
+    setup();
+
+    expect(await screen.findByText(/Couldn't load seasons/i)).toBeInTheDocument();
+    expect(await screen.findByText("Cleaning fee")).toBeInTheDocument();
+  });
+});

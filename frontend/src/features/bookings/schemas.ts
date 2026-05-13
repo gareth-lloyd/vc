@@ -134,6 +134,30 @@ export const cancelBookingInputSchema = z.object({
 });
 export type CancelBookingInput = z.infer<typeof cancelBookingInputSchema>;
 
+export const declineBookingInputSchema = z.object({
+  reason: z.string().trim().min(1, "Reason is required").max(500, "Keep it under 500 characters"),
+});
+export type DeclineBookingInput = z.infer<typeof declineBookingInputSchema>;
+
+export const modifyDatesInputSchema = z
+  .object({
+    date_from: z.string().min(1, "Required"),
+    date_to: z.string().min(1, "Required"),
+    reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+  })
+  .refine((v) => v.date_to > v.date_from, {
+    message: "Check-out must be after check-in",
+    path: ["date_to"],
+  });
+export type ModifyDatesInput = z.infer<typeof modifyDatesInputSchema>;
+
+export const modifyGuestsInputSchema = z.object({
+  adults: z.number().int().min(1, "At least one adult"),
+  children: z.number().int().min(0, "Cannot be negative").optional(),
+  reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+});
+export type ModifyGuestsInput = z.infer<typeof modifyGuestsInputSchema>;
+
 export const bookingConciergeItemSchema = z.object({
   id: z.number(),
   booking: z.number().optional(),

@@ -5,14 +5,22 @@ import { enabledQuery } from "@/lib/query/enabledQuery";
 import { ApiError } from "@/lib/api/errors";
 import type { Paginated } from "@/types/api";
 import {
+  archiveBooking,
   cancelBooking,
+  checkInBooking,
+  checkOutBooking,
   confirmBooking,
   createBookingNote,
+  declineBooking,
   deleteBookingNote,
   fetchBooking,
   fetchBookingActivity,
   fetchBookingNotes,
   fetchBookings,
+  modifyBookingDates,
+  modifyBookingGuests,
+  resendBookingConfirmation,
+  restoreBooking,
   updateBookingNote,
 } from "./api";
 import type {
@@ -21,6 +29,9 @@ import type {
   BookingNote,
   BookingNoteWriteInput,
   CancelBookingInput,
+  DeclineBookingInput,
+  ModifyDatesInput,
+  ModifyGuestsInput,
 } from "./schemas";
 
 export const BOOKINGS_PAGE_SIZE = 50;
@@ -106,6 +117,70 @@ export function useCancelBooking(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CancelBookingInput) => cancelBooking(bookingId, input),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useDeclineBooking(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeclineBookingInput) => declineBooking(bookingId, input),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useModifyBookingDates(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ModifyDatesInput) => modifyBookingDates(bookingId, input),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useModifyBookingGuests(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ModifyGuestsInput) => modifyBookingGuests(bookingId, input),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useArchiveBooking(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveBooking(bookingId),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useRestoreBooking(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => restoreBooking(bookingId),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useCheckInBooking(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => checkInBooking(bookingId),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useCheckOutBooking(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => checkOutBooking(bookingId),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+export function useResendBookingConfirmation(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => resendBookingConfirmation(bookingId),
     onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
   });
 }

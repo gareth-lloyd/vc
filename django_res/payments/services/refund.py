@@ -22,6 +22,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from core.api.permissions import actor_has_perm
 from core.idempotency import find_by_meta_key, stamp_meta
 from payments.enums import (
     PaymentPurpose,
@@ -41,20 +42,6 @@ if TYPE_CHECKING:
 PERM_APPROVE = "payments.approve_refund"
 PERM_EXECUTE = "payments.execute_refund"
 PERM_SELF_APPROVE = "payments.self_approve_refund"
-
-
-def _actor_has_perm(actor: Any, perm: str) -> bool:
-    """Return True if `actor` carries the named permission.
-
-    A `None` actor is interpreted as a system caller and granted every
-    action — service-layer permission checks gate user actions only.
-    """
-    if actor is None:
-        return True
-    has_perm = getattr(actor, "has_perm", None)
-    if has_perm is None:
-        return False
-    return bool(has_perm(perm))
 
 
 class RefundService:
@@ -146,13 +133,13 @@ class RefundService:
         """
         if refund.status != RefundStatus.PENDING.value:
             raise ValueError(f"Refund {refund.reference}: cannot :approve from {refund.status!r}")
-        if not _actor_has_perm(actor, PERM_APPROVE):
+        if not actor_has_perm(actor, PERM_APPROVE):
             raise PermissionError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
         if (
             actor is not None
             and refund.requested_by_id is not None
             and getattr(actor, "pk", None) == refund.requested_by_id
-            and not _actor_has_perm(actor, PERM_SELF_APPROVE)
+            and not actor_has_perm(actor, PERM_SELF_APPROVE)
         ):
             raise PermissionError(
                 f"Requester cannot self-approve a refund without {PERM_SELF_APPROVE!r}",
@@ -168,7 +155,7 @@ class RefundService:
     def reject(cls, refund: Refund, *, actor: Any, reason: str) -> Refund:
         if refund.status != RefundStatus.PENDING.value:
             raise ValueError(f"Refund {refund.reference}: cannot :reject from {refund.status!r}")
-        if not _actor_has_perm(actor, PERM_APPROVE):
+        if not actor_has_perm(actor, PERM_APPROVE):
             raise PermissionError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
         refund.rejected_by = actor
         refund.rejected_at = timezone.now()
@@ -197,9 +184,7 @@ class RefundService:
             raise ValueError(f"Refund {refund.reference}: cannot :cancel from {refund.status!r}")
         # Requester may cancel while PENDING; approver/permission-holder may
         # cancel while APPROVED.
-        if refund.status == RefundStatus.APPROVED.value and not _actor_has_perm(
-            actor, PERM_APPROVE
-        ):
+        if refund.status == RefundStatus.APPROVED.value and not actor_has_perm(actor, PERM_APPROVE):
             raise PermissionError(f"actor missing {PERM_APPROVE!r} to cancel approved refund")
         refund.cancelled_at = timezone.now()
         refund.save(update_fields=["cancelled_at", "updated_at"])
@@ -225,7 +210,7 @@ class RefundService:
             return refund
         if refund.status != RefundStatus.APPROVED.value:
             raise ValueError(f"Refund {refund.reference}: cannot :execute from {refund.status!r}")
-        if not _actor_has_perm(actor, PERM_EXECUTE):
+        if not actor_has_perm(actor, PERM_EXECUTE):
             raise PermissionError(f"actor {actor!r} missing {PERM_EXECUTE!r} permission")
         # High-risk org policy: executor must differ from approver unless
         # the actor carries `payments.refund.self_approve`. Service-layer
@@ -234,7 +219,7 @@ class RefundService:
             actor is not None
             and refund.approved_by_id is not None
             and getattr(actor, "pk", None) == refund.approved_by_id
-            and not _actor_has_perm(actor, PERM_SELF_APPROVE)
+            and not actor_has_perm(actor, PERM_SELF_APPROVE)
         ):
             raise PermissionError(
                 f"Approver cannot also execute a refund without {PERM_SELF_APPROVE!r}",

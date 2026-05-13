@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
@@ -21,6 +21,20 @@ def _user_role(request: Request) -> str | None:
         return StaffRole.ADMIN.value
     role = getattr(user, "role", None)
     return role if isinstance(role, str) else None
+
+
+def actor_has_perm(actor: Any, perm: str) -> bool:
+    """Return True if `actor` carries the named permission.
+
+    A `None` actor is interpreted as a system caller and granted every
+    action — service-layer permission checks gate user actions only.
+    """
+    if actor is None:
+        return True
+    has_perm = getattr(actor, "has_perm", None)
+    if has_perm is None:
+        return False
+    return bool(has_perm(perm))
 
 
 class IsStaffRoleAdmin(BasePermission):

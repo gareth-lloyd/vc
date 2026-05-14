@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useOutletContext } from "react-router-dom";
 import {
   startOfMonth,
@@ -30,12 +31,12 @@ interface CellStatus {
   holdReason?: string;
 }
 
-const HOLD_REASON_LABELS: Record<string, string> = {
-  quotation_open: "Quotation open",
-  booking_deposit_pending: "Deposit pending",
-  owner_block: "Owner block",
-  maintenance: "Maintenance",
-  manual: "Manual hold",
+const HOLD_REASON_KEYS: Record<string, string> = {
+  quotation_open: "availability.hold_reasons.quotation_open",
+  booking_deposit_pending: "availability.hold_reasons.booking_deposit_pending",
+  owner_block: "availability.hold_reasons.owner_block",
+  maintenance: "availability.hold_reasons.maintenance",
+  manual: "availability.hold_reasons.manual",
 };
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -89,6 +90,7 @@ function cellClasses(kind: CellKind, inMonth: boolean): string {
 }
 
 export function AvailabilityTab() {
+  const { t } = useTranslation("properties");
   const { property } = useOutletContext<AvailabilityContext>();
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
 
@@ -120,7 +122,7 @@ export function AvailabilityTab() {
             variant="outline"
             size="sm"
             onClick={() => setViewMonth((m) => subMonths(m, 1))}
-            aria-label="Previous month"
+            aria-label={t("availability.prev_month")}
           >
             &#x25C0;
           </Button>
@@ -131,26 +133,28 @@ export function AvailabilityTab() {
             variant="outline"
             size="sm"
             onClick={() => setViewMonth((m) => addMonths(m, 1))}
-            aria-label="Next month"
+            aria-label={t("availability.next_month")}
           >
             &#x25B6;
           </Button>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setViewMonth(startOfMonth(new Date()))}>
-          Today
+          {t("availability.today")}
         </Button>
       </div>
 
       <div className="flex gap-4 text-xs">
         <span className="flex items-center gap-1">
-          <span className="border-border inline-block h-3 w-3 rounded border" /> Available
+          <span className="border-border inline-block h-3 w-3 rounded border" />{" "}
+          {t("availability.legend.available")}
         </span>
         <span className="flex items-center gap-1">
-          <span className="bg-primary inline-block h-3 w-3 rounded" /> Booked
+          <span className="bg-primary inline-block h-3 w-3 rounded" />{" "}
+          {t("availability.legend.booked")}
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/30" /> On
-          hold
+          <span className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/30" />{" "}
+          {t("availability.legend.on_hold")}
         </span>
       </div>
 
@@ -158,8 +162,8 @@ export function AvailabilityTab() {
         <Skeleton className="h-64 w-full" />
       ) : isError ? (
         <ErrorState
-          title="Couldn't load availability"
-          description="Try again."
+          title={t("availability.load_failed_title")}
+          description={t("availability.load_failed_body")}
           onRetry={() => {
             holds.refetch();
             bookings.refetch();
@@ -194,7 +198,7 @@ export function AvailabilityTab() {
                   key={iso}
                   to={`/bookings/${cell.bookingId}`}
                   className={cellClasses("booked", true)}
-                  title="Booked"
+                  title={t("availability.booked_title")}
                 >
                   {format(day, "d")}
                 </Link>
@@ -202,13 +206,19 @@ export function AvailabilityTab() {
             }
 
             if (cell.kind === "held") {
-              const label = HOLD_REASON_LABELS[cell.holdReason ?? ""] ?? cell.holdReason ?? "Hold";
+              const reasonKey = cell.holdReason ? HOLD_REASON_KEYS[cell.holdReason] : undefined;
+              const label = reasonKey
+                ? t(reasonKey)
+                : (cell.holdReason ?? t("availability.hold_fallback"));
               return (
                 <div
                   key={iso}
                   className={cellClasses("held", true)}
                   title={label}
-                  aria-label={`${format(day, "d MMMM")}: ${label}`}
+                  aria-label={t("availability.cell_aria", {
+                    date: format(day, "d MMMM"),
+                    status: label,
+                  })}
                 >
                   {format(day, "d")}
                 </div>

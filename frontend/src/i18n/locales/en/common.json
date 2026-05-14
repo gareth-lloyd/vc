@@ -46,6 +46,16 @@
     "tags": "Tags",
     "system": "System"
   },
+  "countries": {
+    "ES": "Spain",
+    "FR": "France",
+    "IT": "Italy",
+    "PT": "Portugal",
+    "GR": "Greece"
+  },
+  "filters": {
+    "any_country": "All countries"
+  },
   "zod": {
     "invalid_type": "Required",
     "invalid_email": "Enter a valid email",

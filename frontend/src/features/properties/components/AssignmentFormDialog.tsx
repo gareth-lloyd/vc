@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -57,6 +58,7 @@ function defaultsFromAssignment(a: PropertyContactAssignment): PropertyContactAs
 }
 
 export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
+  const { t } = useTranslation("properties");
   const { propertyId, open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -99,14 +101,16 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
           input: { role, start_date, end_date, is_primary },
         });
       }
-      toast.success(isCreate ? "Contact added" : "Assignment updated");
+      toast.success(
+        isCreate ? t("people.toasts.contact_added") : t("people.toasts.assignment_updated"),
+      );
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -115,12 +119,16 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Add contact" : "Edit assignment"}</DialogTitle>
+          <DialogTitle>
+            {isCreate
+              ? t("people.assignment_dialog.create_title")
+              : t("people.assignment_dialog.edit_title")}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           {isCreate ? (
             <div className="space-y-2">
-              <Label>Contact</Label>
+              <Label>{t("people.assignment_dialog.contact_label")}</Label>
               <ContactPicker
                 value={selectedContact}
                 onChange={handleContactSelect}
@@ -135,10 +143,10 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor="assignment-role">Role</Label>
+            <Label htmlFor="assignment-role">{t("people.assignment_dialog.role_label")}</Label>
             <Input
               id="assignment-role"
-              placeholder="e.g. owner, cleaner"
+              placeholder={t("people.assignment_dialog.role_placeholder")}
               {...form.register("role")}
             />
             {form.formState.errors.role ? (
@@ -150,11 +158,11 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="assignment-start">Start date</Label>
+              <Label htmlFor="assignment-start">{t("people.assignment_dialog.start_label")}</Label>
               <Input id="assignment-start" type="date" {...form.register("start_date")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="assignment-end">End date</Label>
+              <Label htmlFor="assignment-end">{t("people.assignment_dialog.end_label")}</Label>
               <Input id="assignment-end" type="date" {...form.register("end_date")} />
             </div>
           </div>
@@ -164,7 +172,7 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
               checked={!!form.watch("is_primary")}
               onCheckedChange={(v) => form.setValue("is_primary", v === true)}
             />
-            <span>Primary contact</span>
+            <span>{t("people.assignment_dialog.primary_label")}</span>
           </label>
 
           {topLevelError ? (
@@ -183,10 +191,14 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Save contact" : "Update assignment"}
+              {submitting
+                ? t("common:actions.saving")
+                : isCreate
+                  ? t("people.assignment_dialog.save_create")
+                  : t("people.assignment_dialog.save_edit")}
             </Button>
           </div>
         </form>

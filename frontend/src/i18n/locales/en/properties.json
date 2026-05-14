@@ -1,4 +1,237 @@
 {
+  "list": {
+    "title": "Properties",
+    "breadcrumb_library": "Library",
+    "search_placeholder": "Search by name or slug…",
+    "filter_country_aria": "Filter by country",
+    "filter_status_aria": "Filter by status",
+    "load_failed": "Couldn't load properties.",
+    "empty_title": "No properties match these filters",
+    "empty_hint": "Try clearing the search or changing the country/status filter."
+  },
+  "status": {
+    "any": "Any status",
+    "active": "Active",
+    "draft": "Draft",
+    "archived": "Archived"
+  },
+  "tabs": {
+    "details": "Details",
+    "pricing": "Pricing",
+    "availability": "Availability",
+    "people": "People",
+    "media": "Media",
+    "settings": "Settings"
+  },
+  "detail": {
+    "not_found_title": "Property not found",
+    "not_found_body": "It may have been deleted or you may not have access.",
+    "load_failed_title": "Couldn't load this property",
+    "load_failed_body": "Try again or head back to the list.",
+    "breadcrumb_list": "Properties",
+    "sections_aria": "Property sections",
+    "image_placeholder_aria": "Property image placeholder",
+    "subtitle_dash": "—",
+    "quick_actions": {
+      "open_in_availability": "Open in availability",
+      "create_booking": "Create booking",
+      "create_quote": "Create quote"
+    }
+  },
+  "columns": {
+    "name": "Name",
+    "licence": "Licence",
+    "status": "Status",
+    "channel": "Channel",
+    "updated": "Updated"
+  },
+  "details": {
+    "sections": {
+      "overview": "Overview",
+      "description": "Description",
+      "features": "Features",
+      "rooms": "Rooms"
+    },
+    "fields": {
+      "name": "Name",
+      "display_name": "Display name",
+      "slug": "Slug",
+      "licence_number": "Licence number",
+      "channel": "Channel",
+      "legacy_id": "Legacy id",
+      "created": "Created",
+      "updated": "Updated"
+    },
+    "descriptions": {
+      "error_title": "Couldn't load descriptions",
+      "error_body": "Try again.",
+      "empty_title": "No descriptions yet"
+    },
+    "features": {
+      "error_title": "Couldn't load features",
+      "error_body": "Try again.",
+      "empty_title": "No features tagged"
+    },
+    "rooms": {
+      "error_title": "Couldn't load rooms",
+      "error_body": "Try again.",
+      "empty_title": "No rooms recorded",
+      "fallback_name": "Room #{{id}}"
+    }
+  },
+  "availability": {
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "today": "Today",
+    "legend": {
+      "available": "Available",
+      "booked": "Booked",
+      "on_hold": "On hold"
+    },
+    "load_failed_title": "Couldn't load availability",
+    "load_failed_body": "Try again.",
+    "booked_title": "Booked",
+    "hold_fallback": "Hold",
+    "cell_aria": "{{date}}: {{status}}",
+    "hold_reasons": {
+      "quotation_open": "Quotation open",
+      "booking_deposit_pending": "Deposit pending",
+      "owner_block": "Owner block",
+      "maintenance": "Maintenance",
+      "manual": "Manual hold"
+    }
+  },
+  "pricing": {
+    "sections": {
+      "seasons": "Seasons",
+      "extras": "Extras",
+      "discounts": "Discounts"
+    },
+    "season_detail": {
+      "back": "← Back to seasons",
+      "error_title": "Couldn't load season",
+      "error_body": "Try again.",
+      "rate_cards_heading": "Rate cards",
+      "empty_rate_cards": "No rate cards",
+      "fields": {
+        "name": "Name",
+        "currency": "Currency",
+        "price_basis": "Price basis",
+        "effective": "Effective",
+        "status": "Status"
+      }
+    },
+    "active_badge": "Active",
+    "inactive_badge": "Inactive",
+    "seasons": {
+      "empty": "No seasons defined",
+      "error_title": "Couldn't load seasons",
+      "error_body": "Try again."
+    },
+    "rate_card": {
+      "any_length": "Any length",
+      "nights_range": "Nights {{min}}–{{max}}",
+      "nights_min_placeholder": "?",
+      "changeover_weekday": " · Changeover: weekday {{weekday}}",
+      "no_rules": "No rules",
+      "poa": "POA"
+    },
+    "rules_table": {
+      "dates": "Dates",
+      "party": "Party",
+      "nightly": "Nightly",
+      "weekly": "Weekly"
+    },
+    "extras": {
+      "empty": "No extras",
+      "error_title": "Couldn't load extras",
+      "error_body": "Try again."
+    },
+    "extras_table": {
+      "name": "Name",
+      "kind": "Kind",
+      "amount": "Amount",
+      "mandatory": "Mandatory",
+      "mandatory_yes": "Yes",
+      "mandatory_no": "No"
+    },
+    "discounts": {
+      "empty": "No discounts",
+      "error_title": "Couldn't load discounts",
+      "error_body": "Try again."
+    },
+    "discounts_table": {
+      "name": "Name",
+      "code": "Code",
+      "kind": "Kind",
+      "amount": "Amount",
+      "valid": "Valid"
+    }
+  },
+  "people": {
+    "heading": "People",
+    "add_contact": "Add contact",
+    "add_contact_role_required": "You need the Reservations role to add contacts",
+    "load_failed_title": "Couldn't load people",
+    "load_failed_body": "Try again.",
+    "empty": "No contacts assigned",
+    "sections": {
+      "active": "Active assignments",
+      "ended": "Ended assignments"
+    },
+    "empty_active": "No active assignments",
+    "section_labels": {
+      "emails": "Emails",
+      "phones": "Phones"
+    },
+    "row": {
+      "actions_menu": "Actions",
+      "edit_assignment": "Edit assignment",
+      "edit_contact": "Edit contact",
+      "remove": "Remove",
+      "add_email": "+ Add email",
+      "add_phone": "+ Add phone",
+      "menu_label": "Actions",
+      "edit": "Edit",
+      "set_as_primary": "Set as primary"
+    },
+    "fallback": {
+      "contact_with_id": "Contact #{{id}}",
+      "no_email": "—",
+      "role_unset": "—"
+    },
+    "toasts": {
+      "email_removed": "Email removed",
+      "email_remove_failed": "Failed to remove email",
+      "phone_removed": "Phone removed",
+      "phone_remove_failed": "Failed to remove phone",
+      "set_primary_failed": "Failed to set primary",
+      "assignment_removed": "Contact removed from property",
+      "assignment_remove_failed": "Failed to remove contact",
+      "contact_added": "Contact added",
+      "assignment_updated": "Assignment updated"
+    },
+    "confirm": {
+      "remove_email_title": "Remove email?",
+      "remove_email_body": "This email address will be permanently removed from this contact.",
+      "remove_phone_title": "Remove phone?",
+      "remove_phone_body": "This phone number will be permanently removed from this contact.",
+      "remove_assignment_title": "Remove contact from property?",
+      "remove_assignment_body": "This only removes the assignment — the contact itself won't be deleted."
+    },
+    "assignment_dialog": {
+      "create_title": "Add contact",
+      "edit_title": "Edit assignment",
+      "contact_label": "Contact",
+      "role_label": "Role",
+      "role_placeholder": "e.g. owner, cleaner",
+      "start_label": "Start date",
+      "end_label": "End date",
+      "primary_label": "Primary contact",
+      "save_create": "Save contact",
+      "save_edit": "Update assignment"
+    }
+  },
   "media": {
     "title": "Media",
     "add_button": "Add image",

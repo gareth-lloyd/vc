@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -22,33 +23,39 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function DetailsTab() {
+  const { t } = useTranslation("properties");
   const { property } = useOutletContext<DetailsContext>();
   const descriptions = usePropertyDescriptions(property.slug || property.id);
   const features = usePropertyFeatures(property.slug || property.id);
   const rooms = usePropertyRooms(property.slug || property.id);
 
+  const dash = t("common.unset");
+
   return (
     <div className="space-y-8 p-6">
-      <Section title="Overview">
+      <Section title={t("details.sections.overview")}>
         <FactList>
-          <FactRow label="Name" value={property.name} />
-          <FactRow label="Display name" value={property.display_name || "—"} />
-          <FactRow label="Slug" value={property.slug || "—"} />
-          <FactRow label="Licence number" value={property.licence_number || "—"} />
-          <FactRow label="Channel" value={property.channel || "—"} />
-          <FactRow label="Legacy id" value={property.legacy_id ?? "—"} />
-          <FactRow label="Created" value={formatDate(property.created_at)} />
-          <FactRow label="Updated" value={formatDate(property.updated_at)} />
+          <FactRow label={t("details.fields.name")} value={property.name} />
+          <FactRow label={t("details.fields.display_name")} value={property.display_name || dash} />
+          <FactRow label={t("details.fields.slug")} value={property.slug || dash} />
+          <FactRow
+            label={t("details.fields.licence_number")}
+            value={property.licence_number || dash}
+          />
+          <FactRow label={t("details.fields.channel")} value={property.channel || dash} />
+          <FactRow label={t("details.fields.legacy_id")} value={property.legacy_id ?? dash} />
+          <FactRow label={t("details.fields.created")} value={formatDate(property.created_at)} />
+          <FactRow label={t("details.fields.updated")} value={formatDate(property.updated_at)} />
         </FactList>
       </Section>
 
-      <Section title="Description">
+      <Section title={t("details.sections.description")}>
         {descriptions.isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : descriptions.isError ? (
           <ErrorState
-            title="Couldn't load descriptions"
-            description="Try again."
+            title={t("details.descriptions.error_title")}
+            description={t("details.descriptions.error_body")}
             onRetry={() => descriptions.refetch()}
           />
         ) : descriptions.data?.results.length ? (
@@ -59,23 +66,23 @@ export function DetailsTab() {
                 {d.body_html ? (
                   <div className="prose-sm" dangerouslySetInnerHTML={{ __html: d.body_html }} />
                 ) : (
-                  <p className="text-sm whitespace-pre-line">{d.body ?? "—"}</p>
+                  <p className="text-sm whitespace-pre-line">{d.body ?? dash}</p>
                 )}
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="No descriptions yet" />
+          <EmptyState title={t("details.descriptions.empty_title")} />
         )}
       </Section>
 
-      <Section title="Features">
+      <Section title={t("details.sections.features")}>
         {features.isLoading ? (
           <Skeleton className="h-10 w-full" />
         ) : features.isError ? (
           <ErrorState
-            title="Couldn't load features"
-            description="Try again."
+            title={t("details.features.error_title")}
+            description={t("details.features.error_body")}
             onRetry={() => features.refetch()}
           />
         ) : features.data?.results.length ? (
@@ -87,30 +94,32 @@ export function DetailsTab() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No features tagged" />
+          <EmptyState title={t("details.features.empty_title")} />
         )}
       </Section>
 
-      <Section title="Rooms">
+      <Section title={t("details.sections.rooms")}>
         {rooms.isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : rooms.isError ? (
           <ErrorState
-            title="Couldn't load rooms"
-            description="Try again."
+            title={t("details.rooms.error_title")}
+            description={t("details.rooms.error_body")}
             onRetry={() => rooms.refetch()}
           />
         ) : rooms.data?.results.length ? (
           <ul className="border-border bg-card divide-border divide-y rounded-lg border">
             {rooms.data.results.map((room) => (
               <li key={room.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span>{room.name ?? room.kind ?? `Room #${room.id}`}</span>
+                <span>
+                  {room.name ?? room.kind ?? t("details.rooms.fallback_name", { id: room.id })}
+                </span>
                 {room.count ? <span className="text-muted-foreground">×{room.count}</span> : null}
               </li>
             ))}
           </ul>
         ) : (
-          <EmptyState title="No rooms recorded" />
+          <EmptyState title={t("details.rooms.empty_title")} />
         )}
       </Section>
     </div>

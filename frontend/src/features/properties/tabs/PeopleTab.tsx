@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -38,8 +39,12 @@ interface PeopleContext {
   property: PropertyDetail;
 }
 
-function displayName(contact: Contact | undefined, fallbackId: number): string {
-  if (!contact) return `Contact #${fallbackId}`;
+function displayName(
+  contact: Contact | undefined,
+  fallbackId: number,
+  fallback: (id: number) => string,
+): string {
+  if (!contact) return fallback(fallbackId);
   return contactDisplayName(contact);
 }
 
@@ -58,6 +63,7 @@ function EmailList({
   contactId: number;
   canWrite: boolean;
 }) {
+  const { t } = useTranslation("properties");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ContactEmail | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -68,10 +74,10 @@ function EmailList({
     if (deletingId == null) return;
     try {
       await deleteEmail.mutateAsync({ emailId: deletingId });
-      toast.success("Email removed");
+      toast.success(t("people.toasts.email_removed"));
       setDeletingId(null);
     } catch {
-      toast.error("Failed to remove email");
+      toast.error(t("people.toasts.email_remove_failed"));
     }
   };
 
@@ -79,7 +85,7 @@ function EmailList({
     try {
       await setPrimary.mutateAsync({ emailId });
     } catch {
-      toast.error("Failed to set primary");
+      toast.error(t("people.toasts.set_primary_failed"));
     }
   };
 
@@ -94,7 +100,7 @@ function EmailList({
             ) : null}
             {e.is_primary ? (
               <Badge variant="outline" className="text-[10px]">
-                Primary
+                {t("common:status.primary")}
               </Badge>
             ) : null}
             {canWrite ? (
@@ -105,17 +111,19 @@ function EmailList({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditing(e)}>Edit</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEditing(e)}>
+                    {t("people.row.edit")}
+                  </DropdownMenuItem>
                   {!e.is_primary ? (
                     <DropdownMenuItem onClick={() => handleSetPrimary(e.id)}>
-                      Set as primary
+                      {t("people.row.set_as_primary")}
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem
                     className="text-destructive"
                     onClick={() => setDeletingId(e.id)}
                   >
-                    Remove
+                    {t("people.row.remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -129,7 +137,7 @@ function EmailList({
             className="h-6 px-1 text-xs"
             onClick={() => setAddOpen(true)}
           >
-            + Add email
+            {t("people.row.add_email")}
           </Button>
         ) : null}
       </div>
@@ -156,9 +164,9 @@ function EmailList({
           open
           onOpenChange={(o) => !o && setDeletingId(null)}
           onConfirm={handleDelete}
-          title="Remove email?"
-          description="This email address will be permanently removed from this contact."
-          confirmLabel="Remove"
+          title={t("people.confirm.remove_email_title")}
+          description={t("people.confirm.remove_email_body")}
+          confirmLabel={t("common:actions.remove")}
           destructive
           busy={deleteEmail.isPending}
         />
@@ -176,6 +184,7 @@ function PhoneList({
   contactId: number;
   canWrite: boolean;
 }) {
+  const { t } = useTranslation("properties");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ContactPhone | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -186,10 +195,10 @@ function PhoneList({
     if (deletingId == null) return;
     try {
       await deletePhone.mutateAsync({ phoneId: deletingId });
-      toast.success("Phone removed");
+      toast.success(t("people.toasts.phone_removed"));
       setDeletingId(null);
     } catch {
-      toast.error("Failed to remove phone");
+      toast.error(t("people.toasts.phone_remove_failed"));
     }
   };
 
@@ -197,7 +206,7 @@ function PhoneList({
     try {
       await setPrimary.mutateAsync({ phoneId });
     } catch {
-      toast.error("Failed to set primary");
+      toast.error(t("people.toasts.set_primary_failed"));
     }
   };
 
@@ -212,7 +221,7 @@ function PhoneList({
             ) : null}
             {p.is_primary ? (
               <Badge variant="outline" className="text-[10px]">
-                Primary
+                {t("common:status.primary")}
               </Badge>
             ) : null}
             {canWrite ? (
@@ -223,17 +232,19 @@ function PhoneList({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditing(p)}>Edit</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEditing(p)}>
+                    {t("people.row.edit")}
+                  </DropdownMenuItem>
                   {!p.is_primary ? (
                     <DropdownMenuItem onClick={() => handleSetPrimary(p.id)}>
-                      Set as primary
+                      {t("people.row.set_as_primary")}
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem
                     className="text-destructive"
                     onClick={() => setDeletingId(p.id)}
                   >
-                    Remove
+                    {t("people.row.remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -247,7 +258,7 @@ function PhoneList({
             className="h-6 px-1 text-xs"
             onClick={() => setAddOpen(true)}
           >
-            + Add phone
+            {t("people.row.add_phone")}
           </Button>
         ) : null}
       </div>
@@ -274,9 +285,9 @@ function PhoneList({
           open
           onOpenChange={(o) => !o && setDeletingId(null)}
           onConfirm={handleDelete}
-          title="Remove phone?"
-          description="This phone number will be permanently removed from this contact."
-          confirmLabel="Remove"
+          title={t("people.confirm.remove_phone_title")}
+          description={t("people.confirm.remove_phone_body")}
+          confirmLabel={t("common:actions.remove")}
           destructive
           busy={deletePhone.isPending}
         />
@@ -294,6 +305,7 @@ function AssignmentRow({
   propertyId: string | number;
   canWrite: boolean;
 }) {
+  const { t } = useTranslation("properties");
   const contact = useContact(assignment.contact);
   const [editOpen, setEditOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
@@ -304,16 +316,18 @@ function AssignmentRow({
       ? `${formatDate(assignment.start_date)} – ${formatDate(assignment.end_date)}`
       : null;
 
+  const dash = t("people.fallback.no_email");
+
   const handleDelete = async () => {
     try {
       await deleteMutation.mutateAsync({ mappingId: assignment.id });
-      toast.success("Contact removed from property");
+      toast.success(t("people.toasts.assignment_removed"));
       setDeleteOpen(false);
     } catch (error) {
       if (error instanceof ApiError) {
         toast.error(error.detail);
       } else {
-        toast.error("Failed to remove contact");
+        toast.error(t("people.toasts.assignment_remove_failed"));
       }
     }
   };
@@ -326,35 +340,41 @@ function AssignmentRow({
             <Skeleton className="h-4 w-32" />
           ) : (
             <span className="text-foreground truncate font-medium">
-              {displayName(contact.data, assignment.contact)}
+              {displayName(contact.data, assignment.contact, (id) =>
+                t("people.fallback.contact_with_id", { id }),
+              )}
             </span>
           )}
-          <span className="text-muted-foreground text-xs">{primaryEmail(contact.data) ?? "—"}</span>
+          <span className="text-muted-foreground text-xs">
+            {primaryEmail(contact.data) ?? dash}
+          </span>
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className="text-muted-foreground capitalize">
-            {assignment.role?.replace(/_/g, " ") ?? "—"}
+            {assignment.role?.replace(/_/g, " ") ?? t("people.fallback.role_unset")}
           </span>
-          {assignment.is_primary ? <Badge variant="secondary">Primary</Badge> : null}
+          {assignment.is_primary ? (
+            <Badge variant="secondary">{t("common:status.primary")}</Badge>
+          ) : null}
           {dateRange ? <span className="text-muted-foreground">{dateRange}</span> : null}
           {canWrite ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-6 px-2">
-                  Actions
+                  {t("people.row.actions_menu")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setEditOpen(true)}>
-                  Edit assignment
+                  {t("people.row.edit_assignment")}
                 </DropdownMenuItem>
                 {contact.data ? (
                   <DropdownMenuItem onClick={() => setEditContactOpen(true)}>
-                    Edit contact
+                    {t("people.row.edit_contact")}
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem className="text-destructive" onClick={() => setDeleteOpen(true)}>
-                  Remove
+                  {t("people.row.remove")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -366,7 +386,7 @@ function AssignmentRow({
         <div className="mt-2 ml-0 grid grid-cols-2 gap-4">
           <div>
             <span className="text-muted-foreground text-[10px] font-semibold uppercase">
-              Emails
+              {t("people.section_labels.emails")}
             </span>
             <EmailList
               emails={contact.data.emails}
@@ -376,7 +396,7 @@ function AssignmentRow({
           </div>
           <div>
             <span className="text-muted-foreground text-[10px] font-semibold uppercase">
-              Phones
+              {t("people.section_labels.phones")}
             </span>
             <PhoneList
               phones={contact.data.phones}
@@ -411,9 +431,9 @@ function AssignmentRow({
           open
           onOpenChange={setDeleteOpen}
           onConfirm={handleDelete}
-          title="Remove contact from property?"
-          description="This only removes the assignment — the contact itself won't be deleted."
-          confirmLabel="Remove"
+          title={t("people.confirm.remove_assignment_title")}
+          description={t("people.confirm.remove_assignment_body")}
+          confirmLabel={t("common:actions.remove")}
           destructive
           busy={deleteMutation.isPending}
         />
@@ -441,6 +461,7 @@ function AssignmentsList({
 }
 
 export function PeopleTab() {
+  const { t } = useTranslation("properties");
   const { property } = useOutletContext<PeopleContext>();
   const propertyKey = property.slug || property.id;
   const contacts = usePropertyContacts(propertyKey);
@@ -462,8 +483,8 @@ export function PeopleTab() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load people"
-          description="Try again."
+          title={t("people.load_failed_title")}
+          description={t("people.load_failed_body")}
           onRetry={() => contacts.refetch()}
         />
       </div>
@@ -477,38 +498,38 @@ export function PeopleTab() {
   return (
     <div className="space-y-8 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">People</h2>
+        <h2 className="text-lg font-semibold">{t("people.heading")}</h2>
         {canWrite ? (
           <Button size="sm" onClick={() => setAddOpen(true)}>
-            Add contact
+            {t("people.add_contact")}
           </Button>
         ) : (
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
                 <Button size="sm" disabled>
-                  Add contact
+                  {t("people.add_contact")}
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent>You need the Reservations role to add contacts</TooltipContent>
+            <TooltipContent>{t("people.add_contact_role_required")}</TooltipContent>
           </Tooltip>
         )}
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No contacts assigned" />
+        <EmptyState title={t("people.empty")} />
       ) : (
         <>
-          <Section title="Active assignments">
+          <Section title={t("people.sections.active")}>
             {active.length === 0 ? (
-              <EmptyState title="No active assignments" />
+              <EmptyState title={t("people.empty_active")} />
             ) : (
               <AssignmentsList assignments={active} propertyId={propertyKey} canWrite={canWrite} />
             )}
           </Section>
           {ended.length > 0 ? (
-            <Section title="Ended assignments">
+            <Section title={t("people.sections.ended")}>
               <AssignmentsList assignments={ended} propertyId={propertyKey} canWrite={canWrite} />
             </Section>
           ) : null}

@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -10,23 +12,29 @@ import { ApiError } from "@/lib/api/errors";
 import { useProperty } from "./hooks";
 
 export const PROPERTY_TABS = [
-  { slug: "details", label: "Details" },
-  { slug: "pricing", label: "Pricing" },
-  { slug: "availability", label: "Availability" },
-  { slug: "people", label: "People" },
-  { slug: "media", label: "Media" },
-  { slug: "settings", label: "Settings" },
+  { slug: "details", labelKey: "tabs.details" },
+  { slug: "pricing", labelKey: "tabs.pricing" },
+  { slug: "availability", labelKey: "tabs.availability" },
+  { slug: "people", labelKey: "tabs.people" },
+  { slug: "media", labelKey: "tabs.media" },
+  { slug: "settings", labelKey: "tabs.settings" },
 ] as const;
-
-const QUICK_ACTIONS: readonly QuickAction[] = [
-  { label: "Open in availability" },
-  { label: "Create booking" },
-  { label: "Create quote" },
-];
+export type PropertyTabSlug = (typeof PROPERTY_TABS)[number]["slug"];
+export const PROPERTY_TAB_SLUGS: readonly PropertyTabSlug[] = PROPERTY_TABS.map((t) => t.slug);
 
 export function PropertyDetailLayout() {
+  const { t } = useTranslation("properties");
   const { id } = useParams<{ id: string }>();
   const query = useProperty(id);
+
+  const quickActions = useMemo<readonly QuickAction[]>(
+    () => [
+      { label: t("detail.quick_actions.open_in_availability") },
+      { label: t("detail.quick_actions.create_booking") },
+      { label: t("detail.quick_actions.create_quote") },
+    ],
+    [t],
+  );
 
   if (query.isLoading) {
     return (
@@ -43,12 +51,8 @@ export function PropertyDetailLayout() {
     return (
       <div className="p-6">
         <ErrorState
-          title={is404 ? "Property not found" : "Couldn't load this property"}
-          description={
-            is404
-              ? "It may have been deleted or you may not have access."
-              : "Try again or head back to the list."
-          }
+          title={is404 ? t("detail.not_found_title") : t("detail.load_failed_title")}
+          description={is404 ? t("detail.not_found_body") : t("detail.load_failed_body")}
           onRetry={is404 ? undefined : () => query.refetch()}
         />
       </div>
@@ -66,11 +70,14 @@ export function PropertyDetailLayout() {
             ? property.display_name
             : undefined
         }
-        breadcrumbs={[{ label: "Properties", to: "/properties" }, { label: property.name }]}
+        breadcrumbs={[
+          { label: t("detail.breadcrumb_list"), to: "/properties" },
+          { label: property.name },
+        ]}
       />
 
       <div className="border-border border-b px-6">
-        <nav className="flex gap-1" aria-label="Property sections">
+        <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
           {PROPERTY_TABS.map((tab) => (
             <NavLink
               key={tab.slug}
@@ -84,7 +91,7 @@ export function PropertyDetailLayout() {
                 )
               }
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </NavLink>
           ))}
         </nav>
@@ -95,14 +102,16 @@ export function PropertyDetailLayout() {
           <div className="space-y-4">
             <div
               className="bg-muted aspect-[4/3] w-full rounded-md"
-              aria-label="Property image placeholder"
+              aria-label={t("detail.image_placeholder_aria")}
             />
             <div>
               <h2 className="text-foreground text-lg font-semibold">{property.name}</h2>
-              <p className="text-muted-foreground text-sm">{property.display_name || "—"}</p>
+              <p className="text-muted-foreground text-sm">
+                {property.display_name || t("detail.subtitle_dash")}
+              </p>
             </div>
             <StatusBadge status={property.status} />
-            <QuickActions actions={QUICK_ACTIONS} />
+            <QuickActions actions={quickActions} />
           </div>
         }
       >

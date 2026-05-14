@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -20,21 +21,10 @@ import type { PropertyFilters, PropertyListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";
 
-const COUNTRY_OPTIONS = [
-  { value: ALL_VALUE, label: "All countries" },
-  { value: "es", label: "Spain" },
-  { value: "fr", label: "France" },
-  { value: "it", label: "Italy" },
-  { value: "pt", label: "Portugal" },
-  { value: "gr", label: "Greece" },
-];
+const COUNTRY_VALUES = ["es", "fr", "it", "pt", "gr"] as const;
+const COUNTRY_ISO = { es: "ES", fr: "FR", it: "IT", pt: "PT", gr: "GR" } as const;
 
-const STATUS_OPTIONS = [
-  { value: ALL_VALUE, label: "Any status" },
-  { value: "active", label: "Active" },
-  { value: "draft", label: "Draft" },
-  { value: "archived", label: "Archived" },
-];
+const STATUS_VALUES = ["active", "draft", "archived"] as const;
 
 function paramsToFilters(params: URLSearchParams): PropertyFilters {
   const page = Number(params.get("page") ?? "1");
@@ -48,11 +38,25 @@ function paramsToFilters(params: URLSearchParams): PropertyFilters {
 }
 
 export function PropertiesListPage() {
+  const { t } = useTranslation("properties");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState(filters.q ?? "");
+
+  const countryOptions = [
+    { value: ALL_VALUE, label: t("common:filters.any_country") },
+    ...COUNTRY_VALUES.map((v) => ({
+      value: v,
+      label: t(`common:countries.${COUNTRY_ISO[v]}`),
+    })),
+  ];
+
+  const statusOptions = [
+    { value: ALL_VALUE, label: t("status.any") },
+    ...STATUS_VALUES.map((v) => ({ value: v, label: t(`status.${v}`) })),
+  ];
 
   useEffect(() => {
     setSearch(filters.q ?? "");
@@ -120,25 +124,25 @@ export function PropertiesListPage() {
   return (
     <div>
       <PageHeader
-        title="Properties"
-        breadcrumbs={[{ label: "Library" }, { label: "Properties" }]}
+        title={t("list.title")}
+        breadcrumbs={[{ label: t("list.breadcrumb_library") }, { label: t("list.title") }]}
       />
       <div className="space-y-4 p-6">
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search by name or slug…"
+          searchPlaceholder={t("list.search_placeholder")}
           filters={
             <>
               <Select
                 value={filters.country ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("country", v)}
               >
-                <SelectTrigger className="w-[160px]" aria-label="Filter by country">
+                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_country_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {COUNTRY_OPTIONS.map((o) => (
+                  {countryOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -149,11 +153,11 @@ export function PropertiesListPage() {
                 value={filters.status ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("status", v)}
               >
-                <SelectTrigger className="w-[160px]" aria-label="Filter by status">
+                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_status_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((o) => (
+                  {statusOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -166,7 +170,7 @@ export function PropertiesListPage() {
 
         {query.isError ? (
           <ErrorState
-            description="Couldn't load properties."
+            description={t("list.load_failed")}
             onRetry={() => query.refetch()}
             retrying={query.isFetching}
           />
@@ -184,10 +188,7 @@ export function PropertiesListPage() {
             onRowClick={handleRowClick}
             rowKey={(row) => row.id}
             emptyContent={
-              <EmptyState
-                title="No properties match these filters"
-                description="Try clearing the search or changing the country/status filter."
-              />
+              <EmptyState title={t("list.empty_title")} description={t("list.empty_hint")} />
             }
           />
         )}

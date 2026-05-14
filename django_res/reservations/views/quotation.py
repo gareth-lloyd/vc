@@ -36,7 +36,9 @@ class QuotationViewSet(viewsets.ModelViewSet):
     # internal fixtures created by the data-migration loader so legacy bookings
     # can satisfy the QuotationLine PROTECT FK. They aren't real quotes and
     # must not surface in the public API.
-    queryset = Quotation.objects.exclude(legacy_id__startswith="booking-")
+    queryset = Quotation.objects.select_related("currency").exclude(
+        legacy_id__startswith="booking-"
+    )
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter
     ordering_fields = ["created_at", "updated_at", "status"]

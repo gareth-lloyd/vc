@@ -33,7 +33,7 @@ export const quotationListItemSchema = z.object({
   status: looseStatus,
   expires_at: z.string().nullable().optional(),
   is_unbranded: z.boolean().optional().default(false),
-  terms_version: z.string().optional().default(""),
+  terms_version: z.number().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });

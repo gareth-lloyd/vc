@@ -90,6 +90,9 @@ export function FeatureFormDialog(props: Props) {
   const categoryValue = form.watch("category");
   const serviceTypeValue = form.watch("service_type");
   const isActiveValue = form.watch("is_active");
+  const idleSubmitLabel = isCreate
+    ? t("tags.features.dialog.submit_create")
+    : t("common:actions.save");
 
   useEffect(() => {
     if (open) {
@@ -247,11 +250,7 @@ export function FeatureFormDialog(props: Props) {
               {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting
-                ? t("tags.features.dialog.submit_busy")
-                : isCreate
-                  ? t("tags.features.dialog.submit_create")
-                  : t("tags.features.dialog.submit_edit")}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

@@ -120,7 +120,7 @@ export function SystemAdminPage() {
         onClick={handleSave}
         disabled={!canWrite || !dirty || updateMutation.isPending}
       >
-        {updateMutation.isPending ? t("system.actions.save_busy") : t("system.actions.save_all")}
+        {updateMutation.isPending ? t("common:actions.saving") : t("system.actions.save_all")}
       </Button>
     </div>
   );

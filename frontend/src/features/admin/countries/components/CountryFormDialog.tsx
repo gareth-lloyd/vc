@@ -65,6 +65,7 @@ export function CountryFormDialog(props: Props) {
   const updateMutation = useUpdateCountry(isCreate ? "" : props.country.iso2);
   const submitting = createMutation.isPending || updateMutation.isPending;
   const isActiveValue = form.watch("is_active");
+  const idleSubmitLabel = isCreate ? t("countries.dialog.submit_create") : t("common:actions.save");
 
   useEffect(() => {
     if (open) {
@@ -183,11 +184,7 @@ export function CountryFormDialog(props: Props) {
               {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting
-                ? t("countries.dialog.submit_busy")
-                : isCreate
-                  ? t("countries.dialog.submit_create")
-                  : t("countries.dialog.submit_edit")}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

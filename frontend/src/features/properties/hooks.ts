@@ -9,12 +9,15 @@ import {
   createPropertyImage,
   createPropertyNearbyPlace,
   createPropertyRoom,
+  createSeason,
   deleteChangeOverRule,
   deletePropertyContact,
   deletePropertyDescription,
   deletePropertyImage,
   deletePropertyNearbyPlace,
   deletePropertyRoom,
+  deleteSeason,
+  duplicateSeason,
   fetchChangeOverRules,
   fetchNearbyPlaceTypes,
   fetchProperties,
@@ -44,6 +47,7 @@ import {
   updatePropertyNearbyPlace,
   updatePropertyRoom,
   updatePropertySettings,
+  updateSeason,
   upsertPropertyDescription,
 } from "./api";
 import type {
@@ -56,6 +60,7 @@ import type {
   PropertyNearbyPlaceWriteInput,
   PropertyRoomWriteInput,
   PropertySettingsWriteInput,
+  RatePlanWriteInput,
 } from "./schemas";
 
 export const PROPERTIES_PAGE_SIZE = 50;
@@ -182,6 +187,54 @@ export function usePropertySeasons(idOrSlug: PropertyId | undefined) {
 
 export function useSeasonDetail(seasonId: SeasonId | undefined) {
   return useQuery(enabledQuery(seasonId, queryKeys.properties.seasonDetail, fetchSeasonDetail));
+}
+
+export function useCreateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RatePlanWriteInput) => createSeason(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
+}
+
+interface UpdateSeasonVars {
+  seasonId: SeasonId;
+  input: Partial<RatePlanWriteInput>;
+}
+
+export function useUpdateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId, input }: UpdateSeasonVars) => updateSeason(seasonId, input),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.properties.seasonDetail(vars.seasonId),
+      });
+    },
+  });
+}
+
+export function useDeleteSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => deleteSeason(seasonId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
+}
+
+export function useDuplicateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => duplicateSeason(seasonId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
 }
 
 export function usePropertyExtras(idOrSlug: PropertyId | undefined) {

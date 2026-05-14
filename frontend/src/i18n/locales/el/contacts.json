@@ -1,0 +1,138 @@
+{
+  "aria": {
+    "picker_search": "Αναζήτηση επαφών",
+    "picker_results": "Αποτελέσματα αναζήτησης"
+  },
+  "audit": {
+    "title": "Έλεγχος",
+    "empty": {
+      "title": "Δεν υπάρχουν καταχωρήσεις ελέγχου για αυτή την επαφή ακόμα",
+      "description": "Οι αλλαγές σε αυτή την επαφή θα εμφανιστούν εδώ."
+    }
+  },
+  "headings": {
+    "list_title": "Επαφές",
+    "library": "Βιβλιοθήκη",
+    "create_dialog": "Δημιουργία επαφής",
+    "edit_dialog": "Επεξεργασία επαφής",
+    "add_email_dialog": "Προσθήκη email",
+    "edit_email_dialog": "Επεξεργασία email",
+    "add_phone_dialog": "Προσθήκη τηλεφώνου",
+    "edit_phone_dialog": "Επεξεργασία τηλεφώνου",
+    "overview": "Επισκόπηση",
+    "emails": "Emails",
+    "phones": "Τηλέφωνα",
+    "property_assignments": "Αναθέσεις ακινήτων",
+    "sections_aria": "Ενότητες επαφής"
+  },
+  "tabs": {
+    "details": "Στοιχεία",
+    "properties": "Ακίνητα",
+    "notes": "Σημειώσεις",
+    "audit": "Έλεγχος"
+  },
+  "actions": {
+    "new": "Νέα επαφή",
+    "create": "Δημιουργία επαφής",
+    "add_email": "Προσθήκη email",
+    "add_phone": "Προσθήκη τηλεφώνου",
+    "set_as_primary": "Ορισμός ως κύριο",
+    "actions_menu_aria": "Ενέργειες",
+    "create_new_inline": "+ Δημιουργία νέας επαφής"
+  },
+  "fields": {
+    "name": "Όνομα",
+    "company": "Εταιρεία",
+    "email": "Email",
+    "phone": "Τηλέφωνο",
+    "status": "Κατάσταση",
+    "title": "Τίτλος",
+    "first_name": "Όνομα",
+    "last_name": "Επώνυμο",
+    "website": "Ιστότοπος",
+    "preferred_contact_method": "Προτιμώμενος τρόπος επικοινωνίας",
+    "preferred_method": "Προτιμώμενος τρόπος",
+    "address_line_1": "Διεύθυνση γραμμή 1",
+    "address_line_2": "Διεύθυνση γραμμή 2",
+    "notes": "Σημειώσεις",
+    "label": "Ετικέτα",
+    "phone_number": "Αριθμός τηλεφώνου",
+    "property": "Ακίνητο",
+    "role": "Ρόλος",
+    "primary": "Κύριο",
+    "start": "Έναρξη",
+    "end": "Λήξη"
+  },
+  "placeholders": {
+    "search": "Αναζήτηση κατά όνομα, εταιρεία ή email…",
+    "title": "Κος, Κα…",
+    "preferred_method": "email, τηλέφωνο…",
+    "email": "name@example.com",
+    "phone": "+30 210 123 4567",
+    "email_label": "π.χ. εργασία, προσωπικό",
+    "phone_label": "π.χ. κινητό, γραφείο",
+    "picker_trigger": "Επιλέξτε μια επαφή…",
+    "picker_search": "Αναζήτηση επαφών…"
+  },
+  "status": {
+    "any": "Οποιαδήποτε κατάσταση",
+    "active": "Ενεργή",
+    "inactive": "Ανενεργή",
+    "archived": "Αρχειοθετημένη"
+  },
+  "filters": {
+    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση"
+  },
+  "checkboxes": {
+    "primary_email": "Κύριο email",
+    "primary_phone": "Κύριο τηλέφωνο"
+  },
+  "toasts": {
+    "created": "Η επαφή δημιουργήθηκε",
+    "updated": "Η επαφή ενημερώθηκε",
+    "deleted": "Η επαφή διαγράφηκε",
+    "email_added": "Το email προστέθηκε",
+    "email_updated": "Το email ενημερώθηκε",
+    "email_removed": "Το email αφαιρέθηκε",
+    "phone_added": "Το τηλέφωνο προστέθηκε",
+    "phone_updated": "Το τηλέφωνο ενημερώθηκε",
+    "phone_removed": "Το τηλέφωνο αφαιρέθηκε",
+    "email_remove_failed": "Αποτυχία αφαίρεσης email",
+    "phone_remove_failed": "Αποτυχία αφαίρεσης τηλεφώνου",
+    "set_primary_failed": "Αποτυχία ορισμού ως κύριο"
+  },
+  "empty": {
+    "list_title": "Δεν υπάρχουν επαφές που να ταιριάζουν με αυτά τα φίλτρα",
+    "list_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε το φίλτρο κατάστασης.",
+    "emails": "Δεν υπάρχουν emails ακόμα",
+    "phones": "Δεν υπάρχουν τηλέφωνα ακόμα",
+    "property_assignments": "Δεν υπάρχουν αναθέσεις ακινήτων",
+    "picker_min_chars": "Πληκτρολογήστε τουλάχιστον 2 χαρακτήρες για αναζήτηση",
+    "picker_no_results": "Δεν βρέθηκαν επαφές"
+  },
+  "errors": {
+    "load_failed": "Δεν ήταν δυνατή η φόρτωση επαφών.",
+    "load_properties_failed": "Δεν ήταν δυνατή η φόρτωση ακινήτων",
+    "load_properties_retry": "Δοκιμάστε ξανά.",
+    "picker_search_failed": "Η αναζήτηση απέτυχε",
+    "detail_not_found_title": "Η επαφή δεν βρέθηκε",
+    "detail_load_failed_title": "Δεν ήταν δυνατή η φόρτωση αυτής της επαφής",
+    "detail_not_found_body": "Μπορεί να έχει διαγραφεί ή να μην έχετε πρόσβαση.",
+    "detail_load_failed_body": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
+    "name_or_company_required": "Απαιτείται τουλάχιστον όνομα ή εταιρεία"
+  },
+  "tooltips": {
+    "create_role_required": "Χρειάζεστε τον ρόλο Κρατήσεων για να δημιουργήσετε επαφές"
+  },
+  "confirm": {
+    "delete_title": "Διαγραφή αυτής της επαφής;",
+    "delete_body": "Αυτό θα αφαιρέσει οριστικά την επαφή και τα στοιχεία email/τηλεφώνου της.",
+    "remove_email_title": "Αφαίρεση email;",
+    "remove_email_body": "Αυτή η διεύθυνση email θα αφαιρεθεί οριστικά από αυτή την επαφή.",
+    "remove_phone_title": "Αφαίρεση τηλεφώνου;",
+    "remove_phone_body": "Αυτός ο αριθμός τηλεφώνου θα αφαιρεθεί οριστικά από αυτή την επαφή."
+  },
+  "fallback": {
+    "name_with_id": "Επαφή #{{id}}"
+  }
+}

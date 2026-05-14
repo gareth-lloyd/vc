@@ -179,6 +179,8 @@ export interface PropertyFilters {
   page?: number;
 }
 
+export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
+
 export const rateRuleSchema = z.object({
   id: z.number(),
   card: z.number(),
@@ -215,8 +217,8 @@ export const ratePlanSchema = z.object({
   id: z.number(),
   property: z.number(),
   name: z.string(),
-  currency: z.string().nullable().optional(),
-  price_basis: z.string().nullable().optional(),
+  currency: z.number().nullable().optional(),
+  price_basis: z.enum(PROPERTY_PRICE_BASES).nullable().optional(),
   effective_from: z.string().nullable().optional(),
   effective_to: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
@@ -360,7 +362,28 @@ export const propertyImageWriteInputSchema = z.object({
 export type PropertyImageWriteInput = z.infer<typeof propertyImageWriteInputSchema>;
 
 export const PROPERTY_AVAILABILITY_DEFAULTS = ["available", "unavailable", "on_request"] as const;
-export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
+
+export const ratePlanWriteInputSchema = z
+  .object({
+    name: z.string().trim().min(1, { message: "properties:errors.season_name_required" }).max(255),
+    currency: z
+      .number({ message: "properties:errors.season_currency_required" })
+      .int()
+      .min(1, { message: "properties:errors.season_currency_required" }),
+    price_basis: z.enum(PROPERTY_PRICE_BASES),
+    effective_from: z
+      .string()
+      .min(1, { message: "properties:errors.season_effective_from_required" }),
+    effective_to: z.string().optional(),
+    is_active: z.boolean().optional(),
+    notes: z.string().trim().optional(),
+    inclusion: z.string().trim().optional(),
+  })
+  .refine((v) => !v.effective_to || v.effective_to >= v.effective_from, {
+    path: ["effective_to"],
+    message: "properties:errors.season_effective_to_before_from",
+  });
+export type RatePlanWriteInput = z.infer<typeof ratePlanWriteInputSchema>;
 
 export const propertySettingsSchema = z.object({
   property: z.number(),

@@ -1,16 +1,29 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { Section } from "@/components/data/Section";
+import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
+import { SeasonFormDialog } from "../components/SeasonFormDialog";
 import {
+  useDeleteSeason,
+  useDuplicateSeason,
   usePropertyDiscounts,
   usePropertyExtras,
   usePropertySeasons,
@@ -34,9 +47,17 @@ function ActiveBadge({ isActive }: { isActive: boolean | undefined }) {
 function SeasonsList({
   seasons,
   onSelect,
+  canWrite,
+  onEdit,
+  onDuplicate,
+  onDelete,
 }: {
   seasons: RatePlan[];
   onSelect: (seasonId: number) => void;
+  canWrite: boolean;
+  onEdit: (season: RatePlan) => void;
+  onDuplicate: (season: RatePlan) => void;
+  onDelete: (season: RatePlan) => void;
 }) {
   const { t } = useTranslation("properties");
   if (seasons.length === 0) {
@@ -45,11 +66,11 @@ function SeasonsList({
   return (
     <ul className="border-border bg-card divide-border divide-y rounded-lg border">
       {seasons.map((plan) => (
-        <li key={plan.id}>
+        <li key={plan.id} className="flex items-center gap-2 pr-2">
           <button
             type="button"
             onClick={() => onSelect(plan.id)}
-            className="hover:bg-accent flex w-full items-center justify-between px-4 py-3 text-left text-sm"
+            className="hover:bg-accent flex flex-1 items-center justify-between px-4 py-3 text-left text-sm"
           >
             <span className="flex flex-col">
               <span className="text-foreground font-medium">{plan.name}</span>
@@ -60,6 +81,31 @@ function SeasonsList({
             </span>
             <ActiveBadge isActive={plan.is_active} />
           </button>
+          {canWrite ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  aria-label={t("pricing.seasons.row.menu_label")}
+                >
+                  ···
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(plan)}>
+                  {t("pricing.seasons.row.edit")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onDuplicate(plan)}>
+                  {t("pricing.seasons.row.duplicate")}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive" onClick={() => onDelete(plan)}>
+                  {t("pricing.seasons.row.delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -254,11 +300,60 @@ export function PricingTab() {
   const seasons = usePropertySeasons(propertyKey);
   const extras = usePropertyExtras(propertyKey);
   const discounts = usePropertyDiscounts(propertyKey);
+  const canWrite = useHasReservationsRole();
+  const deleteSeasonMutation = useDeleteSeason(property.id);
+  const duplicateSeasonMutation = useDuplicateSeason(property.id);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
+  const [addSeasonOpen, setAddSeasonOpen] = useState(false);
+  const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
+  const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
+  const [duplicatingSeason, setDuplicatingSeason] = useState<RatePlan | null>(null);
+
+  const handleDeleteSeason = async () => {
+    if (!deletingSeason) return;
+    try {
+      await deleteSeasonMutation.mutateAsync({ seasonId: deletingSeason.id });
+      toast.success(t("pricing.seasons.toasts.deleted"));
+      setDeletingSeason(null);
+    } catch {
+      toast.error(t("pricing.seasons.toasts.delete_failed"));
+    }
+  };
+
+  const handleDuplicateSeason = async () => {
+    if (!duplicatingSeason) return;
+    try {
+      await duplicateSeasonMutation.mutateAsync({ seasonId: duplicatingSeason.id });
+      toast.success(t("pricing.seasons.toasts.duplicated"));
+      setDuplicatingSeason(null);
+    } catch {
+      toast.error(t("pricing.seasons.toasts.duplicate_failed"));
+    }
+  };
+
+  const addSeasonButton = canWrite ? (
+    <Button size="sm" onClick={() => setAddSeasonOpen(true)}>
+      {t("pricing.seasons.add_button")}
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button size="sm" disabled>
+            {t("pricing.seasons.add_button")}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("pricing.seasons.add_button_disabled_tooltip")}</TooltipContent>
+    </Tooltip>
+  );
 
   return (
     <div className="space-y-8 p-6">
-      <Section title={t("pricing.sections.seasons")}>
+      <Section
+        title={t("pricing.sections.seasons")}
+        actions={selectedSeasonId == null ? addSeasonButton : null}
+      >
         {seasons.isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : seasons.isError ? (
@@ -270,7 +365,14 @@ export function PricingTab() {
         ) : selectedSeasonId != null ? (
           <SeasonDetailPanel seasonId={selectedSeasonId} onBack={() => setSelectedSeasonId(null)} />
         ) : (
-          <SeasonsList seasons={seasons.data?.results ?? []} onSelect={setSelectedSeasonId} />
+          <SeasonsList
+            seasons={seasons.data?.results ?? []}
+            onSelect={setSelectedSeasonId}
+            canWrite={canWrite}
+            onEdit={setEditingSeason}
+            onDuplicate={setDuplicatingSeason}
+            onDelete={setDeletingSeason}
+          />
         )}
       </Section>
 
@@ -301,6 +403,47 @@ export function PricingTab() {
           <DiscountsTable discounts={discounts.data?.results ?? []} />
         )}
       </Section>
+
+      {addSeasonOpen ? (
+        <SeasonFormDialog
+          propertyId={property.id}
+          open={addSeasonOpen}
+          onOpenChange={setAddSeasonOpen}
+          mode="create"
+        />
+      ) : null}
+      {editingSeason ? (
+        <SeasonFormDialog
+          propertyId={property.id}
+          open={!!editingSeason}
+          onOpenChange={(o) => !o && setEditingSeason(null)}
+          mode="edit"
+          season={editingSeason}
+        />
+      ) : null}
+      {deletingSeason ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDeletingSeason(null)}
+          onConfirm={handleDeleteSeason}
+          title={t("pricing.seasons.delete_confirm.title")}
+          description={t("pricing.seasons.delete_confirm.description")}
+          confirmLabel={t("pricing.seasons.delete_confirm.confirm")}
+          destructive
+          busy={deleteSeasonMutation.isPending}
+        />
+      ) : null}
+      {duplicatingSeason ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDuplicatingSeason(null)}
+          onConfirm={handleDuplicateSeason}
+          title={t("pricing.seasons.duplicate_confirm.title")}
+          description={t("pricing.seasons.duplicate_confirm.description")}
+          confirmLabel={t("pricing.seasons.duplicate_confirm.confirm")}
+          busy={duplicateSeasonMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

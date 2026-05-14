@@ -98,9 +98,55 @@ Reference: `PropertyDetailLayout.tsx`.
 
 ### Internationalization (i18n)
 
-react-i18next is wired up app-wide. Every user-facing string goes
-through `t()`; no raw English literals in JSX, toasts, placeholders,
-schema messages, or empty states.
+react-i18next is wired up app-wide. **Plain user-facing string literals
+are banned.** Every user-facing string goes through `t()` — no
+exceptions for "obvious" copy, single-word labels, or short button text.
+
+This rule covers (non-exhaustive):
+
+- JSX text nodes (`<div>Save</div>` → `<div>{t("actions.save")}</div>`).
+- Element attributes that render copy: `placeholder`, `aria-label`,
+  `aria-description`, `title`, `alt`, `label`, `description`.
+- Toast messages (`toast.success(...)`, `toast.error(...)`).
+- Zod schema messages — pass an i18n key string, see "Zod messages" below.
+- Validation error fallbacks, empty states, loading states, error states.
+- Confirmation dialog titles, bodies, button labels.
+- Tooltips, badges, status pips.
+- Tab labels — store as `{ slug, labelKey }` objects, never bare strings.
+- Page titles, breadcrumbs, section headings.
+
+**Allowed literals** (these are not user-facing copy):
+
+- Brand: `"Villa Collective"` stays a literal.
+- Code identifiers: enum values, query keys, route paths, CSS class
+  names, test IDs.
+- Test assertions: `getByText("Save")` is allowed — the i18n layer
+  resolves to English in tests.
+- Dev-only strings: `console.warn`, `throw new Error(...)`, debug
+  labels, dev-only fallbacks behind `import.meta.env.DEV`.
+- API payload fields (request bodies, query params).
+- Numeric/symbolic UI atoms with no linguistic content (`"—"`, `"·"`,
+  `"#"`).
+- Data fixtures and seed values inside `__tests__/` and `test/`.
+
+**When adding a new string**, the workflow is fixed:
+
+1. Pick a namespace — feature namespace by default; `common` only for
+   things genuinely reused across features.
+2. Add the key to `src/i18n/locales/en/<namespace>.json` under a nested
+   path (`actions.*`, `fields.*`, `errors.*`, `empty.*`, `toasts.*`,
+   `placeholders.*`, etc.).
+3. Use it: `t("actions.save")` (same-namespace) or
+   `t("common:actions.save")` (cross-namespace).
+4. Never construct a key from interpolated input
+   (``t(`status.${value}`)``) **unless** the fragment is a typed
+   enum value — that's the only sanctioned dynamic-key pattern, and
+   it's documented per feature (e.g. `bookingStatusLabel`,
+   `enquiryStatusLabel`).
+
+**Interpolation, not concatenation.** `t("rail.party", { adults })` —
+never `` `${adults} adults` ``. Pluralisation uses i18next's native
+`_one` / `_other` suffixes: `t("columns.nights", { count: n })`.
 
 - **Locale source of truth**: `User.preferred_language` on the backend
   (exposed via `GET/PATCH /auth/me`). `useLanguageSync` (mounted inside

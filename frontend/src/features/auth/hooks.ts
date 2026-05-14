@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
-import { fetchMe, fetchPermissions, login, logout, verifyTfa } from "./api";
+import { fetchMe, fetchPermissions, login, logout, updateMe, verifyTfa } from "./api";
 import { useAuthStore } from "./store";
-import type { LoginInput, TfaVerifyInput } from "./schemas";
+import type { LoginInput, TfaVerifyInput, UserMe } from "./schemas";
 
 export function useMe() {
   return useQuery({
@@ -40,6 +40,16 @@ export function useVerifyTfa() {
     mutationFn: (input: TfaVerifyInput) => verifyTfa(input),
     onSuccess: async () => {
       useAuthStore.getState().setPendingTfa(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me() });
+    },
+  });
+}
+
+export function useUpdateMe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<Pick<UserMe, "preferred_language">>) => updateMe(input),
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me() });
     },
   });

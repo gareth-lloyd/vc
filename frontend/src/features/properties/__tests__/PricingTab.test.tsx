@@ -6,8 +6,26 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
+import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
 import { PricingTab } from "../tabs/PricingTab";
+
+function setReservationsUser() {
+  useAuthStore.getState().setMe(
+    {
+      id: 1,
+      email: "a@test.com",
+      first_name: "A",
+      last_name: "T",
+      is_active: true,
+      is_staff: true,
+      is_superuser: false,
+      preferred_language: "en",
+      role: "RESERVATIONS",
+    },
+    { role: "RESERVATIONS", is_superuser: false, permissions: [] },
+  );
+}
 
 const propertyFixture = {
   id: 5,
@@ -53,8 +71,8 @@ describe("PricingTab", () => {
               id: 11,
               property: 5,
               name: "Summer 2026",
-              currency: "EUR",
-              price_basis: "per_night",
+              currency: 42,
+              price_basis: "gross",
               effective_from: "2026-06-01",
               effective_to: "2026-09-30",
               is_active: true,
@@ -116,8 +134,8 @@ describe("PricingTab", () => {
               id: 11,
               property: 5,
               name: "Summer 2026",
-              currency: "EUR",
-              price_basis: "per_night",
+              currency: 42,
+              price_basis: "gross",
               effective_from: "2026-06-01",
               effective_to: "2026-09-30",
               is_active: true,
@@ -132,8 +150,8 @@ describe("PricingTab", () => {
           id: 11,
           property: 5,
           name: "Summer 2026",
-          currency: "EUR",
-          price_basis: "per_night",
+          currency: 42,
+          price_basis: "gross",
           effective_from: "2026-06-01",
           effective_to: "2026-09-30",
           is_active: true,
@@ -192,6 +210,112 @@ describe("PricingTab", () => {
     expect(await screen.findByText(/No seasons defined/i)).toBeInTheDocument();
     expect(await screen.findByText(/No extras/i)).toBeInTheDocument();
     expect(await screen.findByText(/No discounts/i)).toBeInTheDocument();
+  });
+
+  it("disables Add season when the user lacks the RESERVATIONS role", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+    );
+    setup();
+    const btn = await screen.findByRole("button", { name: /add season/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it("deletes a season via the row menu and confirm dialog", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 11,
+              property: 5,
+              name: "Summer 2026",
+              currency: 42,
+              price_basis: "gross",
+              effective_from: "2026-06-01",
+              effective_to: "2026-09-30",
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+    );
+    let deleteCalled = false;
+    server.use(
+      http.delete("/api/v1/seasons/11", () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    setup();
+    await waitFor(() => expect(screen.getByText("Summer 2026")).toBeInTheDocument());
+    const menu = await screen.findByRole("button", { name: /actions/i });
+    await userEvent.click(menu);
+    await userEvent.click(await screen.findByText(/^Delete$/i));
+    await userEvent.click(await screen.findByRole("button", { name: /^Remove$/i }));
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    useAuthStore.getState().clear();
+  });
+
+  it("duplicates a season via the row menu and confirm dialog", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte/seasons", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 11,
+              property: 5,
+              name: "Summer 2026",
+              currency: 42,
+              price_basis: "gross",
+              effective_from: "2026-06-01",
+              effective_to: "2026-09-30",
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+    );
+    let duplicateCalled = false;
+    server.use(
+      http.post("/api/v1/seasons/11:duplicate", () => {
+        duplicateCalled = true;
+        return HttpResponse.json(
+          {
+            id: 12,
+            property: 5,
+            name: "Summer 2026 (copy)",
+            currency: 42,
+            price_basis: "gross",
+            effective_from: "2026-06-01",
+            effective_to: "2026-09-30",
+            is_active: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    setup();
+    await waitFor(() => expect(screen.getByText("Summer 2026")).toBeInTheDocument());
+    const menu = await screen.findByRole("button", { name: /actions/i });
+    await userEvent.click(menu);
+    await userEvent.click(await screen.findByText(/^Duplicate$/i));
+    await userEvent.click(await screen.findByRole("button", { name: /^Duplicate$/i }));
+    await waitFor(() => expect(duplicateCalled).toBe(true));
+    useAuthStore.getState().clear();
   });
 
   it("renders an error state for a failing section while other sections still render", async () => {

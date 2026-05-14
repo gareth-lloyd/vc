@@ -64,7 +64,8 @@
     "tags": "Tags",
     "system": "System",
     "profile": "Profile",
-    "sign_out": "Sign out"
+    "sign_out": "Sign out",
+    "language": "Language"
   },
   "countries": {
     "ES": "Spain",

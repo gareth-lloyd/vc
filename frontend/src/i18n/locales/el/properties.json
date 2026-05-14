@@ -1,0 +1,661 @@
+{
+  "list": {
+    "title": "Ακίνητα",
+    "breadcrumb_library": "Βιβλιοθήκη",
+    "search_placeholder": "Αναζήτηση κατά όνομα ή slug…",
+    "filter_country_aria": "Φιλτράρισμα κατά χώρα",
+    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση",
+    "load_failed": "Δεν ήταν δυνατή η φόρτωση ακινήτων.",
+    "empty_title": "Δεν υπάρχουν ακίνητα που να ταιριάζουν με αυτά τα φίλτρα",
+    "empty_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε το φίλτρο χώρας/κατάστασης."
+  },
+  "status": {
+    "any": "Οποιαδήποτε κατάσταση",
+    "active": "Ενεργό",
+    "draft": "Πρόχειρο",
+    "archived": "Αρχειοθετημένο"
+  },
+  "tabs": {
+    "details": "Στοιχεία",
+    "rooms": "Δωμάτια",
+    "nearby": "Πλησίον",
+    "pricing": "Τιμολόγηση",
+    "availability": "Διαθεσιμότητα",
+    "people": "Άτομα",
+    "media": "Μέσα",
+    "features": "Χαρακτηριστικά",
+    "settings": "Ρυθμίσεις"
+  },
+  "detail": {
+    "not_found_title": "Το ακίνητο δεν βρέθηκε",
+    "not_found_body": "Μπορεί να έχει διαγραφεί ή να μην έχετε πρόσβαση.",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση αυτού του ακινήτου",
+    "load_failed_body": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
+    "breadcrumb_list": "Ακίνητα",
+    "sections_aria": "Ενότητες ακινήτου",
+    "image_placeholder_aria": "Σύμβολο κράτησης εικόνας ακινήτου",
+    "subtitle_dash": "—",
+    "quick_actions": {
+      "open_in_availability": "Άνοιγμα στη διαθεσιμότητα",
+      "create_booking": "Δημιουργία κράτησης",
+      "create_quote": "Δημιουργία προσφοράς"
+    }
+  },
+  "columns": {
+    "name": "Όνομα",
+    "licence": "Άδεια",
+    "status": "Κατάσταση",
+    "channel": "Κανάλι",
+    "updated": "Ενημερώθηκε"
+  },
+  "details": {
+    "sections": {
+      "overview": "Επισκόπηση",
+      "description": "Περιγραφή",
+      "features": "Χαρακτηριστικά",
+      "rooms": "Δωμάτια"
+    },
+    "fields": {
+      "name": "Όνομα",
+      "display_name": "Εμφανιζόμενο όνομα",
+      "slug": "Slug",
+      "licence_number": "Αριθμός άδειας",
+      "channel": "Κανάλι",
+      "legacy_id": "Παλιό id",
+      "created": "Δημιουργήθηκε",
+      "updated": "Ενημερώθηκε"
+    },
+    "descriptions": {
+      "error_title": "Δεν ήταν δυνατή η φόρτωση περιγραφών",
+      "error_body": "Δοκιμάστε ξανά.",
+      "empty_title": "Δεν υπάρχουν περιγραφές ακόμα"
+    },
+    "features": {
+      "error_title": "Δεν ήταν δυνατή η φόρτωση χαρακτηριστικών",
+      "error_body": "Δοκιμάστε ξανά.",
+      "empty_title": "Δεν έχουν προστεθεί ετικέτες χαρακτηριστικών"
+    },
+    "rooms": {
+      "error_title": "Δεν ήταν δυνατή η φόρτωση δωματίων",
+      "error_body": "Δοκιμάστε ξανά.",
+      "empty_title": "Δεν έχουν καταχωρηθεί δωμάτια",
+      "fallback_name": "Δωμάτιο #{{id}}",
+      "ensuite_marker": "Με ιδιωτικό μπάνιο"
+    }
+  },
+  "availability": {
+    "prev_month": "Προηγούμενος μήνας",
+    "next_month": "Επόμενος μήνας",
+    "today": "Σήμερα",
+    "legend": {
+      "available": "Διαθέσιμο",
+      "booked": "Κρατημένο",
+      "on_hold": "Δεσμευμένο"
+    },
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση διαθεσιμότητας",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "booked_title": "Κρατημένο",
+    "hold_fallback": "Δέσμευση",
+    "cell_aria": "{{date}}: {{status}}",
+    "hold_reasons": {
+      "quotation_open": "Ανοιχτή προσφορά",
+      "booking_deposit_pending": "Εκκρεμεί προκαταβολή",
+      "owner_block": "Αποκλεισμός ιδιοκτήτη",
+      "maintenance": "Συντήρηση",
+      "manual": "Χειροκίνητη δέσμευση"
+    }
+  },
+  "pricing": {
+    "sections": {
+      "seasons": "Σεζόν",
+      "extras": "Έξτρα",
+      "discounts": "Εκπτώσεις"
+    },
+    "season_detail": {
+      "back": "← Πίσω στις σεζόν",
+      "error_title": "Δεν ήταν δυνατή η φόρτωση σεζόν",
+      "error_body": "Δοκιμάστε ξανά.",
+      "rate_cards_heading": "Τιμοκατάλογοι",
+      "empty_rate_cards": "Δεν υπάρχουν τιμοκατάλογοι",
+      "fields": {
+        "name": "Όνομα",
+        "currency": "Νόμισμα",
+        "price_basis": "Βάση τιμής",
+        "effective": "Ισχύει",
+        "status": "Κατάσταση"
+      }
+    },
+    "active_badge": "Ενεργό",
+    "inactive_badge": "Ανενεργό",
+    "seasons": {
+      "empty": "Δεν έχουν οριστεί σεζόν",
+      "error_title": "Δεν ήταν δυνατή η φόρτωση σεζόν",
+      "error_body": "Δοκιμάστε ξανά."
+    },
+    "rate_card": {
+      "any_length": "Οποιαδήποτε διάρκεια",
+      "nights_range": "Βράδια {{min}}–{{max}}",
+      "nights_min_placeholder": "?",
+      "changeover_weekday": " · Αλλαγή: ημέρα {{weekday}}",
+      "no_rules": "Χωρίς κανόνες",
+      "poa": "Κατόπιν αιτήματος"
+    },
+    "rules_table": {
+      "dates": "Ημερομηνίες",
+      "party": "Παρέα",
+      "nightly": "Ανά βράδυ",
+      "weekly": "Εβδομαδιαία"
+    },
+    "extras": {
+      "empty": "Δεν υπάρχουν έξτρα",
+      "error_title": "Δεν ήταν δυνατή η φόρτωση έξτρα",
+      "error_body": "Δοκιμάστε ξανά."
+    },
+    "extras_table": {
+      "name": "Όνομα",
+      "kind": "Είδος",
+      "amount": "Ποσό",
+      "mandatory": "Υποχρεωτικό",
+      "mandatory_yes": "Ναι",
+      "mandatory_no": "Όχι"
+    },
+    "discounts": {
+      "empty": "Δεν υπάρχουν εκπτώσεις",
+      "error_title": "Δεν ήταν δυνατή η φόρτωση εκπτώσεων",
+      "error_body": "Δοκιμάστε ξανά."
+    },
+    "discounts_table": {
+      "name": "Όνομα",
+      "code": "Κωδικός",
+      "kind": "Είδος",
+      "amount": "Ποσό",
+      "valid": "Ισχύει"
+    }
+  },
+  "people": {
+    "heading": "Άτομα",
+    "add_contact": "Προσθήκη επαφής",
+    "add_contact_role_required": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε επαφές",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση ατόμων",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty": "Δεν έχουν ανατεθεί επαφές",
+    "sections": {
+      "active": "Ενεργές αναθέσεις",
+      "ended": "Ολοκληρωμένες αναθέσεις"
+    },
+    "empty_active": "Δεν υπάρχουν ενεργές αναθέσεις",
+    "section_labels": {
+      "emails": "Emails",
+      "phones": "Τηλέφωνα"
+    },
+    "row": {
+      "actions_menu": "Ενέργειες",
+      "edit_assignment": "Επεξεργασία ανάθεσης",
+      "edit_contact": "Επεξεργασία επαφής",
+      "remove": "Αφαίρεση",
+      "add_email": "+ Προσθήκη email",
+      "add_phone": "+ Προσθήκη τηλεφώνου",
+      "menu_label": "Ενέργειες",
+      "edit": "Επεξεργασία",
+      "set_as_primary": "Ορισμός ως κύριο"
+    },
+    "fallback": {
+      "contact_with_id": "Επαφή #{{id}}",
+      "no_email": "—",
+      "role_unset": "—"
+    },
+    "toasts": {
+      "email_removed": "Το email αφαιρέθηκε",
+      "email_remove_failed": "Αποτυχία αφαίρεσης email",
+      "phone_removed": "Το τηλέφωνο αφαιρέθηκε",
+      "phone_remove_failed": "Αποτυχία αφαίρεσης τηλεφώνου",
+      "set_primary_failed": "Αποτυχία ορισμού ως κύριο",
+      "assignment_removed": "Η επαφή αφαιρέθηκε από το ακίνητο",
+      "assignment_remove_failed": "Αποτυχία αφαίρεσης επαφής",
+      "contact_added": "Η επαφή προστέθηκε",
+      "assignment_updated": "Η ανάθεση ενημερώθηκε"
+    },
+    "confirm": {
+      "remove_email_title": "Αφαίρεση email;",
+      "remove_email_body": "Αυτή η διεύθυνση email θα αφαιρεθεί οριστικά από αυτή την επαφή.",
+      "remove_phone_title": "Αφαίρεση τηλεφώνου;",
+      "remove_phone_body": "Αυτός ο αριθμός τηλεφώνου θα αφαιρεθεί οριστικά από αυτή την επαφή.",
+      "remove_assignment_title": "Αφαίρεση επαφής από το ακίνητο;",
+      "remove_assignment_body": "Αυτό αφαιρεί μόνο την ανάθεση — η ίδια η επαφή δεν θα διαγραφεί."
+    },
+    "assignment_dialog": {
+      "create_title": "Προσθήκη επαφής",
+      "edit_title": "Επεξεργασία ανάθεσης",
+      "contact_label": "Επαφή",
+      "role_label": "Ρόλος",
+      "role_placeholder": "π.χ. ιδιοκτήτης, καθαρίστρια",
+      "start_label": "Ημερομηνία έναρξης",
+      "end_label": "Ημερομηνία λήξης",
+      "primary_label": "Κύρια επαφή",
+      "save_create": "Αποθήκευση επαφής",
+      "save_edit": "Ενημέρωση ανάθεσης"
+    }
+  },
+  "rooms": {
+    "title": "Δωμάτια",
+    "add_button": "Προσθήκη δωματίου",
+    "add_button_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε δωμάτια.",
+    "empty": {
+      "title": "Δεν υπάρχουν δωμάτια ακόμα",
+      "description": "Προσθέστε υπνοδωμάτια και χώρους ύπνου ώστε οι προσφορές και οι επισκέπτες να βλέπουν τη σωστή χωρητικότητα."
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση δωματίων."
+    },
+    "row": {
+      "drag_handle_label": "Σύρετε για αναδιάταξη",
+      "menu_label": "Ενέργειες",
+      "edit": "Επεξεργασία",
+      "delete": "Διαγραφή",
+      "ensuite": "Με ιδιωτικό μπάνιο",
+      "no_beds": "Δεν έχουν διαμορφωθεί κρεβάτια",
+      "beds_count": {
+        "double": "{{count}} διπλό",
+        "double_one": "{{count}} διπλό",
+        "double_other": "{{count}} διπλά",
+        "twin_double": "{{count}} μονό/διπλό",
+        "twin_double_one": "{{count}} μονό/διπλό",
+        "twin_double_other": "{{count}} μονά/διπλά",
+        "twin": "{{count}} μονό",
+        "twin_one": "{{count}} μονό",
+        "twin_other": "{{count}} μονά",
+        "single": "{{count}} μονό",
+        "single_one": "{{count}} μονό",
+        "single_other": "{{count}} μονά",
+        "bunk": "{{count}} κουκέτα",
+        "bunk_one": "{{count}} κουκέτα",
+        "bunk_other": "{{count}} κουκέτες",
+        "sofa": "{{count}} καναπές-κρεβάτι",
+        "sofa_one": "{{count}} καναπές-κρεβάτι",
+        "sofa_other": "{{count}} καναπέδες-κρεβάτια",
+        "childrens": "{{count}} παιδικό",
+        "childrens_one": "{{count}} παιδικό",
+        "childrens_other": "{{count}} παιδικά"
+      }
+    },
+    "placements": {
+      "main_house": "Κύρια κατοικία",
+      "guest_house": "Ξενώνας",
+      "pool_house": "Σπίτι πισίνας",
+      "annex": "Παράρτημα",
+      "other": "Άλλο"
+    },
+    "beds": {
+      "double": "Διπλό",
+      "twin_double": "Μονό/διπλό",
+      "twin": "Μονό",
+      "single": "Μονό",
+      "bunk": "Κουκέτα",
+      "sofa": "Καναπές-κρεβάτι",
+      "childrens": "Παιδικό"
+    },
+    "toasts": {
+      "created": "Το δωμάτιο προστέθηκε",
+      "updated": "Το δωμάτιο ενημερώθηκε",
+      "deleted": "Το δωμάτιο αφαιρέθηκε",
+      "reordered": "Τα δωμάτια αναδιατάχθηκαν",
+      "create_failed": "Δεν ήταν δυνατή η προσθήκη δωματίου",
+      "update_failed": "Δεν ήταν δυνατή η ενημέρωση δωματίου",
+      "delete_failed": "Δεν ήταν δυνατή η αφαίρεση δωματίου",
+      "reorder_failed": "Δεν ήταν δυνατή η αναδιάταξη δωματίων"
+    },
+    "delete_confirm": {
+      "title": "Αφαίρεση δωματίου;",
+      "description": "Αυτό το δωμάτιο και η διαμόρφωση κρεβατιών του θα αφαιρεθούν οριστικά.",
+      "confirm": "Αφαίρεση"
+    },
+    "dialog": {
+      "create_title": "Προσθήκη δωματίου",
+      "edit_title": "Επεξεργασία δωματίου",
+      "fields": {
+        "name": "Όνομα",
+        "name_placeholder": "Κύριο υπνοδωμάτιο",
+        "placement": "Τοποθεσία",
+        "is_ensuite": "Με ιδιωτικό μπάνιο",
+        "beds": "Κρεβάτια",
+        "website_description": "Περιγραφή ιστότοπου",
+        "vc_notes": "Εσωτερικές σημειώσεις"
+      },
+      "actions": {
+        "cancel": "Ακύρωση",
+        "save": "Αποθήκευση",
+        "saving": "Αποθήκευση…"
+      }
+    }
+  },
+  "nearby": {
+    "title": "Πλησίον σημεία",
+    "add_button": "Προσθήκη σημείου",
+    "add_button_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε σημεία.",
+    "empty": {
+      "title": "Δεν υπάρχουν πλησίον σημεία ακόμα",
+      "description": "Προσθέστε παραλίες, εστιατόρια, λιφτ σκι και άλλες παροχές ώστε οι επισκέπτες να ξέρουν τι υπάρχει γύρω."
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση πλησίον σημείων."
+    },
+    "row": {
+      "menu_label": "Ενέργειες",
+      "edit": "Επεξεργασία",
+      "delete": "Διαγραφή",
+      "move_up": "Μετακίνηση πάνω",
+      "move_down": "Μετακίνηση κάτω",
+      "distance_km": "{{distance}} χλμ.",
+      "unknown_type": "—"
+    },
+    "toasts": {
+      "created": "Το σημείο προστέθηκε",
+      "updated": "Το σημείο ενημερώθηκε",
+      "deleted": "Το σημείο αφαιρέθηκε",
+      "reordered": "Τα σημεία αναδιατάχθηκαν",
+      "create_failed": "Δεν ήταν δυνατή η προσθήκη σημείου",
+      "update_failed": "Δεν ήταν δυνατή η ενημέρωση σημείου",
+      "delete_failed": "Δεν ήταν δυνατή η αφαίρεση σημείου",
+      "reorder_failed": "Δεν ήταν δυνατή η αναδιάταξη σημείων"
+    },
+    "delete_confirm": {
+      "title": "Αφαίρεση σημείου;",
+      "description": "Αυτό το πλησίον σημείο θα αφαιρεθεί οριστικά.",
+      "confirm": "Αφαίρεση"
+    },
+    "dialog": {
+      "create_title": "Προσθήκη πλησίον σημείου",
+      "edit_title": "Επεξεργασία πλησίον σημείου",
+      "fields": {
+        "place_type": "Τύπος",
+        "place_type_placeholder": "Επιλέξτε τύπο",
+        "name": "Όνομα",
+        "name_placeholder": "Κέντρο πόλης",
+        "distance_km": "Απόσταση (χλμ.)",
+        "distance_km_placeholder": "1.2",
+        "notes": "Σημειώσεις"
+      },
+      "actions": {
+        "cancel": "Ακύρωση",
+        "save": "Αποθήκευση",
+        "saving": "Αποθήκευση…"
+      }
+    }
+  },
+  "media": {
+    "title": "Μέσα",
+    "add_button": "Προσθήκη εικόνας",
+    "add_button_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε εικόνες.",
+    "empty": {
+      "title": "Δεν υπάρχουν εικόνες ακόμα",
+      "description": "Προσθέστε μια κύρια λήψη ή εικόνα γκαλερί για να ξεκινήσετε."
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση εικόνων."
+    },
+    "card": {
+      "hero_badge": "Κύρια",
+      "inactive_badge": "Ανενεργή",
+      "menu_label": "Ενέργειες",
+      "set_hero": "Ορισμός ως κύρια",
+      "edit": "Επεξεργασία",
+      "delete": "Διαγραφή",
+      "no_thumbnail": "Χωρίς προεπισκόπηση",
+      "drag_handle_label": "Σύρετε για αναδιάταξη"
+    },
+    "toasts": {
+      "created": "Η εικόνα προστέθηκε",
+      "updated": "Η εικόνα ενημερώθηκε",
+      "deleted": "Η εικόνα αφαιρέθηκε",
+      "hero_set": "Η κύρια εικόνα ενημερώθηκε",
+      "reordered": "Οι εικόνες αναδιατάχθηκαν",
+      "create_failed": "Δεν ήταν δυνατή η προσθήκη εικόνας",
+      "update_failed": "Δεν ήταν δυνατή η ενημέρωση εικόνας",
+      "delete_failed": "Δεν ήταν δυνατή η αφαίρεση εικόνας",
+      "reorder_failed": "Δεν ήταν δυνατή η αναδιάταξη εικόνων"
+    },
+    "delete_confirm": {
+      "title": "Αφαίρεση εικόνας;",
+      "description": "Αυτή η εικόνα θα αφαιρεθεί οριστικά από το ακίνητο.",
+      "confirm": "Αφαίρεση"
+    },
+    "dialog": {
+      "create_title": "Προσθήκη εικόνας",
+      "edit_title": "Επεξεργασία εικόνας",
+      "s3_note": "Επικολλήστε το κλειδί S3 για τη μεταφορτωμένη εικόνα. Η απευθείας μεταφόρτωση έρχεται σε μεταγενέστερη φάση.",
+      "fields": {
+        "key": "Κλειδί S3",
+        "key_placeholder": "properties/2026/05/villa-front.jpg",
+        "kind": "Είδος",
+        "name": "Όνομα",
+        "name_placeholder": "Πρόσοψη",
+        "description": "Περιγραφή",
+        "description_placeholder": "Προαιρετική λεζάντα ή εναλλακτικό κείμενο"
+      },
+      "actions": {
+        "cancel": "Ακύρωση",
+        "save": "Αποθήκευση",
+        "saving": "Αποθήκευση…"
+      }
+    }
+  },
+  "descriptions": {
+    "save_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να επεξεργαστείτε περιγραφές.",
+    "body_placeholder": "Γράψτε το περιεχόμενο της ενότητας εδώ.",
+    "sections": {
+      "overview": "Επισκόπηση",
+      "house_rules": "Κανόνες σπιτιού",
+      "villa_info": "Πληροφορίες βίλας",
+      "further_info": "Περαιτέρω πληροφορίες"
+    },
+    "errors": {
+      "load_title": "Δεν ήταν δυνατή η φόρτωση περιγραφών",
+      "load_body": "Δοκιμάστε ξανά."
+    },
+    "actions": {
+      "save": "Αποθήκευση",
+      "saving": "Αποθήκευση…",
+      "clear": "Καθαρισμός"
+    },
+    "toasts": {
+      "saved": "Η περιγραφή αποθηκεύτηκε",
+      "cleared": "Η περιγραφή καθαρίστηκε",
+      "save_failed": "Δεν ήταν δυνατή η αποθήκευση περιγραφής",
+      "clear_failed": "Δεν ήταν δυνατός ο καθαρισμός περιγραφής"
+    },
+    "clear_confirm": {
+      "title": "Καθαρισμός αυτής της περιγραφής;",
+      "description": "Το περιεχόμενο της ενότητας θα αφαιρεθεί οριστικά.",
+      "confirm": "Καθαρισμός"
+    }
+  },
+  "changeover": {
+    "section_title": "Παρακάμψεις ημέρας αλλαγής",
+    "title": "Παρακάμψεις ημέρας αλλαγής",
+    "description": "Επιβάλετε συγκεκριμένη ημέρα σε χρονικό διάστημα — παρακάμπτει την προεπιλεγμένη ημέρα αλλαγής του ακινήτου.",
+    "add_button": "Προσθήκη κανόνα",
+    "add_button_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε κανόνες.",
+    "empty": {
+      "title": "Δεν υπάρχουν παρακάμψεις ημέρας αλλαγής"
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση κανόνων αλλαγής."
+    },
+    "row": {
+      "menu_label": "Ενέργειες",
+      "edit": "Επεξεργασία",
+      "delete": "Διαγραφή"
+    },
+    "toasts": {
+      "created": "Ο κανόνας προστέθηκε",
+      "updated": "Ο κανόνας ενημερώθηκε",
+      "deleted": "Ο κανόνας αφαιρέθηκε",
+      "create_failed": "Δεν ήταν δυνατή η προσθήκη κανόνα",
+      "update_failed": "Δεν ήταν δυνατή η ενημέρωση κανόνα",
+      "delete_failed": "Δεν ήταν δυνατή η αφαίρεση κανόνα"
+    },
+    "delete_confirm": {
+      "title": "Αφαίρεση κανόνα;",
+      "description": "Αυτή η παράκαμψη ημέρας αλλαγής θα αφαιρεθεί οριστικά.",
+      "confirm": "Αφαίρεση"
+    },
+    "dialog": {
+      "create_title": "Προσθήκη κανόνα αλλαγής",
+      "edit_title": "Επεξεργασία κανόνα αλλαγής",
+      "fields": {
+        "weekday": "Ημέρα εβδομάδας",
+        "effective_from": "Από",
+        "effective_to": "Έως",
+        "notes": "Σημειώσεις"
+      },
+      "actions": {
+        "cancel": "Ακύρωση",
+        "save": "Αποθήκευση",
+        "saving": "Αποθήκευση…"
+      }
+    }
+  },
+  "features": {
+    "title": "Χαρακτηριστικά",
+    "save_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να επεξεργαστείτε χαρακτηριστικά.",
+    "empty": {
+      "title": "Δεν υπάρχουν διαθέσιμα χαρακτηριστικά",
+      "description": "Ζητήστε από έναν διαχειριστή να φορτώσει τον κατάλογο χαρακτηριστικών πριν την επισήμανση αυτού του ακινήτου."
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση χαρακτηριστικών."
+    },
+    "actions": {
+      "save": "Αποθήκευση αλλαγών",
+      "saving": "Αποθήκευση…",
+      "reset": "Επαναφορά"
+    },
+    "toasts": {
+      "saved": "Τα χαρακτηριστικά αποθηκεύτηκαν",
+      "save_failed": "Δεν ήταν δυνατή η αποθήκευση χαρακτηριστικών"
+    }
+  },
+  "settings": {
+    "title": "Ρυθμίσεις",
+    "operational": {
+      "title": "Λειτουργικές ρυθμίσεις",
+      "description": "Προεπιλογές που καθορίζουν τη διαθεσιμότητα και τη συμπεριφορά κρατήσεων.",
+      "fields": {
+        "availability_default": "Προεπιλογή διαθεσιμότητας",
+        "bookings_require_pre_approval": "Οι κρατήσεις απαιτούν προέγκριση",
+        "requires_enquiry_first": "Απαιτεί αίτημα πρώτα",
+        "check_in_time": "Ώρα check-in",
+        "check_out_time": "Ώρα check-out",
+        "changeover_day": "Ημέρα αλλαγής",
+        "min_nights_rental": "Ελάχιστα βράδια",
+        "min_nights_rental_note": "Σημείωση ελάχιστων βραδιών",
+        "prices_entered_as": "Οι τιμές εισάγονται ως"
+      },
+      "save": "Αποθήκευση ρυθμίσεων",
+      "saving": "Αποθήκευση…",
+      "saved": "Οι ρυθμίσεις αποθηκεύτηκαν",
+      "save_failed": "Δεν ήταν δυνατή η αποθήκευση ρυθμίσεων"
+    },
+    "finance": {
+      "title": "Διαμόρφωση οικονομικών",
+      "description": "Κανόνες προμήθειας, προκαταβολής, εγγύησης και ακύρωσης.",
+      "fields": {
+        "commission_calculation_type": "Τύπος προμήθειας",
+        "commission_amount": "Ποσό προμήθειας",
+        "commission_note": "Σημείωση προμήθειας",
+        "tax_number": "Φορολογικός αριθμός",
+        "tax_is_exempt": "Απαλλασσόμενο φόρου",
+        "tax_percentage": "Φόρος %",
+        "deposit_required": "Απαιτείται προκαταβολή",
+        "deposit_calculation_type": "Τύπος προκαταβολής",
+        "deposit_amount": "Ποσό προκαταβολής",
+        "days_balance_due_before_arrival": "Ημέρες πληρωμής υπολοίπου πριν την άφιξη",
+        "security_deposit_required": "Απαιτείται εγγύηση",
+        "security_deposit_calculation_type": "Τύπος εγγύησης",
+        "security_deposit_amount": "Ποσό εγγύησης",
+        "cancellation_fee_percent": "Χρέωση ακύρωσης %",
+        "cancellation_window_days": "Περίοδος ακύρωσης (ημέρες)",
+        "notes": "Σημειώσεις οικονομικών"
+      },
+      "save": "Αποθήκευση οικονομικών",
+      "saving": "Αποθήκευση…",
+      "saved": "Τα οικονομικά αποθηκεύτηκαν",
+      "save_failed": "Δεν ήταν δυνατή η αποθήκευση οικονομικών"
+    },
+    "lifecycle": {
+      "title": "Κύκλος ζωής",
+      "description": "Ενεργοποιήστε, αρχειοθετήστε ή επαναφέρετε αυτό το ακίνητο.",
+      "current_status": "Τρέχουσα κατάσταση",
+      "actions": {
+        "activate": "Ενεργοποίηση",
+        "archive": "Αρχειοθέτηση",
+        "restore": "Επαναφορά"
+      },
+      "confirm": {
+        "activate_title": "Ενεργοποίηση ακινήτου;",
+        "activate_description": "Η ενεργοποίηση καθιστά αυτό το ακίνητο διαθέσιμο για κρατήσεις στο UI χειριστή.",
+        "archive_title": "Αρχειοθέτηση ακινήτου;",
+        "archive_description": "Η αρχειοθέτηση αποκρύπτει αυτό το ακίνητο από τις προεπιλεγμένες λίστες. Οι κρατήσεις παραμένουν.",
+        "restore_title": "Επαναφορά ακινήτου;",
+        "restore_description": "Η επαναφορά μετακινεί αυτό το ακίνητο ξανά σε ενεργό."
+      },
+      "toasts": {
+        "activated": "Το ακίνητο ενεργοποιήθηκε",
+        "archived": "Το ακίνητο αρχειοθετήθηκε",
+        "restored": "Το ακίνητο επαναφέρθηκε",
+        "failed": "Δεν ήταν δυνατή η ενημέρωση κατάστασης"
+      },
+      "role_required": "Χρειάζεστε τον ρόλο Κρατήσεων για ενέργειες κύκλου ζωής."
+    },
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση ρυθμίσεων."
+    },
+    "role_required_save": "Χρειάζεστε τον ρόλο Κρατήσεων για επεξεργασία."
+  },
+  "image_kinds": {
+    "hero": "Κύρια",
+    "interior": "Εσωτερικό",
+    "exterior": "Εξωτερικό",
+    "gallery": "Γκαλερί",
+    "floor_plan": "Κάτοψη"
+  },
+  "availability_defaults": {
+    "available": "Διαθέσιμο",
+    "unavailable": "Μη διαθέσιμο",
+    "on_request": "Κατόπιν αιτήματος"
+  },
+  "changeover_days": {
+    "mon": "Δευτέρα",
+    "tue": "Τρίτη",
+    "wed": "Τετάρτη",
+    "thu": "Πέμπτη",
+    "fri": "Παρασκευή",
+    "sat": "Σάββατο",
+    "sun": "Κυριακή",
+    "any": "Οποιαδήποτε ημέρα"
+  },
+  "price_bases": {
+    "gross": "Μικτή",
+    "net": "Καθαρή"
+  },
+  "calc_types": {
+    "percent": "Ποσοστό",
+    "fixed": "Σταθερό"
+  },
+  "errors": {
+    "image_key_required": "Το κλειδί S3 είναι υποχρεωτικό",
+    "room_name_required": "Το όνομα δωματίου είναι υποχρεωτικό",
+    "nearby_name_required": "Το όνομα είναι υποχρεωτικό",
+    "nearby_distance_required": "Η απόσταση είναι υποχρεωτική",
+    "nearby_distance_invalid": "Χρησιμοποιήστε αριθμό με έως 2 δεκαδικά (π.χ. 1.25)",
+    "nearby_type_required": "Επιλέξτε τύπο σημείου",
+    "changeover_from_required": "Η ημερομηνία Από είναι υποχρεωτική",
+    "changeover_to_required": "Η ημερομηνία Έως είναι υποχρεωτική",
+    "changeover_to_before_from": "Η ημερομηνία Έως πρέπει να είναι μετά ή ίδια με την ημερομηνία Από",
+    "load_failed": "Δεν ήταν δυνατή η φόρτωση."
+  },
+  "common": {
+    "inherit": "Κληρονόμηση",
+    "unset": "—"
+  }
+}

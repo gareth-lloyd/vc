@@ -1,0 +1,88 @@
+{
+  "actions": {
+    "save": "Αποθήκευση",
+    "saving": "Αποθήκευση…",
+    "cancel": "Ακύρωση",
+    "confirm": "Επιβεβαίωση",
+    "create": "Δημιουργία",
+    "edit": "Επεξεργασία",
+    "delete": "Διαγραφή",
+    "remove": "Αφαίρεση",
+    "close": "Κλείσιμο",
+    "retry": "Επανάληψη",
+    "retrying": "Επανάληψη…",
+    "working": "Σε εξέλιξη…",
+    "back_to_dashboard": "Πίσω στον πίνακα ελέγχου"
+  },
+  "errors": {
+    "generic": "Κάτι πήγε στραβά",
+    "field_required": "Υποχρεωτικό",
+    "load_failed": "Δεν ήταν δυνατή η φόρτωση.",
+    "reservations_role_required": "Απαιτείται ρόλος Κρατήσεων.",
+    "reservations_role_required_create": "Χρειάζεστε τον ρόλο Κρατήσεων για να δημιουργήσετε.",
+    "not_found_title": "Δεν βρέθηκε",
+    "not_found_body": "Η σελίδα αυτή δεν υπάρχει.",
+    "couldnt_load": "Δεν ήταν δυνατή η φόρτωση αυτού του περιεχομένου. Δοκιμάστε ξανά."
+  },
+  "pagination": {
+    "page_of": "Σελίδα {{current}} από {{total}}",
+    "previous": "Προηγούμενη σελίδα",
+    "next": "Επόμενη σελίδα"
+  },
+  "search": {
+    "placeholder": "Αναζήτηση…",
+    "aria_label": "Αναζήτηση"
+  },
+  "states": {
+    "loading": "Φόρτωση…",
+    "empty": "Δεν υπάρχει τίποτα εδώ ακόμα."
+  },
+  "status": {
+    "primary": "Κύριο"
+  },
+  "tooltips": {
+    "reservations_role_required": "Απαιτείται ρόλος Κρατήσεων"
+  },
+  "aria": {
+    "stage": "Στάδιο: {{status}}"
+  },
+  "nav": {
+    "groups": {
+      "operations": "Λειτουργίες",
+      "library": "Βιβλιοθήκη",
+      "admin": "Διαχείριση"
+    },
+    "dashboard": "Πίνακας ελέγχου",
+    "enquiries": "Αιτήματα",
+    "quotes": "Προσφορές",
+    "bookings": "Κρατήσεις",
+    "properties": "Ακίνητα",
+    "contacts": "Επαφές",
+    "users": "Χρήστες",
+    "countries": "Χώρες",
+    "currencies": "Νομίσματα",
+    "tags": "Ετικέτες",
+    "system": "Σύστημα",
+    "profile": "Προφίλ",
+    "sign_out": "Αποσύνδεση",
+    "language": "Γλώσσα"
+  },
+  "countries": {
+    "ES": "Ισπανία",
+    "FR": "Γαλλία",
+    "IT": "Ιταλία",
+    "PT": "Πορτογαλία",
+    "GR": "Ελλάδα"
+  },
+  "filters": {
+    "any_country": "Όλες οι χώρες"
+  },
+  "zod": {
+    "invalid_type": "Υποχρεωτικό",
+    "invalid_email": "Εισαγάγετε έγκυρο email",
+    "too_small": "Πρέπει να είναι τουλάχιστον {{minimum}} χαρακτήρες",
+    "too_big": "Πρέπει να είναι έως {{maximum}} χαρακτήρες",
+    "invalid_string": "Μη έγκυρη τιμή",
+    "custom": "Μη έγκυρη τιμή"
+  }
+}

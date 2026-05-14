@@ -1,11 +1,12 @@
 import { format, formatDistanceToNow, isValid, parseISO, type Locale } from "date-fns";
-import { enGB } from "date-fns/locale";
+import { el, enGB } from "date-fns/locale";
 import i18n, { DEFAULT_LANGUAGE } from "@/i18n";
 import { baseLanguageTag } from "@/i18n/normalize";
 
 // Register additional date-fns locales here when adding a new translated language.
 const LOCALES: Record<string, Locale> = {
   [DEFAULT_LANGUAGE]: enGB,
+  el,
 };
 
 function activeLocale(): Locale {

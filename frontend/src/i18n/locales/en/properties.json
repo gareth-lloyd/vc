@@ -130,7 +130,60 @@
     "seasons": {
       "empty": "No seasons defined",
       "error_title": "Couldn't load seasons",
-      "error_body": "Try again."
+      "error_body": "Try again.",
+      "add_button": "Add season",
+      "add_button_disabled_tooltip": "You need the Reservations role to add seasons.",
+      "row": {
+        "menu_label": "Actions",
+        "edit": "Edit",
+        "duplicate": "Duplicate",
+        "delete": "Delete"
+      },
+      "toasts": {
+        "created": "Season added",
+        "updated": "Season updated",
+        "deleted": "Season removed",
+        "duplicated": "Season duplicated",
+        "create_failed": "Couldn't add season",
+        "update_failed": "Couldn't update season",
+        "delete_failed": "Couldn't remove season",
+        "duplicate_failed": "Couldn't duplicate season"
+      },
+      "delete_confirm": {
+        "title": "Remove season?",
+        "description": "This season and all of its rate cards and rules will be permanently removed.",
+        "confirm": "Remove"
+      },
+      "duplicate_confirm": {
+        "title": "Duplicate season?",
+        "description": "A copy of this season — including its rate cards and rules — will be created with \" (copy)\" appended to the name.",
+        "confirm": "Duplicate"
+      },
+      "price_basis": {
+        "gross": "Gross",
+        "net": "Net"
+      },
+      "dialog": {
+        "create_title": "Add season",
+        "edit_title": "Edit season",
+        "fields": {
+          "name": "Name",
+          "name_placeholder": "Summer 2026",
+          "currency": "Currency",
+          "currency_placeholder": "Select currency",
+          "price_basis": "Price basis",
+          "effective_from": "Effective from",
+          "effective_to": "Effective to",
+          "is_active": "Active",
+          "notes": "Internal notes",
+          "inclusion": "Inclusion"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      }
     },
     "rate_card": {
       "any_length": "Any length",
@@ -652,6 +705,10 @@
     "changeover_from_required": "From date is required",
     "changeover_to_required": "To date is required",
     "changeover_to_before_from": "To date must be on or after From date",
+    "season_name_required": "Season name is required",
+    "season_currency_required": "Pick a currency",
+    "season_effective_from_required": "Effective from date is required",
+    "season_effective_to_before_from": "Effective to must be on or after Effective from",
     "load_failed": "Couldn't load."
   },
   "common": {

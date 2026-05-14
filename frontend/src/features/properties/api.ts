@@ -22,6 +22,7 @@ import {
   propertyRoomsResponseSchema,
   propertySettingsSchema,
   ratePlanDetailSchema,
+  ratePlanSchema,
   ratePlansResponseSchema,
   sectionToSlug,
   type AvailabilityHold,
@@ -51,6 +52,7 @@ import {
   type PropertySettingsWriteInput,
   type RatePlan,
   type RatePlanDetail,
+  type RatePlanWriteInput,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
 import type { PropertyId, SeasonId } from "@/lib/query/keys";
@@ -212,6 +214,31 @@ export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Pagina
 export async function fetchSeasonDetail(seasonId: SeasonId): Promise<RatePlanDetail> {
   const data = await apiGet<unknown>(`/seasons/${seasonId}`);
   return ratePlanDetailSchema.parse(data);
+}
+
+export async function createSeason(
+  propertyId: PropertyId,
+  body: RatePlanWriteInput,
+): Promise<RatePlan> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/seasons`, body);
+  return ratePlanSchema.parse(data);
+}
+
+export async function updateSeason(
+  seasonId: SeasonId,
+  body: Partial<RatePlanWriteInput>,
+): Promise<RatePlan> {
+  const data = await apiSend<unknown>("PATCH", `/seasons/${seasonId}`, body);
+  return ratePlanSchema.parse(data);
+}
+
+export async function deleteSeason(seasonId: SeasonId): Promise<void> {
+  await apiSend<void>("DELETE", `/seasons/${seasonId}`);
+}
+
+export async function duplicateSeason(seasonId: SeasonId): Promise<RatePlan> {
+  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}:duplicate`);
+  return ratePlanSchema.parse(data);
 }
 
 export async function fetchPropertyExtras(idOrSlug: PropertyId): Promise<Paginated<Extra>> {

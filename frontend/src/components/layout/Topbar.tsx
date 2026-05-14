@@ -1,4 +1,5 @@
 import { LogOut, User as UserIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ function initials(first: string, last: string): string {
 }
 
 export function Topbar({ user, onSignOut }: { user: TopbarUser | null; onSignOut: () => void }) {
+  const { t } = useTranslation("common");
   return (
     <header className="bg-card border-border flex h-14 items-center justify-between border-b px-4">
       <div className="flex items-center gap-3">
@@ -49,10 +51,10 @@ export function Topbar({ user, onSignOut }: { user: TopbarUser | null; onSignOut
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled>
-                <UserIcon className="mr-2 size-4" /> Profile
+                <UserIcon className="mr-2 size-4" /> {t("nav.profile")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onSignOut}>
-                <LogOut className="mr-2 size-4" /> Sign out
+                <LogOut className="mr-2 size-4" /> {t("nav.sign_out")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

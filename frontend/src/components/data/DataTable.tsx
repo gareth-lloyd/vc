@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface DataTableProps<TData> {
   columns: ColumnDef<TData>[];
@@ -50,6 +51,7 @@ export function DataTable<TData>({
   emptyContent,
   rowKey,
 }: DataTableProps<TData>) {
+  const { t } = useTranslation("common");
   const table = useReactTable({
     data: data ?? [],
     columns,
@@ -136,7 +138,10 @@ export function DataTable<TData>({
 
       <div className="border-border flex items-center justify-between border-t px-3 py-2">
         <div className="text-muted-foreground text-xs">
-          Page {pageIndex + 1} of {Math.max(pageCount, 1)}
+          {t("pagination.page_of", {
+            current: pageIndex + 1,
+            total: Math.max(pageCount, 1),
+          })}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -144,7 +149,7 @@ export function DataTable<TData>({
             size="sm"
             disabled={pageIndex === 0 || isLoading}
             onClick={() => onPageChange(pageIndex - 1)}
-            aria-label="Previous page"
+            aria-label={t("pagination.previous")}
           >
             <ChevronLeft className="size-4" />
           </Button>
@@ -153,7 +158,7 @@ export function DataTable<TData>({
             size="sm"
             disabled={pageIndex >= pageCount - 1 || isLoading}
             onClick={() => onPageChange(pageIndex + 1)}
-            aria-label="Next page"
+            aria-label={t("pagination.next")}
           >
             <ChevronRight className="size-4" />
           </Button>

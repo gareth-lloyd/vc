@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -14,10 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
-import { bookingColumns } from "./columns";
+import { useBookingColumns } from "./columns";
 import { BOOKINGS_PAGE_SIZE, useBookings } from "./hooks";
 import {
-  BOOKING_STATUS_OPTIONS,
+  bookingStatusOptions,
   bookingStatusSchema,
   type BookingFilters,
   type BookingListItem,
@@ -26,16 +27,7 @@ import {
 
 const ALL_VALUE = "__all__";
 
-const STATUS_OPTIONS = [{ value: ALL_VALUE, label: "Any status" }, ...BOOKING_STATUS_OPTIONS];
-
-const SITE_OPTIONS = [
-  { value: ALL_VALUE, label: "Any source" },
-  { value: "main_website", label: "Main website" },
-  { value: "owner_referral", label: "Owner referral" },
-  { value: "phone", label: "Phone" },
-  { value: "email", label: "Email" },
-  { value: "manual", label: "Manual" },
-];
+const SITE_VALUES = ["main_website", "owner_referral", "phone", "email", "manual"] as const;
 
 function parseStatus(value: string | null): BookingStatus | undefined {
   if (!value) return undefined;
@@ -55,11 +47,25 @@ function paramsToFilters(params: URLSearchParams): BookingFilters {
 }
 
 export function BookingsListPage() {
+  const { t } = useTranslation("bookings");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState(filters.q ?? "");
+  const columns = useBookingColumns();
+
+  const statusOptions = useMemo(
+    () => [{ value: ALL_VALUE, label: t("filters.any_status") }, ...bookingStatusOptions()],
+    [t],
+  );
+  const siteOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: t("filters.any_source") },
+      ...SITE_VALUES.map((value) => ({ value, label: t(`source.${value}`) })),
+    ],
+    [t],
+  );
 
   useEffect(() => {
     setSearch(filters.q ?? "");
@@ -122,23 +128,29 @@ export function BookingsListPage() {
 
   return (
     <div>
-      <PageHeader title="Bookings" breadcrumbs={[{ label: "Operations" }, { label: "Bookings" }]} />
+      <PageHeader
+        title={t("list.title")}
+        breadcrumbs={[
+          { label: t("list.breadcrumb_operations") },
+          { label: t("list.breadcrumb_bookings") },
+        ]}
+      />
       <div className="space-y-4 p-6">
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search by reference, guest, or property…"
+          searchPlaceholder={t("list.search_placeholder")}
           filters={
             <>
               <Select
                 value={filters.status ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("status", v)}
               >
-                <SelectTrigger className="w-[180px]" aria-label="Filter by status">
+                <SelectTrigger className="w-[180px]" aria-label={t("list.filter_status_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((o) => (
+                  {statusOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -149,11 +161,11 @@ export function BookingsListPage() {
                 value={filters.site ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("site", v)}
               >
-                <SelectTrigger className="w-[160px]" aria-label="Filter by source">
+                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_source_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SITE_OPTIONS.map((o) => (
+                  {siteOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -166,13 +178,13 @@ export function BookingsListPage() {
 
         {query.isError ? (
           <ErrorState
-            description="Couldn't load bookings."
+            description={t("list.load_failed")}
             onRetry={() => query.refetch()}
             retrying={query.isFetching}
           />
         ) : (
           <DataTable
-            columns={bookingColumns}
+            columns={columns}
             data={query.data?.results}
             isLoading={query.isLoading}
             pageIndex={(filters.page ?? 1) - 1}
@@ -184,10 +196,7 @@ export function BookingsListPage() {
             onRowClick={handleRowClick}
             rowKey={(row) => row.id}
             emptyContent={
-              <EmptyState
-                title="No bookings match these filters"
-                description="Try clearing the search or changing the status / source filters."
-              />
+              <EmptyState title={t("list.empty_title")} description={t("list.empty_hint")} />
             }
           />
         )}

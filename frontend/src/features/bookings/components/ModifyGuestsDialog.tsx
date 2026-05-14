@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ interface ModifyGuestsDialogProps {
 }
 
 export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuestsDialogProps) {
+  const { t } = useTranslation("bookings");
   const defaults: ModifyGuestsInput = {
     adults: booking.adults,
     children: booking.children,
@@ -56,14 +58,14 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
     };
     try {
       await mutation.mutateAsync(payload);
-      toast.success("Party size updated");
+      toast.success(t("modify_guests_dialog.success_message"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -72,13 +74,15 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Modify guests</DialogTitle>
-          <DialogDescription>Adjust the number of adults and children.</DialogDescription>
+          <DialogTitle>{t("modify_guests_dialog.title")}</DialogTitle>
+          <DialogDescription>{t("modify_guests_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="modify-guests-adults">Adults</Label>
+              <Label htmlFor="modify-guests-adults">
+                {t("modify_guests_dialog.fields.adults")}
+              </Label>
               <Input
                 id="modify-guests-adults"
                 type="number"
@@ -93,7 +97,9 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="modify-guests-children">Children</Label>
+              <Label htmlFor="modify-guests-children">
+                {t("modify_guests_dialog.fields.children")}
+              </Label>
               <Input
                 id="modify-guests-children"
                 type="number"
@@ -110,7 +116,7 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="modify-guests-reason">Reason (optional)</Label>
+            <Label htmlFor="modify-guests-reason">{t("modify_guests_dialog.fields.reason")}</Label>
             <Textarea
               id="modify-guests-reason"
               rows={3}
@@ -140,10 +146,12 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving…" : "Save guests"}
+              {mutation.isPending
+                ? t("common:actions.saving")
+                : t("modify_guests_dialog.submit_label")}
             </Button>
           </DialogFooter>
         </form>

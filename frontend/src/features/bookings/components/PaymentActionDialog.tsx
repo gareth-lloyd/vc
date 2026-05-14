@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +28,7 @@ import type { TrackName } from "../api";
 import { useMarkPaid, useWaiveTrack } from "../hooks";
 import {
   markPaidInputSchema,
-  PAYMENT_METHOD_OPTIONS,
+  paymentMethodOptions,
   waiveTrackInputSchema,
   type MarkPaidInput,
   type WaiveTrackInput,
@@ -52,6 +53,7 @@ function todayLocalDatetime(): string {
 }
 
 function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmount }: CommonProps) {
+  const { t } = useTranslation("bookings");
   const defaults: MarkPaidInput = {
     amount: defaultAmount ?? "",
     paid_at: todayLocalDatetime(),
@@ -67,6 +69,8 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const mutation = useMarkPaid(bookingId, track);
 
+  const methodOptions = paymentMethodOptions();
+
   const handleSubmit = async (values: MarkPaidInput) => {
     setTopLevelError(null);
     try {
@@ -76,14 +80,14 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
         ? new Date(values.paid_at).toISOString()
         : values.paid_at;
       await mutation.mutateAsync({ ...values, paid_at });
-      toast.success(`${trackLabel} marked paid`);
+      toast.success(t("payments.mark_paid_dialog.success_message", { track: trackLabel }));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -91,7 +95,7 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
   return (
     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
       <div className="space-y-2">
-        <Label htmlFor="markpaid-amount">Amount</Label>
+        <Label htmlFor="markpaid-amount">{t("payments.mark_paid_dialog.fields.amount")}</Label>
         <Input
           id="markpaid-amount"
           inputMode="decimal"
@@ -107,7 +111,9 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="markpaid-paid-at">Received at</Label>
+        <Label htmlFor="markpaid-paid-at">
+          {t("payments.mark_paid_dialog.fields.received_at")}
+        </Label>
         <Input
           id="markpaid-paid-at"
           type="datetime-local"
@@ -122,13 +128,16 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="markpaid-method">Method</Label>
+        <Label htmlFor="markpaid-method">{t("payments.mark_paid_dialog.fields.method")}</Label>
         <Select value={methodCtrl.field.value} onValueChange={methodCtrl.field.onChange}>
-          <SelectTrigger id="markpaid-method" aria-label="Method">
+          <SelectTrigger
+            id="markpaid-method"
+            aria-label={t("payments.mark_paid_dialog.fields.method")}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PAYMENT_METHOD_OPTIONS.map((o) => (
+            {methodOptions.map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
@@ -138,12 +147,14 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="markpaid-reference">Reference</Label>
+        <Label htmlFor="markpaid-reference">
+          {t("payments.mark_paid_dialog.fields.reference")}
+        </Label>
         <Input id="markpaid-reference" {...form.register("reference")} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="markpaid-notes">Notes</Label>
+        <Label htmlFor="markpaid-notes">{t("payments.mark_paid_dialog.fields.notes")}</Label>
         <Textarea id="markpaid-notes" rows={3} {...form.register("notes")} />
       </div>
 
@@ -155,10 +166,12 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
+          {t("common:actions.cancel")}
         </Button>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "Saving…" : "Mark paid"}
+          {mutation.isPending
+            ? t("common:actions.saving")
+            : t("payments.mark_paid_dialog.submit_label")}
         </Button>
       </div>
     </form>
@@ -166,6 +179,7 @@ function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmoun
 }
 
 function WaiveForm({ bookingId, track, trackLabel, onOpenChange }: CommonProps) {
+  const { t } = useTranslation("bookings");
   const form = useForm<WaiveTrackInput>({
     resolver: zodResolver(waiveTrackInputSchema),
     defaultValues: { reason: "" },
@@ -177,14 +191,14 @@ function WaiveForm({ bookingId, track, trackLabel, onOpenChange }: CommonProps) 
     setTopLevelError(null);
     try {
       await mutation.mutateAsync(values);
-      toast.success(`${trackLabel} waived`);
+      toast.success(t("payments.waive_dialog.success_message", { track: trackLabel }));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -192,7 +206,7 @@ function WaiveForm({ bookingId, track, trackLabel, onOpenChange }: CommonProps) 
   return (
     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
       <div className="space-y-2">
-        <Label htmlFor="waive-reason">Reason</Label>
+        <Label htmlFor="waive-reason">{t("payments.waive_dialog.reason_label")}</Label>
         <Textarea
           id="waive-reason"
           rows={4}
@@ -215,10 +229,12 @@ function WaiveForm({ bookingId, track, trackLabel, onOpenChange }: CommonProps) 
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
+          {t("common:actions.cancel")}
         </Button>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "Saving…" : "Waive"}
+          {mutation.isPending
+            ? t("common:actions.saving")
+            : t("payments.waive_dialog.submit_label")}
         </Button>
       </div>
     </form>
@@ -226,6 +242,7 @@ function WaiveForm({ bookingId, track, trackLabel, onOpenChange }: CommonProps) 
 }
 
 export function PaymentActionDialog(props: Props) {
+  const { t } = useTranslation("bookings");
   const { open, onOpenChange, action, trackLabel } = props;
   // Force re-mount of the inner form whenever the dialog re-opens so
   // useForm picks up fresh defaults (especially defaultAmount).
@@ -234,11 +251,14 @@ export function PaymentActionDialog(props: Props) {
     if (open) setMountKey((k) => k + 1);
   }, [open]);
 
-  const title = action === "mark-paid" ? `Mark ${trackLabel} paid` : `Waive ${trackLabel}`;
+  const title =
+    action === "mark-paid"
+      ? t("payments.mark_paid_dialog.title", { track: trackLabel })
+      : t("payments.waive_dialog.title", { track: trackLabel });
   const description =
     action === "mark-paid"
-      ? "Record the payment we received against this track."
-      : "Waive this track so the booking can progress without payment.";
+      ? t("payments.mark_paid_dialog.description")
+      : t("payments.waive_dialog.description");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

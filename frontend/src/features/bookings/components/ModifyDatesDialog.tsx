@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ interface ModifyDatesDialogProps {
 }
 
 export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDialogProps) {
+  const { t } = useTranslation("bookings");
   const defaults: ModifyDatesInput = {
     date_from: booking.date_from,
     date_to: booking.date_to,
@@ -56,14 +58,14 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
     };
     try {
       await mutation.mutateAsync(payload);
-      toast.success("Dates updated");
+      toast.success(t("modify_dates_dialog.success_message"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -72,15 +74,13 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Modify dates</DialogTitle>
-          <DialogDescription>
-            Adjust check-in and check-out. Pricing may need to be recalculated separately.
-          </DialogDescription>
+          <DialogTitle>{t("modify_dates_dialog.title")}</DialogTitle>
+          <DialogDescription>{t("modify_dates_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="modify-date-from">Check-in</Label>
+              <Label htmlFor="modify-date-from">{t("modify_dates_dialog.fields.check_in")}</Label>
               <Input
                 id="modify-date-from"
                 type="date"
@@ -94,7 +94,7 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="modify-date-to">Check-out</Label>
+              <Label htmlFor="modify-date-to">{t("modify_dates_dialog.fields.check_out")}</Label>
               <Input
                 id="modify-date-to"
                 type="date"
@@ -110,7 +110,7 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="modify-dates-reason">Reason (optional)</Label>
+            <Label htmlFor="modify-dates-reason">{t("modify_dates_dialog.fields.reason")}</Label>
             <Textarea
               id="modify-dates-reason"
               rows={3}
@@ -140,10 +140,12 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving…" : "Save dates"}
+              {mutation.isPending
+                ? t("common:actions.saving")
+                : t("modify_dates_dialog.submit_label")}
             </Button>
           </DialogFooter>
         </form>

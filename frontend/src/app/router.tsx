@@ -74,7 +74,7 @@ const REAL_BOOKING_TABS = new Set<string>([
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
     path: t.slug,
-    element: <ComingSoonTab tabName={t.label} />,
+    element: <ComingSoonTab tabNameKey={`bookings:${t.labelKey}`} />,
   }),
 );
 

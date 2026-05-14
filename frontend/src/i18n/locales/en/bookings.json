@@ -1,4 +1,409 @@
 {
+  "list": {
+    "title": "Bookings",
+    "breadcrumb_operations": "Operations",
+    "breadcrumb_bookings": "Bookings",
+    "search_placeholder": "Search by reference, guest, or property…",
+    "filter_status_aria": "Filter by status",
+    "filter_source_aria": "Filter by source",
+    "load_failed": "Couldn't load bookings.",
+    "empty_title": "No bookings match these filters",
+    "empty_hint": "Try clearing the search or changing the status / source filters."
+  },
+  "filters": {
+    "any_status": "Any status",
+    "any_source": "Any source"
+  },
+  "source": {
+    "main_website": "Main website",
+    "owner_referral": "Owner referral",
+    "phone": "Phone",
+    "email": "Email",
+    "manual": "Manual"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "timeline": "Timeline",
+    "notes": "Notes",
+    "finance": "Finance",
+    "payments": "Payments",
+    "concierge": "Concierge",
+    "owner": "Owner"
+  },
+  "labels": {
+    "status": {
+      "draft": "Draft",
+      "pending_owner_approval": "Pending owner",
+      "awaiting_deposit": "Awaiting deposit",
+      "deposit_paid": "Deposit paid",
+      "awaiting_balance": "Awaiting balance",
+      "balance_paid": "Balance paid",
+      "checked_in": "Checked in",
+      "checked_out": "Checked out",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "declined": "Declined"
+    },
+    "note_kind": {
+      "general": "General",
+      "internal": "Internal",
+      "concierge": "Concierge",
+      "villa": "Villa"
+    },
+    "note_visibility": {
+      "staff_only": "Staff only",
+      "owner": "Owner",
+      "guest": "Guest"
+    },
+    "concierge_status": {
+      "requested": "Requested",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled",
+      "delivered": "Delivered"
+    },
+    "concierge_tier": {
+      "quintessential": "Quintessential",
+      "signature": "Signature"
+    },
+    "concierge_unit": {
+      "day": "Day",
+      "stay": "Stay",
+      "event": "Event",
+      "hour": "Hour"
+    },
+    "payment_track_status": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "succeeded": "Paid",
+      "failed": "Failed",
+      "refunded": "Refunded",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "waived": "Waived",
+      "none": "Not scheduled"
+    },
+    "payment_method": {
+      "card": "Card",
+      "bank_transfer": "Bank transfer",
+      "other": "Other"
+    }
+  },
+  "columns": {
+    "ref": "Ref",
+    "villa": "Villa",
+    "guest": "Guest",
+    "dates": "Dates",
+    "stage": "Stage",
+    "total": "Total",
+    "nights_one": "{{count}} night",
+    "nights_other": "{{count}} nights"
+  },
+  "detail": {
+    "sections_aria": "Booking sections",
+    "breadcrumb_list": "Bookings",
+    "load_failed_title": "Couldn't load this booking",
+    "load_failed_body": "Try again or head back to the list.",
+    "rail": {
+      "dates": "Dates",
+      "guest": "Guest",
+      "total": "Total",
+      "paid": "Paid",
+      "due": "Due"
+    },
+    "fallback": {
+      "property_with_id": "Property #{{id}}",
+      "guest_with_id": "Guest #{{id}}"
+    }
+  },
+  "overview": {
+    "sections": {
+      "status_and_dates": "Status & key dates",
+      "guest_and_property": "Guest & property",
+      "financial_summary": "Financial summary"
+    },
+    "fields": {
+      "reference": "Reference",
+      "status": "Status",
+      "check_in": "Check-in",
+      "check_out": "Check-out",
+      "nights": "Nights",
+      "party": "Party",
+      "guest": "Guest",
+      "guest_email": "Guest email",
+      "property": "Property",
+      "source": "Source",
+      "rental_price": "Rental price",
+      "discount": "Discount",
+      "adjustment": "Adjustment",
+      "balance_due": "Balance due",
+      "balance_due_by": "Balance due by"
+    },
+    "party_format": {
+      "adults_one": "{{count}} adult",
+      "adults_other": "{{count}} adults",
+      "children_one": ", {{count}} child",
+      "children_other": ", {{count}} children"
+    }
+  },
+  "actions": {
+    "quick_actions": "Quick actions",
+    "more_actions": "More actions",
+    "confirm_booking": "Confirm booking",
+    "owner_decline": "Owner decline",
+    "cancel_booking": "Cancel booking",
+    "check_in": "Check in",
+    "check_out": "Check out",
+    "modify_dates": "Modify dates",
+    "modify_guests": "Modify guests",
+    "resend_confirmation": "Resend confirmation",
+    "archive_booking": "Archive booking",
+    "restore_booking": "Restore booking"
+  },
+  "confirm": {
+    "confirm": {
+      "title": "Confirm this booking?",
+      "description": "The booking will move forward to the next state.",
+      "success_message": "Booking confirmed"
+    },
+    "archive": {
+      "title": "Archive this booking?",
+      "description": "It will be hidden from default lists. You can restore it later.",
+      "confirm_label": "Archive",
+      "success_message": "Booking archived"
+    },
+    "restore": {
+      "title": "Restore this booking?",
+      "description": "It will reappear in default lists.",
+      "confirm_label": "Restore",
+      "success_message": "Booking restored"
+    },
+    "check_in": {
+      "title": "Check in?",
+      "description": "Mark the guest as checked in.",
+      "confirm_label": "Check in",
+      "success_message": "Guest checked in"
+    },
+    "check_out": {
+      "title": "Check out?",
+      "description": "Mark the guest as checked out.",
+      "confirm_label": "Check out",
+      "success_message": "Guest checked out"
+    },
+    "resend_confirmation": {
+      "title": "Resend confirmation email?",
+      "description": "The guest will receive the booking confirmation again.",
+      "confirm_label": "Resend",
+      "success_message": "Confirmation resent"
+    }
+  },
+  "errors": {
+    "not_available_for_state": "Not available for this booking state."
+  },
+  "cancel_dialog": {
+    "title": "Cancel this booking?",
+    "description": "This transitions the booking to cancelled. Add an optional reason for the audit log.",
+    "reason_label": "Reason (optional)",
+    "submit_label": "Cancel booking",
+    "busy_label": "Cancelling…",
+    "keep_label": "Keep booking",
+    "success_message": "Booking cancelled"
+  },
+  "decline_dialog": {
+    "title": "Decline this booking?",
+    "description": "The booking will move to declined. Add a reason for the audit log.",
+    "reason_label": "Reason",
+    "submit_label": "Decline booking",
+    "busy_label": "Declining…",
+    "keep_label": "Keep booking",
+    "success_message": "Booking declined"
+  },
+  "modify_dates_dialog": {
+    "title": "Modify dates",
+    "description": "Adjust check-in and check-out. Pricing may need to be recalculated separately.",
+    "fields": {
+      "check_in": "Check-in",
+      "check_out": "Check-out",
+      "reason": "Reason (optional)"
+    },
+    "submit_label": "Save dates",
+    "success_message": "Dates updated"
+  },
+  "modify_guests_dialog": {
+    "title": "Modify guests",
+    "description": "Adjust the number of adults and children.",
+    "fields": {
+      "adults": "Adults",
+      "children": "Children",
+      "reason": "Reason (optional)"
+    },
+    "submit_label": "Save guests",
+    "success_message": "Party size updated"
+  },
+  "notes": {
+    "heading": "Notes",
+    "filter_kind_aria": "Filter by kind",
+    "all_kinds": "All kinds",
+    "add_note": "Add note",
+    "load_failed_title": "Couldn't load notes",
+    "load_failed_body": "Try again.",
+    "empty_title": "No notes yet",
+    "empty_body": "Add a note to record context for this booking.",
+    "confirm_delete": {
+      "title": "Delete this note?",
+      "description": "This can't be undone."
+    },
+    "toasts": {
+      "deleted": "Note deleted",
+      "delete_failed": "Couldn't delete note",
+      "saved": "Note saved"
+    },
+    "form_dialog": {
+      "create_title": "Add note",
+      "edit_title": "Edit note",
+      "description": "Notes are visible to staff by default; choose another visibility to share with owners or guests.",
+      "submit_create": "Add note"
+    },
+    "form": {
+      "body": "Body",
+      "kind": "Kind",
+      "visibility": "Visibility",
+      "pin": "Pin this note"
+    },
+    "card": {
+      "pin_aria": "Pin note",
+      "unpin_aria": "Unpin note",
+      "by_author": "By #{{id}}",
+      "unknown_author": "Unknown author"
+    }
+  },
+  "payments": {
+    "heading": "Payments",
+    "transactions_heading": "Transactions",
+    "tracks": {
+      "deposit": "Deposit",
+      "balance": "Balance",
+      "security": "Security deposit",
+      "security_short": "Security"
+    },
+    "track": {
+      "milestones_aria": "Milestones",
+      "load_failed": "Couldn't load this track.",
+      "request_payment": "Request payment",
+      "send_reminder": "Send reminder",
+      "mark_received": "Mark received",
+      "waive": "Waive",
+      "role_required_tooltip": "You need the Reservations role for this action",
+      "summary": "{{paid}} of {{total}} paid",
+      "due_label": "Due {{date}}",
+      "overdue_suffix": " (overdue)",
+      "no_due_date": "No due date",
+      "toasts": {
+        "request_success": "Payment requested for {{track}}",
+        "request_not_wired": "Payment requests aren't wired up yet"
+      }
+    },
+    "transactions": {
+      "headers": {
+        "date": "Date",
+        "track": "Track",
+        "amount": "Amount",
+        "status": "Status",
+        "method": "Method",
+        "reference": "Reference"
+      },
+      "empty": "No transactions yet"
+    },
+    "mark_paid_dialog": {
+      "title": "Mark {{track}} paid",
+      "description": "Record the payment we received against this track.",
+      "fields": {
+        "amount": "Amount",
+        "received_at": "Received at",
+        "method": "Method",
+        "reference": "Reference",
+        "notes": "Notes"
+      },
+      "submit_label": "Mark paid",
+      "success_message": "{{track}} marked paid"
+    },
+    "waive_dialog": {
+      "title": "Waive {{track}}",
+      "description": "Waive this track so the booking can progress without payment.",
+      "reason_label": "Reason",
+      "submit_label": "Waive",
+      "success_message": "{{track}} waived"
+    }
+  },
+  "concierge": {
+    "heading": "Concierge",
+    "add_service": "Add service",
+    "role_required_tooltip": "You need the Reservations role to add services",
+    "load_failed_title": "Couldn't load concierge services",
+    "load_failed_body": "Try again.",
+    "empty_title": "No concierge services yet",
+    "columns": {
+      "service": "Service",
+      "description": "Description",
+      "qty": "Qty",
+      "unit_price": "Unit price",
+      "total": "Total",
+      "status": "Status"
+    },
+    "row": {
+      "actions_for": "Actions for {{name}}",
+      "actions_label": "Actions",
+      "qty_with_unit": "{{quantity}} {{unit}}"
+    },
+    "menu": {
+      "confirm": "Confirm"
+    },
+    "confirm_delete": {
+      "title": "Remove this service?",
+      "description": "This can't be undone.",
+      "confirm_label": "Remove"
+    },
+    "toasts": {
+      "confirmed": "Service confirmed",
+      "confirm_failed": "Couldn't confirm",
+      "removed": "Service removed",
+      "remove_failed": "Couldn't remove service",
+      "added": "Service added",
+      "updated": "Service updated"
+    },
+    "form_dialog": {
+      "create_title": "Add concierge service",
+      "edit_title": "Edit concierge service",
+      "description": "Services itemise concierge spend; statuses are action-driven elsewhere.",
+      "fields": {
+        "service": "Service",
+        "tier": "Tier",
+        "unit": "Unit",
+        "quantity": "Quantity",
+        "unit_price": "Unit price",
+        "description": "Description",
+        "notes": "Notes"
+      },
+      "submit_create": "Add service"
+    }
+  },
+  "timeline": {
+    "load_failed_title": "Couldn't load activity",
+    "load_failed_body": "Try again.",
+    "empty_title": "No activity yet",
+    "empty_body": "Lifecycle events will appear here."
+  },
+  "schema_errors": {
+    "reason_max": "Keep it under 500 characters",
+    "reason_required": "Reason is required",
+    "check_out_after_check_in": "Check-out must be after check-in",
+    "at_least_one_adult": "At least one adult",
+    "children_negative": "Cannot be negative",
+    "name_required": "Name is required",
+    "decimal_format": "Use a decimal like 100.00",
+    "decimal_amount_format": "Use a decimal like 1000.00",
+    "quantity_min": "At least 1",
+    "body_required": "Body is required"
+  },
   "finance": {
     "title": "Finance",
     "fields": {

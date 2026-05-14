@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Section } from "@/components/data/Section";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
@@ -7,16 +9,20 @@ import { TransactionsTable } from "../components/TransactionsTable";
 import type { TrackName } from "../api";
 import type { BookingOutletContext } from "../BookingDetailLayout";
 
-const TRACKS: { name: TrackName; label: string }[] = [
-  { name: "deposit", label: "Deposit" },
-  { name: "balance", label: "Balance" },
-  { name: "security", label: "Security deposit" },
-];
-
 export function PaymentsTab() {
+  const { t } = useTranslation("bookings");
   const { booking } = useOutletContext<BookingOutletContext>();
   const canWrite = useHasReservationsRole();
   const currency = booking.currency_code ?? null;
+
+  const tracks: { name: TrackName; label: string }[] = useMemo(
+    () => [
+      { name: "deposit", label: t("payments.tracks.deposit") },
+      { name: "balance", label: t("payments.tracks.balance") },
+      { name: "security", label: t("payments.tracks.security") },
+    ],
+    [t],
+  );
 
   const queries = {
     deposit: useDepositTrack(booking.id),
@@ -26,10 +32,10 @@ export function PaymentsTab() {
 
   return (
     <div className="space-y-6 p-6">
-      <h2 className="text-foreground text-lg font-semibold">Payments</h2>
+      <h2 className="text-foreground text-lg font-semibold">{t("payments.heading")}</h2>
 
       <div className="space-y-3">
-        {TRACKS.map(({ name, label }) => {
+        {tracks.map(({ name, label }) => {
           const q = queries[name];
           return (
             <PaymentTrack
@@ -48,7 +54,7 @@ export function PaymentsTab() {
         })}
       </div>
 
-      <Section title="Transactions">
+      <Section title={t("payments.transactions_heading")}>
         <TransactionsTable bookingId={booking.id} currency={currency} />
       </Section>
     </div>

@@ -60,11 +60,10 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         enableSorting: false,
         cell: ({ row }) => {
           const { adults, children } = row.original;
-          return (
-            <span className="text-sm">
-              {adults}A{children ? ` · ${children}C` : ""}
-            </span>
-          );
+          const party = children
+            ? t("detail.rail.party_format_with_children", { adults, children })
+            : t("detail.rail.party_format", { adults });
+          return <span className="text-sm">{party}</span>;
         },
       },
       {

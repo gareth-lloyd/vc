@@ -19,12 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { buildQuotationColumns } from "./columns";
 import { useQuotations, QUOTATIONS_PAGE_SIZE } from "./hooks";
-import {
-  quotationStatusLabel,
-  quotationStatusOptions,
-  type QuotationFilters,
-  type QuotationListItem,
-} from "./schemas";
+import { quotationStatusOptions, type QuotationFilters, type QuotationListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";
 
@@ -148,7 +143,7 @@ export function QuotationsListPage() {
                 <SelectItem value={ALL_VALUE}>{t("list.filters.status_any")}</SelectItem>
                 {quotationStatusOptions().map((o) => (
                   <SelectItem key={o.value} value={o.value}>
-                    {quotationStatusLabel(o.value)}
+                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -170,7 +170,7 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending
-                ? t("notes.form_dialog.saving_label")
+                ? t("common:actions.saving")
                 : t("notes.form_dialog.submit_label")}
             </Button>
           </div>

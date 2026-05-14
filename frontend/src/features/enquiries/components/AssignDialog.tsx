@@ -168,7 +168,7 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
             {t("common:actions.cancel")}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={mutation.isPending}>
-            {mutation.isPending ? t("assign.actions.submitting") : t("assign.actions.submit")}
+            {mutation.isPending ? t("common:actions.saving") : t("assign.actions.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

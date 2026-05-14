@@ -170,7 +170,6 @@
         "pin": "Pin this note"
       },
       "submit_label": "Add note",
-      "saving_label": "Saving…",
       "success_message": "Note added"
     }
   },
@@ -218,8 +217,7 @@
       "load_failed": "Couldn't load operators. Try again."
     },
     "actions": {
-      "submit": "Assign",
-      "submitting": "Saving…"
+      "submit": "Assign"
     },
     "toasts": {
       "assigned": "Enquiry assigned",

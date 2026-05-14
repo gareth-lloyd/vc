@@ -15,11 +15,11 @@ This `django_res_design/` directory holds the design package: domain map, fronte
 
 ## Tech stack
 
-**Backend** — Django + Django REST Framework + Postgres. Celery + Redis for async jobs (email send, PDF render, channel sync, Zoho sync, exports). Object storage (S3 or compatible) for images and document assets. Stripe assumed for online card payments unless overridden during implementation.
+**Backend** — Django + Django REST Framework + Postgres. Celery + Redis for async jobs (email send, PDF render, channel sync, Zoho sync, exports). Object storage (S3 or compatible) for images and document assets. **Flywire** is the online card-payment gateway (continuing the legacy integration; see `10-decisions.md`).
 
 **Frontend** — Vite + React 18 + TypeScript. React Router v6 for routing. TanStack Query for server-state. TanStack Table for data grids. React Hook Form + Zod for forms. shadcn/ui (copied components) + Tailwind CSS for design system. Radix primitives for accessible behaviours. Tiptap (ProseMirror) for rich text. date-fns + date-fns-tz for date math and time-zone handling. Zustand for cross-cutting client state.
 
-**External integrations** — Stripe (payments + webhooks). Zoho CRM (leads/quotes/contacts/bookings). Airbnb / Booking.com / VRBO (channel sync, inbound webhooks and outbound updates). SMTP / SendGrid (email). iCal feeds (signed-URL output).
+**External integrations** — Flywire (payments + webhooks). Zoho CRM (leads/quotes/contacts/bookings). Public WordPress site (`WP_Sync_*` push fan-out). Airbnb / Booking.com / VRBO (channel sync, inbound webhooks and outbound updates — future scope). SMTP / SendGrid (email). iCal feeds (signed-URL output).
 
 ## High-level architecture
 
@@ -46,7 +46,7 @@ This `django_res_design/` directory holds the design package: domain map, fronte
               │ webhooks           │ webhooks
               │                    │
         ┌──────────────┐  ┌──────────────────┐
-        │   Stripe     │  │ Airbnb/Booking/  │
+        │   Flywire    │  │ Airbnb/Booking/  │
         │              │  │ VRBO / Zoho CRM  │
         └──────────────┘  └──────────────────┘
 ```
@@ -74,7 +74,7 @@ villacollective/
 │   │   ├── communications/    # email templates, email log
 │   │   ├── reports/           # occupancy, revenue, owner statements
 │   │   ├── exports/           # async export jobs
-│   │   ├── integrations/      # stripe, zoho, channels, ical
+│   │   ├── integrations/      # flywire, zoho, wordpress, channels, ical
 │   │   ├── notifications/     # in-app notifications, preferences
 │   │   └── system/            # sites, currencies, countries, regions, config
 │   └── pyproject.toml

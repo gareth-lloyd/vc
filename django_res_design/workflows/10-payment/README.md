@@ -46,6 +46,5 @@ Plus the checkout-form flow (capture guest personal info before payment) and the
 ## Open design questions for the Django redesign
 
 - The data-model design (`../07-payments.md`) plans `payments.Payment`, `payments.PaymentEvent`, `payments.WebhookDelivery` with proper idempotency and audit. Critically: signature verification is a hard requirement.
-- Note `../README.md` flags the unresolved question of whether Flywire is the payment processor or Stripe — the product-design package uses Stripe as a placeholder. Resolve before implementation.
 - Tokens should never round-trip through the application unencrypted — keep them at the gateway side, only store gateway-issued `customer_id`.
 - Pre-auth security deposit is currently `[DISABLED]` but the data shape exists; decide whether to revive.

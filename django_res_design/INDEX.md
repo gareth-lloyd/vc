@@ -29,13 +29,13 @@ Files:
 
 ## Relationship between the packages
 
-The two packages were authored by different design passes and have **slightly different mental models in places** (e.g., Package A assumes Flywire as the payment processor; Package B notes Stripe is "assumed unless overridden"). Resolve discrepancies during implementation by asking the user and updating both packages.
+The two packages were authored by different design passes and have **slightly different mental models in places**. Resolve remaining discrepancies during implementation by asking the user and updating both packages.
 
 Specifically:
 
 | Topic | Package A | Package B |
 |---|---|---|
-| Payment processor | Flywire (assumed) | Stripe (assumed) — open question in `06-verification.md` |
+| Payment processor | Flywire — **decided** (see `10-decisions.md` and `workflows/11-integrations/flywire-gateway.md`) | Flywire — **decided** (Package B's earlier Stripe placeholder has been replaced throughout) |
 | Data model depth | App-by-app, field-level | Aggregate-level overview in `01-domain-model.md` |
 | Frontend / UX | Not covered | Detailed in `02-frontend-design.md` |
 | User workflows | State transitions noted in models | Full step-by-step in `03-workflows.md` |

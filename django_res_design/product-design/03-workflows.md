@@ -826,7 +826,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 **Failure & recovery:**
 - Processor declines (e.g., card closed, refund window exceeded) → state `RefundFailed`, banner with options: "Retry with different method" / "Issue BT refund" (manual offline marker after operator processes BT).
-- Refund window exceeded (Stripe-style 90-180 day window) → forced to BT-offline path.
+- Refund window exceeded (Flywire's gateway-side refund window — 90-180 days depending on payment method) → forced to BT-offline path.
 
 **Permissions:** Operator+ up to £X per refund (site-configurable). Senior Op up to £Y. Admin above.
 

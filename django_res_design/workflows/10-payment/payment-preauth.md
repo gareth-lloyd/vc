@@ -35,8 +35,7 @@ Two payment-gateway workflows that exist as committed but **commented-out** code
 - Silent failure path (`isSuccess=false`) — guest doesn't know.
 
 ### Open questions
-- The pre-auth idea is sound: hold the security-deposit amount without charging until departure inspection. The Django redesign should revive it but as a typed Flywire (or Stripe) integration with proper credential management.
-- Stripe equivalent: `PaymentIntent` with `capture_method=manual`.
+- The pre-auth idea is sound: hold the security-deposit amount without charging until departure inspection. The Django redesign revives it as a typed Flywire integration with proper credential management (env / secret manager, not source).
 
 ---
 

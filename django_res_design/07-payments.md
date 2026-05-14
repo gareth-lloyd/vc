@@ -29,7 +29,7 @@ Lifecycle lives entirely in the `status` enum below — no soft delete. Terminal
 - `status` — TextChoices (`PENDING`, `PROCESSING`, `SUCCEEDED`, `FAILED`, `REFUNDED`, `CANCELLED`, `EXPIRED`, `WAIVED`)  # `WAIVED` is operator-applied to a scheduled `DEPOSIT` or `BALANCE` row that has been forgiven — see `:waive` transition below and reconciliation issue #24. `WAIVED` is terminal: the row is no longer collectible. Not applicable to `SECURITY_DEPOSIT` (which has its own track model — see `SecurityDeposit` below), `REFUND`, or `ADJUSTMENT`.
 - `amount` — Decimal(12, 2)
 - `currency` — FK pricing.Currency PROTECT
-- `provider` — TextChoices (`FLYWIRE`, `MANUAL_BANK_TRANSFER`, `STRIPE`)  # extensible
+- `provider` — TextChoices (`FLYWIRE`, `MANUAL_BANK_TRANSFER`)  # extensible — Flywire is the only online gateway in v1; the enum is left open for a future second provider but no other gateway code paths are built. See `10-decisions.md`.
 - `provider_reference` — CharField(blank=True)
 - `payment_method` — TextChoices (`CARD`, `BANK_TRANSFER`, `OTHER`)
 - `token` — CharField(blank=True)  # tokenised card if held
@@ -111,7 +111,7 @@ AWAITING_DETAILS or PRE_AUTHED ──(gateway error)──▶ FAILED  (terminal;
 | From | Action | To | Required actor | Side effects |
 |---|---|---|---|---|
 | (creation) | (system) | `AWAITING_DETAILS` | system at booking creation | created with `due_at`, `release_after_departure_days` snapshotted from `SecurityDepositPolicy` |
-| `AWAITING_DETAILS` | `:hold` | `PRE_AUTHED` | user (or webhook from hosted-fields gateway return) | create `Payment(purpose=SECURITY_DEPOSIT, status=SUCCEEDED, provider=FLYWIRE|STRIPE, amount=…, meta.security_deposit_id=…)` recording the pre-auth charge; set `hold_expires_at` from gateway response. Note: the `Payment.status=SUCCEEDED` here means "the pre-auth call succeeded", not "the money has moved" — the money sits on the card as a hold. |
+| `AWAITING_DETAILS` | `:hold` | `PRE_AUTHED` | user (or webhook from hosted-fields gateway return) | create `Payment(purpose=SECURITY_DEPOSIT, status=SUCCEEDED, provider=FLYWIRE, amount=…, meta.security_deposit_id=…)` recording the pre-auth charge; set `hold_expires_at` from gateway response. Note: the `Payment.status=SUCCEEDED` here means "the pre-auth call succeeded", not "the money has moved" — the money sits on the card as a hold. |
 | `PRE_AUTHED` | `:release` | `RELEASED` | user with `payments.security_deposit.release` perm, **or** Celery beat task on/after `release_scheduled_for` | call gateway to void the hold via Celery; on success set `released_at`, fire `security_deposit_released(sd)` signal. |
 | `PRE_AUTHED` | `:claim` | `CAPTURED` | user with `payments.security_deposit.claim` perm | requires `damage_claim` FK to be set; call gateway to capture (full or partial — partial requires `captured_amount` ≤ `amount` and writes the difference back as a release on the residual). One `Payment(purpose=SECURITY_DEPOSIT, status=SUCCEEDED)` per capture transaction; the original pre-auth Payment is left untouched as audit. |
 | `PRE_AUTHED` | (Celery beat: `hold_expires_at` past without release) | `EXPIRED` | system | the gateway has already voided the hold — we just reconcile state. Fires `security_deposit_expired(sd)` signal for ops review. |

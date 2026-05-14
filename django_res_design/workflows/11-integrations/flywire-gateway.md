@@ -33,8 +33,11 @@ If any of these fail, the webhook still returns 200 OK — the cascade is fire-a
 
 ## Open design questions for the Django redesign
 
-- **Resolve gateway choice**: the data-model design assumes Flywire; the product design assumes Stripe. Pick one.
 - **Verify signatures**: HMAC-SHA256 over the raw body must be mandatory.
 - **Idempotency**: webhook events must be deduped on `payment_id`.
 - **Move credentials** to env / secret manager.
-- **Re-enable or remove** the disabled outbound flows after the gateway-choice decision. Both have working data shapes.
+- **Re-enable or remove** the disabled outbound `Charge` and `Pre-auth` flows. Both have working data shapes; the redesign should revive them as typed Flywire calls with proper credential management (see `10-payment/payment-preauth.md`).
+
+## Decided
+
+- **Flywire is the payment gateway.** No multi-provider abstraction in v1. The `Payment.provider` enum stays extensible (`FLYWIRE`, `MANUAL_BANK_TRANSFER`) so a future second provider can be added without a migration, but no Stripe / other-gateway code paths are built.

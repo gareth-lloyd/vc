@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -25,9 +26,8 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
 import {
-  ENQUIRY_SOURCE_LABELS,
-  enquirySourceSchema,
-  enquiryRequestTypeSchema,
+  enquirySourceOptions,
+  enquiryRequestTypeOptions,
   enquiryWriteInputSchema,
   type EnquiryDetail,
   type EnquiryWriteInput,
@@ -83,17 +83,8 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
   };
 }
 
-const REQUEST_TYPE_OPTIONS = enquiryRequestTypeSchema.options.map((value) => ({
-  value,
-  label: value.charAt(0).toUpperCase() + value.slice(1),
-}));
-
-const SOURCE_OPTIONS = enquirySourceSchema.options.map((value) => ({
-  value,
-  label: ENQUIRY_SOURCE_LABELS[value],
-}));
-
 export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
+  const { t } = useTranslation("enquiries");
   const { open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -119,6 +110,8 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
   const flexibleCtrl = useController({ control: form.control, name: "is_flexible" });
 
+  const idleSubmitLabel = isCreate ? t("common:actions.create") : t("common:actions.save");
+
   const handleSubmit = async (values: EnquiryWriteInput) => {
     setTopLevelError(null);
     try {
@@ -127,14 +120,14 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
       } else {
         await updateMutation.mutateAsync(values);
       }
-      toast.success(isCreate ? "Enquiry created" : "Enquiry updated");
+      toast.success(isCreate ? t("form_dialog.toasts.created") : t("form_dialog.toasts.updated"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -143,26 +136,26 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "New enquiry" : "Edit enquiry"}</DialogTitle>
-          <DialogDescription>
-            Capture lead details. Status is managed via the action buttons.
-          </DialogDescription>
+          <DialogTitle>
+            {isCreate ? t("form_dialog.titles.create") : t("form_dialog.titles.edit")}
+          </DialogTitle>
+          <DialogDescription>{t("form_dialog.description")}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="enq-first-name">First name</Label>
+              <Label htmlFor="enq-first-name">{t("form_dialog.fields.first_name")}</Label>
               <Input id="enq-first-name" {...form.register("first_name")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="enq-last-name">Last name</Label>
+              <Label htmlFor="enq-last-name">{t("form_dialog.fields.last_name")}</Label>
               <Input id="enq-last-name" {...form.register("last_name")} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="enq-email">Email</Label>
+            <Label htmlFor="enq-email">{t("form_dialog.fields.email")}</Label>
             <Input
               id="enq-email"
               type="email"
@@ -178,11 +171,11 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="enq-date-from">From</Label>
+              <Label htmlFor="enq-date-from">{t("form_dialog.fields.from")}</Label>
               <Input id="enq-date-from" type="date" {...form.register("date_from")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="enq-date-to">To</Label>
+              <Label htmlFor="enq-date-to">{t("form_dialog.fields.to")}</Label>
               <Input id="enq-date-to" type="date" {...form.register("date_to")} />
             </div>
           </div>
@@ -192,12 +185,12 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               checked={!!flexibleCtrl.field.value}
               onCheckedChange={(v) => flexibleCtrl.field.onChange(v === true)}
             />
-            <span>Flexible dates</span>
+            <span>{t("form_dialog.fields.flexible_dates")}</span>
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="enq-adults">Adults</Label>
+              <Label htmlFor="enq-adults">{t("form_dialog.fields.adults")}</Label>
               <Input
                 id="enq-adults"
                 type="number"
@@ -212,7 +205,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="enq-children">Children</Label>
+              <Label htmlFor="enq-children">{t("form_dialog.fields.children")}</Label>
               <Input
                 id="enq-children"
                 type="number"
@@ -224,16 +217,19 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="enq-request-type">Request type</Label>
+              <Label htmlFor="enq-request-type">{t("form_dialog.fields.request_type")}</Label>
               <Select
                 value={requestTypeCtrl.field.value}
                 onValueChange={requestTypeCtrl.field.onChange}
               >
-                <SelectTrigger id="enq-request-type" aria-label="Request type">
+                <SelectTrigger
+                  id="enq-request-type"
+                  aria-label={t("form_dialog.fields.request_type_aria")}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {REQUEST_TYPE_OPTIONS.map((o) => (
+                  {enquiryRequestTypeOptions().map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -242,13 +238,13 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="enq-source">Source</Label>
+              <Label htmlFor="enq-source">{t("form_dialog.fields.source")}</Label>
               <Select value={sourceCtrl.field.value} onValueChange={sourceCtrl.field.onChange}>
-                <SelectTrigger id="enq-source" aria-label="Source">
+                <SelectTrigger id="enq-source" aria-label={t("form_dialog.fields.source_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SOURCE_OPTIONS.map((o) => (
+                  {enquirySourceOptions().map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -259,7 +255,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="enq-message">Inbound message</Label>
+            <Label htmlFor="enq-message">{t("form_dialog.fields.inbound_message")}</Label>
             <Textarea id="enq-message" rows={3} {...form.register("inbound_message")} />
           </div>
 
@@ -279,10 +275,10 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Create" : "Save"}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

@@ -1,21 +1,9 @@
 import { z } from "zod";
+import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
 export const enquiryStatusSchema = z.enum(["new", "contacted", "quoted", "lost", "converted"]);
 export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
-
-export const ENQUIRY_STATUS_LABELS: Record<EnquiryStatus, string> = {
-  new: "New",
-  contacted: "Contacted",
-  quoted: "Quoted",
-  lost: "Lost",
-  converted: "Converted",
-};
-
-export const ENQUIRY_STATUS_OPTIONS = enquiryStatusSchema.options.map((value) => ({
-  value,
-  label: ENQUIRY_STATUS_LABELS[value],
-}));
 
 // Columns shown on the Kanban board (Lost is excluded — operators can filter to
 // it via the list view if needed).
@@ -34,14 +22,6 @@ export const enquirySourceSchema = z.enum([
   "other",
 ]);
 export type EnquirySource = z.infer<typeof enquirySourceSchema>;
-
-export const ENQUIRY_SOURCE_LABELS: Record<EnquirySource, string> = {
-  main_website: "Main website",
-  agent_portal: "Agent portal",
-  email_inbound: "Inbound email",
-  phone: "Phone",
-  other: "Other",
-};
 
 export const enquiryRequestTypeSchema = z.enum([
   "availability",
@@ -118,17 +98,6 @@ export const enquiryActivityResponseSchema = z.array(enquiryActivitySchema);
 export const enquiryNoteKindSchema = z.enum(["general", "internal", "preferences"]);
 export type EnquiryNoteKind = z.infer<typeof enquiryNoteKindSchema>;
 
-export const ENQUIRY_NOTE_KIND_LABELS: Record<EnquiryNoteKind, string> = {
-  general: "General",
-  internal: "Internal",
-  preferences: "Preferences",
-};
-
-export const ENQUIRY_NOTE_KIND_OPTIONS = enquiryNoteKindSchema.options.map((value) => ({
-  value,
-  label: ENQUIRY_NOTE_KIND_LABELS[value],
-}));
-
 export const enquiryNoteSchema = z.object({
   id: z.number(),
   enquiry: z.number().optional(),
@@ -145,7 +114,7 @@ export const enquiryNotesResponseSchema = paginated(enquiryNoteSchema);
 
 export const enquiryNoteWriteInputSchema = z.object({
   kind: enquiryNoteKindSchema,
-  body: z.string().trim().min(1, "Body is required").max(10_000),
+  body: z.string().trim().min(1, i18n.t("enquiries:schema_errors.body_required")).max(10_000),
   is_pinned: z.boolean(),
 });
 export type EnquiryNoteWriteInput = z.infer<typeof enquiryNoteWriteInputSchema>;
@@ -157,13 +126,13 @@ export const enquiryWriteInputSchema = z.object({
     .string()
     .trim()
     .refine((v) => v === "" || /.+@.+\..+/.test(v), {
-      message: "Enter a valid email",
+      message: i18n.t("common:zod.invalid_email"),
     }),
   phone: z.string().trim().max(32),
   date_from: z.string().nullable(),
   date_to: z.string().nullable(),
   is_flexible: z.boolean(),
-  adults: z.number().int().min(1, "At least one adult"),
+  adults: z.number().int().min(1, i18n.t("enquiries:schema_errors.at_least_one_adult")),
   children: z.number().int().min(0),
   min_bedrooms: z.number().int().min(0).nullable(),
   request_type: enquiryRequestTypeSchema,
@@ -189,3 +158,37 @@ export interface EnquiryFilters {
   ordering?: string;
   page?: number;
 }
+
+export function enquiryStatusLabel(status: EnquiryStatus): string {
+  return i18n.t(`enquiries:labels.status.${status}`);
+}
+
+export function enquirySourceLabel(source: EnquirySource): string {
+  return i18n.t(`enquiries:labels.source.${source}`);
+}
+
+export function enquiryNoteKindLabel(kind: EnquiryNoteKind): string {
+  return i18n.t(`enquiries:labels.note_kind.${kind}`);
+}
+
+export function enquiryRequestTypeLabel(value: EnquiryRequestType): string {
+  return i18n.t(`enquiries:labels.request_type.${value}`);
+}
+
+export const enquiryStatusOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
+  enquiryStatusSchema.options.map((value) => ({ value, label: enquiryStatusLabel(value) }));
+
+export const enquirySourceOptions = (): Array<{ value: EnquirySource; label: string }> =>
+  enquirySourceSchema.options.map((value) => ({ value, label: enquirySourceLabel(value) }));
+
+export const enquiryNoteKindOptions = (): Array<{ value: EnquiryNoteKind; label: string }> =>
+  enquiryNoteKindSchema.options.map((value) => ({ value, label: enquiryNoteKindLabel(value) }));
+
+export const enquiryRequestTypeOptions = (): Array<{
+  value: EnquiryRequestType;
+  label: string;
+}> =>
+  enquiryRequestTypeSchema.options.map((value) => ({
+    value,
+    label: enquiryRequestTypeLabel(value),
+  }));

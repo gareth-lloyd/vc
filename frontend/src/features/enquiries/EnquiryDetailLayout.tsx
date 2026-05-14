@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -16,12 +17,12 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useEnquiry, useReopenEnquiry } from "./hooks";
 import { AssignDialog } from "./components/AssignDialog";
 import { CloseDialog } from "./components/CloseDialog";
-import { ENQUIRY_SOURCE_LABELS, ENQUIRY_STATUS_LABELS, type EnquiryDetail } from "./schemas";
+import { enquirySourceLabel, enquiryStatusLabel, type EnquiryDetail } from "./schemas";
 
 export const ENQUIRY_TABS = [
-  { slug: "details", label: "Details" },
-  { slug: "activity", label: "Activity" },
-  { slug: "notes", label: "Notes" },
+  { slug: "details", labelKey: "tabs.details" },
+  { slug: "activity", labelKey: "tabs.activity" },
+  { slug: "notes", labelKey: "tabs.notes" },
 ] as const;
 
 export interface EnquiryOutletContext {
@@ -41,11 +42,13 @@ interface EnquiryActionsProps {
 }
 
 function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
+  const { t } = useTranslation("enquiries");
   const navigate = useNavigate();
   const hasRole = useHasReservationsRole();
 
   const isClosed = enquiry.status === "lost";
   const isFinal = enquiry.status === "converted" || enquiry.status === "lost";
+  const roleRequired = t("common:errors.reservations_role_required");
 
   const handleConvertClick = () => {
     navigate(`/quotations/new?enquiry=${enquiry.id}`);
@@ -54,40 +57,32 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   return (
     <div className="space-y-2">
       <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-        Actions
+        {t("detail.rail.actions_heading")}
       </p>
       <ActionButton
-        label="Assign…"
+        label={t("detail.actions.assign")}
         onClick={() => onOpen("assign")}
-        disableReason={hasRole ? null : "Reservations role required."}
+        disableReason={hasRole ? null : roleRequired}
       />
       <ActionButton
-        label="Convert to quote"
+        label={t("detail.actions.convert")}
         onClick={handleConvertClick}
         disableReason={
-          !hasRole
-            ? "Reservations role required."
-            : isFinal
-              ? "Not available for this status."
-              : null
+          !hasRole ? roleRequired : isFinal ? t("detail.actions.convert_disabled_state") : null
         }
       />
       <ActionButton
-        label="Close as lost…"
+        label={t("detail.actions.close")}
         onClick={() => onOpen("close")}
         disableReason={
-          !hasRole ? "Reservations role required." : isFinal ? "Already closed or converted." : null
+          !hasRole ? roleRequired : isFinal ? t("detail.actions.close_disabled_state") : null
         }
       />
       <ActionButton
-        label="Reopen"
+        label={t("detail.actions.reopen")}
         onClick={() => onOpen("reopen")}
         disableReason={
-          !hasRole
-            ? "Reservations role required."
-            : !isClosed
-              ? "Only available for closed enquiries."
-              : null
+          !hasRole ? roleRequired : !isClosed ? t("detail.actions.reopen_disabled_state") : null
         }
       />
     </div>
@@ -100,31 +95,48 @@ interface RailProps {
 }
 
 function RailSummary({ enquiry, onOpenDialog }: RailProps) {
+  const { t } = useTranslation("enquiries");
+  const partyText =
+    enquiry.children > 0
+      ? t("detail.rail.party_format_with_children", {
+          adults: enquiry.adults,
+          children: enquiry.children,
+        })
+      : t("detail.rail.party_format", { adults: enquiry.adults });
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-foreground text-lg font-semibold">{enquiry.reference}</h2>
         <p className="text-muted-foreground text-sm">{guestName(enquiry)}</p>
       </div>
-      <StatusBadge status={ENQUIRY_STATUS_LABELS[enquiry.status]} />
+      <StatusBadge status={enquiryStatusLabel(enquiry.status)} />
       <FactList>
         <FactRow
-          label="Dates"
+          label={t("detail.rail.dates")}
           value={
             enquiry.date_from || enquiry.date_to
               ? `${formatDate(enquiry.date_from ?? null)} – ${formatDate(enquiry.date_to ?? null)}`
-              : "Flexible"
+              : t("detail.rail.flexible")
+          }
+        />
+        <FactRow label={t("detail.rail.party")} value={partyText} />
+        <FactRow label={t("detail.rail.source")} value={enquirySourceLabel(enquiry.site_source)} />
+        <FactRow
+          label={t("detail.rail.property")}
+          value={
+            enquiry.property != null
+              ? t("detail.rail.property_with_id", { id: enquiry.property })
+              : "—"
           }
         />
         <FactRow
-          label="Party"
-          value={`${enquiry.adults}A${enquiry.children ? ` · ${enquiry.children}C` : ""}`}
-        />
-        <FactRow label="Source" value={ENQUIRY_SOURCE_LABELS[enquiry.site_source]} />
-        <FactRow label="Property" value={enquiry.property != null ? `#${enquiry.property}` : "—"} />
-        <FactRow
-          label="Assigned"
-          value={enquiry.assigned_to != null ? `User #${enquiry.assigned_to}` : "Unassigned"}
+          label={t("detail.rail.assigned")}
+          value={
+            enquiry.assigned_to != null
+              ? t("detail.rail.user_with_id", { id: enquiry.assigned_to })
+              : t("detail.rail.unassigned")
+          }
         />
       </FactList>
       <EnquiryActions enquiry={enquiry} onOpen={onOpenDialog} />
@@ -133,6 +145,7 @@ function RailSummary({ enquiry, onOpenDialog }: RailProps) {
 }
 
 export function EnquiryDetailLayout() {
+  const { t } = useTranslation("enquiries");
   const { id } = useParams<{ id: string }>();
   const query = useEnquiry(id);
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -153,12 +166,8 @@ export function EnquiryDetailLayout() {
     return (
       <div className="p-6">
         <ErrorState
-          title={is404 ? "Enquiry not found" : "Couldn't load this enquiry"}
-          description={
-            is404
-              ? "It may have been deleted or you may not have access."
-              : "Try again or head back to the list."
-          }
+          title={is404 ? t("detail.not_found_title") : t("detail.load_failed_title")}
+          description={is404 ? t("detail.not_found_body") : t("detail.load_failed_body")}
           onRetry={is404 ? undefined : () => query.refetch()}
         />
       </div>
@@ -170,10 +179,11 @@ export function EnquiryDetailLayout() {
   const handleReopen = async () => {
     try {
       await reopenMutation.mutateAsync("");
-      toast.success("Enquiry reopened");
+      toast.success(t("detail.reopen_confirm.success_message"));
       setDialog(null);
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Couldn't reopen enquiry";
+      const message =
+        error instanceof ApiError ? error.detail : t("detail.reopen_confirm.error_message");
       toast.error(message);
     }
   };
@@ -183,11 +193,14 @@ export function EnquiryDetailLayout() {
       <PageHeader
         title={enquiry.reference}
         subtitle={guestName(enquiry)}
-        breadcrumbs={[{ label: "Enquiries", to: "/enquiries" }, { label: enquiry.reference }]}
+        breadcrumbs={[
+          { label: t("detail.breadcrumb_list"), to: "/enquiries" },
+          { label: enquiry.reference },
+        ]}
       />
 
       <div className="border-border border-b px-6">
-        <nav className="flex gap-1" aria-label="Enquiry sections">
+        <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
           {ENQUIRY_TABS.map((tab) => (
             <NavLink
               key={tab.slug}
@@ -201,7 +214,7 @@ export function EnquiryDetailLayout() {
                 )
               }
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </NavLink>
           ))}
         </nav>
@@ -236,9 +249,9 @@ export function EnquiryDetailLayout() {
           if (!open) setDialog(null);
         }}
         onConfirm={handleReopen}
-        title="Reopen this enquiry?"
-        description="It will move back to New."
-        confirmLabel="Reopen"
+        title={t("detail.reopen_confirm.title")}
+        description={t("detail.reopen_confirm.description")}
+        confirmLabel={t("detail.reopen_confirm.confirm_label")}
         busy={reopenMutation.isPending}
       />
     </div>

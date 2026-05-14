@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
 
 export interface KanbanColumn<T> {
@@ -80,6 +81,7 @@ export function KanbanBoard<T>({
   onMoveItem,
   getItemId,
 }: KanbanBoardProps<T>) {
+  const { t } = useTranslation("enquiries");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -126,7 +128,7 @@ export function KanbanBoard<T>({
             })}
             {col.items.length === 0 ? (
               <div className="text-muted-foreground rounded border border-dashed px-2 py-6 text-center text-xs">
-                Drop here
+                {t("kanban.drop_here")}
               </div>
             ) : null}
           </DroppableColumn>

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -12,6 +13,7 @@ function formatTransition(from: string | null, to: string, kind: string) {
 }
 
 export function ActivityTab() {
+  const { t } = useTranslation("enquiries");
   const { enquiry } = useOutletContext<EnquiryOutletContext>();
   const activity = useEnquiryActivity(enquiry.id);
 
@@ -27,8 +29,8 @@ export function ActivityTab() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load activity"
-          description="Try again."
+          title={t("activity.load_failed_title")}
+          description={t("activity.load_failed_body")}
           onRetry={() => activity.refetch()}
         />
       </div>
@@ -39,7 +41,7 @@ export function ActivityTab() {
   if (events.length === 0) {
     return (
       <div className="p-6">
-        <EmptyState title="No activity yet" description="Lifecycle events will appear here." />
+        <EmptyState title={t("activity.empty_title")} description={t("activity.empty_body")} />
       </div>
     );
   }

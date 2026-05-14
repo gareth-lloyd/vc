@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 
@@ -7,6 +8,7 @@ interface ToolbarProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
+  searchAriaLabel?: string;
   filters?: ReactNode;
   rightSlot?: ReactNode;
   className?: string;
@@ -15,11 +17,13 @@ interface ToolbarProps {
 export function Toolbar({
   searchValue,
   onSearchChange,
-  searchPlaceholder = "Search…",
+  searchPlaceholder,
+  searchAriaLabel,
   filters,
   rightSlot,
   className,
 }: ToolbarProps) {
+  const { t } = useTranslation("common");
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
       <div className="relative max-w-xs flex-1">
@@ -28,9 +32,9 @@ export function Toolbar({
           type="search"
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
+          placeholder={searchPlaceholder ?? t("search.placeholder")}
           className="pl-8"
-          aria-label="Search"
+          aria-label={searchAriaLabel ?? t("search.aria_label")}
         />
       </div>
       {filters}

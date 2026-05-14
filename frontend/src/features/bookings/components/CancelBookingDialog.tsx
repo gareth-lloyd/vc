@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { BookingId } from "@/lib/query/keys";
 import { useCancelBooking } from "../hooks";
 import { cancelBookingInputSchema, type CancelBookingInput } from "../schemas";
@@ -12,6 +13,7 @@ interface CancelBookingDialogProps {
 const DEFAULTS: CancelBookingInput = { reason: "" };
 
 export function CancelBookingDialog({ bookingId, open, onOpenChange }: CancelBookingDialogProps) {
+  const { t } = useTranslation("bookings");
   const mutation = useCancelBooking(bookingId);
   return (
     <ReasonFormDialog<CancelBookingInput>
@@ -22,14 +24,14 @@ export function CancelBookingDialog({ bookingId, open, onOpenChange }: CancelBoo
       reasonField="reason"
       submit={(values) => mutation.mutateAsync(values)}
       isPending={mutation.isPending}
-      title="Cancel this booking?"
-      description="This transitions the booking to cancelled. Add an optional reason for the audit log."
-      reasonLabel="Reason (optional)"
+      title={t("cancel_dialog.title")}
+      description={t("cancel_dialog.description")}
+      reasonLabel={t("cancel_dialog.reason_label")}
       reasonId="cancel-reason"
-      submitLabel="Cancel booking"
-      busyLabel="Cancelling…"
-      keepLabel="Keep booking"
-      successMessage="Booking cancelled"
+      submitLabel={t("cancel_dialog.submit_label")}
+      busyLabel={t("cancel_dialog.busy_label")}
+      keepLabel={t("cancel_dialog.keep_label")}
+      successMessage={t("cancel_dialog.success_message")}
     />
   );
 }

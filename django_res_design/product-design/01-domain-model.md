@@ -342,7 +342,7 @@ API: `/bookings/{id}/security` and `/bookings/{id}/security/payments/{id}:hold|:
 ### PaymentEvent
 A single payment attempt / transaction. Replaces `VillaPaymentDetail` + `VillaCheckoutDetail` (collapsed).
 
-Fields: `track` (polymorphic FK or three nullable FKs to the three tracks above), `gateway` (enum: `stripe` / `manual_bt` / `manual_cash` / `manual_cheque` / `other`), `external_reference` (gateway charge id), `amount`, `currency`, `payer_amount` (what payer actually paid, may differ due to fees), `payer_currency`, `payment_method` (`card` / `bt` / `cheque` / `cash`), `status` (enum), `error_message`, `processed_at`, `idempotency_key`.
+Fields: `track` (polymorphic FK or three nullable FKs to the three tracks above), `gateway` (enum: `flywire` / `manual_bt` / `manual_cash` / `manual_cheque` / `other`), `external_reference` (gateway charge id), `amount`, `currency`, `payer_amount` (what payer actually paid, may differ due to fees), `payer_currency`, `payment_method` (`card` / `bt` / `cheque` / `cash`), `status` (enum), `error_message`, `processed_at`, `idempotency_key`.
 
 **Status**: `pending`, `succeeded`, `failed`, `refunded`, `disputed`, `voided`, `expired`, `waived`. `waived` is operator-applied to a scheduled `DEPOSIT` or `BALANCE` row (the `:waive` API action) — terminal, no money moves; the booking advances as if the payment had succeeded. `:mark-paid` is a separate transition that writes a manual receipt (`provider=MANUAL_BANK_TRANSFER`, `status=succeeded`); not a status of its own. See reconciliation issue #24.
 
@@ -397,7 +397,7 @@ Fields: `kind` (`contacts` / `properties` / `enquiries` / `quotations` / `bookin
 Outbound sync to OTAs. Fields: `channel` (`airbnb` / `booking_com` / `vrbo`), `property` (FK, nullable for portfolio-wide), `kind` (`availability` / `rates` / `content`), `status`, similar metadata.
 
 ### WebhookEvent
-Inbound webhook audit log. Fields: `provider` (`stripe` / `airbnb` / `booking_com` / `vrbo` / `zoho` / `other`), `event_type`, `external_id`, `payload` (JSON), `signature_valid` (bool), `processed_at`, `processing_status` (`pending` / `processed` / `failed` / `replayed`), `error_message`.
+Inbound webhook audit log. Fields: `provider` (`flywire` / `airbnb` / `booking_com` / `vrbo` / `zoho` / `other`), `event_type`, `external_id`, `payload` (JSON), `signature_valid` (bool), `processed_at`, `processing_status` (`pending` / `processed` / `failed` / `replayed`), `error_message`.
 
 ---
 

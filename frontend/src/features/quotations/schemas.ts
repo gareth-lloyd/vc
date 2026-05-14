@@ -1,21 +1,16 @@
 import { z } from "zod";
+import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
 export const quotationStatusSchema = z.enum(["draft", "sent", "accepted", "expired", "cancelled"]);
 export type QuotationStatus = z.infer<typeof quotationStatusSchema>;
 
-export const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
-  draft: "Draft",
-  sent: "Sent",
-  accepted: "Accepted",
-  expired: "Expired",
-  cancelled: "Cancelled",
-};
+export function quotationStatusLabel(status: QuotationStatus): string {
+  return i18n.t(`quotations:labels.status.${status}`);
+}
 
-export const QUOTATION_STATUS_OPTIONS = quotationStatusSchema.options.map((value) => ({
-  value,
-  label: QUOTATION_STATUS_LABELS[value],
-}));
+export const quotationStatusOptions = (): Array<{ value: QuotationStatus; label: string }> =>
+  quotationStatusSchema.options.map((value) => ({ value, label: quotationStatusLabel(value) }));
 
 // Statuses that block further transitions (no send, no withdraw).
 export const TERMINAL_QUOTATION_STATUSES: readonly QuotationStatus[] = [
@@ -38,7 +33,7 @@ export const quotationListItemSchema = z.object({
   status: looseStatus,
   expires_at: z.string().nullable().optional(),
   is_unbranded: z.boolean().optional().default(false),
-  terms_version: z.string().optional().default(""),
+  terms_version: z.number().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -68,9 +63,9 @@ export type QuotationLine = z.infer<typeof quotationLineSchema>;
 
 export const quoteCriteriaInputSchema = z
   .object({
-    date_from: z.string().min(1, "Required"),
-    date_to: z.string().min(1, "Required"),
-    adults: z.number().int().min(1, "At least one adult"),
+    date_from: z.string().min(1, i18n.t("common:errors.field_required")),
+    date_to: z.string().min(1, i18n.t("common:errors.field_required")),
+    adults: z.number().int().min(1, i18n.t("quotations:schema_errors.at_least_one_adult")),
     children: z.number().int().min(0),
     country: z.string(),
     region: z.string(),
@@ -80,7 +75,7 @@ export const quoteCriteriaInputSchema = z
   })
   .refine((v) => !v.date_from || !v.date_to || v.date_from < v.date_to, {
     path: ["date_to"],
-    message: "Must be after the start date",
+    message: i18n.t("quotations:schema_errors.date_to_after_date_from"),
   });
 export type QuoteCriteriaInput = z.infer<typeof quoteCriteriaInputSchema>;
 

@@ -1,4 +1,17 @@
 {
+  "labels": {
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "accepted": "Accepted",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    }
+  },
+  "schema_errors": {
+    "at_least_one_adult": "At least one adult",
+    "date_to_after_date_from": "Must be after the start date"
+  },
   "list": {
     "title": "Quotations",
     "breadcrumb_root": "Operations",

@@ -14,9 +14,29 @@ import usersEn from "./locales/en/users.json";
 import quotationsEn from "./locales/en/quotations.json";
 import auditEn from "./locales/en/audit.json";
 import adminEn from "./locales/en/admin.json";
+import dashboardEn from "./locales/en/dashboard.json";
 
-export const SUPPORTED_LANGUAGES = ["en"] as const;
+import commonEl from "./locales/el/common.json";
+import authEl from "./locales/el/auth.json";
+import contactsEl from "./locales/el/contacts.json";
+import propertiesEl from "./locales/el/properties.json";
+import bookingsEl from "./locales/el/bookings.json";
+import enquiriesEl from "./locales/el/enquiries.json";
+import usersEl from "./locales/el/users.json";
+import quotationsEl from "./locales/el/quotations.json";
+import auditEl from "./locales/el/audit.json";
+import adminEl from "./locales/el/admin.json";
+import dashboardEl from "./locales/el/dashboard.json";
+
+export const SUPPORTED_LANGUAGES = ["en", "el"] as const;
 export const DEFAULT_LANGUAGE: (typeof SUPPORTED_LANGUAGES)[number] = "en";
+
+// Autonyms — intentionally not run through t(): "Ελληνικά" must read
+// "Ελληνικά" in any UI locale, so a user can find their language.
+export const LANGUAGE_AUTONYMS: Record<(typeof SUPPORTED_LANGUAGES)[number], string> = {
+  en: "English",
+  el: "Ελληνικά",
+};
 
 export const I18N_NAMESPACES = [
   "common",
@@ -29,6 +49,7 @@ export const I18N_NAMESPACES = [
   "quotations",
   "audit",
   "admin",
+  "dashboard",
 ] as const;
 
 const supportedLngs: string[] = [...SUPPORTED_LANGUAGES];
@@ -50,6 +71,20 @@ void i18n
         quotations: quotationsEn,
         audit: auditEn,
         admin: adminEn,
+        dashboard: dashboardEn,
+      },
+      el: {
+        common: commonEl,
+        auth: authEl,
+        contacts: contactsEl,
+        properties: propertiesEl,
+        bookings: bookingsEl,
+        enquiries: enquiriesEl,
+        users: usersEl,
+        quotations: quotationsEl,
+        audit: auditEl,
+        admin: adminEl,
+        dashboard: dashboardEl,
       },
     },
     fallbackLng: DEFAULT_LANGUAGE,

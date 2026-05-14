@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
@@ -26,9 +27,9 @@ import {
 } from "../hooks";
 import { ConciergeItemFormDialog } from "../components/ConciergeItemFormDialog";
 import {
-  CONCIERGE_STATUS_LABELS,
-  CONCIERGE_TIER_LABELS,
-  CONCIERGE_UNIT_LABELS,
+  conciergeStatusLabel,
+  conciergeTierLabel,
+  conciergeUnitLabel,
   type BookingConciergeItem,
 } from "../schemas";
 import type { BookingOutletContext } from "../BookingDetailLayout";
@@ -40,6 +41,7 @@ function lineTotal(item: BookingConciergeItem): number {
 }
 
 export function ConciergeTab() {
+  const { t } = useTranslation("bookings");
   const { booking } = useOutletContext<BookingOutletContext>();
   const canWrite = useHasReservationsRole();
   const currency = booking.currency_code ?? null;
@@ -58,9 +60,10 @@ export function ConciergeTab() {
   const handleConfirm = async (item: BookingConciergeItem) => {
     try {
       await confirmMutation.mutateAsync({ itemId: item.id });
-      toast.success("Service confirmed");
+      toast.success(t("concierge.toasts.confirmed"));
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Couldn't confirm";
+      const message =
+        error instanceof ApiError ? error.detail : t("concierge.toasts.confirm_failed");
       toast.error(message);
     }
   };
@@ -69,10 +72,10 @@ export function ConciergeTab() {
     if (!deleting) return;
     try {
       await deleteMutation.mutateAsync({ itemId: deleting.id });
-      toast.success("Service removed");
+      toast.success(t("concierge.toasts.removed"));
       setDeleting(null);
     } catch {
-      toast.error("Couldn't remove service");
+      toast.error(t("concierge.toasts.remove_failed"));
     }
   };
 
@@ -80,19 +83,19 @@ export function ConciergeTab() {
     () => [
       {
         accessorKey: "name",
-        header: "Service",
+        header: t("concierge.columns.service"),
         cell: ({ row }) => (
           <div className="space-y-0.5">
             <div className="font-medium">{row.original.name}</div>
             <div className="text-muted-foreground text-xs">
-              {CONCIERGE_TIER_LABELS[row.original.tier]}
+              {conciergeTierLabel(row.original.tier)}
             </div>
           </div>
         ),
       },
       {
         accessorKey: "description",
-        header: "Description",
+        header: t("concierge.columns.description"),
         cell: ({ row }) => (
           <span className="text-muted-foreground line-clamp-2 text-sm">
             {row.original.description || "—"}
@@ -101,23 +104,27 @@ export function ConciergeTab() {
       },
       {
         accessorKey: "quantity",
-        header: "Qty",
-        cell: ({ row }) => `${row.original.quantity} ${CONCIERGE_UNIT_LABELS[row.original.unit]}`,
+        header: t("concierge.columns.qty"),
+        cell: ({ row }) =>
+          t("concierge.row.qty_with_unit", {
+            quantity: row.original.quantity,
+            unit: conciergeUnitLabel(row.original.unit),
+          }),
       },
       {
         accessorKey: "unit_price",
-        header: "Unit price",
+        header: t("concierge.columns.unit_price"),
         cell: ({ row }) => formatMoney(row.original.unit_price, currency),
       },
       {
         id: "total",
-        header: "Total",
+        header: t("concierge.columns.total"),
         cell: ({ row }) => formatMoney(lineTotal(row.original), currency),
       },
       {
         accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => <StatusBadge status={CONCIERGE_STATUS_LABELS[row.original.status]} />,
+        header: t("concierge.columns.status"),
+        cell: ({ row }) => <StatusBadge status={conciergeStatusLabel(row.original.status)} />,
       },
       {
         id: "actions",
@@ -128,17 +135,25 @@ export function ConciergeTab() {
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" aria-label={`Actions for ${item.name}`}>
-                  Actions
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("concierge.row.actions_for", { name: item.name })}
+                >
+                  {t("concierge.row.actions_label")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setEditing(item)}>Edit</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setEditing(item)}>
+                  {t("common:actions.edit")}
+                </DropdownMenuItem>
                 {item.status === "requested" ? (
-                  <DropdownMenuItem onClick={() => handleConfirm(item)}>Confirm</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleConfirm(item)}>
+                    {t("concierge.menu.confirm")}
+                  </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem className="text-destructive" onClick={() => setDeleting(item)}>
-                  Delete
+                  {t("common:actions.delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -149,7 +164,7 @@ export function ConciergeTab() {
     // handleConfirm/handleCancel close over mutations, but they're stable enough
     // for our use; rebuild on relevant inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canWrite, currency],
+    [canWrite, currency, t],
   );
 
   if (items.isLoading) {
@@ -165,8 +180,8 @@ export function ConciergeTab() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load concierge services"
-          description="Try again."
+          title={t("concierge.load_failed_title")}
+          description={t("concierge.load_failed_body")}
           onRetry={() => items.refetch()}
         />
       </div>
@@ -176,21 +191,21 @@ export function ConciergeTab() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-foreground text-lg font-semibold">Concierge</h2>
+        <h2 className="text-foreground text-lg font-semibold">{t("concierge.heading")}</h2>
         {canWrite ? (
           <Button size="sm" onClick={() => setCreateOpen(true)}>
-            Add service
+            {t("concierge.add_service")}
           </Button>
         ) : (
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
                 <Button size="sm" disabled>
-                  Add service
+                  {t("concierge.add_service")}
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent>You need the Reservations role to add services</TooltipContent>
+            <TooltipContent>{t("concierge.role_required_tooltip")}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -204,7 +219,7 @@ export function ConciergeTab() {
         onSortingChange={setSorting}
         onPageChange={() => {}}
         rowKey={(row) => row.id}
-        emptyContent={<EmptyState title="No concierge services yet" />}
+        emptyContent={<EmptyState title={t("concierge.empty_title")} />}
       />
 
       {createOpen ? (
@@ -237,9 +252,9 @@ export function ConciergeTab() {
             if (!open) setDeleting(null);
           }}
           onConfirm={handleDelete}
-          title="Remove this service?"
-          description="This can't be undone."
-          confirmLabel="Remove"
+          title={t("concierge.confirm_delete.title")}
+          description={t("concierge.confirm_delete.description")}
+          confirmLabel={t("concierge.confirm_delete.confirm_label")}
           destructive
           busy={deleteMutation.isPending}
         />

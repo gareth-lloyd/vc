@@ -72,6 +72,10 @@ class TfaVerifySerializer(serializers.Serializer[dict[str, Any]]):
     code = serializers.CharField()
 
 
+class PasswordResetRequestSerializer(serializers.Serializer[dict[str, Any]]):
+    email = serializers.EmailField()
+
+
 class SessionInfoSerializer(serializers.Serializer[dict[str, Any]]):
     session_key = serializers.CharField()
     created_at = serializers.DateTimeField()

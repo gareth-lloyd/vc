@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,7 +9,7 @@ import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
-import { ENQUIRY_SOURCE_LABELS, ENQUIRY_STATUS_LABELS } from "../schemas";
+import { enquiryRequestTypeLabel, enquirySourceLabel, enquiryStatusLabel } from "../schemas";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -20,21 +21,31 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function DetailsTab() {
+  const { t } = useTranslation("enquiries");
   const { enquiry } = useOutletContext<EnquiryOutletContext>();
   const hasRole = useHasReservationsRole();
   const [editOpen, setEditOpen] = useState(false);
 
   const fullName = `${enquiry.first_name ?? ""} ${enquiry.last_name ?? ""}`.trim() || "—";
+
+  const partyText = (() => {
+    const adults = enquiry.adults;
+    const children = enquiry.children ?? 0;
+    const adultsText = t("details_tab.values.adults", { count: adults });
+    const childrenText = children ? t("details_tab.values.children", { count: children }) : "";
+    return `${adultsText}${childrenText}`;
+  })();
+
   const editButton = (
     <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} disabled={!hasRole}>
-      Edit details
+      {t("details_tab.edit_button")}
     </Button>
   );
 
   return (
     <div className="space-y-8 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-foreground text-lg font-semibold">Enquiry details</h2>
+        <h2 className="text-foreground text-lg font-semibold">{t("details_tab.heading")}</h2>
         {hasRole ? (
           editButton
         ) : (
@@ -42,63 +53,88 @@ export function DetailsTab() {
             <TooltipTrigger asChild>
               <span>{editButton}</span>
             </TooltipTrigger>
-            <TooltipContent>Reservations role required.</TooltipContent>
+            <TooltipContent>{t("common:errors.reservations_role_required")}</TooltipContent>
           </Tooltip>
         )}
       </div>
 
-      <Section title="Status & key dates">
+      <Section title={t("details_tab.sections.status_and_dates")}>
         <FactList>
           <FactRow
-            label="Reference"
+            label={t("details_tab.fields.reference")}
             value={<span className="font-mono">{enquiry.reference}</span>}
           />
           <FactRow
-            label="Status"
-            value={<StatusBadge status={ENQUIRY_STATUS_LABELS[enquiry.status]} />}
+            label={t("details_tab.fields.status")}
+            value={<StatusBadge status={enquiryStatusLabel(enquiry.status)} />}
           />
-          <FactRow label="From" value={formatDate(enquiry.date_from ?? null)} />
-          <FactRow label="To" value={formatDate(enquiry.date_to ?? null)} />
-          <FactRow label="Flexible" value={enquiry.is_flexible ? "Yes" : "No"} />
-          <FactRow label="Created" value={formatDate(enquiry.created_at ?? null)} />
+          <FactRow
+            label={t("details_tab.fields.from")}
+            value={formatDate(enquiry.date_from ?? null)}
+          />
+          <FactRow label={t("details_tab.fields.to")} value={formatDate(enquiry.date_to ?? null)} />
+          <FactRow
+            label={t("details_tab.fields.flexible")}
+            value={enquiry.is_flexible ? t("details_tab.values.yes") : t("details_tab.values.no")}
+          />
+          <FactRow
+            label={t("details_tab.fields.created")}
+            value={formatDate(enquiry.created_at ?? null)}
+          />
         </FactList>
       </Section>
 
-      <Section title="Guest">
+      <Section title={t("details_tab.sections.guest")}>
         <FactList>
-          <FactRow label="Name" value={fullName} />
-          <FactRow label="Email" value={enquiry.email || "—"} />
+          <FactRow label={t("details_tab.fields.name")} value={fullName} />
+          <FactRow label={t("details_tab.fields.email")} value={enquiry.email || "—"} />
+          <FactRow label={t("details_tab.fields.party")} value={partyText} />
           <FactRow
-            label="Party"
-            value={`${enquiry.adults} adult${enquiry.adults === 1 ? "" : "s"}${
-              enquiry.children
-                ? `, ${enquiry.children} child${enquiry.children === 1 ? "" : "ren"}`
-                : ""
-            }`}
+            label={t("details_tab.fields.min_bedrooms")}
+            value={enquiry.min_bedrooms ?? "—"}
           />
-          <FactRow label="Min bedrooms" value={enquiry.min_bedrooms ?? "—"} />
         </FactList>
       </Section>
 
-      <Section title="Lead">
+      <Section title={t("details_tab.sections.lead")}>
         <FactList>
-          <FactRow label="Source" value={ENQUIRY_SOURCE_LABELS[enquiry.site_source]} />
           <FactRow
-            label="Request type"
-            value={<span className="capitalize">{enquiry.request_type}</span>}
+            label={t("details_tab.fields.source")}
+            value={enquirySourceLabel(enquiry.site_source)}
           />
           <FactRow
-            label="Property"
-            value={enquiry.property != null ? `#${enquiry.property}` : "—"}
+            label={t("details_tab.fields.request_type")}
+            value={enquiryRequestTypeLabel(enquiry.request_type)}
           />
-          <FactRow label="Region" value={enquiry.region != null ? `#${enquiry.region}` : "—"} />
-          <FactRow label="Agent" value={enquiry.agent != null ? `#${enquiry.agent}` : "—"} />
-          <FactRow label="Referral code" value={enquiry.referral_code || "—"} />
+          <FactRow
+            label={t("details_tab.fields.property")}
+            value={
+              enquiry.property != null
+                ? t("details_tab.values.id_ref", { id: enquiry.property })
+                : "—"
+            }
+          />
+          <FactRow
+            label={t("details_tab.fields.region")}
+            value={
+              enquiry.region != null ? t("details_tab.values.id_ref", { id: enquiry.region }) : "—"
+            }
+          />
+          <FactRow
+            label={t("details_tab.fields.agent")}
+            value={
+              enquiry.agent != null ? t("details_tab.values.id_ref", { id: enquiry.agent }) : "—"
+            }
+          />
+          <FactRow
+            label={t("details_tab.fields.referral_code")}
+            value={enquiry.referral_code || "—"}
+          />
         </FactList>
       </Section>
 
       {enquiry.inbound_message ? (
-        <Section title="Inbound message">
+        <Section title={t("details_tab.sections.inbound_message")}>
           <p className="text-foreground bg-muted/40 rounded-md border p-3 text-sm whitespace-pre-line">
             {enquiry.inbound_message}
           </p>

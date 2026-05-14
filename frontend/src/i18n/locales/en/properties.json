@@ -17,10 +17,13 @@
   },
   "tabs": {
     "details": "Details",
+    "rooms": "Rooms",
+    "nearby": "Nearby",
     "pricing": "Pricing",
     "availability": "Availability",
     "people": "People",
     "media": "Media",
+    "features": "Features",
     "settings": "Settings"
   },
   "detail": {
@@ -76,7 +79,8 @@
       "error_title": "Couldn't load rooms",
       "error_body": "Try again.",
       "empty_title": "No rooms recorded",
-      "fallback_name": "Room #{{id}}"
+      "fallback_name": "Room #{{id}}",
+      "ensuite_marker": "Ensuite"
     }
   },
   "availability": {
@@ -126,7 +130,60 @@
     "seasons": {
       "empty": "No seasons defined",
       "error_title": "Couldn't load seasons",
-      "error_body": "Try again."
+      "error_body": "Try again.",
+      "add_button": "Add season",
+      "add_button_disabled_tooltip": "You need the Reservations role to add seasons.",
+      "row": {
+        "menu_label": "Actions",
+        "edit": "Edit",
+        "duplicate": "Duplicate",
+        "delete": "Delete"
+      },
+      "toasts": {
+        "created": "Season added",
+        "updated": "Season updated",
+        "deleted": "Season removed",
+        "duplicated": "Season duplicated",
+        "create_failed": "Couldn't add season",
+        "update_failed": "Couldn't update season",
+        "delete_failed": "Couldn't remove season",
+        "duplicate_failed": "Couldn't duplicate season"
+      },
+      "delete_confirm": {
+        "title": "Remove season?",
+        "description": "This season and all of its rate cards and rules will be permanently removed.",
+        "confirm": "Remove"
+      },
+      "duplicate_confirm": {
+        "title": "Duplicate season?",
+        "description": "A copy of this season — including its rate cards and rules — will be created with \" (copy)\" appended to the name.",
+        "confirm": "Duplicate"
+      },
+      "price_basis": {
+        "gross": "Gross",
+        "net": "Net"
+      },
+      "dialog": {
+        "create_title": "Add season",
+        "edit_title": "Edit season",
+        "fields": {
+          "name": "Name",
+          "name_placeholder": "Summer 2026",
+          "currency": "Currency",
+          "currency_placeholder": "Select currency",
+          "price_basis": "Price basis",
+          "effective_from": "Effective from",
+          "effective_to": "Effective to",
+          "is_active": "Active",
+          "notes": "Internal notes",
+          "inclusion": "Inclusion"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      }
     },
     "rate_card": {
       "any_length": "Any length",
@@ -232,6 +289,152 @@
       "save_edit": "Update assignment"
     }
   },
+  "rooms": {
+    "title": "Rooms",
+    "add_button": "Add room",
+    "add_button_disabled_tooltip": "You need the Reservations role to add rooms.",
+    "empty": {
+      "title": "No rooms yet",
+      "description": "Add bedrooms and sleeping areas so quotes and guests see the right occupancy."
+    },
+    "errors": {
+      "load_failed": "Couldn't load rooms."
+    },
+    "row": {
+      "drag_handle_label": "Drag to reorder",
+      "menu_label": "Actions",
+      "edit": "Edit",
+      "delete": "Delete",
+      "ensuite": "Ensuite",
+      "no_beds": "No beds configured",
+      "beds_count": {
+        "double": "{{count}} double",
+        "double_one": "{{count}} double",
+        "double_other": "{{count}} doubles",
+        "twin_double": "{{count}} twin/double",
+        "twin_double_one": "{{count}} twin/double",
+        "twin_double_other": "{{count}} twin/doubles",
+        "twin": "{{count}} twin",
+        "twin_one": "{{count}} twin",
+        "twin_other": "{{count}} twins",
+        "single": "{{count}} single",
+        "single_one": "{{count}} single",
+        "single_other": "{{count}} singles",
+        "bunk": "{{count}} bunk",
+        "bunk_one": "{{count}} bunk",
+        "bunk_other": "{{count}} bunks",
+        "sofa": "{{count}} sofa bed",
+        "sofa_one": "{{count}} sofa bed",
+        "sofa_other": "{{count}} sofa beds",
+        "childrens": "{{count}} children's",
+        "childrens_one": "{{count}} children's",
+        "childrens_other": "{{count}} children's"
+      }
+    },
+    "placements": {
+      "main_house": "Main house",
+      "guest_house": "Guest house",
+      "pool_house": "Pool house",
+      "annex": "Annex",
+      "other": "Other"
+    },
+    "beds": {
+      "double": "Double",
+      "twin_double": "Twin/double",
+      "twin": "Twin",
+      "single": "Single",
+      "bunk": "Bunk",
+      "sofa": "Sofa bed",
+      "childrens": "Children's"
+    },
+    "toasts": {
+      "created": "Room added",
+      "updated": "Room updated",
+      "deleted": "Room removed",
+      "reordered": "Rooms reordered",
+      "create_failed": "Couldn't add room",
+      "update_failed": "Couldn't update room",
+      "delete_failed": "Couldn't remove room",
+      "reorder_failed": "Couldn't reorder rooms"
+    },
+    "delete_confirm": {
+      "title": "Remove room?",
+      "description": "This room and its bed configuration will be permanently removed.",
+      "confirm": "Remove"
+    },
+    "dialog": {
+      "create_title": "Add room",
+      "edit_title": "Edit room",
+      "fields": {
+        "name": "Name",
+        "name_placeholder": "Master bedroom",
+        "placement": "Placement",
+        "is_ensuite": "Ensuite",
+        "beds": "Beds",
+        "website_description": "Website description",
+        "vc_notes": "Internal notes"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      }
+    }
+  },
+  "nearby": {
+    "title": "Nearby places",
+    "add_button": "Add place",
+    "add_button_disabled_tooltip": "You need the Reservations role to add places.",
+    "empty": {
+      "title": "No nearby places yet",
+      "description": "Add beaches, restaurants, ski lifts and other amenities so guests know what's around."
+    },
+    "errors": {
+      "load_failed": "Couldn't load nearby places."
+    },
+    "row": {
+      "menu_label": "Actions",
+      "edit": "Edit",
+      "delete": "Delete",
+      "move_up": "Move up",
+      "move_down": "Move down",
+      "distance_km": "{{distance}} km",
+      "unknown_type": "—"
+    },
+    "toasts": {
+      "created": "Place added",
+      "updated": "Place updated",
+      "deleted": "Place removed",
+      "reordered": "Places reordered",
+      "create_failed": "Couldn't add place",
+      "update_failed": "Couldn't update place",
+      "delete_failed": "Couldn't remove place",
+      "reorder_failed": "Couldn't reorder places"
+    },
+    "delete_confirm": {
+      "title": "Remove place?",
+      "description": "This nearby place will be permanently removed.",
+      "confirm": "Remove"
+    },
+    "dialog": {
+      "create_title": "Add nearby place",
+      "edit_title": "Edit nearby place",
+      "fields": {
+        "place_type": "Type",
+        "place_type_placeholder": "Pick a type",
+        "name": "Name",
+        "name_placeholder": "Town centre",
+        "distance_km": "Distance (km)",
+        "distance_km_placeholder": "1.2",
+        "notes": "Notes"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      }
+    }
+  },
   "media": {
     "title": "Media",
     "add_button": "Add image",
@@ -287,6 +490,102 @@
         "save": "Save",
         "saving": "Saving…"
       }
+    }
+  },
+  "descriptions": {
+    "save_disabled_tooltip": "You need the Reservations role to edit descriptions.",
+    "body_placeholder": "Write the section content here.",
+    "sections": {
+      "overview": "Overview",
+      "house_rules": "House rules",
+      "villa_info": "Villa info",
+      "further_info": "Further info"
+    },
+    "errors": {
+      "load_title": "Couldn't load descriptions",
+      "load_body": "Try again."
+    },
+    "actions": {
+      "save": "Save",
+      "saving": "Saving…",
+      "clear": "Clear"
+    },
+    "toasts": {
+      "saved": "Description saved",
+      "cleared": "Description cleared",
+      "save_failed": "Couldn't save description",
+      "clear_failed": "Couldn't clear description"
+    },
+    "clear_confirm": {
+      "title": "Clear this description?",
+      "description": "The section content will be permanently removed.",
+      "confirm": "Clear"
+    }
+  },
+  "changeover": {
+    "section_title": "Changeover overrides",
+    "title": "Changeover overrides",
+    "description": "Force a specific weekday during a date window — overrides the property's default changeover day.",
+    "add_button": "Add rule",
+    "add_button_disabled_tooltip": "You need the Reservations role to add rules.",
+    "empty": {
+      "title": "No changeover overrides"
+    },
+    "errors": {
+      "load_failed": "Couldn't load changeover rules."
+    },
+    "row": {
+      "menu_label": "Actions",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "toasts": {
+      "created": "Rule added",
+      "updated": "Rule updated",
+      "deleted": "Rule removed",
+      "create_failed": "Couldn't add rule",
+      "update_failed": "Couldn't update rule",
+      "delete_failed": "Couldn't remove rule"
+    },
+    "delete_confirm": {
+      "title": "Remove rule?",
+      "description": "This changeover override will be permanently removed.",
+      "confirm": "Remove"
+    },
+    "dialog": {
+      "create_title": "Add changeover rule",
+      "edit_title": "Edit changeover rule",
+      "fields": {
+        "weekday": "Weekday",
+        "effective_from": "From",
+        "effective_to": "To",
+        "notes": "Notes"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      }
+    }
+  },
+  "features": {
+    "title": "Features",
+    "save_disabled_tooltip": "You need the Reservations role to edit features.",
+    "empty": {
+      "title": "No features available",
+      "description": "Ask an admin to seed the feature catalog before tagging this property."
+    },
+    "errors": {
+      "load_failed": "Couldn't load features."
+    },
+    "actions": {
+      "save": "Save changes",
+      "saving": "Saving…",
+      "reset": "Reset"
+    },
+    "toasts": {
+      "saved": "Features saved",
+      "save_failed": "Couldn't save features"
     }
   },
   "settings": {
@@ -398,6 +697,18 @@
   },
   "errors": {
     "image_key_required": "S3 key is required",
+    "room_name_required": "Room name is required",
+    "nearby_name_required": "Name is required",
+    "nearby_distance_required": "Distance is required",
+    "nearby_distance_invalid": "Use a number with up to 2 decimals (e.g. 1.25)",
+    "nearby_type_required": "Pick a place type",
+    "changeover_from_required": "From date is required",
+    "changeover_to_required": "To date is required",
+    "changeover_to_before_from": "To date must be on or after From date",
+    "season_name_required": "Season name is required",
+    "season_currency_required": "Pick a currency",
+    "season_effective_from_required": "Effective from date is required",
+    "season_effective_to_before_from": "Effective to must be on or after Effective from",
     "load_failed": "Couldn't load."
   },
   "common": {

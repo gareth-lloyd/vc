@@ -25,35 +25,151 @@ export type PropertyDetail = z.infer<typeof propertyDetailSchema>;
 
 export const propertyListResponseSchema = paginated(propertyListItemSchema);
 
+export const DESCRIPTION_SECTIONS = [
+  "overview",
+  "house_rules",
+  "villa_info",
+  "further_info",
+] as const;
+export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];
+
+export function sectionToSlug(section: DescriptionSection): string {
+  return section.replace(/_/g, "-");
+}
+
 export const propertyDescriptionSchema = z.object({
   id: z.number(),
-  title: z.string().nullable().optional(),
-  body_html: z.string().nullable().optional(),
-  body: z.string().nullable().optional(),
-  language: z.string().nullable().optional(),
+  property: z.number(),
+  section: z.enum(DESCRIPTION_SECTIONS),
+  body: z.string(),
+  updated_at: z.string().nullable().optional(),
 });
 export type PropertyDescription = z.infer<typeof propertyDescriptionSchema>;
 
 export const propertyDescriptionsResponseSchema = paginated(propertyDescriptionSchema);
 
-export const propertyFeatureSchema = z.object({
-  id: z.number(),
-  name: z.string().optional(),
-  slug: z.string().optional(),
-});
-export type PropertyFeature = z.infer<typeof propertyFeatureSchema>;
+export {
+  featureSchema as propertyFeatureSchema,
+  featuresListResponseSchema as propertyFeaturesResponseSchema,
+  featureCategoriesListResponseSchema,
+  featureCategorySchema,
+} from "@/features/admin/tags/schemas";
+export type { Feature as PropertyFeature, FeatureCategory } from "@/features/admin/tags/schemas";
 
-export const propertyFeaturesResponseSchema = paginated(propertyFeatureSchema);
+export const ROOM_PLACEMENTS = [
+  "main_house",
+  "guest_house",
+  "pool_house",
+  "annex",
+  "other",
+] as const;
+export type RoomPlacement = (typeof ROOM_PLACEMENTS)[number];
+
+export const roomBedsSchema = z.object({
+  double: z.number().int().min(0),
+  twin_double: z.number().int().min(0),
+  twin: z.number().int().min(0),
+  single: z.number().int().min(0),
+  bunk: z.number().int().min(0),
+  sofa: z.number().int().min(0),
+  childrens: z.number().int().min(0),
+});
+export type RoomBeds = z.infer<typeof roomBedsSchema>;
 
 export const propertyRoomSchema = z.object({
   id: z.number(),
-  name: z.string().optional(),
-  kind: z.string().nullable().optional(),
-  count: z.number().nullable().optional(),
+  property: z.number(),
+  name: z.string(),
+  placement: z.enum(ROOM_PLACEMENTS),
+  website_description: z.string().nullable().optional(),
+  vc_notes: z.string().nullable().optional(),
+  is_ensuite: z.boolean(),
+  sort_order: z.number().int(),
+  beds: roomBedsSchema.optional(),
 });
 export type PropertyRoom = z.infer<typeof propertyRoomSchema>;
 
 export const propertyRoomsResponseSchema = paginated(propertyRoomSchema);
+
+export const nearbyPlaceTypeSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  icon: z.string().nullable().optional(),
+});
+export type NearbyPlaceType = z.infer<typeof nearbyPlaceTypeSchema>;
+
+export const nearbyPlaceTypesResponseSchema = paginated(nearbyPlaceTypeSchema);
+
+export const propertyNearbyPlaceSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  place_type: z.number(),
+  name: z.string(),
+  distance_km: z.string(),
+  notes: z.string().nullable().optional(),
+  sort_order: z.number().int(),
+});
+export type PropertyNearbyPlace = z.infer<typeof propertyNearbyPlaceSchema>;
+
+export const propertyNearbyPlacesResponseSchema = paginated(propertyNearbyPlaceSchema);
+
+export const PROPERTY_CHANGEOVER_DAYS = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+  "any",
+] as const;
+
+export const changeOverRuleSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  weekday: z.enum(PROPERTY_CHANGEOVER_DAYS),
+  effective_from: z.string(),
+  effective_to: z.string(),
+  notes: z.string().nullable().optional(),
+});
+export type ChangeOverRule = z.infer<typeof changeOverRuleSchema>;
+
+export const changeOverRulesResponseSchema = paginated(changeOverRuleSchema);
+
+export const changeOverRuleWriteInputSchema = z
+  .object({
+    weekday: z.enum(PROPERTY_CHANGEOVER_DAYS),
+    effective_from: z.string().min(1, { message: "properties:errors.changeover_from_required" }),
+    effective_to: z.string().min(1, { message: "properties:errors.changeover_to_required" }),
+    notes: z.string().trim().optional(),
+  })
+  .refine((v) => v.effective_to >= v.effective_from, {
+    path: ["effective_to"],
+    message: "properties:errors.changeover_to_before_from",
+  });
+export type ChangeOverRuleWriteInput = z.infer<typeof changeOverRuleWriteInputSchema>;
+
+export const propertyNearbyPlaceWriteInputSchema = z.object({
+  place_type: z.number().int(),
+  name: z.string().trim().min(1, { message: "properties:errors.nearby_name_required" }).max(255),
+  distance_km: z
+    .string()
+    .trim()
+    .min(1, { message: "properties:errors.nearby_distance_required" })
+    .regex(/^\d+(\.\d{1,2})?$/, { message: "properties:errors.nearby_distance_invalid" }),
+  notes: z.string().trim().optional(),
+});
+export type PropertyNearbyPlaceWriteInput = z.infer<typeof propertyNearbyPlaceWriteInputSchema>;
+
+export const propertyRoomWriteInputSchema = z.object({
+  name: z.string().trim().min(1, { message: "properties:errors.room_name_required" }).max(128),
+  placement: z.enum(ROOM_PLACEMENTS),
+  website_description: z.string().trim(),
+  vc_notes: z.string().trim(),
+  is_ensuite: z.boolean(),
+  beds: roomBedsSchema,
+});
+export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema>;
 
 export interface PropertyFilters {
   q?: string;
@@ -62,6 +178,8 @@ export interface PropertyFilters {
   ordering?: string;
   page?: number;
 }
+
+export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
 export const rateRuleSchema = z.object({
   id: z.number(),
@@ -99,8 +217,8 @@ export const ratePlanSchema = z.object({
   id: z.number(),
   property: z.number(),
   name: z.string(),
-  currency: z.string().nullable().optional(),
-  price_basis: z.string().nullable().optional(),
+  currency: z.number().nullable().optional(),
+  price_basis: z.enum(PROPERTY_PRICE_BASES).nullable().optional(),
   effective_from: z.string().nullable().optional(),
   effective_to: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
@@ -244,17 +362,28 @@ export const propertyImageWriteInputSchema = z.object({
 export type PropertyImageWriteInput = z.infer<typeof propertyImageWriteInputSchema>;
 
 export const PROPERTY_AVAILABILITY_DEFAULTS = ["available", "unavailable", "on_request"] as const;
-export const PROPERTY_CHANGEOVER_DAYS = [
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-  "sun",
-  "any",
-] as const;
-export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
+
+export const ratePlanWriteInputSchema = z
+  .object({
+    name: z.string().trim().min(1, { message: "properties:errors.season_name_required" }).max(255),
+    currency: z
+      .number({ message: "properties:errors.season_currency_required" })
+      .int()
+      .min(1, { message: "properties:errors.season_currency_required" }),
+    price_basis: z.enum(PROPERTY_PRICE_BASES),
+    effective_from: z
+      .string()
+      .min(1, { message: "properties:errors.season_effective_from_required" }),
+    effective_to: z.string().optional(),
+    is_active: z.boolean().optional(),
+    notes: z.string().trim().optional(),
+    inclusion: z.string().trim().optional(),
+  })
+  .refine((v) => !v.effective_to || v.effective_to >= v.effective_from, {
+    path: ["effective_to"],
+    message: "properties:errors.season_effective_to_before_from",
+  });
+export type RatePlanWriteInput = z.infer<typeof ratePlanWriteInputSchema>;
 
 export const propertySettingsSchema = z.object({
   property: z.number(),

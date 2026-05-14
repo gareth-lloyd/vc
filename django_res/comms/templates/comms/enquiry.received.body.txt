@@ -1,0 +1,17 @@
+A new enquiry has come in.
+
+Guest:        {{ guest_full_name }}
+Email:        {{ guest_email }}
+Phone:        {{ guest_phone }}
+Property:     {{ property_name }}
+Dates:        {{ date_from }} to {{ date_to }}
+Adults:       {{ adults }}
+Children:     {{ children }}
+Bedrooms:     {{ min_bedrooms }} – {{ max_bedrooms }}
+
+Notes:
+{{ notes }}
+
+Source:       {{ enquiry_source }}
+Referral:     {{ referral_code }}
+Heard via:    {{ heard_about_us }}

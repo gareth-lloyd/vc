@@ -22,6 +22,7 @@ from accounts.models import User, UserSession
 from accounts.serializers import (
     LoginSerializer,
     PasswordChangeSerializer,
+    PasswordResetRequestSerializer,
     SessionInfoSerializer,
     TfaChallengeSerializer,
     TfaEnrollSerializer,
@@ -29,6 +30,7 @@ from accounts.serializers import (
     UserMeSerializer,
 )
 from accounts.services import SessionService, TwoFactorService
+from accounts.services.password_reset import PasswordResetService
 from accounts.services.two_factor import TfaError
 from core.api import not_implemented_response
 
@@ -278,13 +280,19 @@ class TfaDisableView(APIView):
 
 
 class PasswordResetRequestView(APIView):
+    """`POST /auth/password-reset:request` — start the email-based reset flow.
+
+    Always returns 204 regardless of whether the email matches a real user
+    so the endpoint can't be used to enumerate registered addresses.
+    """
+
     permission_classes = [AllowAny]
 
     def post(self, request: Request) -> Response:
-        return not_implemented_response(
-            "Password reset email dispatch is not yet wired. "
-            "Use admin tooling to reset a user's password for now."
-        )
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        PasswordResetService.request(serializer.validated_data["email"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordResetConfirmView(APIView):

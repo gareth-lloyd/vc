@@ -1,6 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format/date";
-import { ENQUIRY_SOURCE_LABELS, type EnquiryListItem } from "../schemas";
+import { enquirySourceLabel, type EnquiryListItem } from "../schemas";
 
 interface EnquiryCardProps {
   enquiry: EnquiryListItem;
@@ -12,27 +13,34 @@ function guestName(enq: EnquiryListItem): string {
   return name || enq.email || enq.reference;
 }
 
-function dateRange(enq: EnquiryListItem): string {
-  if (!enq.date_from && !enq.date_to) return "Flexible dates";
-  return `${formatDate(enq.date_from ?? null)} – ${formatDate(enq.date_to ?? null)}`;
-}
-
-function timeAgo(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "";
-  const diffMs = Date.now() - then;
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return formatDate(iso);
-}
-
 export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
+  const { t } = useTranslation("enquiries");
+
+  const dateRange =
+    !enquiry.date_from && !enquiry.date_to
+      ? t("card.flexible_dates")
+      : `${formatDate(enquiry.date_from ?? null)} – ${formatDate(enquiry.date_to ?? null)}`;
+
+  const propertyText =
+    enquiry.property != null
+      ? t("card.property_with_id", { id: enquiry.property })
+      : t("card.no_property");
+
+  const timeAgo = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    const then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return "";
+    const diffMs = Date.now() - then;
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) return t("card.time_ago.just_now");
+    if (minutes < 60) return t("card.time_ago.minutes", { count: minutes });
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t("card.time_ago.hours", { count: hours });
+    const days = Math.floor(hours / 24);
+    if (days < 30) return t("card.time_ago.days", { count: days });
+    return formatDate(iso);
+  };
+
   return (
     <button
       type="button"
@@ -43,13 +51,11 @@ export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
         <div className="text-foreground font-medium">{guestName(enquiry)}</div>
         <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>
       </div>
-      <div className="text-muted-foreground text-xs">
-        {enquiry.property != null ? `Property #${enquiry.property}` : "No property"}
-      </div>
-      <div className="text-muted-foreground text-xs">{dateRange(enquiry)}</div>
+      <div className="text-muted-foreground text-xs">{propertyText}</div>
+      <div className="text-muted-foreground text-xs">{dateRange}</div>
       <div className="flex items-center justify-between gap-2">
         <Badge variant="outline" className="text-xs">
-          {ENQUIRY_SOURCE_LABELS[enquiry.site_source]}
+          {enquirySourceLabel(enquiry.site_source)}
         </Badge>
         <span className="text-muted-foreground text-xs">{timeAgo(enquiry.created_at)}</span>
       </div>

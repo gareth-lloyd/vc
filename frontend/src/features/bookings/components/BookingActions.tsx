@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,20 +32,20 @@ interface BookingActionsProps {
   booking: BookingDetail;
 }
 
-const PRIMARY_ACTIONS: ReadonlyArray<{ action: BookingAction; label: string }> = [
-  { action: "confirm", label: "Confirm booking" },
-  { action: "owner_decline", label: "Owner decline" },
-  { action: "cancel", label: "Cancel booking" },
-  { action: "check_in", label: "Check in" },
-  { action: "check_out", label: "Check out" },
+const PRIMARY_ACTION_KEYS: ReadonlyArray<{ action: BookingAction; labelKey: string }> = [
+  { action: "confirm", labelKey: "actions.confirm_booking" },
+  { action: "owner_decline", labelKey: "actions.owner_decline" },
+  { action: "cancel", labelKey: "actions.cancel_booking" },
+  { action: "check_in", labelKey: "actions.check_in" },
+  { action: "check_out", labelKey: "actions.check_out" },
 ];
 
-const SECONDARY_ACTIONS: ReadonlyArray<{ action: BookingAction; label: string }> = [
-  { action: "modify_dates", label: "Modify dates" },
-  { action: "modify_guests", label: "Modify guests" },
-  { action: "resend_confirmation", label: "Resend confirmation" },
-  { action: "archive", label: "Archive booking" },
-  { action: "restore", label: "Restore booking" },
+const SECONDARY_ACTION_KEYS: ReadonlyArray<{ action: BookingAction; labelKey: string }> = [
+  { action: "modify_dates", labelKey: "actions.modify_dates" },
+  { action: "modify_guests", labelKey: "actions.modify_guests" },
+  { action: "resend_confirmation", labelKey: "actions.resend_confirmation" },
+  { action: "archive", labelKey: "actions.archive_booking" },
+  { action: "restore", labelKey: "actions.restore_booking" },
 ];
 
 interface ConfirmConfig {
@@ -55,19 +56,16 @@ interface ConfirmConfig {
   successMessage: string;
 }
 
-function disableReason(
-  hasRole: boolean,
-  action: BookingAction,
-  booking: BookingDetail,
-): string | null {
-  if (!hasRole) return "Reservations role required.";
-  if (!isActionAvailable(action, booking)) return "Not available for this booking state.";
-  return null;
-}
-
 export function BookingActions({ booking }: BookingActionsProps) {
+  const { t } = useTranslation("bookings");
   const hasRole = useHasReservationsRole();
   const [activeDialog, setActiveDialog] = useState<BookingAction | null>(null);
+
+  const disableReason = (action: BookingAction): string | null => {
+    if (!hasRole) return t("common:errors.reservations_role_required");
+    if (!isActionAvailable(action, booking)) return t("errors.not_available_for_state");
+    return null;
+  };
 
   const confirmMutation = useConfirmBooking(booking.id);
   const archiveMutation = useArchiveBooking(booking.id);
@@ -92,55 +90,55 @@ export function BookingActions({ booking }: BookingActionsProps) {
   > = {
     confirm: {
       config: {
-        title: "Confirm this booking?",
-        description: "The booking will move forward to the next state.",
-        confirmLabel: "Confirm",
-        successMessage: "Booking confirmed",
+        title: t("confirm.confirm.title"),
+        description: t("confirm.confirm.description"),
+        confirmLabel: t("common:actions.confirm"),
+        successMessage: t("confirm.confirm.success_message"),
       },
       mutation: confirmMutation,
     },
     archive: {
       config: {
-        title: "Archive this booking?",
-        description: "It will be hidden from default lists. You can restore it later.",
-        confirmLabel: "Archive",
-        successMessage: "Booking archived",
+        title: t("confirm.archive.title"),
+        description: t("confirm.archive.description"),
+        confirmLabel: t("confirm.archive.confirm_label"),
+        successMessage: t("confirm.archive.success_message"),
       },
       mutation: archiveMutation,
     },
     restore: {
       config: {
-        title: "Restore this booking?",
-        description: "It will reappear in default lists.",
-        confirmLabel: "Restore",
-        successMessage: "Booking restored",
+        title: t("confirm.restore.title"),
+        description: t("confirm.restore.description"),
+        confirmLabel: t("confirm.restore.confirm_label"),
+        successMessage: t("confirm.restore.success_message"),
       },
       mutation: restoreMutation,
     },
     check_in: {
       config: {
-        title: "Check in?",
-        description: "Mark the guest as checked in.",
-        confirmLabel: "Check in",
-        successMessage: "Guest checked in",
+        title: t("confirm.check_in.title"),
+        description: t("confirm.check_in.description"),
+        confirmLabel: t("confirm.check_in.confirm_label"),
+        successMessage: t("confirm.check_in.success_message"),
       },
       mutation: checkInMutation,
     },
     check_out: {
       config: {
-        title: "Check out?",
-        description: "Mark the guest as checked out.",
-        confirmLabel: "Check out",
-        successMessage: "Guest checked out",
+        title: t("confirm.check_out.title"),
+        description: t("confirm.check_out.description"),
+        confirmLabel: t("confirm.check_out.confirm_label"),
+        successMessage: t("confirm.check_out.success_message"),
       },
       mutation: checkOutMutation,
     },
     resend_confirmation: {
       config: {
-        title: "Resend confirmation email?",
-        description: "The guest will receive the booking confirmation again.",
-        confirmLabel: "Resend",
-        successMessage: "Confirmation resent",
+        title: t("confirm.resend_confirmation.title"),
+        description: t("confirm.resend_confirmation.description"),
+        confirmLabel: t("confirm.resend_confirmation.confirm_label"),
+        successMessage: t("confirm.resend_confirmation.success_message"),
       },
       mutation: resendMutation,
     },
@@ -155,29 +153,40 @@ export function BookingActions({ booking }: BookingActionsProps) {
       toast.success(activeConfirm.config.successMessage);
       closeDialog();
     } catch (error) {
-      const message = error instanceof ApiError ? error.detail : "Something went wrong";
+      const message = error instanceof ApiError ? error.detail : t("common:errors.generic");
       toast.error(message);
     }
   };
 
+  const primaryActions = useMemo(
+    () => PRIMARY_ACTION_KEYS.map(({ action, labelKey }) => ({ action, label: t(labelKey) })),
+    [t],
+  );
+  const secondaryActions = useMemo(
+    () => SECONDARY_ACTION_KEYS.map(({ action, labelKey }) => ({ action, label: t(labelKey) })),
+    [t],
+  );
+
   return (
     <div className="space-y-2">
       <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-        Quick actions
+        {t("actions.quick_actions")}
       </p>
 
-      {PRIMARY_ACTIONS.map(({ action, label }) => (
+      {primaryActions.map(({ action, label }) => (
         <ActionButton
           key={action}
           label={label}
           onClick={() => setActiveDialog(action)}
-          disableReason={disableReason(hasRole, action, booking)}
+          disableReason={disableReason(action)}
         />
       ))}
 
       <SecondaryActionsMenu
+        actions={secondaryActions}
         booking={booking}
         hasRole={hasRole}
+        moreLabel={t("actions.more_actions")}
         onSelect={(action) => setActiveDialog(action)}
       />
 
@@ -253,22 +262,30 @@ function ActionButton({ label, onClick, disableReason }: ActionButtonProps) {
 }
 
 interface SecondaryActionsMenuProps {
+  actions: ReadonlyArray<{ action: BookingAction; label: string }>;
   booking: BookingDetail;
   hasRole: boolean;
+  moreLabel: string;
   onSelect: (action: BookingAction) => void;
 }
 
-function SecondaryActionsMenu({ booking, hasRole, onSelect }: SecondaryActionsMenuProps) {
+function SecondaryActionsMenu({
+  actions,
+  booking,
+  hasRole,
+  moreLabel,
+  onSelect,
+}: SecondaryActionsMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full justify-between" disabled={!hasRole}>
-          More actions
+          {moreLabel}
           <ChevronDown className="ml-2 size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-(--radix-dropdown-menu-trigger-width)">
-        {SECONDARY_ACTIONS.map(({ action, label }) => (
+        {actions.map(({ action, label }) => (
           <DropdownMenuItem
             key={action}
             disabled={!isActionAvailable(action, booking)}

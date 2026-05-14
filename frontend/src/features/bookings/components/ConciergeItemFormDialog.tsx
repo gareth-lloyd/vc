@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,9 +26,9 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import type { BookingId } from "@/lib/query/keys";
 import { useCreateConciergeItem, useUpdateConciergeItem } from "../hooks";
 import {
-  CONCIERGE_TIER_OPTIONS,
-  CONCIERGE_UNIT_OPTIONS,
   conciergeItemWriteInputSchema,
+  conciergeTierOptions,
+  conciergeUnitOptions,
   type BookingConciergeItem,
   type ConciergeItemWriteInput,
 } from "../schemas";
@@ -77,6 +78,7 @@ function defaultsFromItem(item: BookingConciergeItem): ConciergeItemWriteInput {
 }
 
 export function ConciergeItemFormDialog(props: Props) {
+  const { t } = useTranslation("bookings");
   const { bookingId, open, onOpenChange, defaultCurrency } = props;
   const isCreate = props.mode === "create";
 
@@ -91,6 +93,12 @@ export function ConciergeItemFormDialog(props: Props) {
   const createMutation = useCreateConciergeItem(bookingId);
   const updateMutation = useUpdateConciergeItem(bookingId);
   const submitting = createMutation.isPending || updateMutation.isPending;
+
+  const tierOptions = conciergeTierOptions();
+  const unitOptions = conciergeUnitOptions();
+  const idleSubmitLabel = isCreate
+    ? t("concierge.form_dialog.submit_create")
+    : t("common:actions.save");
 
   useEffect(() => {
     if (open) {
@@ -108,14 +116,14 @@ export function ConciergeItemFormDialog(props: Props) {
       } else {
         await updateMutation.mutateAsync({ itemId: props.item.id, input: values });
       }
-      toast.success(isCreate ? "Service added" : "Service updated");
+      toast.success(isCreate ? t("concierge.toasts.added") : t("concierge.toasts.updated"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -124,14 +132,16 @@ export function ConciergeItemFormDialog(props: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Add concierge service" : "Edit concierge service"}</DialogTitle>
-          <DialogDescription>
-            Services itemise concierge spend; statuses are action-driven elsewhere.
-          </DialogDescription>
+          <DialogTitle>
+            {isCreate
+              ? t("concierge.form_dialog.create_title")
+              : t("concierge.form_dialog.edit_title")}
+          </DialogTitle>
+          <DialogDescription>{t("concierge.form_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="concierge-name">Service</Label>
+            <Label htmlFor="concierge-name">{t("concierge.form_dialog.fields.service")}</Label>
             <Input
               id="concierge-name"
               autoFocus
@@ -147,13 +157,16 @@ export function ConciergeItemFormDialog(props: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="concierge-tier">Tier</Label>
+              <Label htmlFor="concierge-tier">{t("concierge.form_dialog.fields.tier")}</Label>
               <Select value={tierCtrl.field.value} onValueChange={tierCtrl.field.onChange}>
-                <SelectTrigger id="concierge-tier" aria-label="Tier">
+                <SelectTrigger
+                  id="concierge-tier"
+                  aria-label={t("concierge.form_dialog.fields.tier")}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONCIERGE_TIER_OPTIONS.map((o) => (
+                  {tierOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -162,13 +175,16 @@ export function ConciergeItemFormDialog(props: Props) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="concierge-unit">Unit</Label>
+              <Label htmlFor="concierge-unit">{t("concierge.form_dialog.fields.unit")}</Label>
               <Select value={unitCtrl.field.value} onValueChange={unitCtrl.field.onChange}>
-                <SelectTrigger id="concierge-unit" aria-label="Unit">
+                <SelectTrigger
+                  id="concierge-unit"
+                  aria-label={t("concierge.form_dialog.fields.unit")}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONCIERGE_UNIT_OPTIONS.map((o) => (
+                  {unitOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -180,7 +196,9 @@ export function ConciergeItemFormDialog(props: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="concierge-quantity">Quantity</Label>
+              <Label htmlFor="concierge-quantity">
+                {t("concierge.form_dialog.fields.quantity")}
+              </Label>
               <Input
                 id="concierge-quantity"
                 type="number"
@@ -196,7 +214,9 @@ export function ConciergeItemFormDialog(props: Props) {
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="concierge-unit-price">Unit price</Label>
+              <Label htmlFor="concierge-unit-price">
+                {t("concierge.form_dialog.fields.unit_price")}
+              </Label>
               <Input
                 id="concierge-unit-price"
                 inputMode="decimal"
@@ -212,12 +232,14 @@ export function ConciergeItemFormDialog(props: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="concierge-description">Description</Label>
+            <Label htmlFor="concierge-description">
+              {t("concierge.form_dialog.fields.description")}
+            </Label>
             <Textarea id="concierge-description" rows={3} {...form.register("description")} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="concierge-notes">Notes</Label>
+            <Label htmlFor="concierge-notes">{t("concierge.form_dialog.fields.notes")}</Label>
             <Textarea id="concierge-notes" rows={2} {...form.register("notes")} />
           </div>
 
@@ -229,10 +251,10 @@ export function ConciergeItemFormDialog(props: Props) {
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : isCreate ? "Add service" : "Save"}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

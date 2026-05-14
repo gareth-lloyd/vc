@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { BookingId } from "@/lib/query/keys";
 import { useDeclineBooking } from "../hooks";
 import { declineBookingInputSchema, type DeclineBookingInput } from "../schemas";
@@ -12,6 +13,7 @@ interface DeclineBookingDialogProps {
 const DEFAULTS: DeclineBookingInput = { reason: "" };
 
 export function DeclineBookingDialog({ bookingId, open, onOpenChange }: DeclineBookingDialogProps) {
+  const { t } = useTranslation("bookings");
   const mutation = useDeclineBooking(bookingId);
   return (
     <ReasonFormDialog<DeclineBookingInput>
@@ -22,14 +24,14 @@ export function DeclineBookingDialog({ bookingId, open, onOpenChange }: DeclineB
       reasonField="reason"
       submit={(values) => mutation.mutateAsync(values)}
       isPending={mutation.isPending}
-      title="Decline this booking?"
-      description="The booking will move to declined. Add a reason for the audit log."
-      reasonLabel="Reason"
+      title={t("decline_dialog.title")}
+      description={t("decline_dialog.description")}
+      reasonLabel={t("decline_dialog.reason_label")}
       reasonId="decline-reason"
-      submitLabel="Decline booking"
-      busyLabel="Declining…"
-      keepLabel="Keep booking"
-      successMessage="Booking declined"
+      submitLabel={t("decline_dialog.submit_label")}
+      busyLabel={t("decline_dialog.busy_label")}
+      keepLabel={t("decline_dialog.keep_label")}
+      successMessage={t("decline_dialog.success_message")}
     />
   );
 }

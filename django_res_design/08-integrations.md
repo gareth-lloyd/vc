@@ -182,6 +182,60 @@ The handler:
 - On update: bumps `SyncRecord.status=PENDING` (signals push needed) **only if fields covered by the sync changed** (the registration declares which fields matter; otherwise we'd thrash on irrelevant edits).
 - A Celery task `push_pending` runs every few minutes, batching pushes.
 
+## Inbound: WordPress → Django
+
+The public villacollective.com WordPress site originates a small number of writes against the Res API (guest checkout submission, payment-status callbacks from the WP-hosted Flywire return page, enquiry capture from the marketing forms). Legacy handled this via the `WordPressApi/*` controllers with no documented auth story (see `[SECURITY]` notes in `workflows/11-integrations/flywire-gateway.md` and `workflows/10-payment/checkout-flow.md`). For the rebuild we standardise on a single, boring pattern.
+
+### Auth: DRF `TokenAuthentication` + dedicated service user
+
+- One Django user per WordPress site (e.g. `wordpress-publisher`). Created via data migration with `is_staff=False`, `is_active=True`, and an unusable password (`set_unusable_password()`) — the token is the only credential. No new `Role` enum value, no `INTEGRATION_SERVICE` flag; the user is identified by username, configured in `settings.WORDPRESS_SERVICE_USERNAME`.
+- One `authtoken.Token` per service user. Token is generated once and copied into the WordPress side; never stored in Django plaintext outside the `authtoken` table.
+- WordPress stores the token in `wp-config.php` as a `define('VC_RES_API_TOKEN', '…')` constant — **not** in the WP database, **not** committed to the plugin source. Reason: `wp-config.php` is the established convention for secrets in WP and is excluded from plugin distributions, theme exports, and most backup tooling. Storing in `wp_options` would surface the token to any WP plugin with DB read access.
+- WordPress calls the API with `Authorization: Token <value>` over HTTPS only. HTTP requests are rejected at the proxy.
+- Token rotation is in-place: generate a new `authtoken.Token` for the service user, update `wp-config.php`, then delete the old token row. No code change, no schema change.
+
+We deliberately avoid:
+- **JWT** — refresh/expiry machinery is wasted for a server-to-server caller with one credential.
+- **OAuth2** — there is no user-delegated authorisation happening; WP is the client, not a delegated identity.
+- **HMAC-signed requests** — strictly more secure against token leakage but materially harder to operate (clock skew, canonical-request bugs, shared-secret rotation). Revisit only if we discover the token cannot be kept secret on the WP host.
+- **WordPress Application Passwords** — those auth the *other* direction (Django → WP), which is the outbound sync covered elsewhere in this doc.
+
+### Endpoint surface
+
+Inbound WP endpoints live under a single URL prefix `/api/wordpress/*` so the permission class, throttle, and `IP allowlist` middleware can be applied to the whole subtree:
+
+- `POST /api/wordpress/enquiries/` — marketing-form enquiry capture.
+- `POST /api/wordpress/checkout/` — guest checkout submission (legacy `SaveCheckoutInfo`).
+- `POST /api/wordpress/payments/return/` — Flywire return-page callback (legacy `TokenisePaymentStatus`).
+- `POST /api/wordpress/payments/webhook/` — Flywire server-to-server webhook proxied via the WP site (legacy `PaymentStatusWebHook`; see `workflows/11-integrations/flywire-gateway.md` for the open question of whether this stays WP-proxied or moves direct-to-Django).
+
+Each endpoint:
+- Uses a focused DRF serializer that accepts **only** the fields it consumes. No `extra` dict, no passthrough.
+- Has a `permission_classes = [IsWordPressServiceUser]` that checks `request.user.username == settings.WORDPRESS_SERVICE_USERNAME`. Defence in depth against a leaked token from any other user being repurposed against this surface — the username pin means only the WP service user's token is accepted on this URL subtree, even if another valid token is presented.
+- Is throttled via DRF `ScopedRateThrottle` (`scope = "wordpress_inbound"`); the rate is set per-endpoint in settings.
+- Logs every call to `AuditLog` with `actor` = the service user, `action` = the endpoint, and the request payload (with PII fields hashed per `00-conventions.md`).
+
+### Idempotency
+
+Every WP-originated mutation carries a client-supplied idempotency key derived from a stable WordPress identifier (post id, form submission id, Flywire reference). The endpoint:
+1. Looks up `IntegrationInboundCall(provider=WORDPRESS_SITE, idempotency_key=…)` (a small append-only table — `provider`, `idempotency_key`, `response_status`, `response_body_hash`, `created_at`, unique on `(provider, idempotency_key)`).
+2. If present: returns the recorded response unchanged. Retries don't double-write.
+3. If absent: processes the request inside a transaction, writes the row, returns.
+
+This handles WP-side retry storms (cron-driven `wp_remote_post` will re-fire on plugin restart) without per-endpoint dedupe logic.
+
+### Hardening that's cheap to add later
+
+- **IP allowlist** at the proxy / DRF middleware if the WP host has a stable egress IP. Implement when the host's egress is pinned; skip until then to avoid blocking legitimate traffic during host migrations.
+- **Token expiry**: replace `authtoken.Token` with `knox.AuthToken` only if/when we want time-bounded tokens. Default `authtoken` rows are fine for v1.
+- **Per-endpoint scopes**: if we grow more inbound consumers, swap the single-token model for a `ServiceCredential(scopes=…)` row referenced by the permission class. Out of scope for v1 — one consumer, one token.
+
+### What this replaces in legacy
+
+- The unauthenticated `WordPressApi/*` controllers.
+- The implicit "trust because internal network" posture.
+- The ad-hoc `[SECURITY]` flags in `workflows/11-integrations/flywire-gateway.md` and `workflows/10-payment/*.md` for inbound verification: token-auth + idempotency + AuditLog is the answer.
+
 ## Why generic over per-model fields
 
 The legacy approach scattered `ZohoId`, `SyncId`, `LastSyncedAt`, `IsSync` across every table. Adding a new integration meant a schema migration on every domain table.
@@ -210,5 +264,5 @@ def zoho_id(self) -> str | None:
 
 ## Out of scope
 
-- WordPress site sync details (the legacy `VillaSite` table) — the model fits this framework but the protocol specifics are TBD.
+- **Outbound** WordPress sync details (Django → WP `WP_Sync_*` push protocol, multi-`SiteId` fan-out, response shapes) — the `SyncRecord(provider=WORDPRESS_SITE)` framework holds the state, but the wire protocol is still being captured in `workflows/11-integrations/public-website-sync.md`. The **inbound** direction (WP → Django) is fully defined above.
 - Channel manager integrations (Booking.com, Vrbo, Airbnb) — none in the legacy system; future scope.

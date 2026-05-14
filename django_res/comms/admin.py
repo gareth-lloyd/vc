@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db.models import QuerySet
 from django.http import HttpRequest
 
+from comms import tasks
+from comms.enums import EmailLogStatus
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 
 
@@ -23,7 +26,13 @@ class EmailTemplateAdmin(admin.ModelAdmin):
     list_display = ("key", "version", "is_active", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("key", "subject_template")
-    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+    readonly_fields = (
+        "body_template_html",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+    )
 
 
 @admin.register(EmailLog)
@@ -39,6 +48,7 @@ class EmailLogAdmin(admin.ModelAdmin):
     list_filter = ("status", "template_key")
     search_fields = ("template_key", "rendered_subject", "from_email")
     readonly_fields = tuple(f.name for f in EmailLog._meta.get_fields() if hasattr(f, "attname"))
+    actions = ("resend_failed",)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
@@ -57,3 +67,25 @@ class EmailLogAdmin(admin.ModelAdmin):
         obj: EmailLog | None = None,
     ) -> bool:
         return False
+
+    @admin.action(description="Re-send selected FAILED logs")
+    def resend_failed(self, request: HttpRequest, queryset: QuerySet[EmailLog]) -> None:
+        eligible = queryset.filter(status=EmailLogStatus.FAILED)
+        skipped = queryset.exclude(status=EmailLogStatus.FAILED).count()
+        log_ids = list(eligible.values_list("pk", flat=True))
+
+        if log_ids:
+            eligible.update(status=EmailLogStatus.QUEUED, failure_reason="")
+            for log_id in log_ids:
+                tasks.send_email_log.delay(log_id)  # type: ignore[attr-defined]
+            self.message_user(
+                request,
+                f"Re-queued {len(log_ids)} log(s) for delivery.",
+                level=messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} log(s) that were not in FAILED state.",
+                level=messages.WARNING,
+            )

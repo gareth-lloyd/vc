@@ -1,0 +1,11 @@
+Hi {{ user_first_name }},
+
+A request to sign in to your Villa Collective account was made. Use this code to continue:
+
+  {{ code }}
+
+This code expires in {{ expires_in_minutes }} minutes.
+
+If this wasn't you, please contact support — your password may need to change.
+
+— Villa Collective

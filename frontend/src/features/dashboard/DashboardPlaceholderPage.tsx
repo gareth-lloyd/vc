@@ -1,17 +1,16 @@
+import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/feedback/EmptyState";
 
 export function DashboardPlaceholderPage() {
+  const { t } = useTranslation("dashboard");
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle="An operator overview will live here in the next phase."
-      />
+      <PageHeader title={t("placeholder.title")} subtitle={t("placeholder.subtitle")} />
       <div className="p-6">
         <EmptyState
-          title="Dashboard coming soon"
-          description="KPIs, arrivals/departures, recent enquiries, and overdue balances will land in Phase 2."
+          title={t("placeholder.empty_title")}
+          description={t("placeholder.empty_description")}
         />
       </div>
     </div>

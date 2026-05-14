@@ -1,12 +1,9 @@
 import { PinIcon, PinOffIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format/date";
-import {
-  BOOKING_NOTE_KIND_LABELS,
-  BOOKING_NOTE_VISIBILITY_LABELS,
-  type BookingNote,
-} from "../schemas";
+import { bookingNoteKindLabel, bookingNoteVisibilityLabel, type BookingNote } from "../schemas";
 
 interface NoteCardProps {
   note: BookingNote;
@@ -23,6 +20,7 @@ export function NoteCard({
   onDelete,
   pinDisabled = false,
 }: NoteCardProps) {
+  const { t } = useTranslation("bookings");
   const pinned = !!note.is_pinned;
   return (
     <li className="border-border bg-card space-y-2 rounded-lg border p-4">
@@ -35,26 +33,28 @@ export function NoteCard({
             onClick={onTogglePin}
             disabled={pinDisabled}
             aria-pressed={pinned}
-            aria-label={pinned ? "Unpin note" : "Pin note"}
+            aria-label={pinned ? t("notes.card.unpin_aria") : t("notes.card.pin_aria")}
           >
             {pinned ? <PinIcon /> : <PinOffIcon />}
           </Button>
-          <Badge variant="secondary">{BOOKING_NOTE_KIND_LABELS[note.kind]}</Badge>
-          <Badge variant="outline">{BOOKING_NOTE_VISIBILITY_LABELS[note.visibility]}</Badge>
+          <Badge variant="secondary">{bookingNoteKindLabel(note.kind)}</Badge>
+          <Badge variant="outline">{bookingNoteVisibilityLabel(note.visibility)}</Badge>
         </div>
         <div className="flex gap-1">
           <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-            Edit
+            {t("common:actions.edit")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onDelete}>
-            Delete
+            {t("common:actions.delete")}
           </Button>
         </div>
       </div>
       <p className="text-foreground text-sm whitespace-pre-line">{note.body}</p>
       <p className="text-muted-foreground text-xs">
-        {note.author ? `By #${note.author}` : "Unknown author"} ·{" "}
-        {formatDate(note.created_at ?? null)}
+        {note.author
+          ? t("notes.card.by_author", { id: note.author })
+          : t("notes.card.unknown_author")}{" "}
+        · {formatDate(note.created_at ?? null)}
       </p>
     </li>
   );

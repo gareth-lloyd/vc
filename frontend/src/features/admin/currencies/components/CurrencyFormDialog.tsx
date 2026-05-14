@@ -61,6 +61,9 @@ export function CurrencyFormDialog(props: Props) {
   const updateMutation = useUpdateCurrency(isCreate ? "" : props.currency.code);
   const submitting = createMutation.isPending || updateMutation.isPending;
   const isActiveValue = form.watch("is_active");
+  const idleSubmitLabel = isCreate
+    ? t("currencies.dialog.submit_create")
+    : t("common:actions.save");
 
   useEffect(() => {
     if (open) {
@@ -172,11 +175,7 @@ export function CurrencyFormDialog(props: Props) {
               {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting
-                ? t("currencies.dialog.submit_busy")
-                : isCreate
-                  ? t("currencies.dialog.submit_create")
-                  : t("currencies.dialog.submit_edit")}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

@@ -16,6 +16,13 @@ export async function fetchMe(): Promise<UserMe> {
   return userMeSchema.parse(data);
 }
 
+export async function updateMe(
+  input: Partial<Pick<UserMe, "preferred_language">>,
+): Promise<UserMe> {
+  const data = await apiSend<unknown>("PATCH", "/auth/me", input);
+  return userMeSchema.parse(data);
+}
+
 export async function fetchPermissions(): Promise<PermissionsResponse> {
   const data = await apiGet<unknown>("/auth/permissions");
   return permissionsResponseSchema.parse(data);

@@ -1,4 +1,204 @@
 {
+  "tabs": {
+    "details": "Details",
+    "activity": "Activity",
+    "notes": "Notes"
+  },
+  "labels": {
+    "status": {
+      "new": "New",
+      "contacted": "Contacted",
+      "quoted": "Quoted",
+      "lost": "Lost",
+      "converted": "Converted"
+    },
+    "source": {
+      "main_website": "Main website",
+      "agent_portal": "Agent portal",
+      "email_inbound": "Inbound email",
+      "phone": "Phone",
+      "other": "Other"
+    },
+    "note_kind": {
+      "general": "General",
+      "internal": "Internal",
+      "preferences": "Preferences"
+    },
+    "request_type": {
+      "availability": "Availability",
+      "info": "Info",
+      "quote": "Quote",
+      "brochure": "Brochure",
+      "other": "Other"
+    }
+  },
+  "list": {
+    "title": "Enquiries",
+    "breadcrumb_operations": "Operations",
+    "breadcrumb_enquiries": "Enquiries",
+    "new_button": "New enquiry",
+    "search_placeholder": "Search enquiries…",
+    "filter_status_aria": "Filter by status",
+    "any_status": "Any status",
+    "view_aria": "View",
+    "view_kanban": "Kanban",
+    "view_list": "List",
+    "load_failed": "Couldn't load enquiries.",
+    "load_failed_status": "Couldn't load enquiries ({{status}}).",
+    "empty_title": "No enquiries match these filters",
+    "empty_body": "Try clearing the search or changing filters.",
+    "toasts": {
+      "move_blocked": "Use the detail page to move to this stage.",
+      "move_failed": "Couldn't move {{reference}}",
+      "move_success": "{{reference}} moved to {{status}}"
+    }
+  },
+  "kanban": {
+    "drop_here": "Drop here"
+  },
+  "card": {
+    "no_property": "No property",
+    "property_with_id": "Property #{{id}}",
+    "flexible_dates": "Flexible dates",
+    "time_ago": {
+      "just_now": "just now",
+      "minutes": "{{count}}m ago",
+      "hours": "{{count}}h ago",
+      "days": "{{count}}d ago"
+    }
+  },
+  "detail": {
+    "sections_aria": "Enquiry sections",
+    "breadcrumb_list": "Enquiries",
+    "not_found_title": "Enquiry not found",
+    "not_found_body": "It may have been deleted or you may not have access.",
+    "load_failed_title": "Couldn't load this enquiry",
+    "load_failed_body": "Try again or head back to the list.",
+    "rail": {
+      "actions_heading": "Actions",
+      "dates": "Dates",
+      "party": "Party",
+      "source": "Source",
+      "property": "Property",
+      "assigned": "Assigned",
+      "flexible": "Flexible",
+      "unassigned": "Unassigned",
+      "property_with_id": "#{{id}}",
+      "user_with_id": "User #{{id}}",
+      "party_format": "{{adults}}A",
+      "party_format_with_children": "{{adults}}A · {{children}}C"
+    },
+    "actions": {
+      "assign": "Assign…",
+      "convert": "Convert to quote",
+      "close": "Close as lost…",
+      "reopen": "Reopen",
+      "convert_disabled_state": "Not available for this status.",
+      "close_disabled_state": "Already closed or converted.",
+      "reopen_disabled_state": "Only available for closed enquiries."
+    },
+    "reopen_confirm": {
+      "title": "Reopen this enquiry?",
+      "description": "It will move back to New.",
+      "confirm_label": "Reopen",
+      "success_message": "Enquiry reopened",
+      "error_message": "Couldn't reopen enquiry"
+    }
+  },
+  "details_tab": {
+    "heading": "Enquiry details",
+    "edit_button": "Edit details",
+    "sections": {
+      "status_and_dates": "Status & key dates",
+      "guest": "Guest",
+      "lead": "Lead",
+      "inbound_message": "Inbound message"
+    },
+    "fields": {
+      "reference": "Reference",
+      "status": "Status",
+      "from": "From",
+      "to": "To",
+      "flexible": "Flexible",
+      "created": "Created",
+      "name": "Name",
+      "email": "Email",
+      "party": "Party",
+      "min_bedrooms": "Min bedrooms",
+      "source": "Source",
+      "request_type": "Request type",
+      "property": "Property",
+      "region": "Region",
+      "agent": "Agent",
+      "referral_code": "Referral code"
+    },
+    "values": {
+      "yes": "Yes",
+      "no": "No",
+      "id_ref": "#{{id}}",
+      "adults_one": "{{count}} adult",
+      "adults_other": "{{count}} adults",
+      "children_one": ", {{count}} child",
+      "children_other": ", {{count}} children"
+    }
+  },
+  "activity": {
+    "load_failed_title": "Couldn't load activity",
+    "load_failed_body": "Try again.",
+    "empty_title": "No activity yet",
+    "empty_body": "Lifecycle events will appear here."
+  },
+  "notes": {
+    "heading": "Notes",
+    "filter_kind_aria": "Filter by kind",
+    "all_kinds": "All kinds",
+    "add_button": "Add note",
+    "load_failed_title": "Couldn't load notes",
+    "load_failed_body": "Try again.",
+    "empty_title": "No notes yet",
+    "empty_body": "Add a note to record context for this enquiry.",
+    "pinned_badge": "Pinned",
+    "by_author": "By #{{id}}",
+    "unknown_author": "Unknown author",
+    "form_dialog": {
+      "title": "Add note",
+      "description": "Notes are visible to staff.",
+      "fields": {
+        "body": "Body",
+        "kind": "Kind",
+        "kind_aria": "Kind",
+        "pin": "Pin this note"
+      },
+      "submit_label": "Add note",
+      "success_message": "Note added"
+    }
+  },
+  "form_dialog": {
+    "titles": {
+      "create": "New enquiry",
+      "edit": "Edit enquiry"
+    },
+    "description": "Capture lead details. Status is managed via the action buttons.",
+    "fields": {
+      "first_name": "First name",
+      "last_name": "Last name",
+      "email": "Email",
+      "from": "From",
+      "to": "To",
+      "flexible_dates": "Flexible dates",
+      "adults": "Adults",
+      "children": "Children",
+      "request_type": "Request type",
+      "source": "Source",
+      "inbound_message": "Inbound message",
+      "request_type_aria": "Request type",
+      "source_aria": "Source"
+    },
+    "toasts": {
+      "created": "Enquiry created",
+      "updated": "Enquiry updated"
+    }
+  },
   "assign": {
     "title": "Assign enquiry",
     "description": "Pick an operator to own this enquiry. Choose Unassigned to remove the current assignee.",
@@ -17,12 +217,33 @@
       "load_failed": "Couldn't load operators. Try again."
     },
     "actions": {
-      "submit": "Assign",
-      "submitting": "Saving…"
+      "submit": "Assign"
     },
     "toasts": {
       "assigned": "Enquiry assigned",
       "unassigned": "Enquiry unassigned"
     }
+  },
+  "close": {
+    "title": "Close enquiry as lost?",
+    "description": "Mark this enquiry as lost. You can reopen it later if needed.",
+    "reason_label": "Reason (optional)",
+    "submit_label": "Close as lost",
+    "busy_label": "Closing…",
+    "keep_label": "Keep open",
+    "success_message": "Enquiry closed"
+  },
+  "columns": {
+    "ref": "Ref",
+    "guest": "Guest",
+    "dates": "Dates",
+    "party": "Party",
+    "source": "Source",
+    "status": "Status",
+    "created": "Created"
+  },
+  "schema_errors": {
+    "body_required": "Body is required",
+    "at_least_one_adult": "At least one adult"
   }
 }

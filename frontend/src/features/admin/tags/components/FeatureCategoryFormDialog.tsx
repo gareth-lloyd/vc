@@ -68,6 +68,9 @@ export function FeatureCategoryFormDialog(props: Props) {
   const updateMutation = useUpdateFeatureCategory(isCreate ? 0 : props.category.id);
   const submitting = createMutation.isPending || updateMutation.isPending;
   const isActiveValue = form.watch("is_active");
+  const idleSubmitLabel = isCreate
+    ? t("tags.categories.dialog.submit_create")
+    : t("common:actions.save");
 
   useEffect(() => {
     if (open) {
@@ -178,11 +181,7 @@ export function FeatureCategoryFormDialog(props: Props) {
               {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting
-                ? t("tags.categories.dialog.submit_busy")
-                : isCreate
-                  ? t("tags.categories.dialog.submit_create")
-                  : t("tags.categories.dialog.submit_edit")}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

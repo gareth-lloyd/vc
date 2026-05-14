@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -13,16 +14,17 @@ import { BookingActions } from "./components/BookingActions";
 import type { BookingDetail } from "./schemas";
 
 export const BOOKING_TABS = [
-  { slug: "overview", label: "Overview" },
-  { slug: "timeline", label: "Timeline" },
-  { slug: "notes", label: "Notes" },
-  { slug: "finance", label: "Finance" },
-  { slug: "payments", label: "Payments" },
-  { slug: "concierge", label: "Concierge" },
-  { slug: "owner", label: "Owner" },
+  { slug: "overview", labelKey: "tabs.overview" },
+  { slug: "timeline", labelKey: "tabs.timeline" },
+  { slug: "notes", labelKey: "tabs.notes" },
+  { slug: "finance", labelKey: "tabs.finance" },
+  { slug: "payments", labelKey: "tabs.payments" },
+  { slug: "concierge", labelKey: "tabs.concierge" },
+  { slug: "owner", labelKey: "tabs.owner" },
 ] as const;
 
 function RailSummary({ booking }: { booking: BookingDetail }) {
+  const { t } = useTranslation("bookings");
   const currency = booking.currency_code ?? null;
   const total = booking.total ?? booking.rental_price;
   const paid = parseMoney(total) - parseMoney(booking.balance_due);
@@ -31,19 +33,25 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
       <div>
         <h2 className="text-foreground text-lg font-semibold">{booking.reference}</h2>
         <p className="text-muted-foreground text-sm">
-          {booking.property_name ?? `Property #${booking.property}`}
+          {booking.property_name ?? t("detail.fallback.property_with_id", { id: booking.property })}
         </p>
       </div>
       <StatusBadge status={booking.status} />
       <FactList>
         <FactRow
-          label="Dates"
+          label={t("detail.rail.dates")}
           value={`${formatDate(booking.date_from)} – ${formatDate(booking.date_to)}`}
         />
-        <FactRow label="Guest" value={booking.guest_name ?? `Guest #${booking.guest}`} />
-        <FactRow label="Total" value={formatMoney(total, currency)} />
-        <FactRow label="Paid" value={Number.isFinite(paid) ? formatMoney(paid, currency) : "—"} />
-        <FactRow label="Due" value={formatMoney(booking.balance_due, currency)} />
+        <FactRow
+          label={t("detail.rail.guest")}
+          value={booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
+        />
+        <FactRow label={t("detail.rail.total")} value={formatMoney(total, currency)} />
+        <FactRow
+          label={t("detail.rail.paid")}
+          value={Number.isFinite(paid) ? formatMoney(paid, currency) : "—"}
+        />
+        <FactRow label={t("detail.rail.due")} value={formatMoney(booking.balance_due, currency)} />
       </FactList>
       <BookingActions booking={booking} />
     </div>
@@ -55,6 +63,7 @@ export interface BookingOutletContext {
 }
 
 export function BookingDetailLayout() {
+  const { t } = useTranslation("bookings");
   const { id } = useParams<{ id: string }>();
   const query = useBooking(id);
 
@@ -72,8 +81,8 @@ export function BookingDetailLayout() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Couldn't load this booking"
-          description="Try again or head back to the list."
+          title={t("detail.load_failed_title")}
+          description={t("detail.load_failed_body")}
           onRetry={() => query.refetch()}
         />
       </div>
@@ -87,11 +96,14 @@ export function BookingDetailLayout() {
       <PageHeader
         title={booking.reference}
         subtitle={booking.property_name ?? undefined}
-        breadcrumbs={[{ label: "Bookings", to: "/bookings" }, { label: booking.reference }]}
+        breadcrumbs={[
+          { label: t("detail.breadcrumb_list"), to: "/bookings" },
+          { label: booking.reference },
+        ]}
       />
 
       <div className="border-border border-b px-6">
-        <nav className="flex gap-1" aria-label="Booking sections">
+        <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
           {BOOKING_TABS.map((tab) => (
             <NavLink
               key={tab.slug}
@@ -105,7 +117,7 @@ export function BookingDetailLayout() {
                 )
               }
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </NavLink>
           ))}
         </nav>

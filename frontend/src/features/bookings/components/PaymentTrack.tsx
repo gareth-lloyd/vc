@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -11,7 +12,7 @@ import { formatMoney, parseMoney } from "@/lib/format/money";
 import type { BookingId } from "@/lib/query/keys";
 import type { TrackName } from "../api";
 import { useRequestPayment } from "../hooks";
-import { PAYMENT_TRACK_STATUS_LABELS, type PaymentTrack as PaymentTrackData } from "../schemas";
+import { paymentTrackStatusLabel, type PaymentTrack as PaymentTrackData } from "../schemas";
 import { PaymentActionDialog } from "./PaymentActionDialog";
 
 interface PaymentTrackProps {
@@ -28,10 +29,12 @@ interface PaymentTrackProps {
 
 function GateButton({
   canWrite,
+  tooltipMessage,
   children,
   ...buttonProps
 }: {
   canWrite: boolean;
+  tooltipMessage: string;
   children: ReactNode;
 } & React.ComponentProps<typeof Button>) {
   if (canWrite) {
@@ -46,12 +49,12 @@ function GateButton({
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>You need the Reservations role for this action</TooltipContent>
+      <TooltipContent>{tooltipMessage}</TooltipContent>
     </Tooltip>
   );
 }
 
-function MilestoneRow({ data }: { data: PaymentTrackData }) {
+function MilestoneRow({ data, ariaLabel }: { data: PaymentTrackData; ariaLabel: string }) {
   const scheduled = parseMoney(data.scheduled_amount);
   const paid = parseMoney(data.paid_amount);
   const ratio =
@@ -62,7 +65,7 @@ function MilestoneRow({ data }: { data: PaymentTrackData }) {
         : 0;
   const filled = Math.round(ratio * 6);
   return (
-    <div className="flex items-center gap-1" aria-label="Milestones">
+    <div className="flex items-center gap-1" aria-label={ariaLabel}>
       {Array.from({ length: 6 }).map((_, i) => (
         <span
           key={i}
@@ -84,6 +87,7 @@ export function PaymentTrack({
   currency,
   canWrite,
 }: PaymentTrackProps) {
+  const { t } = useTranslation("bookings");
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
   const [waiveOpen, setWaiveOpen] = useState(false);
   const requestMutation = useRequestPayment(bookingId, trackName);
@@ -91,14 +95,14 @@ export function PaymentTrack({
   const handleRequest = async () => {
     try {
       await requestMutation.mutateAsync();
-      toast.success(`Payment requested for ${trackLabel}`);
+      toast.success(t("payments.track.toasts.request_success", { track: trackLabel }));
     } catch (error) {
       if (error instanceof ApiError && error.status === 501) {
-        toast.error("Payment requests aren't wired up yet");
+        toast.error(t("payments.track.toasts.request_not_wired"));
       } else if (error instanceof ApiError) {
         toast.error(error.detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -118,10 +122,10 @@ export function PaymentTrack({
         <div className="flex items-center justify-between">
           <h3 className="font-medium">{trackLabel}</h3>
           <Button variant="outline" size="sm" onClick={onRetry}>
-            Retry
+            {t("common:actions.retry")}
           </Button>
         </div>
-        <p className="text-muted-foreground text-sm">Couldn't load this track.</p>
+        <p className="text-muted-foreground text-sm">{t("payments.track.load_failed")}</p>
       </section>
     );
   }
@@ -140,20 +144,25 @@ export function PaymentTrack({
   const remainingDefault =
     remaining != null && Number.isFinite(remaining) ? remaining.toFixed(2) : undefined;
 
+  const tooltipMessage = t("payments.track.role_required_tooltip");
+
   return (
     <section className="border-border bg-card space-y-3 rounded-lg border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <h3 className="font-medium">{trackLabel}</h3>
           <p className="text-muted-foreground text-sm">
-            {formatMoney(paid, currency)} of {formatMoney(scheduled, currency)} paid
+            {t("payments.track.summary", {
+              paid: formatMoney(paid, currency),
+              total: formatMoney(scheduled, currency),
+            })}
           </p>
         </div>
-        <StatusBadge status={PAYMENT_TRACK_STATUS_LABELS[data.status] ?? data.status} />
+        <StatusBadge status={paymentTrackStatusLabel(data.status) ?? data.status} />
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <MilestoneRow data={data} />
+        <MilestoneRow data={data} ariaLabel={t("payments.track.milestones_aria")} />
         {due ? (
           <span
             className={cn(
@@ -161,17 +170,18 @@ export function PaymentTrack({
               isOverdue ? "text-destructive font-medium" : "text-muted-foreground",
             )}
           >
-            Due {formatDate(due.toISOString())}
-            {isOverdue ? " (overdue)" : ""}
+            {t("payments.track.due_label", { date: formatDate(due.toISOString()) })}
+            {isOverdue ? t("payments.track.overdue_suffix") : ""}
           </span>
         ) : (
-          <span className="text-muted-foreground text-xs">No due date</span>
+          <span className="text-muted-foreground text-xs">{t("payments.track.no_due_date")}</span>
         )}
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
         <GateButton
           canWrite={canWrite}
+          tooltipMessage={tooltipMessage}
           variant="outline"
           size="sm"
           onClick={handleRequest}
@@ -179,24 +189,28 @@ export function PaymentTrack({
             requestMutation.isPending || data.status === "succeeded" || data.status === "waived"
           }
         >
-          {data.status === "pending" ? "Send reminder" : "Request payment"}
+          {data.status === "pending"
+            ? t("payments.track.send_reminder")
+            : t("payments.track.request_payment")}
         </GateButton>
         <GateButton
           canWrite={canWrite}
+          tooltipMessage={tooltipMessage}
           size="sm"
           onClick={() => setMarkPaidOpen(true)}
           disabled={data.status === "succeeded" || data.status === "waived"}
         >
-          Mark received
+          {t("payments.track.mark_received")}
         </GateButton>
         <GateButton
           canWrite={canWrite}
+          tooltipMessage={tooltipMessage}
           variant="outline"
           size="sm"
           onClick={() => setWaiveOpen(true)}
           disabled={data.status === "succeeded" || data.status === "waived"}
         >
-          Waive
+          {t("payments.track.waive")}
         </GateButton>
       </div>
 

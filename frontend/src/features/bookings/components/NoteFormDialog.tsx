@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -54,6 +55,7 @@ function defaultsFromNote(note: BookingNote): BookingNoteWriteInput {
 }
 
 export function NoteFormDialog(props: NoteFormDialogProps) {
+  const { t } = useTranslation("bookings");
   const { bookingId, open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -84,14 +86,14 @@ export function NoteFormDialog(props: NoteFormDialogProps) {
       } else {
         await updateMutation.mutateAsync({ noteId: props.note.id, input: values });
       }
-      toast.success("Note saved");
+      toast.success(t("notes.toasts.saved"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -100,18 +102,17 @@ export function NoteFormDialog(props: NoteFormDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isCreate ? "Add note" : "Edit note"}</DialogTitle>
-          <DialogDescription>
-            Notes are visible to staff by default; choose another visibility to share with owners or
-            guests.
-          </DialogDescription>
+          <DialogTitle>
+            {isCreate ? t("notes.form_dialog.create_title") : t("notes.form_dialog.edit_title")}
+          </DialogTitle>
+          <DialogDescription>{t("notes.form_dialog.description")}</DialogDescription>
         </DialogHeader>
         <NoteForm
           form={form}
           onSubmit={handleSubmit}
           topLevelError={topLevelError}
           submitting={submitting}
-          submitLabel={isCreate ? "Add note" : "Save"}
+          submitLabel={isCreate ? t("notes.form_dialog.submit_create") : t("common:actions.save")}
           onCancel={() => onOpenChange(false)}
         />
       </DialogContent>

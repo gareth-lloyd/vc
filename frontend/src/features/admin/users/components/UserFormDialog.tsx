@@ -93,6 +93,7 @@ export function UserFormDialog(props: UserFormDialogProps) {
 
   const roleValue = form.watch("role") as StaffRole | undefined;
   const isActiveValue = form.watch("is_active") as boolean | undefined;
+  const idleSubmitLabel = isCreate ? t("users.dialog.submit_create") : t("common:actions.save");
 
   const handleSubmit = async (values: UserCreateInput | UserUpdateInput) => {
     setTopLevelError(null);
@@ -217,11 +218,7 @@ export function UserFormDialog(props: UserFormDialogProps) {
               {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting
-                ? t("users.dialog.submit_busy")
-                : isCreate
-                  ? t("users.dialog.submit_create")
-                  : t("users.dialog.submit_edit")}
+              {submitting ? t("common:actions.saving") : idleSubmitLabel}
             </Button>
           </div>
         </form>

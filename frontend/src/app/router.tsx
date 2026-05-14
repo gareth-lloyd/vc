@@ -13,6 +13,9 @@ import { DashboardPlaceholderPage } from "@/features/dashboard/DashboardPlacehol
 import { PropertiesListPage } from "@/features/properties/PropertiesListPage";
 import { PROPERTY_TABS, PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
 import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
+import { RoomsTab } from "@/features/properties/tabs/RoomsTab";
+import { NearbyTab } from "@/features/properties/tabs/NearbyTab";
+import { FeaturesTab } from "@/features/properties/tabs/FeaturesTab";
 import { PricingTab } from "@/features/properties/tabs/PricingTab";
 import { PeopleTab } from "@/features/properties/tabs/PeopleTab";
 import { AvailabilityTab } from "@/features/properties/tabs/AvailabilityTab";
@@ -44,6 +47,9 @@ import { NotFoundPage } from "./NotFoundPage";
 
 const REAL_PROPERTY_TABS = new Set<string>([
   "details",
+  "rooms",
+  "nearby",
+  "features",
   "pricing",
   "people",
   "availability",
@@ -68,7 +74,7 @@ const REAL_BOOKING_TABS = new Set<string>([
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
     path: t.slug,
-    element: <ComingSoonTab tabName={t.label} />,
+    element: <ComingSoonTab tabNameKey={`bookings:${t.labelKey}`} />,
   }),
 );
 
@@ -93,10 +99,13 @@ export const router = createBrowserRouter([
                 children: [
                   { index: true, element: <Navigate to="details" replace /> },
                   { path: "details", element: <DetailsTab /> },
+                  { path: "rooms", element: <RoomsTab /> },
+                  { path: "nearby", element: <NearbyTab /> },
                   { path: "pricing", element: <PricingTab /> },
                   { path: "people", element: <PeopleTab /> },
                   { path: "availability", element: <AvailabilityTab /> },
                   { path: "media", element: <PropertyMediaTab /> },
+                  { path: "features", element: <FeaturesTab /> },
                   { path: "settings", element: <PropertySettingsTab /> },
                   ...propertyPlaceholderRoutes,
                 ],

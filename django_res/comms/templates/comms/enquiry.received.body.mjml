@@ -1,0 +1,27 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">New enquiry from {{ guest_full_name }}</mj-text>
+        <mj-text><strong>Email:</strong> {{ guest_email }}</mj-text>
+        <mj-text><strong>Phone:</strong> {{ guest_phone }}</mj-text>
+        <mj-divider border-color="#dddddd" border-width="1px" />
+        <mj-text><strong>Property:</strong> {{ property_name }}</mj-text>
+        <mj-text><strong>Dates:</strong> {{ date_from }} to {{ date_to }}</mj-text>
+        <mj-text><strong>Adults / Children:</strong> {{ adults }} / {{ children }}</mj-text>
+        <mj-text><strong>Bedrooms:</strong> {{ min_bedrooms }} – {{ max_bedrooms }}</mj-text>
+        <mj-divider border-color="#dddddd" border-width="1px" />
+        <mj-text><strong>Notes</strong></mj-text>
+        <mj-text>{{ notes }}</mj-text>
+        <mj-divider border-color="#dddddd" border-width="1px" />
+        <mj-text color="#888888" font-size="13px"><strong>Source:</strong> {{ enquiry_source }} &nbsp;·&nbsp; <strong>Referral:</strong> {{ referral_code }} &nbsp;·&nbsp; <strong>Heard via:</strong> {{ heard_about_us }}</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -120,6 +120,9 @@ class EmailService:
 
         subject = _render(template.subject_template, context)
         body = _render(template.body_template, context)
+        body_html = (
+            _render(template.body_template_html, context) if template.body_template_html else ""
+        )
 
         from_email = profile.from_email
         # Personal profiles always send "as" the user; otherwise the system
@@ -136,6 +139,7 @@ class EmailService:
                 smtp_profile=profile,
                 rendered_subject=subject,
                 rendered_body=body,
+                rendered_body_html=body_html,
                 status=EmailLogStatus.QUEUED,
                 attachments=[a.to_log_entry() for a in attachments],
                 correlation=correlation,

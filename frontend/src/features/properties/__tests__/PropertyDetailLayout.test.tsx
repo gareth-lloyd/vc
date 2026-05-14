@@ -37,20 +37,68 @@ function emptyPage<T>(value: T) {
 
 function installDetailHandlers() {
   server.use(
-    http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)),
-    http.get("/api/v1/properties/casa-norte/descriptions", () =>
-      HttpResponse.json(emptyPage([{ id: 1, title: "Welcome", body: "A beautiful villa." }])),
+    http.get("/api/v1/properties/casa-norte", () =>
+      HttpResponse.json({ ...propertyFixture, feature_ids: [3, 4] }),
     ),
-    http.get("/api/v1/properties/casa-norte/features", () =>
+    http.get("/api/v1/properties/5/descriptions", () =>
       HttpResponse.json(
         emptyPage([
-          { id: 3, name: "Pool" },
-          { id: 4, name: "Sea view" },
+          { id: 1, property: 5, section: "overview", body: "A beautiful villa.", updated_at: null },
+        ]),
+      ),
+    ),
+    http.get("/api/v1/features", () =>
+      HttpResponse.json(
+        emptyPage([
+          {
+            id: 3,
+            category: 1,
+            name: "Pool",
+            slug: "pool",
+            description: "",
+            icon: "",
+            sort_order: 0,
+            is_active: true,
+            service_type: "amenity",
+          },
+          {
+            id: 4,
+            category: 1,
+            name: "Sea view",
+            slug: "sea-view",
+            description: "",
+            icon: "",
+            sort_order: 0,
+            is_active: true,
+            service_type: "amenity",
+          },
         ]),
       ),
     ),
     http.get("/api/v1/properties/casa-norte/rooms", () =>
-      HttpResponse.json(emptyPage([{ id: 7, name: "Master bedroom", count: 1 }])),
+      HttpResponse.json(
+        emptyPage([
+          {
+            id: 7,
+            property: 5,
+            name: "Master bedroom",
+            placement: "main_house",
+            website_description: "",
+            vc_notes: "",
+            is_ensuite: true,
+            sort_order: 0,
+            beds: {
+              double: 1,
+              twin_double: 0,
+              twin: 0,
+              single: 0,
+              bunk: 0,
+              sofa: 0,
+              childrens: 0,
+            },
+          },
+        ]),
+      ),
     ),
   );
 }
@@ -79,7 +127,7 @@ describe("PropertyDetailLayout", () => {
   it("renders the Details tab with sub-resources", async () => {
     installDetailHandlers();
     setup("/properties/casa-norte/details");
-    expect(await screen.findByText(/A beautiful villa\./i)).toBeInTheDocument();
+    expect(await screen.findByDisplayValue(/A beautiful villa\./i)).toBeInTheDocument();
     expect(await screen.findByText("Pool")).toBeInTheDocument();
     expect(await screen.findByText("Master bedroom")).toBeInTheDocument();
   });
@@ -88,11 +136,11 @@ describe("PropertyDetailLayout", () => {
     let descriptionsCalls = 0;
     server.use(
       http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/casa-norte/descriptions", () => {
+      http.get("/api/v1/properties/5/descriptions", () => {
         descriptionsCalls += 1;
         return HttpResponse.json(emptyPage([]));
       }),
-      http.get("/api/v1/properties/casa-norte/features", () => HttpResponse.json(emptyPage([]))),
+      http.get("/api/v1/features", () => HttpResponse.json(emptyPage([]))),
       http.get("/api/v1/properties/casa-norte/rooms", () => HttpResponse.json(emptyPage([]))),
     );
     setup("/properties/casa-norte/pricing");
@@ -102,12 +150,26 @@ describe("PropertyDetailLayout", () => {
 
   it("still renders other sub-blocks when one sub-resource fails", async () => {
     server.use(
-      http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/casa-norte/descriptions", () =>
-        HttpResponse.json({}, { status: 500 }),
+      http.get("/api/v1/properties/casa-norte", () =>
+        HttpResponse.json({ ...propertyFixture, feature_ids: [9] }),
       ),
-      http.get("/api/v1/properties/casa-norte/features", () =>
-        HttpResponse.json(emptyPage([{ id: 9, name: "Wi-Fi" }])),
+      http.get("/api/v1/properties/5/descriptions", () => HttpResponse.json({}, { status: 500 })),
+      http.get("/api/v1/features", () =>
+        HttpResponse.json(
+          emptyPage([
+            {
+              id: 9,
+              category: 1,
+              name: "Wi-Fi",
+              slug: "wifi",
+              description: "",
+              icon: "",
+              sort_order: 0,
+              is_active: true,
+              service_type: "amenity",
+            },
+          ]),
+        ),
       ),
       http.get("/api/v1/properties/casa-norte/rooms", () => HttpResponse.json(emptyPage([]))),
     );

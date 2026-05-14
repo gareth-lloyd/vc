@@ -39,6 +39,7 @@ class EmailLog(TimestampedModel):
     )
     rendered_subject = models.TextField()
     rendered_body = models.TextField()
+    rendered_body_html = models.TextField(blank=True)
     status = models.CharField(
         max_length=16,
         choices=EmailLogStatus.choices,

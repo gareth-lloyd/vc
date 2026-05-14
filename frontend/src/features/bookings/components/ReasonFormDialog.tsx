@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm, type DefaultValues, type FieldValues, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ZodType } from "zod";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function ReasonFormDialog<TInput extends FieldValues>({
   keepLabel,
   successMessage,
 }: ReasonFormDialogProps<TInput>) {
+  const { t } = useTranslation("common");
   // zodResolver's generic signature doesn't infer cleanly through TInput's constraint
   // (it expects a stronger Zod3Type/FieldValues binding than ZodType<TInput> provides);
   // the cast is confined to this boundary.
@@ -80,7 +82,7 @@ export function ReasonFormDialog<TInput extends FieldValues>({
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("errors.generic"));
       }
     }
   };

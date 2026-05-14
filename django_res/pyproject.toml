@@ -17,6 +17,7 @@ dependencies = [
     "pillow>=12.2.0",
     "pymssql>=2.3.13",
     "django-countries>=8.2.0",
+    "mjml>=0.12.0",
 ]
 
 [dependency-groups]

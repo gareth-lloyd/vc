@@ -65,9 +65,7 @@
         "password_hint": "At least 8 characters",
         "is_active": "Active"
       },
-      "submit_create": "Create user",
-      "submit_edit": "Save",
-      "submit_busy": "Saving…"
+      "submit_create": "Create user"
     },
     "confirm_reset_2fa": {
       "title": "Reset 2FA?",
@@ -126,9 +124,7 @@
         "sort_order": "Sort order",
         "is_active": "Active"
       },
-      "submit_create": "Create country",
-      "submit_edit": "Save",
-      "submit_busy": "Saving…"
+      "submit_create": "Create country"
     },
     "confirm_delete": {
       "title": "Delete country?",
@@ -172,9 +168,7 @@
         "decimal_places": "Decimal places",
         "is_active": "Active"
       },
-      "submit_create": "Create currency",
-      "submit_edit": "Save",
-      "submit_busy": "Saving…"
+      "submit_create": "Create currency"
     },
     "confirm_delete": {
       "title": "Delete currency?",
@@ -217,9 +211,7 @@
           "sort_order": "Sort order",
           "is_active": "Active"
         },
-        "submit_create": "Create category",
-        "submit_edit": "Save",
-        "submit_busy": "Saving…"
+        "submit_create": "Create category"
       },
       "confirm_delete": {
         "title": "Delete category?",
@@ -272,9 +264,7 @@
           "sort_order": "Sort order",
           "is_active": "Active"
         },
-        "submit_create": "Create feature",
-        "submit_edit": "Save",
-        "submit_busy": "Saving…"
+        "submit_create": "Create feature"
       },
       "confirm_delete": {
         "title": "Delete feature?",
@@ -308,7 +298,6 @@
       "key_placeholder": "feature_flag.new_dashboard",
       "value_placeholder": "true",
       "submit": "Add",
-      "submit_busy": "Adding…",
       "errors": {
         "key_required": "Key is required",
         "key_duplicate": "Key already exists"
@@ -316,7 +305,6 @@
     },
     "actions": {
       "save_all": "Save changes",
-      "save_busy": "Saving…",
       "add_key": "Add setting",
       "delete_row": "Delete",
       "discard": "Discard changes"

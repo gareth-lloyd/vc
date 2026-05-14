@@ -481,7 +481,7 @@ Three parallel tracks. Each track is a row of milestones.
 |  Hold       Released                                            |
 +----------------------------------------------------------------+
 | Transactions                                                    |
-|  12 Apr 26  £3,720  Stripe ch_xxx  Deposit  by ops             |
+|  12 Apr 26  £3,720  Flywire txn_xxx  Deposit  by ops           |
 |  ...                                                            |
 +----------------------------------------------------------------+
 ```

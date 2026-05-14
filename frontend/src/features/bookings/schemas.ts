@@ -1,4 +1,5 @@
 import { z } from "zod";
+import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
 export const bookingStatusSchema = z.enum([
@@ -143,60 +144,67 @@ export const bookingNotesResponseSchema = paginated(bookingNoteSchema);
 export const bookingNoteWriteInputSchema = z.object({
   kind: bookingNoteKindSchema,
   visibility: bookingNoteVisibilitySchema,
-  body: z.string().trim().min(1, "Body is required").max(10_000),
+  body: z.string().trim().min(1, i18n.t("bookings:schema_errors.body_required")).max(10_000),
   is_pinned: z.boolean(),
 });
 export type BookingNoteWriteInput = z.infer<typeof bookingNoteWriteInputSchema>;
 
-export const BOOKING_NOTE_KIND_LABELS: Record<BookingNoteKind, string> = {
-  general: "General",
-  internal: "Internal",
-  concierge: "Concierge",
-  villa: "Villa",
-};
+// Enum label resolvers — resolve at call time so language switches take effect.
+// Template-string keys are fine here: the fragment is a typed enum value.
+export function bookingStatusLabel(status: BookingStatus): string {
+  return i18n.t(`bookings:labels.status.${status}`);
+}
 
-export const BOOKING_NOTE_VISIBILITY_LABELS: Record<BookingNoteVisibility, string> = {
-  staff_only: "Staff only",
-  owner: "Owner",
-  guest: "Guest",
-};
+export function bookingNoteKindLabel(kind: BookingNoteKind): string {
+  return i18n.t(`bookings:labels.note_kind.${kind}`);
+}
 
-export const BOOKING_NOTE_KIND_OPTIONS = bookingNoteKindSchema.options.map((value) => ({
-  value,
-  label: BOOKING_NOTE_KIND_LABELS[value],
-}));
+export function bookingNoteVisibilityLabel(visibility: BookingNoteVisibility): string {
+  return i18n.t(`bookings:labels.note_visibility.${visibility}`);
+}
 
-export const BOOKING_NOTE_VISIBILITY_OPTIONS = bookingNoteVisibilitySchema.options.map((value) => ({
-  value,
-  label: BOOKING_NOTE_VISIBILITY_LABELS[value],
-}));
+export const bookingNoteKindOptions = (): Array<{ value: BookingNoteKind; label: string }> =>
+  bookingNoteKindSchema.options.map((value) => ({ value, label: bookingNoteKindLabel(value) }));
+
+export const bookingNoteVisibilityOptions = (): Array<{
+  value: BookingNoteVisibility;
+  label: string;
+}> =>
+  bookingNoteVisibilitySchema.options.map((value) => ({
+    value,
+    label: bookingNoteVisibilityLabel(value),
+  }));
 
 export const cancelBookingInputSchema = z.object({
-  reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+  reason: z.string().trim().max(500, i18n.t("bookings:schema_errors.reason_max")).optional(),
 });
 export type CancelBookingInput = z.infer<typeof cancelBookingInputSchema>;
 
 export const declineBookingInputSchema = z.object({
-  reason: z.string().trim().min(1, "Reason is required").max(500, "Keep it under 500 characters"),
+  reason: z
+    .string()
+    .trim()
+    .min(1, i18n.t("bookings:schema_errors.reason_required"))
+    .max(500, i18n.t("bookings:schema_errors.reason_max")),
 });
 export type DeclineBookingInput = z.infer<typeof declineBookingInputSchema>;
 
 export const modifyDatesInputSchema = z
   .object({
-    date_from: z.string().min(1, "Required"),
-    date_to: z.string().min(1, "Required"),
-    reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+    date_from: z.string().min(1, i18n.t("common:errors.field_required")),
+    date_to: z.string().min(1, i18n.t("common:errors.field_required")),
+    reason: z.string().trim().max(500, i18n.t("bookings:schema_errors.reason_max")).optional(),
   })
   .refine((v) => v.date_to > v.date_from, {
-    message: "Check-out must be after check-in",
+    message: i18n.t("bookings:schema_errors.check_out_after_check_in"),
     path: ["date_to"],
   });
 export type ModifyDatesInput = z.infer<typeof modifyDatesInputSchema>;
 
 export const modifyGuestsInputSchema = z.object({
-  adults: z.number().int().min(1, "At least one adult"),
-  children: z.number().int().min(0, "Cannot be negative").optional(),
-  reason: z.string().trim().max(500, "Keep it under 500 characters").optional(),
+  adults: z.number().int().min(1, i18n.t("bookings:schema_errors.at_least_one_adult")),
+  children: z.number().int().min(0, i18n.t("bookings:schema_errors.children_negative")).optional(),
+  reason: z.string().trim().max(500, i18n.t("bookings:schema_errors.reason_max")).optional(),
 });
 export type ModifyGuestsInput = z.infer<typeof modifyGuestsInputSchema>;
 
@@ -230,47 +238,36 @@ export const bookingConciergeItemsResponseSchema = paginated(bookingConciergeIte
 
 export const conciergeItemWriteInputSchema = z.object({
   tier: conciergeTierSchema,
-  name: z.string().trim().min(1, "Name is required").max(200),
+  name: z.string().trim().min(1, i18n.t("bookings:schema_errors.name_required")).max(200),
   description: z.string().trim().max(2000),
-  quantity: z.number().int().min(1, "At least 1"),
+  quantity: z.number().int().min(1, i18n.t("bookings:schema_errors.quantity_min")),
   unit: conciergeUnitSchema,
   unit_price: z
     .string()
     .trim()
-    .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal like 100.00"),
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format")),
   currency: z.number().int(),
   notes: z.string().trim().max(2000),
 });
 export type ConciergeItemWriteInput = z.infer<typeof conciergeItemWriteInputSchema>;
 
-export const CONCIERGE_STATUS_LABELS: Record<ConciergeStatus, string> = {
-  requested: "Requested",
-  confirmed: "Confirmed",
-  cancelled: "Cancelled",
-  delivered: "Delivered",
-};
+export function conciergeStatusLabel(status: ConciergeStatus): string {
+  return i18n.t(`bookings:labels.concierge_status.${status}`);
+}
 
-export const CONCIERGE_TIER_LABELS: Record<ConciergeTier, string> = {
-  quintessential: "Quintessential",
-  signature: "Signature",
-};
+export function conciergeTierLabel(tier: ConciergeTier): string {
+  return i18n.t(`bookings:labels.concierge_tier.${tier}`);
+}
 
-export const CONCIERGE_UNIT_LABELS: Record<ConciergeUnit, string> = {
-  day: "Day",
-  stay: "Stay",
-  event: "Event",
-  hour: "Hour",
-};
+export function conciergeUnitLabel(unit: ConciergeUnit): string {
+  return i18n.t(`bookings:labels.concierge_unit.${unit}`);
+}
 
-export const CONCIERGE_TIER_OPTIONS = conciergeTierSchema.options.map((value) => ({
-  value,
-  label: CONCIERGE_TIER_LABELS[value],
-}));
+export const conciergeTierOptions = (): Array<{ value: ConciergeTier; label: string }> =>
+  conciergeTierSchema.options.map((value) => ({ value, label: conciergeTierLabel(value) }));
 
-export const CONCIERGE_UNIT_OPTIONS = conciergeUnitSchema.options.map((value) => ({
-  value,
-  label: CONCIERGE_UNIT_LABELS[value],
-}));
+export const conciergeUnitOptions = (): Array<{ value: ConciergeUnit; label: string }> =>
+  conciergeUnitSchema.options.map((value) => ({ value, label: conciergeUnitLabel(value) }));
 
 // ----------------------------------------------------------------------
 // Payment tracks (deposit / balance / security)
@@ -333,38 +330,26 @@ export type PaymentRecord = z.infer<typeof paymentRecordSchema>;
 
 export const paymentRecordsListSchema = z.array(paymentRecordSchema);
 
-export const PAYMENT_TRACK_STATUS_LABELS: Record<PaymentTrackStatus, string> = {
-  pending: "Pending",
-  processing: "Processing",
-  succeeded: "Paid",
-  failed: "Failed",
-  refunded: "Refunded",
-  cancelled: "Cancelled",
-  expired: "Expired",
-  waived: "Waived",
-  none: "Not scheduled",
-};
+export function paymentTrackStatusLabel(status: PaymentTrackStatus): string {
+  return i18n.t(`bookings:labels.payment_track_status.${status}`);
+}
 
 export const paymentMethodSchema = z.enum(["card", "bank_transfer", "other"]);
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  card: "Card",
-  bank_transfer: "Bank transfer",
-  other: "Other",
-};
+export function paymentMethodLabel(method: PaymentMethod): string {
+  return i18n.t(`bookings:labels.payment_method.${method}`);
+}
 
-export const PAYMENT_METHOD_OPTIONS = paymentMethodSchema.options.map((value) => ({
-  value,
-  label: PAYMENT_METHOD_LABELS[value],
-}));
+export const paymentMethodOptions = (): Array<{ value: PaymentMethod; label: string }> =>
+  paymentMethodSchema.options.map((value) => ({ value, label: paymentMethodLabel(value) }));
 
 export const markPaidInputSchema = z.object({
   amount: z
     .string()
     .trim()
-    .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal like 1000.00"),
-  paid_at: z.string().min(1, "Required"),
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_amount_format")),
+  paid_at: z.string().min(1, i18n.t("common:errors.field_required")),
   method: paymentMethodSchema,
   reference: z.string().trim().max(120),
   notes: z.string().trim().max(500),
@@ -384,21 +369,5 @@ export interface BookingFilters {
   page?: number;
 }
 
-const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  draft: "Draft",
-  pending_owner_approval: "Pending owner",
-  awaiting_deposit: "Awaiting deposit",
-  deposit_paid: "Deposit paid",
-  awaiting_balance: "Awaiting balance",
-  balance_paid: "Balance paid",
-  checked_in: "Checked in",
-  checked_out: "Checked out",
-  cancelled: "Cancelled",
-  expired: "Expired",
-  declined: "Declined",
-};
-
-export const BOOKING_STATUS_OPTIONS = bookingStatusSchema.options.map((value) => ({
-  value,
-  label: BOOKING_STATUS_LABELS[value],
-}));
+export const bookingStatusOptions = (): Array<{ value: BookingStatus; label: string }> =>
+  bookingStatusSchema.options.map((value) => ({ value, label: bookingStatusLabel(value) }));

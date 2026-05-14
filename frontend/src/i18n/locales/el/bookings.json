@@ -1,0 +1,440 @@
+{
+  "list": {
+    "title": "Κρατήσεις",
+    "breadcrumb_operations": "Λειτουργίες",
+    "breadcrumb_bookings": "Κρατήσεις",
+    "search_placeholder": "Αναζήτηση κατά αναφορά, επισκέπτη ή ακίνητο…",
+    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση",
+    "filter_source_aria": "Φιλτράρισμα κατά πηγή",
+    "load_failed": "Δεν ήταν δυνατή η φόρτωση κρατήσεων.",
+    "empty_title": "Δεν υπάρχουν κρατήσεις που να ταιριάζουν με αυτά τα φίλτρα",
+    "empty_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε τα φίλτρα κατάστασης / πηγής."
+  },
+  "filters": {
+    "any_status": "Οποιαδήποτε κατάσταση",
+    "any_source": "Οποιαδήποτε πηγή"
+  },
+  "source": {
+    "main_website": "Κύριος ιστότοπος",
+    "owner_referral": "Παραπομπή ιδιοκτήτη",
+    "phone": "Τηλέφωνο",
+    "email": "Email",
+    "manual": "Χειροκίνητη"
+  },
+  "tabs": {
+    "overview": "Επισκόπηση",
+    "timeline": "Χρονολόγιο",
+    "notes": "Σημειώσεις",
+    "finance": "Οικονομικά",
+    "payments": "Πληρωμές",
+    "concierge": "Concierge",
+    "owner": "Ιδιοκτήτης"
+  },
+  "labels": {
+    "status": {
+      "draft": "Πρόχειρη",
+      "pending_owner_approval": "Αναμονή ιδιοκτήτη",
+      "awaiting_deposit": "Αναμονή προκαταβολής",
+      "deposit_paid": "Προκαταβολή πληρώθηκε",
+      "awaiting_balance": "Αναμονή υπολοίπου",
+      "balance_paid": "Υπόλοιπο πληρώθηκε",
+      "checked_in": "Check-in",
+      "checked_out": "Check-out",
+      "cancelled": "Ακυρωμένη",
+      "expired": "Έληξε",
+      "declined": "Απορρίφθηκε"
+    },
+    "note_kind": {
+      "general": "Γενική",
+      "internal": "Εσωτερική",
+      "concierge": "Concierge",
+      "villa": "Βίλα"
+    },
+    "note_visibility": {
+      "staff_only": "Μόνο προσωπικό",
+      "owner": "Ιδιοκτήτης",
+      "guest": "Επισκέπτης"
+    },
+    "concierge_status": {
+      "requested": "Ζητήθηκε",
+      "confirmed": "Επιβεβαιώθηκε",
+      "cancelled": "Ακυρώθηκε",
+      "delivered": "Παραδόθηκε"
+    },
+    "concierge_tier": {
+      "quintessential": "Quintessential",
+      "signature": "Signature"
+    },
+    "concierge_unit": {
+      "day": "Ημέρα",
+      "stay": "Διαμονή",
+      "event": "Εκδήλωση",
+      "hour": "Ώρα"
+    },
+    "payment_track_status": {
+      "pending": "Εκκρεμεί",
+      "processing": "Σε επεξεργασία",
+      "succeeded": "Πληρώθηκε",
+      "failed": "Απέτυχε",
+      "refunded": "Επιστράφηκε",
+      "cancelled": "Ακυρώθηκε",
+      "expired": "Έληξε",
+      "waived": "Εξαιρέθηκε",
+      "none": "Μη προγραμματισμένη"
+    },
+    "payment_method": {
+      "card": "Κάρτα",
+      "bank_transfer": "Τραπεζική μεταφορά",
+      "other": "Άλλο"
+    }
+  },
+  "columns": {
+    "ref": "Αναφ.",
+    "villa": "Βίλα",
+    "guest": "Επισκέπτης",
+    "dates": "Ημερομηνίες",
+    "stage": "Στάδιο",
+    "total": "Σύνολο",
+    "nights_one": "{{count}} βράδυ",
+    "nights_other": "{{count}} βράδια"
+  },
+  "detail": {
+    "sections_aria": "Ενότητες κράτησης",
+    "breadcrumb_list": "Κρατήσεις",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση αυτής της κράτησης",
+    "load_failed_body": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
+    "rail": {
+      "dates": "Ημερομηνίες",
+      "guest": "Επισκέπτης",
+      "total": "Σύνολο",
+      "paid": "Πληρωμένο",
+      "due": "Οφειλόμενο"
+    },
+    "fallback": {
+      "property_with_id": "Ακίνητο #{{id}}",
+      "guest_with_id": "Επισκέπτης #{{id}}"
+    }
+  },
+  "overview": {
+    "sections": {
+      "status_and_dates": "Κατάσταση & βασικές ημερομηνίες",
+      "guest_and_property": "Επισκέπτης & ακίνητο",
+      "financial_summary": "Οικονομική σύνοψη"
+    },
+    "fields": {
+      "reference": "Αναφορά",
+      "status": "Κατάσταση",
+      "check_in": "Check-in",
+      "check_out": "Check-out",
+      "nights": "Βράδια",
+      "party": "Παρέα",
+      "guest": "Επισκέπτης",
+      "guest_email": "Email επισκέπτη",
+      "property": "Ακίνητο",
+      "source": "Πηγή",
+      "rental_price": "Τιμή ενοικίασης",
+      "discount": "Έκπτωση",
+      "adjustment": "Προσαρμογή",
+      "balance_due": "Οφειλόμενο υπόλοιπο",
+      "balance_due_by": "Πληρωμή υπολοίπου έως"
+    },
+    "party_format": {
+      "adults_one": "{{count}} ενήλικας",
+      "adults_other": "{{count}} ενήλικες",
+      "children_one": ", {{count}} παιδί",
+      "children_other": ", {{count}} παιδιά"
+    }
+  },
+  "actions": {
+    "quick_actions": "Γρήγορες ενέργειες",
+    "more_actions": "Περισσότερες ενέργειες",
+    "confirm_booking": "Επιβεβαίωση κράτησης",
+    "owner_decline": "Απόρριψη ιδιοκτήτη",
+    "cancel_booking": "Ακύρωση κράτησης",
+    "check_in": "Check-in",
+    "check_out": "Check-out",
+    "modify_dates": "Τροποποίηση ημερομηνιών",
+    "modify_guests": "Τροποποίηση επισκεπτών",
+    "resend_confirmation": "Επαναποστολή επιβεβαίωσης",
+    "archive_booking": "Αρχειοθέτηση κράτησης",
+    "restore_booking": "Επαναφορά κράτησης"
+  },
+  "confirm": {
+    "confirm": {
+      "title": "Επιβεβαίωση αυτής της κράτησης;",
+      "description": "Η κράτηση θα προχωρήσει στην επόμενη κατάσταση.",
+      "success_message": "Η κράτηση επιβεβαιώθηκε"
+    },
+    "archive": {
+      "title": "Αρχειοθέτηση αυτής της κράτησης;",
+      "description": "Θα αποκρυφτεί από τις προεπιλεγμένες λίστες. Μπορείτε να την επαναφέρετε αργότερα.",
+      "confirm_label": "Αρχειοθέτηση",
+      "success_message": "Η κράτηση αρχειοθετήθηκε"
+    },
+    "restore": {
+      "title": "Επαναφορά αυτής της κράτησης;",
+      "description": "Θα εμφανιστεί ξανά στις προεπιλεγμένες λίστες.",
+      "confirm_label": "Επαναφορά",
+      "success_message": "Η κράτηση επαναφέρθηκε"
+    },
+    "check_in": {
+      "title": "Check-in;",
+      "description": "Σημείωση του επισκέπτη ως κάνοντας check-in.",
+      "confirm_label": "Check-in",
+      "success_message": "Έγινε check-in του επισκέπτη"
+    },
+    "check_out": {
+      "title": "Check-out;",
+      "description": "Σημείωση του επισκέπτη ως κάνοντας check-out.",
+      "confirm_label": "Check-out",
+      "success_message": "Έγινε check-out του επισκέπτη"
+    },
+    "resend_confirmation": {
+      "title": "Επαναποστολή email επιβεβαίωσης;",
+      "description": "Ο επισκέπτης θα λάβει ξανά την επιβεβαίωση κράτησης.",
+      "confirm_label": "Επαναποστολή",
+      "success_message": "Η επιβεβαίωση εστάλη ξανά"
+    }
+  },
+  "errors": {
+    "not_available_for_state": "Μη διαθέσιμο για αυτή την κατάσταση κράτησης."
+  },
+  "cancel_dialog": {
+    "title": "Ακύρωση αυτής της κράτησης;",
+    "description": "Αυτό μεταφέρει την κράτηση σε ακυρωμένη. Προσθέστε προαιρετικό λόγο για το αρχείο ελέγχου.",
+    "reason_label": "Λόγος (προαιρετικό)",
+    "submit_label": "Ακύρωση κράτησης",
+    "busy_label": "Ακύρωση…",
+    "keep_label": "Διατήρηση κράτησης",
+    "success_message": "Η κράτηση ακυρώθηκε"
+  },
+  "decline_dialog": {
+    "title": "Απόρριψη αυτής της κράτησης;",
+    "description": "Η κράτηση θα μεταφερθεί σε απορριφθείσα. Προσθέστε λόγο για το αρχείο ελέγχου.",
+    "reason_label": "Λόγος",
+    "submit_label": "Απόρριψη κράτησης",
+    "busy_label": "Απόρριψη…",
+    "keep_label": "Διατήρηση κράτησης",
+    "success_message": "Η κράτηση απορρίφθηκε"
+  },
+  "modify_dates_dialog": {
+    "title": "Τροποποίηση ημερομηνιών",
+    "description": "Ρυθμίστε check-in και check-out. Η τιμολόγηση ενδέχεται να χρειαστεί ξεχωριστό επανυπολογισμό.",
+    "fields": {
+      "check_in": "Check-in",
+      "check_out": "Check-out",
+      "reason": "Λόγος (προαιρετικό)"
+    },
+    "submit_label": "Αποθήκευση ημερομηνιών",
+    "success_message": "Οι ημερομηνίες ενημερώθηκαν"
+  },
+  "modify_guests_dialog": {
+    "title": "Τροποποίηση επισκεπτών",
+    "description": "Ρυθμίστε τον αριθμό ενηλίκων και παιδιών.",
+    "fields": {
+      "adults": "Ενήλικες",
+      "children": "Παιδιά",
+      "reason": "Λόγος (προαιρετικό)"
+    },
+    "submit_label": "Αποθήκευση επισκεπτών",
+    "success_message": "Το μέγεθος της παρέας ενημερώθηκε"
+  },
+  "notes": {
+    "heading": "Σημειώσεις",
+    "filter_kind_aria": "Φιλτράρισμα κατά είδος",
+    "all_kinds": "Όλα τα είδη",
+    "add_note": "Προσθήκη σημείωσης",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση σημειώσεων",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty_title": "Δεν υπάρχουν σημειώσεις ακόμα",
+    "empty_body": "Προσθέστε σημείωση για να καταγράψετε πλαίσιο για αυτή την κράτηση.",
+    "confirm_delete": {
+      "title": "Διαγραφή αυτής της σημείωσης;",
+      "description": "Αυτό δεν μπορεί να αναιρεθεί."
+    },
+    "toasts": {
+      "deleted": "Η σημείωση διαγράφηκε",
+      "delete_failed": "Δεν ήταν δυνατή η διαγραφή σημείωσης",
+      "saved": "Η σημείωση αποθηκεύτηκε"
+    },
+    "form_dialog": {
+      "create_title": "Προσθήκη σημείωσης",
+      "edit_title": "Επεξεργασία σημείωσης",
+      "description": "Οι σημειώσεις είναι ορατές στο προσωπικό από προεπιλογή· επιλέξτε άλλη ορατότητα για να μοιραστείτε με ιδιοκτήτες ή επισκέπτες.",
+      "submit_create": "Προσθήκη σημείωσης"
+    },
+    "form": {
+      "body": "Κείμενο",
+      "kind": "Είδος",
+      "visibility": "Ορατότητα",
+      "pin": "Καρφίτσωμα αυτής της σημείωσης"
+    },
+    "card": {
+      "pin_aria": "Καρφίτσωμα σημείωσης",
+      "unpin_aria": "Αφαίρεση καρφιτσώματος σημείωσης",
+      "by_author": "Από #{{id}}",
+      "unknown_author": "Άγνωστος συντάκτης"
+    }
+  },
+  "payments": {
+    "heading": "Πληρωμές",
+    "transactions_heading": "Συναλλαγές",
+    "tracks": {
+      "deposit": "Προκαταβολή",
+      "balance": "Υπόλοιπο",
+      "security": "Εγγύηση",
+      "security_short": "Εγγύηση"
+    },
+    "track": {
+      "milestones_aria": "Ορόσημα",
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση αυτού του track.",
+      "request_payment": "Αίτηση πληρωμής",
+      "send_reminder": "Αποστολή υπενθύμισης",
+      "mark_received": "Σήμανση ως ληφθέν",
+      "waive": "Εξαίρεση",
+      "role_required_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για αυτή την ενέργεια",
+      "summary": "{{paid}} από {{total}} πληρώθηκαν",
+      "due_label": "Λήγει {{date}}",
+      "overdue_suffix": " (ληξιπρόθεσμο)",
+      "no_due_date": "Χωρίς ημερομηνία λήξης",
+      "toasts": {
+        "request_success": "Ζητήθηκε πληρωμή για {{track}}",
+        "request_not_wired": "Οι αιτήσεις πληρωμής δεν είναι ακόμα ενεργοποιημένες"
+      }
+    },
+    "transactions": {
+      "headers": {
+        "date": "Ημερομηνία",
+        "track": "Track",
+        "amount": "Ποσό",
+        "status": "Κατάσταση",
+        "method": "Μέθοδος",
+        "reference": "Αναφορά"
+      },
+      "empty": "Δεν υπάρχουν συναλλαγές ακόμα"
+    },
+    "mark_paid_dialog": {
+      "title": "Σήμανση {{track}} ως πληρωμένο",
+      "description": "Καταγράψτε την πληρωμή που λάβαμε για αυτό το track.",
+      "fields": {
+        "amount": "Ποσό",
+        "received_at": "Ληφθέν στις",
+        "method": "Μέθοδος",
+        "reference": "Αναφορά",
+        "notes": "Σημειώσεις"
+      },
+      "submit_label": "Σήμανση ως πληρωμένο",
+      "success_message": "{{track}} σημάνθηκε ως πληρωμένο"
+    },
+    "waive_dialog": {
+      "title": "Εξαίρεση {{track}}",
+      "description": "Εξαιρέστε αυτό το track ώστε η κράτηση να μπορεί να προχωρήσει χωρίς πληρωμή.",
+      "reason_label": "Λόγος",
+      "submit_label": "Εξαίρεση",
+      "success_message": "{{track}} εξαιρέθηκε"
+    }
+  },
+  "concierge": {
+    "heading": "Concierge",
+    "add_service": "Προσθήκη υπηρεσίας",
+    "role_required_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε υπηρεσίες",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση υπηρεσιών concierge",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty_title": "Δεν υπάρχουν υπηρεσίες concierge ακόμα",
+    "columns": {
+      "service": "Υπηρεσία",
+      "description": "Περιγραφή",
+      "qty": "Ποσ.",
+      "unit_price": "Τιμή μονάδας",
+      "total": "Σύνολο",
+      "status": "Κατάσταση"
+    },
+    "row": {
+      "actions_for": "Ενέργειες για {{name}}",
+      "actions_label": "Ενέργειες",
+      "qty_with_unit": "{{quantity}} {{unit}}"
+    },
+    "menu": {
+      "confirm": "Επιβεβαίωση"
+    },
+    "confirm_delete": {
+      "title": "Αφαίρεση αυτής της υπηρεσίας;",
+      "description": "Αυτό δεν μπορεί να αναιρεθεί.",
+      "confirm_label": "Αφαίρεση"
+    },
+    "toasts": {
+      "confirmed": "Η υπηρεσία επιβεβαιώθηκε",
+      "confirm_failed": "Δεν ήταν δυνατή η επιβεβαίωση",
+      "removed": "Η υπηρεσία αφαιρέθηκε",
+      "remove_failed": "Δεν ήταν δυνατή η αφαίρεση υπηρεσίας",
+      "added": "Η υπηρεσία προστέθηκε",
+      "updated": "Η υπηρεσία ενημερώθηκε"
+    },
+    "form_dialog": {
+      "create_title": "Προσθήκη υπηρεσίας concierge",
+      "edit_title": "Επεξεργασία υπηρεσίας concierge",
+      "description": "Οι υπηρεσίες αναλύουν τις δαπάνες concierge· οι καταστάσεις βασίζονται σε ενέργειες αλλού.",
+      "fields": {
+        "service": "Υπηρεσία",
+        "tier": "Επίπεδο",
+        "unit": "Μονάδα",
+        "quantity": "Ποσότητα",
+        "unit_price": "Τιμή μονάδας",
+        "description": "Περιγραφή",
+        "notes": "Σημειώσεις"
+      },
+      "submit_create": "Προσθήκη υπηρεσίας"
+    }
+  },
+  "timeline": {
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση δραστηριότητας",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty_title": "Δεν υπάρχει δραστηριότητα ακόμα",
+    "empty_body": "Τα συμβάντα κύκλου ζωής θα εμφανιστούν εδώ."
+  },
+  "schema_errors": {
+    "reason_max": "Κρατήστε το κάτω από 500 χαρακτήρες",
+    "reason_required": "Ο λόγος είναι υποχρεωτικός",
+    "check_out_after_check_in": "Το check-out πρέπει να είναι μετά το check-in",
+    "at_least_one_adult": "Τουλάχιστον ένας ενήλικας",
+    "children_negative": "Δεν μπορεί να είναι αρνητικό",
+    "name_required": "Το όνομα είναι υποχρεωτικό",
+    "decimal_format": "Χρησιμοποιήστε δεκαδικό όπως 100.00",
+    "decimal_amount_format": "Χρησιμοποιήστε δεκαδικό όπως 1000.00",
+    "quantity_min": "Τουλάχιστον 1",
+    "body_required": "Το κείμενο είναι υποχρεωτικό"
+  },
+  "finance": {
+    "title": "Οικονομικά",
+    "fields": {
+      "rate_subtotal": "Υποσύνολο τιμής",
+      "nights": "Βράδια",
+      "nightly_rate": "Τιμή ανά βράδυ",
+      "extras_total": "Έξτρα",
+      "discount": "Έκπτωση",
+      "commission": "Προμήθεια",
+      "tax": "Φόρος",
+      "fees": "Χρεώσεις",
+      "adjustments": "Προσαρμογές",
+      "deposit": "Προκαταβολή",
+      "balance": "Υπόλοιπο",
+      "security": "Εγγύηση",
+      "total": "Γενικό σύνολο",
+      "currency": "Νόμισμα",
+      "party": "Παρέα",
+      "dates": "Ημερομηνίες"
+    },
+    "lines": {
+      "title": "Γραμμές",
+      "label": "Ετικέτα",
+      "quantity": "Ποσότητα",
+      "unit_price": "Τιμή μονάδας",
+      "total": "Σύνολο"
+    },
+    "alert": "Η επεξεργασία γραμμών έρχεται σε μεταγενέστερη φάση. Επανυπολογίστε μέσω Τροποποίησης ημερομηνιών / Τροποποίησης επισκεπτών στην καρτέλα Επισκόπηση.",
+    "empty": {
+      "title": "Δεν υπάρχει διαθέσιμο στιγμιότυπο τιμολόγησης",
+      "description": "Αυτή η κράτηση δεν έχει στιγμιότυπο τιμολόγησης προς εμφάνιση."
+    }
+  }
+}

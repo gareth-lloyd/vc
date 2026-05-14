@@ -4,10 +4,22 @@ import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
   activateProperty,
   archiveProperty,
+  createChangeOverRule,
   createPropertyContact,
   createPropertyImage,
+  createPropertyNearbyPlace,
+  createPropertyRoom,
+  createSeason,
+  deleteChangeOverRule,
   deletePropertyContact,
+  deletePropertyDescription,
   deletePropertyImage,
+  deletePropertyNearbyPlace,
+  deletePropertyRoom,
+  deleteSeason,
+  duplicateSeason,
+  fetchChangeOverRules,
+  fetchNearbyPlaceTypes,
   fetchProperties,
   fetchProperty,
   fetchPropertyBookingsForRange,
@@ -15,28 +27,40 @@ import {
   fetchPropertyDescriptions,
   fetchPropertyDiscounts,
   fetchPropertyExtras,
-  fetchPropertyFeatures,
   fetchPropertyFinance,
   fetchPropertyHolds,
   fetchPropertyImages,
+  fetchPropertyNearbyPlaces,
   fetchPropertyRooms,
   fetchPropertySeasons,
   fetchPropertySettings,
   fetchSeasonDetail,
   reorderPropertyImages,
+  reorderPropertyRooms,
   restoreProperty,
   setPropertyImageHero,
+  updateChangeOverRule,
   updatePropertyContact,
+  updatePropertyFeatures,
   updatePropertyFinance,
   updatePropertyImage,
+  updatePropertyNearbyPlace,
+  updatePropertyRoom,
   updatePropertySettings,
+  updateSeason,
+  upsertPropertyDescription,
 } from "./api";
 import type {
+  ChangeOverRuleWriteInput,
+  DescriptionSection,
   PropertyContactAssignmentWriteInput,
   PropertyFilters,
   PropertyFinanceWriteInput,
   PropertyImageWriteInput,
+  PropertyNearbyPlaceWriteInput,
+  PropertyRoomWriteInput,
   PropertySettingsWriteInput,
+  RatePlanWriteInput,
 } from "./schemas";
 
 export const PROPERTIES_PAGE_SIZE = 50;
@@ -58,12 +82,103 @@ export function usePropertyDescriptions(idOrSlug: PropertyId | undefined) {
   );
 }
 
-export function usePropertyFeatures(idOrSlug: PropertyId | undefined) {
-  return useQuery(enabledQuery(idOrSlug, queryKeys.properties.features, fetchPropertyFeatures));
-}
-
 export function usePropertyRooms(idOrSlug: PropertyId | undefined) {
   return useQuery(enabledQuery(idOrSlug, queryKeys.properties.rooms, fetchPropertyRooms));
+}
+
+export function useCreatePropertyRoom(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyRoomWriteInput) => createPropertyRoom(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.rooms(propertyId) });
+    },
+  });
+}
+
+interface UpdatePropertyRoomVars {
+  roomId: number;
+  input: Partial<PropertyRoomWriteInput>;
+}
+
+export function useUpdatePropertyRoom(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ roomId, input }: UpdatePropertyRoomVars) =>
+      updatePropertyRoom(propertyId, roomId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.rooms(propertyId) });
+    },
+  });
+}
+
+export function useDeletePropertyRoom(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ roomId }: { roomId: number }) => deletePropertyRoom(propertyId, roomId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.rooms(propertyId) });
+    },
+  });
+}
+
+export function useReorderPropertyRooms(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (roomIds: number[]) => reorderPropertyRooms(propertyId, roomIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.rooms(propertyId) });
+    },
+  });
+}
+
+export function useNearbyPlaceTypes() {
+  return useQuery({
+    queryKey: queryKeys.nearbyPlaceTypes.list(),
+    queryFn: fetchNearbyPlaceTypes,
+    staleTime: 1000 * 60 * 60,
+  });
+}
+
+export function usePropertyNearbyPlaces(idOrSlug: PropertyId | undefined) {
+  return useQuery(enabledQuery(idOrSlug, queryKeys.properties.nearby, fetchPropertyNearbyPlaces));
+}
+
+export function useCreatePropertyNearbyPlace(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyNearbyPlaceWriteInput) =>
+      createPropertyNearbyPlace(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.nearby(propertyId) });
+    },
+  });
+}
+
+interface UpdatePropertyNearbyPlaceVars {
+  poiId: number;
+  input: Partial<PropertyNearbyPlaceWriteInput> & { sort_order?: number };
+}
+
+export function useUpdatePropertyNearbyPlace(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poiId, input }: UpdatePropertyNearbyPlaceVars) =>
+      updatePropertyNearbyPlace(propertyId, poiId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.nearby(propertyId) });
+    },
+  });
+}
+
+export function useDeletePropertyNearbyPlace(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poiId }: { poiId: number }) => deletePropertyNearbyPlace(propertyId, poiId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.nearby(propertyId) });
+    },
+  });
 }
 
 export function usePropertySeasons(idOrSlug: PropertyId | undefined) {
@@ -72,6 +187,54 @@ export function usePropertySeasons(idOrSlug: PropertyId | undefined) {
 
 export function useSeasonDetail(seasonId: SeasonId | undefined) {
   return useQuery(enabledQuery(seasonId, queryKeys.properties.seasonDetail, fetchSeasonDetail));
+}
+
+export function useCreateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RatePlanWriteInput) => createSeason(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
+}
+
+interface UpdateSeasonVars {
+  seasonId: SeasonId;
+  input: Partial<RatePlanWriteInput>;
+}
+
+export function useUpdateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId, input }: UpdateSeasonVars) => updateSeason(seasonId, input),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.properties.seasonDetail(vars.seasonId),
+      });
+    },
+  });
+}
+
+export function useDeleteSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => deleteSeason(seasonId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
+}
+
+export function useDuplicateSeason(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => duplicateSeason(seasonId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+    },
+  });
 }
 
 export function usePropertyExtras(idOrSlug: PropertyId | undefined) {
@@ -246,6 +409,82 @@ export function useUpdatePropertyFinance(propertyId: number) {
     mutationFn: (input: PropertyFinanceWriteInput) => updatePropertyFinance(propertyId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.finance(propertyId) });
+    },
+  });
+}
+
+export function useUpsertPropertyDescription(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ section, body }: { section: DescriptionSection; body: string }) =>
+      upsertPropertyDescription(propertyId, section, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });
+    },
+  });
+}
+
+export function useDeletePropertyDescription(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ section }: { section: DescriptionSection }) =>
+      deletePropertyDescription(propertyId, section),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });
+    },
+  });
+}
+
+export function useChangeOverRules(propertyId: number | undefined, effectiveOn?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.properties.changeover(propertyId!), effectiveOn ?? null],
+    queryFn: () => fetchChangeOverRules(propertyId!, effectiveOn),
+    enabled: propertyId != null,
+  });
+}
+
+export function useCreateChangeOverRule(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ChangeOverRuleWriteInput) => createChangeOverRule(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.changeover(propertyId) });
+    },
+  });
+}
+
+interface UpdateChangeOverRuleVars {
+  ruleId: number;
+  input: Partial<ChangeOverRuleWriteInput>;
+}
+
+export function useUpdateChangeOverRule(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ruleId, input }: UpdateChangeOverRuleVars) =>
+      updateChangeOverRule(ruleId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.changeover(propertyId) });
+    },
+  });
+}
+
+export function useDeleteChangeOverRule(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ruleId }: { ruleId: number }) => deleteChangeOverRule(ruleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.changeover(propertyId) });
+    },
+  });
+}
+
+export function useUpdatePropertyFeatures(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (featureIds: number[]) => updatePropertyFeatures(propertyId, featureIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(propertyId) });
     },
   });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -26,25 +27,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { useController } from "react-hook-form";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useCreateEnquiryNote, useEnquiryNotes } from "../hooks";
 import {
-  ENQUIRY_NOTE_KIND_LABELS,
-  ENQUIRY_NOTE_KIND_OPTIONS,
-  type EnquiryNote,
-  type EnquiryNoteKind,
+  enquiryNoteKindLabel,
+  enquiryNoteKindOptions,
   enquiryNoteKindSchema,
   enquiryNoteWriteInputSchema,
+  type EnquiryNote,
+  type EnquiryNoteKind,
   type EnquiryNoteWriteInput,
 } from "../schemas";
 import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 
 const ALL_VALUE = "__all__";
-const KIND_OPTIONS = [{ value: ALL_VALUE, label: "All kinds" }, ...ENQUIRY_NOTE_KIND_OPTIONS];
 
 function sortPinnedFirst(notes: readonly EnquiryNote[]): EnquiryNote[] {
   return [...notes].sort((a, b) => {
@@ -68,6 +67,7 @@ interface NoteFormDialogProps {
 }
 
 function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) {
+  const { t } = useTranslation("enquiries");
   const form = useForm<EnquiryNoteWriteInput>({
     resolver: zodResolver(enquiryNoteWriteInputSchema),
     defaultValues: CREATE_DEFAULTS,
@@ -89,14 +89,14 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
     setTopLevelError(null);
     try {
       await createMutation.mutateAsync(values);
-      toast.success("Note added");
+      toast.success(t("notes.form_dialog.success_message"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {
-        toast.error("Something went wrong");
+        toast.error(t("common:errors.generic"));
       }
     }
   };
@@ -105,12 +105,12 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add note</DialogTitle>
-          <DialogDescription>Notes are visible to staff.</DialogDescription>
+          <DialogTitle>{t("notes.form_dialog.title")}</DialogTitle>
+          <DialogDescription>{t("notes.form_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="enq-note-body">Body</Label>
+            <Label htmlFor="enq-note-body">{t("notes.form_dialog.fields.body")}</Label>
             <Textarea
               id="enq-note-body"
               rows={5}
@@ -125,13 +125,16 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="enq-note-kind">Kind</Label>
+            <Label htmlFor="enq-note-kind">{t("notes.form_dialog.fields.kind")}</Label>
             <Select value={kindCtrl.field.value} onValueChange={kindCtrl.field.onChange}>
-              <SelectTrigger id="enq-note-kind" aria-label="Kind">
+              <SelectTrigger
+                id="enq-note-kind"
+                aria-label={t("notes.form_dialog.fields.kind_aria")}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ENQUIRY_NOTE_KIND_OPTIONS.map((o) => (
+                {enquiryNoteKindOptions().map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
@@ -144,7 +147,7 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
               checked={!!pinnedCtrl.field.value}
               onCheckedChange={(v) => pinnedCtrl.field.onChange(v === true)}
             />
-            <span>Pin this note</span>
+            <span>{t("notes.form_dialog.fields.pin")}</span>
           </label>
 
           {topLevelError ? (
@@ -163,10 +166,12 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
               onClick={() => onOpenChange(false)}
               disabled={createMutation.isPending}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Saving…" : "Add note"}
+              {createMutation.isPending
+                ? t("common:actions.saving")
+                : t("notes.form_dialog.submit_label")}
             </Button>
           </div>
         </form>
@@ -176,6 +181,7 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
 }
 
 export function NotesTab() {
+  const { t } = useTranslation("enquiries");
   const { enquiry } = useOutletContext<EnquiryOutletContext>();
   const notes = useEnquiryNotes(enquiry.id);
   const hasRole = useHasReservationsRole();
@@ -189,6 +195,11 @@ export function NotesTab() {
     return sortPinnedFirst(matching);
   }, [notes.data, kindFilter]);
 
+  const kindOptions = [
+    { value: ALL_VALUE, label: t("notes.all_kinds") },
+    ...enquiryNoteKindOptions(),
+  ];
+
   const handleKindChange = (value: string) => {
     if (value === ALL_VALUE) {
       setKindFilter(ALL_VALUE);
@@ -200,21 +211,21 @@ export function NotesTab() {
 
   const addButton = (
     <Button onClick={() => setCreateOpen(true)} disabled={!hasRole}>
-      Add note
+      {t("notes.add_button")}
     </Button>
   );
 
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-foreground text-base font-semibold">Notes</h2>
+        <h2 className="text-foreground text-base font-semibold">{t("notes.heading")}</h2>
         <div className="flex items-center gap-2">
           <Select value={kindFilter} onValueChange={handleKindChange}>
-            <SelectTrigger className="w-[160px]" aria-label="Filter by kind">
+            <SelectTrigger className="w-[160px]" aria-label={t("notes.filter_kind_aria")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {KIND_OPTIONS.map((o) => (
+              {kindOptions.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -228,7 +239,7 @@ export function NotesTab() {
               <TooltipTrigger asChild>
                 <span>{addButton}</span>
               </TooltipTrigger>
-              <TooltipContent>Reservations role required.</TooltipContent>
+              <TooltipContent>{t("common:errors.reservations_role_required")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -238,29 +249,30 @@ export function NotesTab() {
         <Skeleton className="h-32 w-full" />
       ) : notes.isError ? (
         <ErrorState
-          title="Couldn't load notes"
-          description="Try again."
+          title={t("notes.load_failed_title")}
+          description={t("notes.load_failed_body")}
           onRetry={() => notes.refetch()}
         />
       ) : filtered.length === 0 ? (
-        <EmptyState
-          title="No notes yet"
-          description="Add a note to record context for this enquiry."
-        />
+        <EmptyState title={t("notes.empty_title")} description={t("notes.empty_body")} />
       ) : (
         <ol className="space-y-2">
           {filtered.map((note) => (
             <li key={note.id} className="border-border bg-card space-y-2 rounded-lg border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{ENQUIRY_NOTE_KIND_LABELS[note.kind]}</Badge>
-                  {note.is_pinned ? <Badge variant="outline">Pinned</Badge> : null}
+                  <Badge variant="secondary">{enquiryNoteKindLabel(note.kind)}</Badge>
+                  {note.is_pinned ? (
+                    <Badge variant="outline">{t("notes.pinned_badge")}</Badge>
+                  ) : null}
                 </div>
               </div>
               <p className="text-foreground text-sm whitespace-pre-line">{note.body}</p>
               <p className="text-muted-foreground text-xs">
-                {note.author != null ? `By #${note.author}` : "Unknown author"} ·{" "}
-                {formatDate(note.created_at ?? null)}
+                {note.author != null
+                  ? t("notes.by_author", { id: note.author })
+                  : t("notes.unknown_author")}{" "}
+                · {formatDate(note.created_at ?? null)}
               </p>
             </li>
           ))}

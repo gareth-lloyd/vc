@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Section } from "@/components/data/Section";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { ChangeoverRulesSection } from "../components/ChangeoverRulesSection";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
@@ -734,6 +735,10 @@ export function SettingsTab() {
 
       <Section title={t("settings.finance.title")}>
         <FinanceForm propertyId={property.id} initial={finance.data} canWrite={canWrite} />
+      </Section>
+
+      <Section title={t("changeover.section_title")}>
+        <ChangeoverRulesSection propertyId={property.id} />
       </Section>
 
       <Section title={t("settings.lifecycle.title")}>

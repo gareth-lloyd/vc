@@ -146,7 +146,7 @@ export function ContactsListPage() {
               value={filters.status ?? ALL_VALUE}
               onValueChange={(v) => updateParam("status", v)}
             >
-              <SelectTrigger className="w-[160px]" aria-label="Filter by status">
+              <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_status_aria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

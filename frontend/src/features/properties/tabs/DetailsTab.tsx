@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -6,7 +7,9 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { formatDate } from "@/lib/format/date";
-import { usePropertyDescriptions, usePropertyFeatures, usePropertyRooms } from "../hooks";
+import { useFeatures } from "@/features/admin/tags/hooks";
+import { usePropertyRooms } from "../hooks";
+import { DescriptionsSection } from "../components/DescriptionsSection";
 import type { PropertyDetail } from "../schemas";
 
 interface DetailsContext {
@@ -25,9 +28,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function DetailsTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<DetailsContext>();
-  const descriptions = usePropertyDescriptions(property.slug || property.id);
-  const features = usePropertyFeatures(property.slug || property.id);
+  const features = useFeatures({});
   const rooms = usePropertyRooms(property.slug || property.id);
+
+  const propertyFeatures = useMemo(() => {
+    const allFeatures = features.data?.results ?? [];
+    const ids = new Set(property.feature_ids ?? []);
+    return allFeatures.filter((f) => ids.has(f.id));
+  }, [features.data?.results, property.feature_ids]);
 
   const dash = t("common.unset");
 
@@ -50,30 +58,7 @@ export function DetailsTab() {
       </Section>
 
       <Section title={t("details.sections.description")}>
-        {descriptions.isLoading ? (
-          <Skeleton className="h-20 w-full" />
-        ) : descriptions.isError ? (
-          <ErrorState
-            title={t("details.descriptions.error_title")}
-            description={t("details.descriptions.error_body")}
-            onRetry={() => descriptions.refetch()}
-          />
-        ) : descriptions.data?.results.length ? (
-          <div className="space-y-4">
-            {descriptions.data.results.slice(0, 1).map((d) => (
-              <div key={d.id} className="border-border bg-card rounded-lg border p-4">
-                {d.title ? <h3 className="mb-2 text-sm font-medium">{d.title}</h3> : null}
-                {d.body_html ? (
-                  <div className="prose-sm" dangerouslySetInnerHTML={{ __html: d.body_html }} />
-                ) : (
-                  <p className="text-sm whitespace-pre-line">{d.body ?? dash}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title={t("details.descriptions.empty_title")} />
-        )}
+        <DescriptionsSection propertyId={property.id} />
       </Section>
 
       <Section title={t("details.sections.features")}>
@@ -85,11 +70,11 @@ export function DetailsTab() {
             description={t("details.features.error_body")}
             onRetry={() => features.refetch()}
           />
-        ) : features.data?.results.length ? (
+        ) : propertyFeatures.length ? (
           <div className="flex flex-wrap gap-2">
-            {features.data.results.map((f) => (
+            {propertyFeatures.map((f) => (
               <Badge key={f.id} variant="secondary">
-                {f.name ?? f.slug ?? `#${f.id}`}
+                {f.name}
               </Badge>
             ))}
           </div>
@@ -111,10 +96,10 @@ export function DetailsTab() {
           <ul className="border-border bg-card divide-border divide-y rounded-lg border">
             {rooms.data.results.map((room) => (
               <li key={room.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span>
-                  {room.name ?? room.kind ?? t("details.rooms.fallback_name", { id: room.id })}
-                </span>
-                {room.count ? <span className="text-muted-foreground">×{room.count}</span> : null}
+                <span>{room.name || t("details.rooms.fallback_name", { id: room.id })}</span>
+                {room.is_ensuite ? (
+                  <span className="text-muted-foreground">{t("details.rooms.ensuite_marker")}</span>
+                ) : null}
               </li>
             ))}
           </ul>

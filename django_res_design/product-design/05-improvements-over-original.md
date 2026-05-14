@@ -77,9 +77,9 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 
 **Was**: Refunds were booking-level, online only, single-shot.
 **Now**:
-- One refund flow handles online (Stripe API) and offline (BT-issued, mark with reference).
+- One refund flow handles online (Flywire API) and offline (BT-issued, mark with reference).
 - Partial refunds stack against a single payment, each tracked as its own RefundEvent.
-- Refund-window-exceeded (e.g., Stripe's 180 days) automatically routes to the BT-offline path with operator confirmation.
+- Refund-window-exceeded (Flywire's gateway-side window, typically 90-180 days depending on payment method) automatically routes to the BT-offline path with operator confirmation.
 - Per-payment-stream refunds (deposit, balance, SD, concierge each refunded independently with their own amount/method).
 **Why**: Real refund flows are messy. The original silently failed on edge cases; this models the cases.
 

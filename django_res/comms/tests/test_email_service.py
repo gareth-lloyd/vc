@@ -1,28 +1,16 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from django.core import mail
+from django.core.mail import EmailMultiAlternatives
 
 from accounts.models import User
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.models import EmailTemplate, SmtpProfile
 from comms.services import EmailService
-
-
-@pytest.fixture
-def system_profile(db: None) -> SmtpProfile:
-    return SmtpProfile.objects.create(
-        name="System",
-        scope=SmtpScope.SYSTEM,
-        owner=None,
-        host="smtp.example.com",
-        port=587,
-        username="system",
-        encrypted_password="systempw",
-        use_tls=True,
-        from_email="noreply@example.com",
-    )
 
 
 @pytest.fixture
@@ -49,7 +37,7 @@ def personal_profile(user: User) -> SmtpProfile:
 @pytest.fixture
 def booking_template(db: None) -> EmailTemplate:
     return EmailTemplate.objects.create(
-        key="booking.confirmation",
+        key="test.booking.confirmation",
         version=1,
         subject_template="Booking {{ booking_reference }} confirmed",
         body_template="Hi {{ guest_first_name }}, your stay at {{ property_name }} is booked.",
@@ -64,7 +52,7 @@ def test_send_happy_path_renders_and_persists(
     mail.outbox.clear()
 
     log = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-001",
             "guest_first_name": "Ada",
@@ -100,7 +88,7 @@ def test_send_uses_personal_profile_when_available(
     mail.outbox.clear()
 
     log = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-002",
             "guest_first_name": "Bo",
@@ -126,7 +114,7 @@ def test_send_falls_back_to_system_when_no_personal_profile(
     mail.outbox.clear()
 
     log = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-003",
             "guest_first_name": "Cy",
@@ -152,7 +140,7 @@ def test_send_falls_back_when_personal_profile_inactive(
     personal_profile.save(update_fields=["is_active"])
 
     log = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-004",
             "guest_first_name": "Di",
@@ -174,7 +162,7 @@ def test_send_idempotent_on_repeat(
     mail.outbox.clear()
 
     log1 = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-005",
             "guest_first_name": "Eve",
@@ -184,7 +172,7 @@ def test_send_idempotent_on_repeat(
         correlation={"booking_id": 5},
     )
     log2 = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-005",
             "guest_first_name": "Eve",
@@ -213,7 +201,7 @@ def test_send_raises_when_template_missing(system_profile: SmtpProfile) -> None:
 def test_send_raises_when_no_system_profile(booking_template: EmailTemplate) -> None:
     with pytest.raises(NoSmtpProfileAvailable):
         EmailService.send(
-            template_key="booking.confirmation",
+            template_key="test.booking.confirmation",
             context={
                 "booking_reference": "X",
                 "guest_first_name": "Y",
@@ -231,7 +219,7 @@ def test_send_does_not_bcc_internal_addresses_by_default(
     mail.outbox.clear()
 
     log = EmailService.send(
-        template_key="booking.confirmation",
+        template_key="test.booking.confirmation",
         context={
             "booking_reference": "BK-006",
             "guest_first_name": "Fi",
@@ -243,3 +231,66 @@ def test_send_does_not_bcc_internal_addresses_by_default(
 
     assert log.bcc == []
     assert mail.outbox[-1].bcc == []
+
+
+@pytest.fixture
+def html_template(db: None) -> EmailTemplate:
+    return EmailTemplate.objects.create(
+        key="test.html.template",
+        version=1,
+        subject_template="Your code is {{ code }}",
+        body_template="Code: {{ code }}",
+        body_template_mjml=(
+            "<mjml><mj-body><mj-section><mj-column>"
+            "<mj-text>Code: {{ code }}</mj-text>"
+            "</mj-column></mj-section></mj-body></mjml>"
+        ),
+    )
+
+
+@pytest.mark.django_db
+def test_send_attaches_html_alternative_when_template_has_mjml(
+    system_profile: SmtpProfile,
+    html_template: EmailTemplate,
+) -> None:
+    mail.outbox.clear()
+
+    log = EmailService.send(
+        template_key="test.html.template",
+        context={"code": "424242"},
+        to=["user@example.com"],
+        correlation={"user_id": 1, "purpose": "auth_code"},
+    )
+
+    assert "Code: 424242" in log.rendered_body
+    assert "Code: 424242" in log.rendered_body_html
+    assert "<!doctype html>" in log.rendered_body_html.lower()
+
+    message = cast(EmailMultiAlternatives, mail.outbox[-1])
+    assert message.body == log.rendered_body
+    assert len(message.alternatives) == 1
+    html_content, mimetype = message.alternatives[0]
+    assert mimetype == "text/html"
+    assert "Code: 424242" in cast(str, html_content)
+
+
+@pytest.mark.django_db
+def test_send_omits_html_alternative_when_template_has_no_mjml(
+    system_profile: SmtpProfile,
+    booking_template: EmailTemplate,
+) -> None:
+    mail.outbox.clear()
+
+    log = EmailService.send(
+        template_key="test.booking.confirmation",
+        context={
+            "booking_reference": "BK-007",
+            "guest_first_name": "Gi",
+            "property_name": "Villa Sin",
+        },
+        to=["guest@example.com"],
+        correlation={"booking_id": 7},
+    )
+
+    assert log.rendered_body_html == ""
+    assert cast(EmailMultiAlternatives, mail.outbox[-1]).alternatives == []

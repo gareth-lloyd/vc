@@ -58,6 +58,12 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
 class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
     """Light header representation."""
 
+    # Surface the ISO code, not the FK PK — the FE renders this as text in
+    # lists and feeds it into formatMoney() for inline price display.
+    currency: serializers.SlugRelatedField = serializers.SlugRelatedField(
+        slug_field="code", read_only=True
+    )
+
     class Meta:
         model = Quotation
         fields = [

@@ -18,6 +18,8 @@ export const queryKeys = {
       ["properties", "detail", idOrSlug, "descriptions"] as const,
     features: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "features"] as const,
     rooms: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "rooms"] as const,
+    nearby: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "nearby"] as const,
+    changeover: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "changeover"] as const,
     seasons: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "seasons"] as const,
     seasonDetail: (seasonId: SeasonId) => ["properties", "seasons", "detail", seasonId] as const,
     extras: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "extras"] as const,
@@ -102,5 +104,9 @@ export const queryKeys = {
   },
   systemSettings: {
     all: () => ["system", "settings"] as const,
+  },
+  nearbyPlaceTypes: {
+    all: () => ["nearby-place-types"] as const,
+    list: () => ["nearby-place-types", "list"] as const,
   },
 } as const;

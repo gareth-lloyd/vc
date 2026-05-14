@@ -9,14 +9,29 @@
     "delete": "Delete",
     "remove": "Remove",
     "close": "Close",
-    "retry": "Retry"
+    "retry": "Retry",
+    "retrying": "Retrying…",
+    "working": "Working…",
+    "back_to_dashboard": "Back to dashboard"
   },
   "errors": {
     "generic": "Something went wrong",
     "field_required": "Required",
     "load_failed": "Couldn't load.",
     "reservations_role_required": "Reservations role required.",
-    "reservations_role_required_create": "You need the Reservations role to create."
+    "reservations_role_required_create": "You need the Reservations role to create.",
+    "not_found_title": "Not found",
+    "not_found_body": "That page doesn't exist.",
+    "couldnt_load": "We couldn't load this content. Try again."
+  },
+  "pagination": {
+    "page_of": "Page {{current}} of {{total}}",
+    "previous": "Previous page",
+    "next": "Next page"
+  },
+  "search": {
+    "placeholder": "Search…",
+    "aria_label": "Search"
   },
   "states": {
     "loading": "Loading…",
@@ -27,6 +42,9 @@
   },
   "tooltips": {
     "reservations_role_required": "Reservations role required"
+  },
+  "aria": {
+    "stage": "Stage: {{status}}"
   },
   "nav": {
     "groups": {
@@ -44,7 +62,10 @@
     "countries": "Countries",
     "currencies": "Currencies",
     "tags": "Tags",
-    "system": "System"
+    "system": "System",
+    "profile": "Profile",
+    "sign_out": "Sign out",
+    "language": "Language"
   },
   "countries": {
     "ES": "Spain",

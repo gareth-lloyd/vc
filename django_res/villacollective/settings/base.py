@@ -124,3 +124,9 @@ PAYMENT_WEBHOOK_SECRETS = {
     "FLYWIRE": env.str("FLYWIRE_WEBHOOK_SECRET", default="dev-flywire-secret"),
     "STRIPE": env.str("STRIPE_WEBHOOK_SECRET", default="dev-stripe-secret"),
 }
+
+# Public-facing SPA origin used to build user-clickable URLs in transactional
+# email (password reset, magic link, account setup). Must include the scheme
+# and no trailing slash.
+FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:5173")
+PASSWORD_RESET_TTL_SECONDS = env.int("PASSWORD_RESET_TTL_SECONDS", default=3600)

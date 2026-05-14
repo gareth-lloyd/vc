@@ -57,7 +57,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Action endpoints return the updated resource (or a job handle if async).
 
 ### Webhooks
-- Inbound: `POST /webhooks/{provider}` (stripe, zoho). HMAC signature header verified. (OTA inbound — airbnb/booking.com/vrbo — is future scope; see reconciliation issue #11.)
+- Inbound: `POST /webhooks/{provider}` (flywire, zoho). HMAC signature header verified on raw body bytes. (OTA inbound — airbnb/booking.com/vrbo — is future scope; see reconciliation issue #11.)
 - Outbound webhooks (we emit) are not part of MVP — no `/webhook-subscriptions` resource. Internal integrations (Zoho push, WordPress fan-out) run via Celery jobs configured through `/system/integrations`. See reconciliation issue #17.
 
 ### File upload
@@ -776,8 +776,8 @@ OTA channel-manager integration (Airbnb / Booking.com / VRBO inbound webhooks an
 
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
-| POST | `/webhooks/stripe` | Stripe webhook | HMAC verified |
-| POST | `/webhooks/{gateway}` | Generic per-gateway slot (paypal, adyen, etc.) | |
+| POST | `/webhooks/flywire` | Flywire payment-status webhook | HMAC verified on raw body |
+| POST | `/webhooks/{gateway}` | Generic per-gateway slot (reserved for a future second provider) | not wired in v1 |
 | GET | `/webhooks/log` | Audit log of inbound webhook attempts | admin |
 | POST | `/webhooks/log/{id}:replay` | Replay a stored webhook | admin |
 
@@ -791,7 +791,7 @@ OTA channel-manager integration (Airbnb / Booking.com / VRBO inbound webhooks an
 | PATCH | `/system/settings` | Update |
 | GET | `/system/integrations` | Integration list + last-sync health for the configured providers (Zoho, WordPress fan-out, payment gateway). Admin-only. |
 | GET | `/system/integrations/{key}` | Detail (credentials surfaced redacted) |
-| POST | `/system/integrations/{key}:test` | Connectivity test (e.g., Zoho ping, WP API auth, Stripe key validity) |
+| POST | `/system/integrations/{key}:test` | Connectivity test (e.g., Zoho ping, WP API auth, Flywire key validity) |
 
 > Backed by per-provider configuration carried on `SystemDefaults` keys plus the existing `ZohoSyncJob` / sync-record state. No new top-level `Integration` model is required for MVP; if config-row identity becomes important post-v1, promote `key` to a dedicated table. See reconciliation issue #21.
 

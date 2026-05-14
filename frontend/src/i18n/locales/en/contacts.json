@@ -80,6 +80,9 @@
     "inactive": "Inactive",
     "archived": "Archived"
   },
+  "filters": {
+    "filter_status_aria": "Filter by status"
+  },
   "checkboxes": {
     "primary_email": "Primary email",
     "primary_phone": "Primary phone"

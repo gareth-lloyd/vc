@@ -1,4 +1,5 @@
 import { useController, type UseFormReturn } from "react-hook-form";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -11,8 +12,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  BOOKING_NOTE_KIND_OPTIONS,
-  BOOKING_NOTE_VISIBILITY_OPTIONS,
+  bookingNoteKindOptions,
+  bookingNoteVisibilityOptions,
   type BookingNoteWriteInput,
 } from "../schemas";
 
@@ -33,14 +34,18 @@ export function NoteForm({
   submitLabel,
   onCancel,
 }: NoteFormProps) {
+  const { t } = useTranslation("bookings");
   const kindCtrl = useController({ control: form.control, name: "kind" });
   const visibilityCtrl = useController({ control: form.control, name: "visibility" });
   const pinnedCtrl = useController({ control: form.control, name: "is_pinned" });
 
+  const kindOptions = bookingNoteKindOptions();
+  const visibilityOptions = bookingNoteVisibilityOptions();
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-2">
-        <Label htmlFor="note-body">Body</Label>
+        <Label htmlFor="note-body">{t("notes.form.body")}</Label>
         <Textarea
           id="note-body"
           rows={5}
@@ -57,13 +62,13 @@ export function NoteForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label htmlFor="note-kind">Kind</Label>
+          <Label htmlFor="note-kind">{t("notes.form.kind")}</Label>
           <Select value={kindCtrl.field.value} onValueChange={kindCtrl.field.onChange}>
-            <SelectTrigger id="note-kind" aria-label="Kind">
+            <SelectTrigger id="note-kind" aria-label={t("notes.form.kind")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {BOOKING_NOTE_KIND_OPTIONS.map((o) => (
+              {kindOptions.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -72,13 +77,13 @@ export function NoteForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="note-visibility">Visibility</Label>
+          <Label htmlFor="note-visibility">{t("notes.form.visibility")}</Label>
           <Select value={visibilityCtrl.field.value} onValueChange={visibilityCtrl.field.onChange}>
-            <SelectTrigger id="note-visibility" aria-label="Visibility">
+            <SelectTrigger id="note-visibility" aria-label={t("notes.form.visibility")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {BOOKING_NOTE_VISIBILITY_OPTIONS.map((o) => (
+              {visibilityOptions.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -93,7 +98,7 @@ export function NoteForm({
           checked={!!pinnedCtrl.field.value}
           onCheckedChange={(v) => pinnedCtrl.field.onChange(v === true)}
         />
-        <span>Pin this note</span>
+        <span>{t("notes.form.pin")}</span>
       </label>
 
       {topLevelError ? (
@@ -107,10 +112,10 @@ export function NoteForm({
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {t("common:actions.cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : submitLabel}
+          {submitting ? t("common:actions.saving") : submitLabel}
         </Button>
       </div>
     </form>

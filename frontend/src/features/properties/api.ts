@@ -2,42 +2,57 @@ import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import {
   availabilityHoldsResponseSchema,
+  changeOverRuleSchema,
+  changeOverRulesResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
   propertyContactsResponseSchema,
+  propertyDescriptionSchema,
   propertyDescriptionsResponseSchema,
   propertyDetailSchema,
-  propertyFeaturesResponseSchema,
   propertyFinanceSchema,
+  nearbyPlaceTypesResponseSchema,
   propertyImageSchema,
   propertyImagesResponseSchema,
   propertyListResponseSchema,
+  propertyNearbyPlaceSchema,
+  propertyNearbyPlacesResponseSchema,
+  propertyRoomSchema,
   propertyRoomsResponseSchema,
   propertySettingsSchema,
   ratePlanDetailSchema,
+  ratePlanSchema,
   ratePlansResponseSchema,
+  sectionToSlug,
   type AvailabilityHold,
+  type ChangeOverRule,
+  type ChangeOverRuleWriteInput,
+  type DescriptionSection,
   type Discount,
   type Extra,
+  type NearbyPlaceType,
   type PropertyBookingItem,
   type PropertyContactAssignment,
   propertyContactAssignmentSchema,
   type PropertyContactAssignmentWriteInput,
   type PropertyDescription,
   type PropertyDetail,
-  type PropertyFeature,
   type PropertyFilters,
   type PropertyFinance,
   type PropertyFinanceWriteInput,
   type PropertyImage,
   type PropertyImageWriteInput,
   type PropertyListItem,
+  type PropertyNearbyPlace,
+  type PropertyNearbyPlaceWriteInput,
   type PropertyRoom,
+  type PropertyRoomWriteInput,
   type PropertySettings,
   type PropertySettingsWriteInput,
   type RatePlan,
   type RatePlanDetail,
+  type RatePlanWriteInput,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
 import type { PropertyId, SeasonId } from "@/lib/query/keys";
@@ -71,16 +86,124 @@ export async function fetchPropertyDescriptions(
   return propertyDescriptionsResponseSchema.parse(data);
 }
 
-export async function fetchPropertyFeatures(
-  idOrSlug: PropertyId,
-): Promise<Paginated<PropertyFeature>> {
-  const data = await apiGet<unknown>(`/properties/${idOrSlug}/features`);
-  return propertyFeaturesResponseSchema.parse(data);
+export async function upsertPropertyDescription(
+  propertyId: PropertyId,
+  section: DescriptionSection,
+  body: string,
+): Promise<PropertyDescription> {
+  const data = await apiSend<unknown>(
+    "PUT",
+    `/properties/${propertyId}/descriptions/${sectionToSlug(section)}`,
+    { body },
+  );
+  return propertyDescriptionSchema.parse(data);
+}
+
+export async function deletePropertyDescription(
+  propertyId: PropertyId,
+  section: DescriptionSection,
+): Promise<void> {
+  await apiSend<void>("DELETE", `/properties/${propertyId}/descriptions/${sectionToSlug(section)}`);
+}
+
+export async function fetchChangeOverRules(
+  propertyId: PropertyId,
+  effectiveOn?: string,
+): Promise<Paginated<ChangeOverRule>> {
+  const query = effectiveOn ? { effective_on: effectiveOn } : undefined;
+  const data = await apiGet<unknown>(`/properties/${propertyId}/change-over-rules`, { query });
+  return changeOverRulesResponseSchema.parse(data);
+}
+
+export async function createChangeOverRule(
+  propertyId: PropertyId,
+  body: ChangeOverRuleWriteInput,
+): Promise<ChangeOverRule> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/change-over-rules`, body);
+  return changeOverRuleSchema.parse(data);
+}
+
+export async function updateChangeOverRule(
+  ruleId: number,
+  body: Partial<ChangeOverRuleWriteInput>,
+): Promise<ChangeOverRule> {
+  const data = await apiSend<unknown>("PATCH", `/change-over-rules/${ruleId}`, body);
+  return changeOverRuleSchema.parse(data);
+}
+
+export async function deleteChangeOverRule(ruleId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/change-over-rules/${ruleId}`);
 }
 
 export async function fetchPropertyRooms(idOrSlug: PropertyId): Promise<Paginated<PropertyRoom>> {
   const data = await apiGet<unknown>(`/properties/${idOrSlug}/rooms`);
   return propertyRoomsResponseSchema.parse(data);
+}
+
+export async function createPropertyRoom(
+  propertyId: PropertyId,
+  body: PropertyRoomWriteInput,
+): Promise<PropertyRoom> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/rooms`, body);
+  return propertyRoomSchema.parse(data);
+}
+
+export async function updatePropertyRoom(
+  propertyId: PropertyId,
+  roomId: number,
+  body: Partial<PropertyRoomWriteInput>,
+): Promise<PropertyRoom> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/rooms/${roomId}`, body);
+  return propertyRoomSchema.parse(data);
+}
+
+export async function deletePropertyRoom(propertyId: PropertyId, roomId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/properties/${propertyId}/rooms/${roomId}`);
+}
+
+export async function reorderPropertyRooms(
+  propertyId: PropertyId,
+  roomIds: number[],
+): Promise<void> {
+  await apiSend<unknown>("POST", `/properties/${propertyId}/rooms:reorder`, {
+    room_ids: roomIds,
+  });
+}
+
+export async function fetchNearbyPlaceTypes(): Promise<Paginated<NearbyPlaceType>> {
+  const data = await apiGet<unknown>("/nearby-place-types");
+  return nearbyPlaceTypesResponseSchema.parse(data);
+}
+
+export async function fetchPropertyNearbyPlaces(
+  propertyId: PropertyId,
+): Promise<Paginated<PropertyNearbyPlace>> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/nearby`);
+  return propertyNearbyPlacesResponseSchema.parse(data);
+}
+
+export async function createPropertyNearbyPlace(
+  propertyId: PropertyId,
+  body: PropertyNearbyPlaceWriteInput,
+): Promise<PropertyNearbyPlace> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/nearby`, body);
+  return propertyNearbyPlaceSchema.parse(data);
+}
+
+export async function updatePropertyNearbyPlace(
+  propertyId: PropertyId,
+  poiId: number,
+  body: Partial<PropertyNearbyPlaceWriteInput> & { sort_order?: number },
+): Promise<PropertyNearbyPlace> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/nearby/${poiId}`, body);
+  return propertyNearbyPlaceSchema.parse(data);
+}
+
+export async function deletePropertyNearbyPlace(
+  propertyId: PropertyId,
+  poiId: number,
+): Promise<void> {
+  await apiSend<void>("DELETE", `/properties/${propertyId}/nearby/${poiId}`);
 }
 
 export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Paginated<RatePlan>> {
@@ -91,6 +214,31 @@ export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Pagina
 export async function fetchSeasonDetail(seasonId: SeasonId): Promise<RatePlanDetail> {
   const data = await apiGet<unknown>(`/seasons/${seasonId}`);
   return ratePlanDetailSchema.parse(data);
+}
+
+export async function createSeason(
+  propertyId: PropertyId,
+  body: RatePlanWriteInput,
+): Promise<RatePlan> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/seasons`, body);
+  return ratePlanSchema.parse(data);
+}
+
+export async function updateSeason(
+  seasonId: SeasonId,
+  body: Partial<RatePlanWriteInput>,
+): Promise<RatePlan> {
+  const data = await apiSend<unknown>("PATCH", `/seasons/${seasonId}`, body);
+  return ratePlanSchema.parse(data);
+}
+
+export async function deleteSeason(seasonId: SeasonId): Promise<void> {
+  await apiSend<void>("DELETE", `/seasons/${seasonId}`);
+}
+
+export async function duplicateSeason(seasonId: SeasonId): Promise<RatePlan> {
+  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}:duplicate`);
+  return ratePlanSchema.parse(data);
 }
 
 export async function fetchPropertyExtras(idOrSlug: PropertyId): Promise<Paginated<Extra>> {
@@ -228,6 +376,16 @@ export async function updatePropertyFinance(
 ): Promise<PropertyFinance> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/finance`, body);
   return propertyFinanceSchema.parse(data);
+}
+
+export async function updatePropertyFeatures(
+  propertyId: PropertyId,
+  featureIds: number[],
+): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}`, {
+    features: featureIds,
+  });
+  return propertyDetailSchema.parse(data);
 }
 
 export async function activateProperty(idOrSlug: PropertyId): Promise<PropertyDetail> {

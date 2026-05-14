@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -20,15 +21,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { ApiError } from "@/lib/api/errors";
-import { enquiryColumns } from "./columns";
+import { useEnquiryColumns } from "./columns";
 import { ENQUIRIES_PAGE_SIZE, useEnquiries, useMoveEnquiry } from "./hooks";
 import { EnquiryCard } from "./components/EnquiryCard";
 import { KanbanBoard, type KanbanColumn } from "./components/KanbanBoard";
 import { EnquiryFormDialog } from "./components/EnquiryFormDialog";
 import {
-  ENQUIRY_STATUS_LABELS,
-  ENQUIRY_STATUS_OPTIONS,
   KANBAN_STATUSES,
+  enquiryStatusLabel,
+  enquiryStatusOptions,
   enquiryStatusSchema,
   type EnquiryFilters,
   type EnquiryListItem,
@@ -36,8 +37,6 @@ import {
 } from "./schemas";
 
 const ALL_VALUE = "__all__";
-
-const STATUS_OPTIONS = [{ value: ALL_VALUE, label: "Any status" }, ...ENQUIRY_STATUS_OPTIONS];
 
 type ViewMode = "kanban" | "list";
 
@@ -61,7 +60,10 @@ function paramsToFilters(params: URLSearchParams): EnquiryFilters {
   };
 }
 
-function groupIntoColumns(items: EnquiryListItem[]): KanbanColumn<EnquiryListItem>[] {
+function groupIntoColumns(
+  items: EnquiryListItem[],
+  titleFor: (status: EnquiryStatus) => string,
+): KanbanColumn<EnquiryListItem>[] {
   const buckets: Record<EnquiryStatus, EnquiryListItem[]> = {
     new: [],
     contacted: [],
@@ -74,12 +76,13 @@ function groupIntoColumns(items: EnquiryListItem[]): KanbanColumn<EnquiryListIte
   }
   return KANBAN_STATUSES.map((status) => ({
     id: status,
-    title: ENQUIRY_STATUS_LABELS[status],
+    title: titleFor(status),
     items: buckets[status],
   }));
 }
 
 export function EnquiriesListPage() {
+  const { t } = useTranslation("enquiries");
   const navigate = useNavigate();
   const hasRole = useHasReservationsRole();
   const [params, setParams] = useSearchParams();
@@ -153,8 +156,14 @@ export function EnquiriesListPage() {
 
   const query = useEnquiries(filters);
   const moveMutation = useMoveEnquiry();
+  const enquiryColumns = useEnquiryColumns();
   const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / ENQUIRIES_PAGE_SIZE)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
+
+  const statusOptions = [
+    { value: ALL_VALUE, label: t("list.any_status") },
+    ...enquiryStatusOptions(),
+  ];
 
   const handleRowClick = (row: EnquiryListItem) => {
     navigate(`/enquiries/${row.id}/details`);
@@ -169,18 +178,23 @@ export function EnquiriesListPage() {
     // transitions need extra data (assigned operator, quotation id) so we
     // surface them via the detail page actions.
     if (target.data !== "lost" && target.data !== "new") {
-      toast.info("Use the detail page to move to this stage.");
+      toast.info(t("list.toasts.move_blocked"));
       return;
     }
     moveMutation.mutate(
       { enquiry, toStatus: target.data },
       {
         onError: () => {
-          toast.error(`Couldn't move ${enquiry.reference}`);
+          toast.error(t("list.toasts.move_failed", { reference: enquiry.reference }));
           void query.refetch();
         },
         onSuccess: () => {
-          toast.success(`${enquiry.reference} moved to ${ENQUIRY_STATUS_LABELS[target.data]}`);
+          toast.success(
+            t("list.toasts.move_success", {
+              reference: enquiry.reference,
+              status: enquiryStatusLabel(target.data),
+            }),
+          );
         },
       },
     );
@@ -188,32 +202,35 @@ export function EnquiriesListPage() {
 
   const newButton = (
     <Button onClick={() => setCreateOpen(true)} disabled={!hasRole}>
-      New enquiry
+      {t("list.new_button")}
     </Button>
   );
 
   return (
     <div>
       <PageHeader
-        title="Enquiries"
-        breadcrumbs={[{ label: "Operations" }, { label: "Enquiries" }]}
+        title={t("list.title")}
+        breadcrumbs={[
+          { label: t("list.breadcrumb_operations") },
+          { label: t("list.breadcrumb_enquiries") },
+        ]}
       />
       <div className="space-y-4 p-6">
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search enquiries…"
+          searchPlaceholder={t("list.search_placeholder")}
           filters={
             <>
               <Select
                 value={filters.status ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("status", v)}
               >
-                <SelectTrigger className="w-[160px]" aria-label="Filter by status">
+                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_status_aria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((o) => (
+                  {statusOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -223,7 +240,7 @@ export function EnquiriesListPage() {
 
               <div
                 role="tablist"
-                aria-label="View"
+                aria-label={t("list.view_aria")}
                 className="border-border inline-flex overflow-hidden rounded-md border"
               >
                 <button
@@ -237,7 +254,7 @@ export function EnquiriesListPage() {
                       : "text-muted-foreground px-3 py-1.5 text-sm"
                   }
                 >
-                  Kanban
+                  {t("list.view_kanban")}
                 </button>
                 <button
                   type="button"
@@ -250,7 +267,7 @@ export function EnquiriesListPage() {
                       : "text-muted-foreground px-3 py-1.5 text-sm"
                   }
                 >
-                  List
+                  {t("list.view_list")}
                 </button>
               </div>
             </>
@@ -263,7 +280,7 @@ export function EnquiriesListPage() {
                 <TooltipTrigger asChild>
                   <span className="block">{newButton}</span>
                 </TooltipTrigger>
-                <TooltipContent>Reservations role required.</TooltipContent>
+                <TooltipContent>{t("common:errors.reservations_role_required")}</TooltipContent>
               </Tooltip>
             )
           }
@@ -273,8 +290,8 @@ export function EnquiriesListPage() {
           <ErrorState
             description={
               query.error instanceof ApiError
-                ? `Couldn't load enquiries (${query.error.status}).`
-                : "Couldn't load enquiries."
+                ? t("list.load_failed_status", { status: query.error.status })
+                : t("list.load_failed")
             }
             onRetry={() => query.refetch()}
             retrying={query.isFetching}
@@ -284,7 +301,7 @@ export function EnquiriesListPage() {
             <Skeleton className="h-96 w-full" />
           ) : (
             <KanbanBoard<EnquiryListItem>
-              columns={groupIntoColumns(query.data?.results ?? [])}
+              columns={groupIntoColumns(query.data?.results ?? [], enquiryStatusLabel)}
               getItemId={(item) => String(item.id)}
               renderCard={(item) => (
                 <EnquiryCard
@@ -309,10 +326,7 @@ export function EnquiriesListPage() {
             onRowClick={handleRowClick}
             rowKey={(row) => row.id}
             emptyContent={
-              <EmptyState
-                title="No enquiries match these filters"
-                description="Try clearing the search or changing filters."
-              />
+              <EmptyState title={t("list.empty_title")} description={t("list.empty_body")} />
             }
           />
         )}

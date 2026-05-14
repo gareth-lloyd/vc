@@ -31,6 +31,7 @@ Status is point-in-time; flip rows as the design evolves.
 | **Per-module Zoho serializers + response capture** handled by the generic `SyncClient` hierarchy; module specifics live in subclasses, not in a separate per-module table. | `workflows/11-integrations/zoho-sync.md` | `08-integrations.md` | Implementation detail handled by the existing client abstraction — no additional spec needed. |
 | **Webhook secrets in env / Vault**, HMAC verified on raw body bytes. Persist-first `WebhookDelivery` with idempotent `(provider, event_id)`. | `workflows/10-payment/payment-collection.md`, `flywire-gateway.md`; security-debt items #1, #3, #4 | `07-payments.md`, `08-integrations.md` | Closes the legacy debts: hardcoded API key in source, unsigned webhooks, no idempotency check. |
 | **Cancel-and-rebook for post-deposit modifications.** Pre-deposit modifications mutate the booking in place; post-deposit changes force `booking.cancel(reason='guest_modification')` + new Booking creation. State machine stays at 11 states. | `workflows/09-booking/booking-modification.md` | `05-reservations.md`, `06-availability.md` | Avoids inventing a `MODIFICATION_PENDING` state; refund/repricing trail is uniform via cancel+rebook. |
+| **Flywire is the v1 payment gateway.** No multi-provider abstraction layer; the `Payment.provider` enum (`FLYWIRE`, `MANUAL_BANK_TRANSFER`) stays extensible so a second provider can be added later without a migration, but no Stripe / other-gateway code paths are built. | `workflows/11-integrations/flywire-gateway.md`, `workflows/10-payment/payment-collection.md`, `workflows/10-payment/payment-preauth.md` | `07-payments.md`, `08-integrations.md`, `product-design/00-overview.md`, `product-design/01-domain-model.md`, `product-design/04-rest-api-surface.md`, `product-design/06-verification.md` | Continuity with the legacy gateway integration (webhook contract, tokenisation flow, refund window semantics). Switching processors at rebuild time is a separate project; not in scope for v1. |
 
 ## Drops vs the prior decisions pass
 
@@ -73,7 +74,6 @@ These are real legacy or workflow concepts that the v1 design intentionally does
 
 These need an answer before implementation; tracked here so they don't get lost in workflows / docs.
 
-- **Payment processor primary**: `01-domain-model.md` / Package A assume Flywire; Package B assumes Stripe. Decide before payments work begins. Either way, the `Payment.provider` enum is already extensible.
 - **Owner-approval SLA**: `workflows/09-booking/booking-creation.md` describes owner approval but doesn't specify a default reminder cadence or auto-decline window. The `escalate_pending_owner_approvals` Celery task needs a threshold (currently `[CONFIGURABLE]`).
 - **Cancellation-fee pre-window behaviour**: current design uses a single `cancellation_window_days`. A common pattern is sliding bands (e.g. 100% > 60 days, 50% 30-60d, 0% < 30d). Out of v1; add a `cancellation_bands` JSONField on `PropertyFinance` if it lands.
 - **`DamageClaim` model**: referenced from `SecurityDeposit.damage_claim` in `07-payments.md` but not yet specified in `05-reservations.md`. Open ticket.

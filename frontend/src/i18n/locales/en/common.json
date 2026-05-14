@@ -43,6 +43,9 @@
   "tooltips": {
     "reservations_role_required": "Reservations role required"
   },
+  "aria": {
+    "stage": "Stage: {{status}}"
+  },
   "nav": {
     "groups": {
       "operations": "Operations",

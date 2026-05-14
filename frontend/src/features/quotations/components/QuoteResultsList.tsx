@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMoney } from "@/lib/format/money";
 import type { QuoteOption } from "../schemas";
 
 interface Props {
@@ -64,7 +65,7 @@ export function QuoteResultsList({
             <p className="text-muted-foreground text-xs">
               {t("builder.results.total")}:{" "}
               <span className="text-foreground font-medium">
-                {option.total != null ? `${currency} ${option.total}` : "—"}
+                {formatMoney(option.total ?? null, currency)}
               </span>
             </p>
           </div>

@@ -19,9 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ActionButton } from "@/components/feedback/ActionButton";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
+import { formatMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { SendQuotationDialog } from "./components/SendQuotationDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
@@ -32,7 +33,7 @@ import {
   useQuotation,
   useQuotationLines,
 } from "./hooks";
-import type { QuotationDetail, QuotationLine } from "./schemas";
+import { TERMINAL_QUOTATION_STATUSES, type QuotationDetail, type QuotationLine } from "./schemas";
 
 type DialogKind = "send" | "withdraw" | "delete-line" | "edit-line" | null;
 
@@ -88,7 +89,7 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}
             </TableCell>
             <TableCell className="text-right">
-              {line.total != null ? String(line.total) : "—"}
+              {formatMoney(line.total ?? null, quotation.currency ?? null)}
             </TableCell>
             <TableCell>
               {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
@@ -122,36 +123,6 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
   );
 }
 
-interface ActionButtonProps {
-  label: string;
-  onClick: () => void;
-  disableReason: string | null;
-  variant?: "outline" | "destructive";
-}
-
-function ActionButton({ label, onClick, disableReason, variant = "outline" }: ActionButtonProps) {
-  const button = (
-    <Button
-      variant={variant}
-      size="sm"
-      className="w-full justify-start"
-      onClick={onClick}
-      disabled={disableReason != null}
-    >
-      {label}
-    </Button>
-  );
-  if (disableReason == null) return button;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="block">{button}</span>
-      </TooltipTrigger>
-      <TooltipContent>{disableReason}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 interface RailSummaryProps {
   quotation: QuotationDetail;
   canWrite: boolean;
@@ -165,17 +136,12 @@ function RailSummary({ quotation, canWrite, onOpen, onDuplicate, duplicating }: 
 
   const isDraft = quotation.status === "draft";
   const isSent = quotation.status === "sent";
-  const isTerminal =
-    quotation.status === "accepted" ||
-    quotation.status === "cancelled" ||
-    quotation.status === "expired";
+  const isTerminal = (TERMINAL_QUOTATION_STATUSES as readonly string[]).includes(quotation.status);
 
   const roleReason = canWrite ? null : t("detail.actions.disable_reasons.no_role");
   const sendReason = roleReason ?? (isDraft ? null : t("detail.actions.disable_reasons.not_draft"));
   const withdrawReason =
     roleReason ?? (isTerminal ? t("detail.actions.disable_reasons.terminal") : null);
-  // Convert lands in Stage 3 — keep the button visible but disabled with a
-  // clear tooltip so the affordance isn't a surprise when it ships.
   const convertReason = t("detail.actions.disable_reasons.convert_pending");
 
   return (

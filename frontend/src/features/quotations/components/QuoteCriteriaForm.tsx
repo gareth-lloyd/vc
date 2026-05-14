@@ -35,10 +35,8 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
 
   useEffect(() => {
     form.reset({ ...DEFAULTS, ...initial });
-    // initial is a fresh object on every parent render — key the reset on
-    // its serialized form so we don't loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [initial]);
 
   return (
     <form

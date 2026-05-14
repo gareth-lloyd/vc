@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/format/date";
+import { formatMoney } from "@/lib/format/money";
 import type { StagedLine } from "../schemas";
 
 interface Props {
@@ -52,7 +53,7 @@ export function QuoteLinesPanel({ lines, currency, onRemove }: Props) {
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}
             </TableCell>
             <TableCell className="text-right">
-              {line.total != null ? `${currency} ${line.total}` : "—"}
+              {formatMoney(line.total ?? null, currency)}
             </TableCell>
             <TableCell className="text-right">
               <Button

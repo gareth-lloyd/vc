@@ -17,6 +17,13 @@ export const QUOTATION_STATUS_OPTIONS = quotationStatusSchema.options.map((value
   label: QUOTATION_STATUS_LABELS[value],
 }));
 
+// Statuses that block further transitions (no send, no withdraw).
+export const TERMINAL_QUOTATION_STATUSES: readonly QuotationStatus[] = [
+  "accepted",
+  "cancelled",
+  "expired",
+] as const;
+
 // `status` is permissive — backend's TextChoices may grow and we don't want
 // to crash the list page if a new value shows up.
 const looseStatus = z.string();
@@ -143,7 +150,6 @@ export const termsVersionSchema = z.object({
 });
 export type TermsVersion = z.infer<typeof termsVersionSchema>;
 
-// Minimal guest shape returned by POST /guests.
 export const guestSchema = z.object({
   id: z.number(),
   first_name: z.string(),

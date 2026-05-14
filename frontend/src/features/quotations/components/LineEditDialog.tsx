@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useUpdateQuotationLine } from "../hooks";
@@ -122,14 +123,7 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
             <Textarea id="qle-notes" rows={3} {...form.register("notes")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

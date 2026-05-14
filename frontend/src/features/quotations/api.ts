@@ -2,6 +2,7 @@ import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { QuotationId } from "@/lib/query/keys";
+import { propertyListResponseSchema } from "@/features/properties/schemas";
 import {
   guestSchema,
   quotationDetailSchema,
@@ -50,11 +51,6 @@ export async function fetchQuotationLines(id: QuotationId): Promise<Paginated<Qu
   return quotationLinesResponseSchema.parse(data);
 }
 
-// ----------------------------------------------------------------------
-// Quote builder — property search + bulk pricing.
-// ----------------------------------------------------------------------
-
-// Lightweight property-summary subset for the builder result cards.
 interface PropertyCandidate {
   id: number;
   name: string;
@@ -98,11 +94,11 @@ async function fetchCandidateProperties(
     q: filters.q || undefined,
   };
   const data = await apiGet<unknown>("/properties", { query });
-  const parsed = (data as { results?: Array<Record<string, unknown>> }).results ?? [];
-  return parsed.map((row) => ({
-    id: row.id as number,
-    name: (row.display_name as string) || (row.name as string),
-    slug: (row.slug as string | null | undefined) ?? null,
+  const page = propertyListResponseSchema.parse(data);
+  return page.results.map((row) => ({
+    id: row.id,
+    name: row.display_name?.trim() ? row.display_name : row.name,
+    slug: row.slug ?? null,
   }));
 }
 
@@ -150,10 +146,6 @@ export async function searchQuoteOptions(
   });
 }
 
-// ----------------------------------------------------------------------
-// Quote save — header + lines (server re-prices each line).
-// ----------------------------------------------------------------------
-
 export async function createQuotation(body: QuotationWriteInput): Promise<QuotationDetail> {
   const data = await apiSend<unknown>("POST", "/quotations", body);
   return quotationDetailSchema.parse(data);
@@ -180,11 +172,6 @@ export async function deleteQuotationLine(quotationId: QuotationId, lineId: numb
   await apiSend<void>("DELETE", `/quotations/${quotationId}/lines/${lineId}`);
 }
 
-// ----------------------------------------------------------------------
-// Quotation lifecycle actions — send / duplicate / withdraw.
-// (`convert` lands in Stage 3 alongside the booking-create wizard.)
-// ----------------------------------------------------------------------
-
 export async function sendQuotation(id: QuotationId): Promise<QuotationDetail> {
   const data = await apiSend<unknown>("POST", `/quotations/${id}:send`);
   return quotationDetailSchema.parse(data);
@@ -199,10 +186,6 @@ export async function withdrawQuotation(id: QuotationId, reason: string): Promis
   const data = await apiSend<unknown>("POST", `/quotations/${id}:withdraw`, { reason });
   return quotationDetailSchema.parse(data);
 }
-
-// ----------------------------------------------------------------------
-// Supporting lookups.
-// ----------------------------------------------------------------------
 
 export async function fetchCurrentTermsVersion(): Promise<TermsVersion> {
   const data = await apiGet<unknown>("/terms-versions/current");

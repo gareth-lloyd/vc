@@ -24,10 +24,5 @@
       "assigned": "Enquiry assigned",
       "unassigned": "Enquiry unassigned"
     }
-  },
-  "convert": {
-    "toasts": {
-      "redirect": "Opening quotations for this enquiry"
-    }
   }
 }

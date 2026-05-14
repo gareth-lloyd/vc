@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { useSendQuotation } from "../hooks";
 import type { QuotationDetail } from "../schemas";
@@ -53,14 +54,7 @@ export function SendQuotationDialog({ open, onOpenChange, quotation }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        {topLevelError ? (
-          <div
-            className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-            role="alert"
-          >
-            {topLevelError}
-          </div>
-        ) : null}
+        <FormErrorAlert message={topLevelError} />
 
         <div className="flex justify-end gap-2">
           <Button

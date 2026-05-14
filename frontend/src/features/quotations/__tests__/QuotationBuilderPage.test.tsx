@@ -66,7 +66,15 @@ describe("QuotationBuilderPage", () => {
           count: 1,
           next: null,
           previous: null,
-          results: [{ id: 7, name: "Villa Sol", display_name: "Villa Sol", slug: "villa-sol" }],
+          results: [
+            {
+              id: 7,
+              name: "Villa Sol",
+              display_name: "Villa Sol",
+              slug: "villa-sol",
+              status: "active",
+            },
+          ],
         }),
       ),
       http.post("/api/v1/pricing:quote-bulk", () =>
@@ -92,6 +100,6 @@ describe("QuotationBuilderPage", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
-    expect(screen.getByText(/USD 4500\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/4,500\.00 USD/)).toBeInTheDocument();
   });
 });

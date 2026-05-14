@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { useWithdrawQuotation } from "../hooks";
 import type { QuotationDetail } from "../schemas";
@@ -70,14 +71,7 @@ export function WithdrawQuotationDialog({ open, onOpenChange, quotation }: Props
           />
         </div>
 
-        {topLevelError ? (
-          <div
-            className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-            role="alert"
-          >
-            {topLevelError}
-          </div>
-        ) : null}
+        <FormErrorAlert message={topLevelError} />
 
         <div className="flex justify-end gap-2">
           <Button

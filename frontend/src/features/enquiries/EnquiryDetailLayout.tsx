@@ -7,9 +7,8 @@ import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ActionButton } from "@/components/feedback/ActionButton";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
@@ -92,35 +91,6 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
         }
       />
     </div>
-  );
-}
-
-interface ActionButtonProps {
-  label: string;
-  onClick: () => void;
-  disableReason: string | null;
-}
-
-function ActionButton({ label, onClick, disableReason }: ActionButtonProps) {
-  const button = (
-    <Button
-      variant="outline"
-      size="sm"
-      className="w-full justify-start"
-      onClick={onClick}
-      disabled={disableReason != null}
-    >
-      {label}
-    </Button>
-  );
-  if (disableReason == null) return button;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="block">{button}</span>
-      </TooltipTrigger>
-      <TooltipContent>{disableReason}</TooltipContent>
-    </Tooltip>
   );
 }
 

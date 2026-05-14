@@ -4,7 +4,6 @@ import { queryKeys, type QuotationId } from "@/lib/query/keys";
 import {
   createGuest,
   createQuotation,
-  createQuotationLine,
   deleteQuotationLine,
   duplicateQuotation,
   fetchCurrentTermsVersion,
@@ -16,12 +15,7 @@ import {
   updateQuotationLine,
   withdrawQuotation,
 } from "./api";
-import type {
-  QuotationFilters,
-  QuotationLineWriteInput,
-  QuotationWriteInput,
-  QuoteCriteriaInput,
-} from "./schemas";
+import type { QuotationFilters, QuotationLineWriteInput, QuoteCriteriaInput } from "./schemas";
 
 export const QUOTATIONS_PAGE_SIZE = 50;
 
@@ -63,18 +57,7 @@ export function useCreateQuotation() {
   return useMutation({
     mutationFn: createQuotation,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.all() });
-    },
-  });
-}
-
-export function useCreateQuotationLine(quotationId: QuotationId) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: QuotationLineWriteInput) => createQuotationLine(quotationId, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(quotationId) });
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(quotationId) });
+      qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
     },
   });
 }
@@ -83,20 +66,20 @@ export function useCreateGuest() {
   return useMutation({ mutationFn: createGuest });
 }
 
-// Convenience to compose multiple inputs into a single hook call.
-export type CreateQuotationFromBuilderInput = {
-  header: QuotationWriteInput;
-  lines: QuotationLineWriteInput[];
-};
-
 // ----------------------------------------------------------------------
 // Lifecycle action hooks — send / duplicate / withdraw.
 // ----------------------------------------------------------------------
 
-function invalidateQuotation(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+function invalidateQuotationStatus(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+  // Lifecycle actions can change the row visible on the list (status, etc.).
   qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
-  qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(id) });
   qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+}
+
+function invalidateQuotationLines(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+  // Line CRUD changes totals on detail but not on the list row.
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(id) });
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
 }
 
 export function useSendQuotation(id: QuotationId) {
@@ -104,7 +87,7 @@ export function useSendQuotation(id: QuotationId) {
   return useMutation({
     mutationFn: () => sendQuotation(id),
     onSuccess: (quotation) => {
-      invalidateQuotation(qc, id);
+      invalidateQuotationStatus(qc, id);
       // Parent enquiry status flips to QUOTED — refresh that view too.
       if (quotation.enquiry != null) {
         qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
@@ -128,21 +111,18 @@ export function useWithdrawQuotation(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reason: string) => withdrawQuotation(id, reason),
-    onSuccess: () => invalidateQuotation(qc, id),
+    onSuccess: () => invalidateQuotationStatus(qc, id),
   });
 }
 
-// ----------------------------------------------------------------------
-// Line CRUD hooks — update / delete a single line.
-// (Create is already covered by `useCreateQuotationLine` / `SaveQuoteDialog`.)
-// ----------------------------------------------------------------------
-
+// Line CRUD hooks. Create lives in `SaveQuoteDialog`, which fans the
+// requests out in parallel and invalidates once at the end.
 export function useUpdateQuotationLine(quotationId: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ lineId, body }: { lineId: number; body: Partial<QuotationLineWriteInput> }) =>
       updateQuotationLine(quotationId, lineId, body),
-    onSuccess: () => invalidateQuotation(qc, quotationId),
+    onSuccess: () => invalidateQuotationLines(qc, quotationId),
   });
 }
 
@@ -150,6 +130,6 @@ export function useDeleteQuotationLine(quotationId: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => deleteQuotationLine(quotationId, lineId),
-    onSuccess: () => invalidateQuotation(qc, quotationId),
+    onSuccess: () => invalidateQuotationLines(qc, quotationId),
   });
 }

@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/query/keys";
 import { useCurrencies } from "@/features/admin/currencies/hooks";
@@ -66,6 +67,7 @@ export function SaveQuoteDialog({
   const createGuest = useCreateGuest();
   const createQuotation = useCreateQuotation();
   const [linesSaving, setLinesSaving] = useState(false);
+  const submitting = createGuest.isPending || createQuotation.isPending || linesSaving;
 
   useEffect(() => {
     if (open) {
@@ -78,8 +80,6 @@ export function SaveQuoteDialog({
     () => (currenciesQuery.data?.results ?? []).filter((c) => c.is_active),
     [currenciesQuery.data],
   );
-
-  const submitting = createGuest.isPending || createQuotation.isPending || linesSaving;
 
   const handleSubmit = async () => {
     setTopLevelError(null);
@@ -125,18 +125,20 @@ export function SaveQuoteDialog({
 
       setLinesSaving(true);
       try {
-        for (const line of lines) {
-          const body: QuotationLineWriteInput = {
-            property: line.property_id,
-            date_from: line.date_from,
-            date_to: line.date_to,
-            adults: line.adults,
-            children: line.children,
-            is_manual: line.is_manual,
-            notes: line.notes,
-          };
-          await createQuotationLine(quotation.id, body);
-        }
+        await Promise.all(
+          lines.map((line) => {
+            const body: QuotationLineWriteInput = {
+              property: line.property_id,
+              date_from: line.date_from,
+              date_to: line.date_to,
+              adults: line.adults,
+              children: line.children,
+              is_manual: line.is_manual,
+              notes: line.notes,
+            };
+            return createQuotationLine(quotation.id, body);
+          }),
+        );
       } finally {
         setLinesSaving(false);
       }
@@ -196,14 +198,7 @@ export function SaveQuoteDialog({
             <p className="text-muted-foreground text-xs">{t("builder.save.expires_hint")}</p>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

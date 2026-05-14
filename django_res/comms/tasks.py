@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils import timezone
 
 from comms.enums import EmailLogStatus
@@ -39,7 +39,7 @@ def _send(log_id: int) -> None:
     headers: dict[str, str] = {}
     if profile.reply_to:
         headers["Reply-To"] = profile.reply_to
-    message = EmailMessage(
+    message = EmailMultiAlternatives(
         subject=log.rendered_subject,
         body=log.rendered_body,
         from_email=log.from_email,
@@ -49,6 +49,8 @@ def _send(log_id: int) -> None:
         connection=connection,
         headers=headers or None,
     )
+    if log.rendered_body_html:
+        message.attach_alternative(log.rendered_body_html, "text/html")
     try:
         message.send(fail_silently=False)
     except Exception as exc:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from accounts.serializers.auth import (
     LoginSerializer,
     PasswordChangeSerializer,
+    PasswordResetRequestSerializer,
     SessionInfoSerializer,
     TfaChallengeSerializer,
     TfaEnrollSerializer,
@@ -24,6 +25,7 @@ __all__ = [
     "ContactSerializer",
     "LoginSerializer",
     "PasswordChangeSerializer",
+    "PasswordResetRequestSerializer",
     "SessionInfoSerializer",
     "TfaChallengeSerializer",
     "TfaEnrollSerializer",

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pyotp
 import pytest
 from rest_framework.test import APIClient
 
 from accounts.enums import TfaMethod
 from accounts.models import User
+
+if TYPE_CHECKING:
+    from comms.models import SmtpProfile
 
 
 @pytest.fixture
@@ -203,12 +208,94 @@ def test_magic_link_endpoints_return_501(api_client: APIClient) -> None:
     assert response.json()["code"] == "not_implemented"
 
 
+@pytest.fixture
+def system_smtp_profile(db: None) -> SmtpProfile:
+    from comms.enums import SmtpScope
+    from comms.models import SmtpProfile
+
+    return SmtpProfile.objects.create(
+        name="System",
+        scope=SmtpScope.SYSTEM,
+        owner=None,
+        host="smtp.example.com",
+        port=587,
+        username="system",
+        encrypted_password="systempw",
+        from_email="noreply@example.com",
+    )
+
+
 @pytest.mark.django_db
-def test_password_reset_request_returns_501(api_client: APIClient) -> None:
+def test_password_reset_request_sends_email_and_persists_log(
+    api_client: APIClient,
+    user: User,
+    system_smtp_profile: SmtpProfile,
+) -> None:
+    from typing import cast
+
+    from django.core import mail
+    from django.core.mail import EmailMultiAlternatives
+
+    from comms.models import EmailLog
+
+    mail.outbox.clear()
+
     response = api_client.post(
         "/api/v1/auth/password-reset:request",
-        {"email": "x@y.com"},
+        {"email": user.email},
         format="json",
     )
 
-    assert response.status_code == 501
+    assert response.status_code == 204
+    assert len(mail.outbox) == 1
+    sent = cast(EmailMultiAlternatives, mail.outbox[0])
+    assert sent.to == [user.email]
+    html_body, _ = sent.alternatives[0]
+    assert "reset-password?token=" in cast(str, html_body)
+
+    log = EmailLog.objects.get(template_key="auth.password_reset")
+    assert log.correlation == {"user_id": user.id, "purpose": "password_reset"}
+
+
+@pytest.mark.django_db
+def test_password_reset_request_is_silent_for_unknown_email(
+    api_client: APIClient,
+) -> None:
+    from django.core import mail
+
+    mail.outbox.clear()
+    response = api_client.post(
+        "/api/v1/auth/password-reset:request",
+        {"email": "nobody@example.com"},
+        format="json",
+    )
+
+    assert response.status_code == 204
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db
+def test_password_reset_request_is_idempotent_on_repeat(
+    api_client: APIClient,
+    user: User,
+    system_smtp_profile: SmtpProfile,
+) -> None:
+    from django.core import mail
+
+    from comms.models import EmailLog
+
+    mail.outbox.clear()
+
+    api_client.post(
+        "/api/v1/auth/password-reset:request",
+        {"email": user.email},
+        format="json",
+    )
+    api_client.post(
+        "/api/v1/auth/password-reset:request",
+        {"email": user.email},
+        format="json",
+    )
+
+    assert len(mail.outbox) == 1
+    assert EmailLog.objects.filter(template_key="auth.password_reset").count() == 1

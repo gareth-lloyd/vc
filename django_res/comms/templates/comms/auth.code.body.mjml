@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">Your sign-in code</mj-text>
+        <mj-text>Hi {{ user_first_name }},</mj-text>
+        <mj-text>A request to sign in to your Villa Collective account was made. Use this code to continue:</mj-text>
+        <mj-text font-size="28px" font-weight="bold" color="#222222" align="center" padding="20px 0">{{ code }}</mj-text>
+        <mj-text>This code expires in {{ expires_in_minutes }} minutes.</mj-text>
+        <mj-text color="#888888" font-size="13px">If this wasn't you, please contact support — your password may need to change.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

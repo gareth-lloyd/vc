@@ -11,3 +11,13 @@ class EmailTemplateNotFound(DomainError):
 
 class NoSmtpProfileAvailable(DomainError):
     code = "no_smtp_profile_available"
+
+
+class MjmlCompileError(DomainError):
+    code = "mjml_compile_error"
+    status_code = 400
+
+    def __init__(self, message: str, *, source: str, errors: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.source = source
+        self.errors = errors or []

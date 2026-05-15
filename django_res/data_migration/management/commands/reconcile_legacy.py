@@ -22,6 +22,7 @@ from django.core.management.base import BaseCommand
 
 from accounts.models import Contact, User
 from accounts.models.contact import ContactEmail, ContactPhone
+from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
@@ -161,12 +162,4 @@ class Command(BaseCommand):
                 )
 
         header = ("table", "legacy", "loaded", "gap", "%")
-        formatted: list[tuple[str, ...]] = [header]
-        for label, legacy_count, loaded_count, gap, pct in rows:
-            formatted.append((label, str(legacy_count), str(loaded_count), str(gap), pct))
-
-        widths = [max(len(c) for c in col) for col in zip(*formatted, strict=True)]
-        for i, row in enumerate(formatted):
-            self.stdout.write("  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)))
-            if i == 0:
-                self.stdout.write("  ".join("-" * w for w in widths))
+        self.stdout.write(render_table(header, rows))

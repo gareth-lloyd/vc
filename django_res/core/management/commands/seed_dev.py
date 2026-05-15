@@ -25,6 +25,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.factories import ContactEmailFactory, ContactPhoneFactory, UserFactory
+from core.console import render_table
 from pricing.factories import (
     CurrencyFactory,
     DiscountFactory,
@@ -227,14 +228,8 @@ class Command(BaseCommand):
 
     def _print_summary(self, reports: list[StageReport]) -> None:
         header = ("stage", "created", "errors", "duration")
-        rows: list[tuple[str | int, ...]] = [header]
-        for r in reports:
-            rows.append((r.stage, r.created, len(r.errors), f"{r.duration_s:.2f}s"))
-        widths = [max(len(str(c)) for c in col) for col in zip(*rows, strict=True)]
-        for idx, row in enumerate(rows):
-            self.stdout.write("  ".join(str(c).ljust(w) for c, w in zip(row, widths, strict=True)))
-            if idx == 0:
-                self.stdout.write("  ".join("-" * w for w in widths))
+        rows = [(r.stage, r.created, len(r.errors), f"{r.duration_s:.2f}s") for r in reports]
+        self.stdout.write(render_table(header, rows))
         for r in reports:
             if r.errors:
                 self.stdout.write(self.style.ERROR(f"\nErrors in {r.stage}:"))

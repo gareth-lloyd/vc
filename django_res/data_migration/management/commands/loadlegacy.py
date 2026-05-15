@@ -6,6 +6,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
+from core.console import render_table
 from data_migration.base import LoadReport
 from data_migration.registry import LOADERS
 
@@ -60,18 +61,11 @@ class Command(BaseCommand):
 
     def _print_summary(self, reports: list[LoadReport]) -> None:
         header = ("loader", "created", "updated", "skipped", "errors", "duration")
-        rows: list[tuple[str | int, ...]] = [header]
-        for r in reports:
-            rows.append(
-                (r.loader, r.created, r.updated, r.skipped, len(r.errors), f"{r.duration_s:.2f}s"),
-            )
-        widths = [max(len(str(c)) for c in col) for col in zip(*rows, strict=True)]
-        for i, row in enumerate(rows):
-            self.stdout.write(
-                "  ".join(str(c).ljust(w) for c, w in zip(row, widths, strict=True)),
-            )
-            if i == 0:
-                self.stdout.write("  ".join("-" * w for w in widths))
+        rows = [
+            (r.loader, r.created, r.updated, r.skipped, len(r.errors), f"{r.duration_s:.2f}s")
+            for r in reports
+        ]
+        self.stdout.write(render_table(header, rows))
 
         for r in reports:
             if r.errors:

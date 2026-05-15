@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import DatabaseError, connection, models
+from django.http import FileResponse, Http404, HttpRequest
 from django.utils import timezone
 from rest_framework import filters, viewsets
 from rest_framework.decorators import api_view, permission_classes
@@ -133,3 +136,21 @@ class CurrentPermissionsView(APIView):
                 "permissions": codenames,
             }
         )
+
+
+def spa_index(request: HttpRequest) -> FileResponse:
+    """Serve the built SPA's `index.html` for client-side routes.
+
+    Single-origin deployment: WhiteNoise serves the hashed asset files
+    directly; this is the history-fallback so deep links and refreshes on
+    client-side routes return the SPA shell. Wired as the URLconf catch-all
+    *after* `/api/`, `/admin/`, `/static/`.
+
+    `settings.SPA_ROOT` is read per-request so tests can override it and so
+    a build-less local checkout (Vite proxy serves the SPA) cleanly 404s
+    instead of 500-ing.
+    """
+    index = Path(settings.SPA_ROOT) / "index.html"
+    if not index.is_file():
+        raise Http404("SPA build not present")
+    return FileResponse(index.open("rb"), content_type="text/html")

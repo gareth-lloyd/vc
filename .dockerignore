@@ -1,0 +1,24 @@
+# Build context is the repo root — keep it lean and reproducible.
+.git
+ResSystem/
+django_res_design/
+investigation/
+
+# Python
+**/__pycache__/
+**/*.pyc
+django_res/.venv/
+django_res/staticfiles/
+django_res/frontend_dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (rebuilt inside the image)
+frontend/node_modules/
+frontend/dist/
+
+# Local env / tooling
+**/.env
+.claude/
+*.md

@@ -92,6 +92,16 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
+# Single-origin SPA: the built Vite bundle is copied here by the Docker
+# build. When present, WhiteNoise serves it at the site root (hashed assets
+# get far-future caching; index.html stays uncached) and `core.spa_index`
+# is the client-side-routing history fallback. Absent in a local checkout —
+# dev serves the SPA via the Vite proxy, so the guard keeps base untouched.
+SPA_ROOT = BASE_DIR / "frontend_dist"
+if SPA_ROOT.is_dir():
+    WHITENOISE_ROOT = SPA_ROOT
+    WHITENOISE_INDEX_FILE = True
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],

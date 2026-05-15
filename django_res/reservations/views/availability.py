@@ -15,15 +15,16 @@ from typing import TYPE_CHECKING, Any
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import generics, status
+from rest_framework import generics, serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from core.exceptions import DomainError
+from core.exceptions import DomainError, ReadOnlyHold
 from pricing.services import AvailabilityService
 from properties.models import Property
+from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS
 from reservations.serializers.availability import (
     AvailabilityBulkBlockSerializer,
     AvailabilityExtendHoldSerializer,
@@ -35,6 +36,32 @@ from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
+
+
+_EDITABLE_REASONS = frozenset(OPERATOR_EDITABLE_HOLD_REASONS)
+
+
+def _serialize_segment(cell: Any) -> dict[str, Any]:
+    return {
+        "available": cell.available,
+        "reason": cell.reason,
+        "block_id": cell.block_id,
+    }
+
+
+def _serialize_cell(day: date, cell: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "date": day.isoformat(),
+        "available": cell.available,
+        "reason": cell.reason,
+        "block_id": cell.block_id,
+    }
+    if cell.segments is not None:
+        payload["segments"] = {
+            "am": _serialize_segment(cell.segments["am"]),
+            "pm": _serialize_segment(cell.segments["pm"]),
+        }
+    return payload
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -77,10 +104,7 @@ class PropertyAvailabilityView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         cells = AvailabilityService.calendar(property_obj, range_start, range_end)
-        data = [
-            {"date": day.isoformat(), "available": cell.available, "reason": cell.reason}
-            for day, cell in sorted(cells.items())
-        ]
+        data = [_serialize_cell(day, cell) for day, cell in sorted(cells.items())]
         return Response({"property_id": property_obj.pk, "cells": data})
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -95,6 +119,7 @@ class PropertyAvailabilityView(APIView):
             date_to=data["date_to"],
             expires_at=expires_at,
             reason=data["reason"],
+            notes=data.get("notes", ""),
         )
         return Response(
             AvailabilityRecordSerializer(hold).data,
@@ -117,16 +142,42 @@ class AvailabilityDetailView(generics.GenericAPIView):
 
         return BookingHold.objects.all()
 
+    def _editable_or_raise(self, hold: Any) -> None:
+        """System holds (quotation / booking) are read-only here."""
+        if (
+            hold.reason not in _EDITABLE_REASONS
+            or hold.quotation_id is not None
+            or hold.booking_id is not None
+        ):
+            raise ReadOnlyHold(
+                "This hold is managed by its quotation or booking and cannot "
+                "be edited from the availability calendar."
+            )
+
     def patch(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         hold = self.get_object()
-        for field in ("date_from", "date_to", "expires_at", "reason"):
-            if isinstance(request.data, dict) and field in request.data:
-                setattr(hold, field, request.data[field])
-        hold.save()
+        self._editable_or_raise(hold)
+        body = request.data if isinstance(request.data, dict) else {}
+        date_from = _parse_date(body.get("date_from")) or hold.date_from
+        date_to = _parse_date(body.get("date_to")) or hold.date_to
+        if date_to <= date_from:
+            raise serializers.ValidationError({"date_to": "`date_to` must be after `date_from`."})
+        reason = body.get("reason", hold.reason)
+        if reason not in _EDITABLE_REASONS:
+            raise ReadOnlyHold(f"`{reason}` is not an operator-editable block reason.")
+        notes = body.get("notes", hold.notes)
+        hold = HoldService.update_block(
+            hold,
+            date_from=date_from,
+            date_to=date_to,
+            reason=reason,
+            notes=notes,
+        )
         return Response(AvailabilityRecordSerializer(hold).data)
 
     def delete(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         hold = self.get_object()
+        self._editable_or_raise(hold)
         HoldService.release(hold)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

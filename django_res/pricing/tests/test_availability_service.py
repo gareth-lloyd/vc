@@ -7,7 +7,7 @@ availability (the service used to be an inert stub).
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -263,3 +263,252 @@ def test_calendar_query_count_is_constant(
     assert cal[date(2026, 6, 6)].reason == "owner_block"
     assert cal[date(2026, 6, 13)].reason == "booked"
     assert cal[date(2026, 6, 22)].reason == "maintenance"
+
+
+# ----------------------------------------------------------------------
+# 9. Refined reason mapping + block_id (B1)
+# ----------------------------------------------------------------------
+def _quotation(guest: Guest, currency: Currency, terms: TermsVersion) -> Quotation:
+    return Quotation.objects.create(
+        guest=guest,
+        currency=currency,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_kind"),
+    [
+        (BookingHoldReason.OWNER_BLOCK.value, "owner_block"),
+        (BookingHoldReason.MAINTENANCE.value, "maintenance"),
+        (BookingHoldReason.MANUAL.value, "manual"),
+    ],
+)
+def test_editable_block_carries_block_id(
+    property_: Property, reason: str, expected_kind: str
+) -> None:
+    hold = _hold(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=reason,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 9), date(2026, 6, 18))
+    assert cal[date(2026, 6, 12)].reason == expected_kind
+    assert cal[date(2026, 6, 12)].block_id == hold.pk
+
+
+def test_quotation_hold_maps_to_quotation_reason_no_block_id(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    quotation = _quotation(guest, gbp, terms)
+    BookingHold.objects.create(
+        property=property_,
+        quotation=quotation,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(days=5),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 9), date(2026, 6, 18))
+    assert cal[date(2026, 6, 12)].reason == "quotation"
+    assert cal[date(2026, 6, 12)].block_id is None
+
+
+def test_booking_deposit_hold_maps_to_booking_deposit_reason(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    booking = _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 8),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    BookingHold.objects.create(
+        property=property_,
+        booking=booking,
+        date_from=date(2026, 10, 1),
+        date_to=date(2026, 10, 8),
+        expires_at=timezone.now() + timedelta(days=5),
+        reason=BookingHoldReason.BOOKING_DEPOSIT_PENDING.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 10, 1), date(2026, 10, 8))
+    assert cal[date(2026, 10, 3)].reason == "booking_deposit"
+    assert cal[date(2026, 10, 3)].block_id is None
+
+
+def test_booking_cell_has_no_block_id_and_booked_outranks_manual(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _hold(
+        property=property_,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        reason=BookingHoldReason.MANUAL.value,
+    )
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 7, 1), date(2026, 7, 8))
+    assert cal[date(2026, 7, 3)].reason == "booked"
+    assert cal[date(2026, 7, 3)].block_id is None
+
+
+# ----------------------------------------------------------------------
+# 10. Half-day changeover segments (B2)
+# ----------------------------------------------------------------------
+def _set_times(property_: Property, *, check_out: time, check_in: time) -> None:
+    from properties.models import PropertySettings
+
+    PropertySettings.objects.update_or_create(
+        property=property_,
+        defaults={"check_out_time": check_out, "check_in_time": check_in},
+    )
+
+
+def test_changeover_day_splits_am_pm(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),  # departs morning of the 8th
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 8),  # arrives afternoon of the 8th
+        date_to=date(2026, 6, 12),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+
+    split = cal[date(2026, 6, 8)]
+    assert split.segments is not None
+    assert split.segments["am"].reason == "booked"
+    assert split.segments["pm"].reason == "owner_block"
+    assert split.available is False
+    assert split.reason == "booked"  # rollup = higher priority of the two halves
+
+    assert cal[date(2026, 6, 7)].segments is None
+    assert cal[date(2026, 6, 7)].reason == "booked"
+    assert cal[date(2026, 6, 9)].segments is None
+    assert cal[date(2026, 6, 9)].reason == "owner_block"
+
+
+def test_no_split_when_times_missing(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 8),
+        date_to=date(2026, 6, 12),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+    assert cal[date(2026, 6, 8)].segments is None
+    assert cal[date(2026, 6, 8)].available is False
+    assert cal[date(2026, 6, 8)].reason == "owner_block"
+
+
+def test_no_split_when_checkout_after_checkin(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _set_times(property_, check_out=time(16, 0), check_in=time(10, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 8),
+        date_to=date(2026, 6, 12),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+    assert cal[date(2026, 6, 8)].segments is None
+
+
+def test_split_priority_booking_over_hold_same_side(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    # Two intervals depart on the 8th: a manual hold and a booking.
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        reason=BookingHoldReason.MANUAL.value,
+    )
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 2),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 8),
+        date_to=date(2026, 6, 12),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+    split = cal[date(2026, 6, 8)]
+    assert split.segments is not None
+    assert split.segments["am"].reason == "booked"
+    assert split.segments["pm"].reason == "owner_block"
+
+
+def test_calendar_query_count_with_split(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 8),
+        date_to=date(2026, 6, 12),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    with assert_max_queries(4):
+        cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 30))
+    assert cal[date(2026, 6, 8)].segments is not None

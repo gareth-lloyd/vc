@@ -550,6 +550,7 @@ class BookingHold(AuditedModel):
         choices=BookingHoldReason.choices,
         default=BookingHoldReason.MANUAL,
     )
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         indexes = [

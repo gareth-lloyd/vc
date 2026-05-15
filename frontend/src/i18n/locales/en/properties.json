@@ -90,7 +90,13 @@
     "legend": {
       "available": "Available",
       "booked": "Booked",
-      "on_hold": "On hold"
+      "on_hold": "On hold",
+      "quotation": "Quotation hold",
+      "booking_deposit": "Deposit pending",
+      "owner_block": "Owner block",
+      "maintenance": "Maintenance",
+      "manual": "Manual block",
+      "changeover": "Changeover (split day)"
     },
     "load_failed_title": "Couldn't load availability",
     "load_failed_body": "Try again.",
@@ -103,6 +109,51 @@
       "owner_block": "Owner block",
       "maintenance": "Maintenance",
       "manual": "Manual hold"
+    },
+    "add_block": "Add block",
+    "add_block_disabled_tooltip": "You need the reservations role to manage availability",
+    "reason_labels": {
+      "booked": "Booked",
+      "quotation": "Quotation hold",
+      "booking_deposit": "Deposit pending",
+      "owner_block": "Owner block",
+      "maintenance": "Maintenance",
+      "manual": "Manual block",
+      "available": "Available"
+    },
+    "cell_aria_split": "{{date}}: morning {{am}}, afternoon {{pm}}",
+    "block_dialog": {
+      "create_title": "Add availability block",
+      "edit_title": "Edit availability block",
+      "fields": {
+        "reason": "Reason",
+        "date_from": "From",
+        "date_to": "To",
+        "notes": "Notes"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save block",
+        "saving": "Saving…"
+      },
+      "reasons": {
+        "owner_block": "Owner block",
+        "maintenance": "Maintenance",
+        "manual": "Manual block"
+      }
+    },
+    "toasts": {
+      "created": "Block created",
+      "updated": "Block updated",
+      "deleted": "Block removed",
+      "create_failed": "Couldn't create the block",
+      "update_failed": "Couldn't update the block",
+      "delete_failed": "Couldn't remove the block"
+    },
+    "delete_confirm": {
+      "title": "Remove this block?",
+      "description": "The dates will become available again.",
+      "confirm": "Remove block"
     }
   },
   "pricing": {
@@ -709,7 +760,10 @@
     "season_currency_required": "Pick a currency",
     "season_effective_from_required": "Effective from date is required",
     "season_effective_to_before_from": "Effective to must be on or after Effective from",
-    "load_failed": "Couldn't load."
+    "load_failed": "Couldn't load.",
+    "block_from_required": "From date is required",
+    "block_to_required": "To date is required",
+    "block_to_before_from": "To date must be after From date"
   },
   "common": {
     "inherit": "Inherit",

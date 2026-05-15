@@ -56,6 +56,7 @@ class HoldService:
         reason: str = BookingHoldReason.MANUAL.value,
         quotation: Any = None,
         booking: Any = None,
+        notes: str = "",
     ) -> BookingHold:
         """Place a live hold; raises `HoldUnavailable` if one already overlaps."""
         if cls._has_overlapping_live_hold(
@@ -75,7 +76,41 @@ class HoldService:
             date_to=date_to,
             expires_at=expires_at,
             reason=reason,
+            notes=notes,
         )
+
+    @classmethod
+    @transaction.atomic
+    def update_block(
+        cls,
+        hold: BookingHold,
+        *,
+        date_from: date_type,
+        date_to: date_type,
+        reason: str,
+        notes: str,
+    ) -> BookingHold:
+        """Edit an operator block in place; re-checks overlap excluding itself.
+
+        Raises `HoldUnavailable` if the new range collides with another live
+        hold (the editing hold is excluded so a no-op save is allowed).
+        """
+        if cls._has_overlapping_live_hold(
+            property=hold.property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=[hold.pk],
+        ):
+            raise HoldUnavailable(
+                f"An overlapping live hold already exists for property "
+                f"{hold.property_id} on {date_from}..{date_to}"
+            )
+        hold.date_from = date_from
+        hold.date_to = date_to
+        hold.reason = reason
+        hold.notes = notes
+        hold.save(update_fields=["date_from", "date_to", "reason", "notes", "updated_at"])
+        return hold
 
     @classmethod
     @transaction.atomic

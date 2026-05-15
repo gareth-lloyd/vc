@@ -122,6 +122,15 @@ class BookingHoldReason(models.TextChoices):
     MANUAL = "manual", "Manual"
 
 
+# Reasons an operator may create/edit/remove from the availability calendar.
+# Quotation/booking-deposit holds are managed via their source, never here.
+OPERATOR_EDITABLE_HOLD_REASONS: tuple[str, ...] = (
+    BookingHoldReason.OWNER_BLOCK.value,
+    BookingHoldReason.MAINTENANCE.value,
+    BookingHoldReason.MANUAL.value,
+)
+
+
 class EventSource(models.TextChoices):
     USER = "user", "User"
     OWNER = "owner", "Owner"

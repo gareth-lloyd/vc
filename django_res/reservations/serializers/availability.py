@@ -7,10 +7,16 @@ internals — it speaks "availability" not "hold".
 
 from __future__ import annotations
 
+from typing import Any
+
 from rest_framework import serializers
 
-from reservations.enums import BookingHoldReason
+from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS, BookingHoldReason
 from reservations.models.booking import BookingHold
+
+_EDITABLE_CHOICES = [
+    choice for choice in BookingHoldReason.choices if choice[0] in OPERATOR_EDITABLE_HOLD_REASONS
+]
 
 
 class AvailabilityWriteSerializer(serializers.Serializer[None]):
@@ -19,11 +25,16 @@ class AvailabilityWriteSerializer(serializers.Serializer[None]):
     date_from = serializers.DateField()
     date_to = serializers.DateField()
     reason = serializers.ChoiceField(
-        choices=BookingHoldReason.choices,
+        choices=_EDITABLE_CHOICES,
         default=BookingHoldReason.MANUAL.value,
     )
     expires_at = serializers.DateTimeField(required=False)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if attrs["date_to"] <= attrs["date_from"]:
+            raise serializers.ValidationError({"date_to": "`date_to` must be after `date_from`."})
+        return attrs
 
 
 class AvailabilityRecordSerializer(serializers.ModelSerializer[BookingHold]):
@@ -39,6 +50,7 @@ class AvailabilityRecordSerializer(serializers.ModelSerializer[BookingHold]):
             "expires_at",
             "released_at",
             "reason",
+            "notes",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]

@@ -28,8 +28,13 @@ export const queryKeys = {
     images: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "images"] as const,
     settings: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "settings"] as const,
     finance: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "finance"] as const,
+    holdsRoot: (propertyId: number) => ["properties", "detail", propertyId, "holds"] as const,
     holds: (propertyId: number, from: string, to: string) =>
       ["properties", "detail", propertyId, "holds", from, to] as const,
+    availabilityRoot: (propertyId: number) =>
+      ["properties", "detail", propertyId, "availability"] as const,
+    availabilityCalendar: (propertyId: number, from: string, to: string) =>
+      ["properties", "detail", propertyId, "availability", from, to] as const,
     bookingsInRange: (propertyId: number, from: string, to: string) =>
       ["properties", "detail", propertyId, "bookings", from, to] as const,
   },

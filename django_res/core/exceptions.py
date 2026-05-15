@@ -59,6 +59,16 @@ class HoldUnavailable(DomainError):
     code = "hold_unavailable"
 
 
+class ReadOnlyHold(DomainError):
+    """A system-managed hold (quotation / booking) cannot be hand-edited.
+
+    These are released via their originating quotation/booking, not the
+    availability-block endpoints.
+    """
+
+    code = "read_only_hold"
+
+
 class OverlappingBooking(DomainError):
     code = "overlapping_booking"
 

@@ -1,16 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys, type PropertyId, type SeasonId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
   activateProperty,
   archiveProperty,
   createChangeOverRule,
+  createPropertyBlock,
   createPropertyContact,
   createPropertyImage,
   createPropertyNearbyPlace,
   createPropertyRoom,
   createSeason,
   deleteChangeOverRule,
+  deletePropertyBlock,
   deletePropertyContact,
   deletePropertyDescription,
   deletePropertyImage,
@@ -22,6 +24,7 @@ import {
   fetchNearbyPlaceTypes,
   fetchProperties,
   fetchProperty,
+  fetchPropertyAvailabilityCells,
   fetchPropertyBookingsForRange,
   fetchPropertyContacts,
   fetchPropertyDescriptions,
@@ -40,6 +43,7 @@ import {
   restoreProperty,
   setPropertyImageHero,
   updateChangeOverRule,
+  updatePropertyBlock,
   updatePropertyContact,
   updatePropertyFeatures,
   updatePropertyFinance,
@@ -51,6 +55,7 @@ import {
   upsertPropertyDescription,
 } from "./api";
 import type {
+  AvailabilityBlockWriteInput,
   ChangeOverRuleWriteInput,
   DescriptionSection,
   PropertyContactAssignmentWriteInput,
@@ -266,6 +271,59 @@ export function usePropertyBookingsForRange(
     queryKey: queryKeys.properties.bookingsInRange(propertyId!, from, to),
     queryFn: () => fetchPropertyBookingsForRange(propertyId!, from, to),
     enabled: propertyId != null,
+  });
+}
+
+export function usePropertyAvailabilityCalendar(
+  propertyId: number | undefined,
+  from: string,
+  to: string,
+) {
+  return useQuery({
+    queryKey: queryKeys.properties.availabilityCalendar(propertyId!, from, to),
+    queryFn: () => fetchPropertyAvailabilityCells(propertyId!, from, to),
+    enabled: propertyId != null,
+  });
+}
+
+function invalidateAvailability(queryClient: QueryClient, propertyId: number) {
+  // The calendar cells and the holds list (which prefills the edit dialog)
+  // are independent query trees — a block write must refresh both.
+  queryClient.invalidateQueries({
+    queryKey: queryKeys.properties.availabilityRoot(propertyId),
+  });
+  queryClient.invalidateQueries({
+    queryKey: queryKeys.properties.holdsRoot(propertyId),
+  });
+}
+
+export function useCreatePropertyBlock(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AvailabilityBlockWriteInput) => createPropertyBlock(propertyId, input),
+    onSuccess: () => invalidateAvailability(queryClient, propertyId),
+  });
+}
+
+interface UpdatePropertyBlockVars {
+  blockId: number;
+  input: Partial<AvailabilityBlockWriteInput>;
+}
+
+export function useUpdatePropertyBlock(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ blockId, input }: UpdatePropertyBlockVars) =>
+      updatePropertyBlock(blockId, input),
+    onSuccess: () => invalidateAvailability(queryClient, propertyId),
+  });
+}
+
+export function useDeletePropertyBlock(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ blockId }: { blockId: number }) => deletePropertyBlock(blockId),
+    onSuccess: () => invalidateAvailability(queryClient, propertyId),
   });
 }
 

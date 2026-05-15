@@ -298,6 +298,7 @@ export const availabilityHoldSchema = z.object({
   expires_at: z.string().nullable().optional(),
   released_at: z.string().nullable().optional(),
   reason: z.string(),
+  notes: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
 });
 export type AvailabilityHold = z.infer<typeof availabilityHoldSchema>;
@@ -305,6 +306,46 @@ export type AvailabilityHold = z.infer<typeof availabilityHoldSchema>;
 export const availabilityHoldsResponseSchema = z.object({
   records: z.array(availabilityHoldSchema),
 });
+
+export const availabilityCellSegmentSchema = z.object({
+  available: z.boolean(),
+  reason: z.string(),
+  block_id: z.number().nullable().optional(),
+});
+export type AvailabilityCellSegment = z.infer<typeof availabilityCellSegmentSchema>;
+
+export const availabilityCellSchema = z.object({
+  date: z.string(),
+  available: z.boolean(),
+  reason: z.string(),
+  block_id: z.number().nullable().optional(),
+  segments: z
+    .object({ am: availabilityCellSegmentSchema, pm: availabilityCellSegmentSchema })
+    .nullable()
+    .optional(),
+});
+export type AvailabilityCell = z.infer<typeof availabilityCellSchema>;
+
+export const availabilityCalendarResponseSchema = z.object({
+  property_id: z.number(),
+  cells: z.array(availabilityCellSchema),
+});
+export type AvailabilityCalendarResponse = z.infer<typeof availabilityCalendarResponseSchema>;
+
+export const AVAILABILITY_BLOCK_REASONS = ["owner_block", "maintenance", "manual"] as const;
+
+export const availabilityBlockWriteInputSchema = z
+  .object({
+    reason: z.enum(AVAILABILITY_BLOCK_REASONS),
+    date_from: z.string().min(1, { message: "properties:errors.block_from_required" }),
+    date_to: z.string().min(1, { message: "properties:errors.block_to_required" }),
+    notes: z.string().trim().optional(),
+  })
+  .refine((v) => v.date_to > v.date_from, {
+    path: ["date_to"],
+    message: "properties:errors.block_to_before_from",
+  });
+export type AvailabilityBlockWriteInput = z.infer<typeof availabilityBlockWriteInputSchema>;
 
 export const propertyBookingItemSchema = z.object({
   id: z.number(),

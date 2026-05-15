@@ -1,7 +1,9 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import {
+  availabilityCalendarResponseSchema,
   availabilityHoldsResponseSchema,
+  availabilityHoldSchema,
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
   discountsResponseSchema,
@@ -25,6 +27,8 @@ import {
   ratePlanSchema,
   ratePlansResponseSchema,
   sectionToSlug,
+  type AvailabilityBlockWriteInput,
+  type AvailabilityCalendarResponse,
   type AvailabilityHold,
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
@@ -278,6 +282,37 @@ export async function fetchPropertyBookingsForRange(
     query: { property: propertyId, check_in_before: to, check_out_after: from },
   });
   return propertyBookingsResponseSchema.parse(data);
+}
+
+export async function fetchPropertyAvailabilityCells(
+  propertyId: number,
+  from: string,
+  to: string,
+): Promise<AvailabilityCalendarResponse> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/availability`, {
+    query: { from, to },
+  });
+  return availabilityCalendarResponseSchema.parse(data);
+}
+
+export async function createPropertyBlock(
+  propertyId: number,
+  body: AvailabilityBlockWriteInput,
+): Promise<AvailabilityHold> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/availability`, body);
+  return availabilityHoldSchema.parse(data);
+}
+
+export async function updatePropertyBlock(
+  blockId: number,
+  body: Partial<AvailabilityBlockWriteInput>,
+): Promise<AvailabilityHold> {
+  const data = await apiSend<unknown>("PATCH", `/availability/${blockId}`, body);
+  return availabilityHoldSchema.parse(data);
+}
+
+export async function deletePropertyBlock(blockId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/availability/${blockId}`);
 }
 
 export async function createPropertyContact(

@@ -28,7 +28,7 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_SETTINGS_MODULE
-        value: villacollective.settings.production
+        value: villacollective.settings.staging
       - key: PYTHON_VERSION
         value: "3.13"
       - key: WEB_CONCURRENCY

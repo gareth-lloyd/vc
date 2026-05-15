@@ -9,6 +9,19 @@
 5. `uv run pytest` — tests run against the same Postgres instance
    (pytest-django creates and drops `test_villacollective` automatically).
 
+## Environments
+
+Settings modules in `villacollective/settings/`:
+
+- `base` — shared; `SEED_DEV_ALLOWED = False`.
+- `dev` / `test` — local + CI; `SEED_DEV_ALLOWED = True`.
+- `production` — real production; inherits `base` (seeding stays blocked).
+- `staging` — **Render**. Inherits `production` (so `DEBUG=False`, SSL
+  redirect, secure cookies, env-driven secrets all hold), but sets
+  `SEED_DEV_ALLOWED = True` so the Render demo DB can be populated with
+  `seed_dev`. The Render `villacollective-api` service runs this module
+  (`DJANGO_SETTINGS_MODULE` in `render.yaml`).
+
 ## Legacy data migration
 
 The `data_migration/` app ports the legacy SQL Server dump into the new

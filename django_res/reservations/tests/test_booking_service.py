@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from core.exceptions import ChangeoverViolation
+from properties.enums import PrefilledChangeOverDay
+from properties.models.settings import PropertySettings
 from reservations.models import (
     Booking,
     BookingEvent,
@@ -41,3 +44,26 @@ def test_create_from_quotation_line__is_idempotent(
     # The created event was emitted exactly once on the first call;
     # the retry must not append a duplicate event row.
     assert BookingEvent.objects.filter(booking=first).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line_enforces_changeover(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A quote can pre-date a ChangeOverRule; confirmation re-validates."""
+    PropertySettings.objects.create(
+        property=quotation_line.property,
+        changeover_day=PrefilledChangeOverDay.SAT.value,
+    )
+    # quotation_line fixture arrives 2026-06-10 (Wednesday).
+    with pytest.raises(ChangeoverViolation):
+        BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    assert not Booking.objects.filter(quotation_line=quotation_line).exists()
+
+    booking = BookingService.create_from_quotation_line(
+        quotation_line,
+        terms_version=terms,
+        allow_changeover_override=True,
+    )
+    assert booking.pk is not None

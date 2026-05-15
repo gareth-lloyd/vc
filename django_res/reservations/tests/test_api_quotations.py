@@ -12,7 +12,9 @@ from rest_framework.test import APIClient
 from accounts.enums import StaffRole
 from accounts.models import User
 from pricing.models import Currency
+from properties.enums import PrefilledChangeOverDay
 from properties.models import Property
+from properties.models.settings import PropertySettings
 from reservations.enums import QuotationStatus
 from reservations.models import (
     Booking,
@@ -198,6 +200,39 @@ def test_convert_creates_booking(
     )
 
     assert response.status_code == 201, response.data
+    assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_enforces_changeover_with_override_escape(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    PropertySettings.objects.create(
+        property=line.property,
+        changeover_day=PrefilledChangeOverDay.SAT.value,
+    )
+    quotation.send()
+    api_client.force_login(staff)
+
+    # 2026-06-10 (line fixture) is a Wednesday — wrong changeover day.
+    rejected = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+    assert rejected.status_code == 422, rejected.data
+    assert rejected.data["code"] == "changeover_violation"
+    assert Booking.objects.count() == 0
+
+    accepted = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk, "allow_changeover_override": True},
+        format="json",
+    )
+    assert accepted.status_code == 201, accepted.data
     assert Booking.objects.count() == 1
 
 

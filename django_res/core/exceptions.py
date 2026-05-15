@@ -49,7 +49,10 @@ class MinNightsNotMet(DomainError):
 
 
 class ChangeoverViolation(DomainError):
+    """Arrival date does not fall on the required changeover day."""
+
     code = "changeover_violation"
+    status_code = 422
 
 
 class HoldUnavailable(DomainError):

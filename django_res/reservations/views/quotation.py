@@ -118,6 +118,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
             payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
             agent=quotation.agent,
             actor=request.user,
+            allow_changeover_override=bool(request.data.get("allow_changeover_override", False)),
         )
         return Response(
             BookingDetailSerializer(booking).data,

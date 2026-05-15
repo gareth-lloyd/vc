@@ -299,6 +299,24 @@ class PricingEngine:
         return applied_total.quantize(Decimal("0.01"))
 
     @staticmethod
+    def _call_finance_resolver(resolver: Any, as_of: date) -> Any:
+        """Call a `PropertyFinance.effective_*` resolver tolerantly.
+
+        The finance model's resolvers currently take no arguments and return
+        dicts; the engine was written against a future `as_of=`/attribute
+        shape. Support both so the two halves stay decoupled until the
+        finance rewrite lands.
+
+        TODO(finance-rewrite): delete this shim and the dict branches in
+        `_compute_commission`/`_compute_tax` once `PropertyFinance.effective_*`
+        accepts `as_of` and returns the scalar/attribute shape directly.
+        """
+        try:
+            return resolver(as_of=as_of)
+        except TypeError:
+            return resolver()
+
+    @staticmethod
     def _compute_commission(
         *,
         property: Any,
@@ -311,10 +329,18 @@ class PricingEngine:
         resolver = getattr(finance, "effective_commission", None)
         if resolver is None:
             return Decimal("0.00")
-        commission = resolver(as_of=as_of)
+        commission = PricingEngine._call_finance_resolver(resolver, as_of)
         if commission is None:
             return Decimal("0.00")
-        return (base * Decimal(commission) / Decimal(100)).quantize(Decimal("0.01"))
+        if isinstance(commission, dict):
+            # Only a percentage commission scales with the rate base; a fixed
+            # commission is an owner-payout concern, not a guest-price line.
+            if commission.get("calculation_type") != "percent":
+                return Decimal("0.00")
+            commission = commission.get("amount")
+        if commission is None:
+            return Decimal("0.00")
+        return (base * Decimal(str(commission)) / Decimal(100)).quantize(Decimal("0.01"))
 
     @staticmethod
     def _compute_tax(
@@ -329,10 +355,15 @@ class PricingEngine:
         resolver = getattr(finance, "effective_tax_policy", None)
         if resolver is None:
             return Decimal("0.00")
-        policy = resolver(as_of=as_of)
+        policy = PricingEngine._call_finance_resolver(resolver, as_of)
         if policy is None:
             return Decimal("0.00")
-        rate = getattr(policy, "rate", None)
+        if isinstance(policy, dict):
+            if policy.get("is_exempt"):
+                return Decimal("0.00")
+            rate = policy.get("percentage")
+        else:
+            rate = getattr(policy, "rate", None)
         if rate is None:
             return Decimal("0.00")
-        return (base * Decimal(rate) / Decimal(100)).quantize(Decimal("0.01"))
+        return (base * Decimal(str(rate)) / Decimal(100)).quantize(Decimal("0.01"))

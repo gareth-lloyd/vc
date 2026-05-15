@@ -130,3 +130,8 @@ PAYMENT_WEBHOOK_SECRETS = {
 # and no trailing slash.
 FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:5173")
 PASSWORD_RESET_TTL_SECONDS = env.int("PASSWORD_RESET_TTL_SECONDS", default=3600)
+
+# Guardrail for the `seed_dev` management command. False here (and therefore
+# in production, which inherits base) hard-blocks fake-data generation. Dev,
+# test, and staging settings flip this to True. Never set in production.
+SEED_DEV_ALLOWED = False

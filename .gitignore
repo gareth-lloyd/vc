@@ -35,3 +35,8 @@ test-results/
 
 # pre-commit
 .pre-commit-cache/
+
+# Generated media from local dev seeding (MEDIA_ROOT is unset in dev, so
+# ImageField uploads land under the app dir relative to cwd).
+django_res/properties/[0-9][0-9][0-9][0-9]/
+django_res/collections/[0-9][0-9][0-9][0-9]/

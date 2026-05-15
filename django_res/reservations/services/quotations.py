@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from django.db import transaction
 
 from pricing.services import PricingEngine
+from properties.services.changeover import ChangeoverService
 from reservations.enums import BookingHoldReason, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
@@ -43,6 +44,7 @@ class QuotationService:
         guest: Any | None = None,
         agent: Any | None = None,
         actor: Any = None,
+        allow_changeover_override: bool = False,
     ) -> Quotation:
         """Build Quotation + lines, run PricingEngine per line, place holds."""
         resolved_guest = guest if guest is not None else enquiry.guest
@@ -64,6 +66,11 @@ class QuotationService:
             adults = int(line_input.get("adults", enquiry.adults))
             children = int(line_input.get("children", enquiry.children))
             party = adults + children
+            ChangeoverService.validate_arrival(
+                line_input["property"],
+                line_input["date_from"],
+                allow_override=allow_changeover_override,
+            )
             quote = PricingEngine.quote(
                 property=line_input["property"],
                 date_from=line_input["date_from"],

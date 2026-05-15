@@ -37,16 +37,12 @@ class HoldService:
         exclude_hold_ids: list[int] | None = None,
     ) -> bool:
         """Check Python-side whether any live hold overlaps the requested range."""
-        qs = BookingHold.objects.filter(
+        return BookingHold.live_overlapping(
             property=property,
-            released_at__isnull=True,
-            expires_at__gt=timezone.now(),
-            date_from__lt=date_to,
-            date_to__gt=date_from,
-        )
-        if exclude_hold_ids:
-            qs = qs.exclude(pk__in=exclude_hold_ids)
-        return qs.exists()
+            date_from=date_from,
+            date_to=date_to,
+            exclude_ids=exclude_hold_ids,
+        ).exists()
 
     @classmethod
     @transaction.atomic

@@ -8,6 +8,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from properties.services.changeover import ChangeoverService
 from reservations.enums import BookingStatus, EventSource, PaymentMethod
 from reservations.models.booking import Booking, BookingEvent
 from reservations.models.quotation import QuotationLine
@@ -27,6 +28,7 @@ class BookingService:
         *,
         agent: Any = None,
         actor: Any = None,
+        allow_changeover_override: bool = False,
     ) -> Booking:
         """Copy the line's pricing snapshot, build a Booking, release holds.
 
@@ -44,6 +46,14 @@ class BookingService:
         quotation = quotation_line.quotation
         property_ = quotation_line.property
         snapshot = dict(quotation_line.pricing_snapshot or {})
+
+        # Re-validate changeover at confirmation: a quote can pre-date a new
+        # ChangeOverRule. Skipped on the idempotent retry path above.
+        ChangeoverService.validate_arrival(
+            property_,
+            quotation_line.date_from,
+            allow_override=allow_changeover_override,
+        )
 
         # Initial status: PENDING_OWNER_APPROVAL if the property requires pre-approval.
         requires_pre_approval = cls._requires_pre_approval(property_)

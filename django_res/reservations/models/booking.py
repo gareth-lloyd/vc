@@ -583,6 +583,31 @@ class BookingHold(AuditedModel):
     def is_live(self) -> bool:
         return self.released_at is None and self.expires_at > timezone.now()
 
+    @classmethod
+    def live_overlapping(
+        cls,
+        *,
+        property: Any,
+        date_from: date_type,
+        date_to: date_type,
+        exclude_ids: list[int] | None = None,
+    ) -> Any:
+        """Live (unreleased, unexpired) holds for `property` overlapping the range.
+
+        The single source of truth for the hold-overlap predicate, shared by
+        `HoldService` and `pricing.AvailabilityService`.
+        """
+        qs = cls.objects.filter(
+            property=property,
+            released_at__isnull=True,
+            expires_at__gt=timezone.now(),
+            date_from__lt=date_to,
+            date_to__gt=date_from,
+        )
+        if exclude_ids:
+            qs = qs.exclude(pk__in=exclude_ids)
+        return qs
+
 
 class BookingEvent(TimestampedModel):
     """Append-only audit row written by every transition."""

@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
+from core.exceptions import ChangeoverViolation
+from properties.enums import PrefilledChangeOverDay
+from properties.models.settings import PropertySettings
 from reservations.enums import BookingHoldReason, EnquiryStatus
 from reservations.models import BookingHold, Enquiry, Quotation
 from reservations.services.quotations import QuotationService
@@ -86,3 +89,45 @@ def test_create_from_enquiry_requires_guest(
             terms_version=terms,
             expires_at=timezone.now() + timedelta(days=7),
         )
+
+
+@pytest.mark.django_db
+def test_create_from_enquiry_enforces_changeover(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    PropertySettings.objects.create(
+        property=property_,
+        changeover_day=PrefilledChangeOverDay.SAT.value,
+    )
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    # 2026-06-10 is a Wednesday — not the Saturday changeover day.
+    line = {
+        "property": property_,
+        "date_from": date(2026, 6, 10),
+        "date_to": date(2026, 6, 17),
+        "adults": 2,
+    }
+
+    with pytest.raises(ChangeoverViolation):
+        QuotationService.create_from_enquiry(
+            enquiry,
+            [line],
+            currency=gbp,
+            terms_version=terms,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        [line],
+        currency=gbp,
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+        allow_changeover_override=True,
+    )
+    assert quotation.lines.count() == 1
+    assert BookingHold.objects.filter(quotation=quotation).count() == 1

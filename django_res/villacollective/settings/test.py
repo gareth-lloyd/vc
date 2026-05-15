@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import tempfile
+
 from .base import *  # noqa: F403
+
+# ImageField writes (e.g. PropertyFactory's hero image) are not rolled back
+# with the test transaction, so without this they accumulate in the source
+# tree. Park them in a throwaway temp dir instead.
+MEDIA_ROOT = tempfile.mkdtemp(prefix="villa-test-media-")
 
 DEBUG = False
 SECRET_KEY = "test-insecure-key"
@@ -18,3 +25,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "core.middleware.AuditMiddleware",
 ]
+
+# Tests exercise the seed_dev command; the guardrail must allow it here.
+SEED_DEV_ALLOWED = True

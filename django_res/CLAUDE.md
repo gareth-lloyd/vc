@@ -166,6 +166,44 @@ against the seed. Reference fixtures in `properties/tests/conftest.py`,
 `reservations/tests/conftest.py`, `payments/tests/conftest.py`,
 `pricing/tests/conftest.py`.
 
+### Realistic test data — `factory-boy` factories + `seed_dev`
+
+Each app owns a `factories.py` of `factory-boy` factories
+(`properties/`, `pricing/`, `accounts/`, `reservations/`). They are the
+single source of test-data builders: pytest fixtures and the `seed_dev`
+command both compose them, so a builder is exercised the same way in
+tests and in a populated dev DB.
+
+`./manage.py seed_dev [--scale small|medium|large] [--properties N]
+[--bookings N] [--seed S] [--i-understand]` generates realistic
+dev/staging data. It is **additive** — every run appends a fresh batch
+and never truncates. The transactional graph
+(Enquiry → Quotation → Booking → Payment) is built through the real
+service layer (`QuotationService`, `BookingService`, `PaymentScheduler`,
+`SecurityDepositService`), so statuses, events, holds and pricing
+snapshots are production-faithful; a fraction of bookings are walked
+down the state machine for status variety.
+
+Conventions baked in — mirror them in new factories:
+
+- **Cross-run uniqueness.** `factory.Sequence` is an in-process counter,
+  *not* unique across runs. Unique fields combine the per-process
+  `RUN_TOKEN` (a uuid defined in `properties/factories.py`, imported by
+  the sibling factories) with the sequence, so additive runs never
+  collide on a unique constraint (slug, email, phone).
+- **Respect seeded/canonical rows.** Factories for migration-seeded or
+  canonical models (`CountryFactory`, `CurrencyFactory`,
+  `PropertyCategoryFactory`, `TermsVersionFactory`) use
+  `django_get_or_create` so they reuse the seeded row instead of
+  fighting its unique constraint — the analogue of the `get_or_create`
+  fixture rule above.
+- **Production block.** Guarded by `settings.SEED_DEV_ALLOWED` (False in
+  `base`/production, True in `dev`/`test`/`staging`). `--i-understand`
+  documents intent only — it does **not** bypass the production block.
+
+Reference: `django_res/core/management/commands/seed_dev.py`,
+`properties/factories.py`, and the per-app `tests/test_factories.py`.
+
 ### Validate data-migration changes via `reconcile_legacy`
 
 After changes to loaders or to legacy-importable models, run

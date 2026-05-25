@@ -75,7 +75,7 @@ function installDetailHandlers() {
         ]),
       ),
     ),
-    http.get("/api/v1/properties/casa-norte/rooms", () =>
+    http.get("/api/v1/properties/5/rooms", () =>
       HttpResponse.json(
         emptyPage([
           {
@@ -141,7 +141,7 @@ describe("PropertyDetailLayout", () => {
         return HttpResponse.json(emptyPage([]));
       }),
       http.get("/api/v1/features", () => HttpResponse.json(emptyPage([]))),
-      http.get("/api/v1/properties/casa-norte/rooms", () => HttpResponse.json(emptyPage([]))),
+      http.get("/api/v1/properties/5/rooms", () => HttpResponse.json(emptyPage([]))),
     );
     setup("/properties/casa-norte/pricing");
     expect(await screen.findByText(/Pricing — coming in next phase/i)).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe("PropertyDetailLayout", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/rooms", () => HttpResponse.json(emptyPage([]))),
+      http.get("/api/v1/properties/5/rooms", () => HttpResponse.json(emptyPage([]))),
     );
     setup("/properties/casa-norte/details");
     expect(await screen.findByText(/Couldn't load descriptions/i)).toBeInTheDocument();

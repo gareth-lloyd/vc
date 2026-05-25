@@ -29,6 +29,8 @@ import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
 import { PaymentsTab as BookingPaymentsTab } from "@/features/bookings/tabs/PaymentsTab";
 import { ConciergeTab as BookingConciergeTab } from "@/features/bookings/tabs/ConciergeTab";
 import { FinanceTab as BookingFinanceTab } from "@/features/bookings/tabs/FinanceTab";
+import { OwnerTab as BookingOwnerTab } from "@/features/bookings/tabs/OwnerTab";
+import { CommsTab as BookingCommsTab } from "@/features/bookings/tabs/CommsTab";
 import { ContactsListPage } from "@/features/contacts/ContactsListPage";
 import { ContactDetailLayout } from "@/features/contacts/ContactDetailLayout";
 import { DetailsTab as ContactDetailsTab } from "@/features/contacts/tabs/DetailsTab";
@@ -70,6 +72,8 @@ const REAL_BOOKING_TABS = new Set<string>([
   "payments",
   "concierge",
   "finance",
+  "owner",
+  "comms",
 ]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
@@ -158,6 +162,8 @@ export const router = createBrowserRouter([
                   { path: "payments", element: <BookingPaymentsTab /> },
                   { path: "concierge", element: <BookingConciergeTab /> },
                   { path: "finance", element: <BookingFinanceTab /> },
+                  { path: "owner", element: <BookingOwnerTab /> },
+                  { path: "comms", element: <BookingCommsTab /> },
                   ...bookingPlaceholderRoutes,
                 ],
               },

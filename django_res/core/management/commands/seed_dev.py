@@ -80,6 +80,7 @@ class ProfileKnobs:
 
     name: str
     pct_pre_approval_property: float = 0.0
+    pct_owner_contact: float = 0.8
     pct_property_draft: float = 0.0
     pct_property_archived: float = 0.0
     # Of "quotation-only" attempts that never become bookings:
@@ -106,6 +107,7 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
     Profile.MIXED: ProfileKnobs(
         name="mixed",
         pct_pre_approval_property=0.15,
+        pct_owner_contact=0.70,
         pct_property_draft=0.05,
         pct_property_archived=0.05,
         pct_extra_quotation_per_booking=0.25,
@@ -126,6 +128,7 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
         pct_pre_approval_property=0.30,
+        pct_owner_contact=0.50,
         pct_property_draft=0.08,
         pct_property_archived=0.08,
         pct_extra_quotation_per_booking=0.50,
@@ -304,7 +307,14 @@ class Command(BaseCommand):
         for _ in range(count):
             # factory-boy is untyped; cast so mypy sees the post_generation
             # children (`.settings`, `.location`, etc.).
-            prop = cast(Any, PropertyFactory())
+            # A fraction of properties get a Contact + commission terms on
+            # their finance row so the Owner tab has something to render.
+            prop = cast(
+                Any,
+                PropertyFactory(
+                    with_owner_contact=self._rng.random() < self._knobs.pct_owner_contact,
+                ),
+            )
             if self._rng.random() < self._knobs.pct_pre_approval_property:
                 prop.settings.bookings_require_pre_approval = True
                 prop.settings.save(update_fields=["bookings_require_pre_approval"])

@@ -13,6 +13,9 @@ constraints.
 from __future__ import annotations
 
 import io
+import random
+from decimal import Decimal
+from typing import cast
 from uuid import uuid4
 
 import factory
@@ -23,6 +26,7 @@ from PIL import Image
 
 from properties import models
 from properties.enums import (
+    CommissionCalcType,
     DescriptionSection,
     FeatureServiceType,
     ImageKind,
@@ -175,6 +179,64 @@ class PropertyFactory(DjangoModelFactory):
             image=_tiny_png(),
             kind=ImageKind.HERO,
             name="Hero",
+        )
+
+    @factory.post_generation
+    def with_owner_contact(
+        obj: models.Property,
+        create: bool,
+        extracted: object,
+        **kwargs: object,
+    ) -> None:
+        """Opt-in: attach a Contact + commission terms to the finance row.
+
+        Default off (preserves legacy "all-null finance, inherit from group"
+        shape). Set to True via ``PropertyFactory(with_owner_contact=True)`` —
+        the seeded Contact gets a primary `ContactEmail` and `ContactPhone`,
+        and the finance row gets a mix of percent / fixed commission so the
+        Owner tab renders both branches in dev/staging.
+        """
+        if not create or not extracted:
+            return
+        # Local imports: `accounts.factories` already imports from us, and
+        # the `accounts` models live in a different app graph.
+        from accounts.factories import (
+            ContactEmailFactory,
+            ContactFactory,
+            ContactPhoneFactory,
+        )
+        from accounts.models import Contact
+
+        # `get_or_create` rather than `obj.finance` removes the implicit
+        # dependency on the sibling `children` post_generation hook having
+        # already created the PropertyFinance row.
+        finance, _ = models.PropertyFinance.objects.get_or_create(property=obj)
+        contact = cast(
+            Contact,
+            ContactFactory(address_line_1=_faker.street_address(), address_line_2=""),
+        )
+        # Pin `is_primary` explicitly so a future change to the email/phone
+        # factory default doesn't silently break the Owner-tab serializer,
+        # which reads the primary row.
+        ContactEmailFactory(contact=contact, is_primary=True)
+        ContactPhoneFactory(contact=contact, is_primary=True)
+        finance.contact = contact
+        # Mix percent / fixed so the Owner tab renders both formatter branches.
+        if random.random() < 0.7:
+            finance.commission_calculation_type = CommissionCalcType.PERCENT.value
+            finance.commission_amount = Decimal("12.50")
+        else:
+            finance.commission_calculation_type = CommissionCalcType.FIXED.value
+            finance.commission_amount = Decimal("500.00")
+        finance.commission_note = "Owner agreed terms"
+        finance.save(
+            update_fields=[
+                "contact",
+                "commission_calculation_type",
+                "commission_amount",
+                "commission_note",
+                "updated_at",
+            ]
         )
 
 

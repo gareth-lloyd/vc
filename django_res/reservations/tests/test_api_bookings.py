@@ -9,11 +9,12 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
-from accounts.models import User
+from accounts.enums import EmailLabel, PhoneLabel, StaffRole
+from accounts.models import Contact, ContactEmail, ContactPhone, User
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
-from properties.models import Property
+from properties.enums import CommissionCalcType
+from properties.models import Property, PropertyFinance
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
@@ -341,6 +342,204 @@ def test_bookings_have_no_delete(api_client: APIClient, staff: User, booking: Bo
     api_client.force_login(staff)
     response = api_client.delete(f"/api/v1/bookings/{booking.pk}")
     assert response.status_code == 405
+
+
+# ---------------------------------------------------------------------------
+# Owner tab — surfaces `property.finance.contact` + commission terms on detail.
+# ---------------------------------------------------------------------------
+
+
+def _make_owner_contact(
+    *,
+    first_name: str = "Olivia",
+    last_name: str = "Owner",
+    company: str = "Owner Holdings Ltd",
+    address_line_1: str = "12 Marina Way",
+    address_line_2: str = "",
+    email: str | None = "olivia@owner.example",
+    phone: str | None = "+44 7700 900111",
+) -> Contact:
+    contact = Contact.objects.create(
+        first_name=first_name,
+        last_name=last_name,
+        company=company,
+        address_line_1=address_line_1,
+        address_line_2=address_line_2,
+    )
+    if email is not None:
+        ContactEmail.objects.create(
+            contact=contact,
+            email=email,
+            label=EmailLabel.PRIMARY,
+            is_primary=True,
+        )
+    if phone is not None:
+        ContactPhone.objects.create(
+            contact=contact,
+            number=phone,
+            label=PhoneLabel.MOBILE,
+            is_primary=True,
+        )
+    return contact
+
+
+@pytest.mark.django_db
+def test_owner_payload_populated_when_finance_and_contact_exist(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    owner = _make_owner_contact()
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=owner,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+        commission_note="Includes seasonal uplift",
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["owner"] == {
+        "id": owner.pk,
+        "first_name": "Olivia",
+        "last_name": "Owner",
+        "company": "Owner Holdings Ltd",
+        "primary_email": "olivia@owner.example",
+        "primary_phone": "+44 7700 900111",
+        "address_line_1": "12 Marina Way",
+        "address_line_2": "",
+    }
+    assert response.data["commission"] == {
+        "calculation_type": "percent",
+        "amount": "12.50",
+        "note": "Includes seasonal uplift",
+    }
+
+
+@pytest.mark.django_db
+def test_owner_primary_email_phone_null_when_no_primary_rows(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    owner = _make_owner_contact(email=None, phone=None)
+    PropertyFinance.objects.create(property=booking.property, contact=owner)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["owner"] is not None
+    assert response.data["owner"]["primary_email"] is None
+    assert response.data["owner"]["primary_phone"] is None
+
+
+@pytest.mark.django_db
+def test_owner_is_null_when_finance_has_no_contact(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=None,
+        commission_calculation_type=CommissionCalcType.FIXED.value,
+        commission_amount=Decimal("500.00"),
+        commission_note="",
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["owner"] is None
+    # Commission still resolves from the property row.
+    assert response.data["commission"] == {
+        "calculation_type": "fixed",
+        "amount": "500.00",
+        "note": "",
+    }
+
+
+@pytest.mark.django_db
+def test_owner_and_commission_null_when_finance_missing(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    # No PropertyFinance row at all.
+    assert not PropertyFinance.objects.filter(property=booking.property).exists()
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["owner"] is None
+    assert response.data["commission"] is None
+
+
+@pytest.mark.django_db
+def test_owner_commission_falls_back_to_group_finance(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    # Property finance with everything null on commission — should fall back
+    # to GroupFinance, which `properties.signals` auto-creates with defaults.
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=None,
+        commission_calculation_type=None,
+        commission_amount=None,
+        commission_note="",
+    )
+    group_finance = booking.property.group.finance
+    group_finance.commission_calculation_type = CommissionCalcType.PERCENT.value
+    group_finance.commission_amount = Decimal("8.00")
+    group_finance.commission_note = "Group default"
+    group_finance.save()
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["commission"] == {
+        "calculation_type": "percent",
+        "amount": "8.00",
+        "note": "Group default",
+    }
+
+
+@pytest.mark.django_db
+def test_owner_commission_note_empty_string_round_trips(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    # An explicit empty string at the property level should overshadow the
+    # group default and stay an empty string in the serialized payload —
+    # never null.
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=None,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("10.00"),
+        commission_note="",
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["commission"]["note"] == ""
+
+
+@pytest.mark.django_db
+def test_detail_query_count_bound_with_owner_and_commission(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    owner = _make_owner_contact()
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=owner,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+    )
+    api_client.force_login(staff)
+
+    with assert_max_queries(14):
+        response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db

@@ -90,6 +90,32 @@ export const pricingSnapshotSchema = z
   .passthrough();
 export type PricingSnapshot = z.infer<typeof pricingSnapshotSchema>;
 
+export const bookingOwnerSchema = z
+  .object({
+    id: z.number(),
+    first_name: z.string(),
+    last_name: z.string(),
+    company: z.string(),
+    primary_email: z.string().nullable(),
+    primary_phone: z.string().nullable(),
+    address_line_1: z.string(),
+    address_line_2: z.string(),
+  })
+  .nullable();
+export type BookingOwner = z.infer<typeof bookingOwnerSchema>;
+
+export const bookingCommissionCalcTypeSchema = z.enum(["percent", "fixed"]);
+export type BookingCommissionCalcType = z.infer<typeof bookingCommissionCalcTypeSchema>;
+
+export const bookingCommissionSchema = z
+  .object({
+    calculation_type: bookingCommissionCalcTypeSchema.nullable(),
+    amount: z.string().nullable(),
+    note: z.string(),
+  })
+  .nullable();
+export type BookingCommission = z.infer<typeof bookingCommissionSchema>;
+
 export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
@@ -100,6 +126,8 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   payment_method: z.string().nullable().optional(),
   cancel_reason: z.string().nullable().optional(),
   cancelled_at: z.string().nullable().optional(),
+  owner: bookingOwnerSchema.optional(),
+  commission: bookingCommissionSchema.optional(),
 });
 export type BookingDetail = z.infer<typeof bookingDetailSchema>;
 
@@ -377,3 +405,36 @@ export interface BookingFilters {
 
 export const bookingStatusOptions = (): Array<{ value: BookingStatus; label: string }> =>
   bookingStatusSchema.options.map((value) => ({ value, label: bookingStatusLabel(value) }));
+
+// ----------------------------------------------------------------------
+// Email logs (booking Comms tab) — surfaced by /bookings/{id}/emails.
+// ----------------------------------------------------------------------
+
+export const emailLogStatusSchema = z.enum(["queued", "sent", "failed", "bounced"]);
+export type EmailLogStatus = z.infer<typeof emailLogStatusSchema>;
+
+export function emailLogStatusLabel(status: EmailLogStatus): string {
+  return i18n.t(`bookings:comms.status.${status}`);
+}
+
+export const bookingEmailSchema = z.object({
+  id: z.number(),
+  template_key: z.string(),
+  template_version: z.number(),
+  to: z.array(z.string()).optional().default([]),
+  cc: z.array(z.string()).optional().default([]),
+  bcc: z.array(z.string()).optional().default([]),
+  from_email: z.string().nullable().optional(),
+  subject: z.string().nullable().optional(),
+  status: emailLogStatusSchema,
+  queued_at: z.string().nullable().optional(),
+  sent_at: z.string().nullable().optional(),
+  failure_reason: z.string().optional().default(""),
+  sender_user_id: z.number().nullable().optional(),
+  smtp_profile_id: z.number().nullable().optional(),
+  provider_reference: z.string().optional().default(""),
+  correlation: z.record(z.string(), z.unknown()).optional().default({}),
+});
+export type BookingEmail = z.infer<typeof bookingEmailSchema>;
+
+export const bookingEmailsResponseSchema = paginated(bookingEmailSchema);

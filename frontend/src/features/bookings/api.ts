@@ -7,6 +7,8 @@ import {
   bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
+  bookingEmailSchema,
+  bookingEmailsResponseSchema,
   bookingListResponseSchema,
   bookingNoteSchema,
   bookingNotesResponseSchema,
@@ -14,6 +16,7 @@ import {
   paymentTrackSchema,
   type BookingConciergeItem,
   type BookingDetail,
+  type BookingEmail,
   type BookingEvent,
   type BookingFilters,
   type BookingListItem,
@@ -65,6 +68,22 @@ export async function fetchBookingActivity(id: BookingId): Promise<BookingEvent[
 export async function fetchBookingNotes(id: BookingId): Promise<Paginated<BookingNote>> {
   const data = await apiGet<unknown>(`/bookings/${id}/notes`);
   return bookingNotesResponseSchema.parse(data);
+}
+
+export async function fetchBookingEmails(id: BookingId): Promise<Paginated<BookingEmail>> {
+  const data = await apiGet<unknown>(`/bookings/${id}/emails`);
+  return bookingEmailsResponseSchema.parse(data);
+}
+
+export async function resendBookingEmail(
+  bookingId: BookingId,
+  emailId: number,
+  idempotencyKey: string,
+): Promise<BookingEmail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/emails/${emailId}:resend`, {
+    idempotency_key: idempotencyKey,
+  });
+  return bookingEmailSchema.parse(data);
 }
 
 export async function fetchBookingConciergeItems(

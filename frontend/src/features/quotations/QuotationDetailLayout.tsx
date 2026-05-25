@@ -26,6 +26,7 @@ import { formatMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { SendQuotationDialog } from "./components/SendQuotationDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
+import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
 import {
   useDeleteQuotationLine,
@@ -35,7 +36,7 @@ import {
 } from "./hooks";
 import { TERMINAL_QUOTATION_STATUSES, type QuotationDetail, type QuotationLine } from "./schemas";
 
-type DialogKind = "send" | "withdraw" | "delete-line" | "edit-line" | null;
+type DialogKind = "send" | "withdraw" | "convert" | "delete-line" | "edit-line" | null;
 
 interface LinesSectionProps {
   quotation: QuotationDetail;
@@ -126,12 +127,20 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
 interface RailSummaryProps {
   quotation: QuotationDetail;
   canWrite: boolean;
+  hasLines: boolean;
   onOpen: (dialog: DialogKind) => void;
   onDuplicate: () => void;
   duplicating: boolean;
 }
 
-function RailSummary({ quotation, canWrite, onOpen, onDuplicate, duplicating }: RailSummaryProps) {
+function RailSummary({
+  quotation,
+  canWrite,
+  hasLines,
+  onOpen,
+  onDuplicate,
+  duplicating,
+}: RailSummaryProps) {
   const { t } = useTranslation("quotations");
 
   const isDraft = quotation.status === "draft";
@@ -142,7 +151,17 @@ function RailSummary({ quotation, canWrite, onOpen, onDuplicate, duplicating }: 
   const sendReason = roleReason ?? (isDraft ? null : t("detail.actions.disable_reasons.not_draft"));
   const withdrawReason =
     roleReason ?? (isTerminal ? t("detail.actions.disable_reasons.terminal") : null);
-  const convertReason = t("detail.actions.disable_reasons.convert_pending");
+  // Convert is offered once a quote has been sent and at least one line exists;
+  // it auto-accepts the quotation server-side as it opens the booking. Terms
+  // are required by the backend FK — but a quotation can't be created without
+  // one, so we don't surface a separate reason here.
+  const convertReason =
+    roleReason ??
+    (isSent
+      ? hasLines
+        ? null
+        : t("detail.actions.disable_reasons.no_lines")
+      : t("detail.actions.disable_reasons.not_sent"));
 
   return (
     <div className="space-y-4">
@@ -190,7 +209,7 @@ function RailSummary({ quotation, canWrite, onOpen, onDuplicate, duplicating }: 
         />
         <ActionButton
           label={t("detail.actions.convert")}
-          onClick={() => undefined}
+          onClick={() => onOpen("convert")}
           disableReason={convertReason}
         />
         <ActionButton
@@ -212,6 +231,7 @@ export function QuotationDetailLayout() {
   const canWrite = useHasReservationsRole();
   const duplicate = useDuplicateQuotation(query.data?.id ?? 0);
   const deleteLineMut = useDeleteQuotationLine(query.data?.id ?? 0);
+  const linesQuery = useQuotationLines(query.data?.id);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeLine, setActiveLine] = useState<QuotationLine | null>(null);
@@ -291,6 +311,7 @@ export function QuotationDetailLayout() {
           <RailSummary
             quotation={quotation}
             canWrite={canWrite}
+            hasLines={(linesQuery.data?.results?.length ?? 0) > 0}
             onOpen={setDialog}
             onDuplicate={handleDuplicate}
             duplicating={duplicate.isPending}
@@ -323,6 +344,13 @@ export function QuotationDetailLayout() {
       ) : null}
       {dialog === "withdraw" ? (
         <WithdrawQuotationDialog
+          open
+          onOpenChange={(open) => !open && setDialog(null)}
+          quotation={quotation}
+        />
+      ) : null}
+      {dialog === "convert" ? (
+        <ConvertQuotationDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
           quotation={quotation}

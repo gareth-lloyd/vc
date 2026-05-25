@@ -34,6 +34,7 @@ from reservations.models.concierge import BookingConciergeItem
 from reservations.models.enquiry import Enquiry
 from reservations.models.preferences import GuestPreference
 from reservations.models.quotation import Quotation
+from reservations.serializers.booking import BookingDetailSerializer
 
 pytestmark = pytest.mark.django_db
 
@@ -255,3 +256,18 @@ def test_seed_dev_mixed_spreads_booking_dates_around_today() -> None:
     assert earliest is not None and latest is not None
     assert earliest < today
     assert latest > today
+
+
+def test_seed_dev_produces_at_least_one_booking_with_owner_payload() -> None:
+    # The default (happy) profile lands `pct_owner_contact=0.8`; with this
+    # many properties the probability of zero owners is effectively zero.
+    _run(properties=8, bookings=8)
+
+    owners = [
+        BookingDetailSerializer(b).data.get("owner")
+        for b in Booking.objects.select_related("property__finance__contact")
+    ]
+    assert any(o is not None for o in owners), (
+        "Expected at least one seeded booking to expose an owner via the "
+        "Owner-tab serializer payload"
+    )

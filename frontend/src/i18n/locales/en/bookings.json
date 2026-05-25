@@ -28,6 +28,7 @@
     "finance": "Finance",
     "payments": "Payments",
     "concierge": "Concierge",
+    "comms": "Comms",
     "owner": "Owner"
   },
   "labels": {
@@ -392,6 +393,30 @@
     "empty_title": "No activity yet",
     "empty_body": "Lifecycle events will appear here."
   },
+  "comms": {
+    "load_failed_title": "Couldn't load emails",
+    "load_failed_body": "Try again.",
+    "empty_title": "No emails yet",
+    "empty_body": "Confirmation, deposit, and balance emails will appear here as they're sent.",
+    "fields": {
+      "to": "To",
+      "template": "Template"
+    },
+    "status": {
+      "queued": "Queued",
+      "sent": "Sent",
+      "failed": "Failed",
+      "bounced": "Bounced"
+    },
+    "resend": {
+      "action": "Resend",
+      "confirm_title": "Resend this email?",
+      "confirm_body": "Send \"{{subject}}\" again to {{to}}. A fresh log row will be created.",
+      "confirm_button": "Resend",
+      "toast_success": "Email re-queued",
+      "toast_failed": "Couldn't resend this email."
+    }
+  },
   "schema_errors": {
     "reason_max": "Keep it under 500 characters",
     "reason_required": "Reason is required",
@@ -435,6 +460,44 @@
     "empty": {
       "title": "Pricing snapshot not available",
       "description": "This booking has no pricing snapshot to display."
+    }
+  },
+  "owner": {
+    "title": "Owner",
+    "payout_title": "Owner payout",
+    "actions": {
+      "view_contact": "View contact"
+    },
+    "commission": {
+      "label": "Commission",
+      "note_label": "Note",
+      "kind": {
+        "percent": "Percent of rental",
+        "fixed": "Fixed amount"
+      }
+    },
+    "payout": {
+      "components_heading": "Pricing breakdown (reference)",
+      "fields": {
+        "rate_subtotal": "Rate subtotal",
+        "extras_total": "Extras",
+        "discount": "Discount",
+        "commission": "Commission",
+        "tax": "Tax",
+        "total": "Grand total"
+      }
+    },
+    "empty": {
+      "no_finance": "Finance is not configured for this property.",
+      "no_contact": "No owner has been assigned to this property.",
+      "no_commission_terms": "No commission terms on file for this property or its group."
+    },
+    "fields": {
+      "name": "Name",
+      "company": "Company",
+      "email": "Email",
+      "phone": "Phone",
+      "address": "Address"
     }
   }
 }

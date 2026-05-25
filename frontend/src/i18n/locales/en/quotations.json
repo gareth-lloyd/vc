@@ -91,7 +91,8 @@
         "no_role": "Reservations role required.",
         "not_draft": "Only draft quotes can be sent.",
         "terminal": "Already accepted, cancelled, or expired.",
-        "convert_pending": "Convert-to-booking lands in the next step."
+        "not_sent": "Send the quote to the guest before converting.",
+        "no_lines": "Add at least one line before converting."
       }
     },
     "dialogs": {
@@ -123,6 +124,31 @@
         "toasts": {
           "success": "Quotation withdrawn",
           "failed": "Couldn't withdraw quotation."
+        }
+      },
+      "convert": {
+        "title": "Convert to booking",
+        "description": "Open a booking from {{reference}}. The picked line becomes the booking and the quote moves to Accepted.",
+        "line_label": "Which line is the guest taking?",
+        "loading_lines": "Loading lines…",
+        "no_lines": "This quote has no lines yet — add at least one before converting.",
+        "property_with_id": "Property #{{id}}",
+        "guests_one": "{{adults}} adult · {{children}} child",
+        "guests_other": "{{adults}} adults · {{children}} children",
+        "guests": "{{adults}}A · {{children}}C",
+        "payment_method_label": "Initial payment method",
+        "payment_method_options": {
+          "card": "Card",
+          "bank_transfer": "Bank transfer"
+        },
+        "changeover_title": "Arrival breaks the changeover rule",
+        "override_and_convert": "Override and convert anyway",
+        "cancel": "Cancel",
+        "confirm": "Convert to booking",
+        "converting": "Converting…",
+        "toasts": {
+          "success": "Booking created",
+          "failed": "Couldn't convert this quote."
         }
       },
       "line_edit": {

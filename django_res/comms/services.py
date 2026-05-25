@@ -25,6 +25,10 @@ if TYPE_CHECKING:
     from accounts.models import User
 
 
+RESEND_TOKEN_KEY = "resend_token"
+RESENT_FROM_KEY = "resent_from"
+
+
 @dataclass(frozen=True)
 class Attachment:
     """Reference to an attachment stored on object storage.
@@ -149,6 +153,69 @@ class EmailService:
         tasks.send_email_log.delay(log.pk)  # type: ignore[attr-defined]
         log.refresh_from_db()
         return log
+
+    @classmethod
+    @transaction.atomic
+    def resend(
+        cls,
+        email_log: EmailLog,
+        *,
+        actor: User | None,
+        idempotency_key: str | None = None,
+    ) -> EmailLog:
+        """Mint a fresh `EmailLog` row carrying the same content + recipients.
+
+        Used by the operator-facing **Resend** action on the booking
+        Comms tab. Distinct from the admin-only `resend_failed` (which
+        re-queues a FAILED row in place): this always creates a new row
+        so the audit trail shows two distinct send attempts.
+
+        Idempotency: when `idempotency_key` is supplied, a repeat call
+        with the same key against the same source row returns the
+        previously-minted resend instead of creating another row. This
+        is the protection against a double-clicked operator button.
+        """
+        if idempotency_key:
+            existing = (
+                EmailLog.objects.filter(
+                    correlation__resent_from=email_log.pk,
+                    correlation__resend_token=idempotency_key,
+                )
+                .order_by("queued_at")
+                .first()
+            )
+            if existing is not None:
+                return existing
+
+        # Re-resolve the SMTP profile so an actor with a personal profile
+        # sends as themselves; falls back to system if none configured.
+        profile = cls._resolve_profile(actor)
+
+        new_correlation = dict(email_log.correlation or {})
+        new_correlation[RESENT_FROM_KEY] = email_log.pk
+        if idempotency_key:
+            new_correlation[RESEND_TOKEN_KEY] = idempotency_key
+
+        new_log = EmailLog.objects.create(
+            template_key=email_log.template_key,
+            template_version=email_log.template_version,
+            to=list(email_log.to),
+            cc=list(email_log.cc),
+            bcc=list(email_log.bcc),
+            from_email=profile.from_email,
+            sender_user=actor if profile.scope == SmtpScope.PERSONAL else None,
+            smtp_profile=profile,
+            rendered_subject=email_log.rendered_subject,
+            rendered_body=email_log.rendered_body,
+            rendered_body_html=email_log.rendered_body_html,
+            status=EmailLogStatus.QUEUED,
+            attachments=list(email_log.attachments or []),
+            correlation=new_correlation,
+        )
+
+        tasks.send_email_log.delay(new_log.pk)  # type: ignore[attr-defined]
+        new_log.refresh_from_db()
+        return new_log
 
     @staticmethod
     def _resolve_template(template_key: str) -> EmailTemplate:

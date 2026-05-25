@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { queryKeys, type QuotationId } from "@/lib/query/keys";
 import {
+  convertQuotation,
   createGuest,
   createQuotation,
   deleteQuotationLine,
@@ -14,6 +15,7 @@ import {
   sendQuotation,
   updateQuotationLine,
   withdrawQuotation,
+  type ConvertQuotationInput,
 } from "./api";
 import type { QuotationFilters, QuotationLineWriteInput, QuoteCriteriaInput } from "./schemas";
 
@@ -112,6 +114,20 @@ export function useWithdrawQuotation(id: QuotationId) {
   return useMutation({
     mutationFn: (reason: string) => withdrawQuotation(id, reason),
     onSuccess: () => invalidateQuotationStatus(qc, id),
+  });
+}
+
+export function useConvertQuotation(id: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConvertQuotationInput) => convertQuotation(id, input),
+    onSuccess: (booking) => {
+      // The quotation flips to ACCEPTED and a new booking row appears —
+      // refresh both feature lists + the new booking detail.
+      invalidateQuotationStatus(qc, id);
+      qc.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
+      qc.invalidateQueries({ queryKey: queryKeys.bookings.detail(booking.id) });
+    },
   });
 }
 

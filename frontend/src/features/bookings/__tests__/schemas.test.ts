@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bookingCommissionSchema,
   bookingDetailSchema,
   bookingEventSchema,
   bookingListItemSchema,
@@ -8,6 +9,7 @@ import {
   bookingNoteSchema,
   bookingNoteVisibilitySchema,
   bookingNoteWriteInputSchema,
+  bookingOwnerSchema,
   bookingStatusSchema,
   cancelBookingInputSchema,
   declineBookingInputSchema,
@@ -111,6 +113,100 @@ describe("bookingDetailSchema", () => {
       cancelled_at: null,
     });
     expect(parsed.payment_method).toBe("card");
+  });
+
+  it("parses populated owner + commission objects", () => {
+    const parsed = bookingDetailSchema.parse({
+      ...baseListItem,
+      owner: {
+        id: 7,
+        first_name: "Olivia",
+        last_name: "Owner",
+        company: "Owner Holdings",
+        primary_email: "olivia@example.com",
+        primary_phone: "+44 7700 900111",
+        address_line_1: "12 Marina Way",
+        address_line_2: "",
+      },
+      commission: {
+        calculation_type: "percent",
+        amount: "12.50",
+        note: "Includes uplift",
+      },
+    });
+    expect(parsed.owner?.first_name).toBe("Olivia");
+    expect(parsed.commission?.calculation_type).toBe("percent");
+    expect(parsed.commission?.amount).toBe("12.50");
+  });
+
+  it("accepts null owner + commission (no finance row)", () => {
+    const parsed = bookingDetailSchema.parse({
+      ...baseListItem,
+      owner: null,
+      commission: null,
+    });
+    expect(parsed.owner).toBeNull();
+    expect(parsed.commission).toBeNull();
+  });
+
+  it("treats owner + commission as optional (legacy payload)", () => {
+    const parsed = bookingDetailSchema.parse({ ...baseListItem });
+    expect(parsed.owner).toBeUndefined();
+    expect(parsed.commission).toBeUndefined();
+  });
+});
+
+describe("bookingOwnerSchema", () => {
+  it("accepts null primary_email + primary_phone", () => {
+    const parsed = bookingOwnerSchema.parse({
+      id: 1,
+      first_name: "x",
+      last_name: "y",
+      company: "",
+      primary_email: null,
+      primary_phone: null,
+      address_line_1: "",
+      address_line_2: "",
+    });
+    expect(parsed?.primary_email).toBeNull();
+  });
+
+  it("accepts null at the top level", () => {
+    expect(bookingOwnerSchema.parse(null)).toBeNull();
+  });
+});
+
+describe("bookingCommissionSchema", () => {
+  it("accepts the lowercase enum values", () => {
+    for (const kind of ["percent", "fixed"] as const) {
+      const parsed = bookingCommissionSchema.parse({
+        calculation_type: kind,
+        amount: "10.00",
+        note: "",
+      });
+      expect(parsed?.calculation_type).toBe(kind);
+    }
+  });
+
+  it("accepts all-nulls (finance exists, no commission terms)", () => {
+    const parsed = bookingCommissionSchema.parse({
+      calculation_type: null,
+      amount: null,
+      note: "",
+    });
+    expect(parsed?.calculation_type).toBeNull();
+    expect(parsed?.amount).toBeNull();
+    expect(parsed?.note).toBe("");
+  });
+
+  it("rejects unknown enum values", () => {
+    expect(
+      bookingCommissionSchema.safeParse({
+        calculation_type: "PERCENT",
+        amount: "10.00",
+        note: "",
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date as date_type
 from typing import Any
 
+from django.db.models import Prefetch, QuerySet
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -12,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from accounts.models import ContactEmail, ContactPhone
 from core.api.permissions import IsReservationsWriter
 from reservations.filters import BookingFilter
 from reservations.models import Booking, BookingEvent, BookingNote
@@ -31,6 +33,30 @@ def _parse_date(value: Any) -> date_type:
     return date_type.fromisoformat(str(value))
 
 
+def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
+    """Apply the FK/reverse chain BookingDetailSerializer's owner+commission walk.
+
+    `Prefetch(..., to_attr=...)` populates a plain list on the parent, so the
+    serializer can read it without re-issuing the `.filter(is_primary=True)`
+    query that bypasses the prefetch cache.
+    """
+    return qs.select_related(
+        "property__finance__contact",
+        "property__group__finance",
+    ).prefetch_related(
+        Prefetch(
+            "property__finance__contact__emails",
+            queryset=ContactEmail.objects.filter(is_primary=True),
+            to_attr="primary_emails",
+        ),
+        Prefetch(
+            "property__finance__contact__phones",
+            queryset=ContactPhone.objects.filter(is_primary=True),
+            to_attr="primary_phones",
+        ),
+    )
+
+
 class BookingViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
@@ -46,7 +72,7 @@ class BookingViewSet(
     ordering = ["-created_at"]
 
     def get_queryset(self) -> Any:
-        return Booking.objects.filter(is_archived=False).select_related(
+        qs = Booking.objects.filter(is_archived=False).select_related(
             "property",
             "guest",
             "agent",
@@ -54,6 +80,12 @@ class BookingViewSet(
             "currency",
             "quotation_line",
         )
+        # Every non-list action returns BookingDetailSerializer (`retrieve` and
+        # the state-machine actions all route through `_refresh`), which walks
+        # property -> finance -> contact -> emails/phones.
+        if self.action != "list":
+            qs = _detail_owner_qs(qs)
+        return qs
 
     def get_serializer_class(self) -> type:
         if self.action == "list":
@@ -66,8 +98,11 @@ class BookingViewSet(
     # State-machine action endpoints
     # ------------------------------------------------------------------
     def _refresh(self, booking: Booking) -> Response:
-        booking.refresh_from_db()
-        return Response(BookingDetailSerializer(booking).data)
+        # Re-fetch through the detail queryset so the owner/commission walk
+        # hits the prefetch cache instead of issuing 5+ extra queries per
+        # action response.
+        fresh = _detail_owner_qs(Booking.objects.all()).get(pk=booking.pk)
+        return Response(BookingDetailSerializer(fresh).data)
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm(self, request: Request, pk: str | None = None) -> Response:
@@ -122,10 +157,11 @@ class BookingViewSet(
 
     @action(detail=True, methods=["post"], url_path="restore")
     def restore(self, request: Request, pk: str | None = None) -> Response:
-        # Restore needs to be reachable on archived rows — bypass the default queryset.
-        booking = get_object_or_404(Booking, pk=pk)
+        # Restore needs to be reachable on archived rows — bypass the default
+        # `is_archived=False` filter while keeping the owner prefetches.
+        booking = get_object_or_404(_detail_owner_qs(Booking.objects.all()), pk=pk)
         booking.restore(actor=request.user)
-        return Response(BookingDetailSerializer(booking).data)
+        return self._refresh(booking)
 
     @action(detail=True, methods=["post"], url_path="check-in")
     def check_in(self, request: Request, pk: str | None = None) -> Response:
@@ -166,7 +202,7 @@ class BookingArchiveViewSet(
     ordering = ["-archived_at"]
 
     def get_queryset(self) -> Any:
-        return Booking.objects.filter(is_archived=True).select_related(
+        qs = Booking.objects.filter(is_archived=True).select_related(
             "property",
             "guest",
             "agent",
@@ -174,6 +210,9 @@ class BookingArchiveViewSet(
             "currency",
             "quotation_line",
         )
+        if self.action != "list":
+            qs = _detail_owner_qs(qs)
+        return qs
 
     def get_serializer_class(self) -> type:
         if self.action == "list":

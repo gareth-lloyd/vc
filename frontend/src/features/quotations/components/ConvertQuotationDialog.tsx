@@ -1,0 +1,226 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { ApiError } from "@/lib/api/errors";
+import { formatDate } from "@/lib/format/date";
+import { formatMoney } from "@/lib/format/money";
+import { useConvertQuotation, useQuotationLines } from "../hooks";
+import type { QuotationDetail, QuotationLine } from "../schemas";
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  quotation: QuotationDetail;
+}
+
+type PaymentMethod = "card" | "bank_transfer";
+
+const PAYMENT_METHODS: readonly PaymentMethod[] = ["card", "bank_transfer"] as const;
+
+function pickInitialLineId(lines: QuotationLine[] | undefined): number | null {
+  if (!lines || lines.length === 0) return null;
+  return (lines.find((l) => l.is_selected) ?? lines[0]).id;
+}
+
+export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props) {
+  const { t } = useTranslation("quotations");
+  const navigate = useNavigate();
+  const convert = useConvertQuotation(quotation.id);
+  const linesQuery = useQuotationLines(quotation.id);
+  const lines = linesQuery.data?.results;
+
+  const [lineId, setLineId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  const [changeoverViolation, setChangeoverViolation] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLineId(pickInitialLineId(lines));
+    setPaymentMethod("card");
+    setTopLevelError(null);
+    setChangeoverViolation(null);
+  }, [open, lines]);
+
+  const submit = async (allowChangeoverOverride: boolean) => {
+    if (lineId == null) return;
+    setTopLevelError(null);
+    if (!allowChangeoverOverride) setChangeoverViolation(null);
+    try {
+      const booking = await convert.mutateAsync({
+        line: lineId,
+        payment_method: paymentMethod,
+        allow_changeover_override: allowChangeoverOverride || undefined,
+      });
+      toast.success(t("detail.dialogs.convert.toasts.success"));
+      onOpenChange(false);
+      navigate(`/bookings/${booking.id}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "changeover_violation") {
+        // Surface the override CTA — operator opts in, we retry with the flag.
+        setChangeoverViolation(error.detail);
+        return;
+      }
+      if (error instanceof ApiError && error.isClientError()) {
+        setTopLevelError(error.detail);
+      } else {
+        toast.error(t("detail.dialogs.convert.toasts.failed"));
+      }
+    }
+  };
+
+  const busy = convert.isPending;
+  const linesLoading = linesQuery.isLoading;
+  const linesEmpty = !linesLoading && (lines?.length ?? 0) === 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("detail.dialogs.convert.title")}</DialogTitle>
+          <DialogDescription>
+            {t("detail.dialogs.convert.description", { reference: quotation.reference })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">
+              {t("detail.dialogs.convert.line_label")}
+            </legend>
+            {linesLoading ? (
+              <p className="text-muted-foreground text-sm">
+                {t("detail.dialogs.convert.loading_lines")}
+              </p>
+            ) : linesEmpty ? (
+              <p className="text-muted-foreground text-sm">
+                {t("detail.dialogs.convert.no_lines")}
+              </p>
+            ) : (
+              <div className="space-y-2" role="radiogroup">
+                {(lines ?? []).map((line) => {
+                  const inputId = `convert-line-${line.id}`;
+                  return (
+                    <Label
+                      key={line.id}
+                      htmlFor={inputId}
+                      className="border-border hover:bg-muted/30 flex cursor-pointer items-start gap-3 rounded-md border p-3"
+                    >
+                      <input
+                        id={inputId}
+                        type="radio"
+                        name="convert-line"
+                        value={line.id}
+                        checked={lineId === line.id}
+                        onChange={() => setLineId(line.id)}
+                        className="mt-1"
+                      />
+                      <span className="flex-1 space-y-1">
+                        <span className="text-foreground block text-sm font-medium">
+                          {line.property != null
+                            ? t("detail.dialogs.convert.property_with_id", { id: line.property })
+                            : "—"}
+                        </span>
+                        <span className="text-muted-foreground block text-xs">
+                          {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}{" "}
+                          ·{" "}
+                          {t("detail.dialogs.convert.guests", {
+                            adults: line.adults ?? 0,
+                            children: line.children ?? 0,
+                          })}{" "}
+                          · {formatMoney(line.total ?? null, quotation.currency ?? null)}
+                        </span>
+                      </span>
+                    </Label>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">
+              {t("detail.dialogs.convert.payment_method_label")}
+            </legend>
+            <div className="flex gap-4" role="radiogroup">
+              {PAYMENT_METHODS.map((method) => {
+                const inputId = `convert-pm-${method}`;
+                return (
+                  <Label
+                    key={method}
+                    htmlFor={inputId}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <input
+                      id={inputId}
+                      type="radio"
+                      name="convert-payment-method"
+                      value={method}
+                      checked={paymentMethod === method}
+                      onChange={() => setPaymentMethod(method)}
+                    />
+                    {t(`detail.dialogs.convert.payment_method_options.${method}`)}
+                  </Label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <FormErrorAlert message={topLevelError} />
+
+          {changeoverViolation ? (
+            <div
+              className="border-warning/40 bg-warning/10 text-warning-foreground rounded-md border p-3 text-sm"
+              role="alert"
+            >
+              <p className="font-medium">{t("detail.dialogs.convert.changeover_title")}</p>
+              <p className="text-muted-foreground mt-1">{changeoverViolation}</p>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => submit(true)}
+                  disabled={busy}
+                >
+                  {busy
+                    ? t("detail.dialogs.convert.converting")
+                    : t("detail.dialogs.convert.override_and_convert")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+          >
+            {t("detail.dialogs.convert.cancel")}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => submit(false)}
+            disabled={busy || lineId == null || linesEmpty}
+          >
+            {busy ? t("detail.dialogs.convert.converting") : t("detail.dialogs.convert.confirm")}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

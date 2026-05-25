@@ -20,6 +20,7 @@ export const BOOKING_TABS = [
   { slug: "finance", labelKey: "tabs.finance" },
   { slug: "payments", labelKey: "tabs.payments" },
   { slug: "concierge", labelKey: "tabs.concierge" },
+  { slug: "comms", labelKey: "tabs.comms" },
   { slug: "owner", labelKey: "tabs.owner" },
 ] as const;
 

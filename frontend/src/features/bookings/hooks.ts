@@ -20,6 +20,7 @@ import {
   fetchBooking,
   fetchBookingActivity,
   fetchBookingConciergeItems,
+  fetchBookingEmails,
   fetchBookingNotes,
   fetchBookings,
   fetchDepositTrack,
@@ -29,6 +30,7 @@ import {
   modifyBookingGuests,
   requestPayment,
   resendBookingConfirmation,
+  resendBookingEmail,
   restoreBooking,
   updateBookingNote,
   updateConciergeItem,
@@ -68,6 +70,21 @@ export function useBookingActivity(id: BookingId | undefined) {
 
 export function useBookingNotes(id: BookingId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.bookings.notes, fetchBookingNotes));
+}
+
+export function useBookingEmails(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.emails, fetchBookingEmails));
+}
+
+export function useResendBookingEmail(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ emailId, idempotencyKey }: { emailId: number; idempotencyKey: string }) =>
+      resendBookingEmail(bookingId, emailId, idempotencyKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.emails(bookingId) });
+    },
+  });
 }
 
 export function useCreateBookingNote(bookingId: BookingId) {

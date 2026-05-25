@@ -9,6 +9,7 @@ from __future__ import annotations
 from django.urls import URLPattern, URLResolver, include, path
 from rest_framework.routers import SimpleRouter
 
+from comms.views import BookingEmailViewSet
 from reservations import views
 from reservations.views import (
     AvailabilityBulkBlockView,
@@ -209,6 +210,18 @@ _booking_actions: list[URLPattern | URLResolver] = [
         "bookings/<int:pk>/activity",
         BookingViewSet.as_view({"get": "activity"}),
         name="booking-activity",
+    ),
+    # Emails nested (delegated to comms.BookingEmailViewSet — booking has no
+    # FK to EmailLog; the viewset filters by `correlation__booking_id`).
+    path(
+        "bookings/<int:booking_pk>/emails",
+        BookingEmailViewSet.as_view({"get": "list"}),
+        name="booking-emails",
+    ),
+    path(
+        "bookings/<int:booking_pk>/emails/<int:pk>:resend",
+        BookingEmailViewSet.as_view({"post": "resend"}),
+        name="booking-email-resend",
     ),
     # Notes nested
     path(

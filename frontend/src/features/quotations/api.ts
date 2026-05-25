@@ -3,6 +3,7 @@ import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { QuotationId } from "@/lib/query/keys";
 import { propertyListResponseSchema } from "@/features/properties/schemas";
+import { bookingDetailSchema, type BookingDetail } from "@/features/bookings/schemas";
 import {
   guestSchema,
   quotationDetailSchema,
@@ -185,6 +186,20 @@ export async function duplicateQuotation(id: QuotationId): Promise<QuotationDeta
 export async function withdrawQuotation(id: QuotationId, reason: string): Promise<QuotationDetail> {
   const data = await apiSend<unknown>("POST", `/quotations/${id}:withdraw`, { reason });
   return quotationDetailSchema.parse(data);
+}
+
+export interface ConvertQuotationInput {
+  line: number;
+  payment_method?: "card" | "bank_transfer";
+  allow_changeover_override?: boolean;
+}
+
+export async function convertQuotation(
+  id: QuotationId,
+  body: ConvertQuotationInput,
+): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:convert`, body);
+  return bookingDetailSchema.parse(data);
 }
 
 export async function fetchCurrentTermsVersion(): Promise<TermsVersion> {

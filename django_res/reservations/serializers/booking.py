@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from rest_framework import serializers
 
+from properties.models import PropertyFinance
 from reservations.models import Booking, BookingEvent, BookingNote
 
 
@@ -69,6 +72,9 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
 class BookingDetailSerializer(BookingListSerializer):
     """Detail view including pricing snapshot and lifecycle metadata."""
 
+    owner = serializers.SerializerMethodField()
+    commission = serializers.SerializerMethodField()
+
     class Meta(BookingListSerializer.Meta):
         fields = [
             *BookingListSerializer.Meta.fields,
@@ -81,7 +87,66 @@ class BookingDetailSerializer(BookingListSerializer):
             "payment_method",
             "cancel_reason",
             "cancelled_at",
+            "owner",
+            "commission",
         ]
+
+    # ------------------------------------------------------------------
+    # Owner-tab payload — sourced from `property.finance.contact` and the
+    # `PropertyFinance.effective()` property→group resolver. Both fields
+    # tolerate the (very real) cases where `PropertyFinance` is missing or
+    # has no contact assigned.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _finance(obj: Booking) -> Any:
+        try:
+            return obj.property.finance
+        except PropertyFinance.DoesNotExist:
+            # OneToOne reverse access raises this when no finance row exists;
+            # we treat that as "finance not configured". Any *other* exception
+            # is a real bug and should propagate to a 500 rather than render
+            # as an empty Owner tab.
+            return None
+
+    def get_owner(self, obj: Booking) -> dict[str, Any] | None:
+        finance = self._finance(obj)
+        if finance is None or finance.contact is None:
+            return None
+        contact = finance.contact
+        # `BookingViewSet._detail_owner_qs` populates `primary_emails` /
+        # `primary_phones` via `Prefetch(..., to_attr=...)`. Fall back to a
+        # query when the serializer is instantiated without that queryset
+        # (mostly tests that hand-construct a Booking).
+        primary_emails = getattr(contact, "primary_emails", None)
+        if primary_emails is None:
+            primary_emails = list(contact.emails.filter(is_primary=True))
+        primary_phones = getattr(contact, "primary_phones", None)
+        if primary_phones is None:
+            primary_phones = list(contact.phones.filter(is_primary=True))
+        return {
+            "id": contact.pk,
+            "first_name": contact.first_name,
+            "last_name": contact.last_name,
+            "company": contact.company,
+            "primary_email": primary_emails[0].email if primary_emails else None,
+            "primary_phone": primary_phones[0].number if primary_phones else None,
+            "address_line_1": contact.address_line_1,
+            "address_line_2": contact.address_line_2,
+        }
+
+    def get_commission(self, obj: Booking) -> dict[str, Any] | None:
+        finance = self._finance(obj)
+        if finance is None:
+            return None
+        commission = finance.effective_commission()
+        amount = commission["amount"]
+        return {
+            "calculation_type": commission["calculation_type"] or None,
+            "amount": f"{amount:.2f}" if amount is not None else None,
+            # `effective()` returns "" for empty strings (its "no own value"
+            # heuristic falls through to the group default). Coerce None → "".
+            "note": commission["note"] or "",
+        }
 
 
 class BookingWriteSerializer(serializers.ModelSerializer[Booking]):

@@ -111,13 +111,52 @@ describe("QuotationDetailLayout", () => {
     expect(screen.getByRole("button", { name: /withdraw/i })).toBeDisabled();
   });
 
-  it("enables send/duplicate/withdraw with the reservations role; convert stays gated", async () => {
+  it("enables send/duplicate/withdraw with the reservations role; convert needs a sent quote with lines", async () => {
     asReservationsUser();
     setup();
     expect(await screen.findByRole("button", { name: /send to guest/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /^duplicate$/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /withdraw/i })).toBeEnabled();
+    // Status=draft, so Convert is gated on "send the quote first".
     expect(screen.getByRole("button", { name: /convert to booking/i })).toBeDisabled();
+  });
+
+  it("enables convert once status is sent and lines exist", async () => {
+    asReservationsUser();
+    server.resetHandlers();
+    server.use(
+      http.get("/api/v1/quotations/7", () =>
+        HttpResponse.json({ ...baseQuotation, status: "sent" }),
+      ),
+      http.get("/api/v1/quotations/7/lines", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              id: 33,
+              quotation: 7,
+              property: 12,
+              date_from: "2026-07-01",
+              date_to: "2026-07-08",
+              adults: 2,
+              children: 1,
+              total: "1234.50",
+              is_selected: true,
+              is_manual: false,
+              notes: "",
+            },
+          ],
+        }),
+      ),
+    );
+    setup();
+    // Wait for lines to load (button starts disabled with "no_lines" until
+    // the list resolves; once data lands the disable_reason clears).
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /convert to booking/i })).toBeEnabled(),
+    );
   });
 
   it("posts to :send on confirm", async () => {

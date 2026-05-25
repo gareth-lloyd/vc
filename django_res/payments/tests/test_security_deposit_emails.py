@@ -52,3 +52,31 @@ def test_release_emits_security_deposit_released_email(
     )
     assert len(logs) == 1
     assert logs[0].to == [booking.guest.email]
+
+
+@pytest.mark.django_db
+def test_release_with_no_guest_email_does_not_crash(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    booking.guest.email = ""
+    booking.guest.save(update_fields=["email", "updated_at"])
+
+    sd = SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.PRE_AUTH_HOLD.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+        status=SecurityDepositStatus.PRE_AUTHED.value,
+        hold_expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    sd.transition_to_released()
+
+    assert sd.status == SecurityDepositStatus.RELEASED.value
+    assert not EmailLog.objects.filter(
+        template_key="security_deposit.released",
+        correlation__deposit_id=sd.pk,
+    ).exists()

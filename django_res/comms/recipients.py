@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from django.db.models import Q
+from django.utils import timezone
+
 from accounts.enums import ContactRole
 
 if TYPE_CHECKING:
@@ -31,22 +34,30 @@ def _primary_contact_email(contact: Contact | None) -> str | None:
     primary = contact.emails.filter(is_primary=True).first()
     if primary is not None:
         return primary.email
-    any_email = contact.emails.first()
+    # Deterministic fallback when no row is flagged primary: oldest email by
+    # insertion. ContactEmail has no Meta.ordering, so `.first()` without an
+    # explicit `order_by` is heap-order — unstable across VACUUMs.
+    any_email = contact.emails.order_by("pk").first()
     return any_email.email if any_email is not None else None
 
 
 def primary_owner_email(property_: Property) -> str | None:
     """Email of the primary active OWNER contact on the property.
 
+    "Active" means the assignment is either open-ended (`end_date IS NULL`)
+    or scheduled to end in the future. An assignment with a past or
+    same-day `end_date` is treated as closed.
+
     `None` when no owner is currently assigned or none has an email on
     file. Callers must treat `None` as "skip the email, don't crash".
     """
+    today = timezone.localdate()
     assignment = (
         property_.contact_assignments.filter(
             role=ContactRole.OWNER,
             is_primary=True,
-            end_date__isnull=True,
         )
+        .filter(Q(end_date__isnull=True) | Q(end_date__gt=today))
         .select_related("contact")
         .first()
     )

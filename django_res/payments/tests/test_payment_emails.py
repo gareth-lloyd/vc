@@ -128,3 +128,52 @@ def test_replaying_payment_succeeded_signal_is_idempotent(
         ).count()
         == 1
     )
+
+
+@pytest.mark.django_db
+def test_payment_succeeded_with_no_guest_email_does_not_crash(
+    payment: Payment,
+    booking: Booking,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    booking.guest.email = ""
+    booking.guest.save(update_fields=["email", "updated_at"])
+
+    payment.transition_to(PaymentStatus.SUCCEEDED.value)
+
+    assert payment.status == PaymentStatus.SUCCEEDED.value
+    assert not EmailLog.objects.filter(
+        template_key="payment.receipt",
+        correlation__payment_id=payment.pk,
+    ).exists()
+
+
+@pytest.mark.django_db
+@override_settings(OPS_EMAIL_RECIPIENTS=["ops@villa.test"])
+def test_payment_failed_still_emails_ops_when_guest_has_no_email(
+    payment: Payment,
+    booking: Booking,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    booking.guest.email = ""
+    booking.guest.save(update_fields=["email", "updated_at"])
+
+    payment.transition_to(PaymentStatus.FAILED.value, reason="Card declined")
+
+    ops_logs = list(
+        EmailLog.objects.filter(
+            template_key="payment.failed",
+            correlation__payment_id=payment.pk,
+        )
+    )
+    assert len(ops_logs) == 1
+    assert ops_logs[0].to == ["ops@villa.test"]
+    # Pin the discriminator that separates ops vs guest rows for the same
+    # payment — downstream filters depend on it.
+    assert ops_logs[0].correlation["audience"] == "ops"
+    assert not EmailLog.objects.filter(
+        template_key="payment.failed_guest",
+        correlation__payment_id=payment.pk,
+    ).exists()

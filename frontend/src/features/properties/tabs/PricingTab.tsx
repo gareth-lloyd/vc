@@ -76,7 +76,7 @@ function SeasonsList({
               <span className="text-foreground font-medium">{plan.name}</span>
               <span className="text-muted-foreground text-xs">
                 {formatDate(plan.effective_from)} – {formatDate(plan.effective_to)}
-                {plan.currency ? ` · ${plan.currency}` : ""}
+                {plan.currency_code ? ` · ${plan.currency_code}` : ""}
               </span>
             </span>
             <ActiveBadge isActive={plan.is_active} />
@@ -194,7 +194,7 @@ function SeasonDetailPanel({ seasonId, onBack }: { seasonId: number; onBack: () 
             <FactRow label={t("pricing.season_detail.fields.name")} value={detail.data.name} />
             <FactRow
               label={t("pricing.season_detail.fields.currency")}
-              value={detail.data.currency ?? dash}
+              value={detail.data.currency_code ?? dash}
             />
             <FactRow
               label={t("pricing.season_detail.fields.price_basis")}
@@ -246,7 +246,7 @@ function ExtrasTable({ extras }: { extras: Extra[] }) {
           <tr key={extra.id} className="border-border border-t">
             <td className="py-2 pr-2">{extra.name}</td>
             <td className="text-muted-foreground py-2 pr-2">{extra.kind ?? dash}</td>
-            <td className="py-2 pr-2">{formatMoney(extra.amount, extra.currency ?? null)}</td>
+            <td className="py-2 pr-2">{formatMoney(extra.amount, extra.currency_code ?? null)}</td>
             <td className="py-2">
               {extra.is_mandatory
                 ? t("pricing.extras_table.mandatory_yes")

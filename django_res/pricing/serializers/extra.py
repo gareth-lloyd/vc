@@ -8,6 +8,8 @@ from pricing.models import Extra
 
 
 class ExtraSerializer(serializers.ModelSerializer[Extra]):
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+
     class Meta:
         model = Extra
         fields = [
@@ -19,6 +21,7 @@ class ExtraSerializer(serializers.ModelSerializer[Extra]):
             "calc",
             "amount",
             "currency",
+            "currency_code",
             "is_mandatory",
             "applies_from",
             "applies_to",

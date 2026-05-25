@@ -25,7 +25,9 @@ class PropertyExtraListCreateView(generics.ListCreateAPIView):
     filterset_fields = ["kind", "is_mandatory", "is_active"]
 
     def get_queryset(self) -> QuerySet[Extra]:
-        return Extra.objects.filter(property_id=self.kwargs["property_id"])
+        return Extra.objects.filter(property_id=self.kwargs["property_id"]).select_related(
+            "currency"
+        )
 
     def perform_create(self, serializer: Any) -> None:
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
@@ -33,7 +35,7 @@ class PropertyExtraListCreateView(generics.ListCreateAPIView):
 
 
 class ExtraDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Extra.objects.all()
+    queryset = Extra.objects.select_related("currency")
     serializer_class = ExtraSerializer
     permission_classes = [IsReservationsWriter]
 

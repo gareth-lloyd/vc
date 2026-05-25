@@ -40,6 +40,23 @@ def test_list_seasons_for_property(
     assert response.status_code == 200
     payload = response.json()
     assert payload["count"] >= 1
+    row = next(r for r in payload["results"] if r["id"] == plan.pk)
+    assert row["currency"] == plan.currency_id
+    assert row["currency_code"] == plan.currency.code
+
+
+@pytest.mark.django_db
+def test_season_detail_exposes_currency_code(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/seasons/{plan.pk}")
+    assert response.status_code == 200, response.content
+    payload = response.json()
+    assert payload["currency"] == plan.currency_id
+    assert payload["currency_code"] == plan.currency.code
 
 
 @pytest.mark.django_db

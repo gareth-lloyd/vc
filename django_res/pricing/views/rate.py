@@ -34,7 +34,9 @@ class PropertySeasonListCreateView(generics.ListCreateAPIView):
         return RatePlanSerializer
 
     def get_queryset(self) -> QuerySet[RatePlan]:
-        return RatePlan.objects.filter(property_id=self.kwargs["property_id"])
+        return RatePlan.objects.filter(property_id=self.kwargs["property_id"]).select_related(
+            "currency"
+        )
 
     def perform_create(self, serializer: Any) -> None:
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
@@ -44,7 +46,7 @@ class PropertySeasonListCreateView(generics.ListCreateAPIView):
 class SeasonDetailView(generics.RetrieveUpdateDestroyAPIView):
     """`GET / PATCH / DELETE /seasons/{id}` — flat alias."""
 
-    queryset = RatePlan.objects.all().prefetch_related("cards__rules")
+    queryset = RatePlan.objects.select_related("currency").prefetch_related("cards__rules")
     permission_classes = [IsReservationsWriter]
 
     def get_serializer_class(self) -> type[Any]:

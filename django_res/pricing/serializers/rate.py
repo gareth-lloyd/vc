@@ -66,6 +66,7 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
         queryset=Property.objects.all(),
         required=False,
     )
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
 
     class Meta:
         model = RatePlan
@@ -74,6 +75,7 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "property",
             "name",
             "currency",
+            "currency_code",
             "price_basis",
             "effective_from",
             "effective_to",

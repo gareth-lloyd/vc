@@ -39,6 +39,11 @@ function toQuery(filters: BookingFilters): QueryParams {
     site: filters.site || undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
+    check_in_after: filters.check_in_after || undefined,
+    check_in_before: filters.check_in_before || undefined,
+    check_out_after: filters.check_out_after || undefined,
+    check_out_before: filters.check_out_before || undefined,
+    exclude_terminal: filters.exclude_terminal ? "true" : undefined,
   };
 }
 
@@ -52,7 +57,7 @@ export async function fetchBooking(id: BookingId): Promise<BookingDetail> {
   return bookingDetailSchema.parse(data);
 }
 
-export async function fetchBookingActivity(id: BookingId): Promise<Paginated<BookingEvent>> {
+export async function fetchBookingActivity(id: BookingId): Promise<BookingEvent[]> {
   const data = await apiGet<unknown>(`/bookings/${id}/activity`);
   return bookingActivityResponseSchema.parse(data);
 }

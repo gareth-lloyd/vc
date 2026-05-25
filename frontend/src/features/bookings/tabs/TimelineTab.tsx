@@ -37,7 +37,7 @@ export function TimelineTab() {
     );
   }
 
-  const events = activity.data?.results ?? [];
+  const events = activity.data ?? [];
   if (events.length === 0) {
     return (
       <div className="p-6">

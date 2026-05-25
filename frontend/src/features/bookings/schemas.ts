@@ -118,7 +118,8 @@ export const bookingEventSchema = z.object({
 });
 export type BookingEvent = z.infer<typeof bookingEventSchema>;
 
-export const bookingActivityResponseSchema = paginated(bookingEventSchema);
+// The backend activity endpoint returns a plain array (not paginated).
+export const bookingActivityResponseSchema = z.array(bookingEventSchema);
 
 export const bookingNoteKindSchema = z.enum(["general", "internal", "concierge", "villa"]);
 export type BookingNoteKind = z.infer<typeof bookingNoteKindSchema>;
@@ -367,6 +368,11 @@ export interface BookingFilters {
   site?: string;
   ordering?: string;
   page?: number;
+  check_in_after?: string;
+  check_in_before?: string;
+  check_out_after?: string;
+  check_out_before?: string;
+  exclude_terminal?: boolean;
 }
 
 export const bookingStatusOptions = (): Array<{ value: BookingStatus; label: string }> =>

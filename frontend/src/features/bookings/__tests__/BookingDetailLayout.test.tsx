@@ -47,35 +47,30 @@ const bookingFixture = {
   cancelled_at: null,
 };
 
-const activityFixture = {
-  count: 2,
-  next: null,
-  previous: null,
-  results: [
-    {
-      id: 1,
-      booking: 51,
-      from_status: null,
-      to_status: "draft",
-      actor: null,
-      source: "system",
-      reason: "",
-      meta: {},
-      created_at: "2026-05-01T00:00:00Z",
-    },
-    {
-      id: 2,
-      booking: 51,
-      from_status: "awaiting_deposit",
-      to_status: "deposit_paid",
-      actor: 1,
-      source: "webhook",
-      reason: "Stripe charge succeeded",
-      meta: { payment_id: 42 },
-      created_at: "2026-05-02T00:00:00Z",
-    },
-  ],
-};
+const activityFixture = [
+  {
+    id: 1,
+    booking: 51,
+    from_status: null,
+    to_status: "draft",
+    actor: null,
+    source: "system",
+    reason: "",
+    meta: {},
+    created_at: "2026-05-01T00:00:00Z",
+  },
+  {
+    id: 2,
+    booking: 51,
+    from_status: "awaiting_deposit",
+    to_status: "deposit_paid",
+    actor: 1,
+    source: "webhook",
+    reason: "Stripe charge succeeded",
+    meta: { payment_id: 42 },
+    created_at: "2026-05-02T00:00:00Z",
+  },
+];
 
 function setup(initial: string) {
   return renderWithProviders(
@@ -165,9 +160,7 @@ describe("TimelineTab error/empty", () => {
   it("renders an empty state when no activity", async () => {
     server.use(
       http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)),
-      http.get("/api/v1/bookings/51/activity", () =>
-        HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
-      ),
+      http.get("/api/v1/bookings/51/activity", () => HttpResponse.json([])),
     );
     setup("/bookings/51/timeline");
     expect(await screen.findByText(/no activity yet/i)).toBeInTheDocument();

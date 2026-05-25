@@ -64,15 +64,15 @@ function reasonClasses(reason: string): string {
     case "booked":
       return "bg-primary text-primary-foreground font-medium";
     case "quotation":
-      return "bg-warning/15 text-warning";
-    case "booking_deposit":
       return "bg-warning/25 text-warning";
+    case "booking_deposit":
+      return "bg-warning/45 text-warning";
     case "owner_block":
-      return "bg-hold/20 text-hold";
+      return "bg-hold/35 text-hold";
     case "maintenance":
-      return "bg-status-neutral/20 text-status-neutral";
+      return "bg-status-neutral/35 text-status-neutral";
     case "manual":
-      return "bg-info/20 text-info";
+      return "bg-info/30 text-info";
     default:
       return "text-foreground";
   }

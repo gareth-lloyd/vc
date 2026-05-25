@@ -21,7 +21,12 @@ interface ServiceDotProps {
   status?: ServiceStatus;
   size?: "sm" | "md";
   className?: string;
-  title?: string;
+  /**
+   * Localised accessible label, e.g. `t("services.chef") + " — " +
+   * t("serviceStatus.working_on_it")`. Required so screen readers never
+   * hear untranslated enum keys.
+   */
+  label: string;
 }
 
 const SIZE_CLASSES = {
@@ -34,15 +39,15 @@ export function ServiceDot({
   status = "not_started",
   size = "md",
   className,
-  title,
+  label,
 }: ServiceDotProps) {
   const ringColor = serviceColorVar[service];
   const fill = fillFor(status, ringColor);
   return (
     <span
       role="img"
-      aria-label={title ?? `${service} ${status}`}
-      title={title}
+      aria-label={label}
+      title={label}
       className={cn("inline-block rounded-full", SIZE_CLASSES[size], className)}
       style={{ borderColor: ringColor, backgroundColor: fill }}
     />

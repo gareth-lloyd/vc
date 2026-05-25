@@ -151,7 +151,7 @@
 
   /* -------- Status tones (semantic by meaning, not by hue) */
   --status-success: oklch(0.55 0.16 145); /* paid / confirmed / done */
-  --status-warning: oklch(0.72 0.15 75); /* awaiting / pending */
+  --status-warning: oklch(0.55 0.16 75); /* awaiting / pending */
   --status-danger: oklch(0.55 0.22 25); /* overdue / dead / cancelled */
   --status-info: oklch(0.55 0.13 230); /* sent / viewed / in-progress */
   --status-neutral: var(--neutral-500); /* not-required / archived */
@@ -246,12 +246,12 @@
   --ring: var(--brand-400);
 
   /* Lift status hues for dark-background legibility */
-  --status-success: oklch(0.7 0.16 145);
-  --status-warning: oklch(0.8 0.15 75);
-  --status-danger: oklch(0.7 0.22 25);
-  --status-info: oklch(0.7 0.13 230);
+  --status-success: oklch(0.72 0.16 145);
+  --status-warning: oklch(0.72 0.16 75);
+  --status-danger: oklch(0.72 0.2 25);
+  --status-info: oklch(0.72 0.13 230);
   --status-neutral: var(--neutral-400);
-  --status-hold: oklch(0.7 0.16 290);
+  --status-hold: oklch(0.72 0.16 290);
 
   --tier-quintessential: var(--accent-300);
   --tier-signature: var(--brand-300);
@@ -273,13 +273,12 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    /* "ss01" activates Fraunces's "Soft" preset on elements that opt into
+       font-serif; Inter ignores ss01. Listed alongside required ligatures
+       so descendants don't lose them. */
     font-feature-settings:
       "rlig" 1,
-      "calt" 1;
-  }
-  h1,
-  h2 {
-    font-family: var(--font-serif);
-    font-feature-settings: "ss01" 1;
+      "calt" 1,
+      "ss01" 1;
   }
 }

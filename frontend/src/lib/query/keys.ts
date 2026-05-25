@@ -66,6 +66,14 @@ export const queryKeys = {
     activity: (id: EnquiryId) => ["enquiries", "detail", id, "activity"] as const,
     notes: (id: EnquiryId) => ["enquiries", "detail", id, "notes"] as const,
   },
+  dashboard: {
+    all: () => ["dashboard"] as const,
+    arrivalsToday: (date: string) => ["dashboard", "arrivals-today", date] as const,
+    departuresTodayCount: (date: string) => ["dashboard", "departures-today-count", date] as const,
+    newEnquiriesCount: () => ["dashboard", "new-enquiries-count"] as const,
+    awaitingBalanceCount: () => ["dashboard", "awaiting-balance-count"] as const,
+    recentEnquiries: () => ["dashboard", "recent-enquiries"] as const,
+  },
   users: {
     all: () => ["users"] as const,
     lists: () => ["users", "list"] as const,

@@ -1,8 +1,32 @@
 {
-  "placeholder": {
-    "title": "Πίνακας ελέγχου",
-    "subtitle": "Η επισκόπηση χειριστή θα εμφανιστεί εδώ στην επόμενη φάση.",
-    "empty_title": "Ο πίνακας ελέγχου έρχεται σύντομα",
-    "empty_description": "Δείκτες KPI, αφίξεις/αναχωρήσεις, πρόσφατα αιτήματα και ληξιπρόθεσμα υπόλοιπα θα προστεθούν στη Φάση 2."
+  "title": "Πίνακας ελέγχου",
+  "subtitle_today": "Σήμερα — {{date}}",
+  "kpis": {
+    "check_ins_today": "Αφίξεις σήμερα",
+    "check_outs_today": "Αναχωρήσεις σήμερα",
+    "new_enquiries": "Νέα αιτήματα",
+    "new_enquiries_sub": "Κατάσταση: νέο",
+    "awaiting_balance": "Αναμονή εξόφλησης",
+    "awaiting_balance_sub": "Κρατήσεις σε αναμονή εξόφλησης"
+  },
+  "sections": {
+    "arrivals_today": "Αφίξεις σήμερα",
+    "recent_enquiries": "Πρόσφατα αιτήματα",
+    "view_all": "Όλα →"
+  },
+  "rows": {
+    "guest_party_one": "{{count}} ενήλικος",
+    "guest_party_other": "{{count}} ενήλικες",
+    "with_children_one": "{{count}} παιδί",
+    "with_children_other": "{{count}} παιδιά",
+    "dates_range": "{{from}} → {{to}}",
+    "dates_unknown": "Άγνωστες ημερομηνίες"
+  },
+  "empty": {
+    "arrivals_today": "Καμία άφιξη σήμερα.",
+    "recent_enquiries": "Δεν υπάρχουν αιτήματα ακόμη."
+  },
+  "errors": {
+    "card": "Αδυναμία φόρτωσης."
   }
 }

@@ -1,8 +1,32 @@
 {
-  "placeholder": {
-    "title": "Dashboard",
-    "subtitle": "An operator overview will live here in the next phase.",
-    "empty_title": "Dashboard coming soon",
-    "empty_description": "KPIs, arrivals/departures, recent enquiries, and overdue balances will land in Phase 2."
+  "title": "Dashboard",
+  "subtitle_today": "Today — {{date}}",
+  "kpis": {
+    "check_ins_today": "Check-ins today",
+    "check_outs_today": "Check-outs today",
+    "new_enquiries": "New enquiries",
+    "new_enquiries_sub": "Status: new",
+    "awaiting_balance": "Awaiting balance",
+    "awaiting_balance_sub": "Bookings awaiting balance payment"
+  },
+  "sections": {
+    "arrivals_today": "Arrivals today",
+    "recent_enquiries": "Recent enquiries",
+    "view_all": "View all →"
+  },
+  "rows": {
+    "guest_party_one": "{{count}} adult",
+    "guest_party_other": "{{count}} adults",
+    "with_children_one": "{{count}} child",
+    "with_children_other": "{{count}} children",
+    "dates_range": "{{from}} → {{to}}",
+    "dates_unknown": "Dates TBC"
+  },
+  "empty": {
+    "arrivals_today": "Nothing arriving today. Enjoy the quiet.",
+    "recent_enquiries": "No enquiries yet."
+  },
+  "errors": {
+    "card": "Couldn't load this card."
   }
 }

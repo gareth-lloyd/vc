@@ -9,7 +9,7 @@ import { SystemAdminPage } from "@/features/admin/system/SystemAdminPage";
 import { BootGate } from "./boot";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
-import { DashboardPlaceholderPage } from "@/features/dashboard/DashboardPlaceholderPage";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { PropertiesListPage } from "@/features/properties/PropertiesListPage";
 import { PROPERTY_TABS, PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
 import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
@@ -91,7 +91,7 @@ export const router = createBrowserRouter([
           {
             element: <AppShell />,
             children: [
-              { path: "/dashboard", element: <DashboardPlaceholderPage /> },
+              { path: "/dashboard", element: <DashboardPage /> },
               { path: "/properties", element: <PropertiesListPage /> },
               {
                 path: "/properties/:id",

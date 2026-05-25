@@ -44,3 +44,6 @@ logs/
 # ImageField uploads land under the app dir relative to cwd).
 django_res/properties/[0-9][0-9][0-9][0-9]/
 django_res/collections/[0-9][0-9][0-9][0-9]/
+
+# Claude Code harness scratch (agent worktrees)
+.claude/worktrees/

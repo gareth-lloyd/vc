@@ -25,7 +25,9 @@
     "not_found_body": "That page doesn't exist.",
     "couldnt_load": "We couldn't load this content. Try again.",
     "chunk_load_title": "Update available",
-    "chunk_load_body": "A newer version is available. Reload to continue."
+    "chunk_load_body": "A newer version is available. Reload to continue.",
+    "render_error_title": "Something went wrong on this page",
+    "render_error_body": "An unexpected error stopped this page from loading. You can return to the dashboard and try again."
   },
   "pagination": {
     "page_of": "Page {{current}} of {{total}}",

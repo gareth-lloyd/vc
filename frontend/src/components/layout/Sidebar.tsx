@@ -24,6 +24,10 @@ interface NavItem {
   prefetch?: () => Promise<unknown>;
 }
 
+function triggerPrefetch(fn?: () => Promise<unknown>) {
+  fn?.().catch(() => {});
+}
+
 function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
   return (
     <div className="px-3 py-2">
@@ -35,8 +39,8 @@ function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
           <li key={item.to}>
             <NavLink
               to={item.to}
-              onMouseEnter={item.prefetch}
-              onFocus={item.prefetch}
+              onMouseEnter={() => triggerPrefetch(item.prefetch)}
+              onFocus={() => triggerPrefetch(item.prefetch)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm",

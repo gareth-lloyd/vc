@@ -64,7 +64,7 @@ describe("PricingTab", () => {
   it("renders seasons, extras and discounts", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () =>
+      http.get("/api/v1/properties/5/seasons", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -80,7 +80,7 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/extras", () =>
+      http.get("/api/v1/properties/5/extras", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -96,7 +96,7 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/discounts", () =>
+      http.get("/api/v1/properties/5/discounts", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -127,7 +127,7 @@ describe("PricingTab", () => {
   it("drills into a season to show rate cards and rules, then navigates back", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () =>
+      http.get("/api/v1/properties/5/seasons", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -143,8 +143,8 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/seasons/11", () =>
         HttpResponse.json({
           id: 11,
@@ -200,9 +200,9 @@ describe("PricingTab", () => {
   it("renders empty states when there are no seasons, extras, or discounts", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
 
     setup();
@@ -215,9 +215,9 @@ describe("PricingTab", () => {
   it("disables Add season when the user lacks the RESERVATIONS role", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
     setup();
     const btn = await screen.findByRole("button", { name: /add season/i });
@@ -228,7 +228,7 @@ describe("PricingTab", () => {
     setReservationsUser();
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () =>
+      http.get("/api/v1/properties/5/seasons", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -244,8 +244,8 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
     let deleteCalled = false;
     server.use(
@@ -269,7 +269,7 @@ describe("PricingTab", () => {
     setReservationsUser();
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () =>
+      http.get("/api/v1/properties/5/seasons", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -285,8 +285,8 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
     let duplicateCalled = false;
     server.use(
@@ -321,10 +321,8 @@ describe("PricingTab", () => {
   it("renders an error state for a failing section while other sections still render", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/seasons", () =>
-        HttpResponse.json({}, { status: 500 }),
-      ),
-      http.get("/api/v1/properties/casa-norte/extras", () =>
+      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json({}, { status: 500 })),
+      http.get("/api/v1/properties/5/extras", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -340,7 +338,7 @@ describe("PricingTab", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/casa-norte/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
 
     setup();

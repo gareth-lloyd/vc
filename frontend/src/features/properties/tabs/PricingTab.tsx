@@ -296,10 +296,9 @@ function DiscountsTable({ discounts }: { discounts: Discount[] }) {
 export function PricingTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<PricingContext>();
-  const propertyKey = property.slug || property.id;
-  const seasons = usePropertySeasons(propertyKey);
-  const extras = usePropertyExtras(propertyKey);
-  const discounts = usePropertyDiscounts(propertyKey);
+  const seasons = usePropertySeasons(property.id);
+  const extras = usePropertyExtras(property.id);
+  const discounts = usePropertyDiscounts(property.id);
   const canWrite = useHasReservationsRole();
   const deleteSeasonMutation = useDeleteSeason(property.id);
   const duplicateSeasonMutation = useDuplicateSeason(property.id);

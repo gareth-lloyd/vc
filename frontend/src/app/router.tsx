@@ -1,51 +1,15 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { RequireAdmin, RequireAuth } from "./guards";
-import { UsersAdminPage } from "@/features/admin/users/UsersAdminPage";
-import { CountriesAdminPage } from "@/features/admin/countries/CountriesAdminPage";
-import { CurrenciesAdminPage } from "@/features/admin/currencies/CurrenciesAdminPage";
-import { TagsAdminPage } from "@/features/admin/tags/TagsAdminPage";
-import { SystemAdminPage } from "@/features/admin/system/SystemAdminPage";
 import { BootGate } from "./boot";
+import { ChunkLoadError } from "./ChunkLoadError";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { PropertiesListPage } from "@/features/properties/PropertiesListPage";
-import { PROPERTY_TABS, PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
-import { DetailsTab } from "@/features/properties/tabs/DetailsTab";
-import { RoomsTab } from "@/features/properties/tabs/RoomsTab";
-import { NearbyTab } from "@/features/properties/tabs/NearbyTab";
-import { FeaturesTab } from "@/features/properties/tabs/FeaturesTab";
-import { PricingTab } from "@/features/properties/tabs/PricingTab";
-import { PeopleTab } from "@/features/properties/tabs/PeopleTab";
-import { AvailabilityTab } from "@/features/properties/tabs/AvailabilityTab";
-import { MediaTab as PropertyMediaTab } from "@/features/properties/tabs/MediaTab";
-import { SettingsTab as PropertySettingsTab } from "@/features/properties/tabs/SettingsTab";
-import { BookingsListPage } from "@/features/bookings/BookingsListPage";
-import { BOOKING_TABS, BookingDetailLayout } from "@/features/bookings/BookingDetailLayout";
-import { OverviewTab as BookingOverviewTab } from "@/features/bookings/tabs/OverviewTab";
-import { TimelineTab as BookingTimelineTab } from "@/features/bookings/tabs/TimelineTab";
-import { NotesTab as BookingNotesTab } from "@/features/bookings/tabs/NotesTab";
-import { PaymentsTab as BookingPaymentsTab } from "@/features/bookings/tabs/PaymentsTab";
-import { ConciergeTab as BookingConciergeTab } from "@/features/bookings/tabs/ConciergeTab";
-import { FinanceTab as BookingFinanceTab } from "@/features/bookings/tabs/FinanceTab";
-import { OwnerTab as BookingOwnerTab } from "@/features/bookings/tabs/OwnerTab";
-import { CommsTab as BookingCommsTab } from "@/features/bookings/tabs/CommsTab";
-import { ContactsListPage } from "@/features/contacts/ContactsListPage";
-import { ContactDetailLayout } from "@/features/contacts/ContactDetailLayout";
-import { DetailsTab as ContactDetailsTab } from "@/features/contacts/tabs/DetailsTab";
-import { PropertiesTab as ContactPropertiesTab } from "@/features/contacts/tabs/PropertiesTab";
-import { AuditTab as ContactAuditTab } from "@/features/contacts/tabs/AuditTab";
-import { EnquiriesListPage } from "@/features/enquiries/EnquiriesListPage";
-import { EnquiryDetailLayout } from "@/features/enquiries/EnquiryDetailLayout";
-import { DetailsTab as EnquiryDetailsTab } from "@/features/enquiries/tabs/DetailsTab";
-import { ActivityTab as EnquiryActivityTab } from "@/features/enquiries/tabs/ActivityTab";
-import { NotesTab as EnquiryNotesTab } from "@/features/enquiries/tabs/NotesTab";
-import { QuotationsListPage } from "@/features/quotations/QuotationsListPage";
-import { QuotationDetailLayout } from "@/features/quotations/QuotationDetailLayout";
-import { QuotationBuilderPage } from "@/features/quotations/QuotationBuilderPage";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { NotFoundPage } from "./NotFoundPage";
+import { PROPERTY_TABS } from "@/features/properties/tabConfig";
+import { BOOKING_TABS } from "@/features/bookings/tabConfig";
 
 const REAL_PROPERTY_TABS = new Set<string>([
   "details",
@@ -94,76 +58,299 @@ export const router = createBrowserRouter([
         children: [
           {
             element: <AppShell />,
+            errorElement: <ChunkLoadError />,
             children: [
               { path: "/dashboard", element: <DashboardPage /> },
-              { path: "/properties", element: <PropertiesListPage /> },
+              {
+                path: "/properties",
+                lazy: async () => {
+                  const m = await import("@/features/properties/PropertiesListPage");
+                  return { Component: m.PropertiesListPage };
+                },
+              },
               {
                 path: "/properties/:id",
-                element: <PropertyDetailLayout />,
+                lazy: async () => {
+                  const m = await import("@/features/properties/PropertyDetailLayout");
+                  return { Component: m.PropertyDetailLayout };
+                },
                 children: [
                   { index: true, element: <Navigate to="details" replace /> },
-                  { path: "details", element: <DetailsTab /> },
-                  { path: "rooms", element: <RoomsTab /> },
-                  { path: "nearby", element: <NearbyTab /> },
-                  { path: "pricing", element: <PricingTab /> },
-                  { path: "people", element: <PeopleTab /> },
-                  { path: "availability", element: <AvailabilityTab /> },
-                  { path: "media", element: <PropertyMediaTab /> },
-                  { path: "features", element: <FeaturesTab /> },
-                  { path: "settings", element: <PropertySettingsTab /> },
+                  {
+                    path: "details",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/DetailsTab");
+                      return { Component: m.DetailsTab };
+                    },
+                  },
+                  {
+                    path: "rooms",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/RoomsTab");
+                      return { Component: m.RoomsTab };
+                    },
+                  },
+                  {
+                    path: "nearby",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/NearbyTab");
+                      return { Component: m.NearbyTab };
+                    },
+                  },
+                  {
+                    path: "pricing",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/PricingTab");
+                      return { Component: m.PricingTab };
+                    },
+                  },
+                  {
+                    path: "people",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/PeopleTab");
+                      return { Component: m.PeopleTab };
+                    },
+                  },
+                  {
+                    path: "availability",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/AvailabilityTab");
+                      return { Component: m.AvailabilityTab };
+                    },
+                  },
+                  {
+                    path: "media",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/MediaTab");
+                      return { Component: m.MediaTab };
+                    },
+                  },
+                  {
+                    path: "features",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/FeaturesTab");
+                      return { Component: m.FeaturesTab };
+                    },
+                  },
+                  {
+                    path: "settings",
+                    lazy: async () => {
+                      const m = await import("@/features/properties/tabs/SettingsTab");
+                      return { Component: m.SettingsTab };
+                    },
+                  },
                   ...propertyPlaceholderRoutes,
                 ],
               },
-              { path: "/contacts", element: <ContactsListPage /> },
+              {
+                path: "/contacts",
+                lazy: async () => {
+                  const m = await import("@/features/contacts/ContactsListPage");
+                  return { Component: m.ContactsListPage };
+                },
+              },
               {
                 path: "/contacts/:id",
-                element: <ContactDetailLayout />,
+                lazy: async () => {
+                  const m = await import("@/features/contacts/ContactDetailLayout");
+                  return { Component: m.ContactDetailLayout };
+                },
                 children: [
                   { index: true, element: <Navigate to="details" replace /> },
-                  { path: "details", element: <ContactDetailsTab /> },
-                  { path: "properties", element: <ContactPropertiesTab /> },
+                  {
+                    path: "details",
+                    lazy: async () => {
+                      const m = await import("@/features/contacts/tabs/DetailsTab");
+                      return { Component: m.DetailsTab };
+                    },
+                  },
+                  {
+                    path: "properties",
+                    lazy: async () => {
+                      const m = await import("@/features/contacts/tabs/PropertiesTab");
+                      return { Component: m.PropertiesTab };
+                    },
+                  },
                   { path: "notes", element: <ComingSoonTab tabName="Notes" /> },
-                  { path: "audit", element: <ContactAuditTab /> },
+                  {
+                    path: "audit",
+                    lazy: async () => {
+                      const m = await import("@/features/contacts/tabs/AuditTab");
+                      return { Component: m.AuditTab };
+                    },
+                  },
                 ],
               },
-              { path: "/enquiries", element: <EnquiriesListPage /> },
+              {
+                path: "/enquiries",
+                lazy: async () => {
+                  const m = await import("@/features/enquiries/EnquiriesListPage");
+                  return { Component: m.EnquiriesListPage };
+                },
+              },
               {
                 path: "/enquiries/:id",
-                element: <EnquiryDetailLayout />,
+                lazy: async () => {
+                  const m = await import("@/features/enquiries/EnquiryDetailLayout");
+                  return { Component: m.EnquiryDetailLayout };
+                },
                 children: [
                   { index: true, element: <Navigate to="details" replace /> },
-                  { path: "details", element: <EnquiryDetailsTab /> },
-                  { path: "activity", element: <EnquiryActivityTab /> },
-                  { path: "notes", element: <EnquiryNotesTab /> },
+                  {
+                    path: "details",
+                    lazy: async () => {
+                      const m = await import("@/features/enquiries/tabs/DetailsTab");
+                      return { Component: m.DetailsTab };
+                    },
+                  },
+                  {
+                    path: "activity",
+                    lazy: async () => {
+                      const m = await import("@/features/enquiries/tabs/ActivityTab");
+                      return { Component: m.ActivityTab };
+                    },
+                  },
+                  {
+                    path: "notes",
+                    lazy: async () => {
+                      const m = await import("@/features/enquiries/tabs/NotesTab");
+                      return { Component: m.NotesTab };
+                    },
+                  },
                 ],
               },
-              { path: "/quotations", element: <QuotationsListPage /> },
-              { path: "/quotations/new", element: <QuotationBuilderPage /> },
-              { path: "/quotations/:id", element: <QuotationDetailLayout /> },
-              { path: "/bookings", element: <BookingsListPage /> },
+              {
+                path: "/quotations",
+                lazy: async () => {
+                  const m = await import("@/features/quotations/QuotationsListPage");
+                  return { Component: m.QuotationsListPage };
+                },
+              },
+              {
+                path: "/quotations/new",
+                lazy: async () => {
+                  const m = await import("@/features/quotations/QuotationBuilderPage");
+                  return { Component: m.QuotationBuilderPage };
+                },
+              },
+              {
+                path: "/quotations/:id",
+                lazy: async () => {
+                  const m = await import("@/features/quotations/QuotationDetailLayout");
+                  return { Component: m.QuotationDetailLayout };
+                },
+              },
+              {
+                path: "/bookings",
+                lazy: async () => {
+                  const m = await import("@/features/bookings/BookingsListPage");
+                  return { Component: m.BookingsListPage };
+                },
+              },
               {
                 element: <RequireAdmin />,
                 children: [
-                  { path: "/admin/users", element: <UsersAdminPage /> },
-                  { path: "/admin/countries", element: <CountriesAdminPage /> },
-                  { path: "/admin/currencies", element: <CurrenciesAdminPage /> },
-                  { path: "/admin/tags", element: <TagsAdminPage /> },
-                  { path: "/admin/system", element: <SystemAdminPage /> },
+                  {
+                    path: "/admin/users",
+                    lazy: async () => {
+                      const m = await import("@/features/admin/users/UsersAdminPage");
+                      return { Component: m.UsersAdminPage };
+                    },
+                  },
+                  {
+                    path: "/admin/countries",
+                    lazy: async () => {
+                      const m = await import("@/features/admin/countries/CountriesAdminPage");
+                      return { Component: m.CountriesAdminPage };
+                    },
+                  },
+                  {
+                    path: "/admin/currencies",
+                    lazy: async () => {
+                      const m = await import("@/features/admin/currencies/CurrenciesAdminPage");
+                      return { Component: m.CurrenciesAdminPage };
+                    },
+                  },
+                  {
+                    path: "/admin/tags",
+                    lazy: async () => {
+                      const m = await import("@/features/admin/tags/TagsAdminPage");
+                      return { Component: m.TagsAdminPage };
+                    },
+                  },
+                  {
+                    path: "/admin/system",
+                    lazy: async () => {
+                      const m = await import("@/features/admin/system/SystemAdminPage");
+                      return { Component: m.SystemAdminPage };
+                    },
+                  },
                 ],
               },
               {
                 path: "/bookings/:id",
-                element: <BookingDetailLayout />,
+                lazy: async () => {
+                  const m = await import("@/features/bookings/BookingDetailLayout");
+                  return { Component: m.BookingDetailLayout };
+                },
                 children: [
                   { index: true, element: <Navigate to="overview" replace /> },
-                  { path: "overview", element: <BookingOverviewTab /> },
-                  { path: "timeline", element: <BookingTimelineTab /> },
-                  { path: "notes", element: <BookingNotesTab /> },
-                  { path: "payments", element: <BookingPaymentsTab /> },
-                  { path: "concierge", element: <BookingConciergeTab /> },
-                  { path: "finance", element: <BookingFinanceTab /> },
-                  { path: "owner", element: <BookingOwnerTab /> },
-                  { path: "comms", element: <BookingCommsTab /> },
+                  {
+                    path: "overview",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/OverviewTab");
+                      return { Component: m.OverviewTab };
+                    },
+                  },
+                  {
+                    path: "timeline",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/TimelineTab");
+                      return { Component: m.TimelineTab };
+                    },
+                  },
+                  {
+                    path: "notes",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/NotesTab");
+                      return { Component: m.NotesTab };
+                    },
+                  },
+                  {
+                    path: "payments",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/PaymentsTab");
+                      return { Component: m.PaymentsTab };
+                    },
+                  },
+                  {
+                    path: "concierge",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/ConciergeTab");
+                      return { Component: m.ConciergeTab };
+                    },
+                  },
+                  {
+                    path: "finance",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/FinanceTab");
+                      return { Component: m.FinanceTab };
+                    },
+                  },
+                  {
+                    path: "owner",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/OwnerTab");
+                      return { Component: m.OwnerTab };
+                    },
+                  },
+                  {
+                    path: "comms",
+                    lazy: async () => {
+                      const m = await import("@/features/bookings/tabs/CommsTab");
+                      return { Component: m.CommsTab };
+                    },
+                  },
                   ...bookingPlaceholderRoutes,
                 ],
               },

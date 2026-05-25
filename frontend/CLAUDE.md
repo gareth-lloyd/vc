@@ -1,7 +1,7 @@
 # Frontend — React SPA
 
 Vite + React + TypeScript SPA. shadcn/ui component library, React Query
-for server state, React Hook Form + Zod for forms, React Router v6 for
+for server state, React Hook Form + Zod for forms, React Router v7 for
 routing.
 
 ## Local setup

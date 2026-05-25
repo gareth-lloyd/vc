@@ -21,6 +21,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
+  prefetch?: () => Promise<unknown>;
 }
 
 function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
@@ -34,6 +35,8 @@ function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
           <li key={item.to}>
             <NavLink
               to={item.to}
+              onMouseEnter={item.prefetch}
+              onFocus={item.prefetch}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm",
@@ -59,20 +62,70 @@ export function Sidebar() {
 
   const operations: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: Home },
-    { to: "/enquiries", label: t("nav.enquiries"), icon: MessageSquare },
-    { to: "/quotations", label: t("nav.quotes"), icon: FileText },
-    { to: "/bookings", label: t("nav.bookings"), icon: CalendarCheck },
+    {
+      to: "/enquiries",
+      label: t("nav.enquiries"),
+      icon: MessageSquare,
+      prefetch: () => import("@/features/enquiries/EnquiriesListPage"),
+    },
+    {
+      to: "/quotations",
+      label: t("nav.quotes"),
+      icon: FileText,
+      prefetch: () => import("@/features/quotations/QuotationsListPage"),
+    },
+    {
+      to: "/bookings",
+      label: t("nav.bookings"),
+      icon: CalendarCheck,
+      prefetch: () => import("@/features/bookings/BookingsListPage"),
+    },
   ];
   const library: NavItem[] = [
-    { to: "/properties", label: t("nav.properties"), icon: Building2 },
-    { to: "/contacts", label: t("nav.contacts"), icon: Users },
+    {
+      to: "/properties",
+      label: t("nav.properties"),
+      icon: Building2,
+      prefetch: () => import("@/features/properties/PropertiesListPage"),
+    },
+    {
+      to: "/contacts",
+      label: t("nav.contacts"),
+      icon: Users,
+      prefetch: () => import("@/features/contacts/ContactsListPage"),
+    },
   ];
   const admin: NavItem[] = [
-    { to: "/admin/users", label: t("nav.users"), icon: UsersRound },
-    { to: "/admin/countries", label: t("nav.countries"), icon: Globe },
-    { to: "/admin/currencies", label: t("nav.currencies"), icon: Banknote },
-    { to: "/admin/tags", label: t("nav.tags"), icon: Tags },
-    { to: "/admin/system", label: t("nav.system"), icon: Settings },
+    {
+      to: "/admin/users",
+      label: t("nav.users"),
+      icon: UsersRound,
+      prefetch: () => import("@/features/admin/users/UsersAdminPage"),
+    },
+    {
+      to: "/admin/countries",
+      label: t("nav.countries"),
+      icon: Globe,
+      prefetch: () => import("@/features/admin/countries/CountriesAdminPage"),
+    },
+    {
+      to: "/admin/currencies",
+      label: t("nav.currencies"),
+      icon: Banknote,
+      prefetch: () => import("@/features/admin/currencies/CurrenciesAdminPage"),
+    },
+    {
+      to: "/admin/tags",
+      label: t("nav.tags"),
+      icon: Tags,
+      prefetch: () => import("@/features/admin/tags/TagsAdminPage"),
+    },
+    {
+      to: "/admin/system",
+      label: t("nav.system"),
+      icon: Settings,
+      prefetch: () => import("@/features/admin/system/SystemAdminPage"),
+    },
   ];
 
   return (

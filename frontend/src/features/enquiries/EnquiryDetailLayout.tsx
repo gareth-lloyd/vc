@@ -107,7 +107,7 @@ function RailSummary({ enquiry, onOpenDialog }: RailProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-foreground text-lg font-semibold">{enquiry.reference}</h2>
+        <h2 className="text-foreground font-serif text-lg font-semibold">{enquiry.reference}</h2>
         <p className="text-muted-foreground text-sm">{guestName(enquiry)}</p>
       </div>
       <StatusBadge status={enquiryStatusLabel(enquiry.status)} />

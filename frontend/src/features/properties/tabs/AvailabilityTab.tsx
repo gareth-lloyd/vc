@@ -64,15 +64,15 @@ function reasonClasses(reason: string): string {
     case "booked":
       return "bg-primary text-primary-foreground font-medium";
     case "quotation":
-      return "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200";
+      return "bg-warning/15 text-warning";
     case "booking_deposit":
-      return "bg-orange-200 text-orange-900 dark:bg-orange-900/40 dark:text-orange-100";
+      return "bg-warning/25 text-warning";
     case "owner_block":
-      return "bg-violet-200 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100";
+      return "bg-hold/20 text-hold";
     case "maintenance":
-      return "bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100";
+      return "bg-status-neutral/20 text-status-neutral";
     case "manual":
-      return "bg-sky-200 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100";
+      return "bg-info/20 text-info";
     default:
       return "text-foreground";
   }
@@ -80,7 +80,7 @@ function reasonClasses(reason: string): string {
 
 function legendSwatchClass(reason: string): string {
   if (reason === "available") return "border-border border";
-  if (reason === "changeover") return "from-primary bg-gradient-to-b to-sky-200";
+  if (reason === "changeover") return "from-primary bg-gradient-to-b to-info/40";
   return reasonClasses(reason);
 }
 

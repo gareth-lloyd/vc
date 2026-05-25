@@ -108,7 +108,7 @@ export function PropertyDetailLayout() {
               aria-label={t("detail.image_placeholder_aria")}
             />
             <div>
-              <h2 className="text-foreground text-lg font-semibold">{property.name}</h2>
+              <h2 className="text-foreground font-serif text-lg font-semibold">{property.name}</h2>
               <p className="text-muted-foreground text-sm">
                 {property.display_name || t("detail.subtitle_dash")}
               </p>

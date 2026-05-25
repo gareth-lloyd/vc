@@ -5,7 +5,7 @@ import { STAGE_TOTAL_PIPS, stageForStatus, type StageTone } from "./stageMap";
 const TONE_FILLED: Record<StageTone, string> = {
   neutral: "bg-muted-foreground",
   active: "bg-foreground",
-  complete: "bg-emerald-600",
+  complete: "bg-success",
   failed: "bg-destructive",
 };
 

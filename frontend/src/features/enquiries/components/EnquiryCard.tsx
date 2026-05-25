@@ -45,7 +45,7 @@ export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="border-border bg-card hover:bg-accent/40 w-full space-y-2 rounded-md border p-3 text-left text-sm shadow-sm transition-colors"
+      className="border-border bg-card hover:bg-accent/40 shadow-card w-full space-y-2 rounded-md border p-3 text-left text-sm transition-colors"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="text-foreground font-medium">{guestName(enquiry)}</div>

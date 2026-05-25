@@ -10,23 +10,23 @@ type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 const KIND_MAP: Record<StatusKind, { icon: IconType; classes: string }> = {
   active: {
     icon: CheckCircle2,
-    classes: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    classes: "border-success/40 bg-success/10 text-success",
   },
   draft: {
     icon: Pencil,
-    classes: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    classes: "border-warning/40 bg-warning/10 text-warning",
   },
   archived: {
     icon: Archive,
-    classes: "border-slate-500/40 bg-slate-500/10 text-slate-700 dark:text-slate-400",
+    classes: "border-status-neutral/40 bg-status-neutral/10 text-status-neutral",
   },
   pending: {
     icon: Circle,
-    classes: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+    classes: "border-info/40 bg-info/10 text-info",
   },
   error: {
     icon: AlertCircle,
-    classes: "border-destructive/40 bg-destructive/10 text-destructive",
+    classes: "border-danger/40 bg-danger/10 text-danger",
   },
   neutral: {
     icon: Circle,

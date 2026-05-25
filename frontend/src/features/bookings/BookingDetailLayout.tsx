@@ -31,7 +31,7 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-foreground text-lg font-semibold">{booking.reference}</h2>
+        <h2 className="text-foreground font-serif text-lg font-semibold">{booking.reference}</h2>
         <p className="text-muted-foreground text-sm">
           {booking.property_name ?? t("detail.fallback.property_with_id", { id: booking.property })}
         </p>

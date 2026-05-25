@@ -147,7 +147,7 @@ function RailSummary({ quotation, canWrite, onOpen, onDuplicate, duplicating }: 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-foreground text-lg font-semibold">{quotation.reference}</h2>
+        <h2 className="text-foreground font-serif text-lg font-semibold">{quotation.reference}</h2>
         <p className="text-muted-foreground text-sm">{t("detail.summary.title")}</p>
       </div>
       <StatusBadge status={quotation.status} />

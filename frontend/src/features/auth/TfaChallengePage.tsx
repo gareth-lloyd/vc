@@ -41,11 +41,11 @@ export function TfaChallengePage() {
     <div className="bg-muted/30 flex min-h-screen items-center justify-center px-4">
       <form
         onSubmit={onSubmit}
-        className="bg-card w-full max-w-sm space-y-6 rounded-lg border p-8 shadow-sm"
+        className="bg-card shadow-card w-full max-w-sm space-y-6 rounded-lg border p-8"
         noValidate
       >
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("tfa.title")}</h1>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">{t("tfa.title")}</h1>
           <p className="text-muted-foreground mt-1 text-sm">{t("tfa.prompt")}</p>
         </div>
 

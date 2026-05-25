@@ -69,7 +69,7 @@ function MilestoneRow({ data, ariaLabel }: { data: PaymentTrackData; ariaLabel: 
       {Array.from({ length: 6 }).map((_, i) => (
         <span
           key={i}
-          className={cn("size-2.5 rounded-full", i < filled ? "bg-emerald-500" : "bg-muted")}
+          className={cn("size-2.5 rounded-full", i < filled ? "bg-success" : "bg-muted")}
         />
       ))}
     </div>

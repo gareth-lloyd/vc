@@ -118,7 +118,7 @@ function RailSummary({ contact }: { contact: Contact }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-foreground text-lg font-semibold">{name}</h2>
+        <h2 className="text-foreground font-serif text-lg font-semibold">{name}</h2>
         {contact.company && (contact.first_name || contact.last_name) ? (
           <p className="text-muted-foreground text-sm">{contact.company}</p>
         ) : null}

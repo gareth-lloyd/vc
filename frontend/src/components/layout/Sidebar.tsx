@@ -38,8 +38,8 @@ function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
                 cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm",
                   isActive
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    ? "bg-nav-active text-nav-active-foreground font-medium"
+                    : "text-muted-foreground hover:bg-nav-hover hover:text-foreground",
                 )
               }
             >

@@ -184,6 +184,45 @@ Some property `slug` fields contain full URLs instead of simple slugs.
 When navigating by slug, reject any value containing `/` and fall back
 to the numeric `id`. Reference: `PropertiesListPage.tsx:handleRowClick`.
 
+### Theming
+
+All visual decisions live in `src/styles/globals.css` as CSS custom
+properties, exposed to Tailwind via `@theme inline`. Components consume
+_token utilities_ (`bg-primary`, `text-success`, `font-serif`,
+`shadow-card`), never raw Tailwind colour utilities (`bg-emerald-500`,
+`text-amber-700`). Re-skinning is a one-file edit.
+
+Token layers (low → high):
+
+1. **Ramps** — `--brand-*`, `--accent-*`, `--neutral-*` (OKLCH).
+2. **Semantic surfaces** — shadcn (`--primary`, `--card`, …) wired to the
+   ramp; plus `--background` (a subtle neutral wash so cards lift).
+3. **Status tones** — `--status-{success|warning|danger|info|neutral|hold}`.
+4. **Categorical palettes** — `--svc-*` (13 concierge service colours),
+   `--lead-*` (Hot/Warm/Cold/Dead), `--tier-*` (Quintessential/Signature),
+   `--nav-active` / `--nav-hover` (soft brand wash for sidebar).
+5. **Typography** — Fraunces (serif, page headings) + Inter (sans, body).
+
+Reference docs / files:
+
+- `src/styles/README.md` — full token list + rebrand walkthrough.
+- `src/styles/tokens.ts` — typed `var(--…)` helpers for data-driven
+  palettes (e.g. `serviceColorVar["chef"]`).
+- `components/data/StatusBadge.tsx` — semantic status pill.
+- `components/data/ServiceDot.tsx` — concierge service colour + state.
+- `components/data/TierBadge.tsx` — Q / S tier badge.
+
+Rules:
+
+- **No raw Tailwind colour utilities** (`bg-red-500`, `text-emerald-700`).
+  If a status doesn't fit an existing tone, add the tone to `globals.css`
+  and `tokens.ts` first.
+- **Page-level h1/h2 use `font-serif`**; section/tab headings stay sans.
+- **shadcn UI primitives** in `components/ui/` are left alone — they
+  already read from semantic tokens.
+- **Feature-level card surfaces** use `shadow-card`; deeper elevation
+  (popovers, dialogs) uses `shadow-popover` / `shadow-modal`.
+
 ## Testing
 
 - **`renderWithProviders`** (`test/render.tsx`): wraps component in

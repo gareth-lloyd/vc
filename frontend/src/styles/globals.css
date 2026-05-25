@@ -2,7 +2,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---------------------------------------------------------------------------
+ * Token layers
+ *
+ *   ramp        — raw colour scales (brand-*, accent-*, neutral-*)
+ *   semantic    — shadcn surfaces (--primary, --background, …) wired to the
+ *                 ramp; consumers should prefer these
+ *   status      — workflow tones (success/warning/danger/info/neutral/hold)
+ *   categorical — concierge service colours, lead status, tier badges
+ *   typography  — font families
+ *   spacing     — design spacing scale
+ *   radii       — corner sizes (existing base + pill)
+ *   shadows     — elevation
+ *
+ * Re-brand checklist: edit the brand/accent/neutral ramps in :root and
+ * (optionally) .dark; everything downstream re-tints automatically.
+ * ------------------------------------------------------------------------- */
+
 @theme inline {
+  /* shadcn semantic surfaces (existing — keep wiring) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -27,65 +45,224 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  /* Workflow status tones — generate Tailwind utilities like `bg-success/10` */
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
+  --color-danger: var(--status-danger);
+  --color-info: var(--status-info);
+  --color-status-neutral: var(--status-neutral);
+  --color-hold: var(--status-hold);
+
+  /* Tier badges */
+  --color-tier-quintessential: var(--tier-quintessential);
+  --color-tier-signature: var(--tier-signature);
+
+  /* Navigation (sidebar selected / hover) — soft brand wash */
+  --color-nav-active: var(--nav-active);
+  --color-nav-active-foreground: var(--nav-active-foreground);
+  --color-nav-hover: var(--nav-hover);
+
+  /* Typography — Tailwind picks up `font-sans`, `font-serif`, `font-mono` */
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+
+  /* Radii */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-pill: 9999px;
+
+  /* Elevation */
+  --shadow-card: var(--shadow-card);
+  --shadow-popover: var(--shadow-popover);
+  --shadow-modal: var(--shadow-modal);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* -------- Ramp: brand (deep teal, evokes Mediterranean villa / hospitality) */
+  --brand-50: oklch(0.97 0.015 180);
+  --brand-100: oklch(0.93 0.03 180);
+  --brand-200: oklch(0.86 0.05 180);
+  --brand-300: oklch(0.75 0.07 180);
+  --brand-400: oklch(0.62 0.09 180);
+  --brand-500: oklch(0.5 0.1 180);
+  --brand-600: oklch(0.42 0.09 180);
+  --brand-700: oklch(0.34 0.075 180);
+  --brand-800: oklch(0.26 0.06 180);
+  --brand-900: oklch(0.18 0.04 180);
+
+  /* -------- Ramp: accent (warm gold, used for Quintessential tier, prize-draw) */
+  --accent-50: oklch(0.97 0.02 85);
+  --accent-100: oklch(0.94 0.05 85);
+  --accent-200: oklch(0.88 0.09 85);
+  --accent-300: oklch(0.83 0.12 85);
+  --accent-500: oklch(0.78 0.14 85);
+  --accent-600: oklch(0.68 0.14 85);
+  --accent-700: oklch(0.55 0.12 85);
+  --accent-800: oklch(0.42 0.1 85);
+  --accent-900: oklch(0.3 0.08 85);
+
+  /* -------- Ramp: neutral (warm-tinted greys, slight beige) */
+  --neutral-0: oklch(1 0 0);
+  --neutral-50: oklch(0.985 0.003 80);
+  --neutral-100: oklch(0.965 0.005 80);
+  --neutral-200: oklch(0.92 0.007 80);
+  --neutral-300: oklch(0.85 0.008 80);
+  --neutral-400: oklch(0.7 0.008 80);
+  --neutral-500: oklch(0.56 0.008 80);
+  --neutral-600: oklch(0.46 0.007 80);
+  --neutral-700: oklch(0.36 0.006 80);
+  --neutral-800: oklch(0.26 0.005 80);
+  --neutral-900: oklch(0.18 0.004 80);
+
+  /* -------- Semantic shadcn surfaces, wired to the ramp */
+  /* Background is a *subtle wash* (warm-tinted off-white) so cards
+     (--neutral-0) lift visibly off the page. Bump to --neutral-100 for
+     stronger separation, or back to --neutral-0 to flatten. */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--brand-600);
+  --primary-foreground: var(--neutral-50);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--brand-800);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-600);
+  --accent: var(--accent-500);
+  --accent-foreground: var(--accent-900);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: var(--neutral-50);
+  --border: var(--neutral-200);
+  --input: var(--neutral-200);
+  --ring: var(--brand-400);
+
+  /* -------- Charts (kept multi-hued for legibility) */
+  --chart-1: var(--brand-500);
+  --chart-2: var(--accent-600);
+  --chart-3: oklch(0.62 0.13 230);
+  --chart-4: oklch(0.65 0.16 145);
+  --chart-5: oklch(0.6 0.22 25);
+
+  /* -------- Status tones (semantic by meaning, not by hue) */
+  --status-success: oklch(0.55 0.16 145); /* paid / confirmed / done */
+  --status-warning: oklch(0.72 0.15 75); /* awaiting / pending */
+  --status-danger: oklch(0.55 0.22 25); /* overdue / dead / cancelled */
+  --status-info: oklch(0.55 0.13 230); /* sent / viewed / in-progress */
+  --status-neutral: var(--neutral-500); /* not-required / archived */
+  --status-hold: oklch(0.55 0.16 290); /* on-hold */
+
+  /* -------- Tier badges (concierge level) */
+  --tier-quintessential: var(--accent-600);
+  --tier-signature: var(--brand-600);
+
+  /* -------- Navigation (sidebar selected / hover)
+     Deliberately distinct from --accent (warm gold) so the nav doesn't shout.
+     Soft brand-tinted wash for selection; even fainter for hover. */
+  --nav-active: var(--brand-50);
+  --nav-active-foreground: var(--brand-700);
+  --nav-hover: color-mix(in oklch, var(--brand-50) 60%, transparent);
+
+  /* -------- Concierge service palette
+     13 services from mock_up_analysis/01-new-res-system.md §2.7.
+     Same L/C so they read at equal weight side-by-side; hue carries the
+     distinction. */
+  --svc-car: oklch(0.65 0.13 25);
+  --svc-transfers: oklch(0.65 0.13 55);
+  --svc-boat: oklch(0.65 0.13 220);
+  --svc-chef: oklch(0.65 0.13 15);
+  --svc-grocery: oklch(0.65 0.13 130);
+  --svc-firstnight: oklch(0.65 0.13 95);
+  --svc-restaurant: oklch(0.65 0.13 350);
+  --svc-gifting: oklch(0.65 0.13 320);
+  --svc-activities: oklch(0.65 0.13 180);
+  --svc-spa: oklch(0.65 0.13 290);
+  --svc-wine: oklch(0.65 0.13 5);
+  --svc-nanny: oklch(0.65 0.13 250);
+  --svc-other: var(--neutral-400);
+
+  /* -------- Lead status (Hot/Warm/Cold/Dead) */
+  --lead-hot: oklch(0.6 0.22 25);
+  --lead-warm: oklch(0.72 0.15 65);
+  --lead-cold: oklch(0.62 0.1 230);
+  --lead-dead: var(--neutral-400);
+
+  /* -------- Typography */
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* -------- Spacing scale (tokens; consume via Tailwind defaults or var(--space-*)) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* -------- Radii */
   --radius: 0.625rem;
+
+  /* -------- Shadows (subtle, suit the mockup's editorial card style) */
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.04), 0 1px 3px oklch(0 0 0 / 0.06);
+  --shadow-popover: 0 4px 12px oklch(0 0 0 / 0.1), 0 2px 4px oklch(0 0 0 / 0.06);
+  --shadow-modal: 0 24px 48px oklch(0 0 0 / 0.18);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
+  /* In dark mode we keep the same ramps but flip semantic surfaces.
+     Status / service / lead / tier tokens inherit; tweak below if specific
+     hues need lightening for contrast. */
+
+  --background: var(--neutral-900);
+  --foreground: var(--neutral-50);
+  --card: var(--neutral-800);
+  --card-foreground: var(--neutral-50);
+  --popover: var(--neutral-800);
+  --popover-foreground: var(--neutral-50);
+  --primary: var(--brand-300);
+  --primary-foreground: var(--brand-900);
+  --secondary: var(--neutral-700);
+  --secondary-foreground: var(--neutral-50);
+  --muted: var(--neutral-700);
+  --muted-foreground: var(--neutral-300);
+  --accent: var(--accent-300);
+  --accent-foreground: var(--accent-900);
+  --destructive: oklch(0.7 0.19 22);
+  --destructive-foreground: var(--neutral-50);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --ring: var(--brand-400);
+
+  /* Lift status hues for dark-background legibility */
+  --status-success: oklch(0.7 0.16 145);
+  --status-warning: oklch(0.8 0.15 75);
+  --status-danger: oklch(0.7 0.22 25);
+  --status-info: oklch(0.7 0.13 230);
+  --status-neutral: var(--neutral-400);
+  --status-hold: oklch(0.7 0.16 290);
+
+  --tier-quintessential: var(--accent-300);
+  --tier-signature: var(--brand-300);
+
+  --nav-active: color-mix(in oklch, var(--brand-300) 18%, transparent);
+  --nav-active-foreground: var(--brand-100);
+  --nav-hover: color-mix(in oklch, var(--brand-300) 8%, transparent);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 1px 3px oklch(0 0 0 / 0.5);
+  --shadow-popover: 0 4px 12px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.4);
+  --shadow-modal: 0 24px 48px oklch(0 0 0 / 0.6);
 }
 
 @layer base {
@@ -95,8 +272,14 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
     font-feature-settings:
       "rlig" 1,
       "calt" 1;
+  }
+  h1,
+  h2 {
+    font-family: var(--font-serif);
+    font-feature-settings: "ss01" 1;
   }
 }

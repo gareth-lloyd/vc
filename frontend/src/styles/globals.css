@@ -134,8 +134,13 @@
   --secondary-foreground: var(--brand-800);
   --muted: var(--neutral-100);
   --muted-foreground: var(--neutral-600);
-  --accent: var(--accent-500);
-  --accent-foreground: var(--accent-900);
+  /* shadcn `--accent` is a muted hover/focus surface (skeletons, button
+     ghost/outline hover, dropdown focus). Do NOT wire it to the gold
+     ramp — that flashes orange on every load. The gold brand colour is
+     still available via the `--accent-*` ramp for things that explicitly
+     want it (charts, tier badges). */
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
   --destructive: oklch(0.6 0.22 25);
   --destructive-foreground: var(--neutral-50);
   --border: var(--neutral-200);
@@ -237,8 +242,8 @@
   --secondary-foreground: var(--neutral-50);
   --muted: var(--neutral-700);
   --muted-foreground: var(--neutral-300);
-  --accent: var(--accent-300);
-  --accent-foreground: var(--accent-900);
+  --accent: var(--neutral-700);
+  --accent-foreground: var(--neutral-50);
   --destructive: oklch(0.7 0.19 22);
   --destructive-foreground: var(--neutral-50);
   --border: oklch(1 0 0 / 10%);

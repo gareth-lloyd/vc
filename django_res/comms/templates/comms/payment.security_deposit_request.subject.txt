@@ -1,0 +1,1 @@
+Security deposit for booking {{ booking_reference }}

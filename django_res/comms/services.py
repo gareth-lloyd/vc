@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.template import Context, Template
 
 from comms import tasks
@@ -56,17 +56,34 @@ def _render(template_text: str, context: dict[str, Any]) -> str:
     return Template(template_text).render(Context(context))
 
 
+def _find_existing_log(idempotency_hash: str) -> EmailLog | None:
+    """Return a previously-persisted, non-FAILED log row for this hash."""
+    return (
+        EmailLog.objects.filter(idempotency_hash=idempotency_hash)
+        .exclude(status=EmailLogStatus.FAILED)
+        .order_by("-queued_at")
+        .first()
+    )
+
+
 def _idempotency_hash(
     *,
     template_key: str,
-    template_version: int,
     to: list[str],
     correlation: dict[str, Any],
 ) -> str:
+    """Hash the *logical* identity of an email — what is being sent, to whom,
+    against what business object — not the template version.
+
+    Versioning the hash on `template.version` would re-send the same logical
+    event every time ops edits a template (which bumps the active version),
+    so a content tweak deployed between two scheduler ticks would email the
+    guest twice. The version is captured on the EmailLog row for audit but
+    is intentionally excluded from the dedupe key.
+    """
     payload = json.dumps(
         {
             "template_key": template_key,
-            "template_version": template_version,
             "to": sorted(to),
             "correlation": correlation,
         },
@@ -108,17 +125,11 @@ class EmailService:
 
         idempotency_hash = _idempotency_hash(
             template_key=template.key,
-            template_version=template.version,
             to=to,
             correlation=correlation,
         )
 
-        existing = (
-            EmailLog.objects.filter(idempotency_hash=idempotency_hash)
-            .exclude(status=EmailLogStatus.FAILED)
-            .order_by("-queued_at")
-            .first()
-        )
+        existing = _find_existing_log(idempotency_hash)
         if existing is not None:
             return existing
 
@@ -131,24 +142,33 @@ class EmailService:
         from_email = profile.from_email
         # Personal profiles always send "as" the user; otherwise the system
         # profile's configured from_email is the source of truth.
-        with transaction.atomic():
-            log = EmailLog.objects.create(
-                template_key=template.key,
-                template_version=template.version,
-                to=list(to),
-                cc=cc,
-                bcc=bcc,
-                from_email=from_email,
-                sender_user=sender_user if profile.scope == SmtpScope.PERSONAL else None,
-                smtp_profile=profile,
-                rendered_subject=subject,
-                rendered_body=body,
-                rendered_body_html=body_html,
-                status=EmailLogStatus.QUEUED,
-                attachments=[a.to_log_entry() for a in attachments],
-                correlation=correlation,
-                idempotency_hash=idempotency_hash,
-            )
+        try:
+            with transaction.atomic():
+                log = EmailLog.objects.create(
+                    template_key=template.key,
+                    template_version=template.version,
+                    to=list(to),
+                    cc=cc,
+                    bcc=bcc,
+                    from_email=from_email,
+                    sender_user=sender_user if profile.scope == SmtpScope.PERSONAL else None,
+                    smtp_profile=profile,
+                    rendered_subject=subject,
+                    rendered_body=body,
+                    rendered_body_html=body_html,
+                    status=EmailLogStatus.QUEUED,
+                    attachments=[a.to_log_entry() for a in attachments],
+                    correlation=correlation,
+                    idempotency_hash=idempotency_hash,
+                )
+        except IntegrityError:
+            # Concurrent send racing on the same idempotency_hash. The DB
+            # `unique_email_log_idempotency_hash` constraint rejected our
+            # insert; return the row the winning caller just created.
+            existing = _find_existing_log(idempotency_hash)
+            if existing is None:
+                raise
+            return existing
 
         tasks.send_email_log.delay(log.pk)  # type: ignore[attr-defined]
         log.refresh_from_db()

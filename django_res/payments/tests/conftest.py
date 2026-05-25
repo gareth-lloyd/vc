@@ -113,7 +113,7 @@ def booking(
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
-    from reservations.enums import PaymentMethod
+    from reservations.enums import BookingStatus, PaymentMethod
     from reservations.models import Booking
 
     return Booking.objects.create(
@@ -125,6 +125,7 @@ def booking(
         adults=quotation_line.adults,
         children=0,
         currency=gbp,
+        status=BookingStatus.AWAITING_DEPOSIT.value,
         terms_version=terms,
         terms_accepted_at=timezone.now(),
         payment_method=PaymentMethod.CARD.value,

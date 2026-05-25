@@ -1,0 +1,1 @@
+Reminder — balance for booking {{ booking_reference }} due on {{ due_on }}

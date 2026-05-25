@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from comms.enums import EmailLogStatus
@@ -12,9 +13,11 @@ class EmailLog(TimestampedModel):
     """Append-only persist-first log of every dispatch attempt.
 
     Created in ``QUEUED`` before the SMTP call so a row exists even if the
-    process dies mid-send. Idempotency keyed by ``(template_key,
-    template_version, sorted(to), correlation)`` is enforced at the service
-    layer rather than via a DB constraint to keep the table append-only.
+    process dies mid-send. Idempotency keyed by ``(template_key, sorted(to),
+    correlation)`` is enforced both at the service layer and via a partial
+    unique constraint on ``idempotency_hash`` — the DB rule closes the
+    read-then-write race window where two concurrent senders both pass the
+    service-layer existence check and both insert.
     """
 
     template_key = models.CharField(max_length=64)
@@ -59,6 +62,16 @@ class EmailLog(TimestampedModel):
         indexes = [
             models.Index(fields=["status", "queued_at"]),
             models.Index(fields=["template_key", "queued_at"]),
+        ]
+        constraints = [
+            # Partial unique — `resend()` creates rows with hash="" by design
+            # (every resend is its own audit row); only the EmailService.send
+            # dedupe path stamps a non-blank hash and must be unique.
+            models.UniqueConstraint(
+                fields=["idempotency_hash"],
+                condition=~Q(idempotency_hash=""),
+                name="unique_email_log_idempotency_hash",
+            ),
         ]
 
     def __str__(self) -> str:

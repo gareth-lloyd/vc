@@ -60,6 +60,11 @@ def test_get_deposit_track(
 
     response = api_client.get(f"/api/v1/bookings/{booking.pk}/deposit")
     assert response.status_code == 200
+    # The FE Zod schema expects decimal amounts as strings (DRF's default
+    # for DecimalField when rendered through a serializer). Pin the shape
+    # so a regression to raw `Decimal -> JSON number` is caught.
+    assert isinstance(response.data["scheduled_amount"], str)
+    assert isinstance(response.data["paid_amount"], str)
     assert Decimal(response.data["scheduled_amount"]) == Decimal("420.00")
     assert Decimal(response.data["paid_amount"]) == Decimal("0")
 

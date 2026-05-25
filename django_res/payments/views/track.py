@@ -45,7 +45,10 @@ from reservations.models import Booking
 # ----------------------------------------------------------------------
 def _track_response(booking: Booking, purpose: str) -> Response:
     data = TrackSerializer.for_booking_purpose(booking=booking, purpose=purpose)
-    return Response(data)
+    # Route through the serializer so DecimalField renders amounts as
+    # strings (the FE Zod schema expects strings); bypassing it would send
+    # raw Decimals straight to the JSON renderer as numbers.
+    return Response(TrackSerializer(data).data)
 
 
 def _parse_decimal(value: Any) -> Decimal:

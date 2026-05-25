@@ -8,7 +8,7 @@ from typing import Any
 from rest_framework import serializers
 
 
-class TrackSerializer(serializers.Serializer[None]):
+class TrackSerializer(serializers.Serializer[dict[str, Any]]):
     """A flattened view of a deposit / balance / security track.
 
     The track is not its own table; it's the set of `Payment` rows for a

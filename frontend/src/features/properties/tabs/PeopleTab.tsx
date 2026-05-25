@@ -463,7 +463,7 @@ function AssignmentsList({
 export function PeopleTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<PeopleContext>();
-  const propertyKey = property.slug || property.id;
+  const propertyKey = property.id;
   const contacts = usePropertyContacts(propertyKey);
   const canWrite = useHasReservationsRole();
 

@@ -29,7 +29,7 @@ export function DetailsTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<DetailsContext>();
   const features = useFeatures({});
-  const rooms = usePropertyRooms(property.slug || property.id);
+  const rooms = usePropertyRooms(property.id);
 
   const propertyFeatures = useMemo(() => {
     const allFeatures = features.data?.results ?? [];

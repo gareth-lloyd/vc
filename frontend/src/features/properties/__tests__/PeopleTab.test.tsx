@@ -47,7 +47,7 @@ describe("PeopleTab", () => {
   it("renders resolved contact names with role and primary badge", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () =>
+      http.get("/api/v1/properties/5/contacts", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -105,7 +105,7 @@ describe("PeopleTab", () => {
   it("splits active and ended assignments", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () =>
+      http.get("/api/v1/properties/5/contacts", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -159,9 +159,7 @@ describe("PeopleTab", () => {
 
   it("renders empty state when no contacts are assigned", async () => {
     installBaseHandlers();
-    server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () => HttpResponse.json(drfPage([]))),
-    );
+    server.use(http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))));
 
     setup();
     expect(await screen.findByText(/No contacts assigned/i)).toBeInTheDocument();
@@ -183,9 +181,7 @@ describe("PeopleTab", () => {
       { role: "RESERVATIONS", is_superuser: false, permissions: [] },
     );
     installBaseHandlers();
-    server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () => HttpResponse.json(drfPage([]))),
-    );
+    server.use(http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))));
     setup();
     expect(await screen.findByRole("button", { name: /add contact/i })).toBeEnabled();
     useAuthStore.getState().clear();
@@ -207,9 +203,7 @@ describe("PeopleTab", () => {
       { role: "VIEWER", is_superuser: false, permissions: [] },
     );
     installBaseHandlers();
-    server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () => HttpResponse.json(drfPage([]))),
-    );
+    server.use(http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))));
     setup();
     expect(await screen.findByRole("button", { name: /add contact/i })).toBeDisabled();
     useAuthStore.getState().clear();
@@ -233,7 +227,7 @@ describe("PeopleTab", () => {
     installBaseHandlers();
     let deleteCalled = false;
     server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () =>
+      http.get("/api/v1/properties/5/contacts", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -257,7 +251,7 @@ describe("PeopleTab", () => {
           phones: [],
         }),
       ),
-      http.delete("/api/v1/properties/casa-norte/contacts/1", () => {
+      http.delete("/api/v1/properties/5/contacts/1", () => {
         deleteCalled = true;
         return new HttpResponse(null, { status: 204 });
       }),
@@ -275,7 +269,7 @@ describe("PeopleTab", () => {
   it("falls back to Contact #id when no name or company is available", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/casa-norte/contacts", () =>
+      http.get("/api/v1/properties/5/contacts", () =>
         HttpResponse.json(
           drfPage([
             {

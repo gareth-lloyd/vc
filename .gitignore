@@ -28,6 +28,10 @@ test-results/
 .vscode/
 *.swp
 
+# Dev-server logs from `make dev-backend` / `dev-frontend` (tee'd to disk so
+# Claude / scripts can tail them).
+logs/
+
 # Env files (never commit secrets)
 .env
 .env.local

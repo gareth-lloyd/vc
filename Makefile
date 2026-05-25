@@ -1,4 +1,9 @@
-.PHONY: setup test lint typecheck dev-backend dev-frontend hooks help
+.PHONY: setup test lint typecheck dev-backend dev-frontend logs logs-backend logs-frontend hooks help
+
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+LOG_DIR := logs
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -25,8 +30,22 @@ lint: ## Run backend + frontend lint + format + typecheck
 	cd frontend && npm run format:check
 	cd frontend && npm run typecheck
 
-dev-backend: ## Start the Django dev server
-	cd django_res && uv run python manage.py runserver
+dev-backend: ## Start the Django dev server (output mirrored to logs/django.log)
+	@mkdir -p $(LOG_DIR)
+	cd django_res && uv run python manage.py runserver 2>&1 | tee -a ../$(LOG_DIR)/django.log
 
-dev-frontend: ## Start the Vite dev server
-	cd frontend && npm run dev
+dev-frontend: ## Start the Vite dev server (output mirrored to logs/vite.log)
+	@mkdir -p $(LOG_DIR)
+	cd frontend && npm run dev 2>&1 | tee -a ../$(LOG_DIR)/vite.log
+
+logs: ## Tail both dev-server logs
+	@mkdir -p $(LOG_DIR) && touch $(LOG_DIR)/django.log $(LOG_DIR)/vite.log
+	tail -F $(LOG_DIR)/django.log $(LOG_DIR)/vite.log
+
+logs-backend: ## Tail backend log
+	@mkdir -p $(LOG_DIR) && touch $(LOG_DIR)/django.log
+	tail -F $(LOG_DIR)/django.log
+
+logs-frontend: ## Tail frontend log
+	@mkdir -p $(LOG_DIR) && touch $(LOG_DIR)/vite.log
+	tail -F $(LOG_DIR)/vite.log

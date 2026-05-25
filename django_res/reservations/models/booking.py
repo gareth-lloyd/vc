@@ -218,16 +218,30 @@ class Booking(AuditedModel):
     # ------------------------------------------------------------------
     # Transitions
     # ------------------------------------------------------------------
-    def submit(self, *, actor: Any = None, reason: str = "") -> Booking:
+    def submit(
+        self,
+        *,
+        actor: Any = None,
+        reason: str = "",
+        meta: dict[str, Any] | None = None,
+    ) -> Booking:
         """DRAFT → PENDING_OWNER_APPROVAL."""
         return self._transition(
             (BookingStatus.DRAFT.value,),
             BookingStatus.PENDING_OWNER_APPROVAL.value,
             actor=actor,
+            source=EventSource.SYSTEM.value,
             reason=reason,
+            meta=meta,
         )
 
-    def auto_accept(self, *, actor: Any = None, reason: str = "") -> Booking:
+    def auto_accept(
+        self,
+        *,
+        actor: Any = None,
+        reason: str = "",
+        meta: dict[str, Any] | None = None,
+    ) -> Booking:
         """DRAFT → AWAITING_DEPOSIT (when property auto-approves bookings)."""
         return self._transition(
             (BookingStatus.DRAFT.value,),
@@ -235,6 +249,7 @@ class Booking(AuditedModel):
             actor=actor,
             source=EventSource.SYSTEM.value,
             reason=reason,
+            meta=meta,
         )
 
     def owner_approve(self, *, actor: Any = None, reason: str = "") -> Booking:

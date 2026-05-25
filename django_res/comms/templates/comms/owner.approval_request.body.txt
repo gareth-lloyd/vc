@@ -1,0 +1,11 @@
+A new booking request needs your approval.
+
+Property: {{ property_name }}
+Dates: {{ date_from }} – {{ date_to }}
+Reference: {{ booking_reference }}
+
+Review and respond: {{ approval_url }}
+
+You'll need to be signed in to the owner portal to approve or decline.
+
+— Villa Collective

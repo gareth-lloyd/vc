@@ -1,0 +1,18 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">We couldn't process your payment</mj-text>
+        <mj-text>Hi {{ guest_first_name }},</mj-text>
+        <mj-text>Your payment of <strong>{{ amount }} {{ currency }}</strong> on booking <strong>{{ booking_reference }}</strong> didn't go through.</mj-text>
+        <mj-text>Reply to this email and our team will help you complete the payment.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

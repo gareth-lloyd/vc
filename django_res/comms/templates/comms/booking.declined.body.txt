@@ -1,0 +1,9 @@
+Hi {{ guest_first_name }},
+
+Unfortunately, your request for {{ property_name }} from {{ date_from }} to {{ date_to }} wasn't able to go ahead.
+Your reference was {{ booking_reference }}.
+
+Reply to this email and we'll be glad to help you find an alternative.
+
+Best,
+The Villa Collective team

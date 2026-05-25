@@ -1,0 +1,7 @@
+Hi {{ guest_first_name }},
+
+Your payment of {{ amount }} {{ currency }} on booking {{ booking_reference }} didn't go through.
+
+Reply to this email and our team will help you complete the payment.
+
+— Villa Collective

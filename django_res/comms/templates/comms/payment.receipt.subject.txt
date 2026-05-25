@@ -1,0 +1,1 @@
+Receipt for your payment on booking {{ booking_reference }}

@@ -1,0 +1,1 @@
+We couldn't process your payment for booking {{ booking_reference }}

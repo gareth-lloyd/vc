@@ -1,0 +1,18 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">Your booking has been cancelled</mj-text>
+        <mj-text>Hi {{ guest_first_name }},</mj-text>
+        <mj-text>Your booking <strong>{{ booking_reference }}</strong> for <strong>{{ property_name }}</strong> ({{ date_from }} – {{ date_to }}) has been cancelled.</mj-text>
+        <mj-text color="#888888" font-size="13px">If this was unexpected, reply to this email and we'll look into it.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

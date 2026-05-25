@@ -141,6 +141,11 @@ PAYMENT_WEBHOOK_SECRETS = {
 FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:5173")
 PASSWORD_RESET_TTL_SECONDS = env.int("PASSWORD_RESET_TTL_SECONDS", default=3600)
 
+# Ops mailbox(es) to BCC/notify on operational events (failed payments,
+# escalations). Empty by default — handlers must skip the ops email when
+# the list is empty instead of crashing.
+OPS_EMAIL_RECIPIENTS = env.list("OPS_EMAIL_RECIPIENTS", default=[])
+
 # Guardrail for the `seed_dev` management command. False here (and therefore
 # in production, which inherits base) hard-blocks fake-data generation. Dev,
 # test, and staging settings flip this to True. Never set in production.

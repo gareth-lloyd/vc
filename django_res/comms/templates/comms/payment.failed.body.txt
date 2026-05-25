@@ -1,0 +1,7 @@
+Payment {{ payment_reference }} of {{ amount }} {{ currency }} on booking {{ booking_reference }} has failed.
+
+Reason: {{ failure_reason }}
+
+Follow up with the guest as needed.
+
+— Villa Collective

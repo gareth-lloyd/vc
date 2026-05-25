@@ -91,6 +91,10 @@ class Quotation(AuditedModel):
             self.expires_at = timezone.now() + timedelta(days=7)
             update_fields.append("expires_at")
         self.save(update_fields=update_fields)
+        # Local import to avoid the signal module pulling Quotation at import time.
+        from reservations.signals import quotation_sent
+
+        quotation_sent.send(sender=Quotation, quotation=self)
         return self
 
     @transaction.atomic

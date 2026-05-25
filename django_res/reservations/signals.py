@@ -41,6 +41,12 @@ hold_expired = Signal()
 kwargs: sender=BookingHold, hold.
 """
 
+quotation_sent = Signal()
+"""Fired by `Quotation.send()` on the DRAFT → SENT transition.
+
+kwargs: sender=Quotation, quotation.
+"""
+
 
 # ---------------------------------------------------------------------------
 # EnquiryNote → EnquiryEvent (NOTE_ADDED)
@@ -129,4 +135,5 @@ _connect()
 __all__ = [
     "booking_transitioned",
     "hold_expired",
+    "quotation_sent",
 ]

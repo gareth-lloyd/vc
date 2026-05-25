@@ -1,0 +1,18 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">Payment failed</mj-text>
+        <mj-text>Payment <strong>{{ payment_reference }}</strong> of {{ amount }} {{ currency }} on booking <strong>{{ booking_reference }}</strong> has failed.</mj-text>
+        <mj-text>Reason: <strong>{{ failure_reason }}</strong></mj-text>
+        <mj-text color="#888888" font-size="13px">Follow up with the guest as needed.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

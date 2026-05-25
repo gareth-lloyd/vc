@@ -1,0 +1,8 @@
+Hi {{ guest_first_name }},
+
+We've received your payment of {{ amount }} {{ currency }} against booking {{ booking_reference }}.
+Reference: {{ payment_reference }}
+
+Keep this email for your records.
+
+— Villa Collective

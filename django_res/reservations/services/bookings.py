@@ -9,8 +9,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from properties.services.changeover import ChangeoverService
-from reservations.enums import BookingStatus, EventSource, PaymentMethod
-from reservations.models.booking import Booking, BookingEvent
+from reservations.enums import PaymentMethod
+from reservations.models.booking import Booking
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
 
@@ -36,8 +36,13 @@ class BookingService:
         single guest commitment, so a retry from the same accept-quotation
         webhook (or a double-clicked staff UI) returns the existing
         Booking instead of opening a second one. The hold release and
-        BookingEvent emission are skipped in that case — both ran on the
+        initial transition are skipped in that case — both ran on the
         first call.
+
+        The booking is created in DRAFT and immediately driven through
+        either `booking.auto_accept()` or `booking.submit()` so the
+        `booking_transitioned` signal fires for the initial step and a
+        single `BookingEvent` row is written by `Booking._transition`.
         """
         existing = Booking.objects.filter(quotation_line=quotation_line).first()
         if existing is not None:
@@ -55,14 +60,7 @@ class BookingService:
             allow_override=allow_changeover_override,
         )
 
-        # Initial status: PENDING_OWNER_APPROVAL if the property requires pre-approval.
         requires_pre_approval = cls._requires_pre_approval(property_)
-        initial_status = (
-            BookingStatus.PENDING_OWNER_APPROVAL.value
-            if requires_pre_approval
-            else BookingStatus.AWAITING_DEPOSIT.value
-        )
-
         balance_due_at = property_.balance_due_at(quotation_line.date_from)
         total = cls._decimal(snapshot.get("total", quotation_line.total))
 
@@ -79,7 +77,6 @@ class BookingService:
             rental_price=cls._decimal(snapshot.get("rate_subtotal", 0)),
             balance_due=total,
             balance_due_at=balance_due_at,
-            status=initial_status,
             agent=agent,
             terms_version=terms_version,
             terms_accepted_at=timezone.now(),
@@ -92,15 +89,19 @@ class BookingService:
         # Release competing holds for this property/date_range that we don't own.
         HoldService.release_for_quotation(quotation)
 
-        BookingEvent.objects.create(
-            booking=booking,
-            from_status=BookingStatus.DRAFT.value,
-            to_status=initial_status,
-            actor=actor,
-            source=EventSource.SYSTEM.value,
-            reason="Created from quotation line",
-            meta={"quotation_line_id": quotation_line.pk},
-        )
+        transition_meta = {"quotation_line_id": quotation_line.pk}
+        if requires_pre_approval:
+            booking.submit(
+                actor=actor,
+                reason="Created from quotation line",
+                meta=transition_meta,
+            )
+        else:
+            booking.auto_accept(
+                actor=actor,
+                reason="Created from quotation line",
+                meta=transition_meta,
+            )
 
         return booking
 

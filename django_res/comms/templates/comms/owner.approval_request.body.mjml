@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text color="#555555" font-size="15px" line-height="22px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f4f4f4">
+    <mj-section background-color="#ffffff" padding="40px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="bold" color="#222222">A new booking request needs your approval</mj-text>
+        <mj-text>A guest has requested <strong>{{ property_name }}</strong> from <strong>{{ date_from }}</strong> to <strong>{{ date_to }}</strong>.</mj-text>
+        <mj-text>Booking reference: <strong>{{ booking_reference }}</strong></mj-text>
+        <mj-button href="{{ approval_url }}" background-color="#222222" color="#ffffff">Review and respond</mj-button>
+        <mj-text color="#888888" font-size="13px">You'll need to be signed in to the owner portal to approve or decline.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

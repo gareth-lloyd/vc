@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 from payments.enums import (
+    PaymentMethod,
     PaymentPurpose,
     PaymentStatus,
     SecurityDepositStatus,
@@ -31,17 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Balance-reminder thresholds, ordered most-urgent first. For each row we pick
 # the most-urgent threshold whose `(due_date - today).days <= threshold` and
-# whose template hasn't already been sent — so a missed cron day still fires
+# whose band hasn't already been covered — so a missed cron day still fires
 # the right reminder on the next run instead of being silently skipped.
 BALANCE_REMINDER_TEMPLATES: tuple[tuple[int, str], ...] = (
     (0, "booking.balance_due_today"),
     (3, "booking.balance_reminder_3d"),
     (7, "booking.balance_reminder_7d"),
 )
-SECURITY_DEPOSIT_REMINDER_TEMPLATES: tuple[tuple[int, str], ...] = (
-    (0, "payment.security_deposit_request"),
-    (7, "payment.security_deposit_request"),
-)
+BALANCE_DUE_TODAY_CARD_TEMPLATE = "payment.card_update_request"
+SD_REMINDER_TEMPLATE = "payment.security_deposit_request"
+SD_EARLY_BAND_THRESHOLD = 7  # days before SD.due_at — heads-up to pay
+SD_ARRIVAL_BAND = 0  # anchored on Booking.date_from — last-chance nudge
 SECURITY_DEPOSIT_OPEN_STATUSES: frozenset[str] = frozenset(
     {
         SecurityDepositStatus.AWAITING_DETAILS.value,
@@ -135,35 +136,38 @@ def _payment_reminder_band(payment: Payment, today: Any) -> tuple[str, int] | No
     if payment.purpose == PaymentPurpose.DEPOSIT.value:
         if delta > 0:
             return None
-        if _reminder_already_sent(
-            payment_id=payment.pk,
-            template_key="payment.reminder.deposit",
-            band=0,
-        ):
+        if _reminder_already_sent(payment_id=payment.pk, band=0):
             return None
         return ("payment.reminder.deposit", 0)
 
     if payment.purpose == PaymentPurpose.BALANCE.value:
-        for threshold, template_key in BALANCE_REMINDER_TEMPLATES:
+        for threshold, default_template in BALANCE_REMINDER_TEMPLATES:
             if delta > threshold:
                 continue
-            if _reminder_already_sent(
-                payment_id=payment.pk,
-                template_key=template_key,
-                band=threshold,
-            ):
+            if _reminder_already_sent(payment_id=payment.pk, band=threshold):
                 continue
+            template_key = default_template
+            # Legacy CC_CARD_UPDATE branch — at the due-today band, a stored
+            # card needs a "refresh your card" nudge instead of the generic
+            # balance reminder so the tokenised charge later doesn't fail.
+            if threshold == 0 and payment.payment_method == PaymentMethod.CARD.value:
+                template_key = BALANCE_DUE_TODAY_CARD_TEMPLATE
             return (template_key, threshold)
     return None
 
 
 def _send_security_deposit_reminders(today: Any) -> int:
+    """Walk open SDs and fire the early and/or arrival reminder bands.
+
+    The two bands are independent logical events (the early heads-up
+    anchors on ``SecurityDeposit.due_at``; the arrival nudge anchors on
+    ``Booking.date_from``), so both can fire on the same tick when both
+    are uncrossed.
+    """
     deposits = (
         SecurityDeposit.objects.filter(
             status__in=list(SECURITY_DEPOSIT_OPEN_STATUSES),
-            due_at__isnull=False,
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
-            booking__date_from__gte=today,
         )
         .select_related("booking", "booking__guest", "booking__property", "currency")
         .order_by("pk")
@@ -172,16 +176,7 @@ def _send_security_deposit_reminders(today: Any) -> int:
     sent = 0
     for sd in deposits:
         try:
-            band = _sd_reminder_band(sd, today)
-            if band is None:
-                continue
-            template_key, threshold = band
-            if _dispatch(
-                template_key,
-                security_deposit=sd,
-                reminder_band=threshold,
-            ):
-                sent += 1
+            sent += _dispatch_sd_bands(sd, today)
         except Exception:
             logger.exception(
                 "send_payment_reminders: failed for security_deposit %s; continuing",
@@ -190,43 +185,57 @@ def _send_security_deposit_reminders(today: Any) -> int:
     return sent
 
 
-def _sd_reminder_band(sd: SecurityDeposit, today: Any) -> tuple[str, int] | None:
+def _dispatch_sd_bands(sd: SecurityDeposit, today: Any) -> int:
+    sent = 0
     due_date = sd.due_at.date() if sd.due_at else None
-    if due_date is None:
-        return None
-    delta = (due_date - today).days
-    for threshold, template_key in SECURITY_DEPOSIT_REMINDER_TEMPLATES:
-        if delta > threshold:
-            continue
-        if _reminder_already_sent(
-            security_deposit_id=sd.pk,
-            template_key=template_key,
-            band=threshold,
-        ):
-            continue
-        return (template_key, threshold)
-    return None
+    arrival = sd.booking.date_from
+
+    # Early band — heads-up that the SD is coming due.
+    if (
+        due_date is not None
+        and (due_date - today).days <= SD_EARLY_BAND_THRESHOLD
+        and not _reminder_already_sent(security_deposit_id=sd.pk, band=SD_EARLY_BAND_THRESHOLD)
+        and _dispatch(
+            SD_REMINDER_TEMPLATE,
+            security_deposit=sd,
+            reminder_band=SD_EARLY_BAND_THRESHOLD,
+        )
+    ):
+        sent += 1
+
+    # Arrival band — the legacy `isStayDate` trigger. Anchors on the
+    # guest's actual arrival date, not the SD's due date.
+    if (
+        arrival is not None
+        and (arrival - today).days <= SD_ARRIVAL_BAND
+        and not _reminder_already_sent(security_deposit_id=sd.pk, band=SD_ARRIVAL_BAND)
+        and _dispatch(
+            SD_REMINDER_TEMPLATE,
+            security_deposit=sd,
+            reminder_band=SD_ARRIVAL_BAND,
+        )
+    ):
+        sent += 1
+
+    return sent
 
 
 def _reminder_already_sent(
     *,
-    template_key: str,
     band: int,
     payment_id: int | None = None,
     security_deposit_id: int | None = None,
 ) -> bool:
-    """True when an EmailLog row already exists for this (row, template, band).
+    """True when any reminder has already been logged at this (row, band).
 
-    The "band" filter means SD T-7 and T-0 — which share a template_key — are
-    treated as distinct logical reminders and dedup independently.
+    Dedupe is intentionally band-scoped (not template-scoped) so the BALANCE
+    T-0 band, which renders either ``booking.balance_due_today`` or
+    ``payment.card_update_request``, never sends both for the same payment.
     """
     from comms.enums import EmailLogStatus
     from comms.models import EmailLog
 
-    correlation_filters: dict[str, Any] = {
-        "template_key": template_key,
-        "correlation__reminder_band": band,
-    }
+    correlation_filters: dict[str, Any] = {"correlation__reminder_band": band}
     if payment_id is not None:
         correlation_filters["correlation__payment_id"] = payment_id
     if security_deposit_id is not None:

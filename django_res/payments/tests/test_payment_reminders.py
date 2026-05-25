@@ -439,18 +439,21 @@ def test_security_deposit_catches_up_after_missed_t7_cron(
 
 
 @pytest.mark.django_db
-def test_security_deposit_t7_and_t0_both_fire_independently(
+def test_security_deposit_t7_and_arrival_both_fire_independently(
     booking: Booking,
     gbp: Currency,
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    """T-7 send doesn't suppress the T-0 send (distinct reminder_band)."""
+    """T-7 (anchored on due_at) and arrival (anchored on date_from) fire as
+    distinct logical reminders; one does not suppress the other."""
     today = date.today()
+    # `booking` fixture sets date_from = today + 60. Drive the T-7 from due_at
+    # and the arrival nudge from date_from on the same SecurityDeposit.
     sd = _make_sd(booking, gbp, due_on=today + timedelta(days=7))
 
     send_payment_reminders(now=_at_noon(today))
-    send_payment_reminders(now=_at_noon(today + timedelta(days=7)))
+    send_payment_reminders(now=_at_noon(booking.date_from))
 
     bands = sorted(
         EmailLog.objects.filter(
@@ -459,6 +462,237 @@ def test_security_deposit_t7_and_t0_both_fire_independently(
         ).values_list("correlation__reminder_band", flat=True)
     )
     assert bands == [0, 7]
+
+
+# ---------------------------------------------------------------------------
+# SD anchor — T-0 must key off arrival (booking.date_from), not due_at
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_sd_arrival_band_fires_on_date_from_not_due_at(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """SD whose due_at lands 14 days before arrival: at today == due_at the
+    *early* band fires, not the arrival band. At today == arrival the
+    arrival band fires."""
+    arrival = booking.date_from
+    due_on = arrival - timedelta(days=14)
+    sd = _make_sd(booking, gbp, due_on=due_on)
+
+    # On the SD due date: early band only.
+    send_payment_reminders(now=_at_noon(due_on))
+    early_only = list(
+        EmailLog.objects.filter(
+            correlation__security_deposit_id=sd.pk,
+        ).values_list("correlation__reminder_band", flat=True)
+    )
+    assert early_only == [7]
+
+    # On the arrival date: arrival band fires too.
+    send_payment_reminders(now=_at_noon(arrival))
+    both = sorted(
+        EmailLog.objects.filter(
+            correlation__security_deposit_id=sd.pk,
+        ).values_list("correlation__reminder_band", flat=True)
+    )
+    assert both == [0, 7]
+
+
+@pytest.mark.django_db
+def test_sd_early_band_anchors_on_due_at_even_when_arrival_is_distant(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """due_at 7 days out, arrival 30 days out → only the early band fires."""
+    today = date.today()
+    booking.date_from = today + timedelta(days=30)
+    booking.date_to = booking.date_from + timedelta(days=7)
+    booking.save(update_fields=["date_from", "date_to", "updated_at"])
+    sd = _make_sd(booking, gbp, due_on=today + timedelta(days=7))
+
+    send_payment_reminders(now=_at_noon(today))
+
+    bands = list(
+        EmailLog.objects.filter(
+            correlation__security_deposit_id=sd.pk,
+        ).values_list("correlation__reminder_band", flat=True)
+    )
+    assert bands == [7]
+
+
+@pytest.mark.django_db
+def test_sd_arrival_band_fires_when_arrival_today_even_if_due_at_past(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """The previous queryset filter (`booking__date_from__gte=today`) silently
+    dropped this case. Confirm the SD-side filter no longer guards it."""
+    today = date.today()
+    booking.date_from = today
+    booking.date_to = today + timedelta(days=7)
+    booking.save(update_fields=["date_from", "date_to", "updated_at"])
+    # due_at landed 14 days ago — early already missed; arrival is today.
+    sd = _make_sd(booking, gbp, due_on=today - timedelta(days=14))
+
+    send_payment_reminders(now=_at_noon(today))
+
+    bands = sorted(
+        EmailLog.objects.filter(
+            correlation__security_deposit_id=sd.pk,
+        ).values_list("correlation__reminder_band", flat=True)
+    )
+    # Both bands are "uncrossed" and overdue, so both fire on this catch-up
+    # tick — the early (delta_to_due == -14) and the arrival (delta_to_arrival
+    # == 0). The single-template / two-bands shape is preserved.
+    assert bands == [0, 7]
+
+
+# ---------------------------------------------------------------------------
+# CC card-update branch — balance-due-today swaps template when payment_method=CARD
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_balance_due_today_with_card_fires_card_update_template(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    from reservations.enums import PaymentMethod as ReservationsPaymentMethod
+
+    assert booking.payment_method == ReservationsPaymentMethod.CARD.value
+    today = date.today()
+    payment = _make_payment(
+        booking,
+        gbp,
+        purpose=PaymentPurpose.BALANCE.value,
+        due_on=today,
+        amount="980.00",
+    )
+    payment.payment_method = "card"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    assert (
+        EmailLog.objects.filter(
+            template_key="payment.card_update_request",
+            correlation__payment_id=payment.pk,
+            correlation__reminder_band=0,
+        ).count()
+        == 1
+    )
+    assert not EmailLog.objects.filter(
+        template_key="booking.balance_due_today",
+        correlation__payment_id=payment.pk,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_balance_due_today_with_bank_transfer_still_fires_balance_template(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    today = date.today()
+    payment = _make_payment(
+        booking,
+        gbp,
+        purpose=PaymentPurpose.BALANCE.value,
+        due_on=today,
+        amount="980.00",
+    )
+    payment.payment_method = "bank_transfer"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    assert (
+        EmailLog.objects.filter(
+            template_key="booking.balance_due_today",
+            correlation__payment_id=payment.pk,
+        ).count()
+        == 1
+    )
+    assert not EmailLog.objects.filter(
+        template_key="payment.card_update_request",
+        correlation__payment_id=payment.pk,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_balance_t7_with_card_still_fires_generic_warning(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """The CC branch is T-0 only; the T-7 heads-up stays generic."""
+    today = date.today()
+    payment = _make_payment(
+        booking,
+        gbp,
+        purpose=PaymentPurpose.BALANCE.value,
+        due_on=today + timedelta(days=7),
+        amount="980.00",
+    )
+    payment.payment_method = "card"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    assert (
+        EmailLog.objects.filter(
+            template_key="booking.balance_reminder_7d",
+            correlation__payment_id=payment.pk,
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_card_update_dedupe_is_band_scoped(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """If the CC branch fires at T-0, a later same-band send must not fire even
+    if the operator flips payment_method to bank_transfer between runs."""
+    today = date.today()
+    payment = _make_payment(
+        booking,
+        gbp,
+        purpose=PaymentPurpose.BALANCE.value,
+        due_on=today,
+        amount="980.00",
+    )
+    payment.payment_method = "card"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    payment.payment_method = "bank_transfer"
+    payment.save(update_fields=["payment_method", "updated_at"])
+    send_payment_reminders(now=_at_noon(today))
+
+    rows = list(
+        EmailLog.objects.filter(
+            correlation__payment_id=payment.pk,
+            correlation__reminder_band=0,
+        ).values_list("template_key", flat=True)
+    )
+    assert rows == ["payment.card_update_request"]
 
 
 # ---------------------------------------------------------------------------

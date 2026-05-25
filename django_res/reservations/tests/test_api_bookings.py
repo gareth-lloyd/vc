@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.enums import StaffRole
 from accounts.models import User
+from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
@@ -137,6 +138,63 @@ def test_archived_listing_returns_archived_bookings(
     response = api_client.get("/api/v1/bookings/archived")
     assert response.status_code == 200
     assert response.data["count"] == 1
+
+
+@pytest.mark.django_db
+def test_archived_listing_has_no_n_plus_one(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """`BookingArchiveViewSet.get_queryset` must `select_related` the FKs the
+    list serializer walks; without it, each archived row triggers an extra
+    SELECT and the steady-state query count grows linearly with row count."""
+    quotation = Quotation.objects.create(
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    for offset in range(10):
+        line = QuotationLine.objects.create(
+            quotation=quotation,
+            property=property_,
+            date_from=date(2026, 6, 10) + timedelta(days=offset * 30),
+            date_to=date(2026, 6, 17) + timedelta(days=offset * 30),
+            adults=2,
+            total=Decimal("1400.00"),
+        )
+        archived = Booking.objects.create(
+            quotation_line=line,
+            guest=guest,
+            property=property_,
+            date_from=line.date_from,
+            date_to=line.date_to,
+            adults=line.adults,
+            children=0,
+            currency=gbp,
+            terms_version=terms,
+            terms_accepted_at=timezone.now(),
+            payment_method=PaymentMethod.CARD.value,
+            rental_price=Decimal("1400.00"),
+            balance_due=Decimal("1400.00"),
+            status=BookingStatus.CANCELLED.value,
+        )
+        archived.is_archived = True
+        archived.archived_at = timezone.now()
+        archived.save(update_fields=["is_archived", "archived_at"])
+
+    api_client.force_login(staff)
+    # Warm any per-test session caches.
+    api_client.get("/api/v1/bookings/archived")
+
+    with assert_max_queries(10):
+        response = api_client.get("/api/v1/bookings/archived")
+    assert response.status_code == 200
+    assert response.data["count"] == 10
 
 
 @pytest.mark.django_db

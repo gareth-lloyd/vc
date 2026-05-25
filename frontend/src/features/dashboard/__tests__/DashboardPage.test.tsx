@@ -60,7 +60,19 @@ function enquiriesHandler(results: unknown[], opts: { count?: number } = {}) {
 
 describe("DashboardPage", () => {
   it("renders KPI counts plus arrivals and recent enquiries", async () => {
-    server.use(bookingsHandler([booking], { count: 4 }), enquiriesHandler([enquiry], { count: 9 }));
+    // Record the bookings query strings the dashboard fetches with so we can
+    // assert that the terminal-status filter (which keeps cancelled/declined
+    // rows out of "arrivals today" and "awaiting balance") is actually wired
+    // through to the API rather than silently dropped client-side.
+    const bookingsQueries: URLSearchParams[] = [];
+    server.use(
+      http.get("/api/v1/bookings", ({ request }) => {
+        const url = new URL(request.url);
+        bookingsQueries.push(url.searchParams);
+        return HttpResponse.json({ ...drfPage([booking]), count: 4 });
+      }),
+      enquiriesHandler([enquiry], { count: 9 }),
+    );
 
     renderWithProviders(<DashboardPage />);
 
@@ -80,6 +92,12 @@ describe("DashboardPage", () => {
     // Arrivals row + recent-enquiries row both rendered
     expect(await screen.findByText("Villa Azul")).toBeInTheDocument();
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+
+    // Arrivals/departures fetchers must scope to non-terminal bookings.
+    const arrivalsCall = bookingsQueries.find((p) => p.get("check_in_after"));
+    expect(arrivalsCall?.get("exclude_terminal")).toBe("true");
+    const departuresCall = bookingsQueries.find((p) => p.get("check_out_after"));
+    expect(departuresCall?.get("exclude_terminal")).toBe("true");
   });
 
   it("shows empty state when there is nothing to do today", async () => {

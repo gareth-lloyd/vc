@@ -121,4 +121,17 @@ describe("EnquiriesListPage", () => {
     expect(await screen.findByText("E-AAA-001")).toBeInTheDocument();
     expect(screen.queryByTestId("kanban-column-new")).not.toBeInTheDocument();
   });
+
+  it("kanban toggle remains reachable when a status filter is active", async () => {
+    // Landing from the dashboard "New enquiries" KPI puts ?status=new in the
+    // URL, which flips the implicit default to "list". The user must still be
+    // able to switch back to the Kanban view.
+    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    setup("/enquiries?status=new");
+    expect(await screen.findByText("E-AAA-001")).toBeInTheDocument();
+    expect(screen.queryByTestId("kanban-column-new")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: /kanban/i }));
+    expect(await screen.findByTestId("kanban-column-new")).toBeInTheDocument();
+  });
 });

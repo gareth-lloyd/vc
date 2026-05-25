@@ -166,7 +166,14 @@ class BookingArchiveViewSet(
     ordering = ["-archived_at"]
 
     def get_queryset(self) -> Any:
-        return Booking.objects.filter(is_archived=True)
+        return Booking.objects.filter(is_archived=True).select_related(
+            "property",
+            "guest",
+            "agent",
+            "assigned_to",
+            "currency",
+            "quotation_line",
+        )
 
     def get_serializer_class(self) -> type:
         if self.action == "list":

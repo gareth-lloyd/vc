@@ -362,15 +362,30 @@ class Command(BaseCommand):
                 line = quotation.lines.first()
                 if line is None:
                     raise RuntimeError("QuotationService produced no lines")
-                # Drive quotation through SENT → ACCEPTED before opening the
-                # booking so the quotation status reflects reality.
                 quotation.send()
-                quotation.accept(line)
+                # Pre-approval properties accept the quotation only after the
+                # owner approves — otherwise an owner-declined booking would
+                # leave the quotation falsely ACCEPTED.
+                requires_pre_approval = bool(
+                    cast(Any, prop.settings).effective("bookings_require_pre_approval")
+                )
+                if not requires_pre_approval:
+                    quotation.accept(line)
                 booking = BookingService.create_from_quotation_line(line, terms_version=terms)
-                enquiry.refresh_from_db()
-                enquiry.convert(quotation)
                 self._populate_payments(booking)
                 self._advance_status(booking, i)
+                # Only mark the enquiry CONVERTED for bookings that actually
+                # opened — leave QUOTED for declined/still-pending bookings so
+                # the enquiry's lifecycle doesn't lie.
+                from reservations.enums import BookingStatus
+
+                booking.refresh_from_db()
+                if booking.status not in (
+                    BookingStatus.DECLINED.value,
+                    BookingStatus.PENDING_OWNER_APPROVAL.value,
+                ):
+                    enquiry.refresh_from_db()
+                    enquiry.convert(quotation)
             made += 1
         return made
 
@@ -507,9 +522,7 @@ class Command(BaseCommand):
         made = 0
         for pk in self._rng.sample(eligible, k=min(target, len(eligible))):
             booking = Booking.objects.get(pk=pk)
-            for i, (name, unit, price, tier) in enumerate(
-                self._rng.sample(catalogue, k=min(2, len(catalogue)))
-            ):
+            for name, unit, price, tier in self._rng.sample(catalogue, k=min(2, len(catalogue))):
                 BookingConciergeItem.objects.create(
                     booking=booking,
                     tier=tier.value,
@@ -518,7 +531,7 @@ class Command(BaseCommand):
                     unit=unit.value,
                     unit_price=price,
                     currency=currency,
-                    status=outcome_statuses[(made + i) % len(outcome_statuses)],
+                    status=outcome_statuses[made % len(outcome_statuses)],
                 )
                 made += 1
         return made
@@ -549,11 +562,15 @@ class Command(BaseCommand):
         from reservations.enums import BookingStatus
         from reservations.models.booking import Booking
 
+        # Exclude bookings that already carry a Refund so additive reruns do
+        # not double-refund the same booking (which would also bust the
+        # balance-due / paid-out invariant the refund service relies on).
         refundable_cancelled = list(
             Booking.objects.filter(
                 status=BookingStatus.CANCELLED.value,
                 payments__status=PaymentStatus.SUCCEEDED.value,
             )
+            .exclude(refunds__isnull=False)
             .distinct()
             .values_list("pk", flat=True)
         )
@@ -563,7 +580,9 @@ class Command(BaseCommand):
                     BookingStatus.BALANCE_PAID.value,
                     BookingStatus.CHECKED_OUT.value,
                 )
-            ).values_list("pk", flat=True)
+            )
+            .exclude(refunds__isnull=False)
+            .values_list("pk", flat=True)
         )
 
         candidates: list[tuple[int, str]] = [
@@ -822,6 +841,10 @@ class Command(BaseCommand):
         if i % 3 == 0:
             return  # leave PENDING_OWNER_APPROVAL — visible work queue
         booking.owner_approve()
+        # The quotation was left SENT by _make_bookings — accept it now that
+        # the owner has approved so the quotation lifecycle matches reality.
+        line = booking.quotation_line
+        line.quotation.accept(line)
         # Now AWAITING_DEPOSIT — set up payment scaffolding the parent path
         # skipped, then progress.
         self._populate_payments(booking)

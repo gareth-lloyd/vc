@@ -133,8 +133,10 @@ export function EnquiriesListPage() {
     setParams(
       (prev) => {
         const out = new URLSearchParams(prev);
-        if (next === "list") out.set("view", "list");
-        else out.delete("view");
+        // Always write the chosen value: with a `?status=` filter present the
+        // implicit default flips to "list", so an explicit Kanban click would
+        // otherwise be a no-op if we only stored the non-default branch.
+        out.set("view", next);
         return out;
       },
       { replace: true },

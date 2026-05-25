@@ -141,6 +141,19 @@ def test_seed_dev_mixed_drives_pre_approval_path() -> None:
     )
     assert pre_approval_events.exists()
 
+    # Declined or still-pending bookings must not pull their parent enquiry
+    # into CONVERTED — that would lie about the conversion outcome.
+    bad = Booking.objects.filter(
+        status__in=(
+            BookingStatus.DECLINED.value,
+            BookingStatus.PENDING_OWNER_APPROVAL.value,
+        ),
+        quotation_line__quotation__enquiry__status=EnquiryStatus.CONVERTED.value,
+    )
+    assert not bad.exists(), (
+        "Declined / still-pending bookings should not flip their enquiry to CONVERTED"
+    )
+
 
 def test_seed_dev_mixed_emits_enquiry_status_spread() -> None:
     _run(properties=8, bookings=24, profile="mixed", seed=42)
@@ -168,7 +181,9 @@ def test_seed_dev_mixed_attaches_concierge_items() -> None:
         ConciergeStatus.DELIVERED.value,
         ConciergeStatus.CANCELLED.value,
     }
-    assert statuses & realistic
+    # The stride bug used to clamp this to {REQUESTED, DELIVERED} — assert the
+    # spread now exercises at least three of the four realistic outcomes.
+    assert len(statuses & realistic) >= 3
 
 
 def test_seed_dev_mixed_emits_refund_lifecycle() -> None:
@@ -185,6 +200,32 @@ def test_seed_dev_mixed_emits_refund_lifecycle() -> None:
         RefundStatus.FAILED.value,
     }
     assert len(statuses & realistic) >= 2
+
+
+def test_seed_dev_mixed_does_not_double_refund_on_rerun() -> None:
+    """Each existing booking should pick up at most one refund across reruns —
+    without the dedup guard the same cancelled booking gets sampled into the
+    refund cohort again, busting both the work-queue and the
+    refunded-amount ≤ paid-amount invariant."""
+    from django.db.models import Count
+
+    _run(properties=6, bookings=18, profile="mixed", seed=42)
+    first = {
+        row["booking_id"]: row["n"]
+        for row in Refund.objects.values("booking_id").annotate(n=Count("id"))
+    }
+    assert first, "expected at least one refund on the first run"
+    assert max(first.values()) == 1, "first run should not double-refund any booking"
+
+    _run(properties=6, bookings=18, profile="mixed", seed=43)
+    second = {
+        row["booking_id"]: row["n"]
+        for row in Refund.objects.values("booking_id").annotate(n=Count("id"))
+    }
+    for booking_id, before in first.items():
+        assert second.get(booking_id, 0) == before, (
+            f"booking {booking_id} grew from {before} to {second.get(booking_id)} refunds on rerun"
+        )
 
 
 def test_seed_dev_mixed_attaches_guest_preferences() -> None:

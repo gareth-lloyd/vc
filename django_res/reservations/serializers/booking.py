@@ -10,6 +10,8 @@ from reservations.models import Booking, BookingEvent, BookingNote
 class BookingListSerializer(serializers.ModelSerializer[Booking]):
     """Light booking representation for collection responses."""
 
+    property_name = serializers.SerializerMethodField()
+    guest_name = serializers.SerializerMethodField()
     currency_code = serializers.CharField(source="currency.code", read_only=True)
 
     class Meta:
@@ -19,7 +21,9 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "reference",
             "status",
             "property",
+            "property_name",
             "guest",
+            "guest_name",
             "agent",
             "assigned_to",
             "date_from",
@@ -41,11 +45,25 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "id",
             "reference",
             "status",
+            "property_name",
+            "guest_name",
             "is_archived",
             "archived_at",
             "created_at",
             "updated_at",
         ]
+
+    def get_property_name(self, obj: Booking) -> str | None:
+        prop = obj.property
+        if prop is None:
+            return None
+        return (prop.display_name or prop.name) or None
+
+    def get_guest_name(self, obj: Booking) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return f"{guest.first_name} {guest.last_name}".strip() or None
 
 
 class BookingDetailSerializer(BookingListSerializer):

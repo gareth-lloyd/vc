@@ -12,7 +12,8 @@ export function ArrivalsList() {
   const { t } = useTranslation("dashboard");
   const { data, isLoading, isError } = useArrivalsToday();
 
-  const viewAllHref = `/bookings?check_in_after=${todayIso()}&check_in_before=${todayIso()}`;
+  const today = todayIso();
+  const viewAllHref = `/bookings?check_in_after=${today}&check_in_before=${today}&exclude_terminal=true`;
 
   return (
     <Section

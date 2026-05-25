@@ -7,6 +7,7 @@ from typing import Any
 from django.db.models import Q, QuerySet
 from django_filters import rest_framework as filters
 
+from reservations.enums import TERMINAL_BOOKING_STATUSES
 from reservations.models import Booking, Enquiry, Quotation
 
 
@@ -63,6 +64,7 @@ class BookingFilter(filters.FilterSet):
     check_in_before = filters.DateFilter(field_name="date_from", lookup_expr="lte")
     check_out_after = filters.DateFilter(field_name="date_to", lookup_expr="gte")
     check_out_before = filters.DateFilter(field_name="date_to", lookup_expr="lte")
+    exclude_terminal = filters.BooleanFilter(method="filter_exclude_terminal")
     q = filters.CharFilter(method="filter_q")
 
     class Meta:
@@ -77,8 +79,16 @@ class BookingFilter(filters.FilterSet):
             "check_in_before",
             "check_out_after",
             "check_out_before",
+            "exclude_terminal",
             "q",
         ]
+
+    def filter_exclude_terminal(
+        self, queryset: QuerySet[Booking], _name: str, value: bool
+    ) -> QuerySet[Booking]:
+        if not value:
+            return queryset
+        return queryset.exclude(status__in=TERMINAL_BOOKING_STATUSES)
 
     def filter_q(self, queryset: QuerySet[Booking], _name: str, value: str) -> QuerySet[Booking]:
         if not value:

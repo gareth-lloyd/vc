@@ -118,6 +118,7 @@ function onActionSuccess(queryClient: QueryClient, bookingId: BookingId, updated
   queryClient.setQueryData(queryKeys.bookings.detail(bookingId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
 
 export function useConfirmBooking(bookingId: BookingId) {
@@ -232,6 +233,7 @@ function invalidateTrack(queryClient: QueryClient, bookingId: BookingId, track: 
   queryClient.invalidateQueries({ queryKey: TRACK_KEY[track](bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
 
 export function useRequestPayment(bookingId: BookingId, track: TrackName) {

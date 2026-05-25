@@ -31,7 +31,7 @@ export function DashboardPage() {
           <KpiCard
             label={t("kpis.check_ins_today")}
             value={arrivals.data?.count}
-            to={`/bookings?check_in_after=${today}&check_in_before=${today}`}
+            to={`/bookings?check_in_after=${today}&check_in_before=${today}&exclude_terminal=true`}
             loading={arrivals.isLoading}
             error={arrivals.isError}
             errorLabel={errorLabel}
@@ -39,7 +39,7 @@ export function DashboardPage() {
           <KpiCard
             label={t("kpis.check_outs_today")}
             value={departures.data}
-            to={`/bookings?check_out_after=${today}&check_out_before=${today}`}
+            to={`/bookings?check_out_after=${today}&check_out_before=${today}&exclude_terminal=true`}
             loading={departures.isLoading}
             error={departures.isError}
             errorLabel={errorLabel}

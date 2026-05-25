@@ -46,8 +46,11 @@ function parseStatus(value: string | null): EnquiryStatus | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-function parseView(value: string | null): ViewMode {
-  return value === "list" ? "list" : "kanban";
+function parseView(value: string | null, hasStatusFilter: boolean): ViewMode {
+  if (value === "list" || value === "kanban") return value;
+  // When the user lands with an explicit ?status= filter (e.g. from the dashboard),
+  // the Kanban's all-columns layout would hide that filter — prefer the list view.
+  return hasStatusFilter ? "list" : "kanban";
 }
 
 function paramsToFilters(params: URLSearchParams): EnquiryFilters {
@@ -87,7 +90,7 @@ export function EnquiriesListPage() {
   const hasRole = useHasReservationsRole();
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
-  const view: ViewMode = parseView(params.get("view"));
+  const view: ViewMode = parseView(params.get("view"), filters.status !== undefined);
   const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
 

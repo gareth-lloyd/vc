@@ -51,6 +51,7 @@ function onDetailUpdated(queryClient: QueryClient, enquiryId: EnquiryId, updated
   queryClient.setQueryData(queryKeys.enquiries.detail(enquiryId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.activity(enquiryId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
 
 export function useCreateEnquiry() {
@@ -59,6 +60,7 @@ export function useCreateEnquiry() {
     mutationFn: (input: EnquiryWriteInput) => createEnquiry(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
     },
   });
 }

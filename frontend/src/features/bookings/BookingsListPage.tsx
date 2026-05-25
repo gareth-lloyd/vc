@@ -43,6 +43,11 @@ function paramsToFilters(params: URLSearchParams): BookingFilters {
     site: params.get("site") ?? undefined,
     ordering: params.get("ordering") ?? undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
+    check_in_after: params.get("check_in_after") ?? undefined,
+    check_in_before: params.get("check_in_before") ?? undefined,
+    check_out_after: params.get("check_out_after") ?? undefined,
+    check_out_before: params.get("check_out_before") ?? undefined,
+    exclude_terminal: params.get("exclude_terminal") === "true" || undefined,
   };
 }
 

@@ -91,7 +91,10 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("No enquiries yet.")).toBeInTheDocument();
   });
 
-  it("isolates errors per widget", async () => {
+  it("scopes errors to the failing resource (a /bookings outage doesn't blank enquiries)", async () => {
+    // A /bookings outage takes out the three bookings-backed cards plus the arrivals
+    // section, but the enquiries-backed widgets keep working — that's the isolation
+    // guarantee, scoped per HTTP resource (not per visual widget).
     server.use(
       http.get("/api/v1/bookings", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
       enquiriesHandler([enquiry], { count: 1 }),
@@ -99,10 +102,11 @@ describe("DashboardPage", () => {
 
     renderWithProviders(<DashboardPage />);
 
-    // Enquiries side still loads
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
-    // Bookings side shows an error in at least one place (the arrivals section)
-    const errors = await screen.findAllByText("Couldn't load this card.");
-    expect(errors.length).toBeGreaterThan(0);
+    // Bookings-backed widgets all error: arrivals list + 3 KPI cards (check-ins,
+    // check-outs, awaiting balance) — enquiries widgets unaffected.
+    await waitFor(() => {
+      expect(screen.getAllByText("Couldn't load this card.").length).toBeGreaterThanOrEqual(2);
+    });
   });
 });

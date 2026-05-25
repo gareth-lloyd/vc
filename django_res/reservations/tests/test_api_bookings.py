@@ -94,10 +94,24 @@ def test_list_bookings(api_client: APIClient, staff: User, booking: Booking) -> 
 
     assert response.status_code == 200
     assert response.data["count"] == 1
-    assert response.data["results"][0]["reference"] == booking.reference
+    row = response.data["results"][0]
+    assert row["reference"] == booking.reference
+    assert row["property_name"] == "Test Villa"
+    assert row["guest_name"] == "Ada Lovelace"
     # The FE formats money against `currency_code`; the raw FK is also
     # exposed, but the ISO code is what the UI needs.
-    assert response.data["results"][0]["currency_code"] == "GBP"
+    assert row["currency_code"] == "GBP"
+
+
+@pytest.mark.django_db
+def test_list_bookings__exclude_terminal_drops_cancelled(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    booking.cancel("test")
+    api_client.force_login(staff)
+
+    assert api_client.get("/api/v1/bookings").data["count"] == 1
+    assert api_client.get("/api/v1/bookings?exclude_terminal=true").data["count"] == 0
 
 
 @pytest.mark.django_db

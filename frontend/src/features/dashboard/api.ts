@@ -5,14 +5,23 @@ import { enquiryListResponseSchema, type EnquiryListItem } from "@/features/enqu
 
 export async function fetchArrivalsToday(today: string): Promise<Paginated<BookingListItem>> {
   const data = await apiGet<unknown>("/bookings", {
-    query: { check_in_after: today, check_in_before: today, ordering: "date_from" },
+    query: {
+      check_in_after: today,
+      check_in_before: today,
+      exclude_terminal: "true",
+      ordering: "date_from",
+    },
   });
   return bookingListResponseSchema.parse(data);
 }
 
 export async function fetchDeparturesTodayCount(today: string): Promise<number> {
   const data = await apiGet<unknown>("/bookings", {
-    query: { check_out_after: today, check_out_before: today },
+    query: {
+      check_out_after: today,
+      check_out_before: today,
+      exclude_terminal: "true",
+    },
   });
   return bookingListResponseSchema.parse(data).count;
 }

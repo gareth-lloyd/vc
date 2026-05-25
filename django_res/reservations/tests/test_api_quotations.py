@@ -237,6 +237,76 @@ def test_convert_enforces_changeover_with_override_escape(
 
 
 @pytest.mark.django_db
+def test_convert_overlap_rolls_back_quotation_acceptance(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """If the booking service raises OverlappingBooking, the quotation must NOT
+    be left ACCEPTED — the whole convert is one transaction."""
+    from reservations.enums import BookingStatus, PaymentMethod
+    from reservations.models import Booking as BookingModel
+
+    # Pre-existing AWAITING_DEPOSIT booking holds 2026-06-10..06-17 on the
+    # same property, so converting the overlapping quotation must fail.
+    other_quotation = Quotation.objects.create(
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    other_line = QuotationLine.objects.create(
+        quotation=other_quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    existing = BookingModel.objects.create(
+        quotation_line=other_line,
+        guest=guest,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        children=0,
+        currency=gbp,
+        terms_version=terms,
+        terms_accepted_at=timezone.now(),
+        payment_method=PaymentMethod.CARD.value,
+        rental_price=Decimal("1400.00"),
+        balance_due=Decimal("1400.00"),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    assert existing.status == BookingStatus.AWAITING_DEPOSIT.value
+
+    quotation.send()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+
+    # Domain error → 409 from canonical_exception_handler.
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "overlapping_booking"
+
+    # Quotation must NOT have been left ACCEPTED.
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.SENT.value
+    # No second booking created.
+    assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_withdraw_quotation(api_client: APIClient, staff: User, quotation: Quotation) -> None:
     api_client.force_login(staff)
     response = api_client.post(

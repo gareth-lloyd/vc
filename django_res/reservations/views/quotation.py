@@ -109,17 +109,22 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         line = get_object_or_404(QuotationLine, pk=line_id, quotation=quotation)
-        # Accept the line (transitions quotation to ACCEPTED) before creating the booking.
-        if quotation.status == QuotationStatus.SENT:
-            quotation.accept(line)
-        booking = BookingService.create_from_quotation_line(
-            line,
-            terms_version=quotation.terms_version,
-            payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
-            agent=quotation.agent,
-            actor=request.user,
-            allow_changeover_override=bool(request.data.get("allow_changeover_override", False)),
-        )
+        # Accept + create must share a transaction so an `OverlappingBooking`
+        # raised by the booking service rolls back the quotation acceptance,
+        # otherwise the quotation gets stuck in ACCEPTED with no booking row.
+        with transaction.atomic():
+            if quotation.status == QuotationStatus.SENT:
+                quotation.accept(line)
+            booking = BookingService.create_from_quotation_line(
+                line,
+                terms_version=quotation.terms_version,
+                payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
+                agent=quotation.agent,
+                actor=request.user,
+                allow_changeover_override=bool(
+                    request.data.get("allow_changeover_override", False)
+                ),
+            )
         return Response(
             BookingDetailSerializer(booking).data,
             status=status.HTTP_201_CREATED,

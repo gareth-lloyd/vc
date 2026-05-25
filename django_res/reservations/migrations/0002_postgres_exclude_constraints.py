@@ -8,7 +8,8 @@ Together they make double-booking impossible at the DB level:
   time check is delegated to the application sweeper (which sets
   `released_at` when expiring a hold).
 - `booking_no_overlap_active`: no two *active-state* bookings overlap on
-  the same property.
+  the same property. **Superseded by `booking_no_overlap_blocking` in
+  migration 0007**, which also covers `pending_owner_approval`.
 
 The pricing app uses the same RunPython-gated-on-vendor pattern so the
 SQLite-backed test suite quietly skips them; check + unique constraints

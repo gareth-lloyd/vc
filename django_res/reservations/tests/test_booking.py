@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from django.utils import timezone
 
-from core.exceptions import InvalidTransition
+from core.exceptions import InvalidTransition, OverlappingBooking
 from pricing.models import Currency, RateRule
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
@@ -410,3 +410,213 @@ def test_archive_transition_satisfies_constraint(booking: Booking) -> None:
     booking.archive()
     booking.refresh_from_db()
     assert booking.archived_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Date-range overlap: no two non-terminal bookings can hold the same dates.
+#
+# Drafts and pending-owner-approval bookings are *both* blocked by the
+# exclusion constraint — the historical bug was that pending-approval
+# overlaps were silently permitted, then exploded as IntegrityError when
+# the first owner approved. We surface them as `OverlappingBooking` at the
+# moment the conflict arises.
+# ---------------------------------------------------------------------------
+
+
+def _second_quotation_line(
+    *,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    date_from: date,
+    date_to: date,
+) -> QuotationLine:
+    quotation = Quotation.objects.create(
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    return QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date_from,
+        date_to=date_to,
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+
+
+def _second_booking(
+    *,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    date_from: date,
+    date_to: date,
+) -> Booking:
+    line = _second_quotation_line(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return Booking.objects.create(
+        quotation_line=line,
+        guest=guest,
+        property=property_,
+        date_from=date_from,
+        date_to=date_to,
+        adults=2,
+        children=0,
+        currency=gbp,
+        terms_version=terms,
+        terms_accepted_at=timezone.now(),
+        payment_method=PaymentMethod.CARD.value,
+        rental_price=Decimal("1400.00"),
+        balance_due=Decimal("1400.00"),
+    )
+
+
+@pytest.mark.django_db
+def test_two_pending_approvals_cannot_overlap(
+    booking: Booking,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """B4: two parallel submit_for_approval calls for overlapping dates."""
+    _set_status(booking, BookingStatus.DRAFT.value)
+    booking.submit()
+
+    second = _second_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        # overlaps booking (2026-06-10..06-17)
+        date_from=date(2026, 6, 14),
+        date_to=date(2026, 6, 20),
+    )
+    with pytest.raises(OverlappingBooking):
+        second.submit()
+
+    second.refresh_from_db()
+    assert second.status == BookingStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+def test_auto_accept_into_overlap_raises_overlapping_booking(
+    booking: Booking,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """A draft on overlapping dates can't auto-accept while another booking
+    already occupies the range — surface as domain error rather than IntegrityError."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+
+    second = _second_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date(2026, 6, 14),
+        date_to=date(2026, 6, 20),
+    )
+    assert second.status == BookingStatus.DRAFT.value
+
+    with pytest.raises(OverlappingBooking):
+        second.auto_accept()
+
+    second.refresh_from_db()
+    assert second.status == BookingStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+def test_drafts_can_overlap(
+    booking: Booking,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """DRAFT is pre-commitment; two drafts on the same dates is fine."""
+    _set_status(booking, BookingStatus.DRAFT.value)
+    second = _second_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date(2026, 6, 14),
+        date_to=date(2026, 6, 20),
+    )
+    assert second.status == BookingStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+def test_non_overlapping_pending_approvals_coexist(
+    booking: Booking,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """Sanity check: non-overlapping pending bookings still work."""
+    _set_status(booking, BookingStatus.DRAFT.value)
+    booking.submit()
+
+    second = _second_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+    )
+    second.submit()
+
+    second.refresh_from_db()
+    assert second.status == BookingStatus.PENDING_OWNER_APPROVAL.value
+
+
+@pytest.mark.django_db
+def test_modify_dates_into_overlap_raises_overlapping_booking(
+    booking: Booking,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """modify_dates onto another booking's range must surface as OverlappingBooking,
+    not raw IntegrityError, and must leave the in-memory booking unchanged."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+
+    second = _second_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+    )
+    _set_status(second, BookingStatus.AWAITING_DEPOSIT.value)
+
+    with pytest.raises(OverlappingBooking):
+        second.modify_dates(date(2026, 6, 14), date(2026, 6, 20))
+
+    # In-memory state restored.
+    assert second.date_from == date(2026, 7, 1)
+    assert second.date_to == date(2026, 7, 8)
+
+    # DB row unchanged.
+    second.refresh_from_db()
+    assert second.date_from == date(2026, 7, 1)
+    assert second.date_to == date(2026, 7, 8)

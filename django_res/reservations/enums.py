@@ -84,13 +84,23 @@ class BookingStatus(models.TextChoices):
     DECLINED = "declined", "Declined"
 
 
-# States that block the DB-level no-overlap rule for active bookings.
+# Active bookings for payment/reminder purposes — money is in flight or
+# captured. PENDING_OWNER_APPROVAL is deliberately excluded; no payment is
+# due until the owner has approved.
 ACTIVE_BOOKING_STATUSES: tuple[str, ...] = (
     BookingStatus.AWAITING_DEPOSIT.value,
     BookingStatus.DEPOSIT_PAID.value,
     BookingStatus.AWAITING_BALANCE.value,
     BookingStatus.BALANCE_PAID.value,
     BookingStatus.CHECKED_IN.value,
+)
+
+# States that occupy the date range and must not overlap on the same
+# property. Includes PENDING_OWNER_APPROVAL so two owners can't race on
+# overlapping approvals (see `booking_no_overlap_blocking` constraint).
+OVERLAP_BLOCKING_BOOKING_STATUSES: tuple[str, ...] = (
+    BookingStatus.PENDING_OWNER_APPROVAL.value,
+    *ACTIVE_BOOKING_STATUSES,
 )
 
 TERMINAL_BOOKING_STATUSES: tuple[str, ...] = (

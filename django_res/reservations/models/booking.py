@@ -12,15 +12,16 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from core.exceptions import InvalidTransition
+from core.exceptions import InvalidTransition, OverlappingBooking
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import generate_reference
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
+    OVERLAP_BLOCKING_BOOKING_STATUSES,
     TERMINAL_BOOKING_STATUSES,
     BookingHoldReason,
     BookingNoteKind,
@@ -35,6 +36,23 @@ if TYPE_CHECKING:
     from datetime import date as date_type
 
     from pricing.services import Quote
+
+
+_OVERLAP_CONSTRAINT_NAME = "booking_no_overlap_blocking"
+
+
+def _is_overlap_violation(exc: IntegrityError) -> bool:
+    """True iff `exc` came from the booking_no_overlap_blocking constraint.
+
+    Prefers psycopg's `Diagnostic.constraint_name` (robust to message
+    formatting, locale, deferred constraints). Falls back to a substring
+    check on the rendered message for non-psycopg backends.
+    """
+    diag = getattr(getattr(exc, "__cause__", None), "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+    if constraint_name == _OVERLAP_CONSTRAINT_NAME:
+        return True
+    return _OVERLAP_CONSTRAINT_NAME in str(exc)
 
 
 class Booking(AuditedModel):
@@ -168,24 +186,38 @@ class Booking(AuditedModel):
         # Local import to avoid the signal module pulling Booking at import time.
         from reservations.signals import booking_transitioned
 
-        with transaction.atomic():
-            prev = self.status
-            self.status = to
-            update_fields = ["status", "updated_at"]
-            if extra_updates:
-                for field, value in extra_updates.items():
-                    setattr(self, field, value)
-                    update_fields.append(field)
-            self.save(update_fields=update_fields)
-            BookingEvent.objects.create(
-                booking=self,
-                from_status=prev,
-                to_status=to,
-                actor=actor,
-                source=source,
-                reason=reason,
-                meta=meta or {},
-            )
+        prev = self.status
+        snapshot: dict[str, Any] = {"status": prev}
+        if extra_updates:
+            snapshot.update({f: getattr(self, f) for f in extra_updates})
+        try:
+            with transaction.atomic():
+                self.status = to
+                update_fields = ["status", "updated_at"]
+                if extra_updates:
+                    for field, value in extra_updates.items():
+                        setattr(self, field, value)
+                        update_fields.append(field)
+                self.save(update_fields=update_fields)
+                BookingEvent.objects.create(
+                    booking=self,
+                    from_status=prev,
+                    to_status=to,
+                    actor=actor,
+                    source=source,
+                    reason=reason,
+                    meta=meta or {},
+                )
+        except IntegrityError as exc:
+            for field, value in snapshot.items():
+                setattr(self, field, value)
+            if to in OVERLAP_BLOCKING_BOOKING_STATUSES and _is_overlap_violation(exc):
+                raise OverlappingBooking(
+                    f"Booking {self.reference}: cannot transition to {to!r}; "
+                    f"another booking already holds {self.date_from}..{self.date_to} "
+                    f"on property {self.property_id}"
+                ) from exc
+            raise
         booking_transitioned.send(
             sender=Booking,
             booking=self,
@@ -400,6 +432,13 @@ class Booking(AuditedModel):
                 self.status,
                 allowed=list(self._modify_allowed_states()),
             )
+        snapshot = {
+            "date_from": self.date_from,
+            "date_to": self.date_to,
+            "pricing_snapshot": self.pricing_snapshot,
+            "rental_price": self.rental_price,
+            "balance_due": self.balance_due,
+        }
         old_from = self.date_from
         old_to = self.date_to
         old_snapshot = self.pricing_snapshot
@@ -414,16 +453,27 @@ class Booking(AuditedModel):
         self.pricing_snapshot = quote.breakdown
         self.rental_price = quote.rate_subtotal
         self.balance_due = (quote.total - Decimal("0")).quantize(Decimal("0.01"))
-        self.save(
-            update_fields=[
-                "date_from",
-                "date_to",
-                "pricing_snapshot",
-                "rental_price",
-                "balance_due",
-                "updated_at",
-            ]
-        )
+        try:
+            self.save(
+                update_fields=[
+                    "date_from",
+                    "date_to",
+                    "pricing_snapshot",
+                    "rental_price",
+                    "balance_due",
+                    "updated_at",
+                ]
+            )
+        except IntegrityError as exc:
+            for field, value in snapshot.items():
+                setattr(self, field, value)
+            if _is_overlap_violation(exc):
+                raise OverlappingBooking(
+                    f"Booking {self.reference}: cannot move to "
+                    f"{date_from}..{date_to}; another booking already holds those "
+                    f"dates on property {self.property_id}"
+                ) from exc
+            raise
         self._write_event(
             actor=actor,
             reason=reason,
@@ -696,6 +746,7 @@ class BookingNote(TimestampedModel):
 # Re-export for convenience; consumers can `from reservations.models.booking import …`.
 __all__ = [
     "ACTIVE_BOOKING_STATUSES",
+    "OVERLAP_BLOCKING_BOOKING_STATUSES",
     "Booking",
     "BookingEvent",
     "BookingHold",

@@ -664,17 +664,30 @@ For per-caller capability introspection use `GET /auth/permissions` (§2.0); fin
 
 ### 2.19 Email Templates & Email Logs
 
-Transactional comms (booking confirmation, deposit request, owner-approval request, magic-link dispatch) are MVP — they're load-bearing for the booking workflow — but the **template-editing CMS is not**. Templates ship as code/seed data in v1; editable templates and a test-send harness are deferred to v1.1. The log surface is forensic-essential and stays. See reconciliation issue #10.
+Transactional comms (booking confirmation, deposit request, owner-approval request, magic-link dispatch) are MVP — they're load-bearing for the booking workflow. The **template-editing admin is also MVP** per the `10-decisions.md` row "Editable `EmailTemplate` admin with versioning + preview-with-data + test-send" — this reverses the earlier v1.1-deferral. Templates ship as code seed data and are then operator-editable through this surface; the `comms` model carries versioning natively (`10-comms.md`). The log surface is forensic-essential and is exposed both globally and as a per-booking sub-resource for the Communications tab (`product-design/02-frontend-design.md §3.8`). See also reconciliation issue #10.
 
+#### Templates
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/email-templates` | Read-only list of seeded templates; filter `key`, `is_active`. No POST/PATCH/DELETE in v1. |
-| GET | `/email-templates/{id}` | Detail (read-only) |
-| GET | `/email-logs` | List sent emails; filters: `booking`, `enquiry`, `guest`, `template`, `status`, date ranges |
-| GET | `/email-logs/{id}` | Detail incl. rendered body |
-| GET | `/code-auth-logs` | Magic-link/code dispatch log |
+| GET | `/email-templates` | List active templates; filter `key`, `is_active` |
+| GET | `/email-templates/{key}` | Detail by key (resolves the active version) |
+| PUT | `/email-templates/{key}` | Publish a new version of this key — atomically deactivates the prior active row and inserts a new one with `version = prior + 1`. Body: `{subject_template, body_template, notes?}` |
+| POST | `/email-templates/{key}:preview` | Render with sample or real data. Body: `{context?: dict, booking_id?, quotation_id?, enquiry_id?}` (one of the FK ids resolves to a real context; bare `context` is for synthetic data). Response: `{rendered_subject, rendered_body_html, rendered_body_text}` |
+| POST | `/email-templates/{key}:test-send` | Render and dispatch through the active `SmtpProfile` to a chosen recipient. Body: `{to, context_source: same shape as :preview}`. Writes an `EmailLog` row with `correlation.test_send=True` |
+| GET | `/email-templates/{key}/versions` | Version history (newest first) |
+| GET | `/email-templates/{key}/versions/{n}` | Specific historical version (read-only) |
 
-> Deferred to v1.1: `POST/PATCH/DELETE /email-templates`, `/email-templates/{id}:preview`, `/email-templates/{id}:test-send`, `/email-logs/{id}:resend`, `/email-logs/bulk-resend`. Operator-driven re-send and template editing belong in a follow-up `comms` app spec.
+#### Logs
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/email-logs` | Global list; filters: `booking`, `enquiry`, `guest`, `quotation`, `template_key`, `status`, date ranges |
+| GET | `/email-logs/{id}` | Detail incl. rendered body |
+| GET | `/bookings/{id}/email-logs` | Per-booking communications history (Comms tab on Booking Detail, `02-frontend-design.md §3.8`). Returns `EmailLog` rows where `correlation.booking_id = {id}`, newest first. Filters: `template_key`, `status` |
+| POST | `/bookings/{id}/email-logs/{log_id}:resend` | Re-dispatch a previously sent email — re-renders against the current booking state and writes a NEW `EmailLog` row (the original is not mutated; append-only per `10-comms.md`) |
+| POST | `/bookings/{id}/compose-email` | Operator-composed one-off email against this booking. Body: `{template_key, to, cc?, bcc?, context_overrides?}` — template provides defaults; context is the booking's resolved context plus operator overrides. Renders preview server-side; an explicit `confirm: true` flag dispatches |
+| GET | `/code-auth-logs` | Magic-link/code dispatch log (separate from `EmailLog` — narrower fields) |
+
+> Bulk-resend (`POST /email-logs/bulk-resend`) remains deferred to v1.1 — the per-booking and single-row resends above cover the operator-UX cases the legacy gap analysis surfaced.
 
 ---
 
@@ -831,7 +844,7 @@ Consolidated list of named side-effecting actions, grouped by parent resource. A
 
 **Availability:** `extend-hold`, `release-hold`, `bulk-block`.
 
-**Email templates / logs:** _(no MVP actions — template editing, `preview`, `test-send`, `resend`, `bulk-resend` deferred to v1.1; see §2.19 and reconciliation issue #10.)_
+**Email templates / logs:** `preview`, `test-send` (on `/email-templates/{key}`); `resend` (on `/bookings/{id}/email-logs/{log_id}`); plus a per-booking compose surface (`POST /bookings/{id}/compose-email`). Bulk-resend remains v1.1. See §2.19 and reconciliation issue #10.
 
 **Channel sync:** _(out of MVP scope — see §2.25 and reconciliation issue #11.)_
 

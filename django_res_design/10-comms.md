@@ -143,11 +143,66 @@ The signal contract is one-way: `comms` imports models from `reservations` / `pa
 
 `EmailLog` is keyed by an idempotency hash on `(template_key, template_version, sorted(to), correlation)`. Re-emission of the same signal does not create a duplicate row — the listener queries first. This is how payment reminders are kept idempotent in `12-automation` without a `Payment.reminder_sent_at` column.
 
+## Template catalogue
+
+The signal listener table above documents the dispatch wiring; this is the **list of `EmailTemplate.key` rows that ship with v1**. Each row identifies a distinct guest-facing or internal email; keys that previously reused one row in legacy (e.g. balance reminders at 7d / due-today) are split here. Source for the gap analysis: `mock_up_analysis/04-client-emails.md §4` and `04a-ressystem-email-inventory.md §9`.
+
+| Key | Purpose (one-line) | Workflow trigger |
+|---|---|---|
+| `enquiry.auto_reply` | Guest acknowledgement after public enquiry submission. | `workflows/07-enquiry/enquiry-intake.md` (website POST) |
+| `enquiry.internal_notification` | Internal VC-inbox notice for a new enquiry. | `workflows/07-enquiry/enquiry-intake.md` (website POST) |
+| `quotation.send` | Quote to client; sends via the agent's `PERSONAL` `SmtpProfile` when one is active. | `workflows/08-quotation/transmission.md` |
+| `booking.confirmation` | Confirmation to guest on `AWAITING_DEPOSIT` (covered by signal listener table above). | `workflows/09-booking/booking-confirmation.md` |
+| `booking.paid_in_full_confirmation` | Distinct confirmation variant when deposit + balance are paid in a single transaction. | `workflows/10-payment/payment-collection.md` (single payment covers full schedule) |
+| `booking.owner_declined` | Guest-facing notice when the owner declines a pending-approval booking. | `workflows/09-booking/booking-confirmation.md` (owner-decline path) |
+| `booking.modification_notice` | Confirmation to guest that dates or party size have changed. | `workflows/09-booking/booking-modification.md` |
+| `booking.cancellation_confirmation` | Guest-facing cancellation with itemised refund. | `workflows/09-booking/booking-cancellation.md` |
+| `booking.refund_confirmation` | Refund-executed confirmation receipt. | `workflows/09-booking/booking-cancellation.md` |
+| `booking.damages_claim` | Security-deposit damages claim notification to guest. | pending `DamageClaim` model (see `10-decisions.md` Open follow-ups) |
+| `booking.balance_received` | Receipt to guest confirming the rental balance payment landed. | `workflows/10-payment/payment-collection.md` (`status=guaranteed` on `BALANCE` payment) |
+| `booking.balance_reminder_7d` | Balance reminder at T-7d. | `workflows/12-automation/scheduler-jobs.md` |
+| `booking.balance_reminder_3d` | Balance reminder at T-3d (new; legacy reused one key for 7d/0d). | `workflows/12-automation/scheduler-jobs.md` |
+| `booking.balance_due_today` | Balance reminder on the due date, distinct urgency tone. | `workflows/12-automation/scheduler-jobs.md` |
+| `booking.pre_arrival_info` | Pre-arrival information pack at T-7d before check-in. | `workflows/12-automation/scheduler-jobs.md` |
+| `booking.check_in_reminder` | Check-in nudge at T-48h. | `workflows/12-automation/scheduler-jobs.md` |
+| `booking.post_stay_thanks` | Thank-you note T+24h after check-out. | `workflows/12-automation/scheduler-jobs.md` |
+| `payment.security_deposit_request` | Security-deposit invoice (distinct from `booking.confirmation`). | `workflows/10-payment/payment-preauth.md`, `workflows/10-payment/payment-collection.md` |
+| `payment.card_update_request` | Stored-card refresh request (legacy `CC_CARD_UPDATE`). | `workflows/12-automation/scheduler-jobs.md` |
+| `report.scheduled_delivery` | Operator-scheduled report delivery to a recipient list. | `workflows/12-automation/scheduler-jobs.md` |
+| `ops.overdue_escalation` | Internal ops alert when a booking balance is overdue. | `workflows/12-automation/scheduler-jobs.md` |
+
+Keys already covered explicitly by the **Signal listeners** table above (`booking.confirmation`, `booking.declined`, `booking.cancelled`, `booking.checked_out`, `owner.approval_request`, `quotation.sent`, `payment.receipt`, `payment.failed`, `payment.failed_guest`, `hold.expired`, `security_deposit.released`) remain the source of truth for their wiring; the catalogue above adds the rows the legacy → v1 gap analysis surfaced.
+
+## Template admin UX requirements
+
+The `EmailTemplate` admin is operator-editable (per `10-decisions.md` "Editable `EmailTemplate` admin" row). Requirements:
+
+- **Versioning.** Edits bump `EmailTemplate.version` and atomically deactivate the prior active row (already enforced by the `one_active_template_per_key` constraint). Version history is browseable; rollback is "publish prior version as new active version", not in-place mutation.
+- **Preview-with-data.** Operator picks a real booking / enquiry / quotation (or a synthetic fixture) and the admin renders the template against that context, side-by-side subject + HTML + plaintext alternate.
+- **Test-send.** Operator chooses a recipient address (defaults to their own); the admin sends through the active `SmtpProfile` and writes an `EmailLog` row tagged with `correlation.test_send=True` so test sends are visible-but-distinguishable in the log.
+- **Locale-ready field placeholder.** The catalogue keys above are locale-agnostic; the `EmailTemplate` model leaves room for a future `locale` field (multi-language templates remain deferred per `10-decisions.md` Deferred table — no v1 use case).
+- **Audit trail.** Every edit produces an `AuditLog` row keyed on `(EmailTemplate, version, actor, at, before, after)` matching the project-wide audit convention (`00-conventions.md`).
+
+The API surface for this lives under `/email-templates/*` in `product-design/04-rest-api-surface.md §2.19`.
+
+## Operator UX — per-booking Communications tab
+
+Operators need first-class visibility into what has been sent against each booking. The legacy app dumps outbound mail to per-day plaintext under `wwwroot/ResLogs/<ddMMyyyy>/` only (`mock_up_analysis/04a-ressystem-email-inventory.md §2.4, §8`), so there is no per-booking history surface at all today.
+
+The redesign adds a **Communications tab** on the Booking Detail screen (`product-design/02-frontend-design.md §3.8`) backed by `EmailLog`:
+
+- Lists every email sent against the booking, queried via `EmailLog.correlation.booking_id`.
+- Per-row: timestamp, recipient, template key + version, rendered subject, status, opens/clicks (when provider events are wired).
+- Per-row actions: **View payload** (modal showing rendered HTML + plaintext alternate) and **Resend** (creates a new `EmailLog` row, does not mutate the original).
+- Top-of-tab action: **Compose** (template picker → preview → send), persisted as a normal `EmailLog` entry with `template_key` resolved from the picked template.
+
+API endpoints under `product-design/04-rest-api-surface.md §2.19`.
+
 ## What's deferred
 
 - Per-villa template branding overrides (legacy didn't have it; revisit when a partner brand needs it).
 - Multi-language templates (locale field on `EmailTemplate` is the obvious extension; no v1 use case).
-- An editable-from-admin template UI past the basic Django admin form.
 - Per-recipient send-time personalisation beyond what context dict carries.
+- Inbound-email gateway for guest-side reply threading (per-booking reply-to alias). The "New Message from VC" / "Service Request Update" templates in `mock_up_analysis/04-client-emails.md §3.9, §3.10` depend on this — both are gated behind the deferred client portal (`10-decisions.md` Deferred table).
 
 These are recorded in `10-decisions.md`.

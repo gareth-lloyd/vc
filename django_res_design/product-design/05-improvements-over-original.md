@@ -130,7 +130,16 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 **Now**: One Reports hub with tiles per report type (Owner statements / Occupancy / Revenue & commission / Concierge margin / Refunds & cancellations / Enquiry funnel / Operator productivity). Common controls (period, scope, grouping, filters). Preview inline before export. Schedule recurring reports with email recipients.
 **Why**: Consistency reduces training cost and surface area for bugs.
 
-## 20. Greenfield model collapses legacy redundancy
+## 20. Operator-visible communications history + editable email-template admin
+
+**Was**: Outbound mail is dumped to per-day plaintext files under `wwwroot/ResLogs/<ddMMyyyy>/` via `Utilities.WriteResLogFile`. There is no per-booking communications history, no queryable log, no "what was sent" view. Templates live in the `VCEmailTemplates` SQL Server table and are editable only via direct SQL — no UI, no versioning, no preview, no test-send. (`mock_up_analysis/04a-ressystem-email-inventory.md §2.4, §3.1, §8`.)
+**Now**:
+- `EmailLog` (already in v1 — see `10-comms.md`) is a first-class, queryable, append-only record of every dispatch attempt, correlated to `booking_id` / `quotation_id` / `enquiry_id` / `payment_id`.
+- A **Comms tab** on Booking Detail (`02-frontend-design.md §3.8`) lists every email sent against the booking, with view-payload, resend, and a compose-new action backed by the template catalogue.
+- `EmailTemplate` is first-class and admin-editable, with **versioning** (active row swap on publish), **preview-with-data** (render against a real or synthetic context), **test-send** (writes a `correlation.test_send=True` `EmailLog` row), and full audit trail. Endpoint surface: `04-rest-api-surface.md §2.19`.
+**Why**: Legacy operators had zero forensic visibility into outbound mail and zero ability to fix template copy without a database engineer. Both are foundational improvements; together they retire the legacy "SQL-only templates + plaintext ResLogs" model entirely. Cross-refs: `10-decisions.md` (the two live decisions "Per-booking Communications tab on Booking Detail" and "Editable `EmailTemplate` admin with versioning + preview-with-data + test-send"), `10-comms.md` (template catalogue + admin UX), `mock_up_analysis/04a-ressystem-email-inventory.md §10` (legacy gap analysis).
+
+## 21. Greenfield model collapses legacy redundancy
 
 The legacy schema accreted parallel tables that overlapped in purpose. The new model:
 - Collapses `VillaWebsitePricing` and `VillaMapping` (price display) into one `PriceDisplayConfig` resource.

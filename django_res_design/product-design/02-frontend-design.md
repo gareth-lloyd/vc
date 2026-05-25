@@ -95,6 +95,7 @@ React Router v6+ with data routes. URLs are the source of truth for which tab is
 /bookings/:id/finance
 /bookings/:id/payments
 /bookings/:id/concierge
+/bookings/:id/comms
 /bookings/:id/owner
 /bookings/:id/timeline
 /availability                       (multi-villa timeline; default)
@@ -349,7 +350,7 @@ The 11-card scroll becomes 6 tabs + a persistent right rail summary.
 +----------------------------------------------------------------+
 | ← Bookings / BK-2391                                           |
 | Casa Norte · Tan party · 14–21 May 2026                        |
-| [Overview][Finance][Payments][Concierge][Owner][Timeline]      |
+| [Overview][Finance][Pay][Concierge][Comms][Owner][Timeline]    |
 +--------------------------------------------+-------------------+
 |                                            | BK-2391           |
 |   Tab body                                 | Confirmed         |
@@ -374,8 +375,9 @@ Tabs:
 2. **Finance** — Line items table (rental, extras, discounts, taxes), totals, currency, commission breakdown, security-deposit amount. Edit inline.
 3. **Payments** — The three-track timeline (§3.12).
 4. **Concierge** — Line items + tasks (§3.14).
-5. **Owner** — Owner details, owner-side payout schedule, owner notes (separate from guest-facing notes).
-6. **Timeline** — Audit log of every state change, sent email, payment received, edit by user, with filter by event type.
+5. **Comms** — Per-booking communications history (every email sent against this booking, sourced from `EmailLog` — see `10-comms.md`). Columns: timestamp, recipient, template (key + version), rendered subject, status, opens/clicks (when provider events are wired). Per-row actions: **View payload** (modal with rendered HTML + plaintext alternate) and **Resend** (creates a new `EmailLog`, does not mutate the original). Top-of-tab action: **Compose** — template picker plus free-form override fields → preview → send. Replaces the legacy "no per-booking comms view at all" status quo where outbound mail went to per-day plaintext files only.
+6. **Owner** — Owner details, owner-side payout schedule, owner notes (separate from guest-facing notes).
+7. **Timeline** — Audit log of every state change, sent email, payment received, edit by user, with filter by event type.
 
 The right rail is **always visible** across all tabs, so the operator always knows what the booking is and what to do next.
 

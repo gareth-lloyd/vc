@@ -40,6 +40,9 @@ logs/
 # pre-commit
 .pre-commit-cache/
 
+# Claude Code harness scratch (agent worktrees)
+.claude/worktrees/
+
 # Generated media from local dev seeding (MEDIA_ROOT is unset in dev, so
 # ImageField uploads land under the app dir relative to cwd).
 django_res/properties/[0-9][0-9][0-9][0-9]/

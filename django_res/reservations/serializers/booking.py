@@ -10,6 +10,8 @@ from reservations.models import Booking, BookingEvent, BookingNote
 class BookingListSerializer(serializers.ModelSerializer[Booking]):
     """Light booking representation for collection responses."""
 
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+
     class Meta:
         model = Booking
         fields = [
@@ -25,6 +27,7 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "adults",
             "children",
             "currency",
+            "currency_code",
             "rental_price",
             "balance_due",
             "balance_due_at",

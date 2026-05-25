@@ -95,6 +95,9 @@ def test_list_bookings(api_client: APIClient, staff: User, booking: Booking) -> 
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["results"][0]["reference"] == booking.reference
+    # The FE formats money against `currency_code`; the raw FK is also
+    # exposed, but the ISO code is what the UI needs.
+    assert response.data["results"][0]["currency_code"] == "GBP"
 
 
 @pytest.mark.django_db

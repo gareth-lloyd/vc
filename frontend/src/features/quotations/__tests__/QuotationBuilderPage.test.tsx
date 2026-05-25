@@ -100,6 +100,6 @@ describe("QuotationBuilderPage", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
-    expect(screen.getByText(/4,500\.00 USD/)).toBeInTheDocument();
+    expect(screen.getByText(/\$4,500\.00/)).toBeInTheDocument();
   });
 });

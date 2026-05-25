@@ -29,5 +29,5 @@ export function formatMoney(
     maximumFractionDigits: 2,
   });
   const symbol = SYMBOLS[code];
-  return symbol ? `${symbol}${formatted} ${code}` : `${formatted} ${code}`;
+  return symbol ? `${symbol}${formatted}` : `${formatted} ${code}`;
 }

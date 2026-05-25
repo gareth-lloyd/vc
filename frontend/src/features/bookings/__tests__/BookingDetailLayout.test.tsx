@@ -93,7 +93,7 @@ describe("BookingDetailLayout", () => {
     await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Casa Norte").length).toBeGreaterThan(0);
     expect(screen.getAllByText("deposit_paid").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("£2,500.00 GBP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("£2,500.00").length).toBeGreaterThan(0);
   });
 
   it("renders Overview content for the guest + property", async () => {

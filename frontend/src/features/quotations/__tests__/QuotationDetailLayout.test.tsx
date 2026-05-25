@@ -99,7 +99,7 @@ describe("QuotationDetailLayout", () => {
     setup();
     expect(await screen.findByText("#33")).toBeInTheDocument();
     expect(screen.getByText("#12")).toBeInTheDocument();
-    expect(screen.getByText(/1,234\.50 EUR/)).toBeInTheDocument();
+    expect(screen.getByText(/€1,234\.50/)).toBeInTheDocument();
   });
 
   it("disables action buttons when the user lacks the reservations role", async () => {

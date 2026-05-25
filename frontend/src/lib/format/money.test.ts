@@ -17,18 +17,18 @@ describe("parseMoney", () => {
 
 describe("formatMoney", () => {
   it("formats GBP from a number", () => {
-    expect(formatMoney(1500, "GBP")).toBe("£1,500.00 GBP");
+    expect(formatMoney(1500, "GBP")).toBe("£1,500.00");
   });
 
   it("formats EUR from a decimal string", () => {
-    expect(formatMoney("1234.5", "EUR")).toBe("€1,234.50 EUR");
+    expect(formatMoney("1234.5", "EUR")).toBe("€1,234.50");
   });
 
   it("formats USD", () => {
-    expect(formatMoney("99", "USD")).toBe("$99.00 USD");
+    expect(formatMoney("99", "USD")).toBe("$99.00");
   });
 
-  it("falls back to a bare amount + code for unknown currency codes", () => {
+  it("falls back to amount + code when the currency has no known symbol", () => {
     expect(formatMoney(10, "XYZ")).toBe("10.00 XYZ");
   });
 

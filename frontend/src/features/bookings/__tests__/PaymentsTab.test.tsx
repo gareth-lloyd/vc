@@ -155,9 +155,7 @@ describe("PaymentsTab", () => {
     expect(screen.getByText("Balance")).toBeInTheDocument();
     expect(screen.getByText("Security deposit")).toBeInTheDocument();
     // Balance: 0.00 of 1500.00
-    await waitFor(() =>
-      expect(screen.getByText(/£0\.00 GBP of £1,500\.00 GBP paid/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/£0\.00 of £1,500\.00 paid/i)).toBeInTheDocument());
   });
 
   it("disables actions when the user lacks the role", async () => {

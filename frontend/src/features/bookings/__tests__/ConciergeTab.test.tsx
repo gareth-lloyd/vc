@@ -139,7 +139,7 @@ describe("ConciergeTab", () => {
     setup();
     expect(await screen.findByText("Airport transfer")).toBeInTheDocument();
     // 2 × £125.00 = £250.00
-    expect(screen.getByText(/£250\.00 GBP/)).toBeInTheDocument();
+    expect(screen.getByText(/£250\.00/)).toBeInTheDocument();
   });
 
   it("disables Add service when the user lacks the role", async () => {

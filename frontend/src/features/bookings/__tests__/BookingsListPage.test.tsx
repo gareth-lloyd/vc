@@ -69,7 +69,7 @@ describe("BookingsListPage", () => {
     expect(await screen.findByText("B-AAA-001")).toBeInTheDocument();
     expect(screen.getByText("Casa Norte")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
-    expect(screen.getByText("£2,500.00 GBP")).toBeInTheDocument();
+    expect(screen.getByText("£2,500.00")).toBeInTheDocument();
   });
 
   it("renders an empty state when no rows", async () => {

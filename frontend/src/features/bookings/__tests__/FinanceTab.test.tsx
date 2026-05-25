@@ -92,9 +92,9 @@ describe("FinanceTab", () => {
 
     expect(await screen.findByRole("heading", { name: "Finance" })).toBeInTheDocument();
     expect(screen.getByText("Rate subtotal")).toBeInTheDocument();
-    expect(screen.getAllByText(/£1,400\.00 GBP/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/£1,400\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText("Grand total")).toBeInTheDocument();
-    expect(screen.getByText(/£1,850\.00 GBP/)).toBeInTheDocument();
+    expect(screen.getByText(/£1,850\.00/)).toBeInTheDocument();
   });
 
   it("renders the lines table when pricing_snapshot has lines", async () => {

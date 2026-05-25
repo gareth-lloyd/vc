@@ -503,6 +503,32 @@ def test_owner_commission_falls_back_to_group_finance(
 
 
 @pytest.mark.django_db
+def test_owner_commission_null_when_group_finance_missing(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Legacy/imported groups can lack a GroupFinance row. PropertyFinance.
+    effective_commission() raises GroupFinance.DoesNotExist when it tries
+    the group fallback; the serializer must catch it and return None
+    rather than 500.
+    """
+    PropertyFinance.objects.create(
+        property=booking.property,
+        contact=None,
+        commission_calculation_type=None,
+        commission_amount=None,
+        commission_note="",
+    )
+    # Drop the auto-created GroupFinance to simulate the legacy-import case.
+    booking.property.group.finance.delete()
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["commission"] is None
+
+
+@pytest.mark.django_db
 def test_owner_commission_note_empty_string_round_trips(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

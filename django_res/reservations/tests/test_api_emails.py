@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from django.core import mail
@@ -262,15 +263,17 @@ def test_resend_creates_new_log_and_dispatches(
     staff: User,
     booking: Booking,
     booking_email: EmailLog,
+    django_capture_on_commit_callbacks: Any,
 ) -> None:
     mail.outbox.clear()
     api_client.force_login(staff)
 
-    response = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
-        data={"idempotency_key": "abc-123"},
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            data={"idempotency_key": "abc-123"},
+            format="json",
+        )
 
     assert response.status_code == 201
     new_id = response.data["id"]
@@ -291,20 +294,23 @@ def test_resend_is_idempotent_on_repeat_token(
     staff: User,
     booking: Booking,
     booking_email: EmailLog,
+    django_capture_on_commit_callbacks: Any,
 ) -> None:
     mail.outbox.clear()
     api_client.force_login(staff)
 
-    first = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
-        data={"idempotency_key": "same-token"},
-        format="json",
-    )
-    second = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
-        data={"idempotency_key": "same-token"},
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        first = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            data={"idempotency_key": "same-token"},
+            format="json",
+        )
+    with django_capture_on_commit_callbacks(execute=True):
+        second = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            data={"idempotency_key": "same-token"},
+            format="json",
+        )
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -318,21 +324,127 @@ def test_resend_without_token_creates_fresh_row_each_time(
     staff: User,
     booking: Booking,
     booking_email: EmailLog,
+    django_capture_on_commit_callbacks: Any,
 ) -> None:
     mail.outbox.clear()
     api_client.force_login(staff)
 
-    first = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
-        format="json",
-    )
-    second = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        first = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            format="json",
+        )
+    with django_capture_on_commit_callbacks(execute=True):
+        second = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            format="json",
+        )
 
     assert first.data["id"] != second.data["id"]
     assert len(mail.outbox) == 2
+
+
+@pytest.mark.django_db
+def test_resend_clones_original_sender_profile_and_from_email(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    booking_email: EmailLog,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """Resend must clone the original SmtpProfile + from_email so the
+    guest sees a consistent sender across attempts — not rewrite to the
+    operator's personal profile.
+    """
+    SmtpProfile.objects.create(
+        name=f"Personal-{staff.email}",
+        scope=SmtpScope.PERSONAL,
+        owner=staff,
+        host="smtp.personal.example.com",
+        port=587,
+        username="personal",
+        encrypted_password="pw",
+        use_tls=True,
+        from_email="agent@example.com",
+    )
+    api_client.force_login(staff)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{booking_email.pk}:resend",
+            format="json",
+        )
+
+    assert response.status_code == 201
+    new_log = EmailLog.objects.get(pk=response.data["id"])
+    assert new_log.smtp_profile_id == booking_email.smtp_profile_id
+    assert new_log.from_email == booking_email.from_email
+
+
+@pytest.mark.django_db
+def test_resend_falls_back_to_system_when_original_profile_deactivated(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    template: EmailTemplate,
+    system_profile: SmtpProfile,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """If the original SmtpProfile has been deactivated since the first
+    send, fall back to the system profile rather than the operator's.
+    """
+    former_owner = User.objects.create_user(
+        email="former-agent@example.com",
+        password="x",
+        role=StaffRole.RESERVATIONS,
+    )
+    deactivated = SmtpProfile.objects.create(
+        name="Old-Personal",
+        scope=SmtpScope.PERSONAL,
+        owner=former_owner,
+        host="smtp.old.example.com",
+        port=587,
+        username="old",
+        encrypted_password="pw",
+        use_tls=True,
+        from_email="old-agent@example.com",
+        is_active=False,
+    )
+    original = EmailLog.objects.create(
+        template_key=template.key,
+        template_version=template.version,
+        to=["guest@example.com"],
+        from_email=deactivated.from_email,
+        smtp_profile=deactivated,
+        rendered_subject="Old subject",
+        rendered_body="...",
+        status=EmailLogStatus.SENT,
+        sent_at=timezone.now(),
+        correlation={"booking_id": booking.pk},
+    )
+    SmtpProfile.objects.create(
+        name=f"Personal-{staff.email}",
+        scope=SmtpScope.PERSONAL,
+        owner=staff,
+        host="smtp.personal.example.com",
+        port=587,
+        username="personal",
+        encrypted_password="pw",
+        use_tls=True,
+        from_email="agent@example.com",
+    )
+
+    api_client.force_login(staff)
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            f"/api/v1/bookings/{booking.pk}/emails/{original.pk}:resend",
+            format="json",
+        )
+
+    assert response.status_code == 201
+    new_log = EmailLog.objects.get(pk=response.data["id"])
+    assert new_log.smtp_profile_id == system_profile.pk
+    assert new_log.from_email == system_profile.from_email
 
 
 @pytest.mark.django_db

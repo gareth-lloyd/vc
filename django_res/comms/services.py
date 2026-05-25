@@ -175,7 +175,6 @@ class EmailService:
         return log
 
     @classmethod
-    @transaction.atomic
     def resend(
         cls,
         email_log: EmailLog,
@@ -194,6 +193,14 @@ class EmailService:
         with the same key against the same source row returns the
         previously-minted resend instead of creating another row. This
         is the protection against a double-clicked operator button.
+
+        Sender identity: the resend clones the *original* SmtpProfile and
+        ``from_email`` so the guest sees a consistent sender across the
+        two send attempts. The operator who clicked Resend is the
+        ``actor`` and is captured on the AuditLog row (see
+        ``core.audit.track(EmailLog, …)`` in ``comms/apps.py``), not on
+        ``sender_user``. If the original profile has been deactivated or
+        deleted, fall back to the system profile.
         """
         if idempotency_key:
             existing = (
@@ -207,33 +214,46 @@ class EmailService:
             if existing is not None:
                 return existing
 
-        # Re-resolve the SMTP profile so an actor with a personal profile
-        # sends as themselves; falls back to system if none configured.
-        profile = cls._resolve_profile(actor)
+        if email_log.smtp_profile is not None and email_log.smtp_profile.is_active:
+            profile = email_log.smtp_profile
+            from_email = email_log.from_email
+        else:
+            profile = cls._resolve_profile(None)
+            from_email = profile.from_email
 
         new_correlation = dict(email_log.correlation or {})
         new_correlation[RESENT_FROM_KEY] = email_log.pk
         if idempotency_key:
             new_correlation[RESEND_TOKEN_KEY] = idempotency_key
 
-        new_log = EmailLog.objects.create(
-            template_key=email_log.template_key,
-            template_version=email_log.template_version,
-            to=list(email_log.to),
-            cc=list(email_log.cc),
-            bcc=list(email_log.bcc),
-            from_email=profile.from_email,
-            sender_user=actor if profile.scope == SmtpScope.PERSONAL else None,
-            smtp_profile=profile,
-            rendered_subject=email_log.rendered_subject,
-            rendered_body=email_log.rendered_body,
-            rendered_body_html=email_log.rendered_body_html,
-            status=EmailLogStatus.QUEUED,
-            attachments=list(email_log.attachments or []),
-            correlation=new_correlation,
-        )
+        with transaction.atomic():
+            new_log = EmailLog.objects.create(
+                template_key=email_log.template_key,
+                template_version=email_log.template_version,
+                to=list(email_log.to),
+                cc=list(email_log.cc),
+                bcc=list(email_log.bcc),
+                from_email=from_email,
+                sender_user=email_log.sender_user,
+                smtp_profile=profile,
+                rendered_subject=email_log.rendered_subject,
+                rendered_body=email_log.rendered_body,
+                rendered_body_html=email_log.rendered_body_html,
+                status=EmailLogStatus.QUEUED,
+                attachments=list(email_log.attachments or []),
+                correlation=new_correlation,
+            )
+            # Defer dispatch until commit so the Celery worker can always
+            # read back the new row — bare .delay() inside the block races
+            # the commit, and on_commit also defers correctly when a
+            # caller wraps resend() in an outer transaction.
+            new_log_pk = new_log.pk
 
-        tasks.send_email_log.delay(new_log.pk)  # type: ignore[attr-defined]
+            def _dispatch() -> None:
+                tasks.send_email_log.delay(new_log_pk)  # type: ignore[attr-defined]
+
+            transaction.on_commit(_dispatch)
+
         new_log.refresh_from_db()
         return new_log
 

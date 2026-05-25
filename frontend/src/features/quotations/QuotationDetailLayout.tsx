@@ -128,6 +128,7 @@ interface RailSummaryProps {
   quotation: QuotationDetail;
   canWrite: boolean;
   hasLines: boolean;
+  linesLoading: boolean;
   onOpen: (dialog: DialogKind) => void;
   onDuplicate: () => void;
   duplicating: boolean;
@@ -137,6 +138,7 @@ function RailSummary({
   quotation,
   canWrite,
   hasLines,
+  linesLoading,
   onOpen,
   onDuplicate,
   duplicating,
@@ -154,14 +156,20 @@ function RailSummary({
   // Convert is offered once a quote has been sent and at least one line exists;
   // it auto-accepts the quotation server-side as it opens the booking. Terms
   // are required by the backend FK — but a quotation can't be created without
-  // one, so we don't surface a separate reason here.
+  // one, so we don't surface a separate reason here. While `lines` is still
+  // loading we don't yet know whether `hasLines` is true, so the button stays
+  // disabled but we don't surface a misleading "no lines" reason — the
+  // disabled state with no tooltip reads correctly as "wait".
   const convertReason =
     roleReason ??
     (isSent
-      ? hasLines
+      ? linesLoading
         ? null
-        : t("detail.actions.disable_reasons.no_lines")
+        : hasLines
+          ? null
+          : t("detail.actions.disable_reasons.no_lines")
       : t("detail.actions.disable_reasons.not_sent"));
+  const convertDisabled = !canWrite || !isSent || linesLoading || !hasLines;
 
   return (
     <div className="space-y-4">
@@ -211,6 +219,7 @@ function RailSummary({
           label={t("detail.actions.convert")}
           onClick={() => onOpen("convert")}
           disableReason={convertReason}
+          disabled={convertDisabled}
         />
         <ActionButton
           label={t("detail.actions.withdraw")}
@@ -312,6 +321,7 @@ export function QuotationDetailLayout() {
             quotation={quotation}
             canWrite={canWrite}
             hasLines={(linesQuery.data?.results?.length ?? 0) > 0}
+            linesLoading={linesQuery.isLoading}
             onOpen={setDialog}
             onDuplicate={handleDuplicate}
             duplicating={duplicate.isPending}

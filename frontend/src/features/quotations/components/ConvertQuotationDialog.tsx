@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -44,19 +44,31 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [changeoverViolation, setChangeoverViolation] = useState<string | null>(null);
+  const initialisedRef = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
-    setLineId(pickInitialLineId(lines));
-    setPaymentMethod("card");
-    setTopLevelError(null);
-    setChangeoverViolation(null);
+    if (!open) {
+      // Full reset on close — next open starts from a clean slate.
+      initialisedRef.current = false;
+      setLineId(null);
+      setPaymentMethod("card");
+      setTopLevelError(null);
+      setChangeoverViolation(null);
+      return;
+    }
+    // Initialise the line selection exactly once per open session, so a
+    // background `lines` refetch (window focus, reconnect) doesn't clobber
+    // the operator's pick.
+    if (!initialisedRef.current && lines) {
+      initialisedRef.current = true;
+      setLineId(pickInitialLineId(lines));
+    }
   }, [open, lines]);
 
   const submit = async (allowChangeoverOverride: boolean) => {
     if (lineId == null) return;
     setTopLevelError(null);
-    if (!allowChangeoverOverride) setChangeoverViolation(null);
+    setChangeoverViolation(null);
     try {
       const booking = await convert.mutateAsync({
         line: lineId,

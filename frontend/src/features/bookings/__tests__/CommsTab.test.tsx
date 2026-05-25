@@ -184,6 +184,22 @@ describe("CommsTab", () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
+  it("renders the em-dash placeholder when an email has an empty subject", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/emails`, () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{ ...sampleEmail, id: 12, subject: "" }],
+        }),
+      ),
+    );
+    setup();
+    const subject = await screen.findByText("—");
+    expect(subject).toBeInTheDocument();
+  });
+
   it("disables the resend button for viewers", async () => {
     asViewer();
     server.use(

@@ -207,6 +207,52 @@ describe("ConvertQuotationDialog", () => {
     ).toBe(true);
   });
 
+  it("clears the changeover banner when a retried submit fails for a different reason", async () => {
+    let callCount = 0;
+    server.use(
+      linesHandler,
+      http.post("/api/v1/quotations/7:convert", async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return HttpResponse.json(
+            {
+              code: "changeover_violation",
+              detail: "Arrival must fall on the Saturday changeover day.",
+              field_errors: {},
+            },
+            { status: 422 },
+          );
+        }
+        return HttpResponse.json(
+          {
+            code: "invalid_transition",
+            detail: "Quotation must be sent first.",
+            field_errors: {},
+          },
+          { status: 409 },
+        );
+      }),
+    );
+
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /^convert to booking$/i }));
+
+    expect(
+      await screen.findByText(/arrival must fall on the saturday changeover day/i),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /override and convert anyway/i }));
+    await waitFor(() => expect(callCount).toBe(2));
+
+    expect(
+      screen.queryByText(/arrival must fall on the saturday changeover day/i),
+    ).not.toBeInTheDocument();
+    const alerts = await screen.findAllByRole("alert");
+    expect(
+      alerts.some((node) => /quotation must be sent first/i.test(node.textContent ?? "")),
+    ).toBe(true);
+  });
+
   it("disables submit while the lines list is empty", async () => {
     server.use(
       http.get("/api/v1/quotations/7/lines", () =>

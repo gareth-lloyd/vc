@@ -104,7 +104,7 @@ export function CommsTab() {
             <li key={email.id} className="px-4 py-3 text-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-foreground font-medium break-words">{email.subject ?? "—"}</p>
+                  <p className="text-foreground font-medium break-words">{email.subject || "—"}</p>
                   <p className="text-muted-foreground text-xs">
                     {t("comms.fields.to")}: {summariseRecipients(email)}
                   </p>
@@ -126,7 +126,9 @@ export function CommsTab() {
                     size="sm"
                     variant="ghost"
                     onClick={() => setPendingResend(email)}
-                    disabled={!canWrite || resend.isPending}
+                    disabled={
+                      !canWrite || (resend.isPending && resend.variables?.emailId === email.id)
+                    }
                   >
                     {t("comms.resend.action")}
                   </Button>

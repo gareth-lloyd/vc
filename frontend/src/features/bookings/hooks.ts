@@ -83,6 +83,9 @@ export function useResendBookingEmail(bookingId: BookingId) {
       resendBookingEmail(bookingId, emailId, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.emails(bookingId) });
+      // Resend writes an AuditLog row; refresh the activity timeline so the
+      // operator sees their action without a manual reload.
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
     },
   });
 }

@@ -6,7 +6,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from properties.models import PropertyFinance
+from properties.models import GroupFinance, PropertyFinance
 from reservations.models import Booking, BookingEvent, BookingNote
 
 
@@ -138,7 +138,13 @@ class BookingDetailSerializer(BookingListSerializer):
         finance = self._finance(obj)
         if finance is None:
             return None
-        commission = finance.effective_commission()
+        try:
+            commission = finance.effective_commission()
+        except GroupFinance.DoesNotExist:
+            # PropertyFinance.effective() walks property.group.finance for
+            # the fallback; legacy/imported groups may not have one. Narrow
+            # catch — real bugs in effective_commission() still surface.
+            return None
         amount = commission["amount"]
         return {
             "calculation_type": commission["calculation_type"] or None,

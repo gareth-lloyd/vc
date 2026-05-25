@@ -32,6 +32,12 @@ export function useQuotation(id: QuotationId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.quotations.detail, fetchQuotation));
 }
 
+// TODO: lines fetch sees only DRF's default first page (PAGE_SIZE=50); the
+// default paginator has no page_size_query_param so clients can't override.
+// Real quotes are 1-5 lines so the ceiling is comfortably above realistic
+// usage, but a >50-line quote would silently truncate the convert dialog
+// and the lines table. Wire a paginator that exposes `page_size` when a
+// real quote ever pushes the cap.
 export function useQuotationLines(id: QuotationId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.quotations.lines, fetchQuotationLines));
 }

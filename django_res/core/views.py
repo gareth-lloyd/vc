@@ -10,6 +10,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import DatabaseError, connection, models
 from django.http import FileResponse, Http404, HttpRequest
 from django.utils import timezone
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import filters, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -138,6 +139,7 @@ class CurrentPermissionsView(APIView):
         )
 
 
+@ensure_csrf_cookie
 def spa_index(request: HttpRequest) -> FileResponse:
     """Serve the built SPA's `index.html` for client-side routes.
 
@@ -145,6 +147,11 @@ def spa_index(request: HttpRequest) -> FileResponse:
     directly; this is the history-fallback so deep links and refreshes on
     client-side routes return the SPA shell. Wired as the URLconf catch-all
     *after* `/api/`, `/admin/`, `/static/`.
+
+    `@ensure_csrf_cookie` is load-bearing: the first session-authenticated
+    POST (typically `/auth/login`) needs the `csrftoken` cookie already set,
+    otherwise `CsrfViewMiddleware` rejects it and the user has to submit
+    twice — the failed first submit is what primes the cookie.
 
     `settings.SPA_ROOT` is read per-request so tests can override it and so
     a build-less local checkout (Vite proxy serves the SPA) cleanly 404s

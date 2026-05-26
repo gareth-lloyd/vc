@@ -66,3 +66,18 @@ def test_missing_build_is_404_not_500(tmp_path: Path) -> None:
         response = Client().get("/")
 
     assert response.status_code == 404
+
+
+def test_spa_index_sets_csrf_cookie(spa_root: Path) -> None:
+    """The SPA shell must prime the `csrftoken` cookie.
+
+    Regression for the double-login bug: without this, the first POST to
+    `/auth/login` is rejected by CsrfViewMiddleware (no cookie → no header
+    → 403), and only the second submit works because the failed first
+    response is what sets the cookie.
+    """
+    with override_settings(SPA_ROOT=spa_root):
+        response = Client().get("/login")
+
+    assert response.status_code == 200
+    assert "csrftoken" in response.cookies

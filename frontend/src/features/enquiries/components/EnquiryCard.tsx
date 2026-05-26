@@ -8,13 +8,13 @@ interface EnquiryCardProps {
   onClick?: () => void;
 }
 
-function guestName(enq: EnquiryListItem): string {
-  const name = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
-  return name || enq.email || enq.reference;
-}
-
 export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
   const { t } = useTranslation("enquiries");
+
+  // Prefer server-resolved guest_name (walks the Guest FK) and fall back to the
+  // denormalised first/last/email captured at lead time for anonymous submissions.
+  const denormName = `${enquiry.first_name ?? ""} ${enquiry.last_name ?? ""}`.trim();
+  const title = enquiry.guest_name || denormName || enquiry.email || t("card.unknown_guest");
 
   const dateRange =
     !enquiry.date_from && !enquiry.date_to
@@ -22,9 +22,10 @@ export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
       : `${formatDate(enquiry.date_from ?? null)} – ${formatDate(enquiry.date_to ?? null)}`;
 
   const propertyText =
-    enquiry.property != null
+    enquiry.property_name ??
+    (enquiry.property != null
       ? t("card.property_with_id", { id: enquiry.property })
-      : t("card.no_property");
+      : t("card.no_property"));
 
   const timeAgo = (iso: string | null | undefined): string => {
     if (!iso) return "";
@@ -48,10 +49,10 @@ export function EnquiryCard({ enquiry, onClick }: EnquiryCardProps) {
       className="border-border bg-card hover:bg-accent/40 shadow-card w-full space-y-2 rounded-md border p-3 text-left text-sm transition-colors"
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="text-foreground font-medium">{guestName(enquiry)}</div>
+        <div className="text-foreground font-medium">{title}</div>
         <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>
       </div>
-      <div className="text-muted-foreground text-xs">{propertyText}</div>
+      <div className="text-foreground text-xs">{propertyText}</div>
       <div className="text-muted-foreground text-xs">{dateRange}</div>
       <div className="flex items-center justify-between gap-2">
         <Badge variant="outline" className="text-xs">

@@ -10,6 +10,12 @@ from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
 class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
     """Light representation for collection responses."""
 
+    guest_name = serializers.SerializerMethodField()
+    property_name = serializers.SerializerMethodField()
+    region_name = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
+    agent_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Enquiry
         fields = [
@@ -17,23 +23,75 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "reference",
             "status",
             "guest",
+            "guest_name",
             "first_name",
             "last_name",
             "email",
             "property",
+            "property_name",
             "region",
+            "region_name",
             "date_from",
             "date_to",
             "adults",
             "children",
             "request_type",
             "assigned_to",
+            "assigned_to_name",
             "agent",
+            "agent_name",
             "site_source",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "reference", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "reference",
+            "guest_name",
+            "property_name",
+            "region_name",
+            "assigned_to_name",
+            "agent_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_guest_name(self, obj: Enquiry) -> str | None:
+        """Prefer the linked Guest's name; fall back to the denormalised
+        first/last/email captured at lead time for anonymous submissions."""
+        guest = obj.guest
+        if guest is not None:
+            name = f"{guest.first_name} {guest.last_name}".strip()
+            if name:
+                return name
+        denorm = f"{obj.first_name} {obj.last_name}".strip()
+        if denorm:
+            return denorm
+        return obj.email or None
+
+    def get_property_name(self, obj: Enquiry) -> str | None:
+        prop = obj.property
+        if prop is None:
+            return None
+        return (prop.display_name or prop.name) or None
+
+    def get_region_name(self, obj: Enquiry) -> str | None:
+        region = obj.region
+        return region.name if region is not None else None
+
+    def get_assigned_to_name(self, obj: Enquiry) -> str | None:
+        user = obj.assigned_to
+        if user is None:
+            return None
+        full = user.get_full_name() if hasattr(user, "get_full_name") else ""
+        return full.strip() or getattr(user, "email", None) or None
+
+    def get_agent_name(self, obj: Enquiry) -> str | None:
+        agent = obj.agent
+        if agent is None:
+            return None
+        name = f"{agent.first_name} {agent.last_name}".strip()
+        return name or agent.company or None
 
 
 class EnquiryDetailSerializer(EnquiryListSerializer):

@@ -31,12 +31,22 @@ export function buildQuotationColumns(t: TFunction<"quotations">): ColumnDef<Quo
       accessorKey: "guest",
       header: () => t("detail.summary.guest"),
       enableSorting: false,
-      cell: ({ row }) =>
-        row.original.guest != null ? (
-          <span className="text-sm">#{row.original.guest}</span>
-        ) : (
-          MUTED_DASH
-        ),
+      cell: ({ row }) => {
+        const name =
+          row.original.guest_name ?? (row.original.guest != null ? `#${row.original.guest}` : null);
+        return name ? <span className="text-sm">{name}</span> : MUTED_DASH;
+      },
+    },
+    {
+      accessorKey: "enquiry",
+      header: () => t("detail.summary.enquiry"),
+      enableSorting: false,
+      cell: ({ row }) => {
+        const ref =
+          row.original.enquiry_reference ??
+          (row.original.enquiry != null ? `#${row.original.enquiry}` : null);
+        return ref ? <span className="font-mono text-xs">{ref}</span> : MUTED_DASH;
+      },
     },
     {
       accessorKey: "currency",

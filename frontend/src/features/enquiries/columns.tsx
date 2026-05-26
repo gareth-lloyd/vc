@@ -7,11 +7,6 @@ import { enquirySourceLabel, enquiryStatusLabel, type EnquiryListItem } from "./
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 
-function guestName(row: EnquiryListItem): string {
-  const name = `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim();
-  return name || row.email || "—";
-}
-
 export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
   const { t } = useTranslation("enquiries");
   return useMemo<ColumnDef<EnquiryListItem>[]>(
@@ -29,15 +24,30 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         header: t("columns.guest"),
         enableSorting: false,
         cell: ({ row }) => {
-          const name = guestName(row.original);
+          const denorm = `${row.original.first_name ?? ""} ${row.original.last_name ?? ""}`.trim();
+          const name =
+            row.original.guest_name || denorm || row.original.email || t("columns.unknown_guest");
           return (
             <div className="text-sm">
               <div>{name}</div>
-              {row.original.email ? (
+              {row.original.email && row.original.email !== name ? (
                 <div className="text-muted-foreground text-xs">{row.original.email}</div>
               ) : null}
             </div>
           );
+        },
+      },
+      {
+        id: "property",
+        header: t("columns.property"),
+        enableSorting: false,
+        cell: ({ row }) => {
+          const name = row.original.property_name;
+          if (name) return <span className="text-sm">{name}</span>;
+          if (row.original.property != null) {
+            return <span className="text-muted-foreground text-sm">#{row.original.property}</span>;
+          }
+          return <span className="text-muted-foreground text-sm">{t("columns.no_property")}</span>;
         },
       },
       {

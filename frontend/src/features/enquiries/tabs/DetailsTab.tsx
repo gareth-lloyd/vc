@@ -109,21 +109,26 @@ export function DetailsTab() {
           <FactRow
             label={t("details_tab.fields.property")}
             value={
-              enquiry.property != null
+              enquiry.property_name ??
+              (enquiry.property != null
                 ? t("details_tab.values.id_ref", { id: enquiry.property })
-                : "—"
+                : "—")
             }
           />
           <FactRow
             label={t("details_tab.fields.region")}
             value={
-              enquiry.region != null ? t("details_tab.values.id_ref", { id: enquiry.region }) : "—"
+              enquiry.region_name ??
+              (enquiry.region != null
+                ? t("details_tab.values.id_ref", { id: enquiry.region })
+                : "—")
             }
           />
           <FactRow
             label={t("details_tab.fields.agent")}
             value={
-              enquiry.agent != null ? t("details_tab.values.id_ref", { id: enquiry.agent }) : "—"
+              enquiry.agent_name ??
+              (enquiry.agent != null ? t("details_tab.values.id_ref", { id: enquiry.agent }) : "—")
             }
           />
           <FactRow

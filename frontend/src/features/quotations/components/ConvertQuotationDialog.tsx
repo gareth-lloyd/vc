@@ -140,9 +140,10 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
                       />
                       <span className="flex-1 space-y-1">
                         <span className="text-foreground block text-sm font-medium">
-                          {line.property != null
-                            ? t("detail.dialogs.convert.property_with_id", { id: line.property })
-                            : "—"}
+                          {line.property_name ??
+                            (line.property != null
+                              ? t("detail.dialogs.convert.property_with_id", { id: line.property })
+                              : "—")}
                         </span>
                         <span className="text-muted-foreground block text-xs">
                           {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}{" "}

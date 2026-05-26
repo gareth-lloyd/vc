@@ -10,12 +10,15 @@ from reservations.models import Quotation, QuotationLine
 class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
     """Read representation of a quotation line."""
 
+    property_name = serializers.SerializerMethodField()
+
     class Meta:
         model = QuotationLine
         fields = [
             "id",
             "quotation",
             "property",
+            "property_name",
             "date_from",
             "date_to",
             "adults",
@@ -31,12 +34,19 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
         read_only_fields = [
             "id",
             "quotation",
+            "property_name",
             "pricing_snapshot",
             "total",
             "is_selected",
             "created_at",
             "updated_at",
         ]
+
+    def get_property_name(self, obj: QuotationLine) -> str | None:
+        prop = obj.property
+        if prop is None:
+            return None
+        return (prop.display_name or prop.name) or None
 
 
 class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
@@ -63,6 +73,9 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
     currency: serializers.SlugRelatedField = serializers.SlugRelatedField(
         slug_field="code", read_only=True
     )
+    guest_name = serializers.SerializerMethodField()
+    enquiry_reference = serializers.SerializerMethodField()
+    agent_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Quotation
@@ -70,8 +83,11 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
             "id",
             "reference",
             "enquiry",
+            "enquiry_reference",
             "guest",
+            "guest_name",
             "agent",
+            "agent_name",
             "currency",
             "status",
             "expires_at",
@@ -80,7 +96,33 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "reference", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "reference",
+            "enquiry_reference",
+            "guest_name",
+            "agent_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_guest_name(self, obj: Quotation) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return f"{guest.first_name} {guest.last_name}".strip() or None
+
+    def get_enquiry_reference(self, obj: Quotation) -> str | None:
+        enquiry = obj.enquiry
+        return enquiry.reference if enquiry is not None else None
+
+    def get_agent_name(self, obj: Quotation) -> str | None:
+        agent = obj.agent
+        if agent is None:
+            return None
+        # Contact has first_name/last_name; fall back to company if both blank.
+        name = f"{agent.first_name} {agent.last_name}".strip()
+        return name or agent.company or None
 
 
 class QuotationDetailSerializer(QuotationListSerializer):

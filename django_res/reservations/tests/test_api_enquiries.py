@@ -65,7 +65,14 @@ def test_list_enquiries__staff_sees_all(
 
     assert response.status_code == 200
     assert response.data["count"] == 1
-    assert response.data["results"][0]["reference"] == enquiry.reference
+    row = response.data["results"][0]
+    assert row["reference"] == enquiry.reference
+    # Surface human-readable values so the FE doesn't render "Property #28".
+    assert row["guest_name"] == "Ada Lovelace"
+    assert "property_name" in row
+    assert "region_name" in row
+    assert "assigned_to_name" in row
+    assert "agent_name" in row
 
 
 @pytest.mark.django_db

@@ -59,6 +59,7 @@
   "card": {
     "no_property": "Χωρίς ακίνητο",
     "property_with_id": "Ακίνητο #{{id}}",
+    "unknown_guest": "Άγνωστος επισκέπτης",
     "flexible_dates": "Ευέλικτες ημερομηνίες",
     "time_ago": {
       "just_now": "μόλις τώρα",
@@ -236,6 +237,9 @@
   "columns": {
     "ref": "Αναφ.",
     "guest": "Επισκέπτης",
+    "property": "Ακίνητο",
+    "no_property": "Χωρίς ακίνητο",
+    "unknown_guest": "Άγνωστος επισκέπτης",
     "dates": "Ημερομηνίες",
     "party": "Παρέα",
     "source": "Πηγή",

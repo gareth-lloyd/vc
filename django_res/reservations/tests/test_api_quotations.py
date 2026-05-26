@@ -73,6 +73,28 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
 
     assert response.status_code == 200
     assert response.data["count"] == 1
+    row = response.data["results"][0]
+    # Surface human-readable values alongside the FK ids so the FE doesn't
+    # display opaque #ids (regression: STAY-style "Guest #64" / "Enquiry #66").
+    assert row["guest_name"] == "Ada Lovelace"
+    assert row["enquiry_reference"] is None
+    assert row["agent_name"] is None
+
+
+@pytest.mark.django_db
+def test_retrieve_quotation_exposes_readable_names(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}")
+
+    assert response.status_code == 200
+    assert response.data["guest_name"] == "Ada Lovelace"
+    expected_property_name = line.property.display_name or line.property.name
+    assert response.data["lines"][0]["property_name"] == expected_property_name
 
 
 @pytest.mark.django_db

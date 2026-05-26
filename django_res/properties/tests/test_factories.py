@@ -53,3 +53,42 @@ def test_room_and_feature_factories() -> None:
     assert room.beds.double >= 0
     feature = cast(models.Feature, factories.FeatureFactory())
     assert feature.category_id is not None
+
+
+def test_nearby_place_type_factory_is_idempotent_on_name() -> None:
+    n1 = cast(models.NearbyPlaceType, factories.NearbyPlaceTypeFactory(name="Beach"))
+    n2 = cast(models.NearbyPlaceType, factories.NearbyPlaceTypeFactory(name="Beach"))
+    assert n1.pk == n2.pk
+    assert models.NearbyPlaceType.objects.filter(name="Beach").count() == 1
+
+
+def test_property_nearby_place_factory_builds_row() -> None:
+    pnp = cast(models.PropertyNearbyPlace, factories.PropertyNearbyPlaceFactory())
+    assert pnp.pk is not None
+    assert pnp.property_id is not None
+    assert pnp.place_type_id is not None
+    assert pnp.distance_km > 0
+
+
+def test_collection_slug_unique_across_runs() -> None:
+    c1 = cast(models.Collection, factories.CollectionFactory())
+    c2 = cast(models.Collection, factories.CollectionFactory())
+    assert c1.slug != c2.slug
+
+
+def test_property_contact_assignment_factory() -> None:
+    # Caller supplies the Contact; factory does not pull `accounts` in.
+    from accounts.factories import ContactFactory
+
+    contact = ContactFactory()
+    assignment = cast(
+        models.PropertyContactAssignment,
+        factories.PropertyContactAssignmentFactory(contact=contact),
+    )
+    assert assignment.pk is not None
+    assert assignment.is_primary is False
+
+
+def test_changeover_rule_factory_window_is_valid() -> None:
+    rule = cast(models.ChangeOverRule, factories.ChangeOverRuleFactory())
+    assert rule.ends_on >= rule.starts_on

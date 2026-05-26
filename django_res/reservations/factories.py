@@ -15,7 +15,13 @@ from factory.django import DjangoModelFactory
 
 from properties.factories import RUN_TOKEN, CountryFactory, PropertyFactory
 from reservations import models
-from reservations.enums import EnquiryRequestType, EnquiryStatus
+from reservations.enums import (
+    BookingNoteKind,
+    BookingNoteVisibility,
+    EnquiryNoteKind,
+    EnquiryRequestType,
+    EnquiryStatus,
+)
 
 
 class GuestFactory(DjangoModelFactory):
@@ -55,3 +61,33 @@ class EnquiryFactory(DjangoModelFactory):
     request_type = EnquiryRequestType.QUOTE
     status = EnquiryStatus.NEW
     inbound_message = factory.Faker("sentence")
+
+
+class EnquiryNoteFactory(DjangoModelFactory):
+    """Operator-authored note on an Enquiry. `author` defaults to NULL so the
+    factory doesn't pull in `accounts` and bloat the dependency graph."""
+
+    class Meta:
+        model = models.EnquiryNote
+
+    enquiry = factory.SubFactory(EnquiryFactory)
+    author = None
+    kind = EnquiryNoteKind.GENERAL
+    body = factory.Faker("sentence")
+    is_pinned = False
+
+
+class BookingNoteFactory(DjangoModelFactory):
+    """Operator-authored note on a Booking. Caller must supply `booking=` —
+    `Booking` rows are built through the service layer rather than a factory,
+    so there is no SubFactory default to lean on."""
+
+    class Meta:
+        model = models.BookingNote
+
+    booking = None  # required: provided by caller
+    author = None
+    kind = BookingNoteKind.GENERAL
+    visibility = BookingNoteVisibility.STAFF_ONLY
+    body = factory.Faker("sentence")
+    is_pinned = False

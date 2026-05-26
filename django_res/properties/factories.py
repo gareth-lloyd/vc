@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import random
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import cast
 from uuid import uuid4
@@ -24,12 +25,14 @@ from factory.django import DjangoModelFactory
 from faker import Faker
 from PIL import Image
 
+from accounts.enums import ContactRole
 from properties import models
 from properties.enums import (
     CommissionCalcType,
     DescriptionSection,
     FeatureServiceType,
     ImageKind,
+    PrefilledChangeOverDay,
     PropertyChannel,
     PropertyStatus,
     RoomPlacement,
@@ -253,3 +256,62 @@ class RoomFactory(DjangoModelFactory):
     def beds(obj: models.Room, create: bool, extracted: object, **kwargs: object) -> None:
         if create:
             models.RoomBeds.objects.create(room=obj, double=1)
+
+
+class NearbyPlaceTypeFactory(DjangoModelFactory):
+    """Canonical lookup: NearbyPlaceType.name is unique, so reuse seeded rows
+    on rerun via get_or_create."""
+
+    class Meta:
+        model = models.NearbyPlaceType
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"place-type-{RUN_TOKEN}-{n}")
+
+
+class PropertyNearbyPlaceFactory(DjangoModelFactory):
+    class Meta:
+        model = models.PropertyNearbyPlace
+
+    property = factory.SubFactory(PropertyFactory)
+    place_type = factory.SubFactory(NearbyPlaceTypeFactory)
+    name = factory.Faker("city")
+    distance_km = Decimal("2.50")
+
+
+class CollectionFactory(DjangoModelFactory):
+    """`Collection.slug` is globally unique; combine RUN_TOKEN+Sequence so
+    additive seed runs do not collide on the unique constraint."""
+
+    class Meta:
+        model = models.Collection
+
+    name = factory.Sequence(lambda n: f"Collection {RUN_TOKEN}-{n}")
+    slug = factory.Sequence(lambda n: f"collection-{RUN_TOKEN}-{n}")
+    description = "Curated collection of villas (seeded)."
+
+
+class PropertyContactAssignmentFactory(DjangoModelFactory):
+    """Active-role assignment. Defaults `is_primary=False` so the
+    `one_primary_per_role` partial-unique constraint does not collide when
+    multiple assignments per (property, role) are seeded."""
+
+    class Meta:
+        model = models.PropertyContactAssignment
+
+    property = factory.SubFactory(PropertyFactory)
+    # Caller supplies a Contact — accounts.factories.ContactFactory lives in
+    # a sibling app and importing it here would create a cycle.
+    role = ContactRole.HOUSEKEEPER
+    is_primary = False
+
+
+class ChangeOverRuleFactory(DjangoModelFactory):
+    class Meta:
+        model = models.ChangeOverRule
+
+    property = factory.SubFactory(PropertyFactory)
+    day = PrefilledChangeOverDay.SAT
+    starts_on = factory.LazyFunction(date.today)
+    ends_on = factory.LazyAttribute(lambda o: o.starts_on + timedelta(days=60))
+    notes = "Peak-season Saturday changeovers (seeded)."

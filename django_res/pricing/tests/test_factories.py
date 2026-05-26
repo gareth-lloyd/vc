@@ -34,3 +34,10 @@ def test_discount_and_extra_factories() -> None:
     extra = cast(models.Extra, factories.ExtraFactory())
     assert discount.amount > 0
     assert extra.currency_id is not None
+
+
+def test_fx_rate_factory_is_idempotent_on_same_day_edge() -> None:
+    r1 = cast(models.FxRate, factories.FxRateFactory())
+    r2 = cast(models.FxRate, factories.FxRateFactory())
+    # `(base, quote, as_of)` is unique; second call must return the same row.
+    assert r1.pk == r2.pk

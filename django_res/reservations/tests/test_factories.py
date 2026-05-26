@@ -29,3 +29,28 @@ def test_terms_version_factory_not_current_by_default() -> None:
     assert terms.is_current is False
     terms.publish()
     assert terms.is_current is True
+
+
+def test_enquiry_note_factory_persists_with_default_kind() -> None:
+    note = cast(models.EnquiryNote, factories.EnquiryNoteFactory())
+    assert note.pk is not None
+    assert note.enquiry_id is not None
+    assert note.body
+    assert note.is_pinned is False
+
+
+def test_booking_note_factory_persists_when_booking_supplied(
+    quotation_line: object,
+    terms: object,
+) -> None:
+    """`Booking` is not factoried — caller supplies an instance built via
+    `BookingService.create_from_quotation_line`, the production path."""
+    from reservations.services.bookings import BookingService
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)  # type: ignore[arg-type]
+    note = cast(
+        models.BookingNote,
+        factories.BookingNoteFactory(booking=booking),
+    )
+    assert note.pk is not None
+    assert note.booking_id == booking.pk

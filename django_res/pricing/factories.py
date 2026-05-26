@@ -92,6 +92,21 @@ class DiscountFactory(DjangoModelFactory):
     valid_to = _WINDOW_TO
 
 
+class FxRateFactory(DjangoModelFactory):
+    """One FX edge per (base, quote, as_of). Defaults to today so additive
+    same-day reruns must pass `as_of=` explicitly to avoid the unique
+    constraint."""
+
+    class Meta:
+        model = models.FxRate
+        django_get_or_create = ("base", "quote", "as_of")
+
+    base = factory.SubFactory(CurrencyFactory, spec=("GBP", "Pound sterling", "£"))
+    quote = factory.SubFactory(CurrencyFactory, spec=("EUR", "Euro", "€"))
+    as_of = factory.LazyFunction(date.today)
+    rate = Decimal("1.17")
+
+
 class ExtraFactory(DjangoModelFactory):
     class Meta:
         model = models.Extra

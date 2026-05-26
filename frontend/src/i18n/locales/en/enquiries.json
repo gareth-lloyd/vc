@@ -214,6 +214,7 @@
       "unassigned": "Unassigned"
     },
     "empty": "No operators match that search.",
+    "no_operators": "No operators are available to assign.",
     "errors": {
       "load_failed": "Couldn't load operators. Try again."
     },

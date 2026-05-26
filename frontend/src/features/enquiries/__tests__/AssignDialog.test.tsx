@@ -43,19 +43,34 @@ afterEach(() => {
 });
 
 describe("AssignDialog operator picker", () => {
-  it("loads and displays operator options in the Select", async () => {
+  it("loads and displays operator options in the list", async () => {
     renderWithProviders(
       <AssignDialog enquiryId={1} currentUserId={null} open onOpenChange={() => {}} />,
     );
 
-    const trigger = await screen.findByLabelText(/operator/i, { selector: "button" });
-    await userEvent.click(trigger);
-
-    // The unassigned option is always present.
-    const listbox = await screen.findByRole("listbox");
+    const listbox = await screen.findByRole("listbox", { name: /operator/i });
     expect(within(listbox).getByText(/unassigned/i)).toBeInTheDocument();
-    expect(within(listbox).getByText(/Ada Lovelace/)).toBeInTheDocument();
+    expect(await within(listbox).findByText(/Ada Lovelace/)).toBeInTheDocument();
     expect(within(listbox).getByText(/Grace Hopper/)).toBeInTheDocument();
+  });
+
+  it("filters the list via the search input", async () => {
+    let lastSearch: string | null = null;
+    server.use(
+      http.get("/api/v1/users", ({ request }) => {
+        const url = new URL(request.url);
+        lastSearch = url.searchParams.get("search");
+        return HttpResponse.json(usersFixture);
+      }),
+    );
+
+    renderWithProviders(
+      <AssignDialog enquiryId={1} currentUserId={null} open onOpenChange={() => {}} />,
+    );
+
+    const search = await screen.findByPlaceholderText(/search operators/i);
+    await userEvent.type(search, "ada");
+    await waitFor(() => expect(lastSearch).toBe("ada"));
   });
 
   it("posts the selected user id to :assign on submit", async () => {
@@ -95,8 +110,6 @@ describe("AssignDialog operator picker", () => {
       <AssignDialog enquiryId={1} currentUserId={null} open onOpenChange={() => {}} />,
     );
 
-    const trigger = await screen.findByLabelText(/operator/i, { selector: "button" });
-    await userEvent.click(trigger);
     await userEvent.click(await screen.findByRole("option", { name: /Ada Lovelace/ }));
 
     await userEvent.click(screen.getByRole("button", { name: /^assign$/i }));
@@ -141,8 +154,6 @@ describe("AssignDialog operator picker", () => {
       <AssignDialog enquiryId={2} currentUserId={11} open onOpenChange={() => {}} />,
     );
 
-    const trigger = await screen.findByLabelText(/operator/i, { selector: "button" });
-    await userEvent.click(trigger);
     await userEvent.click(await screen.findByRole("option", { name: /unassigned/i }));
 
     await userEvent.click(screen.getByRole("button", { name: /^assign$/i }));
@@ -156,5 +167,37 @@ describe("AssignDialog operator picker", () => {
       <AssignDialog enquiryId={3} currentUserId={null} open onOpenChange={() => {}} />,
     );
     expect(await screen.findByText(/couldn't load operators/i)).toBeInTheDocument();
+  });
+
+  it("shows a no-operators message when the unfiltered list is empty", async () => {
+    server.use(
+      http.get("/api/v1/users", () =>
+        HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
+      ),
+    );
+    renderWithProviders(
+      <AssignDialog enquiryId={4} currentUserId={null} open onOpenChange={() => {}} />,
+    );
+    expect(await screen.findByText(/no operators are available/i)).toBeInTheDocument();
+  });
+
+  it("shows an empty-search message when the search returns no operators", async () => {
+    server.use(
+      http.get("/api/v1/users", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("search") === "zzz") {
+          return HttpResponse.json({ count: 0, next: null, previous: null, results: [] });
+        }
+        return HttpResponse.json(usersFixture);
+      }),
+    );
+
+    renderWithProviders(
+      <AssignDialog enquiryId={5} currentUserId={null} open onOpenChange={() => {}} />,
+    );
+
+    await screen.findByText(/Ada Lovelace/);
+    await userEvent.type(screen.getByPlaceholderText(/search operators/i), "zzz");
+    expect(await screen.findByText(/no operators match that search/i)).toBeInTheDocument();
   });
 });

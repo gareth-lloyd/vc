@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { CheckIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,13 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
 import type { EnquiryId } from "@/lib/query/keys";
 import { useUsers } from "@/features/users/hooks";
@@ -87,10 +82,10 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
   const users = usersQuery.data?.results ?? [];
   const hasError = usersQuery.isError;
   const isLoading = usersQuery.isLoading;
+  const hasSearch = debouncedSearch.trim().length > 0;
 
   // Make sure the currently-assigned user shows up even when they aren't in
-  // the filtered/searched result set — otherwise the Select would briefly
-  // display an empty value while editing.
+  // the filtered/searched result set — otherwise the row vanishes mid-edit.
   const visibleUsers: UserSummary[] = (() => {
     if (currentUserId == null) return users;
     if (users.some((u) => u.id === currentUserId)) return users;
@@ -105,6 +100,9 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
     return [placeholder, ...users];
   })();
 
+  const showEmptyForSearch = !isLoading && !hasError && hasSearch && visibleUsers.length === 0;
+  const showEmptyNoOperators = !isLoading && !hasError && !hasSearch && visibleUsers.length === 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -117,36 +115,57 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
             <Label htmlFor="assign-operator-search">{t("assign.fields.operator")}</Label>
             <Input
               id="assign-operator-search"
-              type="search"
+              type="text"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="assign-operator-list"
+              aria-autocomplete="list"
+              autoComplete="off"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("assign.placeholders.search")}
               autoFocus
             />
-            <Select value={selected} onValueChange={setSelected}>
-              <SelectTrigger aria-label={t("assign.fields.operator")}>
-                <SelectValue placeholder={t("assign.placeholders.select")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={UNASSIGNED_VALUE}>{t("assign.options.unassigned")}</SelectItem>
-                {visibleUsers.map((u) => (
-                  <SelectItem key={u.id} value={String(u.id)}>
-                    {userDisplayName(u) || `#${u.id}`}
-                    {u.email && userDisplayName(u) !== u.email ? (
-                      <span className="text-muted-foreground ml-2 text-xs">{u.email}</span>
-                    ) : null}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div
+              id="assign-operator-list"
+              role="listbox"
+              aria-label={t("assign.fields.operator")}
+              className="bg-popover max-h-64 overflow-y-auto rounded-md border"
+            >
+              <OperatorOption
+                value={UNASSIGNED_VALUE}
+                label={t("assign.options.unassigned")}
+                selected={selected === UNASSIGNED_VALUE}
+                onSelect={setSelected}
+              />
+              {visibleUsers.map((u) => {
+                const value = String(u.id);
+                const displayName = userDisplayName(u) || `#${u.id}`;
+                return (
+                  <OperatorOption
+                    key={u.id}
+                    value={value}
+                    label={displayName}
+                    sublabel={u.email && displayName !== u.email ? u.email : undefined}
+                    selected={selected === value}
+                    onSelect={setSelected}
+                  />
+                );
+              })}
+              {showEmptyForSearch ? (
+                <p className="text-muted-foreground px-3 py-4 text-center text-xs">
+                  {t("assign.empty")}
+                </p>
+              ) : null}
+            </div>
             {isLoading ? (
               <p className="text-muted-foreground text-xs">{t("common:states.loading")}</p>
             ) : null}
             {hasError ? (
               <p className="text-destructive text-xs">{t("assign.errors.load_failed")}</p>
             ) : null}
-            {!isLoading && !hasError && users.length === 0 ? (
-              <p className="text-muted-foreground text-xs">{t("assign.empty")}</p>
+            {showEmptyNoOperators ? (
+              <p className="text-muted-foreground text-xs">{t("assign.no_operators")}</p>
             ) : null}
           </div>
           {topLevelError ? (
@@ -173,5 +192,37 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface OperatorOptionProps {
+  value: string;
+  label: string;
+  sublabel?: string;
+  selected: boolean;
+  onSelect: (value: string) => void;
+}
+
+function OperatorOption({ value, label, sublabel, selected, onSelect }: OperatorOptionProps) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={() => onSelect(value)}
+      className={cn(
+        "hover:bg-accent focus-visible:bg-accent flex w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none",
+        selected && "bg-accent/60",
+      )}
+    >
+      <CheckIcon
+        className={cn("size-4 shrink-0", selected ? "opacity-100" : "opacity-0")}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 truncate">
+        {label}
+        {sublabel ? <span className="text-muted-foreground ml-2 text-xs">{sublabel}</span> : null}
+      </span>
+    </button>
   );
 }

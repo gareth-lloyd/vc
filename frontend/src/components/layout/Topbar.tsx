@@ -46,27 +46,42 @@ export function Topbar({ user, onSignOut }: { user: TopbarUser | null; onSignOut
   };
 
   return (
-    <header className="bg-card border-border flex h-14 items-center justify-between border-b px-4">
-      <div className="flex items-center gap-3">
-        <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded text-sm font-semibold">
-          VC
-        </div>
-        <span className="text-foreground text-sm font-semibold">Villa Collective</span>
+    <header
+      className="bg-background/80 supports-[backdrop-filter]:bg-background/60 flex h-12 items-center justify-between border-b border-[color:var(--border)] px-5 backdrop-blur"
+      style={{
+        borderBottomColor: "color-mix(in oklch, var(--brand-200) 60%, transparent)",
+      }}
+    >
+      {/* Wordmark lives in the sidebar now. The topbar carries
+          context-of-place: small dated stamp on the left, account chip
+          on the right. */}
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground font-mono text-[10px] tracking-[0.24em] uppercase">
+          {new Date()
+            .toLocaleDateString("en-GB", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })
+            .toUpperCase()}
+        </span>
       </div>
       <div className="flex items-center gap-2">
         {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
-                <Avatar className="size-7">
-                  <AvatarFallback>{initials(user.first_name, user.last_name)}</AvatarFallback>
+                <Avatar className="ring-accent-500/40 size-7 ring-2 ring-offset-2 ring-offset-[color:var(--background)]">
+                  <AvatarFallback className="bg-brand-100 text-brand-800 font-serif text-[11px] font-semibold">
+                    {initials(user.first_name, user.last_name)}
+                  </AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:inline">{user.email}</span>
+                <span className="hidden text-xs sm:inline">{user.email}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="flex flex-col">
-                <span>
+                <span className="font-serif text-base">
                   {user.first_name} {user.last_name}
                 </span>
                 <span className="text-muted-foreground text-xs font-normal">{user.email}</span>

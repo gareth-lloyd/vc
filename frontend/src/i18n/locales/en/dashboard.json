@@ -14,6 +14,11 @@
     "recent_enquiries": "Recent enquiries",
     "view_all": "View all →"
   },
+  "greeting": "Bonjour",
+  "hero": {
+    "arrivals_label": "Guests checking in today",
+    "view_schedule": "View today's schedule"
+  },
   "rows": {
     "guest_party_one": "{{count}} adult",
     "guest_party_other": "{{count}} adults",

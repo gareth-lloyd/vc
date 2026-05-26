@@ -77,11 +77,11 @@ describe("DashboardPage", () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      // KPI for check-ins today should show booking count
-      expect(screen.getByText("Check-ins today")).toBeInTheDocument();
+      // Hero panel surfaces today's arrival count
+      expect(screen.getByText("Arrivals today")).toBeInTheDocument();
     });
 
-    // All four KPI cards render with their backend counts
+    // Hero numeral + three rail stats all show the backend count
     const fours = await screen.findAllByText("4");
     expect(fours.length).toBeGreaterThan(0);
 

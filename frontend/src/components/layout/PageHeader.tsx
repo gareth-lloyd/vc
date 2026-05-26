@@ -14,13 +14,23 @@ interface PageHeaderProps {
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
   className?: string;
+  /** Optional eyebrow above the title — rendered in Caveat script for a
+   *  single warm-handwritten moment per page. Skip on data-heavy screens. */
+  eyebrow?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, breadcrumbs, actions, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  breadcrumbs,
+  actions,
+  className,
+  eyebrow,
+}: PageHeaderProps) {
   return (
-    <header className={cn("border-border border-b px-6 py-4", className)}>
+    <header className={cn("relative px-6 pt-8 pb-6", className)}>
       {breadcrumbs?.length ? (
-        <nav className="text-muted-foreground mb-1 flex items-center gap-1 text-xs">
+        <nav className="text-muted-foreground mb-2 flex items-center gap-1 text-xs">
           {breadcrumbs.map((crumb, i) => (
             <span key={`${crumb.label}-${i}`} className="flex items-center gap-1">
               {crumb.to ? (
@@ -36,14 +46,24 @@ export function PageHeader({ title, subtitle, breadcrumbs, actions, className }:
         </nav>
       ) : null}
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-foreground font-serif text-2xl font-semibold tracking-tight">
+        <div className="min-w-0">
+          {eyebrow ? (
+            <p className="text-brand-700 font-script mb-1 text-2xl leading-none">{eyebrow}</p>
+          ) : null}
+          <h1
+            className="text-foreground font-serif text-4xl leading-[1.05] font-semibold"
+            style={{ fontVariationSettings: '"opsz" 144' }}
+          >
             {title}
           </h1>
-          {subtitle ? <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="text-muted-foreground mt-2 max-w-2xl text-sm">{subtitle}</p>
+          ) : null}
         </div>
-        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
+      {/* Thin terracotta rule beneath the title — editorial cue. */}
+      <div className="rule-terracotta mt-6" aria-hidden />
     </header>
   );
 }

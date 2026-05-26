@@ -171,6 +171,11 @@ class SeedContext:
     groups: list[Any] = field(default_factory=list)
     guest_pool: list[Any] = field(default_factory=list)
     terms: list[Any] = field(default_factory=list)
+    # Run-local pks so later stages (notes, webhooks) can scope to rows this
+    # run created instead of touching every row in the table — additive
+    # reruns must not silently mutate prior-run or fixture data.
+    booking_pks: list[int] = field(default_factory=list)
+    enquiry_pks: list[int] = field(default_factory=list)
     # Convenience accessor for the "primary" currency. Set by `system_setup`
     # (or by the legacy fallback in the seed command).
     default_currency: Any = None

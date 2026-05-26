@@ -8,8 +8,8 @@ from __future__ import annotations
 from core.seed.context import SeedContext
 from core.seed.registry import Stage, register
 from reservations.enums import BookingNoteKind, BookingNoteVisibility, EnquiryNoteKind
-from reservations.models.booking import Booking, BookingNote
-from reservations.models.enquiry import Enquiry, EnquiryNote
+from reservations.models.booking import BookingNote
+from reservations.models.enquiry import EnquiryNote
 
 _BOOKING_NOTES = [
     ("Guest requested early check-in", BookingNoteKind.GENERAL, BookingNoteVisibility.STAFF_ONLY),
@@ -33,9 +33,10 @@ def _run(ctx: SeedContext) -> int:
     if ctx.knobs.pct_notes <= 0:
         return 0
     made = 0
-    booking_pks = list(Booking.objects.values_list("pk", flat=True))
-    n_bookings = int(len(booking_pks) * ctx.knobs.pct_notes)
-    for pk in ctx.rng.sample(booking_pks, k=min(n_bookings, len(booking_pks))):
+    # Scope to bookings/enquiries this run created — additive reruns and
+    # pre-existing fixture rows must not be silently annotated.
+    n_bookings = int(len(ctx.booking_pks) * ctx.knobs.pct_notes)
+    for pk in ctx.rng.sample(ctx.booking_pks, k=min(n_bookings, len(ctx.booking_pks))):
         body, kind, visibility = _BOOKING_NOTES[made % len(_BOOKING_NOTES)]
         BookingNote.objects.create(
             booking_id=pk,
@@ -44,10 +45,9 @@ def _run(ctx: SeedContext) -> int:
             body=body,
         )
         made += 1
-    enquiry_pks = list(Enquiry.objects.values_list("pk", flat=True))
-    n_enquiries = int(len(enquiry_pks) * ctx.knobs.pct_notes)
+    n_enquiries = int(len(ctx.enquiry_pks) * ctx.knobs.pct_notes)
     e_made = 0
-    for pk in ctx.rng.sample(enquiry_pks, k=min(n_enquiries, len(enquiry_pks))):
+    for pk in ctx.rng.sample(ctx.enquiry_pks, k=min(n_enquiries, len(ctx.enquiry_pks))):
         e_body, e_kind = _ENQUIRY_NOTES[e_made % len(_ENQUIRY_NOTES)]
         EnquiryNote.objects.create(
             enquiry_id=pk,

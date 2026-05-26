@@ -54,15 +54,16 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     properties."""
 
     # `--scale small` (5 properties / 8 bookings) is too thin to exercise the
-    # mod-4 refund walk *and* leave a booking-free property for the
-    # lifecycle stage to flip to DRAFT/ARCHIVED. Bump both knobs so variety
-    # contracts hold without paying the full `--scale medium` cost.
+    # mod-4 refund walk *and* leave a property free of overlap-blocking
+    # bookings (the lifecycle stage skips properties with bookings in any
+    # OVERLAP_BLOCKING state). Bump both knobs so variety contracts hold
+    # without paying the full `--scale medium` cost.
     call_command(
         "seed_dev",
         "--scale",
         "small",
         "--properties",
-        "10",
+        "20",
         "--bookings",
         "24",
         "--profile",

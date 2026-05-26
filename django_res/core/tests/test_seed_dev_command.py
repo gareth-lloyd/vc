@@ -105,6 +105,48 @@ def test_seed_dev_happy_is_additive_on_rerun() -> None:
     assert Booking.objects.count() > first  # appended, no unique-constraint error
 
 
+def test_seed_dev_notes_and_webhooks_only_touch_this_runs_rows() -> None:
+    """Rerun-isolation contract: notes / webhooks must scope to bookings the
+    *current* invocation created, not every booking in the table. Otherwise
+    additive reruns silently annotate prior-run rows (and fixture rows
+    created by earlier tests in the same session)."""
+    from payments.models.webhook_delivery import WebhookDelivery
+    from reservations.models.booking import BookingNote
+    from reservations.models.enquiry import EnquiryNote
+
+    _run(properties=5, bookings=12, profile="mixed", seed=1)
+    first_booking_pks = set(Booking.objects.values_list("pk", flat=True))
+    first_enquiry_pks = set(Enquiry.objects.values_list("pk", flat=True))
+    first_payment_pks = set(
+        Payment.objects.filter(booking_id__in=first_booking_pks).values_list("pk", flat=True)
+    )
+    notes_on_first_bookings = BookingNote.objects.filter(booking_id__in=first_booking_pks).count()
+    notes_on_first_enquiries = EnquiryNote.objects.filter(enquiry_id__in=first_enquiry_pks).count()
+    webhooks_on_first_payments = WebhookDelivery.objects.filter(
+        payment_id__in=first_payment_pks
+    ).count()
+
+    _run(properties=5, bookings=12, profile="mixed", seed=2)
+
+    # Second run must not have added notes/webhooks on the prior run's rows.
+    assert (
+        BookingNote.objects.filter(booking_id__in=first_booking_pks).count()
+        == notes_on_first_bookings
+    )
+    assert (
+        EnquiryNote.objects.filter(enquiry_id__in=first_enquiry_pks).count()
+        == notes_on_first_enquiries
+    )
+    assert (
+        WebhookDelivery.objects.filter(payment_id__in=first_payment_pks).count()
+        == webhooks_on_first_payments
+    )
+    # And the second run must have produced at least one note + webhook so the
+    # contract isn't trivially satisfied by "stage emitted nothing this run".
+    assert BookingNote.objects.exclude(booking_id__in=first_booking_pks).exists()
+    assert WebhookDelivery.objects.exclude(payment_id__in=first_payment_pks).exists()
+
+
 # ---------------------------------------------------------------------------
 # Profile: mixed (the new default — "interesting" data)
 # ---------------------------------------------------------------------------
@@ -243,6 +285,26 @@ def test_seed_dev_mixed_spreads_property_status() -> None:
     # Knobs sit ~5% each at mixed; with 10 properties + the +1 floor we
     # always get at least one of DRAFT / ARCHIVED.
     assert PropertyStatus.DRAFT.value in statuses or PropertyStatus.ARCHIVED.value in statuses
+
+
+def test_seed_dev_lifecycle_does_not_archive_overlap_blocking_properties() -> None:
+    """Mixed profile yields ~1-2 PENDING_OWNER_APPROVAL bookings via the
+    pre-approval path. property_lifecycle must skip those properties — the
+    `booking_no_overlap_blocking` constraint includes PENDING_OWNER_APPROVAL,
+    so leaving an overlap-blocking booking on an archived property is a data
+    inconsistency the seeder must not produce."""
+    from reservations.enums import OVERLAP_BLOCKING_BOOKING_STATUSES
+
+    _run(properties=10, bookings=24, profile="mixed", seed=42)
+
+    inconsistent = Property.objects.filter(
+        status__in=[PropertyStatus.ARCHIVED.value, PropertyStatus.DRAFT.value],
+        bookings__status__in=OVERLAP_BLOCKING_BOOKING_STATUSES,
+    )
+    assert not inconsistent.exists(), (
+        f"property_lifecycle archived properties with overlap-blocking "
+        f"bookings: {list(inconsistent.values_list('pk', 'status'))}"
+    )
 
 
 def test_seed_dev_mixed_spreads_booking_dates_around_today() -> None:

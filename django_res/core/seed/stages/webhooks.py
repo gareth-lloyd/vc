@@ -21,7 +21,13 @@ from payments.models.payment import Payment
 def _run(ctx: SeedContext) -> int:
     if ctx.knobs.pct_webhooks <= 0:
         return 0
-    payment_pks = list(Payment.objects.values_list("pk", flat=True))
+    # Scope to payments tied to bookings this run created — additive reruns
+    # must not inflate webhook deliveries on prior-run payments.
+    if not ctx.booking_pks:
+        return 0
+    payment_pks = list(
+        Payment.objects.filter(booking_id__in=ctx.booking_pks).values_list("pk", flat=True)
+    )
     if not payment_pks:
         return 0
     n = int(len(payment_pks) * ctx.knobs.pct_webhooks)

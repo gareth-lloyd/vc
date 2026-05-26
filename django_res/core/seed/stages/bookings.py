@@ -72,6 +72,7 @@ def _run(ctx: SeedContext) -> int:
             Enquiry,
             EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
         )
+        ctx.enquiry_pks.append(enquiry.pk)
         with transaction.atomic():
             quotation = QuotationService.create_from_enquiry(
                 enquiry,
@@ -98,6 +99,7 @@ def _run(ctx: SeedContext) -> int:
             if not requires_pre_approval:
                 quotation.accept(line)
             booking = BookingService.create_from_quotation_line(line, terms_version=terms)
+            ctx.booking_pks.append(booking.pk)
             populate_payments(booking)
             advance_status(booking, i, ctx)
             from reservations.enums import BookingStatus

@@ -17,11 +17,14 @@ def _run(ctx: SeedContext) -> int:
         return 0
     if not (ctx.knobs.pct_property_draft or ctx.knobs.pct_property_archived):
         return 0
-    from reservations.enums import ACTIVE_BOOKING_STATUSES
+    from reservations.enums import OVERLAP_BLOCKING_BOOKING_STATUSES
     from reservations.models.booking import Booking
 
+    # Use the same status set as the `booking_no_overlap_blocking` constraint
+    # — PENDING_OWNER_APPROVAL counts here too, otherwise a property mid
+    # owner-approval can be archived out from under its booking.
     booking_props = set(
-        Booking.objects.filter(status__in=ACTIVE_BOOKING_STATUSES).values_list(
+        Booking.objects.filter(status__in=OVERLAP_BLOCKING_BOOKING_STATUSES).values_list(
             "property_id", flat=True
         )
     )

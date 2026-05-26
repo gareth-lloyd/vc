@@ -36,6 +36,7 @@ def _run(ctx: SeedContext) -> int:
             Enquiry,
             EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
         )
+        ctx.enquiry_pks.append(enquiry.pk)
         with transaction.atomic():
             quotation = QuotationService.create_from_enquiry(
                 enquiry,

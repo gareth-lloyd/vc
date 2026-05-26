@@ -30,8 +30,8 @@ function triggerPrefetch(fn?: () => Promise<unknown>) {
 
 function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
   return (
-    <div className="px-3 py-2">
-      <h2 className="text-muted-foreground px-3 pb-1 text-[11px] font-semibold tracking-wider uppercase">
+    <div className="px-3 pt-5 pb-2">
+      <h2 className="text-sidebar-muted px-3 pb-2 font-serif text-[10px] font-semibold tracking-[0.22em] uppercase">
         {heading}
       </h2>
       <ul className="space-y-0.5">
@@ -43,15 +43,25 @@ function NavSection({ heading, items }: { heading: string; items: NavItem[] }) {
               onFocus={() => triggerPrefetch(item.prefetch)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-nav-active text-nav-active-foreground font-medium"
-                    : "text-muted-foreground hover:bg-nav-hover hover:text-foreground",
+                    ? "bg-sidebar-active text-sidebar-active-foreground font-medium shadow-[0_4px_14px_-6px_oklch(0.5_0.14_30/0.6)]"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-hover hover:text-sidebar-foreground",
                 )
               }
             >
-              <item.icon className="size-4" aria-hidden />
-              <span>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  <item.icon
+                    className={cn(
+                      "size-4 transition-colors",
+                      isActive ? "text-sidebar-active-foreground" : "text-sidebar-muted",
+                    )}
+                    aria-hidden
+                  />
+                  <span>{item.label}</span>
+                </>
+              )}
             </NavLink>
           </li>
         ))}
@@ -133,10 +143,34 @@ export function Sidebar() {
   ];
 
   return (
-    <nav className="bg-card border-border w-60 shrink-0 border-r">
+    <nav className="bg-sidebar text-sidebar-foreground border-sidebar-border relative w-64 shrink-0 overflow-hidden border-r">
+      {/* Brass wordmark — sets the villa-office tone the moment the app loads. */}
+      <div className="border-sidebar-border flex flex-col gap-1 border-b px-5 py-5">
+        <span className="text-sidebar-muted font-mono text-[10px] tracking-[0.28em] uppercase">
+          Est. MMXXVI
+        </span>
+        <span
+          className="text-sidebar-foreground font-serif text-2xl leading-none font-semibold"
+          style={{ fontVariationSettings: '"opsz" 144' }}
+        >
+          Villa<span className="text-accent-500">&nbsp;Collective</span>
+        </span>
+      </div>
+
       <NavSection heading={t("nav.groups.operations")} items={operations} />
       <NavSection heading={t("nav.groups.library")} items={library} />
       {isAdmin && <NavSection heading={t("nav.groups.admin")} items={admin} />}
+
+      {/* Soft sun-glow at the foot of the panel — anchors the eye, kills the
+          "tall slab" feel. Purely decorative. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute right-0 bottom-0 left-0 h-40 opacity-50"
+        style={{
+          background:
+            "radial-gradient(ellipse at 30% 100%, oklch(0.45 0.14 32 / 0.35), transparent 70%)",
+        }}
+      />
     </nav>
   );
 }

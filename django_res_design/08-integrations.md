@@ -21,8 +21,9 @@ Generic FK to any synced domain model.
 - `object_id` — PositiveBigInteger
 - `target = GenericForeignKey("content_type", "object_id")`
 - `provider` — TextChoices (`ZOHO_CRM`, `FLYWIRE`, `WORDPRESS_SITE`, `LEGACY_DOTNET`)
+- `provider_instance` — CharField(max_length=64, blank=True, db_index=True)  # which tenant/site within `provider`; e.g. WordPress `SiteId` ("1", "2", …). Empty for single-tenant providers (Zoho, Flywire today).
 - `external_id` — CharField(blank=True, db_index=True)
-- `external_url` — URLField(blank=True)  # admin convenience
+- `external_url` — URLField(blank=True)  # admin convenience; also the canonical public URL (e.g. WordPress booking page slug returned by `Import_Booking`)
 - `direction` — TextChoices (`PUSH`, `PULL`, `BIDIRECTIONAL`)
 - `status` — TextChoices (`PENDING`, `IN_SYNC`, `DRIFT`, `ERROR`, `DISABLED`)
 - `last_pushed_at` — DateTimeField(null=True, blank=True)
@@ -32,12 +33,15 @@ Generic FK to any synced domain model.
 - `remote_fingerprint` — CharField(blank=True)
 - `error_message` — TextField(blank=True)
 - `retry_count` — PositiveSmallInteger(default=0)
+- `meta` — JSONField(default=dict)  # provider-specific extras (e.g. WP `PostId` when the slug is the `external_id`; Zoho `module` name)
 
 Constraints:
-- `UniqueConstraint(content_type, object_id, provider)` — one record per (target, provider).
-- `UniqueConstraint(provider, external_id, condition=Q(external_id__gt=""))` — provider-side id is unique per provider.
+- `UniqueConstraint(content_type, object_id, provider, provider_instance)` — one record per (target, provider, instance).
+- `UniqueConstraint(provider, provider_instance, external_id, condition=Q(external_id__gt=""))` — provider-side id is unique within a provider+instance.
 
-Indexes: `(provider, status)`, `(content_type, object_id)`, `external_id`.
+Indexes: `(provider, provider_instance, status)`, `(content_type, object_id)`, `external_id`.
+
+> **Why `provider_instance`?** WordPress is multi-tenant in the legacy system (`VillaSyncDetail.SiteId` distinguishes which public site a given villa/booking was published to, each with its own post-id and slug). A single `provider=WORDPRESS_SITE` row per villa cannot represent the fan-out. `provider_instance` carries the site identifier so each (villa, site) pair gets its own row, matching the legacy `(SiteId, ModuleId, ModulePrimaryId)` triple. Zoho today is single-tenant, so its rows leave `provider_instance` empty — but the field future-proofs the model if a second Zoho org is ever introduced.
 
 ### `SyncRun(TimestampedModel)`
 Audit of a sync job execution.
@@ -181,6 +185,73 @@ The handler:
 - On create: creates a `SyncRecord(status=PENDING)`.
 - On update: bumps `SyncRecord.status=PENDING` (signals push needed) **only if fields covered by the sync changed** (the registration declares which fields matter; otherwise we'd thrash on irrelevant edits).
 - A Celery task `push_pending` runs every few minutes, batching pushes.
+
+## Migrating legacy external IDs — continuity for Zoho and WordPress
+
+The single most important migration step for the integrations app is **preserving the external IDs already issued by Zoho and WordPress against legacy rows**. These IDs are the routing keys for every subsequent update; if we drop them, the first post-cutover sync silently creates duplicates on the remote side and orphans the originals.
+
+### Where the legacy IDs live
+
+| Legacy column | Local entity | Maps to | Notes |
+|---|---|---|---|
+| `VillaMaster.ZohoId` | Property | `SyncRecord(provider=ZOHO_CRM, external_id=ZohoId)` | Zoho module `VILLLA_MASTER` (legacy typo, see workflow doc). |
+| `VillaContact.ZohoId` | Contact | `SyncRecord(provider=ZOHO_CRM, external_id=ZohoId)` | Zoho module `VILLA_MASTER_CONTACT`. |
+| `VillaEnquire.ZohoId` | Enquiry | `SyncRecord(provider=ZOHO_CRM, external_id=ZohoId)` | Zoho module `VILLA_ENQUIRY`. |
+| `VillaQuotationMaster.ZohoId` | Quotation | `SyncRecord(provider=ZOHO_CRM, external_id=ZohoId)` | Zoho module `VILLA_QUOTATIONS`. |
+| `VillaBooking.ZohoId` | Booking | `SyncRecord(provider=ZOHO_CRM, external_id=ZohoId)` | Zoho module `VILLA_BOOKING` / `ARCHIVE_BOOKING`. |
+| `VillaBooking.BookingUrl` | Booking | `SyncRecord(provider=WORDPRESS_SITE, provider_instance=<SiteId>, external_url=BookingUrl)` | The legacy code stores only the URL, not the WP `PostId`; treat the URL as the external identifier for the WP side. If the WP `PostId` is recoverable from logs or a `VillaSyncDetail` row, populate `meta["wp_post_id"]`. |
+| `VIllaConcierges.Slug` | Concierge service | `SyncRecord(provider=WORDPRESS_SITE, provider_instance=<SiteId>, external_url=Slug)` | Same shape as `BookingUrl`. |
+| `VillaSyncDetail` (whole table) | Any module | One `SyncRecord` per row | The normalised source of truth for WP sync state. See below. |
+
+`VillaSyncDetail` is the per-site sync table in legacy. Each row carries:
+- `SiteId` → `SyncRecord.provider_instance`
+- `ModuleId` → resolves to a Django `ContentType` (see mapping table in `data_migration/loaders/integrations.py`)
+- `ModulePrimaryId` → `SyncRecord.object_id` (after the per-module legacy-id lookup; e.g. `VillaMaster.Id → Property.id`)
+- `SyncId` → WordPress post id; store as `SyncRecord.external_id` (string-cast)
+- `VillaUrl` → `SyncRecord.external_url`
+- `Process` → free-form legacy status string; if useful, stash in `meta["legacy_process"]`
+
+### Migration loader
+
+Add `data_migration/loaders/integrations.py` with two loaders, both idempotent upserts:
+
+1. **`SyncRecordZohoLoader`** — sweeps the legacy tables above, and for any row with a non-blank `ZohoId` emits an upsert:
+   ```python
+   SyncRecord.objects.update_or_create(
+       content_type=ContentType.objects.get_for_model(Property),
+       object_id=property_pk,
+       provider="ZOHO_CRM",
+       provider_instance="",
+       defaults=dict(
+           external_id=legacy_zoho_id,
+           direction="PUSH",
+           status="IN_SYNC",
+           last_pushed_at=legacy_updated_at or legacy_created_at,
+       ),
+   )
+   ```
+   Keyed on `(content_type, object_id, provider, provider_instance)` so re-runs are safe (mirrors the existing loader convention — see `CUTOVER.md`).
+
+2. **`SyncRecordWordPressLoader`** — iterates `VillaSyncDetail` directly. For each row, resolve the local target via the module-id → model map, then upsert a `SyncRecord` with `provider="WORDPRESS_SITE"`, `provider_instance=str(SiteId)`. Backfill `BookingUrl` and `VIllaConcierges.Slug` separately for rows where `VillaSyncDetail` has no entry but a URL exists on the source row (defensive — legacy code paths don't always write to `VillaSyncDetail`).
+
+Register both in `data_migration/registry.py` **after** the corresponding domain loaders (Property, Contact, Enquiry, Quotation, Booking) so the target rows exist when `SyncRecord` rows are written.
+
+### Sanity check during reconcile
+
+Extend `reconcile_legacy` to report:
+- Count of legacy rows with a non-blank external id (`ZohoId`, `BookingUrl`, `Slug`) per source table.
+- Count of `SyncRecord` rows created per `(provider, provider_instance)` pair.
+- Any row with a legacy external id but no matching `SyncRecord` is a **blocker** — duplicates will be issued on first sync if it goes uncaught.
+
+### Why this matters at cutover
+
+- **Zoho push routes on `Zoho_ID`.** `PushZohoEnqueireAsync` and friends put the legacy `Zoho_ID` in the payload's `Enquiry`/`Villa`/`Booking` sub-object. The Zoho-side Deluge function (`fn_enquirypath`, `fn_quotepath`, `fn_bookingpath`) decides INSERT vs UPDATE on whether that id is present and recognised. A missing id ⇒ new Zoho record. With ~years of CRM activity attached to existing records (notes, tasks, emails, deal stage), losing the link is operationally serious.
+- **WordPress `Import_Booking` and `WP_Sync_Villa` are not idempotent on local content.** The WP side allocates a new post on every call without a matching post id; the canonical booking-confirmation URL changes; previously-emailed guest links 404.
+- **Multi-site fan-out doubles the surface area.** Each `(villa, site)` pair has its own slug and post id. Migration must preserve all of them, not just the most-recently-touched one.
+
+### Stop-the-bleeding posture during cutover
+
+Until the external-id migration is verified clean (the reconcile step above passes), the post-deploy push tasks must be **disabled** (set `SyncRecord.status=DISABLED` for the relevant providers, or pause the Celery beat schedule). Re-enable only after the operator runs a dry-run reconciliation against Zoho and a sample WP site and confirms no orphans. This is the most likely place to manufacture a hard-to-recover production mess; treat it as the critical-path gate.
 
 ## Inbound: WordPress → Django
 

@@ -51,6 +51,43 @@ Expect this to finish in ~2 minutes on the live snapshot. Watch for any
 non-zero `errors` column in the per-loader summary; investigate before
 proceeding.
 
+## 4b. Verify external-ID continuity (Zoho + WordPress)
+
+Before unpausing any outbound integration tasks, confirm that every
+legacy external id has been migrated into `integrations.SyncRecord`.
+Dropping these ids causes the first post-cutover sync to duplicate
+records on the remote side (Zoho creates new records, orphaning years
+of CRM activity; WordPress allocates new posts, breaking already-emailed
+booking URLs). See `django_res_design/08-integrations.md` →
+"Migrating legacy external IDs" for the full rationale.
+
+```bash
+uv run python manage.py reconcile_legacy --integrations
+```
+
+The `--integrations` flag extends the normal reconcile output with:
+
+- Per legacy column (`VillaMaster.ZohoId`, `VillaContact.ZohoId`,
+  `VillaEnquire.ZohoId`, `VillaQuotationMaster.ZohoId`,
+  `VillaBooking.ZohoId`, `VillaBooking.BookingUrl`,
+  `VIllaConcierges.Slug`): count of non-blank legacy values vs count of
+  matching `SyncRecord` rows.
+- For `VillaSyncDetail`: per-`SiteId` row count vs
+  `SyncRecord(provider=WORDPRESS_SITE, provider_instance=SiteId)` row
+  count.
+
+Any non-zero gap is a **blocker**. Cutover must not proceed until every
+external id has been transplanted, or the operator has explicitly
+recorded the gap as an accepted loss with a written justification (e.g.
+"the 12 archived bookings with stale Zoho ids predate the current Zoho
+account and would 404 on push anyway").
+
+**While the gap is non-zero, keep outbound push tasks paused.** Either
+set `SyncRecord.status=DISABLED` for the affected providers, or pause
+the Celery beat schedule for the `push_*` and `reconcile_*` tasks. Do
+not rely on the prod-only environment gate in legacy as a safety net —
+the new system pushes from every environment by default.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash

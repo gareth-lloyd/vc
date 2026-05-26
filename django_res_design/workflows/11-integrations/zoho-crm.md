@@ -2,6 +2,17 @@
 
 Zoho is the system of record for sales pipeline: enquiries, contacts, villas, quotations, and bookings are mirrored into **custom Zoho modules** (not the built-in Leads/Deals).
 
+## External ID continuity (critical for data migration)
+
+**`Zoho_ID` is the upsert routing key**, not metadata. Every push (`PushZohoEnqueireAsync`, `PushZohoVilla`, `PushZohoQuotation`, `PushZohoBooking`) puts the existing `Zoho_ID` into the payload; the Zoho-side Deluge function (`fn_enquirypath`, `fn_quotepath`, `fn_bookingpath`) decides INSERT vs UPDATE on whether that id is present and recognised. A missing id means Zoho creates a new record.
+
+Implications for the legacy → Postgres cutover:
+
+- **Every `*.ZohoId` column in the legacy DB must be migrated into `integrations.SyncRecord(provider=ZOHO_CRM, external_id=...)` before the first post-cutover sync fires.** See `08-integrations.md` → "Migrating legacy external IDs" for the loader spec and the column-to-record mapping.
+- Until the migration is verified, pause Zoho push tasks (set `SyncRecord.status=DISABLED` or pause the Celery beat schedule). One round of pushes without the ids carried forward will silently duplicate every CRM record and orphan the original (along with years of attached notes, tasks, emails, and pipeline activity).
+- The fire-and-forget `_ = Task.Run(...)` posture in the legacy code (`PushZohoEnqueireAsyncNew`, `PushZohoBooking` stage=Confirmed) means the duplicate would never surface as an operator-visible error; the only signal is in the CRM itself. Reconcile by sampling a handful of Zoho ids and confirming a `SyncRecord` round-trip before unpausing.
+- Direction of trust: legacy ResSystem is authoritative for the `ZohoId` value. Don't try to pull from Zoho during migration; the local column is what the Zoho-side function will accept.
+
 ## Custom modules in use
 
 | Local concept | Zoho module | Push class |

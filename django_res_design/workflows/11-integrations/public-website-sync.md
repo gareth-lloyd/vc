@@ -2,6 +2,33 @@
 
 The public villacollective.com WordPress site is the customer-facing front. The back-office Res system pushes property data, booking confirmations, and payment-schedule updates to it via a set of `WP_Sync_*` REST endpoints. Multi-tenancy is real: pushes are **grouped by `SiteId`** and dispatched to each configured `VillaConfigWebsite` row in turn.
 
+## External ID continuity (critical for data migration)
+
+The WP integration is **multi-tenant**: every villa, booking, and concierge entry can be published to multiple WordPress sites, each issuing its own post id and URL slug. The legacy system stores this in two places:
+
+1. **`VillaSyncDetail`** — the normalised, per-(site, module, primary-id) sync table. Carries `SyncId` (WP post id) and `VillaUrl` (slug) for every successful push. **This is the authoritative source for WP external-id migration.**
+2. **`VillaMaster.Slug` / `VillaBooking.BookingUrl` / `VIllaConcierges.Slug`** — convenience denormalisations of the most-recent push's slug, written inline by `PushVillaBookingToWP`, `PushConciergeBookingToWP`, and `sp_getSyncVilla`. These cover only the single most recently synced site, **not** the full fan-out.
+
+### What must migrate
+
+| Legacy source | New target |
+|---|---|
+| Each `VillaSyncDetail` row | `SyncRecord(provider=WORDPRESS_SITE, provider_instance=<SiteId>, content_type=<from ModuleId>, object_id=<from ModulePrimaryId>, external_id=<SyncId>, external_url=<VillaUrl>)` |
+| `VillaBooking.BookingUrl` (where no `VillaSyncDetail` row exists) | Same shape, with `external_url=BookingUrl` and `external_id=""` (the legacy code stores only the URL for bookings). Capture the `SiteId` from `VillaConfigWebsite` — typically `SiteId=1` is the canonical public site. |
+| `VIllaConcierges.Slug` (same gap) | Same shape, `external_url=Slug`. |
+
+See `08-integrations.md` → "Migrating legacy external IDs" for the loader spec and the column-to-record mapping.
+
+### Why this matters
+
+- **`Import_Booking` is not idempotent without a recognisable post id on the WP side.** If the new system re-pushes a booking that already has a WP page, but no `SyncRecord(provider=WORDPRESS_SITE, …, external_id=…)` is present, WordPress allocates a fresh post; the public booking-confirmation URL changes; previously-emailed guest links 404.
+- **The villa post-id (`PostId`) controls which WP post the next `WP_Sync_Villa` call updates.** Drop it and every villa double-publishes on first sync.
+- **Each site is independent.** Migration must preserve every `(villa, site)` pair from `VillaSyncDetail`, not just the most-recently-touched one. A naive migration that only copies `VillaMaster.Slug` will lose every secondary-site link.
+
+### Stop-the-bleeding posture at cutover
+
+Until the WP external-id migration passes the `reconcile_legacy` extension (counts in legacy `VillaSyncDetail` match counts in new `SyncRecord` per `provider_instance`), keep all WP push tasks paused. The blast radius of an accidental duplicate-publish is larger than Zoho's because the URLs are public and customer-facing.
+
 Each sync workflow follows the same broad shape:
 1. Read pending rows from `SP_GET_SYNC_DATA_BY_MODULE(@module, @action, @id)`.
 2. Group by `SiteId`.

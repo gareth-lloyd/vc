@@ -85,6 +85,14 @@ class ProfileKnobs:
     runs_per_channel: int = 0
     # Fraction of payments that get a WebhookDelivery row.
     pct_webhooks: float = 0.0
+    # Fraction of (active) properties that get any operator-editable
+    # availability block (owner_block / maintenance / manual). Keep low so
+    # most calendars stay generally bookable.
+    pct_properties_with_blocks: float = 0.0
+    # Inclusive count range of blocks placed on each chosen property.
+    blocks_per_property: tuple[int, int] = (0, 0)
+    # Inclusive day-length range of each placed block.
+    block_length_days: tuple[int, int] = (0, 0)
 
 
 _PROFILES: dict[Profile, ProfileKnobs] = {
@@ -121,6 +129,9 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         pct_notes=0.40,
         runs_per_channel=3,
         pct_webhooks=0.60,
+        pct_properties_with_blocks=0.35,
+        blocks_per_property=(1, 2),
+        block_length_days=(2, 5),
     ),
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
@@ -151,6 +162,9 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         pct_notes=0.60,
         runs_per_channel=5,
         pct_webhooks=0.80,
+        pct_properties_with_blocks=0.55,
+        blocks_per_property=(1, 4),
+        block_length_days=(2, 7),
     ),
 }
 

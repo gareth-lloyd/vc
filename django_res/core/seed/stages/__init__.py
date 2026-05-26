@@ -11,6 +11,7 @@ from __future__ import annotations
 # One-shot / canonical-row stages first.
 # Core transactional graph.
 from core.seed.stages import (
+    availability_blocks,  # noqa: F401
     bookings,  # noqa: F401
     collections,  # noqa: F401
     concierge_items,  # noqa: F401

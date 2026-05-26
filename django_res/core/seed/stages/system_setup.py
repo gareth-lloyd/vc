@@ -16,23 +16,14 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import cast
 
-from comms.models import EmailTemplate, SmtpProfile
+from comms.management.commands.seed_email_templates import sync_templates
+from comms.models import SmtpProfile
 from core.seed.context import SeedContext
 from core.seed.registry import Stage, register
 from pricing.factories import CurrencyFactory
 from pricing.models import FxRate
 from reservations.factories import TermsVersionFactory
 from reservations.models.terms import TermsVersion
-
-# A small set of canonical templates; one per lifecycle moment the seeder
-# touches. Cheap text content — visual fidelity isn't the point, presence is.
-_TEMPLATE_KEYS = (
-    "quotation.sent",
-    "booking.confirmed",
-    "booking.cancelled",
-    "payment.received",
-    "refund.processed",
-)
 
 # Cross-rates we want present. Real values are not load-bearing for seeded
 # data — operators just need something on every (base, quote) edge.
@@ -106,21 +97,13 @@ def _run(ctx: SeedContext) -> int:
         )
         made += 1
 
-    # Email templates: one active row per key. `EmailTemplate.save` recompiles
-    # the MJML body on every save, so keep the bodies trivially valid.
-    for key in _TEMPLATE_KEYS:
-        if EmailTemplate.objects.filter(key=key, is_active=True).exists():
-            continue
-        EmailTemplate.objects.create(
-            key=key,
-            version=1,
-            subject_template=f"[{key}] " + "{{ booking.reference }}",
-            body_template="Plaintext seed body for " + key,
-            body_template_mjml="<mjml><mj-body><mj-text>Seed</mj-text></mj-body></mjml>",
-            notes="seeded by seed_dev system_setup stage",
-            is_active=True,
-        )
-        made += 1
+    # Email templates: sync every on-disk template so the seeder mirrors
+    # what `migrate` does on a fresh DB. Idempotent — keys whose active row
+    # already matches the seed file are skipped. Earlier this stage seeded
+    # a hardcoded subset, which drifted out of sync with the keys the comms
+    # signal handlers actually dispatch (e.g. `booking.confirmation`).
+    sync_result = sync_templates()
+    made += sync_result["created"] + sync_result["updated"]
 
     # Extra TermsVersions: one freshly-published current + the legacy row
     # demoted to historical. `publish()` flips this row to current and

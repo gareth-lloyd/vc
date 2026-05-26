@@ -59,14 +59,21 @@ def _run(ctx: SeedContext) -> int:
         extra_kwargs: dict[str, Any] = {}
         if group_pool:
             extra_kwargs["group"] = group_pool[i % len(group_pool)]
+        # Pre-approval is meaningless without an owner to approve, so a
+        # property flagged for pre-approval must also get a primary owner
+        # contact — otherwise the owner-approval email handler skips and
+        # the dev DB ends up with PENDING_OWNER_APPROVAL bookings that
+        # nobody can act on.
+        wants_pre_approval = ctx.rng.random() < ctx.knobs.pct_pre_approval_property
+        wants_owner = wants_pre_approval or ctx.rng.random() < ctx.knobs.pct_owner_contact
         prop = cast(
             Any,
             PropertyFactory(
-                with_owner_contact=ctx.rng.random() < ctx.knobs.pct_owner_contact,
+                with_owner_contact=wants_owner,
                 **extra_kwargs,
             ),
         )
-        if ctx.rng.random() < ctx.knobs.pct_pre_approval_property:
+        if wants_pre_approval:
             prop.settings.bookings_require_pre_approval = True
             prop.settings.save(update_fields=["bookings_require_pre_approval"])
         plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)

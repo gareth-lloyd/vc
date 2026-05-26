@@ -223,6 +223,16 @@ class PropertyFactory(DjangoModelFactory):
         # which reads the primary row.
         ContactEmailFactory(contact=contact, is_primary=True)
         ContactPhoneFactory(contact=contact, is_primary=True)
+        # Mirror the finance link with a primary OWNER assignment so
+        # `primary_owner_email()` (which keys off PropertyContactAssignment,
+        # not finance.contact) resolves and the owner-approval email fires
+        # on pre-approval bookings.
+        models.PropertyContactAssignment.objects.create(
+            property=obj,
+            contact=contact,
+            role=ContactRole.OWNER,
+            is_primary=True,
+        )
         finance.contact = contact
         # Mix percent / fixed so the Owner tab renders both formatter branches.
         if random.random() < 0.7:

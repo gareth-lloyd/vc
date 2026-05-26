@@ -12,11 +12,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow={t("greeting")}
-        title={t("title")}
-        subtitle={t("subtitle_today", { date: formatDate(today) })}
-      />
+      <PageHeader title={t("title")} subtitle={t("subtitle_today", { date: formatDate(today) })} />
       <div className="space-y-8 px-6 pb-12">
         {/* Editorial spread: hero arrivals + vertical stat rail. */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

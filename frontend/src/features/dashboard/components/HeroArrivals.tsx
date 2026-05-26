@@ -7,12 +7,6 @@ import { useArrivalsToday, todayIso } from "../hooks";
 
 const MAX_ROWS = 6;
 
-/**
- * Hero panel for today's arrivals. Replaces what used to be a small KPI
- * tile + a separate list. The big serif numeral anchors the visual
- * weight; the property list to its right tells the operator what those
- * arrivals actually are. Compressed into a single editorial unit.
- */
 export function HeroArrivals() {
   const { t } = useTranslation("dashboard");
   const today = todayIso();
@@ -23,26 +17,13 @@ export function HeroArrivals() {
   const rows = data?.results.slice(0, MAX_ROWS) ?? [];
 
   return (
-    <article className="bg-card border-border shadow-sun rounded-asym relative overflow-hidden border">
-      {/* Soft sun-wash bleeding from the top-right. Anchors the editorial feel. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-32 -right-32 size-80 rounded-full"
-        style={{
-          background:
-            "radial-gradient(circle, oklch(0.85 0.13 75 / 0.35) 0%, oklch(0.78 0.155 38 / 0.15) 50%, transparent 75%)",
-        }}
-      />
-
-      <div className="relative grid gap-8 p-8 md:grid-cols-[auto_1fr]">
-        <div className="flex flex-col gap-3">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-[0.24em] uppercase">
+    <article className="bg-card border-border shadow-card rounded-lg border">
+      <div className="grid gap-8 p-6 md:grid-cols-[auto_1fr] md:p-8">
+        <div className="flex flex-col gap-2">
+          <span className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">
             {t("sections.arrivals_today")}
           </span>
-          <span
-            className="text-foreground font-serif text-[clamp(5rem,12vw,8.5rem)] leading-[0.85] font-semibold"
-            style={{ fontVariationSettings: '"opsz" 144' }}
-          >
+          <span className="text-foreground text-6xl leading-none font-semibold tabular-nums md:text-7xl">
             {isError ? "—" : isLoading ? "·" : count}
           </span>
           <span className="text-muted-foreground max-w-[14ch] text-sm">
@@ -50,7 +31,7 @@ export function HeroArrivals() {
           </span>
           <Link
             to={viewAllHref}
-            className="text-brand-700 hover:text-brand-800 group mt-2 inline-flex items-center gap-1.5 text-sm font-medium"
+            className="text-primary hover:text-brand-800 group mt-2 inline-flex items-center gap-1.5 text-sm font-medium"
           >
             {t("hero.view_schedule")}
             <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -63,7 +44,7 @@ export function HeroArrivals() {
           ) : isLoading ? (
             <SkeletonRows />
           ) : rows.length === 0 ? (
-            <div className="bg-zellige flex h-full min-h-[14rem] items-center justify-center rounded-lg">
+            <div className="bg-muted/50 flex h-full min-h-[14rem] items-center justify-center rounded-lg">
               <EmptyState title={t("empty.arrivals_today")} />
             </div>
           ) : (
@@ -72,10 +53,10 @@ export function HeroArrivals() {
                 <li key={row.id}>
                   <Link
                     to={`/bookings/${row.id}/overview`}
-                    className="hover:bg-brand-50/50 -mx-2 flex items-baseline justify-between gap-3 rounded-md px-2 py-2.5 transition-colors"
+                    className="hover:bg-muted -mx-2 flex items-baseline justify-between gap-3 rounded-md px-2 py-2.5 transition-colors"
                   >
                     <div className="min-w-0">
-                      <div className="text-foreground truncate font-serif text-base leading-tight font-medium">
+                      <div className="text-foreground truncate text-sm leading-tight font-medium">
                         {row.property_name ?? `#${row.property}`}
                       </div>
                       <div className="text-muted-foreground truncate text-xs">

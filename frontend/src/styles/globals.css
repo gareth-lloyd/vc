@@ -3,29 +3,24 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------------------
- * Mediterranean-warm token system.
+ * Villa Collective token system.
  *
  *   ramp        — raw colour scales (brand-*, accent-*, neutral-*) in OKLCH
  *   semantic    — shadcn surfaces (--primary, --background, …) wired to the ramp
  *   status      — workflow tones (success / warning / danger / info / hold)
  *   categorical — concierge service, lead status, tier badges
- *   chrome      — sidebar surface, paper texture
- *   typography  — Fraunces (display) + Geist (body) + Caveat (accent script)
+ *   chrome      — sidebar surface
+ *   typography  — Fraunces (display) + Geist (body)
  *   spacing     — design spacing scale
- *   radii       — corner sizes + a hand-built asymmetric variant
- *   shadows     — warm-cast elevation (brown-tinted rather than neutral black)
+ *   radii       — corner sizes
+ *   shadows     — neutral elevation
  *
- * Aesthetic notes:
- *   The brand ramp is terracotta — sun-baked clay, the colour of an old
- *   Provençal villa wall at four in the afternoon. The accent ramp is
- *   saffron-ochre — a sharper sun. Neutrals are linen rather than grey —
- *   what light looks like when it has bounced off plaster. Foreground is
- *   a warm olive-ink, not pure black, so a screenful of text feels like
- *   paper, not a CRT. Shadows carry a tiny amount of brown so cast light
- *   reads as afternoon rather than studio.
+ * Tone: business-software clarity first. Dark text on near-white surfaces;
+ * a single muted terracotta brand used sparingly for primary actions and
+ * the sidebar active pill. The left navigation rail is the one dark surface.
  *
- * Re-brand checklist: edit the brand/accent/neutral ramps in :root and
- * (optionally) .dark; everything downstream re-tints automatically.
+ * Re-brand: edit the brand/accent/neutral ramps in :root; downstream
+ * surfaces and status tones re-tint automatically.
  * ------------------------------------------------------------------------- */
 
 @theme inline {
@@ -97,11 +92,10 @@
   --color-nav-active-foreground: var(--nav-active-foreground);
   --color-nav-hover: var(--nav-hover);
 
-  /* Typography — Tailwind picks up `font-sans`, `font-serif`, `font-mono`, `font-script` */
+  /* Typography — Tailwind picks up `font-sans`, `font-serif`, `font-mono` */
   --font-sans: var(--font-sans);
   --font-serif: var(--font-serif);
   --font-mono: var(--font-mono);
-  --font-script: var(--font-script);
 
   /* Radii */
   --radius-sm: calc(var(--radius) - 4px);
@@ -118,55 +112,52 @@
 }
 
 :root {
-  /* -------- Ramp: brand — terracotta / clay
-     Hue 28-38 sits where Mediterranean roof tiles, weathered stucco,
-     and oxidised iron all converge. 600 is the primary action surface;
-     800 is oxblood for ink accents. */
-  --brand-50: oklch(0.97 0.018 38);
-  --brand-100: oklch(0.94 0.035 38);
-  --brand-200: oklch(0.88 0.062 38);
-  --brand-300: oklch(0.78 0.095 36);
-  --brand-400: oklch(0.69 0.12 34);
-  --brand-500: oklch(0.61 0.14 32);
-  --brand-600: oklch(0.53 0.14 30);
-  --brand-700: oklch(0.43 0.12 28);
-  --brand-800: oklch(0.33 0.09 27);
-  --brand-900: oklch(0.22 0.06 28);
+  /* -------- Ramp: brand — muted terracotta
+     Hue 28-38. Chroma kept low so the brand reads as a refined warm
+     accent, not decorative. 600 is the primary action surface. */
+  --brand-50: oklch(0.975 0.008 36);
+  --brand-100: oklch(0.95 0.018 34);
+  --brand-200: oklch(0.9 0.035 32);
+  --brand-300: oklch(0.82 0.055 30);
+  --brand-400: oklch(0.71 0.07 28);
+  --brand-500: oklch(0.62 0.08 28);
+  --brand-600: oklch(0.54 0.085 28);
+  --brand-700: oklch(0.44 0.075 28);
+  --brand-800: oklch(0.34 0.055 28);
+  --brand-900: oklch(0.22 0.035 28);
 
-  /* -------- Ramp: accent — saffron / ochre
-     The sharp midday sun against the terracotta. Used for tier badges,
-     focus accents, and small celebratory moments. Hue 70-80 — yolk to
-     wheat. */
-  --accent-50: oklch(0.97 0.028 80);
-  --accent-100: oklch(0.94 0.06 78);
-  --accent-200: oklch(0.89 0.1 76);
-  --accent-300: oklch(0.84 0.13 75);
-  --accent-500: oklch(0.78 0.155 74);
-  --accent-600: oklch(0.7 0.165 72);
-  --accent-700: oklch(0.58 0.15 70);
-  --accent-800: oklch(0.44 0.12 68);
-  --accent-900: oklch(0.3 0.08 66);
+  /* -------- Ramp: accent — soft ochre
+     Used for tier badges and small celebratory moments. Chroma kept
+     low so it sits in the design rather than jumping forward. */
+  --accent-50: oklch(0.97 0.015 80);
+  --accent-100: oklch(0.94 0.032 78);
+  --accent-200: oklch(0.89 0.055 76);
+  --accent-300: oklch(0.84 0.075 74);
+  --accent-500: oklch(0.78 0.09 72);
+  --accent-600: oklch(0.7 0.095 70);
+  --accent-700: oklch(0.58 0.085 68);
+  --accent-800: oklch(0.44 0.07 66);
+  --accent-900: oklch(0.3 0.05 64);
 
-  /* -------- Ramp: neutral — warm linen
-     Hue 55-60 reads as cream / parchment / olive-shadow rather than
-     cool grey. Tiny chroma (0.010-0.016) — perceptually neutral but
-     unmistakably warm next to a pure grey. */
+  /* -------- Ramp: neutral — barely-warm grey
+     Hue 60-70 with very low chroma. Reads as neutral grey under most
+     light, with the faintest warmth so the UI does not feel clinical. */
   --neutral-0: oklch(1 0 0);
-  --neutral-50: oklch(0.985 0.006 70);
-  --neutral-100: oklch(0.965 0.011 65);
-  --neutral-200: oklch(0.92 0.014 60);
-  --neutral-300: oklch(0.85 0.014 58);
-  --neutral-400: oklch(0.7 0.014 56);
-  --neutral-500: oklch(0.55 0.014 56);
-  --neutral-600: oklch(0.44 0.014 56);
-  --neutral-700: oklch(0.34 0.014 56);
-  --neutral-800: oklch(0.24 0.014 56);
-  --neutral-900: oklch(0.17 0.014 56);
+  --neutral-50: oklch(0.99 0.003 70);
+  --neutral-100: oklch(0.975 0.005 68);
+  --neutral-200: oklch(0.93 0.006 64);
+  --neutral-300: oklch(0.87 0.006 60);
+  --neutral-400: oklch(0.72 0.006 60);
+  --neutral-500: oklch(0.56 0.006 60);
+  --neutral-600: oklch(0.45 0.006 60);
+  --neutral-700: oklch(0.34 0.006 60);
+  --neutral-800: oklch(0.23 0.006 60);
+  --neutral-900: oklch(0.16 0.006 60);
 
   /* -------- Semantic shadcn surfaces, wired to the ramp */
-  /* Background is a *creamy linen wash* — warmer than neutral-50, so
-     cards lift visibly off the page and the screen reads as paper. */
-  --background: var(--neutral-100);
+  /* Background is a very subtle off-white. Cards are pure white so they
+     still lift, but the contrast is quiet — business-software calm. */
+  --background: var(--neutral-50);
   --foreground: var(--neutral-900);
   --card: var(--neutral-0);
   --card-foreground: var(--neutral-900);
@@ -207,13 +198,12 @@
   --tier-quintessential: var(--accent-600);
   --tier-signature: var(--brand-600);
 
-  /* -------- Sidebar / villa-office chrome
-     Deep olive-ink panel against the linen page — feels like a stamped
-     envelope or a hardcover ledger, not a SaaS sidebar. Active state is
-     a saturated brand pill so the eye lands on it instantly. */
+  /* -------- Sidebar chrome
+     Dark navigation rail — the one dark surface in an otherwise
+     dark-on-light app. Active row uses the muted brand. */
   --sidebar: var(--neutral-900);
   --sidebar-foreground: var(--neutral-100);
-  --sidebar-muted: oklch(0.62 0.014 56);
+  --sidebar-muted: oklch(0.65 0.006 60);
   --sidebar-active: var(--brand-600);
   --sidebar-active-foreground: var(--neutral-50);
   --sidebar-hover: color-mix(in oklch, var(--neutral-0) 6%, transparent);
@@ -245,15 +235,12 @@
   --lead-cold: oklch(0.62 0.1 230);
   --lead-dead: var(--neutral-400);
 
-  /* -------- Typography
-     Fraunces (display) + Geist (body, Söhne-adjacent humanist) +
-     Caveat (one moment per page, sparingly). */
+  /* -------- Typography — Fraunces (display) + Geist (body) */
   --font-sans:
     "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
   --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --font-script: "Caveat", "Fraunces", ui-serif, cursive;
 
   /* -------- Spacing scale */
   --space-1: 0.25rem;
@@ -270,11 +257,11 @@
   /* -------- Radii */
   --radius: 0.625rem;
 
-  /* -------- Shadows — warm-cast (brown-tinted, longer/softer) */
-  --shadow-card: 0 1px 2px oklch(0.2 0.04 50 / 0.05), 0 1px 3px oklch(0.2 0.04 50 / 0.07);
-  --shadow-popover: 0 4px 14px oklch(0.2 0.04 50 / 0.12), 0 2px 4px oklch(0.2 0.04 50 / 0.08);
-  --shadow-modal: 0 24px 56px oklch(0.2 0.04 50 / 0.22);
-  --shadow-sun: 0 12px 28px -10px oklch(0.4 0.1 35 / 0.25);
+  /* -------- Shadows — neutral, quiet elevation */
+  --shadow-card: 0 1px 2px oklch(0.15 0 0 / 0.04), 0 1px 2px oklch(0.15 0 0 / 0.05);
+  --shadow-popover: 0 4px 12px oklch(0.15 0 0 / 0.1), 0 2px 4px oklch(0.15 0 0 / 0.06);
+  --shadow-modal: 0 20px 48px oklch(0.15 0 0 / 0.18);
+  --shadow-sun: var(--shadow-card);
 }
 
 .dark {
@@ -342,15 +329,6 @@
       "calt" 1,
       "ss01" 1,
       "cv11" 1;
-    /* Paper grain — a low-opacity SVG noise overlay baked into the body
-       background. Cheap (no extra HTTP) and survives behind everything.
-       Disabled in dark mode where it muddies. */
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.32  0 0 0 0 0.22  0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    background-size: 240px 240px;
-    background-repeat: repeat;
-  }
-  .dark body {
-    background-image: none;
   }
   h1,
   h2,
@@ -358,55 +336,4 @@
     font-variation-settings: "opsz" 84;
     letter-spacing: -0.01em;
   }
-}
-
-/* ---------------------------------------------------------------------------
- * Decorative utilities
- * ------------------------------------------------------------------------- */
-
-.font-script {
-  font-family: var(--font-script);
-  font-weight: 500;
-}
-
-.rounded-asym {
-  border-radius: var(--radius-xl) var(--radius-sm) var(--radius-xl) var(--radius-sm);
-}
-
-.lift-sun {
-  transition:
-    transform 200ms ease,
-    box-shadow 200ms ease;
-}
-.lift-sun:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sun);
-}
-
-.bg-zellige {
-  background-color: var(--background);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'><g fill='none' stroke='%23b8794a' stroke-opacity='0.08' stroke-width='1'><path d='M32 0 L64 32 L32 64 L0 32 Z'/><circle cx='32' cy='32' r='14'/></g></svg>");
-  background-size: 64px 64px;
-}
-
-/* Sun-wash gradient — terracotta dusk against saffron sky.
-   Used as the login hero stand-in until real villa photography lands. */
-.bg-sunwash {
-  background-image:
-    radial-gradient(ellipse at 20% 10%, oklch(0.88 0.13 75) 0%, transparent 55%),
-    radial-gradient(ellipse at 90% 30%, oklch(0.78 0.155 38) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 100%, oklch(0.4 0.12 28) 0%, transparent 60%),
-    linear-gradient(to bottom, oklch(0.65 0.14 32), oklch(0.32 0.09 27));
-}
-
-.rule-terracotta {
-  background: linear-gradient(
-    to right,
-    var(--brand-600) 0,
-    var(--brand-600) 2.5rem,
-    var(--border) 2.5rem,
-    var(--border) 100%
-  );
-  height: 2px;
-  width: 100%;
 }

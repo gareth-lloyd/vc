@@ -82,7 +82,9 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
         {results.map((line: QuotationLine) => (
           <TableRow key={line.id}>
             <TableCell className="font-mono text-xs">#{line.id}</TableCell>
-            <TableCell>{line.property != null ? `#${line.property}` : "—"}</TableCell>
+            <TableCell>
+              {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
+            </TableCell>
             <TableCell>
               {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
             </TableCell>
@@ -181,15 +183,18 @@ function RailSummary({
       <FactList>
         <FactRow
           label={t("detail.summary.enquiry")}
-          value={quotation.enquiry != null ? `#${quotation.enquiry}` : "—"}
+          value={
+            quotation.enquiry_reference ??
+            (quotation.enquiry != null ? `#${quotation.enquiry}` : "—")
+          }
         />
         <FactRow
           label={t("detail.summary.guest")}
-          value={quotation.guest != null ? `#${quotation.guest}` : "—"}
+          value={quotation.guest_name ?? (quotation.guest != null ? `#${quotation.guest}` : "—")}
         />
         <FactRow
           label={t("detail.summary.agent")}
-          value={quotation.agent != null ? `#${quotation.agent}` : "—"}
+          value={quotation.agent_name ?? (quotation.agent != null ? `#${quotation.agent}` : "—")}
         />
         <FactRow label={t("detail.summary.currency")} value={quotation.currency ?? "—"} />
         <FactRow

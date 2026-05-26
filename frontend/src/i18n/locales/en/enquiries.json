@@ -59,6 +59,7 @@
   "card": {
     "no_property": "No property",
     "property_with_id": "Property #{{id}}",
+    "unknown_guest": "Unknown guest",
     "flexible_dates": "Flexible dates",
     "time_ago": {
       "just_now": "just now",
@@ -236,6 +237,9 @@
   "columns": {
     "ref": "Ref",
     "guest": "Guest",
+    "property": "Property",
+    "no_property": "No property",
+    "unknown_guest": "Unknown guest",
     "dates": "Dates",
     "party": "Party",
     "source": "Source",

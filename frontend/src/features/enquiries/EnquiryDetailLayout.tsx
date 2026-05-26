@@ -32,8 +32,9 @@ export interface EnquiryOutletContext {
 type DialogKind = "assign" | "close" | "reopen" | null;
 
 function guestName(enq: EnquiryDetail): string {
-  const name = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
-  return name || enq.email || enq.reference;
+  if (enq.guest_name) return enq.guest_name;
+  const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
+  return denorm || enq.email || enq.reference;
 }
 
 interface EnquiryActionsProps {
@@ -107,8 +108,8 @@ function RailSummary({ enquiry, onOpenDialog }: RailProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-foreground font-serif text-lg font-semibold">{enquiry.reference}</h2>
-        <p className="text-muted-foreground text-sm">{guestName(enquiry)}</p>
+        <h2 className="text-foreground font-serif text-lg font-semibold">{guestName(enquiry)}</h2>
+        <p className="text-muted-foreground font-mono text-xs">{enquiry.reference}</p>
       </div>
       <StatusBadge status={enquiryStatusLabel(enquiry.status)} />
       <FactList>
@@ -125,17 +126,19 @@ function RailSummary({ enquiry, onOpenDialog }: RailProps) {
         <FactRow
           label={t("detail.rail.property")}
           value={
-            enquiry.property != null
+            enquiry.property_name ??
+            (enquiry.property != null
               ? t("detail.rail.property_with_id", { id: enquiry.property })
-              : "—"
+              : "—")
           }
         />
         <FactRow
           label={t("detail.rail.assigned")}
           value={
-            enquiry.assigned_to != null
+            enquiry.assigned_to_name ??
+            (enquiry.assigned_to != null
               ? t("detail.rail.user_with_id", { id: enquiry.assigned_to })
-              : t("detail.rail.unassigned")
+              : t("detail.rail.unassigned"))
           }
         />
       </FactList>

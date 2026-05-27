@@ -194,3 +194,48 @@ def test_enquiry_is_converted_true_with_accepted_quotation(
 
     enquiry.refresh_from_db()
     assert enquiry.is_converted is True
+
+
+@pytest.mark.django_db
+def test_enquiry_is_converted_uses_prefetch_cache(
+    enquiry: Enquiry,
+    quotation: Quotation,
+    property_: Any,
+    django_assert_num_queries: Any,
+) -> None:
+    """`is_converted` must consult the prefetched `.quotations` queryset.
+
+    `EnquiryViewSet.get_queryset` installs `prefetch_related("quotations")`
+    on detail responses; if `is_converted` issues a fresh
+    `.filter(status=ACCEPTED).exists()` it re-queries even though the
+    serializer already walked the prefetched list. Pin the contract:
+    after prefetch materialisation, evaluating `is_converted` is zero
+    additional queries.
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    from reservations.models import QuotationLine
+
+    # Build a realistic enquiry/quotation/line graph and accept it so
+    # `is_converted` has a True to report.
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    enquiry.quote_sent(quotation)
+    quotation.send()
+    quotation.accept(line)
+
+    fetched = Enquiry.objects.prefetch_related("quotations").get(pk=enquiry.pk)
+    # Force the prefetch to materialise before counting.
+    list(fetched.quotations.all())
+
+    with django_assert_num_queries(0):
+        assert fetched.is_converted is True

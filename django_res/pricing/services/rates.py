@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -33,22 +34,31 @@ def rule_specificity(rule: RateRule) -> int:
     return (rule.date_to - rule.date_from).days
 
 
-def any_rule_covers_night(
-    cards: list[RateCard],
-    rules_by_card: dict[int, list[RateRule]],
-    night: date,
-) -> bool:
-    """True iff any rule on any of these cards covers `night`, ignoring party.
+@dataclass(frozen=True)
+class Picked:
+    """A rule was found that covers both the night and the party."""
 
-    Used by the engine to disambiguate "no rate" (no rule covers the night)
-    from "party out of range" (rules cover the night, but none match the
-    requested party size) — see `09-departures.md` bug #2.
+    card: RateCard
+    rule: RateRule
+
+
+@dataclass(frozen=True)
+class OutOfRange:
+    """Rules cover the night but no rule's party bracket includes `party`.
+
+    Caller should raise `PartyOutOfRange` — see `09-departures.md` bug #2.
     """
-    for card in cards:
-        for rule in rules_by_card.get(card.pk, []):
-            if rule.date_from <= night <= rule.date_to:
-                return True
-    return False
+
+
+@dataclass(frozen=True)
+class NoCoverage:
+    """No rule on any of the supplied cards covers the night at all.
+
+    Caller should raise `NoRateAvailable`.
+    """
+
+
+PickResult = Picked | OutOfRange | NoCoverage
 
 
 def pick_rule_for_night(
@@ -56,8 +66,15 @@ def pick_rule_for_night(
     rules_by_card: dict[int, list[RateRule]],
     night: date,
     party: int,
-) -> tuple[RateCard, RateRule] | None:
+) -> PickResult:
     """Pick the highest-priority rule covering `night` and `party` across cards.
+
+    Returns a tagged result so the caller can distinguish "no rule at all"
+    (`NoCoverage`) from "rules cover the night but the party is outside
+    every bracket" (`OutOfRange`). The disambiguation used to live in a
+    sibling helper (`any_rule_covers_night`) that re-walked the same
+    grid; folding it into the single pass keeps the engine to one loop
+    per night.
 
     Tie-break order (per 04-pricing.md §Services step 2):
     1. Higher `priority` wins.
@@ -67,10 +84,16 @@ def pick_rule_for_night(
     """
     best: tuple[RateCard, RateRule] | None = None
     best_key: tuple[int, int, int, int] | None = None
+    any_rule_covered = False
+
     for card in cards:
         for rule in rules_by_card.get(card.pk, []):
             if not (rule.date_from <= night <= rule.date_to):
                 continue
+            # The night is covered by *some* rule — even if the party
+            # bracket excludes it. Remember this so we can distinguish
+            # "out of range" from "no coverage" without a second pass.
+            any_rule_covered = True
             if not (rule.min_party <= party <= rule.max_party):
                 continue
             key = (
@@ -82,4 +105,9 @@ def pick_rule_for_night(
             if best_key is None or key > best_key:
                 best_key = key
                 best = (card, rule)
-    return best
+
+    if best is not None:
+        return Picked(card=best[0], rule=best[1])
+    if any_rule_covered:
+        return OutOfRange()
+    return NoCoverage()

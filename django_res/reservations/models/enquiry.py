@@ -133,8 +133,18 @@ class Enquiry(AuditedModel):
         not by counting ACCEPTED `Quotation` rows directly — a single
         enquiry that spawned three quotes (one ACCEPTED, two CANCELLED)
         is one conversion, not three.
+
+        Implementation note: iterate `.quotations.all()` rather than
+        applying a fresh `.filter(...).exists()`. The detail-shaped
+        `EnquiryViewSet.get_queryset` installs a `prefetch_related` on
+        `quotations`; a filtered subquery would bypass that cache and
+        re-query on every list row. When the cache is *not* primed (e.g.
+        from a service-layer caller or a list endpoint that intentionally
+        skipped the prefetch), Django falls back to a single SELECT —
+        no worse than the previous behaviour.
         """
-        return self.quotations.filter(status=QuotationStatus.ACCEPTED.value).exists()
+        accepted = QuotationStatus.ACCEPTED.value
+        return any(q.status == accepted for q in self.quotations.all())
 
     # ------------------------------------------------------------------
     # State machine

@@ -61,18 +61,18 @@ def test_contact_from_wrong_state_raises(enquiry: Enquiry) -> None:
 
 @pytest.mark.django_db
 def test_quote_sent_writes_event_with_quotation_id(enquiry: Enquiry, quotation: Quotation) -> None:
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     enquiry.refresh_from_db()
     assert enquiry.status == EnquiryStatus.QUOTED.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.QUOTE_SENT.value)
-    assert event.meta == {"quotation_id": quotation.pk}
+    assert event.meta == {"quotation_id": quotation.pk, "send_path": "smtp"}
 
 
 @pytest.mark.django_db
 def test_quote_sent_from_lost_raises(enquiry: Enquiry, quotation: Quotation) -> None:
     enquiry.lose("dropped")
     with pytest.raises(InvalidTransition):
-        enquiry.quote_sent(quotation)
+        enquiry.quote_sent(quotation, send_path="smtp")
 
 
 @pytest.mark.django_db
@@ -90,7 +90,7 @@ def test_assign_writes_assigned_event(enquiry: Enquiry) -> None:
 
 @pytest.mark.django_db
 def test_convert_from_quoted(enquiry: Enquiry, quotation: Quotation) -> None:
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     enquiry.convert(quotation)
     enquiry.refresh_from_db()
     assert enquiry.status == EnquiryStatus.CONVERTED.value
@@ -113,7 +113,7 @@ def test_lose_writes_lost_event(enquiry: Enquiry) -> None:
 
 @pytest.mark.django_db
 def test_lose_from_converted_raises(enquiry: Enquiry, quotation: Quotation) -> None:
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     enquiry.convert(quotation)
     with pytest.raises(InvalidTransition):
         enquiry.lose()
@@ -188,7 +188,7 @@ def test_enquiry_is_converted_true_with_accepted_quotation(
         adults=2,
         total=Decimal("1400.00"),
     )
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     quotation.send()
     quotation.accept(line)
 

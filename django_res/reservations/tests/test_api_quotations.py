@@ -226,6 +226,60 @@ def test_convert_creates_booking(
 
 
 @pytest.mark.django_db
+def test_quotation_convert_endpoint_attributes_to_request_user(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """The auto-conversion `EnquiryEvent.actor` must be the request user.
+
+    Bug #5: `QuotationViewSet.convert` called `quotation.accept(line)`
+    without `actor=`, so the resulting CONVERTED event was attributed to
+    `None` instead of the logged-in operator — the audit trail lost the
+    actor for every quote-to-booking conversion via the API.
+    """
+    from reservations.enums import EnquiryEventKind
+    from reservations.models import Enquiry, EnquiryEvent
+
+    enquiry = Enquiry.objects.create(
+        guest=guest, email=guest.email, first_name="Ada", last_name="Lovelace"
+    )
+    quotation = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    quotation.send()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+    assert response.status_code == 201, response.data
+
+    converted_event = EnquiryEvent.objects.get(
+        enquiry=enquiry,
+        kind=EnquiryEventKind.CONVERTED.value,
+    )
+    assert converted_event.actor_id == staff.pk
+
+
+@pytest.mark.django_db
 def test_convert_enforces_changeover_with_override_escape(
     api_client: APIClient,
     staff: User,

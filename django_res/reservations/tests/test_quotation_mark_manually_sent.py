@@ -269,3 +269,78 @@ def test_smtp_send_writes_event_with_send_path_smtp(
     smtp_events = [e for e in events if e.meta.get("send_path") == "smtp"]
     assert len(smtp_events) == 1
     assert smtp_events[0].meta.get("quotation_id") == quotation.pk
+
+
+# ----------------------------------------------------------------------
+# Cross-path audit — mark-manually-sent after SMTP must still record the
+# manual confirmation so the operator's "I re-sent this by hand" action
+# isn't silently dropped by the SENT short-circuit.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_smtp_then_manual_mark_records_both_send_paths(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    lifecycle_templates: None,
+) -> None:
+    """SMTP send leaves status=SENT + an event(smtp). If the operator then
+    posts mark-manually-sent (because they suspect the SMTP delivery
+    silently failed and they re-sent by hand), we must record the
+    audit-trail event(manual) even though the status stays SENT.
+    """
+    api_client.force_login(staff)
+
+    smtp = api_client.post(f"/api/v1/quotations/{quotation.pk}:send")
+    assert smtp.status_code == 200, smtp.data
+
+    manual = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
+    assert manual.status_code == 200, manual.data
+
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.SENT.value
+
+    events = _quote_sent_events(quotation)
+    send_paths = [e.meta.get("send_path") for e in events]
+    assert "smtp" in send_paths
+    assert "manual" in send_paths
+
+
+@pytest.mark.django_db
+def test_manual_mark_idempotent_on_same_path(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """Two manual-mark POSTs in a row write exactly one event(manual)."""
+    api_client.force_login(staff)
+
+    first = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
+    assert first.status_code == 200, first.data
+    second = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
+    assert second.status_code == 200, second.data
+
+    events = _quote_sent_events(quotation)
+    manual_events = [e for e in events if e.meta.get("send_path") == "manual"]
+    assert len(manual_events) == 1
+
+
+@pytest.mark.django_db
+def test_smtp_then_smtp_idempotent(quotation: Quotation) -> None:
+    """Two SMTP path invocations (signal-driven double-fire scenario) must
+    write exactly one event(smtp). Exercised via the service helper so we
+    cover the SENT short-circuit branch directly, not through `:send`
+    (which has its own DRAFT-only guard one layer up)."""
+    from reservations.services.quotation_transmission import (
+        SEND_PATH_SMTP,
+        record_quote_sent,
+    )
+
+    record_quote_sent(quotation, send_path=SEND_PATH_SMTP)
+    # Second call lands on the SENT short-circuit.
+    record_quote_sent(quotation, send_path=SEND_PATH_SMTP)
+
+    events = _quote_sent_events(quotation)
+    smtp_events = [e for e in events if e.meta.get("send_path") == "smtp"]
+    assert len(smtp_events) == 1

@@ -203,15 +203,23 @@ class Enquiry(AuditedModel):
         self,
         quotation: Quotation,
         *,
+        send_path: str,
         actor: Any = None,
         meta: dict[str, Any] | None = None,
     ) -> Enquiry:
         """Record that a quotation has been issued for this enquiry.
 
-        Callers can pass additional `meta` entries (e.g. `send_path`) that get
-        merged on top of the default `{"quotation_id": ...}` payload.
+        `send_path` is required — every QUOTE_SENT event must record which
+        transmission path (SMTP / manual) it represents so the manual-mark
+        endpoint can compute "is this a new audit row or a duplicate?" off
+        the (quotation, send_path) pair. See
+        `reservations.services.quotation_transmission` for the closed set
+        of valid values.
+
+        Callers can pass additional `meta` entries; they are merged on top
+        of `{"quotation_id": ..., "send_path": ...}`.
         """
-        event_meta: dict[str, Any] = {"quotation_id": quotation.pk}
+        event_meta: dict[str, Any] = {"quotation_id": quotation.pk, "send_path": send_path}
         if meta:
             event_meta.update(meta)
         self._transition(

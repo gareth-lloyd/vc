@@ -144,7 +144,7 @@ def test_quotation_accept_flips_enquiry_to_converted(
     enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
     quotation.enquiry = enquiry
     quotation.save(update_fields=["enquiry"])
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
 
     quotation.send()
     quotation.accept(line)
@@ -167,7 +167,7 @@ def test_quotation_accept_atomic_rollback_on_downstream_failure(
     enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
     quotation.enquiry = enquiry
     quotation.save(update_fields=["enquiry"])
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     quotation.send()
 
     def boom(self: Enquiry, *args: object, **kwargs: object) -> None:

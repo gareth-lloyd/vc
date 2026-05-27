@@ -20,6 +20,7 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import Signal
 
 from reservations.enums import (
+    BookingGuestRole,
     ConciergeStatus,
     EnquiryEventKind,
     EventSource,
@@ -104,11 +105,37 @@ def _concierge_item_changed(sender: type, instance: Any, **_: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# BookingGuest(role=LEAD) → Booking.guest sync
+# ---------------------------------------------------------------------------
+
+
+def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
+    """Mirror the LEAD BookingGuest row onto `Booking.guest`.
+
+    `Booking.guest` survives as a denormalised pointer so the many
+    booking-list / search reads that touch `guest_id` don't have to
+    refactor through the through-table. The LEAD row is the source of
+    truth; this signal keeps the denormalised column in sync.
+
+    Uses `update_fields=["guest"]` on the Booking save to keep the write
+    cheap and avoid recursive transitions.
+    """
+    if instance.role != BookingGuestRole.LEAD.value:
+        return
+    from reservations.models.booking import Booking
+
+    Booking.objects.filter(pk=instance.booking_id).exclude(guest_id=instance.guest_id).update(
+        guest_id=instance.guest_id,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registration — bound on import (apps.py ready() imports this module)
 # ---------------------------------------------------------------------------
 
 
 def _connect() -> None:
+    from reservations.models.booking_guest import BookingGuest
     from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
 
@@ -126,6 +153,11 @@ def _connect() -> None:
         _concierge_item_changed,
         sender=BookingConciergeItem,
         dispatch_uid="reservations.concierge_item_post_delete",
+    )
+    post_save.connect(
+        _booking_guest_post_save,
+        sender=BookingGuest,
+        dispatch_uid="reservations.booking_guest_post_save",
     )
 
 

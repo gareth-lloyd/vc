@@ -16,6 +16,7 @@ from factory.django import DjangoModelFactory
 from properties.factories import RUN_TOKEN, CountryFactory, PropertyFactory
 from reservations import models
 from reservations.enums import (
+    BookingGuestRole,
     BookingNoteKind,
     BookingNoteVisibility,
     EnquiryNoteKind,
@@ -75,6 +76,21 @@ class EnquiryNoteFactory(DjangoModelFactory):
     kind = EnquiryNoteKind.GENERAL
     body = factory.Faker("sentence")
     is_pinned = False
+
+
+class BookingGuestFactory(DjangoModelFactory):
+    """Attach a Guest to a Booking under a role. Caller supplies `booking=`
+    and `guest=` — neither has a sensible default (Booking is service-built;
+    the role-uniqueness constraints make any auto-built guest collide)."""
+
+    class Meta:
+        model = models.BookingGuest
+
+    booking = None  # required: provided by caller
+    guest = None  # required: provided by caller
+    role = BookingGuestRole.CO_TRAVELLER
+    email_override = ""
+    notes = ""
 
 
 class BookingNoteFactory(DjangoModelFactory):

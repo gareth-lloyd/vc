@@ -8,6 +8,7 @@ from reservations.models import (
     Booking,
     BookingConciergeItem,
     BookingEvent,
+    BookingGuest,
     BookingHold,
     BookingNote,
     Enquiry,
@@ -98,6 +99,14 @@ class BookingEventAdmin(admin.ModelAdmin):
 class BookingNoteAdmin(admin.ModelAdmin):
     list_display = ("pk", "booking", "kind", "visibility", "is_pinned", "created_at")
     list_filter = ("kind", "visibility")
+
+
+@admin.register(BookingGuest)
+class BookingGuestAdmin(admin.ModelAdmin):
+    list_display = ("pk", "booking", "guest", "role", "email_override")
+    list_filter = ("role",)
+    search_fields = ("booking__reference", "guest__email", "guest__last_name")
+    raw_id_fields = ("booking", "guest")
 
 
 @admin.register(BookingConciergeItem)

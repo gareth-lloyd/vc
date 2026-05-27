@@ -199,14 +199,27 @@ class Enquiry(AuditedModel):
         )
         return self
 
-    def quote_sent(self, quotation: Quotation, *, actor: Any = None) -> Enquiry:
-        """Record that a quotation has been issued for this enquiry."""
+    def quote_sent(
+        self,
+        quotation: Quotation,
+        *,
+        actor: Any = None,
+        meta: dict[str, Any] | None = None,
+    ) -> Enquiry:
+        """Record that a quotation has been issued for this enquiry.
+
+        Callers can pass additional `meta` entries (e.g. `send_path`) that get
+        merged on top of the default `{"quotation_id": ...}` payload.
+        """
+        event_meta: dict[str, Any] = {"quotation_id": quotation.pk}
+        if meta:
+            event_meta.update(meta)
         self._transition(
             allowed_from=(EnquiryStatus.NEW.value, EnquiryStatus.CONTACTED.value),
             to=EnquiryStatus.QUOTED.value,
             kind=EnquiryEventKind.QUOTE_SENT.value,
             actor=actor,
-            meta={"quotation_id": quotation.pk},
+            meta=event_meta,
         )
         return self
 

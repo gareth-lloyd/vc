@@ -27,6 +27,10 @@ from reservations.serializers import (
     QuotationWriteSerializer,
 )
 from reservations.services.bookings import BookingService
+from reservations.services.quotation_transmission import (
+    SEND_PATH_MANUAL,
+    record_quote_sent,
+)
 
 
 class QuotationViewSet(viewsets.ModelViewSet):
@@ -56,9 +60,23 @@ class QuotationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="send")
     def send_quote(self, request: Request, pk: str | None = None) -> Response:
-        """DRAFT → SENT."""
+        """DRAFT → SENT via the in-app SMTP path."""
         quotation = self.get_object()
-        quotation.send()
+        quotation.send(actor=request.user)
+        return Response(QuotationDetailSerializer(quotation).data)
+
+    @action(detail=True, methods=["post"], url_path="mark-manually-sent")
+    def mark_manually_sent(self, request: Request, pk: str | None = None) -> Response:
+        """Mark a quote as sent outside the system (operator copy-pasted into Outlook).
+
+        Same downstream state writes as `:send` (status flip, Enquiry → QUOTED,
+        Zoho push queued, EnquiryEvent with `send_path="manual"`) but does NOT
+        dispatch an email — Res didn't actually send the mail, so no `EmailLog`
+        row is created. Idempotent: re-POST on an already-SENT quotation returns
+        200 with no extra side effects.
+        """
+        quotation = self.get_object()
+        record_quote_sent(quotation, send_path=SEND_PATH_MANUAL, actor=request.user)
         return Response(QuotationDetailSerializer(quotation).data)
 
     @action(detail=True, methods=["post"], url_path="duplicate")

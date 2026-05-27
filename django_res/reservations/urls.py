@@ -108,6 +108,11 @@ _quotation_actions: list[URLPattern | URLResolver] = [
         name="quotation-send",
     ),
     path(
+        "quotations/<int:pk>:mark-manually-sent",
+        QuotationViewSet.as_view({"post": "mark_manually_sent"}),
+        name="quotation-mark-manually-sent",
+    ),
+    path(
         "quotations/<int:pk>:duplicate",
         QuotationViewSet.as_view({"post": "duplicate"}),
         name="quotation-duplicate",

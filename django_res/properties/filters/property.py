@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from django.db.models import Q, QuerySet
+from datetime import date
+
+from django.db.models import F, Q, QuerySet
+from django.db.models.functions import Coalesce
 from django_filters import rest_framework as filters
 
+from properties.enums import PrefilledChangeOverDay
 from properties.models import Property
 
 
@@ -12,7 +16,8 @@ class PropertyFilter(filters.FilterSet):
     """Filters supported by `GET /properties`.
 
     Spec query params: `status`, `category`, `group`, `region`, `country`,
-    `collection`, `min_bedrooms`, `max_bedrooms`, `min_guests`, `q`.
+    `collection`, `min_bedrooms`, `max_bedrooms`, `min_guests`, `q`,
+    `changeover_day`, `date_from`, `date_to`, `include_unavailable`.
     """
 
     status = filters.CharFilter(field_name="status")
@@ -25,6 +30,20 @@ class PropertyFilter(filters.FilterSet):
     max_bedrooms = filters.NumberFilter(field_name="capacity__bedrooms", lookup_expr="lte")
     min_guests = filters.NumberFilter(field_name="capacity__guests", lookup_expr="gte")
     q = filters.CharFilter(method="filter_q")
+
+    # T2.2 — search filtered to a specific weekday must also match properties
+    # whose effective `changeover_day=ANY` (group-fallback aware).
+    changeover_day = filters.ChoiceFilter(
+        method="filter_changeover_day",
+        choices=PrefilledChangeOverDay.choices,
+    )
+
+    # T3.1 — availability window. `date_from` + `date_to` activate the
+    # availability filter; `include_unavailable=true` opts back into the full
+    # set. Without a date range the filter is a no-op.
+    date_from = filters.DateFilter(method="filter_noop")
+    date_to = filters.DateFilter(method="filter_noop")
+    include_unavailable = filters.BooleanFilter(method="filter_noop")
 
     class Meta:
         model = Property
@@ -39,6 +58,10 @@ class PropertyFilter(filters.FilterSet):
             "max_bedrooms",
             "min_guests",
             "q",
+            "changeover_day",
+            "date_from",
+            "date_to",
+            "include_unavailable",
         ]
 
     def filter_region(self, qs: QuerySet[Property], name: str, value: str) -> QuerySet[Property]:
@@ -61,3 +84,107 @@ class PropertyFilter(filters.FilterSet):
         return qs.filter(
             Q(name__icontains=value) | Q(display_name__icontains=value) | Q(slug__icontains=value)
         )
+
+    def filter_changeover_day(
+        self, qs: QuerySet[Property], name: str, value: str
+    ) -> QuerySet[Property]:
+        """Match the requested weekday OR a property whose effective changeover
+        day is `ANY`.
+
+        Effective value resolves `PropertySettings.changeover_day` with fallback
+        to the group's `GroupSettings.changeover_day` (which is non-null with
+        default `ANY`), mirroring `PropertySettings.effective("changeover_day")`.
+        """
+        any_value = PrefilledChangeOverDay.ANY.value
+        return qs.annotate(
+            effective_changeover_day=Coalesce(
+                F("settings__changeover_day"),
+                F("group__settings__changeover_day"),
+            ),
+        ).filter(
+            Q(effective_changeover_day=any_value) | Q(effective_changeover_day=value),
+        )
+
+    def filter_noop(self, qs: QuerySet[Property], name: str, value: object) -> QuerySet[Property]:
+        """Availability params are applied as one bulk step in `filter_queryset`.
+
+        Per-field methods would either re-run the unavailability query for each
+        param or build it from a partial view of `request.GET`; the FilterSet
+        override below resolves it once after the field-level filters run.
+        """
+        return qs
+
+    def filter_queryset(self, queryset: QuerySet[Property]) -> QuerySet[Property]:
+        queryset = super().filter_queryset(queryset)
+        return self._apply_availability_filter(queryset)
+
+    def _apply_availability_filter(self, queryset: QuerySet[Property]) -> QuerySet[Property]:
+        """T3.1 — exclude properties with overlapping active bookings or live
+        holds across the requested date range. No-op when either date is
+        missing or `include_unavailable=true`.
+        """
+        raw = self.data
+        date_from = self._parse_date(raw.get("date_from"))
+        date_to = self._parse_date(raw.get("date_to"))
+        if date_from is None or date_to is None or date_from >= date_to:
+            return queryset
+
+        include_unavailable = self._parse_bool(raw.get("include_unavailable"))
+        if include_unavailable:
+            return queryset
+
+        unavailable_ids = _unavailable_property_ids(date_from, date_to)
+        if not unavailable_ids:
+            return queryset
+        return queryset.exclude(id__in=unavailable_ids)
+
+    @staticmethod
+    def _parse_date(value: object) -> date | None:
+        if value in (None, ""):
+            return None
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(str(value))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value in (None, ""):
+            return False
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _unavailable_property_ids(date_from: date, date_to: date) -> set[int]:
+    """Bulk-query the unavailable property-id set for a date range.
+
+    One query each for overlap-blocking bookings and live holds — both flat
+    set-membership reads that scale with the number of conflicts, not with the
+    number of properties under consideration. The result is fed straight into
+    `.exclude(id__in=…)` so the main property query stays a single round-trip.
+
+    Imported lazily inside the function to avoid an app-load cycle from the
+    properties → reservations direction.
+    """
+    from django.utils import timezone
+
+    from reservations.enums import OVERLAP_BLOCKING_BOOKING_STATUSES
+    from reservations.models.booking import Booking, BookingHold
+
+    booked_ids = Booking.objects.filter(
+        status__in=OVERLAP_BLOCKING_BOOKING_STATUSES,
+        date_from__lt=date_to,
+        date_to__gt=date_from,
+    ).values_list("property_id", flat=True)
+
+    held_ids = BookingHold.objects.filter(
+        released_at__isnull=True,
+        expires_at__gt=timezone.now(),
+        date_from__lt=date_to,
+        date_to__gt=date_from,
+    ).values_list("property_id", flat=True)
+
+    return {*booked_ids, *held_ids}

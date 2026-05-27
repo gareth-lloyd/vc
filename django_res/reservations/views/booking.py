@@ -43,6 +43,8 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
     return qs.select_related(
         "property__finance__contact",
         "property__group__finance",
+        "property__settings",
+        "property__group__settings",
     ).prefetch_related(
         Prefetch(
             "property__finance__contact__emails",

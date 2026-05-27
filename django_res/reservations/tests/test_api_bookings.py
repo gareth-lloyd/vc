@@ -13,8 +13,8 @@ from accounts.enums import EmailLabel, PhoneLabel, StaffRole
 from accounts.models import Contact, ContactEmail, ContactPhone, User
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
-from properties.enums import CommissionCalcType
-from properties.models import Property, PropertyFinance
+from properties.enums import CommissionCalcType, PriceBasis
+from properties.models import Property, PropertyFinance, PropertySettings
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
@@ -23,6 +23,34 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+
+
+# A pricing snapshot is the JSON blob the engine writes onto the booking at
+# confirmation time (see `pricing.services.engine.PricingEngine.quote`). The
+# helper hand-rolls one here so the owner-net tests don't depend on running
+# the full engine — the serializer reads the snapshot as-is.
+def _snapshot(
+    *,
+    rate_subtotal: str = "1400.00",
+    extras_total: str = "100.00",
+    discount: str = "50.00",
+    commission: str = "180.00",
+    tax: str = "70.00",
+) -> dict[str, str]:
+    rate = Decimal(rate_subtotal)
+    extras = Decimal(extras_total)
+    disc = Decimal(discount)
+    comm = Decimal(commission)
+    tax_amt = Decimal(tax)
+    total = rate + extras - disc + comm + tax_amt
+    return {
+        "rate_subtotal": rate_subtotal,
+        "extras_total": extras_total,
+        "discount": discount,
+        "commission": commission,
+        "tax": tax,
+        "total": f"{total:.2f}",
+    }
 
 
 @pytest.fixture
@@ -566,6 +594,148 @@ def test_detail_query_count_bound_with_owner_and_commission(
     with assert_max_queries(14):
         response = api_client.get(f"/api/v1/bookings/{booking.pk}")
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Net-to-owner / prices_entered_as — `09-departures.md` correctness-bug fix.
+# Owner-facing booking detail must surface the effective `prices_entered_as`
+# flag and a `net_to_owner` breakdown derived from `Booking.pricing_snapshot`
+# so the operator UI can label the rate column correctly and render the
+# owner statement without recomputing money in the serializer.
+# ---------------------------------------------------------------------------
+
+
+def _set_prices_entered_as(property_: Property, basis: PriceBasis | None) -> None:
+    """Pin the property-level `prices_entered_as` value (no group fallback)."""
+    settings_, _ = PropertySettings.objects.get_or_create(property=property_)
+    settings_.prices_entered_as = basis.value if basis is not None else None
+    settings_.save(update_fields=["prices_entered_as"])
+
+
+@pytest.mark.django_db
+def test_owner_booking_summary_renders_net_when_prices_entered_as_net(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """When property basis is NET, owner block exposes the net-to-owner figure.
+
+    `net_to_owner = rate_subtotal + extras_total - discount` (i.e. snapshot
+    `total - commission - tax`). The `prices_entered_as` flag rides alongside
+    so the UI can label the figure as "rates entered as net".
+    """
+    booking.pricing_snapshot = _snapshot(
+        rate_subtotal="1400.00",
+        extras_total="100.00",
+        discount="50.00",
+        commission="180.00",
+        tax="70.00",
+    )
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.NET)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["prices_entered_as"] == PriceBasis.NET.value
+    # gross_total = 1400 + 100 - 50 + 180 + 70 = 1700; net = 1700 - 180 - 70 = 1450.
+    assert response.data["net_to_owner"] == {
+        "currency_code": "GBP",
+        "gross_total": "1700.00",
+        "commission": "180.00",
+        "tax": "70.00",
+        "net_to_owner": "1450.00",
+    }
+
+
+@pytest.mark.django_db
+def test_owner_booking_summary_renders_gross_when_prices_entered_as_gross(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GROSS basis: net_to_owner derivation is identical, but the flag differs.
+
+    The owner-net figure is mechanically the same (gross - commission - tax);
+    the basis flag is what tells the UI to label the headline rate column
+    "rates entered as gross". This pins the contract: the block always
+    renders when the snapshot has the numbers, and the flag round-trips.
+    """
+    booking.pricing_snapshot = _snapshot(
+        rate_subtotal="1400.00",
+        extras_total="100.00",
+        discount="50.00",
+        commission="180.00",
+        tax="70.00",
+    )
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.GROSS)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["prices_entered_as"] == PriceBasis.GROSS.value
+    assert response.data["net_to_owner"]["net_to_owner"] == "1450.00"
+    assert response.data["net_to_owner"]["gross_total"] == "1700.00"
+
+
+@pytest.mark.django_db
+def test_owner_booking_summary_resolves_basis_via_group_fallback(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Property-level NULL `prices_entered_as` falls back to group default."""
+    _set_prices_entered_as(booking.property, None)
+    group_settings = booking.property.group.settings
+    group_settings.prices_entered_as = PriceBasis.NET.value
+    group_settings.save(update_fields=["prices_entered_as"])
+
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["prices_entered_as"] == PriceBasis.NET.value
+
+
+@pytest.mark.django_db
+def test_owner_booking_summary_net_block_null_when_snapshot_missing(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """A booking with an empty snapshot (legacy import) renders null, not crash."""
+    booking.pricing_snapshot = {}
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.NET)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["net_to_owner"] is None
+    assert response.data["prices_entered_as"] == PriceBasis.NET.value
+
+
+@pytest.mark.django_db
+def test_staff_list_view_still_shows_gross(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """List payload is unchanged: `rental_price` stays gross, no owner block.
+
+    Net-to-owner is detail-only by design; the list endpoint is the
+    operator's high-density financial overview and continues to surface
+    the gross rental figure column.
+    """
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.NET)
+
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings")
+
+    assert response.status_code == 200
+    row = response.data["results"][0]
+    assert "rental_price" in row
+    assert "net_to_owner" not in row
+    assert "prices_entered_as" not in row
 
 
 @pytest.mark.django_db

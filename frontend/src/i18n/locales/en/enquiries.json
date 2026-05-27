@@ -195,6 +195,16 @@
       "request_type_aria": "Request type",
       "source_aria": "Source"
     },
+    "date_spread": {
+      "label": "Widen range",
+      "value_one": "± {{count}} day",
+      "value_other": "± {{count}} days",
+      "hint": "Guests are often flexible around changeover days.",
+      "preview_zero": "Submitting requested dates unchanged.",
+      "preview_widened": "Widened to {{from}} → {{to}}.",
+      "increase_aria": "Increase date spread",
+      "decrease_aria": "Decrease date spread"
+    },
     "toasts": {
       "created": "Enquiry created",
       "updated": "Enquiry updated"

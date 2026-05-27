@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useController, useForm } from "react-hook-form";
+import { useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,6 +50,23 @@ interface EditProps extends CommonProps {
 
 type EnquiryFormDialogProps = CreateProps | EditProps;
 
+const MIN_SPREAD = 0;
+const MAX_SPREAD = 3;
+
+// Shift an ISO `YYYY-MM-DD` date by `delta` days. Returns the original string
+// when it isn't parseable so we never mangle empty fields.
+function shiftIsoDate(iso: string, delta: number): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [year, month, day] = iso.split("-").map((n) => Number.parseInt(n, 10));
+  // Use UTC to avoid local-tz boundary surprises on day arithmetic.
+  const ms = Date.UTC(year, month - 1, day) + delta * 24 * 60 * 60 * 1000;
+  const d = new Date(ms);
+  const yyyy = d.getUTCFullYear().toString().padStart(4, "0");
+  const mm = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+  const dd = d.getUTCDate().toString().padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 const CREATE_DEFAULTS: EnquiryWriteInput = {
   first_name: "",
   last_name: "",
@@ -93,6 +111,12 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // Operator convention: widen the captured date range by ±N days around the
+  // client's requested dates. See
+  // django_res_design/workflows/07-enquiry/enquiry-intake.md "Django redesign
+  // — date-spread heuristic". Local-only UI state; submitted as the resolved
+  // `date_from` / `date_to` on the existing fields.
+  const [spread, setSpread] = useState<number>(MIN_SPREAD);
 
   const createMutation = useCreateEnquiry();
   const updateMutation = useUpdateEnquiry(isCreate ? 0 : props.enquiry.id);
@@ -102,6 +126,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     if (open) {
       form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry));
       setTopLevelError(null);
+      setSpread(MIN_SPREAD);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.enquiry.id]);
@@ -110,15 +135,29 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
   const flexibleCtrl = useController({ control: form.control, name: "is_flexible" });
 
+  // Watch the typed dates so the widened preview updates as the operator types.
+  const requestedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
+  const requestedTo = useWatch({ control: form.control, name: "date_to" }) ?? "";
+  const widened = useMemo(() => {
+    const from = requestedFrom ? shiftIsoDate(requestedFrom, -spread) : "";
+    const to = requestedTo ? shiftIsoDate(requestedTo, spread) : "";
+    return { from, to };
+  }, [requestedFrom, requestedTo, spread]);
+
   const idleSubmitLabel = isCreate ? t("common:actions.create") : t("common:actions.save");
 
   const handleSubmit = async (values: EnquiryWriteInput) => {
     setTopLevelError(null);
+    const submitted: EnquiryWriteInput = {
+      ...values,
+      date_from: values.date_from ? shiftIsoDate(values.date_from, -spread) : values.date_from,
+      date_to: values.date_to ? shiftIsoDate(values.date_to, spread) : values.date_to,
+    };
     try {
       if (isCreate) {
-        await createMutation.mutateAsync(values);
+        await createMutation.mutateAsync(submitted);
       } else {
-        await updateMutation.mutateAsync(values);
+        await updateMutation.mutateAsync(submitted);
       }
       toast.success(isCreate ? t("form_dialog.toasts.created") : t("form_dialog.toasts.updated"));
       onOpenChange(false);
@@ -178,6 +217,50 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               <Label htmlFor="enq-date-to">{t("form_dialog.fields.to")}</Label>
               <Input id="enq-date-to" type="date" {...form.register("date_to")} />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">{t("form_dialog.date_spread.label")}</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t("form_dialog.date_spread.decrease_aria")}
+                  disabled={spread <= MIN_SPREAD}
+                  onClick={() => setSpread((s) => Math.max(MIN_SPREAD, s - 1))}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span
+                  className="min-w-[4.5rem] text-center text-sm tabular-nums"
+                  aria-live="polite"
+                >
+                  {t("form_dialog.date_spread.value", { count: spread })}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t("form_dialog.date_spread.increase_aria")}
+                  disabled={spread >= MAX_SPREAD}
+                  onClick={() => setSpread((s) => Math.min(MAX_SPREAD, s + 1))}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {!widened.from || !widened.to
+                ? t("form_dialog.date_spread.hint")
+                : spread === 0
+                  ? t("form_dialog.date_spread.preview_zero")
+                  : t("form_dialog.date_spread.preview_widened", {
+                      from: widened.from,
+                      to: widened.to,
+                    })}
+            </p>
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-sm">

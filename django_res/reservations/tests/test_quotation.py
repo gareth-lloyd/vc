@@ -117,6 +117,72 @@ def test_line_date_constraint(quotation: Quotation, property_: Property) -> None
 
 
 @pytest.mark.django_db
+def test_quotation_accept_flips_enquiry_to_converted(
+    line: QuotationLine, quotation: Quotation, guest: Guest
+) -> None:
+    """Accepting a quotation must flip the parent Enquiry to CONVERTED inside
+    the same atomic block as the Quotation.status flip."""
+    from reservations.enums import EnquiryStatus
+    from reservations.models import Enquiry
+
+    enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    enquiry.quote_sent(quotation)
+
+    quotation.send()
+    quotation.accept(line)
+
+    enquiry.refresh_from_db()
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.ACCEPTED.value
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+
+
+@pytest.mark.django_db
+def test_quotation_accept_atomic_rollback_on_downstream_failure(
+    line: QuotationLine, quotation: Quotation, guest: Guest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the enquiry-conversion step inside accept() fails, the Quotation
+    status flip must roll back — the operation is a single atomic unit."""
+    from reservations.enums import EnquiryStatus
+    from reservations.models import Enquiry
+
+    enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    enquiry.quote_sent(quotation)
+    quotation.send()
+
+    def boom(self: Enquiry, *args: object, **kwargs: object) -> None:
+        raise RuntimeError("downstream booking-create-equivalent failure")
+
+    monkeypatch.setattr(Enquiry, "convert", boom)
+
+    with pytest.raises(RuntimeError):
+        quotation.accept(line)
+
+    enquiry.refresh_from_db()
+    quotation.refresh_from_db()
+    line.refresh_from_db()
+    # Neither side moved.
+    assert quotation.status == QuotationStatus.SENT.value
+    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert line.is_selected is False
+
+
+@pytest.mark.django_db
+def test_quotation_accept_without_enquiry_still_works(
+    line: QuotationLine, quotation: Quotation
+) -> None:
+    """Agent-direct quotations have no Enquiry; accept() must still flip status."""
+    quotation.send()
+    quotation.accept(line)
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.ACCEPTED.value
+
+
+@pytest.mark.django_db
 def test_only_one_selected_line_per_quotation(
     quotation: Quotation, property_: Property, line: QuotationLine
 ) -> None:

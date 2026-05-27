@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -18,6 +19,7 @@ from reservations.enums import (
     EnquirySource,
     EnquiryStatus,
     EventSource,
+    QuotationStatus,
 )
 
 if TYPE_CHECKING:
@@ -116,6 +118,23 @@ class Enquiry(AuditedModel):
         if not self.reference:
             self.reference = generate_reference("E", model=type(self))
         super().save(*args, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Derived properties
+    # ------------------------------------------------------------------
+    # Use `builtins.property` because `property` is shadowed at class body
+    # scope by the `property` FK field above.
+    @builtins.property
+    def is_converted(self) -> bool:
+        """Conversion is measured at the Enquiry level (10-decisions.md):
+        the enquiry is converted iff any of its quotations is ACCEPTED.
+
+        Reporting that counts conversions must roll up via this property,
+        not by counting ACCEPTED `Quotation` rows directly — a single
+        enquiry that spawned three quotes (one ACCEPTED, two CANCELLED)
+        is one conversion, not three.
+        """
+        return self.quotations.filter(status=QuotationStatus.ACCEPTED.value).exists()
 
     # ------------------------------------------------------------------
     # State machine

@@ -5,6 +5,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
+from reservations.serializers.quotation import QuotationDetailSerializer
 
 
 class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
@@ -95,7 +96,16 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
 
 
 class EnquiryDetailSerializer(EnquiryListSerializer):
-    """Full representation including the inbound message and flexible flag."""
+    """Full representation including the inbound message and flexible flag.
+
+    Detail also exposes the quote-stack — every Quotation issued for this
+    enquiry, with its lines — for the staff grouped-list UI, plus the
+    `is_converted` rollup. The list serializer deliberately omits both so
+    list responses stay slim.
+    """
+
+    quotations = QuotationDetailSerializer(many=True, read_only=True)
+    is_converted = serializers.BooleanField(read_only=True)
 
     class Meta(EnquiryListSerializer.Meta):
         fields = [
@@ -104,6 +114,8 @@ class EnquiryDetailSerializer(EnquiryListSerializer):
             "min_bedrooms",
             "referral_code",
             "inbound_message",
+            "quotations",
+            "is_converted",
         ]
 
 

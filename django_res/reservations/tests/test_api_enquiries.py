@@ -127,6 +127,68 @@ def test_retrieve_enquiry_returns_detail(
 
 
 @pytest.mark.django_db
+def test_enquiry_detail_includes_nested_quotations(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Detail view exposes the quote-stack for the staff grouped-list UI."""
+    q1 = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    q2 = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=14),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert "quotations" in response.data
+    quotation_refs = {row["reference"] for row in response.data["quotations"]}
+    assert quotation_refs == {q1.reference, q2.reference}
+    # Conversion rollup also exposed.
+    assert response.data["is_converted"] is False
+
+
+@pytest.mark.django_db
+def test_enquiry_list_does_not_include_nested_quotations(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """List endpoint stays slim — no nested quotation array."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries")
+
+    assert response.status_code == 200
+    row = response.data["results"][0]
+    assert "quotations" not in row
+
+
+@pytest.mark.django_db
 def test_assign_enquiry__sets_assigned_to(
     api_client: APIClient, staff: User, enquiry: Enquiry
 ) -> None:

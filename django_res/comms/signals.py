@@ -166,6 +166,56 @@ def quotation_sent_handler(
     )
 
 
+def booking_confirmation_resend_requested_handler(
+    sender: Any,
+    *,
+    booking: Booking,
+    actor: Any | None = None,
+    **_: Any,
+) -> None:
+    """Resend the latest `booking.confirmation` EmailLog, or send fresh.
+
+    Operator-triggered: the `Booking.send_confirmation_email()` action fires
+    this signal. Each call mints a new EmailLog row so the audit trail shows
+    a distinct send attempt; the comms-level resend endpoint remains the
+    place for client-supplied idempotency keys.
+    """
+    from comms.models import EmailLog
+
+    latest = (
+        EmailLog.objects.filter(
+            template_key="booking.confirmation",
+            correlation__booking_id=booking.pk,
+        )
+        .order_by("-queued_at", "-id")
+        .first()
+    )
+    if latest is not None:
+        try:
+            EmailService.resend(latest, actor=actor)
+        except (NoSmtpProfileAvailable, EmailTemplateNotFound) as exc:
+            logger.warning("Skipping booking.confirmation resend: %s", exc)
+        return
+
+    # No prior confirmation log: fall back to a fresh send so an operator
+    # can still surface a confirmation for a booking whose lifecycle handler
+    # never fired (e.g. PENDING_OWNER_APPROVAL bookings where the operator
+    # wants to pre-send while awaiting owner sign-off).
+    recipient = guest_email(booking.guest)
+    if recipient is None:
+        logger.warning(
+            "booking.confirmation resend skipped: no guest email for booking %s",
+            booking.pk,
+        )
+        return
+    _safe_send(
+        template_key="booking.confirmation",
+        context=_booking_context(booking),
+        to=[recipient],
+        correlation=_booking_correlation(booking),
+    )
+
+
 def hold_expired_handler(
     sender: Any,
     *,
@@ -317,6 +367,7 @@ def _register() -> None:
         security_deposit_released,
     )
     from reservations.signals import (
+        booking_confirmation_resend_requested,
         booking_transitioned,
         hold_expired,
         quotation_sent,
@@ -325,6 +376,10 @@ def _register() -> None:
     booking_transitioned.connect(
         booking_transitioned_handler,
         dispatch_uid="comms.booking_transitioned",
+    )
+    booking_confirmation_resend_requested.connect(
+        booking_confirmation_resend_requested_handler,
+        dispatch_uid="comms.booking_confirmation_resend_requested",
     )
     quotation_sent.connect(
         quotation_sent_handler,

@@ -49,6 +49,18 @@ quotation_sent = Signal()
 kwargs: sender=Quotation, quotation.
 """
 
+booking_confirmation_resend_requested = Signal()
+"""Fired by `Booking.send_confirmation_email()` when an operator triggers a resend.
+
+Decoupled from `booking_transitioned` because no transition occurs — the
+booking stays in its current status while a fresh confirmation email goes
+out. The comms app listens and dispatches via `EmailService.resend` against
+the most recent `booking.confirmation` EmailLog, falling back to a fresh
+send when no prior log exists.
+
+kwargs: sender=Booking, booking, actor.
+"""
+
 
 # ---------------------------------------------------------------------------
 # EnquiryNote → EnquiryEvent (NOTE_ADDED)

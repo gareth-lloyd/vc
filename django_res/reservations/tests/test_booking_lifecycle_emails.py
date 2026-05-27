@@ -232,6 +232,72 @@ def test_replaying_transition_signal_is_idempotent(
 
 
 @pytest.mark.django_db
+def test_send_confirmation_email_resends_latest_log(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """The booking-level resend action mints a second confirmation EmailLog."""
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    [original] = _logs_for("booking.confirmation", booking)
+
+    booking.send_confirmation_email()
+
+    logs = _logs_for("booking.confirmation", booking)
+    assert len(logs) == 2
+    resend = next(log for log in logs if log.pk != original.pk)
+    assert resend.correlation.get("resent_from") == original.pk
+    assert resend.to == original.to
+    assert resend.rendered_subject == original.rendered_subject
+
+
+@pytest.mark.django_db
+def test_send_confirmation_email_falls_back_to_fresh_send(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """When no prior log exists, the resend hook sends a fresh confirmation."""
+    PropertySettings.objects.create(
+        property=quotation_line.property,
+        bookings_require_pre_approval=True,
+    )
+    _assign_owner(quotation_line.property, "owner@example.com")
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value
+    assert _logs_for("booking.confirmation", booking) == []
+
+    booking.send_confirmation_email()
+
+    logs = _logs_for("booking.confirmation", booking)
+    assert len(logs) == 1
+    assert logs[0].to == [quotation_line.quotation.guest.email]
+    assert "resent_from" not in (logs[0].correlation or {})
+
+
+@pytest.mark.django_db
+def test_send_confirmation_email_terminal_booking_raises(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """Cancelled/declined/expired bookings can't be resent."""
+    from core.exceptions import InvalidTransition
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    booking.cancel("Guest withdrew")
+    EmailLog.objects.filter(correlation__booking_id=booking.pk).delete()
+
+    with pytest.raises(InvalidTransition):
+        booking.send_confirmation_email()
+
+    assert EmailLog.objects.filter(correlation__booking_id=booking.pk).count() == 0
+
+
+@pytest.mark.django_db
 def test_booking_service_writes_single_event_via_transition(
     quotation_line: QuotationLine,
     terms: TermsVersion,

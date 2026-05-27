@@ -570,17 +570,32 @@ class Booking(AuditedModel):
         self._write_event(actor=actor, meta={"archived": False})
         return self
 
-    @transaction.atomic
     def send_confirmation_email(self, *, actor: Any = None) -> Booking:
-        """Idempotent re-send of the latest confirmation email."""
+        """Operator-triggered resend of the confirmation email.
+
+        Writes a `BookingEvent` and fires `booking_confirmation_resend_requested`;
+        the comms app handler looks up the latest `booking.confirmation`
+        EmailLog for this booking and dispatches via `EmailService.resend`
+        (or falls back to a fresh send when no prior log exists).
+
+        The signal fires AFTER the event write commits so the audit trail
+        survives any failure inside the comms handler — same pattern as
+        `_transition`.
+        """
         if self.status in TERMINAL_BOOKING_STATUSES:
             raise InvalidTransition(
                 self.status,
                 self.status,
                 allowed=[s for s in BookingStatus.values if s not in TERMINAL_BOOKING_STATUSES],
             )
-        # TODO: hand off to the comms app once it lands.
+        from reservations.signals import booking_confirmation_resend_requested
+
         self._write_event(actor=actor, meta={"resent_confirmation": True})
+        booking_confirmation_resend_requested.send(
+            sender=Booking,
+            booking=self,
+            actor=actor,
+        )
         return self
 
 

@@ -239,6 +239,84 @@ def test_convert_enquiry__transitions_to_converted(
 
 
 @pytest.mark.django_db
+def test_enquiry_convert_endpoint_idempotent_when_already_converted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    gbp: Currency,
+    terms: TermsVersion,
+    guest: Guest,
+) -> None:
+    """A second `:convert` on an already-CONVERTED enquiry returns 200, not 422.
+
+    The auto-conversion path (e.g. Quotation.accept flipping the parent
+    enquiry inline) means an explicit operator call to convert can race
+    the implicit one. The endpoint must short-circuit to the current
+    serialized state — no state change, no new event, no error.
+    """
+    enquiry.contact()
+    quotation = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+    url = f"/api/v1/enquiries/{enquiry.pk}:convert"
+    payload = {"quotation": quotation.pk}
+
+    first = api_client.post(url, payload, format="json")
+    assert first.status_code == 200
+
+    second = api_client.post(url, payload, format="json")
+
+    assert second.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+    converted_events = EnquiryEvent.objects.filter(
+        enquiry=enquiry,
+        kind="converted",
+    )
+    assert converted_events.count() == 1
+
+
+@pytest.mark.django_db
+def test_enquiry_convert_endpoint_still_works_when_quoted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    gbp: Currency,
+    terms: TermsVersion,
+    guest: Guest,
+) -> None:
+    """Regression guard: the idempotency short-circuit must not skip work on
+    enquiries that haven't been converted yet.
+    """
+    enquiry.contact()
+    quotation = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    enquiry.quote_sent(quotation)
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:convert",
+        {"quotation": quotation.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+    assert EnquiryEvent.objects.filter(enquiry=enquiry, kind="converted").count() == 1
+
+
+@pytest.mark.django_db
 def test_close_enquiry__marks_lost(api_client: APIClient, staff: User, enquiry: Enquiry) -> None:
     api_client.force_login(staff)
 

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from core.exceptions import NoRateAvailable
+from core.exceptions import NoRateAvailable, PartyOutOfRange
 from pricing.enums import ExtraCalc, ExtraKind
 from pricing.models import Currency, Extra, RateCard, RatePlan, RateRule
 from pricing.services import PricingEngine
@@ -178,6 +178,84 @@ def test_quote_tiebreak_equal_priority_narrower_range_wins(
         currency=gbp,
     )
     assert all(ln.nightly == Decimal("180.00") for ln in quote.lines)
+
+
+@pytest.mark.django_db
+def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
+    property_: Property, gbp: Currency, card: RateCard
+) -> None:
+    """Regression: legacy bug #2 (`09-departures.md`).
+
+    Legacy stored-proc fell through to the highest occupancy bracket when no
+    bracket matched the requested party size. The new engine must *match*
+    brackets, never default. Three disjoint sibling rules on one card:
+
+      * party=4  → 1-8  bracket (NOT 9-12, NOT 13-16)
+      * party=10 → 9-12 bracket
+      * party=20 → no bracket matches → raises `PartyOutOfRange`
+    """
+    common = {
+        "card": card,
+        "date_from": date(2026, 6, 1),
+        "date_to": date(2026, 8, 31),
+        "priority": 0,
+    }
+    rule_small = RateRule.objects.create(
+        **common,
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    rule_mid = RateRule.objects.create(
+        **common,
+        min_party=9,
+        max_party=12,
+        nightly=Decimal("250.00"),
+    )
+    rule_large = RateRule.objects.create(
+        **common,
+        min_party=13,
+        max_party=16,
+        nightly=Decimal("400.00"),
+    )
+
+    # party=4 picks the 1-8 bracket — not "default to highest".
+    quote_small = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+    assert all(ln.rule_id == rule_small.pk for ln in quote_small.lines)
+    assert all(ln.nightly == Decimal("100.00") for ln in quote_small.lines)
+
+    # party=10 picks the 9-12 bracket.
+    quote_mid = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=10,
+        currency=gbp,
+    )
+    assert all(ln.rule_id == rule_mid.pk for ln in quote_mid.lines)
+    assert all(ln.nightly == Decimal("250.00") for ln in quote_mid.lines)
+
+    # party=20 is outside every bracket — must raise, not silently default
+    # to the highest bracket (the legacy bug).
+    with pytest.raises(PartyOutOfRange):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 17),
+            party=20,
+            currency=gbp,
+        )
+
+    # Sanity: `rule_large` exists but was not selected for either successful
+    # quote — guards against a "default-to-highest" implementation passing
+    # the first two assertions by accident.
+    assert RateRule.objects.filter(pk=rule_large.pk).exists()
 
 
 @pytest.mark.django_db

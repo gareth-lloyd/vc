@@ -30,7 +30,12 @@ from pricing.models import (
 from pricing.services.discounts import apply_discount
 from pricing.services.extras import calc_extra, date_ranges_overlap
 from pricing.services.quote import AppliedExtra, Quote, QuoteLine
-from pricing.services.rates import nights, pick_rule_for_night, rule_nightly
+from pricing.services.rates import (
+    any_rule_covers_night,
+    nights,
+    pick_rule_for_night,
+    rule_nightly,
+)
 
 
 class PricingEngine:
@@ -76,6 +81,15 @@ class PricingEngine:
         for night in stay_nights:
             pick = pick_rule_for_night(cards, rules_by_card, night, party)
             if pick is None:
+                # Distinguish "no rule for this night at all" from "rules
+                # exist for this night but none match the party size". The
+                # legacy stored-proc defaulted to the highest bracket when
+                # party fell outside every band; the rebuild raises
+                # `PartyOutOfRange` instead (see `09-departures.md` bug #2).
+                if any_rule_covers_night(cards, rules_by_card, night):
+                    raise PartyOutOfRange(
+                        f"party={party} matches no RateRule bracket on plan {plan.pk} for {night}"
+                    )
                 raise NoRateAvailable(
                     f"No approved RateRule on plan {plan.pk} for {night} party={party}"
                 )

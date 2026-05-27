@@ -24,6 +24,7 @@ _INHERITABLE_FIELDS = frozenset(
         "min_nights_rental",
         "min_nights_rental_note",
         "prices_entered_as",
+        "hold_duration_hours",
     }
 )
 
@@ -72,6 +73,7 @@ class PropertySettings(AuditedModel):
         null=True,
         blank=True,
     )
+    hold_duration_hours = models.PositiveSmallIntegerField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"Settings for property #{self.property_id}"
@@ -126,6 +128,7 @@ class GroupSettings(AuditedModel):
         choices=PriceBasis.choices,
         default=PriceBasis.GROSS,
     )
+    hold_duration_hours = models.PositiveSmallIntegerField(default=48)
 
     def __str__(self) -> str:
         return f"Settings for group #{self.group_id}"

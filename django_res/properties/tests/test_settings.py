@@ -117,3 +117,31 @@ def test_property_settings_effective_rejects_unknown_attr(prop: Property) -> Non
 
     with pytest.raises(AttributeError):
         prop.settings.effective("not_a_real_field")
+
+
+@pytest.mark.django_db
+def test_hold_duration_falls_back_to_group_default(prop: Property) -> None:
+    """Property with no override resolves to the group default (48)."""
+    PropertySettings.objects.create(property=prop)  # hold_duration_hours = None
+
+    assert prop.settings.effective("hold_duration_hours") == 48
+
+
+@pytest.mark.django_db
+def test_hold_duration_property_override_wins(prop: Property) -> None:
+    """A property-level override beats the group default."""
+    PropertySettings.objects.create(property=prop, hold_duration_hours=24)
+
+    assert prop.settings.effective("hold_duration_hours") == 24
+
+
+@pytest.mark.django_db
+def test_hold_duration_group_default_can_be_overridden(prop: Property) -> None:
+    """A non-default group value flows through when the property is null."""
+    group_settings = prop.group.settings
+    group_settings.hold_duration_hours = 72
+    group_settings.save()
+
+    PropertySettings.objects.create(property=prop)
+
+    assert prop.settings.effective("hold_duration_hours") == 72

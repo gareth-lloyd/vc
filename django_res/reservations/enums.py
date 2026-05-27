@@ -171,3 +171,20 @@ class ConciergeStatus(models.TextChoices):
 class PaymentMethod(models.TextChoices):
     CARD = "card", "Card"
     BANK_TRANSFER = "bank_transfer", "Bank transfer"
+
+
+class BookingGuestRole(models.TextChoices):
+    """Role a Guest plays on a Booking via the BookingGuest through-model.
+
+    - LEAD: primary guest — exactly one per booking. Mirrored on
+      `Booking.guest` (denormalised pointer kept in sync via signal).
+    - CO_TRAVELLER: additional party member; zero-or-more per booking.
+    - PAYER: party paying for the stay if not the lead; at most one per
+      booking.
+    - CC_ONLY: copy on comms; not part of the travelling party.
+    """
+
+    LEAD = "lead", "Lead"
+    CO_TRAVELLER = "co_traveller", "Co-traveller"
+    PAYER = "payer", "Payer"
+    CC_ONLY = "cc_only", "CC only"

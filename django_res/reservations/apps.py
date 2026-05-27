@@ -10,7 +10,7 @@ class ReservationsConfig(AppConfig):
     def ready(self) -> None:
         from core.audit import track
         from reservations import signals  # noqa: F401
-        from reservations.models import Booking, Guest
+        from reservations.models import Booking, BookingGuest, Guest
 
         # Guest PII: track verbatim so anonymisation runs are auditable.
         # No `sensitive=` fields — staff need to see what was redacted
@@ -54,5 +54,18 @@ class ReservationsConfig(AppConfig):
                 "cancelled_at",
                 "is_archived",
                 "archived_at",
+            ],
+        )
+        # BookingGuest: who is on a booking, in what role. PII via the
+        # guest FK + an optional `email_override`; LEAD/PAYER changes
+        # affect comms routing and downstream invoicing, so the change
+        # trail is load-bearing for an audit review.
+        track(
+            BookingGuest,
+            fields=[
+                "booking_id",
+                "guest_id",
+                "role",
+                "email_override",
             ],
         )

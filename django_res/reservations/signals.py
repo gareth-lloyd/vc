@@ -16,10 +16,12 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from django.db.models.signals import post_delete, post_save
+from django.db.models import ProtectedError
+from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import Signal
 
 from reservations.enums import (
+    BookingGuestRole,
     ConciergeStatus,
     EnquiryEventKind,
     EventSource,
@@ -104,11 +106,115 @@ def _concierge_item_changed(sender: type, instance: Any, **_: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# BookingGuest(role=LEAD) → Booking.guest sync
+# ---------------------------------------------------------------------------
+
+
+def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
+    """Mirror the LEAD BookingGuest row onto `Booking.guest`.
+
+    `Booking.guest` survives as a denormalised pointer so the many
+    booking-list / search reads that touch `guest_id` don't have to
+    refactor through the through-table. The LEAD row is the source of
+    truth; this signal keeps the denormalised column in sync.
+
+    The write goes through a queryset `.update()` (not `instance.save()`)
+    on purpose:
+
+    - It bypasses `Booking.save()` and the `updated_at` `auto_now` bump,
+      so the canonical audit trail for "who is the LEAD guest" stays on
+      `BookingGuest` (which is `core.audit.track`'d) instead of muddying
+      the Booking's audit timeline with denorm-sync writes.
+    - Queryset `.update()` fires no `post_save`, so there is no
+      recursion risk back into this handler via `Booking` signals.
+    - It is a single UPDATE statement with no read-modify-write, so it
+      stays cheap on hot booking-list paths.
+    """
+    if instance.role != BookingGuestRole.LEAD.value:
+        return
+    from reservations.models.booking import Booking
+
+    # Intentional queryset .update() — denorm sync of Booking.guest only.
+    # Skips Booking.save() (and its auto_now updated_at bump) so the canonical
+    # audit trail stays on BookingGuest. Also: queryset .update() fires no
+    # post_save, so no recursion risk.
+    Booking.objects.filter(pk=instance.booking_id).exclude(guest_id=instance.guest_id).update(
+        guest_id=instance.guest_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# BookingGuest(role=LEAD) → orphan-guard on delete
+# ---------------------------------------------------------------------------
+
+
+class LeadGuestProtectedError(ProtectedError):
+    """Raised when deleting a LEAD `BookingGuest` would orphan a live Booking.
+
+    A `Booking` invariant is "exactly one LEAD guest". The partial unique
+    constraint `bookingguest_one_lead_per_booking` blocks the "create new
+    LEAD first" swap pattern, so callers must instead demote the old LEAD
+    (e.g. set its `role` to CO_TRAVELLER) and create the new LEAD row in
+    the same `transaction.atomic()` block. Then the old row can be deleted
+    safely if desired, because it is no longer the LEAD.
+    """
+
+
+def _booking_guest_pre_delete(
+    sender: type,
+    instance: Any,
+    origin: Any | None = None,
+    **_: Any,
+) -> None:
+    """Refuse to delete a LEAD row while its Booking still exists.
+
+    Allowed:
+    - The parent `Booking` is being deleted in the same statement (CASCADE
+      path). We detect this via the `origin` kwarg that
+      `Collector.delete()` passes to `pre_delete`: when the deletion was
+      triggered by `Booking.delete()` (or a queryset delete that includes
+      the Booking), `origin` is the Booking instance, not the BookingGuest
+      itself. A direct `bookingguest.delete()` call sets `origin` to the
+      BookingGuest row itself.
+    - Non-LEAD rows (CO_TRAVELLER, PAYER, CC_ONLY): deleting them never
+      breaks the "one LEAD per booking" invariant.
+
+    Refused:
+    - Direct deletion of a LEAD row while its Booking still exists.
+
+    The recommended swap pattern is *demote, then re-add*: inside one
+    `transaction.atomic()` block, `.update()` the existing LEAD row's
+    `role` away from LEAD (e.g. to CO_TRAVELLER) and create the new LEAD
+    row. The "create new LEAD first" pattern is blocked by the partial
+    unique constraint, so demotion is the only workable path.
+    """
+    if instance.role != BookingGuestRole.LEAD.value:
+        return
+
+    # Cascade detection — `origin` is the row whose .delete() / queryset
+    # delete kicked off the collector walk. If it isn't the BookingGuest
+    # row itself, the deletion is a cascade from a parent (Booking or
+    # Guest) and the "one LEAD per booking" invariant can't be violated:
+    # either the parent Booking is going too, or PROTECT on the Guest FK
+    # would have blocked the parent delete before we got here.
+    if origin is not None and origin is not instance:
+        return
+
+    raise LeadGuestProtectedError(
+        "Cannot delete the LEAD BookingGuest while its Booking still exists. "
+        "Demote the existing LEAD row (e.g. set role=CO_TRAVELLER) and create "
+        "the replacement LEAD row in the same transaction instead.",
+        {instance},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registration — bound on import (apps.py ready() imports this module)
 # ---------------------------------------------------------------------------
 
 
 def _connect() -> None:
+    from reservations.models.booking_guest import BookingGuest
     from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
 
@@ -127,12 +233,23 @@ def _connect() -> None:
         sender=BookingConciergeItem,
         dispatch_uid="reservations.concierge_item_post_delete",
     )
+    post_save.connect(
+        _booking_guest_post_save,
+        sender=BookingGuest,
+        dispatch_uid="reservations.booking_guest_post_save",
+    )
+    pre_delete.connect(
+        _booking_guest_pre_delete,
+        sender=BookingGuest,
+        dispatch_uid="reservations.booking_guest_pre_delete",
+    )
 
 
 _connect()
 
 
 __all__ = [
+    "LeadGuestProtectedError",
     "booking_transitioned",
     "hold_expired",
     "quotation_sent",

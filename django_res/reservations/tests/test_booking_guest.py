@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.utils import timezone
 
 from pricing.models import Currency
@@ -19,6 +20,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.signals import LeadGuestProtectedError
 
 pytestmark = pytest.mark.django_db
 
@@ -201,3 +203,73 @@ def test_booking_guest_lead_change_resyncs(
     bg.save(update_fields=["guest", "updated_at"])
     booking.refresh_from_db()
     assert booking.guest_id == lead_b.pk
+
+
+def test_booking_guest_lead_delete_raises_while_booking_exists(booking: Booking) -> None:
+    """Deleting a LEAD row while its Booking still exists raises ProtectedError.
+
+    The orphan-guard refuses the direct delete because the Booking
+    invariant "exactly one LEAD guest" would be violated.
+    """
+    lead_row = BookingGuest.objects.create(
+        booking=booking,
+        guest=booking.guest,
+        role=BookingGuestRole.LEAD.value,
+    )
+    with pytest.raises(LeadGuestProtectedError), transaction.atomic():
+        lead_row.delete()
+    # The custom exception is a ProtectedError subclass, so callers can
+    # also catch the broader Django type.
+    assert issubclass(LeadGuestProtectedError, ProtectedError)
+
+
+def test_booking_guest_lead_delete_during_booking_cascade_is_allowed(booking: Booking) -> None:
+    """Cascading delete of the parent Booking cleans up the LEAD row, no raise."""
+    BookingGuest.objects.create(
+        booking=booking,
+        guest=booking.guest,
+        role=BookingGuestRole.LEAD.value,
+    )
+    booking_pk = booking.pk
+    # No exception expected — Booking.delete() cascades to BookingGuest and
+    # the orphan-guard recognises the cascade case by probing for the parent.
+    booking.delete()
+    assert not BookingGuest.objects.filter(booking_id=booking_pk).exists()
+    assert not Booking.objects.filter(pk=booking_pk).exists()
+
+
+def test_booking_guest_lead_swap_via_role_demotion_succeeds(booking: Booking) -> None:
+    """The recommended LEAD-swap pattern: demote, then re-add, in one atomic block."""
+    old_lead = BookingGuest.objects.create(
+        booking=booking,
+        guest=booking.guest,
+        role=BookingGuestRole.LEAD.value,
+    )
+    new_lead_guest = _make_guest("new-lead")
+
+    with transaction.atomic():
+        # Demote the old LEAD row to CO_TRAVELLER so the partial unique
+        # constraint releases.
+        BookingGuest.objects.filter(pk=old_lead.pk).update(
+            role=BookingGuestRole.CO_TRAVELLER.value,
+        )
+        # Create the new LEAD row.
+        BookingGuest.objects.create(
+            booking=booking,
+            guest=new_lead_guest,
+            role=BookingGuestRole.LEAD.value,
+        )
+
+    booking.refresh_from_db()
+    assert booking.guest_id == new_lead_guest.pk
+    assert (
+        BookingGuest.objects.filter(
+            booking=booking,
+            role=BookingGuestRole.LEAD.value,
+        ).count()
+        == 1
+    )
+    assert BookingGuest.objects.filter(
+        pk=old_lead.pk,
+        role=BookingGuestRole.CO_TRAVELLER.value,
+    ).exists()

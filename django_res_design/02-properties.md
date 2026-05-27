@@ -120,10 +120,11 @@ Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null mea
 - `currency` — FK pricing.Currency PROTECT, null=True
 - `check_in_time` — TimeField(null=True, blank=True)
 - `check_out_time` — TimeField(null=True, blank=True)
-- `changeover_day` — TextChoices (`MON`–`SUN`, `ANY`), null=True
+- `changeover_day` — TextChoices (`MON`–`SUN`, `ANY`), null=True. `ANY` means the property accepts check-ins on any weekday (the operator-side "flexible changeover" mode). Search and availability queries must include `ANY` properties on **every** weekday filter — a confirmed legacy bug excluded flexible-changeover villas from specific-weekday searches (see `09-departures.md` "Legacy correctness bugs explicitly fixed").
 - `min_nights_rental` — PositiveSmallInteger(null=True)
 - `min_nights_rental_note` — TextField(blank=True)
 - `prices_entered_as` — TextChoices (`GROSS`, `NET`), null=True
+- `hold_duration_hours` — PositiveSmallInteger(null=True) — default lifespan (in hours) of a `BookingHold` created without an explicit `expires_at`. Typical settings: 48 for strict-policy villas (most owners), longer for trusted owners who are relaxed about hold windows. Inherits from `GroupSettings`; resolved by `effective("hold_duration_hours")` at hold-creation time inside `HoldService`. Agents may still override `expires_at` directly on individual `BookingHold` rows for one-off relaxations. See decisions row "Hold duration is per-villa default + per-hold override" in `10-decisions.md`.
 
 Resolver lives on the model:
 

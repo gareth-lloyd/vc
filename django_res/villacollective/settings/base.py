@@ -150,3 +150,14 @@ OPS_EMAIL_RECIPIENTS = env.list("OPS_EMAIL_RECIPIENTS", default=[])
 # in production, which inherits base) hard-blocks fake-data generation. Dev,
 # test, and staging settings flip this to True. Never set in production.
 SEED_DEV_ALLOWED = False
+
+# Email safety: two independent default-closed gates protect real sends. Any
+# settings module that fails to override these gets zero real email — see
+# `production.py` / `staging.py` for the only places they flip open, and
+# `comms/tasks._send` for the dispatch-layer assertion that mirrors the flag.
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+EMAIL_REAL_SENDS_ALLOWED = False
+# Optional recipient allowlist (used on staging). Empty → no restriction.
+# Entries are either an exact email or a `@domain.tld` suffix; matching is
+# case-insensitive. See `comms.recipient_allowlist.filter_recipients`.
+EMAIL_RECIPIENT_ALLOWLIST: list[str] = []

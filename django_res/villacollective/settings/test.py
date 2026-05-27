@@ -15,7 +15,11 @@ DEBUG = False
 SECRET_KEY = "test-insecure-key"
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
-EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+# EMAIL_BACKEND inherits locmem from base. Tests opt the dispatch gate open
+# so `_send` reaches `message.send()` and fills `django.core.mail.outbox`.
+# The cast-iron protection in tests is the locmem backend itself — no socket
+# is ever opened — so flipping the flag here cannot leak real mail.
+EMAIL_REAL_SENDS_ALLOWED = True
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

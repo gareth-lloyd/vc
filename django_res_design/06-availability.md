@@ -50,6 +50,16 @@ Implementation of `is_available`:
 
 `calendar()` builds an on-demand grid for the admin UI from these queries — cheap with btree_gist indices.
 
+#### Search & filter UX
+
+When the quote-builder or operator search runs a query over properties for a given date range, the result list:
+
+- **Hides unavailable properties by default.** Legacy returned available + unavailable interleaved, which slowed the agent's eye as they scanned long result sets. New default is available-only.
+- **Surfaces a "Show unavailable" toggle** for the legacy behaviour. Operators occasionally need to see unavailable inventory (to recognise the villa they were going to suggest, or to offer it for a different week) — the toggle keeps that reachable, just behind one click.
+- **Includes flexible-changeover (`PropertySettings.changeover_day = ANY`) properties on every weekday query.** A confirmed legacy bug filtered these out of specific-weekday searches — see `09-departures.md` "Legacy correctness bugs explicitly fixed" #3 and `02-properties.md`.
+
+The search layer itself does not call `AvailabilityService.is_available()` per property (too expensive on large result sets). It instead applies an indexed query against `Booking` + `BookingHold` for the date range, joins to `Property`, and yields the unavailable-property ids as a set; the result paginator can use that set to omit them (default) or visually gray them out (toggle on).
+
 ### Hold lifecycle
 
 ```
@@ -163,6 +173,10 @@ def _transition(self, allowed_from, to, *, actor=None, source="USER", reason="",
 ## Owner block / maintenance
 
 Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `expires_at` (set to far future or special sentinel; or make `expires_at` nullable for these reasons specifically — choose at implementation time). They participate in the same `EXCLUDE` constraint, so no special-case query.
+
+## Out of scope (future)
+
+- **iCal feed ingest from owners.** Roughly 30 villas in the catalogue already publish public iCal feeds (per scoping-session 2026-05-26 with the site owner); the legacy team mirrors them manually through shared Outlook calendars. Pulling these directly into the availability surface is one of the highest-value force-multipliers identified, but it is **not in MVP**. When it lands, the natural shape is per-`Property` iCal URL config (probably on `PropertyContactAssignment` for the owner, or `PropertySettings`), a Celery beat task that pulls each feed, and `BookingHold(reason=OWNER_BLOCK, …)` rows for each event in the feed (idempotent on the iCal `UID`). The availability model above does not need to change. See `10-decisions.md` "Deferred" and `08-integrations.md`.
 
 ## Dropped from legacy
 

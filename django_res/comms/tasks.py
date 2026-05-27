@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils import timezone
 
@@ -19,6 +20,16 @@ from comms.models import EmailLog
 
 def _send(log_id: int) -> None:
     log = EmailLog.objects.select_related("smtp_profile").get(pk=log_id)
+
+    # Second cast-iron gate: even if EMAIL_BACKEND has been mis-pointed at
+    # SMTP, refuse to open the socket unless the flag is explicitly True.
+    # Mirrors `EMAIL_REAL_SENDS_ALLOWED` defaulted False in settings/base.
+    if not getattr(settings, "EMAIL_REAL_SENDS_ALLOWED", False):
+        log.status = EmailLogStatus.BLOCKED
+        log.failure_reason = "EMAIL_REAL_SENDS_ALLOWED is False — refusing SMTP dispatch."
+        log.save(update_fields=["status", "failure_reason", "updated_at"])
+        return
+
     profile = log.smtp_profile
     if profile is None:
         log.status = EmailLogStatus.FAILED

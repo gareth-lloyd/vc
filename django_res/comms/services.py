@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.template import Context, Template
 
@@ -20,6 +21,7 @@ from comms import tasks
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
+from comms.recipient_allowlist import filter_recipients
 
 if TYPE_CHECKING:
     from accounts.models import User
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
 
 RESEND_TOKEN_KEY = "resend_token"
 RESENT_FROM_KEY = "resent_from"
+BLOCKED_RECIPIENTS_KEY = "blocked_recipients"
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,19 @@ class EmailService:
         if existing is not None:
             return existing
 
+        # Recipient allowlist gate. Empty allowlist (production default) is
+        # a passthrough; non-empty filters every address and short-circuits
+        # to BLOCKED when no primary recipient survives.
+        filtered = filter_recipients(
+            to=list(to),
+            cc=cc,
+            bcc=bcc,
+            allowlist=getattr(settings, "EMAIL_RECIPIENT_ALLOWLIST", []),
+        )
+        if filtered.blocked:
+            correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
+        all_blocked = not filtered.to
+
         subject = _render(template.subject_template, context)
         body = _render(template.body_template, context)
         body_html = (
@@ -147,16 +163,21 @@ class EmailService:
                 log = EmailLog.objects.create(
                     template_key=template.key,
                     template_version=template.version,
-                    to=list(to),
-                    cc=cc,
-                    bcc=bcc,
+                    to=filtered.to if not all_blocked else list(to),
+                    cc=filtered.cc,
+                    bcc=filtered.bcc,
                     from_email=from_email,
                     sender_user=sender_user if profile.scope == SmtpScope.PERSONAL else None,
                     smtp_profile=profile,
                     rendered_subject=subject,
                     rendered_body=body,
                     rendered_body_html=body_html,
-                    status=EmailLogStatus.QUEUED,
+                    status=EmailLogStatus.BLOCKED if all_blocked else EmailLogStatus.QUEUED,
+                    failure_reason=(
+                        "All primary recipients blocked by EMAIL_RECIPIENT_ALLOWLIST."
+                        if all_blocked
+                        else ""
+                    ),
                     attachments=[a.to_log_entry() for a in attachments],
                     correlation=correlation,
                     idempotency_hash=idempotency_hash,
@@ -170,7 +191,8 @@ class EmailService:
                 raise
             return existing
 
-        tasks.send_email_log.delay(log.pk)  # type: ignore[attr-defined]
+        if not all_blocked:
+            tasks.send_email_log.delay(log.pk)  # type: ignore[attr-defined]
         log.refresh_from_db()
         return log
 
@@ -226,20 +248,37 @@ class EmailService:
         if idempotency_key:
             new_correlation[RESEND_TOKEN_KEY] = idempotency_key
 
+        # Resend must honour the same allowlist as send — operator action
+        # is not a loophole.
+        filtered = filter_recipients(
+            to=list(email_log.to),
+            cc=list(email_log.cc),
+            bcc=list(email_log.bcc),
+            allowlist=getattr(settings, "EMAIL_RECIPIENT_ALLOWLIST", []),
+        )
+        if filtered.blocked:
+            new_correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
+        all_blocked = not filtered.to
+
         with transaction.atomic():
             new_log = EmailLog.objects.create(
                 template_key=email_log.template_key,
                 template_version=email_log.template_version,
-                to=list(email_log.to),
-                cc=list(email_log.cc),
-                bcc=list(email_log.bcc),
+                to=filtered.to if not all_blocked else list(email_log.to),
+                cc=filtered.cc,
+                bcc=filtered.bcc,
                 from_email=from_email,
                 sender_user=email_log.sender_user,
                 smtp_profile=profile,
                 rendered_subject=email_log.rendered_subject,
                 rendered_body=email_log.rendered_body,
                 rendered_body_html=email_log.rendered_body_html,
-                status=EmailLogStatus.QUEUED,
+                status=EmailLogStatus.BLOCKED if all_blocked else EmailLogStatus.QUEUED,
+                failure_reason=(
+                    "All primary recipients blocked by EMAIL_RECIPIENT_ALLOWLIST."
+                    if all_blocked
+                    else ""
+                ),
                 attachments=list(email_log.attachments or []),
                 correlation=new_correlation,
             )
@@ -249,10 +288,12 @@ class EmailService:
             # caller wraps resend() in an outer transaction.
             new_log_pk = new_log.pk
 
-            def _dispatch() -> None:
-                tasks.send_email_log.delay(new_log_pk)  # type: ignore[attr-defined]
+            if not all_blocked:
 
-            transaction.on_commit(_dispatch)
+                def _dispatch() -> None:
+                    tasks.send_email_log.delay(new_log_pk)  # type: ignore[attr-defined]
+
+                transaction.on_commit(_dispatch)
 
         new_log.refresh_from_db()
         return new_log

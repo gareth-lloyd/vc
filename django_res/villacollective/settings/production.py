@@ -16,3 +16,8 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+
+# Email safety: production is the only environment that opens both gates.
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_REAL_SENDS_ALLOWED = True
+# EMAIL_RECIPIENT_ALLOWLIST stays empty (inherited) — no restriction in prod.

@@ -29,6 +29,26 @@ See `08-integrations.md` → "Migrating legacy external IDs" for the loader spec
 
 Until the WP external-id migration passes the `reconcile_legacy` extension (counts in legacy `VillaSyncDetail` match counts in new `SyncRecord` per `provider_instance`), keep all WP push tasks paused. The blast radius of an accidental duplicate-publish is larger than Zoho's because the URLs are public and customer-facing.
 
+## WordPress-exclusive content fields
+
+The Res → WP sync is **one-way** — Res pushes, WP consumes — but the public site holds editorial content that is **not** mirrored in Res. Per the 2026-05-26 scoping session with the site owner, this is the current shape and the rebuild does not flip it.
+
+Examples of fields that live only on the WordPress side:
+
+- Hero image cropping / focal point (Res sends the image; WP picks the focal point).
+- SEO title and meta description (set per-villa in the WP page editor).
+- Long-form editorial content layered on top of the Res `PropertyDescription` (`OVERVIEW` / `HOUSE_RULES` / `VILLA_INFO` / `FURTHER_INFO`) — WP is allowed to extend.
+- Page-level marketing widgets (testimonials, related-villa carousels, callouts).
+- Collection landing-page editorial copy beyond the `Collection.description` field.
+
+The implications for the rebuild:
+
+1. **A `WP_Sync_Villa` push must not overwrite WP-exclusive fields.** The WP-side plugin handles the merge — Res sends only the fields it owns, and the WP plugin updates only those columns on the WP post. Confirm this contract on a per-endpoint basis when the WP plugin source is reached (see "Response-shape gap" below).
+2. **Res is not authoritative for editorial content.** Operators editing a villa in Res should see only the fields Res controls; they should not be surprised when their WP-side editorial copy survives a Res-side update.
+3. **Flipping Res to be authoritative for editorial content is not in scope.** It would require pulling WP fields into Res, building editorial UI in the operator app, and shutting down WP-side editing — a meaningfully larger project than the rebuild. Recorded as out-of-scope.
+
+If WP-side fields ever need to be visible inside Res (for example, an operator wanting to know what hero image is being shown on the public site), the surface is a read-only mirror: a nightly pull task that populates `SyncRecord.meta["wp_view"]` with a snapshot of the WP-rendered values. No editing of those values from inside Res.
+
 Each sync workflow follows the same broad shape:
 1. Read pending rows from `SP_GET_SYNC_DATA_BY_MODULE(@module, @action, @id)`.
 2. Group by `SiteId`.

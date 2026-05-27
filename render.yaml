@@ -36,3 +36,8 @@ services:
         value: ".onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
         value: https://villacollective-api.onrender.com
+      # Comma-separated allowlist of recipients (exact email or `@domain.tld`
+      # suffix). Staging refuses to boot if this is empty — the cast-iron
+      # guard against accidentally sending guest mail from the demo box.
+      - key: EMAIL_RECIPIENT_ALLOWLIST
+        sync: false

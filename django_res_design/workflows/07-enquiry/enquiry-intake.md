@@ -55,6 +55,18 @@ The two paths by which an enquiry enters the system. They share most of the code
 - Three of the field/column names have typos preserved (`EnquireSaurce`, `PlateFormId`, `EnquireArgs` itself). Rename in the redesign.
 - Zoho push **must** be retried on failure — push it through a Celery task with retry/back-off (specified in `ENQUIRY.INTAKE.ZOHO_PUSH`).
 
+### Django redesign — date-spread heuristic
+
+The legacy `EnquireDateTypeString` enum (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded the inquiry-taker's date-flexibility preset at the column level. Per the 2026-05-26 scoping session with the site owner, this column carried no operator-meaningful information after capture — it was a UI selector that did not flow through to pricing or availability decisions.
+
+The Django redesign **drops the encoding** in favour of an open date range (`Enquiry.date_from` / `date_to`) plus a documented convention:
+
+- **Convention**: inquiry-takers widen the requested date range by one or two days either side of the client's stated dates, because most guests are flexible around changeover days (typically Saturday, sometimes Sunday or Monday). This is a judgement call by the operator, not a system rule.
+- **UI affordance**: the intake form makes it cheap to expand the captured range without re-typing — for example, a "± n days" stepper next to the date pickers, or quick-pick chips ("expand to weekend", "expand ± 3 days").
+- **When the client is genuinely flexible**: set `Enquiry.is_flexible = True`. The heuristic above is applied by the operator even when `is_flexible = False` — that boolean reflects the client's *stated* flexibility, not the operator's heuristic widening.
+
+See `05-reservations.md` "Date-spread heuristic on intake" for the model-side note.
+
 ---
 
 ## Zoho push (sub-workflow of enquiry intake)

@@ -253,6 +253,10 @@ Steps:
 
 The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote.
 
+#### Occupancy bracket: matched, not defaulted-to-highest
+
+`PricingEngine.quote()` resolves the `RateRule` whose `(min_party, max_party)` interval contains the inquiry's party size. This is a behaviour change from the legacy `sp_getQuotationData` stored procedure, which defaulted to the highest occupancy bracket when occupancy was ambiguous — over-quoting for small parties on multi-bracket cards. See `09-departures.md` "Legacy correctness bugs explicitly fixed" #2. The legacy default-to-highest behaviour is not preserved under any flag.
+
 ### `pricing.services.FxConverter`
 ```python
 convert(amount: Decimal, from_ccy: Currency, to_ccy: Currency, as_of: date | None = None) -> Decimal
@@ -261,6 +265,15 @@ Picks the latest `FxRate` ≤ `as_of` (defaults to today). Used by website displ
 
 ### `pricing.services.AvailabilityService`
 Lives here (not reservations) because it needs change-over rules and is consumed by both quote-time and booking-time code. See 06-availability.md for full design.
+
+## Future pricing models (not in MVP)
+
+Two pricing shapes are recognised as out-of-scope for v1 but worth keeping the schema amenable to:
+
+- **Per-person base rate (Kenya safari model).** The base nightly rate scales by occupant count rather than per stay. Distinct from per-person *fees* (already supported via `Extra.calc = FIXED_PER_PERSON` / `FIXED_PER_PERSON_PER_NIGHT`) — this is a per-person *base*. The Kenyan property mix historically used this model; European villas do not. When this lands, the cleanest extension is a `RateRule.calc_basis` enum (`PER_STAY` / `PER_NIGHT` / `PER_PERSON_PER_NIGHT`) defaulting to the current shape. Surfaced in `10-decisions.md` as deferred.
+- **Minimum-occupancy with last-minute drop.** A villa quotes for a minimum party size (e.g. 6) at the standard rate, with last-minute (≤14 days out) bookings allowed below the minimum at the same total. Already partially expressible via `RateRule.min_party` + a manual override, but no automatic "drop-the-minimum on close-in dates" logic is built.
+
+Neither shape changes the existing model in a breaking way; both are documented here so they don't get reinvented as bespoke special-cases when the time comes.
 
 ## Why this replaces sp_getQuotationData
 

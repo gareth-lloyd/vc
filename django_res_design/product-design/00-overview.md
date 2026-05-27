@@ -13,6 +13,17 @@ This `django_res_design/` directory holds the design package: domain map, fronte
 - Product / leadership — to sign off on UX departures from the original.
 - Property owners — indirectly, via the owner-portal sections.
 
+## Product positioning — high-touch, human-driven sales
+
+Villa Collective is a **high-touch, human-driven** villa-rental business. This is a deliberate product position, not a technical limitation, and it shapes every "should X auto-happen?" decision in this design package.
+
+- **Quotes are agent-crafted.** A salesperson chooses which villas to present, in what order, with what commentary. The system supports the agent; it does not replace them.
+- **Clients reply informally.** The norm is an emailed quote followed by an emailed reply ("I want option 2"). The system does not assume the client clicks a button to convert.
+- **Conversion to booking is staff-confirmed.** The in-quote "Accept" link is a convenience signal that lights up a staff workflow — it does not auto-create the booking. A human always confirms.
+- **Automation lives in admin / back-office workflows.** Hold expiry, payment reminders, security-deposit refunds, comms dispatch — yes. Self-service booking creation off a quote-accept click — no.
+
+This frames every design decision in this package. When a workflow asks "should we just do X automatically?", the answer is shaped by which side of the human-touchpoint line X falls. See `10-decisions.md` "High-touch human-driven sales is the explicit product position".
+
 ## Tech stack
 
 **Backend** — Django + Django REST Framework + Postgres. Celery + Redis for async jobs (email send, PDF render, channel sync, Zoho sync, exports). Object storage (S3 or compatible) for images and document assets. **Flywire** is the online card-payment gateway (continuing the legacy integration; see `10-decisions.md`).

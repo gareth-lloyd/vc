@@ -246,6 +246,6 @@ This keeps `GET /auth/sessions` and `GET /users/{id}/sessions` cheap (one indexe
 
 ## Out of scope here
 
-- Guest entity — lives in `reservations/` (a Guest may have an optional User OneToOne — same opportunistic pattern as Contact).
+- Guest entity — lives in `reservations/` (a Guest may have an optional User OneToOne — same opportunistic pattern as Contact). Multi-person bookings link to multiple `Guest` rows via `reservations.BookingGuest` (`LEAD` / `CO_TRAVELLER` / `PAYER` / `CC_ONLY`); see `05-reservations.md`. **`Contact` and `Guest` are not the same model** — `Contact` is the operator-side CRM entity (owners, managers, agents); `Guest` is the booking-side person model (travellers, payers, CC'd family).
 - Property assignment (which Contacts manage which Properties) — lives in `properties/` via `PropertyContactAssignment`.
 - Payment / financial recipient mapping — flows through `properties.PropertyFinance.contact`.

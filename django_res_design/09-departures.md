@@ -201,6 +201,20 @@ Findings overturned during verification (kept here as a historical caveat so the
 - **"Tokenised charge stored as plaintext"** — false. No `TokenisedCharge` column exists on `VillaPaymentDetails` (`live-db-24-apr.sql:1912-1926`).
 - **"`sp_getAvailability` mutates `VillaAvailability` as a side effect of a read"** — false. The `DELETE` statements operate on a procedure-local `@temp_table` table variable (`live-db-24-apr.sql:111935`). See `workflows/06-availability/availability-check.md` for the corrected note.
 
+## Legacy correctness bugs explicitly fixed
+
+Behaviours of the legacy `ResSystem/` that the rebuild changes deliberately. These are **not** the CVE-style items in "Legacy security debt" above — they are feature-correctness bugs surfaced during the 2026-05-26 scoping session with the site owner. Each must not survive into the new system.
+
+| # | Bug | Legacy locus | New behaviour |
+|---|---|---|---|
+| 1 | Owner-facing rate display shows **gross rates where the owner should see net**. The legacy owner view ignores the property's `prices_entered_as` mode on the way to render. | `BookingInfo.razor` owner view, owner-statement render path; confirmed scoping-session 2026-05-26 ("net rates didn't come through — that was a problem with the logic"). | New owner views read `PropertySettings.prices_entered_as` and `RatePlan.price_basis` and render net to the owner. Verified at the owner-statement and booking-summary render layers (`product-design/03-workflows.md` owner flow). |
+| 2 | Quote engine **defaults to the highest occupancy bracket** when occupancy is ambiguous on a multi-bracket card — over-quoting small parties. | `sp_getQuotationData` 500-LOC stored proc | `PricingEngine.quote()` resolves the bracket whose `(min_party, max_party)` interval contains the inquiry party size. The legacy default-to-highest is not preserved under any flag. See `04-pricing.md` "Occupancy bracket: matched, not defaulted-to-highest". |
+| 3 | Inquiry search **misses villas with flexible (`ANY`) changeover** when the query filters to a specific weekday. Reproducible against the owner's aunt's villa (flexible check-in). | Search SP path; scoping-session 2026-05-26. | Search and availability queries must include `changeover_day=ANY` properties on every weekday filter. See `02-properties.md` `changeover_day` note and `06-availability.md` search/filter UX. |
+| 4 | Inquiry search **returns unavailable properties interleaved with available ones**, slowing operator scan. | Legacy back-office quote builder. | New search hides unavailable by default with a "Show unavailable" toggle. See `06-availability.md` search/filter UX and decisions row "Search hides unavailable properties by default" in `10-decisions.md`. |
+| 5 | Multi-contact context (CC'd family members, co-travellers, third-party payers) **discarded on intake** — only the lead guest survives in the data model; a decade of follow-up marketing audience has been lost. | `VillaCheckoutDetail` single-contact shape; scoping-session 2026-05-26. | `reservations.BookingGuest` through-model retains every traveller, payer, and CC'd person as an addressable `Guest` row. See `05-reservations.md` and decisions row "`BookingGuest` through-model" in `10-decisions.md`. |
+
+Each row above is independent of the security-debt table — that table is about CVE-style issues; this table is about feature correctness.
+
 ## Soft delete eliminated
 
 The legacy convention slapped `DeletedAt`/`DeletedBy` on every table. The new design removes the entire pattern: there is no `SoftDeleteModel` base class, no `deleted_at` column anywhere, no `all_objects` manager. Lifecycle is always expressed as something the operator (and any SQL query) can see directly.

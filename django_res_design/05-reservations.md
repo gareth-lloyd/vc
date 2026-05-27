@@ -98,6 +98,20 @@ Note collection is via `EnquiryNote` (see below). Operator scratchpads (legacy `
 
 When a quotation is created from an enquiry, set `enquiry.status = QUOTED` and `quotation.enquiry = enquiry`. Conversion to a booking sets `enquiry.status = CONVERTED`.
 
+#### Quote stack
+
+One enquiry typically accumulates **multiple `Quotation` rows** over its lifetime — mid-single-digits is common, double-digits not unusual on long-cycle inquiries (per scoping-session 2026-05-26 with the site owner). The data shape already supports this via `Quotation.enquiry` FK; the conversion semantics are:
+
+- **Conversion is measured per `Enquiry`, not per `Quotation`.** As soon as any child `Quotation.status` flips to `ACCEPTED`, the parent `Enquiry.status` transitions to `CONVERTED`. Reporting that quotes a "conversion rate" counts enquiries, not quotes. See decisions row "Conversion is measured per `Enquiry`, not per `Quotation`" in `10-decisions.md`.
+- **Staff UI groups every quote under the parent enquiry.** Re-quoting is the default operator action on an open enquiry — a single ordered list (most recent first), with the most recent expanded by default. There is no separate top-level "quote-bundle" entity; the FK is enough.
+- **Quote reference numbers stay independent.** `Q-2026-000123` increments globally, not within an enquiry. Grouping is via the FK, not a derived prefix.
+
+#### Date-spread heuristic on intake
+
+Inquiry-takers routinely widen the requested date range by one or two days either side of the client's stated dates, because most guests are flexible around changeover days (typically Saturday, sometimes Sunday or Monday). This is a **judgement call** by the staff member, not a system rule — `Enquiry.date_from` / `date_to` capture whatever the operator chose to record. The intake UI should make it cheap to expand the captured range without re-typing (a "± n days" affordance on the form is the obvious shape). `Enquiry.is_flexible=True` is reserved for when the client *explicitly* said they are flexible; the heuristic above is applied by the operator even when `is_flexible=False`.
+
+The legacy `EnquireDateTypeString` field (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded this preset-style at the column level. The new design **drops the encoding** in favour of an open date range plus the heuristic above — the encoding never carried operator-meaningful information after capture. See `workflows/07-enquiry/enquiry-intake.md` for the operator-side detail.
+
 ### `EnquiryNote(TimestampedModel)`
 Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.
 
@@ -229,6 +243,47 @@ Append-able operator notes attached to a booking. Replaces the legacy single `Vi
 Indexes: `(booking, created_at)`, `(booking, kind)`.
 
 Ordering: `created_at` ascending. Editing rewrites the same row (PATCH); deletion is hard. The full mutation audit lives in `AuditLog`.
+
+### `BookingGuest(AuditedModel)`
+
+Through-model linking a `Booking` to the `Guest` rows involved with it. Replaces the legacy single-`Booking.guest` shape that captured the lead traveller and dropped everyone else into free-text notes. Every person the agent CC'd, the family member on the trip, the PA who organised the booking, the third-party payer — all become addressable `Guest` rows, retained for marketing and future-booking continuity. (Per scoping-session 2026-05-26: a decade of CC'd family contacts have been lost under the legacy model.)
+
+Links to `reservations.Guest`, **not** `accounts.Contact`. `Contact` is the operator-side CRM model (owners, managers, agents); `Guest` is the booking-side person model (with `marketing_consent`, opportunistic `user` OneToOne, etc.). The split stays.
+
+- `booking` — FK Booking CASCADE
+- `guest` — FK Guest PROTECT
+- `role` — TextChoices (`LEAD`, `CO_TRAVELLER`, `PAYER`, `CC_ONLY`)
+- `email_override` — `CIEmailField(blank=True)` — when set, transactional emails directed at this `(booking, guest, role)` go here instead of `guest.email`. Lets agents capture a per-trip email (a wedding planner's address, an assistant's address) without polluting the guest's standing email.
+- `notes` — TextField(blank=True)
+
+Constraints:
+- `UniqueConstraint(booking, guest, role, name="unique_booking_guest_role")` — one role per `(booking, guest)`; a single person can hold multiple roles per booking (e.g. LEAD + PAYER) but each only once.
+- `UniqueConstraint(booking, condition=Q(role="LEAD"), name="one_lead_per_booking")` — exactly one LEAD.
+- `UniqueConstraint(booking, condition=Q(role="PAYER"), name="at_most_one_payer_per_booking")` — at most one PAYER (zero is allowed when the LEAD also pays).
+
+Indexes: `(booking, role)`, `guest`.
+
+#### Role semantics
+
+- `LEAD` — the primary traveller; the booking's "host". Required on every booking. Carries the address / preferences that previously denormalised onto the booking.
+- `CO_TRAVELLER` — anyone else on the trip whom the agent has captured (other family members, friends in the party). Receives itinerary email by default; not addressed for payment.
+- `PAYER` — the person settling the invoice. May be the same `Guest` as the LEAD (in which case no separate `BookingGuest(role=PAYER)` row is created — the LEAD also pays, by convention), or a different person who signs off and pays but does not travel (the PA-payer case). Receives payment-related comms.
+- `CC_ONLY` — addressable for comms (booking summary, arrival reminder) but with no semantic role in the trip. Captures the legacy "CC the spouse / PA / family member" pattern; retained for marketing and continuity.
+
+All four roles appear in marketing audiences by default — no role is silently excluded from outreach. Per-`Guest` `marketing_consent` is the opt-out signal, not the role.
+
+#### Comms routing
+
+The `comms.EmailService` dispatcher, when sending to "all guests on this booking", reads `BookingGuest` rows and addresses each one at `email_override or guest.email`. Per-role gating (e.g. payment reminders to PAYER only, itinerary to LEAD + CO_TRAVELLERs) is expressed in the email template's `to_roles` configuration rather than in the dispatcher. See `10-comms.md`.
+
+#### `Booking.guest` FK during the transition `[OPEN]`
+
+The existing `Booking.guest` FK and the new `BookingGuest(role=LEAD)` row encode the same fact. Two implementation options:
+
+1. **Keep `Booking.guest`** as a denormalised pointer kept in sync with the LEAD row by signal — fast indexed reads on the booking list view, at the cost of a duplicated FK.
+2. **Drop `Booking.guest`** in favour of a `booking.lead_guest` property that resolves through `BookingGuest` — clean but requires touching every read site.
+
+Pick at implementation time. `10-decisions.md` records this as an open follow-up.
 
 ### `BookingHold`
 Lives here logically but documented in 06-availability.md.

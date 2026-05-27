@@ -112,6 +112,8 @@ class SyncClient:
 ### `ZohoSyncClient`
 Pushes `Property`, `Quotation`, `Booking`, `Guest` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
 
+> **Open question — lead-management primacy.** The sales team may move inquiry management from Res into Zoho. Two shapes are on the table: (a) **Res-primary** (current; Zoho mirrors via this client), or (b) **Zoho-primary for leads** (Res consumes via inbound pull, with the Zoho-side `Enquiry` module as source of truth). MVP keeps Res-primary; flipping primacy is a v2 decision driven by the sales-team interview after the 2026-05-26 scoping session. Tracked in `10-decisions.md` "Open follow-ups".
+
 Auth: reads the active `OAuthCredential(provider=ZOHO_CRM, is_active=True)` row via `OAuthService.get_access_token("ZOHO_CRM")` on every call. If the access token is within 5 minutes of expiry, the service refreshes it inline against the Zoho `/oauth/v2/token` endpoint (grant_type=refresh_token), writes the new `access_token` + `expires_at` to the row, and returns the fresh token. If no active credential exists, the client raises `OAuthNotConnectedError` and the calling Celery task records a `SyncIssue(kind=VALIDATION, severity=ERROR, message="Zoho not connected — operator must run /zoho:connect")`.
 
 ### `OAuthService`
@@ -336,4 +338,5 @@ def zoho_id(self) -> str | None:
 ## Out of scope
 
 - **Outbound** WordPress sync details (Django → WP `WP_Sync_*` push protocol, multi-`SiteId` fan-out, response shapes) — the `SyncRecord(provider=WORDPRESS_SITE)` framework holds the state, but the wire protocol is still being captured in `workflows/11-integrations/public-website-sync.md`. The **inbound** direction (WP → Django) is fully defined above.
+- **iCal feed ingest** from per-villa public calendars. ~30 villas in the catalogue publish iCal feeds today and the legacy team mirrors them manually through shared Outlook calendars (per scoping-session 2026-05-26). Recognised high-value v2 force-multiplier; not in MVP. When this lands, the natural shape is a new `provider=ICAL` value on `SyncRecord` plus a Celery beat task that polls each feed and writes `BookingHold(reason=OWNER_BLOCK, …)` rows idempotently keyed on the iCal `UID`. See also `06-availability.md` "Out of scope (future)" and `10-decisions.md` "Deferred".
 - Channel manager integrations (Booking.com, Vrbo, Airbnb) — none in the legacy system; future scope.

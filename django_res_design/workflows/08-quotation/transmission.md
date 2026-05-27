@@ -46,6 +46,17 @@ Rendering the quote as HTML and sending it to the client, plus the Zoho push tha
 - Missing client email → email fails; status not updated.
 - Staff member without configured SMTP → falls back to global config (see `EmailService.SentEmail` workflow in `11-integrations/email-delivery.md`).
 
+### Django redesign — two send paths
+
+Per the 2026-05-26 scoping session, agents are split on how they want to send quotes. Both paths must exist in v1; both produce the same downstream state.
+
+1. **Agent-from-system (default).** Staff clicks "Send Quote"; the system renders the HTML and dispatches via the agent's `comms.SmtpProfile`. This is what the team uses today; it tracks every send in `EmailLog`. Status updates and Zoho push fire as side effects of a successful send.
+2. **Copy-paste-to-Outlook.** Staff clicks "Copy HTML to clipboard" on the quote-detail view. The system renders the same HTML (same template, same inlining), drops it into the clipboard, and presents a confirmation modal: "I sent this manually." On confirmation, the same downstream state writes happen — `Enquiry.status = QUOTED`, `Quotation.status = SENT`, Zoho push queued — but no `EmailLog` row is created (because Res didn't actually send the mail). One `EnquiryEvent(kind=QUOTE_SENT, meta={"send_path": "manual"})` records the manual-send path so reporting can distinguish the two flows.
+
+The reason both paths exist: the in-app sender is convenient and tracked, but Nick (site owner) prefers Outlook for the formatting flexibility ("you've got more control of the formatting because obviously you're going to want to put your own bits and pieces in"). Forcing one path drives the other underground.
+
+See `10-decisions.md` "Quotation transmission supports two send paths" and the open follow-up on whether to deprecate the manual path in v2.
+
 ### Open questions
 - Render the HTML email server-side from a template (Django + Jinja or Mjml), not by inlining a CSS file.
 - Decide whether the Zoho push should be synchronous (so its failure prevents marking the quote sent) or asynchronous (so a transient Zoho outage doesn't block staff).

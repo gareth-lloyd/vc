@@ -134,7 +134,7 @@ Append-only state-machine audit on `Enquiry`. Mirrors `BookingEvent`: it is a do
 - `actor` — FK User SET_NULL, null=True
 - `source` — TextChoices (`USER`, `OWNER`, `WEBHOOK`, `SYSTEM`, `ADMIN`)
 - `reason` — CharField(blank=True)
-- `meta` — JSONField(default=dict)  # e.g. `{"assignee_from": 12, "assignee_to": 34}` for assignment changes; `{"quotation_id": 99}` for `QUOTE_SENT`
+- `meta` — JSONField(default=dict)  # e.g. `{"assignee_from": 12, "assignee_to": 34}` for assignment changes; `{"quotation_id": 99, "send_path": "smtp" | "manual"}` for `QUOTE_SENT` — `send_path` is required on every `QUOTE_SENT` event (enforced by `Enquiry.quote_sent`'s keyword-only signature) so reporting can distinguish in-app SMTP sends from copy-paste-to-Outlook manual confirmations
 
 Indexes: `(enquiry, created_at)`.
 
@@ -276,14 +276,15 @@ All four roles appear in marketing audiences by default — no role is silently 
 
 The `comms.EmailService` dispatcher, when sending to "all guests on this booking", reads `BookingGuest` rows and addresses each one at `email_override or guest.email`. Per-role gating (e.g. payment reminders to PAYER only, itinerary to LEAD + CO_TRAVELLERs) is expressed in the email template's `to_roles` configuration rather than in the dispatcher. See `10-comms.md`.
 
-#### `Booking.guest` FK during the transition `[OPEN]`
+#### `Booking.guest` denorm + LEAD invariant
 
-The existing `Booking.guest` FK and the new `BookingGuest(role=LEAD)` row encode the same fact. Two implementation options:
+`Booking.guest` is kept as a denormalised pointer to the LEAD guest, kept in sync from `BookingGuest` by signal:
 
-1. **Keep `Booking.guest`** as a denormalised pointer kept in sync with the LEAD row by signal — fast indexed reads on the booking list view, at the cost of a duplicated FK.
-2. **Drop `Booking.guest`** in favour of a `booking.lead_guest` property that resolves through `BookingGuest` — clean but requires touching every read site.
+- `_booking_guest_post_save` mirrors the LEAD row onto `Booking.guest` via queryset `.update()` (skips `Booking.save()` so the audit trail stays on `BookingGuest` and `Booking.updated_at` is not bumped by denorm churn).
+- `_booking_guest_pre_delete` raises `LeadGuestProtectedError(ProtectedError)` if a LEAD row is deleted while its booking still exists. Cascade-safe via Django's `origin` kwarg — `Booking.delete()` cascades through `BookingGuest` cleanly without firing the guard.
+- Recommended swap pattern (when the LEAD guest changes mid-booking): demote the old LEAD to `CO_TRAVELLER` and create the new LEAD row, both inside one `transaction.atomic`. Deleting the old LEAD first will raise.
 
-Pick at implementation time. `10-decisions.md` records this as an open follow-up.
+`BookingService.create_from_quotation_line` creates the `BookingGuest(role=LEAD)` row inside the same `transaction.atomic` as the `Booking` — so the invariant is established at booking creation, not papered on by a signal. `data_migration.loaders.bookings.BookingLoader` does the same via idempotent `get_or_create`, so re-runs don't double up.
 
 ### `BookingHold`
 Lives here logically but documented in 06-availability.md.

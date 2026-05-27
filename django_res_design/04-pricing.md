@@ -249,9 +249,9 @@ Steps:
 7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE, REPEAT_GUEST) plus optional PROMO_CODE.
 8. Apply commission from `property.finance.effective_commission()` (the resolver in `03-finance-config.md`).
 9. Apply tax last from `property.finance.effective_tax_policy()` — tax base is rate subtotal + extras − discounts.
-10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist).
+10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). The breakdown carries `total`, `commission`, `tax`, and `net_to_owner = total - commission - tax` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.
 
-The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote.
+The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote. `pick_rule_for_night` returns a tagged result distinguishing `Picked` (rule matched), `OutOfRange` (rules cover the night but party doesn't match any bracket → `PartyOutOfRange`), and `NoCoverage` (no rule covers the night → `NoRateAvailable`).
 
 #### Occupancy bracket: matched, not defaulted-to-highest
 

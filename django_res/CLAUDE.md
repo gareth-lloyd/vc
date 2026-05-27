@@ -131,6 +131,27 @@ unconditionally.
 
 Reference implementation: `payments/services/refund.py`.
 
+### Booking creation must create the LEAD `BookingGuest`
+
+`Booking.guest` is a denormalised pointer to the LEAD `BookingGuest` row,
+kept in sync by `_booking_guest_post_save`. The denorm is for read-side
+performance only — the canonical source of truth is the `BookingGuest`
+table, which encodes the full multi-contact set (LEAD, CO_TRAVELLER,
+PAYER, CC_ONLY).
+
+Any code path that creates a `Booking` must also create a matching
+`BookingGuest(role=LEAD)` row inside the same `transaction.atomic` —
+otherwise the LEAD invariant is inert and `booking.booking_guests.filter(
+role=LEAD)` returns empty even though `Booking.guest` is populated. The
+`_booking_guest_pre_delete` orphan guard raises `LeadGuestProtectedError`
+if you try to delete a LEAD row while its booking still exists; the
+canonical "swap LEAD" pattern is to demote the old LEAD to `CO_TRAVELLER`
+and create the new LEAD row inside one atomic block.
+
+Reference implementations: `BookingService.create_from_quotation_line`,
+`data_migration/loaders/bookings.py` `BookingLoader._process_row` (uses
+idempotent `get_or_create` so re-runs don't double up).
+
 ### AuditLog registration is part of model definition
 
 Any model whose business-logic docstring or anonymisation flow claims an

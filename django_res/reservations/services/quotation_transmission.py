@@ -68,8 +68,20 @@ def record_quote_sent(
             f"send_path must be one of {sorted(_VALID_SEND_PATHS)!r}, got {send_path!r}"
         )
 
-    # Idempotency short-circuit — re-POST on an already-SENT quote is a no-op.
+    # Idempotency short-circuit — re-POST on an already-SENT quote skips the
+    # status flip and the Zoho push. The audit event, however, is gated by
+    # the (quotation, send_path) pair: if the operator confirms a manual
+    # re-send after an SMTP send (because they suspect the email never
+    # arrived), the manual confirmation still has to land on the audit trail.
     if quotation.status == QuotationStatus.SENT.value:
+        enquiry = quotation.enquiry
+        if enquiry is not None:
+            _record_audit_event_if_new_path(
+                enquiry=enquiry,
+                quotation=quotation,
+                send_path=send_path,
+                actor=actor,
+            )
         return quotation
 
     if quotation.status != QuotationStatus.DRAFT.value:
@@ -115,7 +127,6 @@ def _record_enquiry_quote_sent(
         EnquiryStatus.NEW.value,
         EnquiryStatus.CONTACTED.value,
     )
-    meta = {"quotation_id": quotation.pk, "send_path": send_path}
 
     if enquiry.status in transitionable_from:
         # `enquiry.quote_sent` runs the transition + writes the EnquiryEvent
@@ -125,9 +136,37 @@ def _record_enquiry_quote_sent(
         return
 
     # Enquiry already QUOTED/CONVERTED/LOST — don't transition, but the
-    # send_path audit still has to land. Avoid double-writing in the
-    # already-QUOTED-by-this-quotation case: skip the event when a previous
-    # event for this exact quotation+send_path already exists.
+    # send_path audit still has to land.
+    _record_audit_event_if_new_path(
+        enquiry=enquiry,
+        quotation=quotation,
+        send_path=send_path,
+        actor=actor,
+    )
+
+
+def _record_audit_event_if_new_path(
+    *,
+    enquiry: Any,
+    quotation: Quotation,
+    send_path: str,
+    actor: Any,
+) -> None:
+    """Write an EnquiryEvent(kind=QUOTE_SENT) iff no event already exists for
+    the (quotation, send_path) pair.
+
+    Covers two non-transitioning cases:
+
+    1. The enquiry is already QUOTED/CONVERTED/LOST when `record_quote_sent`
+       runs — we still want the send_path audit, just not a status flip.
+    2. The quotation is already SENT (the idempotency short-circuit) but the
+       operator is recording a *different* send_path — e.g. manual-mark
+       after a prior SMTP send. We MUST land the new audit row; dropping
+       it would silently erase the operator's confirmation.
+
+    Skips when a prior event with the same (quotation, send_path) already
+    exists — covers double-clicks and signal-driven double-fires.
+    """
     from reservations.models.enquiry import EnquiryEvent
 
     duplicate = EnquiryEvent.objects.filter(
@@ -146,7 +185,7 @@ def _record_enquiry_quote_sent(
         kind=EnquiryEventKind.QUOTE_SENT.value,
         actor=actor,
         source=EventSource.USER.value,
-        meta=meta,
+        meta={"quotation_id": quotation.pk, "send_path": send_path},
     )
 
 

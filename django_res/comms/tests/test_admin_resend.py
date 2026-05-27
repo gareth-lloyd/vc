@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import pytest
 from django.contrib.admin.sites import site
-from django.test import Client
+from django.core import mail
+from django.test import Client, override_settings
 from django.urls import reverse
 
 from accounts.models import User
 from comms.enums import EmailLogStatus
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
+from comms.services import EmailService
 
 
 @pytest.fixture
@@ -134,3 +136,47 @@ def test_resend_blocked_action_requeues_blocked_rows(
     blocked_log.refresh_from_db()
     assert blocked_log.status == EmailLogStatus.SENT
     assert blocked_log.failure_reason == ""
+
+
+@pytest.mark.django_db
+def test_admin_resend_blocked_dispatches_to_originals_after_allowlist_widens(
+    client: Client,
+    superuser: User,
+    system_profile: SmtpProfile,
+    template: EmailTemplate,
+) -> None:
+    """End-to-end recovery: block-by-allowlist → widen → admin resend → SMTP.
+
+    The BLOCKED row's `to` retains the original recipient list so the bulk
+    resend doesn't have to peek into `correlation` to know who to send to.
+    """
+    # 1. Allowlist blocks everything — row lands BLOCKED with originals on `to`.
+    mail.outbox.clear()
+    with override_settings(EMAIL_RECIPIENT_ALLOWLIST=["@villacollective.com"]):
+        blocked = EmailService.send(
+            template_key=template.key,
+            context={},
+            to=["guest@gmail.com"],
+        )
+    assert blocked.status == EmailLogStatus.BLOCKED
+    assert blocked.to == ["guest@gmail.com"]
+    assert len(mail.outbox) == 0
+
+    # 2. Operator widens the allowlist (or removes it) and triggers the
+    #    bulk-resend admin action.
+    client.force_login(superuser)
+    response = client.post(
+        reverse("admin:comms_emaillog_changelist"),
+        data={
+            "action": "resend_blocked_or_failed",
+            "_selected_action": [str(blocked.pk)],
+        },
+    )
+
+    # 3. SMTP receives the original recipient — nothing was lost.
+    assert response.status_code == 302
+    blocked.refresh_from_db()
+    assert blocked.status == EmailLogStatus.SENT
+    assert blocked.failure_reason == ""
+    assert len(mail.outbox) == 1
+    assert list(mail.outbox[0].to) == ["guest@gmail.com"]

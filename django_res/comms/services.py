@@ -145,9 +145,17 @@ class EmailService:
 
         # Recipient allowlist gate. Empty allowlist (production default) is
         # a passthrough; non-empty filters every address and short-circuits
-        # to BLOCKED when no primary recipient survives. The row records the
-        # filtered (sent) recipient list; the original is preserved in
-        # `correlation[BLOCKED_RECIPIENTS_KEY]` for audit.
+        # to BLOCKED when no primary recipient survives.
+        #
+        # Persistence rule for `to`/`cc`/`bcc` on the row:
+        # - Partial-block (status=SENT): record the *filtered* list — that's
+        #   who the message actually went to. Blocked addresses live on
+        #   `correlation[BLOCKED_RECIPIENTS_KEY]` for forensics only.
+        # - Fully-blocked (status=BLOCKED): record the *original* list so the
+        #   admin bulk-resend can recover the row by simply re-queuing it.
+        #   `correlation[BLOCKED_RECIPIENTS_KEY]` carries the same data as a
+        #   second view for audit, but `to` stays the source of truth for
+        #   "who is this message for".
         filtered = filter_recipients(
             to=list(to),
             cc=cc,
@@ -157,6 +165,9 @@ class EmailService:
         if filtered.blocked:
             correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
         all_blocked = not filtered.to
+        log_to = list(to) if all_blocked else filtered.to
+        log_cc = cc if all_blocked else filtered.cc
+        log_bcc = bcc if all_blocked else filtered.bcc
 
         subject = _render(template.subject_template, context)
         body = _render(template.body_template, context)
@@ -172,9 +183,9 @@ class EmailService:
                 log = EmailLog.objects.create(
                     template_key=template.key,
                     template_version=template.version,
-                    to=filtered.to,
-                    cc=filtered.cc,
-                    bcc=filtered.bcc,
+                    to=log_to,
+                    cc=log_cc,
+                    bcc=log_bcc,
                     from_email=from_email,
                     sender_user=sender_user if profile.scope == SmtpScope.PERSONAL else None,
                     smtp_profile=profile,
@@ -255,24 +266,33 @@ class EmailService:
             new_correlation[RESEND_TOKEN_KEY] = idempotency_key
 
         # Resend must honour the same allowlist as send — operator action
-        # is not a loophole.
+        # is not a loophole. The persistence rule for `to` mirrors `send`:
+        # filtered subset on partial-block (SENT), originals on fully-blocked
+        # (BLOCKED) so the recovery path doesn't have to peek into
+        # `correlation` to know who the message was for.
+        original_to = list(email_log.to)
+        original_cc = list(email_log.cc)
+        original_bcc = list(email_log.bcc)
         filtered = filter_recipients(
-            to=list(email_log.to),
-            cc=list(email_log.cc),
-            bcc=list(email_log.bcc),
+            to=original_to,
+            cc=original_cc,
+            bcc=original_bcc,
             allowlist=settings.EMAIL_RECIPIENT_ALLOWLIST,
         )
         if filtered.blocked:
             new_correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
         all_blocked = not filtered.to
+        log_to = original_to if all_blocked else filtered.to
+        log_cc = original_cc if all_blocked else filtered.cc
+        log_bcc = original_bcc if all_blocked else filtered.bcc
 
         with transaction.atomic():
             new_log = EmailLog.objects.create(
                 template_key=email_log.template_key,
                 template_version=email_log.template_version,
-                to=filtered.to,
-                cc=filtered.cc,
-                bcc=filtered.bcc,
+                to=log_to,
+                cc=log_cc,
+                bcc=log_bcc,
                 from_email=from_email,
                 sender_user=email_log.sender_user,
                 smtp_profile=profile,

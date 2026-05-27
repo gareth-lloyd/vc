@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,7 +15,7 @@ from rest_framework.response import Response
 from accounts.models import User
 from core.api.permissions import IsReservationsWriter
 from reservations.filters import EnquiryFilter
-from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
+from reservations.models import Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
     EnquiryDetailSerializer,
     EnquiryEventSerializer,
@@ -32,6 +33,26 @@ class EnquiryViewSet(viewsets.ModelViewSet):
     filterset_class = EnquiryFilter
     ordering_fields = ["created_at", "updated_at", "status"]
     ordering = ["-created_at"]
+
+    def get_queryset(self) -> Any:
+        qs = super().get_queryset()
+        # Detail (and detail-shaped action) responses inline the quote-stack
+        # for the grouped-list UI; list stays slim, so prefetch only when the
+        # detail serializer is actually going to walk `.quotations.lines`.
+        if self.action not in ("list",) and self.action not in (
+            "create",
+            "update",
+            "partial_update",
+        ):
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "quotations",
+                    queryset=Quotation.objects.select_related(
+                        "guest", "agent", "currency", "enquiry"
+                    ).prefetch_related("lines"),
+                )
+            )
+        return qs
 
     def get_serializer_class(self) -> type:
         if self.action in ("list",):

@@ -13,7 +13,7 @@ from django.utils import timezone
 from core.exceptions import InvalidTransition
 from core.models.base import AuditedModel
 from core.refs import generate_reference
-from reservations.enums import QuotationStatus
+from reservations.enums import EnquiryStatus, QuotationStatus
 
 
 class Quotation(AuditedModel):
@@ -98,8 +98,12 @@ class Quotation(AuditedModel):
         return self
 
     @transaction.atomic
-    def accept(self, line: QuotationLine) -> Quotation:
-        """SENT → ACCEPTED. Marks `line.is_selected=True`."""
+    def accept(self, line: QuotationLine, *, actor: Any = None) -> Quotation:
+        """SENT → ACCEPTED. Marks `line.is_selected=True` and, when the
+        quotation is attached to an enquiry, flips that parent enquiry to
+        CONVERTED inside the same atomic block — conversion is measured
+        per Enquiry (see `django_res_design/10-decisions.md`).
+        """
         self._assert_from((QuotationStatus.SENT.value,), QuotationStatus.ACCEPTED.value)
         if line.quotation_id != self.pk:
             raise ValueError("Line does not belong to this quotation")
@@ -112,6 +116,16 @@ class Quotation(AuditedModel):
         line.save(update_fields=["is_selected", "updated_at"])
         self.status = QuotationStatus.ACCEPTED.value
         self.save(update_fields=["status", "updated_at"])
+        # Roll the parent enquiry forward if one is attached and is in an
+        # eligible source state. Agent-direct quotations have no enquiry,
+        # so this is a no-op for them. Any exception here propagates and
+        # rolls the entire accept() atomic block back.
+        enquiry = self.enquiry
+        if enquiry is not None and enquiry.status in (
+            EnquiryStatus.QUOTED.value,
+            EnquiryStatus.CONTACTED.value,
+        ):
+            enquiry.convert(self, actor=actor)
         return self
 
     @transaction.atomic

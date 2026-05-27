@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.utils import timezone
@@ -143,3 +143,54 @@ def test_enquiry_note_post_save_emits_note_added_event(enquiry: Enquiry) -> None
 @pytest.mark.django_db
 def test_reference_auto_generated(enquiry: Enquiry) -> None:
     assert enquiry.reference.startswith("E-")
+
+
+# ---------------------------------------------------------------------------
+# is_converted — enquiry-level conversion rollup (T3.2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_enquiry_is_converted_false_no_accepted_quotation(
+    enquiry: Enquiry, quotation: Quotation
+) -> None:
+    """No quotations at all, or only non-ACCEPTED ones, must read False."""
+    # No quotation linked yet.
+    assert enquiry.is_converted is False
+
+    # Link a SENT quotation — still not converted.
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    quotation.send()
+    enquiry.refresh_from_db()
+    assert enquiry.is_converted is False
+
+
+@pytest.mark.django_db
+def test_enquiry_is_converted_true_with_accepted_quotation(
+    enquiry: Enquiry,
+    quotation: Quotation,
+    property_: Any,
+) -> None:
+    """An ACCEPTED quotation on this enquiry flips `is_converted` to True."""
+    from datetime import date
+    from decimal import Decimal
+
+    from reservations.models import QuotationLine
+
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    enquiry.quote_sent(quotation)
+    quotation.send()
+    quotation.accept(line)
+
+    enquiry.refresh_from_db()
+    assert enquiry.is_converted is True

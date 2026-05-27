@@ -102,7 +102,7 @@ def _run(ctx: SeedContext) -> int:
             ctx.booking_pks.append(booking.pk)
             populate_payments(booking)
             advance_status(booking, i, ctx)
-            from reservations.enums import BookingStatus
+            from reservations.enums import BookingStatus, EnquiryStatus
 
             booking.refresh_from_db()
             if booking.status not in (
@@ -110,7 +110,11 @@ def _run(ctx: SeedContext) -> int:
                 BookingStatus.PENDING_OWNER_APPROVAL.value,
             ):
                 enquiry.refresh_from_db()
-                enquiry.convert(quotation)
+                # `Quotation.accept()` now flips the parent enquiry to
+                # CONVERTED inside its own atomic block (T3.2), so we only
+                # need to convert here if accept() hasn't already done so.
+                if enquiry.status != EnquiryStatus.CONVERTED.value:
+                    enquiry.convert(quotation)
         made += 1
     return made
 

@@ -24,8 +24,9 @@ from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
 from properties.models.property import Property
-from reservations.enums import BookingStatus, QuotationStatus
+from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
+from reservations.models.booking_guest import BookingGuest
 from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
 
@@ -129,9 +130,19 @@ class BookingLoader(BaseLoader):
             "terms_accepted_at": timezone.now(),
             "payment_method": PaymentMethod.BANK_TRANSFER,
         }
-        _, created = Booking.objects.update_or_create(
+        booking, created = Booking.objects.update_or_create(
             legacy_id=str(row["Id"]),
             defaults=defaults,
+        )
+        # Loader is idempotent (upsert keyed on legacy_id), so the LEAD row
+        # must be too: `get_or_create` on (booking, role=LEAD) reuses the
+        # row a previous run already wrote and otherwise births it here so
+        # legacy bookings carry the same Booking + LEAD invariant the
+        # service-layer path establishes.
+        BookingGuest.objects.get_or_create(
+            booking=booking,
+            role=BookingGuestRole.LEAD.value,
+            defaults={"guest": guest},
         )
         if created:
             report.created += 1

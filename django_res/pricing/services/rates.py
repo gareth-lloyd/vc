@@ -33,6 +33,24 @@ def rule_specificity(rule: RateRule) -> int:
     return (rule.date_to - rule.date_from).days
 
 
+def any_rule_covers_night(
+    cards: list[RateCard],
+    rules_by_card: dict[int, list[RateRule]],
+    night: date,
+) -> bool:
+    """True iff any rule on any of these cards covers `night`, ignoring party.
+
+    Used by the engine to disambiguate "no rate" (no rule covers the night)
+    from "party out of range" (rules cover the night, but none match the
+    requested party size) — see `09-departures.md` bug #2.
+    """
+    for card in cards:
+        for rule in rules_by_card.get(card.pk, []):
+            if rule.date_from <= night <= rule.date_to:
+                return True
+    return False
+
+
 def pick_rule_for_night(
     cards: list[RateCard],
     rules_by_card: dict[int, list[RateRule]],

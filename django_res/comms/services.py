@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 RESEND_TOKEN_KEY = "resend_token"
 RESENT_FROM_KEY = "resent_from"
 BLOCKED_RECIPIENTS_KEY = "blocked_recipients"
+BLOCKED_BY_ALLOWLIST_REASON = "All primary recipients blocked by EMAIL_RECIPIENT_ALLOWLIST."
 
 
 @dataclass(frozen=True)
@@ -60,10 +61,16 @@ def _render(template_text: str, context: dict[str, Any]) -> str:
 
 
 def _find_existing_log(idempotency_hash: str) -> EmailLog | None:
-    """Return a previously-persisted, non-FAILED log row for this hash."""
+    """Return a previously-persisted log row that should dedupe this send.
+
+    Excludes FAILED (the SMTP server refused — caller can retry) and BLOCKED
+    (we refused — caller can retry once the gate/allowlist is reopened).
+    Treating BLOCKED as a permanent dedupe would silently swallow legitimate
+    sends after an allowlist widens.
+    """
     return (
         EmailLog.objects.filter(idempotency_hash=idempotency_hash)
-        .exclude(status=EmailLogStatus.FAILED)
+        .exclude(status__in=[EmailLogStatus.FAILED, EmailLogStatus.BLOCKED])
         .order_by("-queued_at")
         .first()
     )
@@ -138,12 +145,14 @@ class EmailService:
 
         # Recipient allowlist gate. Empty allowlist (production default) is
         # a passthrough; non-empty filters every address and short-circuits
-        # to BLOCKED when no primary recipient survives.
+        # to BLOCKED when no primary recipient survives. The row records the
+        # filtered (sent) recipient list; the original is preserved in
+        # `correlation[BLOCKED_RECIPIENTS_KEY]` for audit.
         filtered = filter_recipients(
             to=list(to),
             cc=cc,
             bcc=bcc,
-            allowlist=getattr(settings, "EMAIL_RECIPIENT_ALLOWLIST", []),
+            allowlist=settings.EMAIL_RECIPIENT_ALLOWLIST,
         )
         if filtered.blocked:
             correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
@@ -163,7 +172,7 @@ class EmailService:
                 log = EmailLog.objects.create(
                     template_key=template.key,
                     template_version=template.version,
-                    to=filtered.to if not all_blocked else list(to),
+                    to=filtered.to,
                     cc=filtered.cc,
                     bcc=filtered.bcc,
                     from_email=from_email,
@@ -173,11 +182,7 @@ class EmailService:
                     rendered_body=body,
                     rendered_body_html=body_html,
                     status=EmailLogStatus.BLOCKED if all_blocked else EmailLogStatus.QUEUED,
-                    failure_reason=(
-                        "All primary recipients blocked by EMAIL_RECIPIENT_ALLOWLIST."
-                        if all_blocked
-                        else ""
-                    ),
+                    failure_reason=BLOCKED_BY_ALLOWLIST_REASON if all_blocked else "",
                     attachments=[a.to_log_entry() for a in attachments],
                     correlation=correlation,
                     idempotency_hash=idempotency_hash,
@@ -207,7 +212,8 @@ class EmailService:
         """Mint a fresh `EmailLog` row carrying the same content + recipients.
 
         Used by the operator-facing **Resend** action on the booking
-        Comms tab. Distinct from the admin-only `resend_failed` (which
+        Comms tab. Distinct from the admin-only `resend_blocked_or_failed`
+        bulk action (which
         re-queues a FAILED row in place): this always creates a new row
         so the audit trail shows two distinct send attempts.
 
@@ -254,7 +260,7 @@ class EmailService:
             to=list(email_log.to),
             cc=list(email_log.cc),
             bcc=list(email_log.bcc),
-            allowlist=getattr(settings, "EMAIL_RECIPIENT_ALLOWLIST", []),
+            allowlist=settings.EMAIL_RECIPIENT_ALLOWLIST,
         )
         if filtered.blocked:
             new_correlation[BLOCKED_RECIPIENTS_KEY] = filtered.blocked
@@ -264,7 +270,7 @@ class EmailService:
             new_log = EmailLog.objects.create(
                 template_key=email_log.template_key,
                 template_version=email_log.template_version,
-                to=filtered.to if not all_blocked else list(email_log.to),
+                to=filtered.to,
                 cc=filtered.cc,
                 bcc=filtered.bcc,
                 from_email=from_email,
@@ -274,11 +280,7 @@ class EmailService:
                 rendered_body=email_log.rendered_body,
                 rendered_body_html=email_log.rendered_body_html,
                 status=EmailLogStatus.BLOCKED if all_blocked else EmailLogStatus.QUEUED,
-                failure_reason=(
-                    "All primary recipients blocked by EMAIL_RECIPIENT_ALLOWLIST."
-                    if all_blocked
-                    else ""
-                ),
+                failure_reason=BLOCKED_BY_ALLOWLIST_REASON if all_blocked else "",
                 attachments=list(email_log.attachments or []),
                 correlation=new_correlation,
             )

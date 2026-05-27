@@ -48,7 +48,7 @@ class EmailLogAdmin(admin.ModelAdmin):
     list_filter = ("status", "template_key")
     search_fields = ("template_key", "rendered_subject", "from_email")
     readonly_fields = tuple(f.name for f in EmailLog._meta.get_fields() if hasattr(f, "attname"))
-    actions = ("resend_failed",)
+    actions = ("resend_blocked_or_failed",)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
@@ -68,10 +68,15 @@ class EmailLogAdmin(admin.ModelAdmin):
     ) -> bool:
         return False
 
-    @admin.action(description="Re-send selected FAILED logs")
-    def resend_failed(self, request: HttpRequest, queryset: QuerySet[EmailLog]) -> None:
-        eligible = queryset.filter(status=EmailLogStatus.FAILED)
-        skipped = queryset.exclude(status=EmailLogStatus.FAILED).count()
+    @admin.action(description="Re-send selected BLOCKED or FAILED logs")
+    def resend_blocked_or_failed(
+        self,
+        request: HttpRequest,
+        queryset: QuerySet[EmailLog],
+    ) -> None:
+        retriable = (EmailLogStatus.FAILED, EmailLogStatus.BLOCKED)
+        eligible = queryset.filter(status__in=retriable)
+        skipped = queryset.exclude(status__in=retriable).count()
         log_ids = list(eligible.values_list("pk", flat=True))
 
         if log_ids:
@@ -86,6 +91,6 @@ class EmailLogAdmin(admin.ModelAdmin):
         if skipped:
             self.message_user(
                 request,
-                f"Skipped {skipped} log(s) that were not in FAILED state.",
+                f"Skipped {skipped} log(s) that were not BLOCKED or FAILED.",
                 level=messages.WARNING,
             )

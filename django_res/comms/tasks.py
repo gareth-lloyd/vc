@@ -23,8 +23,9 @@ def _send(log_id: int) -> None:
 
     # Second cast-iron gate: even if EMAIL_BACKEND has been mis-pointed at
     # SMTP, refuse to open the socket unless the flag is explicitly True.
-    # Mirrors `EMAIL_REAL_SENDS_ALLOWED` defaulted False in settings/base.
-    if not getattr(settings, "EMAIL_REAL_SENDS_ALLOWED", False):
+    # Mirrors `EMAIL_REAL_SENDS_ALLOWED` defaulted False in settings/base —
+    # a rename surfaces as AttributeError rather than a silent gate-closed.
+    if not settings.EMAIL_REAL_SENDS_ALLOWED:
         log.status = EmailLogStatus.BLOCKED
         log.failure_reason = "EMAIL_REAL_SENDS_ALLOWED is False — refusing SMTP dispatch."
         log.save(update_fields=["status", "failure_reason", "updated_at"])

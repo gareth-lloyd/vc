@@ -243,7 +243,7 @@ def _reminder_already_sent(
 
     return (
         EmailLog.objects.filter(**correlation_filters)
-        .exclude(status=EmailLogStatus.FAILED)
+        .exclude(status__in=[EmailLogStatus.FAILED, EmailLogStatus.BLOCKED])
         .exists()
     )
 

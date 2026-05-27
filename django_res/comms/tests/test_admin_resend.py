@@ -52,7 +52,7 @@ def test_resend_failed_action_requeues_and_redispatches(
     response = client.post(
         changelist_url,
         data={
-            "action": "resend_failed",
+            "action": "resend_blocked_or_failed",
             "_selected_action": [str(failed_log.pk)],
         },
     )
@@ -86,7 +86,7 @@ def test_resend_failed_action_skips_non_failed_rows(
     response = client.post(
         reverse("admin:comms_emaillog_changelist"),
         data={
-            "action": "resend_failed",
+            "action": "resend_blocked_or_failed",
             "_selected_action": [str(sent_log.pk)],
         },
     )
@@ -98,4 +98,39 @@ def test_resend_failed_action_skips_non_failed_rows(
 
 def test_resend_action_is_registered_on_admin() -> None:
     admin_class = site._registry[EmailLog]
-    assert "resend_failed" in (admin_class.actions or ())
+    assert "resend_blocked_or_failed" in (admin_class.actions or ())
+
+
+@pytest.mark.django_db
+def test_resend_blocked_action_requeues_blocked_rows(
+    client: Client,
+    superuser: User,
+    system_profile: SmtpProfile,
+    template: EmailTemplate,
+) -> None:
+    """Bulk-recovery path for rows blocked by the allowlist or dispatch gate."""
+    blocked_log = EmailLog.objects.create(
+        template_key=template.key,
+        template_version=template.version,
+        to=["guest@example.com"],
+        from_email=system_profile.from_email,
+        smtp_profile=system_profile,
+        rendered_subject="Subject",
+        rendered_body="Body",
+        status=EmailLogStatus.BLOCKED,
+        failure_reason="EMAIL_REAL_SENDS_ALLOWED is False — refusing SMTP dispatch.",
+    )
+
+    client.force_login(superuser)
+    response = client.post(
+        reverse("admin:comms_emaillog_changelist"),
+        data={
+            "action": "resend_blocked_or_failed",
+            "_selected_action": [str(blocked_log.pk)],
+        },
+    )
+
+    assert response.status_code == 302
+    blocked_log.refresh_from_db()
+    assert blocked_log.status == EmailLogStatus.SENT
+    assert blocked_log.failure_reason == ""

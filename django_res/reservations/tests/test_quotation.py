@@ -51,8 +51,24 @@ def test_send_draft_to_sent(quotation: Quotation) -> None:
 
 
 @pytest.mark.django_db
-def test_send_from_wrong_state_raises(quotation: Quotation) -> None:
+def test_send_on_already_sent_is_idempotent(quotation: Quotation) -> None:
+    """Per `08-quotation/transmission.md` "two send paths", `send()` shares the
+    post-send helper with the manual-mark endpoint and inherits its idempotency
+    short-circuit — re-sending a SENT quote must be a no-op, not a raise."""
     quotation.send()
+    quotation.send()  # second send must not raise
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.SENT.value
+
+
+@pytest.mark.django_db
+def test_send_from_non_draft_non_sent_state_raises(
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Send from a terminal/diverged state (ACCEPTED, etc.) still raises."""
+    quotation.send()
+    quotation.accept(line)
     with pytest.raises(InvalidTransition):
         quotation.send()
 

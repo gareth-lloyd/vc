@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
 from django.db import models, transaction
 from django.db.models import Q
-from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from core.models.base import AuditedModel
@@ -82,18 +80,24 @@ class Quotation(AuditedModel):
             raise InvalidTransition(self.status, to, allowed=list(allowed_from))
 
     @transaction.atomic
-    def send(self) -> Quotation:
-        """DRAFT → SENT. Sets `expires_at` if currently null."""
-        self._assert_from((QuotationStatus.DRAFT.value,), QuotationStatus.SENT.value)
-        self.status = QuotationStatus.SENT.value
-        update_fields = ["status", "updated_at"]
-        if self.expires_at is None:
-            self.expires_at = timezone.now() + timedelta(days=7)
-            update_fields.append("expires_at")
-        self.save(update_fields=update_fields)
-        # Local import to avoid the signal module pulling Quotation at import time.
+    def send(self, *, actor: Any = None) -> Quotation:
+        """DRAFT → SENT via the in-app SMTP path.
+
+        Delegates the downstream state writes (status flip, enquiry
+        transition, EnquiryEvent, Zoho push queueing) to the shared
+        `record_quote_sent` helper so the manual-mark endpoint produces
+        identical state. Fires the `quotation_sent` signal afterwards so
+        `comms.signals.quotation_sent_handler` can dispatch the email.
+        """
+        # Local import — keeps the service module out of the model's import
+        # graph and matches the existing `quotation_sent` signal pattern.
+        from reservations.services.quotation_transmission import (
+            SEND_PATH_SMTP,
+            record_quote_sent,
+        )
         from reservations.signals import quotation_sent
 
+        record_quote_sent(self, send_path=SEND_PATH_SMTP, actor=actor)
         quotation_sent.send(sender=Quotation, quotation=self)
         return self
 

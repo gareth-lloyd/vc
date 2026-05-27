@@ -40,6 +40,32 @@ def test_quote_happy_path_single_card_no_extras(
 
 
 @pytest.mark.django_db
+def test_pricing_engine_writes_net_to_owner_to_snapshot(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    """`PricingEngine.quote` materialises `net_to_owner` on the breakdown.
+
+    Owner-net is `total - commission - tax`; the engine computes it once at
+    quote time and stamps it on the breakdown so the booking serializer
+    (and any other consumer of `Booking.pricing_snapshot`) never has to
+    subtract money downstream. The dataclass field carries the same value
+    so callers that hold a `Quote` object can read it without inspecting
+    the JSON blob.
+    """
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    expected_net = (quote.total - quote.commission - quote.tax).quantize(Decimal("0.01"))
+    assert quote.net_to_owner == expected_net
+    assert quote.breakdown["net_to_owner"] == str(expected_net)
+
+
+@pytest.mark.django_db
 def test_quote_applies_mandatory_extra(property_: Property, gbp: Currency, rule: RateRule) -> None:
     Extra.objects.create(
         property=property_,

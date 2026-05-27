@@ -63,4 +63,5 @@ class Quote:
     commission: Decimal
     tax: Decimal
     total: Decimal
+    net_to_owner: Decimal
     breakdown: dict[str, Any] = field(default_factory=dict)

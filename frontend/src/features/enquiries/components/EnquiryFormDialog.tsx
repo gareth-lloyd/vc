@@ -112,8 +112,9 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   // Operator convention: widen the captured date range by ±N days around the
-  // client's requested dates. See enquiry-intake.md "Django redesign —
-  // date-spread heuristic". Local-only UI state; submitted as the resolved
+  // client's requested dates. See
+  // django_res_design/workflows/07-enquiry/enquiry-intake.md "Django redesign
+  // — date-spread heuristic". Local-only UI state; submitted as the resolved
   // `date_from` / `date_to` on the existing fields.
   const [spread, setSpread] = useState<number>(MIN_SPREAD);
 
@@ -251,12 +252,14 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               </div>
             </div>
             <p className="text-muted-foreground text-xs">
-              {spread === 0 || !widened.from || !widened.to
+              {!widened.from || !widened.to
                 ? t("form_dialog.date_spread.hint")
-                : t("form_dialog.date_spread.preview_widened", {
-                    from: widened.from,
-                    to: widened.to,
-                  })}
+                : spread === 0
+                  ? t("form_dialog.date_spread.preview_zero")
+                  : t("form_dialog.date_spread.preview_widened", {
+                      from: widened.from,
+                      to: widened.to,
+                    })}
             </p>
           </div>
 

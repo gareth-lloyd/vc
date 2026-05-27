@@ -128,6 +128,22 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     expect(payload).toMatchObject({ date_from: "2026-06-08", date_to: "2026-06-19" });
   });
 
+  it("shows preview_zero text when both dates are set and spread is 0", async () => {
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.clear(screen.getByLabelText(/^from$/i));
+    await userEvent.type(screen.getByLabelText(/^from$/i), "2026-06-10");
+    await userEvent.clear(screen.getByLabelText(/^to$/i));
+    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-06-17");
+
+    // Spread stays at 0 by default — the more-informative preview_zero copy
+    // should appear instead of the generic flexibility hint.
+    expect(screen.getByText(/submitting requested dates unchanged/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/guests are often flexible around changeover/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("clamps spread at the maximum and minimum", async () => {
     renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
 

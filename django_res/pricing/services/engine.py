@@ -186,6 +186,11 @@ class PricingEngine:
         total = (rate_subtotal + extras_total - discount_total + commission + tax).quantize(
             Decimal("0.01")
         )
+        # Owner-net is captured at quote-time so downstream consumers (the
+        # booking detail serializer, owner statements) never have to re-derive
+        # it from the breakdown. See `09-departures.md`: serializers should
+        # not subtract money.
+        net_to_owner = (total - commission - tax).quantize(Decimal("0.01"))
 
         breakdown: dict[str, Any] = {
             "property_id": getattr(property, "pk", None),
@@ -201,6 +206,7 @@ class PricingEngine:
             "commission": str(commission),
             "tax": str(tax),
             "total": str(total),
+            "net_to_owner": str(net_to_owner),
             "plan_id": plan.pk,
             "winning_card_id": winning_card.pk,
         }
@@ -219,6 +225,7 @@ class PricingEngine:
             commission=commission,
             tax=tax,
             total=total,
+            net_to_owner=net_to_owner,
             breakdown=breakdown,
         )
 

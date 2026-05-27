@@ -714,6 +714,93 @@ def test_owner_booking_summary_net_block_null_when_snapshot_missing(
     assert response.data["prices_entered_as"] == PriceBasis.NET.value
 
 
+# `PricingEngine.quote` now writes `net_to_owner` directly into the
+# `pricing_snapshot` blob, so the serializer's primary path is a plain read.
+# Two helpers below cover both shapes: the rebuild-era snapshot carrying the
+# explicit key, and the pre-engine-change shape that the serializer must
+# still subtract for. Legacy/imported bookings with `snapshot = {}` are
+# pinned by the existing `..._null_when_snapshot_missing` test above.
+def _snapshot_with_net(
+    *,
+    rate_subtotal: str = "1400.00",
+    extras_total: str = "100.00",
+    discount: str = "50.00",
+    commission: str = "180.00",
+    tax: str = "70.00",
+    net_to_owner: str | None = None,
+) -> dict[str, str]:
+    base = _snapshot(
+        rate_subtotal=rate_subtotal,
+        extras_total=extras_total,
+        discount=discount,
+        commission=commission,
+        tax=tax,
+    )
+    if net_to_owner is None:
+        total = Decimal(base["total"])
+        net_to_owner = f"{(total - Decimal(commission) - Decimal(tax)):.2f}"
+    return {**base, "net_to_owner": net_to_owner}
+
+
+@pytest.mark.django_db
+def test_owner_serializer_reads_net_from_snapshot(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Primary path: snapshot carries `net_to_owner`; serializer reads it verbatim.
+
+    The engine stamps owner-net at quote time, so the serializer must not
+    re-derive it. We pin this by writing a snapshot whose stored
+    `net_to_owner` deliberately disagrees with `total - commission - tax`;
+    the response must echo the stored value, not the subtraction.
+    """
+    # total = 1700; would-subtract = 1450; we store a different value to
+    # prove the serializer reads the snapshot rather than recomputing.
+    booking.pricing_snapshot = _snapshot_with_net(net_to_owner="1234.56")
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.NET)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["net_to_owner"]["net_to_owner"] == "1234.56"
+    # Other figures still round-trip from the snapshot unchanged.
+    assert response.data["net_to_owner"]["gross_total"] == "1700.00"
+    assert response.data["net_to_owner"]["commission"] == "180.00"
+    assert response.data["net_to_owner"]["tax"] == "70.00"
+
+
+@pytest.mark.django_db
+def test_owner_serializer_falls_back_to_legacy_math_when_snapshot_missing_net(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Legacy-snapshot fallback: pre-net_to_owner snapshots still render.
+
+    Snapshots produced before `PricingEngine.quote` started stamping
+    `net_to_owner` have only {total, commission, tax}. The serializer
+    must subtract `total - commission - tax` so historical bookings don't
+    suddenly render `net_to_owner == null` after the engine change.
+    """
+    # Old-shape snapshot — no `net_to_owner` key.
+    booking.pricing_snapshot = _snapshot(
+        rate_subtotal="1400.00",
+        extras_total="100.00",
+        discount="50.00",
+        commission="180.00",
+        tax="70.00",
+    )
+    assert "net_to_owner" not in booking.pricing_snapshot
+    booking.save(update_fields=["pricing_snapshot"])
+    _set_prices_entered_as(booking.property, PriceBasis.NET)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    # total = 1700; net = 1700 - 180 - 70 = 1450.
+    assert response.data["net_to_owner"]["net_to_owner"] == "1450.00"
+
+
 @pytest.mark.django_db
 def test_staff_list_view_still_shows_gross(
     api_client: APIClient, staff: User, booking: Booking

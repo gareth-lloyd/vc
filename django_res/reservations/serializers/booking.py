@@ -193,15 +193,11 @@ class BookingDetailSerializer(BookingListSerializer):
         return self._effective_prices_entered_as(obj)
 
     def get_net_to_owner(self, obj: Booking) -> dict[str, Any] | None:
-        """Derive owner-net from `Booking.pricing_snapshot`.
+        """Render owner-net from `Booking.pricing_snapshot`.
 
-        Net-to-owner = snapshot `total - commission - tax`. The snapshot is
-        the single source of truth (captured at booking-create time by
-        `PricingEngine.quote`); the serializer doesn't recompute money.
-
-        [CORRECTNESS] Long-term the snapshot itself should carry an explicit
-        `net_to_owner` field so the serializer never has to subtract here —
-        track via `pricing.services.engine.PricingEngine.quote` breakdown.
+        `PricingEngine.quote` writes `net_to_owner` directly into the
+        snapshot, so the primary path just reads it. The serializer never
+        recomputes money for snapshots produced by the rebuild.
         """
         snapshot = obj.pricing_snapshot or {}
         try:
@@ -210,7 +206,19 @@ class BookingDetailSerializer(BookingListSerializer):
             tax = Decimal(str(snapshot["tax"]))
         except (KeyError, InvalidOperation, TypeError):
             return None
-        net = (total - commission - tax).quantize(Decimal("0.01"))
+        # Legacy-snapshot fallback: rows imported by `data_migration` carry
+        # `pricing_snapshot = {}` (handled above by the KeyError guard) and
+        # any rebuild-era snapshot pre-dating this engine change lacks the
+        # `net_to_owner` key. Compute it from `total - commission - tax` so
+        # those bookings still render. New snapshots take the fast path.
+        raw_net = snapshot.get("net_to_owner")
+        if raw_net is not None:
+            try:
+                net = Decimal(str(raw_net)).quantize(Decimal("0.01"))
+            except (InvalidOperation, TypeError):
+                net = (total - commission - tax).quantize(Decimal("0.01"))
+        else:
+            net = (total - commission - tax).quantize(Decimal("0.01"))
         currency_code = obj.currency.code if obj.currency_id else None
         return {
             "currency_code": currency_code,

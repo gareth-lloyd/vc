@@ -10,7 +10,7 @@ fails.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
@@ -22,6 +22,20 @@ from reservations.models.booking import BookingHold
 
 if TYPE_CHECKING:
     from datetime import date as date_type
+
+
+def _resolve_default_expiry(property: Any) -> datetime:
+    """Resolve the default hold expiry from the property's effective settings.
+
+    Lazily ensures a `PropertySettings` row exists so the inheritance chain
+    resolves cleanly to the group default when no per-property override is
+    set. The group fallback (48 hours by default) means this never raises.
+    """
+    from properties.models import PropertySettings
+
+    settings, _ = PropertySettings.objects.get_or_create(property=property)
+    hours = settings.effective("hold_duration_hours")
+    return timezone.now() + timedelta(hours=hours)
 
 
 class HoldService:
@@ -52,13 +66,18 @@ class HoldService:
         property: Any,
         date_from: date_type,
         date_to: date_type,
-        expires_at: datetime,
+        expires_at: datetime | None = None,
         reason: str = BookingHoldReason.MANUAL.value,
         quotation: Any = None,
         booking: Any = None,
         notes: str = "",
     ) -> BookingHold:
-        """Place a live hold; raises `HoldUnavailable` if one already overlaps."""
+        """Place a live hold; raises `HoldUnavailable` if one already overlaps.
+
+        When `expires_at` is omitted, defaults to
+        `now() + property.settings.effective("hold_duration_hours")`. Callers
+        may always pass an explicit value to override the per-villa default.
+        """
         if cls._has_overlapping_live_hold(
             property=property,
             date_from=date_from,
@@ -68,6 +87,8 @@ class HoldService:
                 f"An overlapping live hold already exists for property {property.pk} "
                 f"on {date_from}..{date_to}"
             )
+        if expires_at is None:
+            expires_at = _resolve_default_expiry(property)
         return BookingHold.objects.create(
             property=property,
             quotation=quotation,

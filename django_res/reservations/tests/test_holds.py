@@ -87,6 +87,55 @@ def test_release_idempotent(property_: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_hold_creation_uses_effective_setting(property_: Property) -> None:
+    """When `expires_at` is omitted, `place` defaults to now + effective hours."""
+    from properties.models import PropertySettings
+
+    PropertySettings.objects.create(property=property_, hold_duration_hours=24)
+    before = timezone.now()
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+    )
+    after = timezone.now()
+
+    # Tolerate test execution time on either side of the now() call.
+    assert before + timedelta(hours=24) <= hold.expires_at <= after + timedelta(hours=24)
+
+
+@pytest.mark.django_db
+def test_hold_creation_falls_back_to_group_default(property_: Property) -> None:
+    """No PropertySettings row at all → use the group default (48 hours)."""
+    before = timezone.now()
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+    )
+    after = timezone.now()
+
+    assert before + timedelta(hours=48) <= hold.expires_at <= after + timedelta(hours=48)
+
+
+@pytest.mark.django_db
+def test_hold_caller_expires_at_override_wins(property_: Property) -> None:
+    """An explicit `expires_at` beats the resolved effective setting."""
+    from properties.models import PropertySettings
+
+    PropertySettings.objects.create(property=property_, hold_duration_hours=24)
+    explicit = timezone.now() + timedelta(hours=1)
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=explicit,
+    )
+
+    assert hold.expires_at == explicit
+
+
+@pytest.mark.django_db
 def test_expire_holds_task_releases_past_due(property_: Property) -> None:
     past = timezone.now() - timedelta(minutes=5)
     BookingHold.objects.create(

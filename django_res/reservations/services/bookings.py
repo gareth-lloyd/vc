@@ -9,8 +9,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from properties.services.changeover import ChangeoverService
-from reservations.enums import PaymentMethod
+from reservations.enums import BookingGuestRole, PaymentMethod
 from reservations.models.booking import Booking
+from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
 
@@ -81,6 +82,21 @@ class BookingService:
             terms_version=terms_version,
             terms_accepted_at=timezone.now(),
             payment_method=payment_method,
+        )
+
+        # Birth the LEAD `BookingGuest` row alongside the Booking. The
+        # quotation's guest is the lead by definition — that is who accepted
+        # the quote. Creating the row inside the same `transaction.atomic()`
+        # keeps Booking + LEAD an indivisible pair: if either insert fails
+        # both roll back, preserving the "every Booking has exactly one LEAD"
+        # invariant the partial-unique constraint and pre_delete guard rely
+        # on. `Booking.guest` is already set above; the post_save sync signal
+        # is idempotent (it excludes rows that already match), so the second
+        # write is a no-op.
+        BookingGuest.objects.create(
+            booking=booking,
+            guest=quotation.guest,
+            role=BookingGuestRole.LEAD.value,
         )
 
         # TODO: integrate with payments.PaymentScheduler.create_for_booking once

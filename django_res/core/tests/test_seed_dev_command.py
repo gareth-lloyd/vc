@@ -24,12 +24,14 @@ from payments.models.refund import Refund
 from properties.enums import PropertyStatus
 from properties.models import Property
 from reservations.enums import (
+    BookingGuestRole,
     BookingStatus,
     ConciergeStatus,
     EnquiryStatus,
     QuotationStatus,
 )
 from reservations.models.booking import Booking, BookingEvent
+from reservations.models.booking_guest import BookingGuest
 from reservations.models.concierge import BookingConciergeItem
 from reservations.models.enquiry import Enquiry
 from reservations.models.preferences import GuestPreference
@@ -96,6 +98,25 @@ def test_seed_dev_happy_builds_a_coherent_graph() -> None:
     assert not BookingConciergeItem.objects.exists()
     assert not Refund.objects.exists()
     assert not GuestPreference.objects.exists()
+
+
+def test_seed_dev_happy_creates_lead_booking_guest_for_every_booking() -> None:
+    """Every seeded Booking must own exactly one LEAD BookingGuest row.
+
+    Pins the regression that `BookingService.create_from_quotation_line`
+    (the only path the seeder uses to open bookings) births the LEAD row
+    alongside the Booking, keeping the BookingGuest invariants live.
+    """
+    _run(properties=2, bookings=3)
+    bookings = list(Booking.objects.all())
+    assert bookings, "seed_dev produced no bookings"
+    for booking in bookings:
+        leads = BookingGuest.objects.filter(
+            booking=booking,
+            role=BookingGuestRole.LEAD.value,
+        )
+        assert leads.count() == 1, f"Booking {booking.pk} missing LEAD row"
+        assert leads.get().guest_id == booking.guest_id
 
 
 def test_seed_dev_happy_is_additive_on_rerun() -> None:

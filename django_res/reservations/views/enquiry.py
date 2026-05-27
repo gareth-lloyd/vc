@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from accounts.models import User
 from core.api.permissions import IsReservationsWriter
+from reservations.enums import EnquiryStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
@@ -77,10 +78,18 @@ class EnquiryViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="convert")
     def convert(self, request: Request, pk: str | None = None) -> Response:
-        """Convert this enquiry — body: `{"quotation": <id>}`."""
-        from reservations.models import Quotation
+        """Convert this enquiry — body: `{"quotation": <id>}`.
 
+        Idempotent: a second :convert on an already-CONVERTED enquiry
+        returns the current state. The auto-conversion path (a Quotation
+        being accepted flips its parent enquiry inline) means an
+        operator's explicit convert call can race the implicit one;
+        treating the second hit as an error would expose the race to the
+        UI as a 409.
+        """
         enquiry = self.get_object()
+        if enquiry.status == EnquiryStatus.CONVERTED.value:
+            return Response(EnquiryDetailSerializer(enquiry).data)
         quotation_id = request.data.get("quotation")
         quotation = get_object_or_404(Quotation, pk=quotation_id)
         enquiry.convert(quotation, actor=request.user)

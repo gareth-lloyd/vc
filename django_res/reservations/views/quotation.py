@@ -135,7 +135,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
         # otherwise the quotation gets stuck in ACCEPTED with no booking row.
         with transaction.atomic():
             if quotation.status == QuotationStatus.SENT:
-                quotation.accept(line)
+                quotation.accept(line, actor=request.user)
             booking = BookingService.create_from_quotation_line(
                 line,
                 terms_version=quotation.terms_version,

@@ -301,7 +301,7 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     api_client.force_login(staff)
 
     response = api_client.post(

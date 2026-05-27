@@ -229,7 +229,7 @@ def test_enquiry_is_converted_uses_prefetch_cache(
         adults=2,
         total=Decimal("1400.00"),
     )
-    enquiry.quote_sent(quotation)
+    enquiry.quote_sent(quotation, send_path="smtp")
     quotation.send()
     quotation.accept(line)
 

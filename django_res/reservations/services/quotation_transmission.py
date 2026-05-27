@@ -132,7 +132,7 @@ def _record_enquiry_quote_sent(
         # `enquiry.quote_sent` runs the transition + writes the EnquiryEvent
         # inside its own `transaction.atomic` block; the wrapping atomic on
         # `record_quote_sent` keeps the whole thing one savepoint.
-        enquiry.quote_sent(quotation, actor=actor, meta={"send_path": send_path})
+        enquiry.quote_sent(quotation, send_path=send_path, actor=actor)
         return
 
     # Enquiry already QUOTED/CONVERTED/LOST — don't transition, but the

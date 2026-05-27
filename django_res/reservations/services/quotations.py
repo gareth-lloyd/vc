@@ -99,8 +99,12 @@ class QuotationService:
                 quotation=quotation,
             )
 
-        # Move the enquiry forward.
+        # Move the enquiry forward. The service-layer path is the in-app
+        # SMTP flow — manual-mark goes via the dedicated endpoint, never
+        # through here — so the audit event is stamped accordingly.
         if enquiry.status not in (EnquiryStatus.QUOTED.value, EnquiryStatus.CONVERTED.value):
-            enquiry.quote_sent(quotation, actor=actor)
+            from reservations.services.quotation_transmission import SEND_PATH_SMTP
+
+            enquiry.quote_sent(quotation, send_path=SEND_PATH_SMTP, actor=actor)
 
         return quotation

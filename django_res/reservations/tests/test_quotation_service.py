@@ -92,6 +92,62 @@ def test_create_from_enquiry_requires_guest(
 
 
 @pytest.mark.django_db
+def test_create_from_enquiry_records_send_path_smtp(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """Bug #6: `QuotationService.create_from_enquiry` was calling
+    `enquiry.quote_sent(quotation, actor=actor)` with no `meta`, so the
+    resulting EnquiryEvent had no `send_path` key — breaking the invariant
+    the manual-mark endpoint relies on. The service path is SMTP by
+    contract (Quotation built off the back of an enquiry, dispatched
+    through the in-app flow), so the event must carry send_path='smtp'.
+    """
+    from reservations.enums import EnquiryEventKind
+    from reservations.models import EnquiryEvent
+
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+
+    QuotationService.create_from_enquiry(
+        enquiry,
+        [
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+                "adults": 2,
+            },
+        ],
+        currency=gbp,
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.QUOTE_SENT.value)
+    assert event.meta.get("send_path") == "smtp"
+
+
+@pytest.mark.django_db
+def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: TermsVersion) -> None:
+    """`Enquiry.quote_sent` must require `send_path` — surfacing the audit
+    contract in the signature so future callers can't omit it silently."""
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    quotation = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+
+    with pytest.raises(TypeError):
+        enquiry.quote_sent(quotation)  # type: ignore[call-arg]
+
+
+@pytest.mark.django_db
 def test_create_from_enquiry_enforces_changeover(
     guest: Guest,
     gbp: Currency,

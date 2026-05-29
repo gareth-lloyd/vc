@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 
 from .base import *  # noqa: F403
 
 # ImageField writes (e.g. PropertyFactory's hero image) are not rolled back
 # with the test transaction, so without this they accumulate in the source
 # tree. Park them in a throwaway temp dir instead.
-MEDIA_ROOT = tempfile.mkdtemp(prefix="villa-test-media-")
+MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="villa-test-media-"))
 
 DEBUG = False
 SECRET_KEY = "test-insecure-key"

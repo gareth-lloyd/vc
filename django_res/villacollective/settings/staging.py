@@ -13,6 +13,13 @@ ENVIRONMENT = "staging"
 # (Mirrors the explicit SEED_DEV_ALLOWED toggle in dev.py / test.py.)
 SEED_DEV_ALLOWED = True
 
+# `seed_dev` writes property imagery to MEDIA_ROOT at runtime, after the web
+# process has booted. WhiteNoise indexes files at boot, so without autorefresh
+# those images would 404 until a redeploy. Turn it on (the per-request
+# filesystem stat is fine for a demo env) so seeded villas render immediately.
+# Production leaves this off — real uploads belong in remote storage.
+WHITENOISE_AUTOREFRESH = True
+
 # Email safety: staging opens the SMTP gates inherited from production but
 # requires an explicit recipient allowlist so a stray send can never reach a
 # real guest. Boot-time guard refuses to start with real SMTP + empty list.

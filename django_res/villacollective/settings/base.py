@@ -43,7 +43,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    # WhiteNoise + media: serves static assets, the SPA build, and MEDIA_ROOT.
+    "core.middleware.MediaWhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -91,22 +92,46 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Uploaded / seeded media (e.g. PropertyImage), stored on local
+# FileSystemStorage and served by `core.middleware.MediaWhiteNoiseMiddleware`
+# (which mounts MEDIA_ROOT) in every environment. The `/media/` prefix keeps
+# uploads out of the SPA's root namespace so they don't collide with
+# client-side routes (`/properties/:id`); `villacollective.urls` excludes
+# `media/` from the SPA catch-all so a missing file 404s instead of returning
+# the shell. `test` settings override MEDIA_ROOT to a throwaway temp dir.
+#
+# NOTE: WhiteNoise indexes files at boot; runtime-written media (a live
+# `seed_dev` run, a user upload) is only served when WHITENOISE_AUTOREFRESH is
+# on — default under DEBUG, enabled on staging. Production uploads at scale
+# should move to remote storage (see PropertyImageWriteSerializer's signed-URL
+# write path), which would replace the WhiteNoise media mount.
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
 # Single-origin SPA: the built Vite bundle is copied here by the Docker
-# build. When present, WhiteNoise serves it at the site root (hashed assets
-# get far-future caching; index.html stays uncached) and `core.spa_index`
-# is the client-side-routing history fallback. Absent in a local checkout —
-# dev serves the SPA via the Vite proxy, so the guard keeps base untouched.
+# build. When present, WhiteNoise serves the hashed assets (far-future
+# caching) and `core.spa_index` is the client-side-routing history fallback.
+# Absent in a local checkout — dev serves the SPA via the Vite proxy, so the
+# guard keeps base untouched.
+#
+# `WHITENOISE_INDEX_FILE` stays OFF (load-bearing): with it enabled,
+# WhiteNoiseMiddleware serves `index.html` for `/` directly, short-circuiting
+# the view layer so `core.spa_index`'s `@ensure_csrf_cookie` never fires. A
+# fresh visitor to `/` then has no `csrftoken` cookie and their first login
+# POST is 403'd by CsrfViewMiddleware — the recurring "log in twice" bug. With
+# it off, every HTML entry point falls through to `spa_index`, which primes
+# the cookie; WhiteNoise still serves `/assets/*` and the literal `/index.html`.
 SPA_ROOT = BASE_DIR / "frontend_dist"
+WHITENOISE_INDEX_FILE = False
 if SPA_ROOT.is_dir():
     WHITENOISE_ROOT = SPA_ROOT
-    WHITENOISE_INDEX_FILE = True
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],

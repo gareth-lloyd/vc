@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 
 from properties import factories, models
-from properties.enums import PropertyStatus
+from properties.enums import ImageKind, PropertyStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -46,6 +46,48 @@ def test_property_factory_builds_full_graph() -> None:
 
 def test_property_slug_unique_across_runs() -> None:
     assert factories.PropertyFactory().slug != factories.PropertyFactory().slug
+
+
+def test_villa_manifest_lists_only_entries_with_imagery() -> None:
+    """The committed pool drives manifest-coherent seeding; every returned
+    entry must have the keys the `properties` stage reads and a `hero.jpg`.
+
+    Skips when the (optional) pool is absent — the seeder falls back to random
+    data without it, so a checkout that has removed seed_data/ stays green."""
+    villas = factories.villa_manifest()
+    if not villas:
+        pytest.skip("villa image pool not present (core/seed_data/villa_images)")
+    required = {"slug", "display_name", "location_tag", "country_iso2", "style_anchor"}
+    for villa in villas:
+        assert required <= villa.keys()
+        assert (factories._SEED_IMAGE_ROOT / villa["slug"] / "hero.jpg").is_file()
+
+
+def test_property_factory_draws_identity_and_hero_from_manifest_villa() -> None:
+    """`children__villa` makes the description and HERO image come from the
+    manifest villa rather than the random/placeholder fallback.
+
+    Skips without the optional image pool (see the manifest test above)."""
+    villas = factories.villa_manifest()
+    if not villas:
+        pytest.skip("villa image pool not present (core/seed_data/villa_images)")
+    villa = villas[0]
+    region = factories.RegionFactory(
+        country=factories.CountryFactory(iso2=villa["country_iso2"]),
+        name="Test locality",
+    )
+    prop = cast(
+        models.Property,
+        factories.PropertyFactory(
+            display_name=villa["display_name"],
+            region=region,
+            children__villa=villa,
+        ),
+    )
+    assert prop.display_name == villa["display_name"]
+    assert prop.descriptions.get().body == villa["style_anchor"].strip()
+    # A real JPEG, not the ~70-byte 1x1 placeholder.
+    assert prop.images.get(kind=ImageKind.HERO).image.size > 1000
 
 
 def test_room_and_feature_factories() -> None:

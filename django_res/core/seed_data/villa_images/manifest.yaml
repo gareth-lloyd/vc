@@ -1,0 +1,281 @@
+# Villa image generation manifest — single source of truth for the
+# `generate_seed_images` management command AND for manifest-coherent property
+# seeding (`seed_dev`). Edit this to expand or re-roll the dev/staging pool,
+# then re-run the command.
+#
+# Each entry produces four JPEGs under villa_<slug>/: hero, interior,
+# exterior, gallery. A shared style preamble (defined in the command, not
+# here) is prepended to every prompt so the 80 images stay stylistically
+# coherent without boilerplate in each line. The four prompt keys map 1:1 to
+# the generated filenames and to the seeded `ImageKind` values.
+#
+# Seeding (`core/seed/stages/properties.py`) cycles these entries, exhausting
+# every villa before repeating, and builds each property from the entry:
+#   display_name  -> Property.display_name
+#   location_tag  -> Region name / locality (text before the last comma)
+#   country_iso2  -> Country (reuses the migration-seeded ISO-3166 row)
+#   style_anchor  -> PropertyDescription body
+#   <slug>/*.jpg  -> PropertyImage rows
+#
+# Slugs must stay filesystem-safe (used as directory names) and stable.
+# country_iso2 must be a seeded ISO-3166 alpha-2 code (properties.0009).
+
+- slug: villa_01_amalfi
+  display_name: Villa Amalfi
+  location_tag: "Amalfi Coast, Italy"
+  country_iso2: IT
+  style_anchor: >
+    Mediterranean cliff-edge villa, whitewashed walls, terracotta roof,
+    lemon trees, infinity pool overlooking the Tyrrhenian Sea.
+  prompts:
+    hero: "Wide exterior at golden hour, cypress-lined drive, sea beyond the pool."
+    interior: "Sun-drenched open-plan living room with linen sofas and arched windows."
+    exterior: "Infinity pool deck with sun loungers and a sweeping sea view."
+    gallery: "Principal bedroom with an arched window framing the coastline."
+
+- slug: villa_02_provence
+  display_name: Mas de Provence
+  location_tag: "Provence, France"
+  country_iso2: FR
+  style_anchor: >
+    Restored Provencal stone farmhouse (mas), lavender fields, plane trees,
+    pale shutters, gravel courtyard with a fountain.
+  prompts:
+    hero: "Stone facade with blue shutters at dusk, lavender rows in the foreground."
+    interior: "Rustic-chic kitchen with a long oak table and exposed beams."
+    exterior: "Shaded gravel courtyard with a stone fountain and wrought-iron chairs."
+    gallery: "Bedroom with toile linens and a window over the lavender field."
+
+- slug: villa_03_mykonos
+  display_name: Villa Mykonos
+  location_tag: "Mykonos, Greece"
+  country_iso2: GR
+  style_anchor: >
+    Cubist Cycladic villa, brilliant white render, blue accents, bougainvillea,
+    dry-stone walls above an Aegean bay.
+  prompts:
+    hero: "Whitewashed terraces cascading toward the Aegean at golden hour."
+    interior: "Minimalist living space, white plaster, low built-in seating, linen drapes."
+    exterior: "Curved pool edge meeting the sea horizon, bougainvillea spilling over a wall."
+    gallery: "Bright bedroom with a vaulted ceiling and a blue-shuttered window."
+
+- slug: villa_04_ibiza
+  display_name: Finca Ibiza
+  location_tag: "Ibiza, Spain"
+  country_iso2: ES
+  style_anchor: >
+    Modern Ibizan finca, smooth white organic forms, sabina-wood beams,
+    cactus garden, sunset-facing pool.
+  prompts:
+    hero: "Sculptural white villa among pines and cacti, warm evening light."
+    interior: "Open living room with microcement walls, neutral linens, sabina beams."
+    exterior: "Long pool with a chill-out daybed terrace facing the sunset."
+    gallery: "Calm bedroom in earth tones with a private terrace door."
+
+- slug: villa_05_santorini
+  display_name: Villa Caldera
+  location_tag: "Santorini, Greece"
+  country_iso2: GR
+  style_anchor: >
+    Cave-style Santorini villa carved into the caldera, curved white walls,
+    private plunge pool, view of the volcano and blue domes.
+  prompts:
+    hero: "Caldera-edge terrace with a plunge pool at sunset over the volcano."
+    interior: "Smooth white cave-room interior with a curved arch and soft daylight."
+    exterior: "Private plunge pool on a terrace overlooking blue-domed churches."
+    gallery: "Vaulted bedroom with a small window framing the deep blue sea."
+
+- slug: villa_06_tuscany
+  display_name: Podere Toscana
+  location_tag: "Tuscany, Italy"
+  country_iso2: IT
+  style_anchor: >
+    Tuscan country estate, warm stone walls, terracotta tiles, cypress avenue,
+    rolling vineyards and olive groves.
+  prompts:
+    hero: "Stone villa at the end of a cypress avenue, vineyards rolling behind."
+    interior: "Country kitchen with a hearth, copper pans, and a rustic dining table."
+    exterior: "Pool terrace with olive trees and a view over the vineyards."
+    gallery: "Warm bedroom with terracotta floors and shuttered windows."
+
+- slug: villa_07_cotedazur
+  display_name: Villa Riviera
+  location_tag: "Cote d'Azur, France"
+  country_iso2: FR
+  style_anchor: >
+    Belle-Epoque Riviera villa, pastel rendered facade, manicured gardens,
+    palm trees, balustraded terrace above the Mediterranean.
+  prompts:
+    hero: "Pastel belle-epoque facade with palms and a balustraded sea terrace."
+    interior: "Elegant salon with tall windows, parquet floors, and refined furniture."
+    exterior: "Formal garden terrace with a fountain and a view of the bay."
+    gallery: "Refined bedroom with French doors opening to a sea-view balcony."
+
+- slug: villa_08_marbella
+  display_name: Villa Marbella
+  location_tag: "Marbella, Spain"
+  country_iso2: ES
+  style_anchor: >
+    Contemporary Andalusian villa, clean white geometry, floor-to-ceiling glass,
+    palm-lined infinity pool, mountain backdrop.
+  prompts:
+    hero: "Modern white villa with glass walls and a palm-lined infinity pool."
+    interior: "Double-height living room with marble floors and designer furniture."
+    exterior: "Infinity pool at dusk with the Sierra Blanca mountains behind."
+    gallery: "Suite with a glass wall sliding open onto the pool terrace."
+
+- slug: villa_09_barbados
+  display_name: Villa Coral Bay
+  location_tag: "Barbados, Caribbean"
+  country_iso2: BB
+  style_anchor: >
+    Caribbean colonial-modern villa, coral-stone walls, white louvred shutters,
+    tropical garden, turquoise sea and white-sand beach.
+  prompts:
+    hero: "Coral-stone villa with louvred shutters fronting a turquoise sea."
+    interior: "Breezy open living pavilion with rattan furniture and ceiling fans."
+    exterior: "Beachfront pool deck with palms and a white-sand shoreline."
+    gallery: "Airy bedroom with four-poster bed and open doors to the sea breeze."
+
+- slug: villa_10_stbarts
+  display_name: Villa St Barths
+  location_tag: "Saint-Barthelemy, Caribbean"
+  country_iso2: BL
+  style_anchor: >
+    Chic hillside St Barths villa, weathered-wood and stone, infinity pool,
+    cactus and frangipani, view over a yacht-dotted bay.
+  prompts:
+    hero: "Hillside villa with an infinity pool overlooking a yacht-filled bay."
+    interior: "Sleek living space mixing teak, stone, and white upholstery."
+    exterior: "Deck with sun loungers, frangipani, and a glittering sea view."
+    gallery: "Bedroom opening fully to a private terrace and ocean panorama."
+
+- slug: villa_11_bali
+  display_name: Villa Ubud
+  location_tag: "Ubud, Bali"
+  country_iso2: ID
+  style_anchor: >
+    Tropical Balinese villa, alang-alang thatched roof, dark timber, open
+    pavilions, lush jungle and emerald rice-terrace views.
+  prompts:
+    hero: "Thatched-roof villa above emerald rice terraces in soft morning light."
+    interior: "Open-air living pavilion with carved timber and tropical greenery."
+    exterior: "Stone-edged pool surrounded by palms and jungle, mist rising."
+    gallery: "Canopy bed under a soaring thatched ceiling, jungle beyond."
+
+- slug: villa_12_phuket
+  display_name: Villa Andaman
+  location_tag: "Phuket, Thailand"
+  country_iso2: TH
+  style_anchor: >
+    Modern tropical Thai villa, dark wood and glass, reflecting pool, sala
+    pavilion, hillside view over the Andaman Sea.
+  prompts:
+    hero: "Glass-walled villa with a reflecting pool above the Andaman Sea."
+    interior: "Living room flowing onto a deck through full-height sliding glass."
+    exterior: "Sala pavilion beside a long pool with a sunset sea view."
+    gallery: "Master suite with a freestanding tub facing the ocean."
+
+- slug: villa_13_chamonix
+  display_name: Chalet Mont Blanc
+  location_tag: "Chamonix, France"
+  country_iso2: FR
+  style_anchor: >
+    Luxury alpine chalet, aged timber and stone, steep snow-laden roof, large
+    windows framing Mont Blanc, warm interior glow.
+  prompts:
+    hero: "Timber chalet in fresh snow at dusk, Mont Blanc lit pink behind."
+    interior: "Cosy double-height lounge with a stone fireplace and sheepskin throws."
+    exterior: "Snow terrace with a hot tub steaming against an alpine panorama."
+    gallery: "Wood-clad bedroom with a balcony view of snowy peaks."
+
+- slug: villa_14_verbier
+  display_name: Chalet Verbier
+  location_tag: "Verbier, Switzerland"
+  country_iso2: CH
+  style_anchor: >
+    Contemporary Swiss chalet, blond wood and glass, ski-in/ski-out, sleek
+    interiors, panoramic Alpine valley view.
+  prompts:
+    hero: "Modern chalet with glass gables glowing at twilight in deep snow."
+    interior: "Open living area in pale wood with a suspended fireplace."
+    exterior: "Sun deck with loungers overlooking a snow-filled valley."
+    gallery: "Minimalist bedroom with a floor-to-ceiling mountain view."
+
+- slug: villa_15_algarve
+  display_name: Quinta do Algarve
+  location_tag: "Algarve, Portugal"
+  country_iso2: PT
+  style_anchor: >
+    Whitewashed Algarve quinta, terracotta details, azulejo tiles, fig and
+    almond trees, pool above golden sea cliffs.
+  prompts:
+    hero: "Whitewashed villa with terracotta trim above golden sea cliffs."
+    interior: "Bright living room with azulejo accents and rustic wood beams."
+    exterior: "Tiled pool terrace with loungers and an Atlantic cliff view."
+    gallery: "Calm bedroom with blue-and-white tilework and a sea-facing window."
+
+- slug: villa_16_comolake
+  display_name: Villa Lago di Como
+  location_tag: "Lake Como, Italy"
+  country_iso2: IT
+  style_anchor: >
+    Classic Lake Como villa, ochre facade, formal lakeside gardens, statuary,
+    boat dock, mountains rising across the water.
+  prompts:
+    hero: "Ochre lakeside villa with formal gardens reflected in calm water."
+    interior: "Frescoed salon with tall shuttered windows over the lake."
+    exterior: "Lakeside terrace with cypress, statuary, and a private dock."
+    gallery: "Elegant bedroom with a balcony framing the lake and mountains."
+
+- slug: villa_17_mallorca
+  display_name: Finca Mallorca
+  location_tag: "Mallorca, Spain"
+  country_iso2: ES
+  style_anchor: >
+    Tramuntana stone finca, terraced olive groves, green shutters, vaulted
+    interiors, pool with mountain-and-sea backdrop.
+  prompts:
+    hero: "Stone finca among terraced olive groves with a pool and sea beyond."
+    interior: "Vaulted living room with stone arches and natural linen sofas."
+    exterior: "Pool terrace ringed by olive trees below the Tramuntana ridge."
+    gallery: "Bedroom with exposed beams and green shutters open to the hills."
+
+- slug: villa_18_tulum
+  display_name: Casa Tulum
+  location_tag: "Tulum, Mexico"
+  country_iso2: MX
+  style_anchor: >
+    Bohemian Tulum beach villa, smooth tadelakt walls, macrame and rattan,
+    palapa roof, jungle meeting a white Caribbean beach.
+  prompts:
+    hero: "Palapa-roofed beach villa where jungle meets a white Caribbean shore."
+    interior: "Earthy living space with tadelakt walls, rattan, and woven textures."
+    exterior: "Plunge pool in a jungle garden steps from the turquoise sea."
+    gallery: "Serene bedroom with a canopy bed and ocean breeze through open doors."
+
+- slug: villa_19_capferrat
+  display_name: Villa Cap Ferrat
+  location_tag: "Saint-Jean-Cap-Ferrat, France"
+  country_iso2: FR
+  style_anchor: >
+    Grand Cap Ferrat estate, neoclassical facade, pine-shaded gardens, marble
+    terrace, infinity pool over the Mediterranean.
+  prompts:
+    hero: "Neoclassical villa with a marble terrace and infinity pool over the sea."
+    interior: "Refined double-height salon with chandeliers and sea-view windows."
+    exterior: "Pine-shaded garden path leading to a clifftop pool terrace."
+    gallery: "Opulent suite with French doors onto a Mediterranean-view balcony."
+
+- slug: villa_20_corfu
+  display_name: Villa Corfu
+  location_tag: "Corfu, Greece"
+  country_iso2: GR
+  style_anchor: >
+    Ionian villa among cypress and olive groves, pale stone and pastel render,
+    arched loggia, pool above a quiet turquoise cove.
+  prompts:
+    hero: "Pastel villa with an arched loggia above a turquoise Ionian cove."
+    interior: "Airy living room with arches, soft pastels, and sea-view doors."
+    exterior: "Pool terrace framed by cypress trees overlooking the cove."
+    gallery: "Light bedroom with shutters opening to olive groves and sea."

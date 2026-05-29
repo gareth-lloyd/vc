@@ -182,6 +182,11 @@ class SeedContext:
     # Shared collections, populated as stages run.
     currencies: dict[str, Any] = field(default_factory=dict)
     properties: list[Any] = field(default_factory=list)
+    # property pk -> manifest villa slug, when a property was seeded from the
+    # villa manifest. Lets the `gallery` stage load non-HERO images from the
+    # same villa the `properties` stage assigned (and which the factory used
+    # for the HERO), keeping each property's image set coherent.
+    property_villa: dict[int, str] = field(default_factory=dict)
     groups: list[Any] = field(default_factory=list)
     guest_pool: list[Any] = field(default_factory=list)
     terms: list[Any] = field(default_factory=list)

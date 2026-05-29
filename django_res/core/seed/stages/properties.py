@@ -28,7 +28,13 @@ from pricing.factories import (
     RateRuleFactory,
 )
 from properties.enums import PrefilledChangeOverDay
-from properties.factories import ChangeOverRuleFactory, PropertyFactory
+from properties.factories import (
+    ChangeOverRuleFactory,
+    PropertyFactory,
+    RegionFactory,
+    villa_manifest,
+)
+from properties.models import Country
 
 
 def _run(ctx: SeedContext) -> int:
@@ -53,12 +59,29 @@ def _run(ctx: SeedContext) -> int:
 
     currency_pool: list[Any] = list(ctx.currencies.values()) or [ctx.default_currency]
     group_pool: list[Any] = list(ctx.groups)
+    # Villa entries with generated imagery. Cycling this list assigns each
+    # property a real villa identity (name/location/description) coherent with
+    # its imagery, exhausting every villa before any repeats. Empty without the
+    # generated pool -> properties keep the legacy random shape.
+    villa_pool: list[dict[str, Any]] = villa_manifest()
 
     for i in range(ctx.n_properties):
         currency = currency_pool[i % len(currency_pool)]
         extra_kwargs: dict[str, Any] = {}
         if group_pool:
             extra_kwargs["group"] = group_pool[i % len(group_pool)]
+        villa = villa_pool[i % len(villa_pool)] if villa_pool else None
+        if villa is not None:
+            # Reuse the migration-seeded Country row and name the Region after
+            # the villa's location so the property reads coherently with its
+            # imagery. `.get` (not get_or_create) so a manifest country_iso2
+            # absent from the ISO-3166 seed fails loudly instead of creating a
+            # malformed Country row.
+            country = Country.objects.get(iso2=villa["country_iso2"])
+            locality = villa["location_tag"].rsplit(",", 1)[0].strip()
+            extra_kwargs["display_name"] = villa["display_name"]
+            extra_kwargs["region"] = RegionFactory(country=country, name=locality)
+            extra_kwargs["children__villa"] = villa
         # Pre-approval is meaningless without an owner to approve, so a
         # property flagged for pre-approval must also get a primary owner
         # contact — otherwise the owner-approval email handler skips and
@@ -73,6 +96,8 @@ def _run(ctx: SeedContext) -> int:
                 **extra_kwargs,
             ),
         )
+        if villa is not None:
+            ctx.property_villa[prop.pk] = villa["slug"]
         if wants_pre_approval:
             prop.settings.bookings_require_pre_approval = True
             prop.settings.save(update_fields=["bookings_require_pre_approval"])

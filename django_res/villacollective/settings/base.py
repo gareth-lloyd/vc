@@ -10,6 +10,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
 
+# Load the repo-root `.env` (BASE_DIR is `django_res/`; the env file lives one
+# level up alongside docker-compose) so secrets (DATABASE_URL, OPEN_AI_API_KEY,
+# …) can live there for local commands. Real environment variables still take
+# precedence — read_env only fills in keys not already set in os.environ.
+environ.Env.read_env(BASE_DIR.parent / ".env")
+
 SECRET_KEY = env.str("DJANGO_SECRET_KEY", default="dev-insecure-change-me")
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
@@ -161,3 +167,5 @@ EMAIL_REAL_SENDS_ALLOWED = False
 # Entries are either an exact email or a `@domain.tld` suffix; matching is
 # case-insensitive. See `comms.recipient_allowlist.filter_recipients`.
 EMAIL_RECIPIENT_ALLOWLIST: list[str] = []
+
+OPEN_AI_API_KEY = env.str("OPEN_AI_API_KEY", default="")

@@ -23,6 +23,7 @@ Status icons:
 | [BUG-006](bug-006-payment-active-purpose-uniqueness.md) | `Payment.unique_active_payment_per_purpose` covers only DEPOSIT/BALANCE | ⬜ (refactor to three per-purpose constraints) |
 | [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✏️ **fix is wrong** — `pre_save` doesn't fire on `bulk_create` |
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ (decision-blocked) |
+| [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |
 
 ## 🟠 Footguns
 
@@ -47,6 +48,7 @@ Status icons:
 | [SMELL-004](smell-004-emaillog-content-hash-scope.md) | `EmailLog` content hash dedupe scope ambiguous | ⬜ (contract is documented in code — add pinning test or close) |
 | [SMELL-005](smell-005-residual-property-country-charfield.md) | Verify no residual `Property.country` free-text | ❌ DROPPED — verified clean |
 | [SMELL-006](smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default | ⬜ (**upgrade to 🟠 footgun**) |
+| [SMELL-007](smell-007-occupancy-fallback-doc-claim.md) | Spec misstates legacy occupancy fallback (not "highest bracket") | ⬜ (doc-only) |
 
 ## Open product questions
 
@@ -80,6 +82,9 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ⬜ (tracker) |
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy | ⬜ (tracker) |
 | [GAP-006](gap-006-legacy-reference-format-parity.md) | Customer-facing reference format must match legacy (`VC`/`QVC`) | ⬜ (decision made — ready to build) |
+| [GAP-007](gap-007-changeover-autoshift-parity.md) | Changeover auto-shift dropped vs legacy — reinstate | ⬜ (decision made — ready to build) |
+| [GAP-008](gap-008-no-rate-night-fallback-parity.md) | No-rate-for-night fallback dropped vs legacy — reinstate via `RatePlan.fallback_nightly` | ⬜ (decision made — ready to build) |
+| [GAP-009](gap-009-discount-loose-ends.md) | Discount loose ends: REPEAT_GUEST dead, `uses_count` inert, `DiscountApply` dropped | ⬜ (document + light clean-up) |
 
 ## Investigations
 

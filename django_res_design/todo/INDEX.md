@@ -93,7 +93,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [INV-001](inv-001-propertycontactassignment-owner-uniqueness.md) | `PropertyContactAssignment` owner uniqueness | ✅ closed — invariant present via `is_primary` |
 | [INV-002](inv-002-raterule-priority-tiebreak.md) | `RateRule.priority` tie-break behaviour | ✅ closed — deterministic + tested |
 | [INV-003](inv-003-refund-amount-sign-convention.md) | `Refund.amount` sign convention | ✅ closed — partition-by-purpose, no signed sum |
-| [INV-004](inv-004-syncrun-syncissue-retry.md) | `SyncRun` / `SyncIssue` failure handling | ⬜ (pre-Zoho checklist) |
+| [INV-004](inv-004-syncrun-syncissue-retry.md) | `SyncRun` / `SyncIssue` failure handling | ✅ closed — execution unbuilt (v1.1); schema adequate, retry-cap noted |
 | [INV-005](inv-005-legacy-id-indexing-consistency.md) | `legacy_id` indexing consistency | ✅ closed — contract holds |
 
 ## Cheapest first commits

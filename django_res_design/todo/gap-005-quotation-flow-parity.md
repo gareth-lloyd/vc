@@ -145,6 +145,19 @@ Priority order below reflects operator-pain / spec-commitment.
     acceptable for real quotes; wire a paginator only if a quote ever
     exceeds the cap.
 
+## Follow-up surfaced by code review (not yet fixed)
+
+- **Builder line create/update skips changeover validation.**
+  `QuotationLineViewSet.perform_create`/`perform_update` reprice the line but
+  do not call `ChangeoverService.validate_arrival` (nor place a hold) the way
+  `create_from_enquiry` and the `:convert` path do. A line added or re-dated
+  via `POST`/`PATCH /quotations/{id}/lines` can therefore land on a forbidden
+  changeover day unvalidated. Deferred here because reinstating it is a
+  behaviour change that overlaps
+  [GAP-007](gap-007-changeover-autoshift-parity.md) (changeover auto-shift
+  parity) — fix the two together, with an `allow_changeover_override` escape
+  mirroring `:convert`. (Hold placement on this path stays deferred per #3.)
+
 ## Approach
 
 Tracker ticket — each P1/P2 item becomes its own ticket. Suggested first

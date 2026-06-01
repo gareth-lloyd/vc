@@ -299,6 +299,18 @@ class PricingEngine:
 
 Steps:
 1. Resolve `RatePlan` for property + currency + date range.
+1a. **Changeover auto-shift (GAP-007):** before pricing, nudge a non-conforming
+   arrival forward to the next valid changeover weekday (legacy
+   `ResService.cs:2028-2041`). Allowed-weekday precedence: the active cards'
+   `changeover_weekday` when they agree on a single day; otherwise the property's
+   effective changeover day (`ChangeoverService` — `ChangeOverRule` window →
+   `PropertySettings`/group chain; `any` = no shift). `date_from` advances to the
+   next allowed weekday and `date_to` shifts by the **same delta** so the night
+   count is preserved (legacy kept `date_to` fixed, silently shortening the stay —
+   we don't). The original arrival is surfaced as `Quote.changeover_shifted_from`
+   (`None` when no shift). A winning card that still demands a weekday the
+   alignment couldn't satisfy raises `ChangeoverViolation` as a genuine-conflict
+   backstop (step 2).
 2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True` (provisional rules pass this filter — `is_provisional` does not hide a rule, it only flags the quote), then pick the highest-priority rule matching date + party. If any picked rule is `is_provisional`, set `Quote.is_provisional = True`. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` / `changeover_weekday` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` / `ChangeoverViolation` if the matched card's constraints fail.
    - **No-coverage fallback (GAP-008):** if no rule covers a night at all
      (`NoCoverage`) and the plan sets `RatePlan.fallback_nightly`, the night is

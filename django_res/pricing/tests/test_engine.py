@@ -421,3 +421,125 @@ def test_fallback_does_not_mask_party_out_of_range(
             party=99,  # rule bracket is 1..8
             currency=gbp,
         )
+
+
+# ---------------------------------------------------------------------------
+# GAP-007 — changeover auto-shift: nudge a non-conforming arrival forward
+# ---------------------------------------------------------------------------
+# 2026-06-10 is a Wednesday; 2026-06-13 a Saturday; 2026-06-15 a Monday.
+def _changeover_rule(property_: Property, day: str) -> None:
+    from properties.enums import PrefilledChangeOverDay
+    from properties.models import ChangeOverRule
+
+    ChangeOverRule.objects.create(
+        property=property_,
+        day=getattr(PrefilledChangeOverDay, day).value,
+        starts_on=date(2026, 6, 1),
+        ends_on=date(2026, 8, 31),
+    )
+
+
+@pytest.mark.django_db
+def test_changeover_shift_via_property_rule(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """A property Saturday-changeover rule nudges a Wednesday arrival to Sat,
+    preserving the night count and reporting the original date."""
+    _changeover_rule(property_, "SAT")
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),  # Wednesday
+        date_to=date(2026, 6, 17),  # 7 nights
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.changeover_shifted_from == date(2026, 6, 10)
+    assert quote.date_from == date(2026, 6, 13)  # next Saturday
+    assert quote.date_to == date(2026, 6, 20)  # nights preserved (7)
+    assert len(quote.lines) == 7
+    assert quote.lines[0].date == date(2026, 6, 13)
+    assert quote.breakdown["changeover_shifted_from"] == "2026-06-10"
+
+
+@pytest.mark.django_db
+def test_changeover_shift_via_card_weekday(
+    property_: Property, gbp: Currency, card: RateCard, rule: RateRule
+) -> None:
+    """A single card's `changeover_weekday` takes precedence and drives the shift."""
+    card.changeover_weekday = 5  # Saturday
+    card.save(update_fields=["changeover_weekday"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),  # Wednesday
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.changeover_shifted_from == date(2026, 6, 10)
+    assert quote.date_from == date(2026, 6, 13)
+    assert len(quote.lines) == 7
+
+
+@pytest.mark.django_db
+def test_no_shift_when_arrival_already_on_weekday(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    _changeover_rule(property_, "SAT")
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 13),  # already Saturday
+        date_to=date(2026, 6, 20),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.changeover_shifted_from is None
+    assert quote.date_from == date(2026, 6, 13)
+    assert quote.breakdown["changeover_shifted_from"] is None
+
+
+@pytest.mark.django_db
+def test_no_shift_when_no_changeover_rules(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """Zero ChangeOverRule rows + no card weekday → any day, no shift."""
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),  # Wednesday
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.changeover_shifted_from is None
+    assert quote.date_from == date(2026, 6, 10)
+
+
+@pytest.mark.django_db
+def test_genuine_card_vs_property_conflict_raises(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+) -> None:
+    """Cards disagree on changeover weekday → property rule decides alignment;
+    a winning card demanding a different weekday is a genuine conflict."""
+    from core.exceptions import ChangeoverViolation
+
+    # `card` (which owns `rule`) demands Saturday; a sibling demands Monday.
+    card.changeover_weekday = 5  # Saturday
+    card.save(update_fields=["changeover_weekday"])
+    RateCard.objects.create(plan=plan, name="Mon card", changeover_weekday=0, sort_order=1)
+    # Property forces Monday changeovers in the window.
+    _changeover_rule(property_, "MON")
+
+    with pytest.raises(ChangeoverViolation):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 6, 10),  # Wednesday → aligns to Monday 06-15
+            date_to=date(2026, 6, 17),
+            party=4,
+            currency=gbp,
+        )

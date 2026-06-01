@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from core.exceptions import ChangeoverViolation
@@ -57,6 +57,43 @@ class ChangeoverService:
             return property.settings.effective("changeover_day")
         except PropertySettings.DoesNotExist:
             return property.group.settings.changeover_day
+
+    @classmethod
+    def required_weekday(cls, property: Property, on_date: date) -> int | None:
+        """The property's required changeover weekday on `on_date`.
+
+        Returns a `date.weekday()` int (Mon=0..Sun=6), or `None` when the
+        effective day is `any` / unconstrained.
+        """
+        return _WEEKDAY.get(cls.effective_day(property, on_date))
+
+    @staticmethod
+    def align_forward(
+        allowed_weekdays: set[int],
+        date_from: date,
+        date_to: date,
+    ) -> tuple[date, date, date | None]:
+        """Advance `date_from` to the next allowed changeover weekday.
+
+        Legacy silently nudged a non-conforming arrival forward to the next
+        valid changeover day (`ResService.cs:2028-2041`). We preserve the
+        requested night count by shifting `date_to` by the same delta (legacy
+        kept `date_to` fixed, silently shortening the stay — we don't).
+
+        Returns `(new_from, new_to, shifted_from)` where `shifted_from` is the
+        original `date_from` when a shift happened, else `None`. No shift when
+        the allowed set is empty or the arrival is already valid.
+        """
+        if not allowed_weekdays or date_from.weekday() in allowed_weekdays:
+            return date_from, date_to, None
+        for delta in range(1, 8):
+            if (date_from + timedelta(days=delta)).weekday() in allowed_weekdays:
+                return (
+                    date_from + timedelta(days=delta),
+                    date_to + timedelta(days=delta),
+                    date_from,
+                )
+        return date_from, date_to, None  # unreachable: a 7-day window covers every weekday
 
     @classmethod
     def validate_arrival(

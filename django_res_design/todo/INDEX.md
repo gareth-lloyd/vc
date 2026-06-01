@@ -82,7 +82,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ⬜ (tracker) |
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy | ⬜ (tracker) |
 | [GAP-006](gap-006-legacy-reference-format-parity.md) | Customer-facing reference format must match legacy (`VC`/`QVC`) | ⬜ (decision made — ready to build) |
-| [GAP-007](gap-007-changeover-autoshift-parity.md) | Changeover auto-shift dropped vs legacy — reinstate | ⬜ (decision made — ready to build) |
+| [GAP-007](gap-007-changeover-autoshift-parity.md) | Changeover auto-shift dropped vs legacy — reinstate | ✅ resolved |
 | [GAP-008](gap-008-no-rate-night-fallback-parity.md) | No-rate-for-night fallback dropped vs legacy — reinstate via `RatePlan.fallback_nightly` | ✅ resolved |
 | [GAP-009](gap-009-discount-loose-ends.md) | Discount loose ends: REPEAT_GUEST dead, `uses_count` inert, `DiscountApply` dropped | ⬜ (document + light clean-up) |
 

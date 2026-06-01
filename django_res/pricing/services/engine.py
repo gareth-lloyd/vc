@@ -38,6 +38,7 @@ from pricing.services.rates import (
     pick_rule_for_night,
     rule_nightly,
 )
+from properties.services.changeover import ChangeoverService
 
 
 class PricingEngine:
@@ -61,7 +62,6 @@ class PricingEngine:
         if party <= 0:
             raise PartyOutOfRange("party must be a positive integer")
 
-        stay_nights = nights(date_from, date_to)
         as_of = as_of or date.today()
 
         plan = cls._resolve_plan(property, currency, date_from, date_to)
@@ -73,6 +73,24 @@ class PricingEngine:
             raise NoRateAvailable(
                 f"No active RateCard on plan {plan.pk} for {date_from}..{date_to}"
             )
+
+        # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
+        # arrival forward to the next valid changeover weekday rather than
+        # rejecting it. Card-level `changeover_weekday` takes precedence when
+        # the active cards agree on a single day; otherwise the property's
+        # effective changeover day (ChangeOverRule window → settings chain)
+        # decides. An empty set / `any` means no shift.
+        card_weekdays = {c.changeover_weekday for c in cards if c.changeover_weekday is not None}
+        if len(card_weekdays) == 1:
+            allowed_weekdays = card_weekdays
+        else:
+            property_weekday = ChangeoverService.required_weekday(property, date_from)
+            allowed_weekdays = {property_weekday} if property_weekday is not None else set()
+        date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
+            allowed_weekdays, date_from, date_to
+        )
+
+        stay_nights = nights(date_from, date_to)
 
         rules_by_card: dict[int, list[RateRule]] = {}
         for rule in RateRule.objects.filter(card__in=cards, is_approved=True):
@@ -232,6 +250,9 @@ class PricingEngine:
             "net_to_owner": str(net_to_owner),
             "plan_id": plan.pk,
             "winning_card_id": winning_card.pk if winning_card is not None else None,
+            "changeover_shifted_from": (
+                changeover_shifted_from.isoformat() if changeover_shifted_from is not None else None
+            ),
         }
 
         return Quote(
@@ -249,6 +270,7 @@ class PricingEngine:
             tax=tax,
             total=total,
             net_to_owner=net_to_owner,
+            changeover_shifted_from=changeover_shifted_from,
             breakdown=breakdown,
         )
 

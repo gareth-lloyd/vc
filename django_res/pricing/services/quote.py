@@ -69,4 +69,5 @@ class Quote:
     tax: Decimal
     total: Decimal
     net_to_owner: Decimal
+    changeover_shifted_from: date | None = None
     breakdown: dict[str, Any] = field(default_factory=dict)

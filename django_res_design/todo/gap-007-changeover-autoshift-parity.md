@@ -66,6 +66,20 @@ Reintroduce the auto-shift. Chosen semantics:
 - `04-pricing.md` step 2 documents the alignment + night-preservation rule +
   the `changeover_shifted_from` output; `10-decisions.md` records the reinstatement.
 
+## Resolution
+
+✅ Added `ChangeoverService.required_weekday` + `ChangeoverService.align_forward`
+(pure shift, night-count preserving) in `properties/services/changeover.py`.
+`PricingEngine.quote()` resolves the allowed weekday set (card `changeover_weekday`
+if the active cards agree on one, else the property's effective day) and aligns
+`date_from`/`date_to` before the night loop. `Quote.changeover_shifted_from`
+(+ breakdown key) surfaces the original arrival. `_validate_card_against_stay`'s
+existing `changeover_weekday` branch now runs on the shifted date as the
+genuine-conflict backstop. Tests in `pricing/tests/test_engine.py`
+(property-rule shift, card-weekday shift, no-shift-when-valid,
+no-shift-when-no-rules, genuine card-vs-property conflict). Docs: `04-pricing.md`
+step 1a, `09-departures.md`, `10-decisions.md`.
+
 ## Dependencies
 
 - Sibling of [GAP-008](gap-008-no-rate-night-fallback-parity.md) (the other

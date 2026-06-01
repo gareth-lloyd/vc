@@ -26,20 +26,23 @@ from reservations.serializers import (
 )
 
 
+def _quotations_prefetch() -> Prefetch:
+    """The quote-stack prefetch the detail serializer walks (`.quotations.lines`)."""
+    return Prefetch(
+        "quotations",
+        queryset=Quotation.objects.select_related(
+            "guest", "agent", "currency", "enquiry"
+        ).prefetch_related("lines"),
+    )
+
+
 def _detail_queryset() -> Any:
     """Enquiry queryset shaped for the detail serializer — FKs joined and the
     quote-stack prefetched so `EnquiryDetailSerializer` walks `.quotations.lines`
     without an N+1."""
     return Enquiry.objects.select_related(
         "guest", "property", "region", "agent", "assigned_to"
-    ).prefetch_related(
-        Prefetch(
-            "quotations",
-            queryset=Quotation.objects.select_related(
-                "guest", "agent", "currency", "enquiry"
-            ).prefetch_related("lines"),
-        )
-    )
+    ).prefetch_related(_quotations_prefetch())
 
 
 class EnquiryViewSet(viewsets.ModelViewSet):
@@ -61,14 +64,7 @@ class EnquiryViewSet(viewsets.ModelViewSet):
             "update",
             "partial_update",
         ):
-            qs = qs.prefetch_related(
-                Prefetch(
-                    "quotations",
-                    queryset=Quotation.objects.select_related(
-                        "guest", "agent", "currency", "enquiry"
-                    ).prefetch_related("lines"),
-                )
-            )
+            qs = qs.prefetch_related(_quotations_prefetch())
         return qs
 
     def get_serializer_class(self) -> type:

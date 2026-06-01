@@ -174,6 +174,12 @@ class RateRuleLoader(BaseLoader):
         # If only Price is set, treat it as nightly.
         if nightly is None and weekly is None and price is not None:
             nightly = price
+        if is_poa:
+            # POA wins over any numeric price: raterule_poa_excludes_price
+            # forbids both, and a hidden "on application" price must never
+            # resurface as a concrete rate.
+            nightly = None
+            weekly = None
         return {
             "card": card,
             "date_from": date_from,

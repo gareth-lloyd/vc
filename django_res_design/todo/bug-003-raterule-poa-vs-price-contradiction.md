@@ -38,3 +38,17 @@ combined predicate is harder to reason about.)
 ## Dependencies
 
 None.
+
+## Resolution
+
+✅ Kept the existing floor constraint `raterule_has_price_or_poa` and added a
+separate mutex `raterule_poa_excludes_price`
+(`is_poa=False OR (nightly IS NULL AND weekly IS NULL)`) in
+`pricing/models/rate.py`; migration `pricing/0007`. Split rather than combined
+for readability, as the ticket suggested.
+
+`RateRuleLoader._process_row` now nulls `nightly`/`weekly` when `IsPOA` is set —
+POA wins so a legacy "on application" price can never resurface as a concrete
+rate. Tests: `test_raterule_poa_cannot_coexist_with_{nightly,weekly}`
+(`pricing/tests/test_rate.py`) and `test_transform_poa_drops_price`
+(`data_migration/tests/test_rate_rule_loader.py`).

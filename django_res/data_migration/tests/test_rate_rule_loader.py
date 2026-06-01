@@ -116,3 +116,25 @@ def test_transform_keeps_poa_rows(loaded_card: RateCard) -> None:
     )
     assert kwargs is not None
     assert kwargs["is_poa"] is True
+
+
+@pytest.mark.django_db
+def test_transform_poa_drops_price(loaded_card: RateCard) -> None:
+    """POA wins over a numeric price — raterule_poa_excludes_price forbids both."""
+    kwargs = RateRuleLoader().transform(
+        _row(WeeklyPrice=Decimal("1000"), NightlyPrice=Decimal("200"), IsPOA=True),
+    )
+    assert kwargs is not None
+    assert kwargs["is_poa"] is True
+    assert kwargs["nightly"] is None
+    assert kwargs["weekly"] is None
+
+
+@pytest.mark.django_db
+def test_transform_skips_zero_length_range(loaded_card: RateCard) -> None:
+    assert (
+        RateRuleLoader().transform(
+            _row(FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 1)),
+        )
+        is None
+    )

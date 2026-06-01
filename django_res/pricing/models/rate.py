@@ -113,6 +113,13 @@ class RateRule(AuditedModel):
                 ),
                 name="raterule_has_price_or_poa",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_poa=False)
+                    | (models.Q(nightly__isnull=True) & models.Q(weekly__isnull=True))
+                ),
+                name="raterule_poa_excludes_price",
+            ),
         ]
         indexes = [
             models.Index(fields=["card", "date_from", "date_to"]),

@@ -75,3 +75,32 @@ def test_raterule_poa_allowed_without_prices(card: RateCard) -> None:
         is_poa=True,
     )
     assert rr.pk is not None
+
+
+@pytest.mark.django_db
+def test_raterule_poa_cannot_coexist_with_nightly(card: RateCard) -> None:
+    """`is_poa=True` plus a numeric price are contradictory signals."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RateRule.objects.create(
+            card=card,
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 30),
+            min_party=1,
+            max_party=4,
+            is_poa=True,
+            nightly=Decimal("50"),
+        )
+
+
+@pytest.mark.django_db
+def test_raterule_poa_cannot_coexist_with_weekly(card: RateCard) -> None:
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RateRule.objects.create(
+            card=card,
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 30),
+            min_party=1,
+            max_party=4,
+            is_poa=True,
+            weekly=Decimal("350"),
+        )

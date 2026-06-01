@@ -26,6 +26,22 @@ from reservations.serializers import (
 )
 
 
+def _detail_queryset() -> Any:
+    """Enquiry queryset shaped for the detail serializer — FKs joined and the
+    quote-stack prefetched so `EnquiryDetailSerializer` walks `.quotations.lines`
+    without an N+1."""
+    return Enquiry.objects.select_related(
+        "guest", "property", "region", "agent", "assigned_to"
+    ).prefetch_related(
+        Prefetch(
+            "quotations",
+            queryset=Quotation.objects.select_related(
+                "guest", "agent", "currency", "enquiry"
+            ).prefetch_related("lines"),
+        )
+    )
+
+
 class EnquiryViewSet(viewsets.ModelViewSet):
     """`/enquiries` CRUD plus colon-verb action endpoints."""
 
@@ -61,6 +77,39 @@ class EnquiryViewSet(viewsets.ModelViewSet):
         if self.action in ("create", "update", "partial_update"):
             return EnquiryWriteSerializer
         return EnquiryDetailSerializer
+
+    def _detail_response(
+        self, enquiry: Enquiry, status_code: int, headers: dict[str, str] | None = None
+    ) -> Response:
+        """Re-serialise a written enquiry in detail shape.
+
+        Writes validate with `EnquiryWriteSerializer`, but the response must
+        carry the server-assigned `id`/`reference`/`status` and computed fields
+        the SPA parses — so re-fetch through the prefetched detail queryset and
+        serialise with `EnquiryDetailSerializer`. Mirrors `BookingViewSet._refresh`.
+        """
+        fresh = _detail_queryset().get(pk=enquiry.pk)
+        serializer = EnquiryDetailSerializer(fresh, context=self.get_serializer_context())
+        return Response(serializer.data, status=status_code, headers=headers)
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        write = self.get_serializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        self.perform_create(write)
+        headers = self.get_success_headers(write.data)
+        enquiry = write.instance
+        assert enquiry is not None  # populated by save()
+        return self._detail_response(enquiry, status.HTTP_201_CREATED, headers)
+
+    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        write = self.get_serializer(instance, data=request.data, partial=partial)
+        write.is_valid(raise_exception=True)
+        self.perform_update(write)
+        enquiry = write.instance
+        assert enquiry is not None  # populated by save()
+        return self._detail_response(enquiry, status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
     # Action endpoints

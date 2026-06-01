@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts.enums import StaffRole
 from accounts.models import User
+from core.tests import assert_max_queries
 from pricing.models import Currency
 from reservations.enums import EnquiryStatus
 from reservations.models import (
@@ -112,6 +113,57 @@ def test_create_enquiry(api_client: APIClient, staff: User, guest: Guest) -> Non
 
     assert response.status_code == 201
     assert Enquiry.objects.filter(email="ada@new.example.com").exists()
+    # The 201 body must be detail-shaped so the SPA can parse it: it carries
+    # the server-assigned id/reference/status and computed name fields that the
+    # write serializer omits.
+    created = Enquiry.objects.get(email="ada@new.example.com")
+    assert response.data["id"] == created.pk
+    assert response.data["reference"] == created.reference
+    assert response.data["reference"]
+    assert response.data["status"] == EnquiryStatus.NEW.value
+    assert response.data["guest_name"] == "Ada Lovelace"
+    assert response.data["quotations"] == []
+
+
+@pytest.mark.django_db
+def test_create_enquiry__stays_query_bounded(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The detail re-serialisation must re-fetch through the prefetched
+    queryset — no N+1 walking the (empty) quote-stack."""
+    api_client.force_login(staff)
+    with assert_max_queries(12):
+        response = api_client.post(
+            "/api/v1/enquiries",
+            {
+                "guest": guest.pk,
+                "first_name": "Grace",
+                "last_name": "Hopper",
+                "email": "grace@new.example.com",
+                "adults": 2,
+            },
+            format="json",
+        )
+    assert response.status_code == 201
+
+
+@pytest.mark.django_db
+def test_update_enquiry_returns_detail_shape(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"first_name": "Augusta"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["id"] == enquiry.pk
+    assert response.data["reference"] == enquiry.reference
+    assert response.data["status"] == enquiry.status
+    assert response.data["first_name"] == "Augusta"
+    assert "quotations" in response.data
 
 
 @pytest.mark.django_db

@@ -8,11 +8,16 @@ from typing import Any
 
 @dataclass
 class QuoteLine:
-    """A single-night rate line in a quote breakdown."""
+    """A single-night rate line in a quote breakdown.
+
+    `rule_id` / `card_id` are `None` for a synthetic fallback line — a night
+    priced from `RatePlan.fallback_nightly` because no `RateRule` covered it
+    (see GAP-008 / the legacy `SettingNightlyPrice` path).
+    """
 
     date: date
-    rule_id: int
-    card_id: int
+    rule_id: int | None
+    card_id: int | None
     nightly: Decimal
     notes: str = ""
 

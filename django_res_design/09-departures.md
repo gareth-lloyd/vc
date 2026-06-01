@@ -71,6 +71,7 @@ Disposition column legend:
 | `ChangeOverDays` | `pricing.ChangeOverRule` (per-property, date-bounded) + enforcement in service | Replaced | Was unused as a constraint in legacy |
 | `CalculationType` | TextChoices on `RateRule` and `Extra.calc` | Replaced | Fixed enum |
 | `sp_getQuotationData` (500+ LOC stored proc) | `pricing.services.PricingEngine.quote()` returning `Quote` dataclass | Replaced | Testable, composable, snapshotable |
+| Legacy no-rate-for-night default (`SettingNightlyPrice × 7`, `ResService.cs:2150-2160`) | `pricing.RatePlan.fallback_nightly` (opt-in, per-plan/currency) + engine synthetic fallback line | Reinstated (opt-in) | The rebuild first dropped this (raised `NoRateAvailable`); GAP-008 restores it as an explicit field rather than a silent property-price echo. `NULL` = keep the hard error. |
 | Tax fields on rate | `properties.PropertyFinance.TaxPolicy` (config) + resolver call in PricingEngine | Moved | Tax is property/group configuration, not a per-rate row |
 | Commission fields on rate | `properties.PropertyFinance.Commission` (config) + resolver call in PricingEngine | Moved | Same — config, not per-rate |
 | Discount fields on rate | `pricing.Discount` (scoped to RateCard, with `rule_kind` for early-bird / last-minute / length-of-stay / repeat-guest / promo-code) | Replaced | Composable, queryable, separates rule types |

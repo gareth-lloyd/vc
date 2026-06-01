@@ -57,6 +57,19 @@ silent property-price echo).
 - `04-pricing.md` documents the field + the `NoCoverage → fallback` step + the
   all-fallback card-skip; `10-decisions.md` records it; migration committed.
 
+## Resolution
+
+✅ Added `RatePlan.fallback_nightly` (nullable Decimal); migration `pricing/0008`.
+Engine: on `NoCoverage`, emits a synthetic `QuoteLine(rule_id=None, card_id=None,
+nightly=plan.fallback_nightly)` when the field is set, else raises
+`NoRateAvailable` as before. `OutOfRange` still raises `PartyOutOfRange`.
+`QuoteLine.rule_id`/`card_id` are now `int | None`; `winning_card` is the first
+real card and card validation is skipped for an all-fallback stay
+(`winning_card_id` serialises `None`). Exposed in `RatePlanSerializer` and
+`RatePlanAdmin`. Tests in `pricing/tests/test_engine.py` (gap-fill, all-fallback
+skip, no-fallback raise, party-out-of-range not masked). Docs: `04-pricing.md`
+step 2, `09-departures.md` pricing table, `10-decisions.md` live row.
+
 ## Dependencies
 
 - **Answers the pricing-engine half of [Q-013](q-013-rate-card-incomplete-pricing.md)**

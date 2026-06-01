@@ -77,6 +77,7 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "currency",
             "currency_code",
             "price_basis",
+            "fallback_nightly",
             "effective_from",
             "effective_to",
             "is_active",

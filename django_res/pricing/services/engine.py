@@ -94,6 +94,22 @@ class PricingEngine:
                     f"party={party} matches no RateRule bracket on plan {plan.pk} for {night}"
                 )
             if isinstance(pick, NoCoverage):
+                # Legacy quietly priced an uncovered night at the villa's
+                # setting price (ResService.cs:2150-2160). The rebuild
+                # reinstates that leniency only when the plan opts in via
+                # `fallback_nightly`; otherwise it raises as before. Note
+                # `OutOfRange` above still raises — a fallback must never mask
+                # a party-bracket miss (see SMELL-007 / GAP-008).
+                if plan.fallback_nightly is not None:
+                    lines.append(
+                        QuoteLine(
+                            date=night,
+                            rule_id=None,
+                            card_id=None,
+                            nightly=Decimal(plan.fallback_nightly),
+                        )
+                    )
+                    continue
                 raise NoRateAvailable(
                     f"No approved RateRule on plan {plan.pk} for {night} party={party}"
                 )
@@ -114,13 +130,20 @@ class PricingEngine:
             )
             chosen_cards[card.pk] = card
 
-        winning_card = chosen_cards[lines[0].card_id]
-        cls._validate_card_against_stay(
-            winning_card,
-            date_from=date_from,
-            date_to=date_to,
-            nights=len(stay_nights),
+        # The winning card is the one priced for the first real (non-fallback)
+        # night. An all-fallback stay has no card to validate — mirror legacy,
+        # which had no card concept on the fallback path, and skip the check.
+        winning_card = next(
+            (chosen_cards[ln.card_id] for ln in lines if ln.card_id is not None),
+            None,
         )
+        if winning_card is not None:
+            cls._validate_card_against_stay(
+                winning_card,
+                date_from=date_from,
+                date_to=date_to,
+                nights=len(stay_nights),
+            )
 
         rate_subtotal = sum((ln.nightly for ln in lines), Decimal("0")).quantize(Decimal("0.01"))
 
@@ -208,7 +231,7 @@ class PricingEngine:
             "total": str(total),
             "net_to_owner": str(net_to_owner),
             "plan_id": plan.pk,
-            "winning_card_id": winning_card.pk,
+            "winning_card_id": winning_card.pk if winning_card is not None else None,
         }
 
         return Quote(
@@ -280,7 +303,7 @@ class PricingEngine:
     def _apply_discounts(
         *,
         property: Any,
-        card: RateCard,
+        card: RateCard | None,
         subtotal: Decimal,
         party: int,
         date_from: date,

@@ -300,7 +300,16 @@ class PricingEngine:
 Steps:
 1. Resolve `RatePlan` for property + currency + date range.
 2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True` (provisional rules pass this filter — `is_provisional` does not hide a rule, it only flags the quote), then pick the highest-priority rule matching date + party. If any picked rule is `is_provisional`, set `Quote.is_provisional = True`. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` / `changeover_weekday` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` / `ChangeoverViolation` if the matched card's constraints fail.
-3. Build per-night `QuoteLine`s (carrying `card_id` and `rule_id` for traceability).
+   - **No-coverage fallback (GAP-008):** if no rule covers a night at all
+     (`NoCoverage`) and the plan sets `RatePlan.fallback_nightly`, the night is
+     priced at that opt-in rate via a synthetic `QuoteLine` with
+     `rule_id=None` / `card_id=None`. When `fallback_nightly is None` the night
+     raises `NoRateAvailable` as before. The fallback never masks a party-bracket
+     miss (`OutOfRange` still raises `PartyOutOfRange`). If *every* night is
+     fallback there is no winning card, so the card `min_nights` / `max_nights` /
+     `changeover_weekday` validation is skipped (legacy had no card concept on
+     the `SettingNightlyPrice` path).
+3. Build per-night `QuoteLine`s (carrying `card_id` and `rule_id` for traceability — both `None` on a fallback line).
 4. Compute rate subtotal.
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).
 6. Apply caller-supplied opt-in `Extra`s (the `opt_in_extras` argument).

@@ -33,7 +33,15 @@ class FxRateAdmin(admin.ModelAdmin):
 
 @admin.register(RatePlan)
 class RatePlanAdmin(admin.ModelAdmin):
-    list_display = ("name", "property", "currency", "price_basis", "effective_from", "is_active")
+    list_display = (
+        "name",
+        "property",
+        "currency",
+        "price_basis",
+        "fallback_nightly",
+        "effective_from",
+        "is_active",
+    )
     list_filter = ("price_basis", "is_active", "currency")
     search_fields = ("name",)
 

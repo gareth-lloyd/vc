@@ -333,3 +333,91 @@ def test_quote_respects_is_approved_filter(
         currency=gbp,
     )
     assert quote.rate_subtotal == Decimal("1400.00")
+
+
+# ---------------------------------------------------------------------------
+# GAP-008 — RatePlan.fallback_nightly: price uncovered nights at an opt-in rate
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_fallback_nightly_fills_gap_night(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """A night past the rule's coverage is priced at `fallback_nightly`."""
+    plan.fallback_nightly = Decimal("150.00")
+    plan.save(update_fields=["fallback_nightly"])
+
+    # rule covers 2026-06-01..2026-08-31; Sep 1 is uncovered.
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 8, 30),
+        date_to=date(2026, 9, 2),  # Aug 30, Aug 31 covered; Sep 1 gap
+        party=4,
+        currency=gbp,
+    )
+
+    assert len(quote.lines) == 3
+    fallback_lines = [ln for ln in quote.lines if ln.rule_id is None]
+    assert len(fallback_lines) == 1
+    assert fallback_lines[0].date == date(2026, 9, 1)
+    assert fallback_lines[0].card_id is None
+    assert fallback_lines[0].nightly == Decimal("150.00")
+    assert quote.rate_subtotal == Decimal("550.00")  # 200 + 200 + 150
+
+
+@pytest.mark.django_db
+def test_all_fallback_stay_skips_card_validation(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    """A stay with no covering rules quotes entirely on fallback; the card's
+    min_nights is not validated because no card was selected."""
+    plan.fallback_nightly = Decimal("99.00")
+    plan.save(update_fields=["fallback_nightly"])
+    card.min_nights = 5  # would raise MinNightsNotMet if validated
+    card.save(update_fields=["min_nights"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 13),  # 3 nights, all uncovered
+        party=4,
+        currency=gbp,
+    )
+
+    assert len(quote.lines) == 3
+    assert all(ln.rule_id is None and ln.card_id is None for ln in quote.lines)
+    assert quote.rate_subtotal == Decimal("297.00")
+    assert quote.breakdown["winning_card_id"] is None
+
+
+@pytest.mark.django_db
+def test_gap_night_without_fallback_still_raises(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """`fallback_nightly=None` (default) preserves the hard NoRateAvailable."""
+    assert plan.fallback_nightly is None
+    with pytest.raises(NoRateAvailable):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 8, 30),
+            date_to=date(2026, 9, 2),
+            party=4,
+            currency=gbp,
+        )
+
+
+@pytest.mark.django_db
+def test_fallback_does_not_mask_party_out_of_range(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """A party outside every bracket raises even when a fallback is set —
+    the fallback covers missing nights, never a bracket miss."""
+    plan.fallback_nightly = Decimal("150.00")
+    plan.save(update_fields=["fallback_nightly"])
+    with pytest.raises(PartyOutOfRange):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 17),
+            party=99,  # rule bracket is 1..8
+            currency=gbp,
+        )

@@ -27,6 +27,16 @@ class RatePlan(AuditedModel):
         choices=PriceBasis.choices,
         default=PriceBasis.GROSS,
     )
+    fallback_nightly = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Opt-in nightly rate used when no RateRule covers a night. "
+            "NULL = no fallback (uncovered nights raise NoRateAvailable)."
+        ),
+    )
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)

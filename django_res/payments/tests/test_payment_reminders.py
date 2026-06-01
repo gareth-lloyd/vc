@@ -17,6 +17,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from django.utils import timezone
 
 from comms.models import EmailLog
 from payments.enums import (
@@ -27,6 +28,7 @@ from payments.enums import (
 )
 from payments.models import Payment, SecurityDeposit
 from payments.tasks import send_payment_reminders
+from reservations.enums import BookingStatus
 
 if TYPE_CHECKING:
     from comms.models import SmtpProfile
@@ -713,7 +715,11 @@ def test_terminal_booking_does_not_get_reminder(
     terminal_status: str,
 ) -> None:
     booking.status = terminal_status
-    booking.save(update_fields=["status", "updated_at"])
+    fields = ["status", "updated_at"]
+    if terminal_status == BookingStatus.CANCELLED.value:
+        booking.cancelled_at = timezone.now()  # constraint: CANCELLED ⇒ cancelled_at
+        fields.append("cancelled_at")
+    booking.save(update_fields=fields)
     today = date.today()
     _make_payment(booking, gbp, purpose=PaymentPurpose.DEPOSIT.value, due_on=today)
     _make_sd(booking, gbp, due_on=today)

@@ -313,7 +313,7 @@ def test_archive_from_active_raises(booking: Booking) -> None:
 
 @pytest.mark.django_db
 def test_restore_reverses_archive(booking: Booking) -> None:
-    _set_status(booking, BookingStatus.CANCELLED.value)
+    booking.cancel("test reason")  # CANCELLED is terminal + sets cancelled_at
     booking.archive()
     booking.restore()
     booking.refresh_from_db()
@@ -375,6 +375,16 @@ def test_cancelled_at_allowed_when_status_cancelled(booking: Booking) -> None:
     booking.refresh_from_db()
     assert booking.status == BookingStatus.CANCELLED.value
     assert booking.cancelled_at is not None
+
+
+@pytest.mark.django_db
+def test_cancelled_status_requires_cancelled_at(booking: Booking) -> None:
+    """Inverse of the above: a CANCELLED booking must carry a cancelled_at."""
+    with pytest.raises(Exception, match="booking_cancelled_status_requires_cancelled_at"):
+        Booking.objects.filter(pk=booking.pk).update(
+            status=BookingStatus.CANCELLED.value,
+            cancelled_at=None,
+        )
 
 
 @pytest.mark.django_db

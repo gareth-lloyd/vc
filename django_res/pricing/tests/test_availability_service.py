@@ -87,6 +87,7 @@ def _make_booking(
         terms_accepted_at=timezone.now(),
         payment_method=PaymentMethod.CARD.value,
         status=status,
+        cancelled_at=(timezone.now() if status == BookingStatus.CANCELLED.value else None),
     )
 
 

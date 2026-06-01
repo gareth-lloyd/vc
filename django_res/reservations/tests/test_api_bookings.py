@@ -211,6 +211,7 @@ def test_archived_listing_has_no_n_plus_one(
             rental_price=Decimal("1400.00"),
             balance_due=Decimal("1400.00"),
             status=BookingStatus.CANCELLED.value,
+            cancelled_at=timezone.now(),
         )
         archived.is_archived = True
         archived.archived_at = timezone.now()

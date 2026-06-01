@@ -152,6 +152,10 @@ class Booking(AuditedModel):
                 name="booking_cancelled_at_implies_cancelled_status",
             ),
             models.CheckConstraint(
+                condition=Q(cancelled_at__isnull=False) | ~Q(status=BookingStatus.CANCELLED.value),
+                name="booking_cancelled_status_requires_cancelled_at",
+            ),
+            models.CheckConstraint(
                 condition=Q(archived_at__isnull=True) | Q(status__in=TERMINAL_BOOKING_STATUSES),
                 name="booking_archived_at_requires_terminal_status",
             ),

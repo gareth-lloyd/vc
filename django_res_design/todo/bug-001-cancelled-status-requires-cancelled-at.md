@@ -41,3 +41,20 @@ ad-hoc query to confirm before merging).
 ## Dependencies
 
 None.
+
+## Resolution
+
+✅ Added inverse `CheckConstraint` `booking_cancelled_status_requires_cancelled_at`
+(`cancelled_at IS NOT NULL OR status != CANCELLED`) in
+`reservations/models/booking.py`; migration `reservations/0009`. The legacy
+`BookingLoader` always lands DRAFT, so no data migration was needed.
+
+The constraint surfaced three pre-existing test fixtures that fabricated
+`status=CANCELLED, cancelled_at=NULL` directly (bypassing `cancel()`):
+`test_restore_reverses_archive` now goes through `booking.cancel()`, and the
+`_make_booking` / terminal-status helpers in
+`pricing/tests/test_availability_service.py`,
+`reservations/tests/test_api_bookings.py`, and
+`payments/tests/test_payment_reminders.py` now stamp `cancelled_at`. Regression
+test `test_cancelled_status_requires_cancelled_at` in
+`reservations/tests/test_booking.py`.

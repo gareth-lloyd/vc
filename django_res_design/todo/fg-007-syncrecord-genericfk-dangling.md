@@ -1,7 +1,7 @@
 # FG-007 — `SyncRecord` GenericFK leaves dangling rows on target delete
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F7
+- **Source:** the 2026-05-26 data-model deep audit §F7
 - **Files:** `integrations/models/sync_record.py`,
   `integrations/apps.py` (add signal wiring),
   `integrations/signals.py` (already exists)

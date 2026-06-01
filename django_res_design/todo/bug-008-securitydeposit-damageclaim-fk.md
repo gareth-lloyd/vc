@@ -1,7 +1,7 @@
 # BUG-008 — `SecurityDeposit.damage_claim_id` is a hand-rolled FK without integrity
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B8
+- **Source:** the 2026-05-26 data-model deep audit §B8
 - **Files:** `payments/models/security_deposit.py:71–72`
 
 ## Problem

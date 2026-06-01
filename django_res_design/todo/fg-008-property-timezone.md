@@ -1,7 +1,7 @@
 # FG-008 — `PropertySettings.check_in_time` / `check_out_time` have no timezone
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F8
+- **Source:** the 2026-05-26 data-model deep audit §F8
 - **Files:** `properties/models/settings.py:59–60`,
   `properties/models/property.py` (add `timezone`)
 

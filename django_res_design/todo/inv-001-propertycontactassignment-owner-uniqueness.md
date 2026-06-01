@@ -8,7 +8,7 @@
   be a non-primary OWNER across multiple groups, but only one OWNER may
   be `is_primary` per property. No follow-up needed.
 - **Severity:** Investigation
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` "What I'd
+- **Source:** the 2026-05-26 data-model deep audit "What I'd
   want to investigate further" item 1
 
 ## Question

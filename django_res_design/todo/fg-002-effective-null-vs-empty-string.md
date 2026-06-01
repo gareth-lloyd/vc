@@ -1,7 +1,7 @@
 # FG-002 — `effective()` conflates `""` and `NULL` as "inherit"
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F2
+- **Source:** the 2026-05-26 data-model deep audit §F2
 - **Files:** `properties/models/finance.py:36–41`,
   `properties/models/settings.py:79–89`
 

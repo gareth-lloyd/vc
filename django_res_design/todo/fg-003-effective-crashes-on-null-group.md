@@ -6,7 +6,7 @@
   group.settings/group.finance 1:1-missing variant is a migration-window
   detail already handled by data_migration sentinels.
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F3
+- **Source:** the 2026-05-26 data-model deep audit §F3
 - **Files:** `properties/models/finance.py:39`,
   `properties/models/settings.py:88`
 

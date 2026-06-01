@@ -1,7 +1,7 @@
 # BUG-001 — `CANCELLED` status must imply `cancelled_at IS NOT NULL`
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B1
+- **Source:** the 2026-05-26 data-model deep audit §B1
 - **Files:** `reservations/models/booking.py:151–152`
 
 ## Problem

@@ -1,7 +1,7 @@
 # BUG-004 — Owner-approval race could double-book overlapping dates
 
 - **Severity:** 🔴 Bug — **RESOLVED**
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B4
+- **Source:** the 2026-05-26 data-model deep audit §B4
 - **Files:** `reservations/migrations/0007_booking_overlap_includes_pending_approval.py`,
   `reservations/models/booking.py` (`_transition`, `modify_dates`),
   `reservations/services/quotations.py` (`:convert` flow)

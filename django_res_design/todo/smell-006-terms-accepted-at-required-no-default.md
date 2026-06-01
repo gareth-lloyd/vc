@@ -1,7 +1,7 @@
 # SMELL-006 — `Booking.terms_accepted_at` required but has no default
 
 - **Severity:** 🟡 Smell
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S6
+- **Source:** the 2026-05-26 data-model deep audit §S6
 - **Files:** `reservations/models/booking.py:107`
 
 ## Problem

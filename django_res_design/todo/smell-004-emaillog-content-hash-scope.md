@@ -1,7 +1,7 @@
 # SMELL-004 — `EmailLog` content hash dedupe scope is ambiguous
 
 - **Severity:** 🟡 Smell
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S4
+- **Source:** the 2026-05-26 data-model deep audit §S4
 - **Files:** `comms/models/email_log.py` (and the hash helper /
   signal that populates it)
 

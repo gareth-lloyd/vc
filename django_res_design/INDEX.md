@@ -6,7 +6,9 @@ Top-level index. This directory contains **two complementary design packages** f
 
 A detailed, implementation-ready Django data-model specification. Per-app file layouts, field types, constraints, state machines, services, signals, Celery tasks. **No executable code, but precise enough to implement directly.**
 
-See [`README.md`](./README.md) for the package's own index.
+See [`README.md`](./README.md) for the package's own index. For a descriptive
+map of the model **as built** in `django_res/` (anchor models, relationships,
+cross-cutting patterns), see [`data-model-overview.md`](./data-model-overview.md).
 
 Files: `00-conventions.md`, `01-accounts.md`, `02-properties.md`, `03-finance-config.md`, `04-pricing.md`, `05-reservations.md`, `06-availability.md`, `07-payments.md`, `08-integrations.md`, `09-departures.md`, `10-comms.md`, `10-decisions.md`, `11-milestones.md`.
 

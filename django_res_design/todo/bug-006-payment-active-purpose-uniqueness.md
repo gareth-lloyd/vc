@@ -1,7 +1,7 @@
 # BUG-006 — `Payment.unique_active_payment_per_purpose` covers only DEPOSIT + BALANCE
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B6
+- **Source:** the 2026-05-26 data-model deep audit §B6
 - **Files:** `payments/models/payment.py:98–110`,
   `payments/enums.py:33` (`ACTIVE_PAYMENT_STATUSES`)
 

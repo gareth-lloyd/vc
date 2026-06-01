@@ -1,7 +1,7 @@
 # BUG-003 — `RateRule` lets `is_poa=True` coexist with a numeric price
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B3
+- **Source:** the 2026-05-26 data-model deep audit §B3
 - **Files:** `pricing/models/rate.py:108–113`
 
 ## Problem

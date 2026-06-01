@@ -1,7 +1,7 @@
 # FG-006 — `Booking.modify_dates` / `modify_guests` re-run pricing without row locks
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F6
+- **Source:** the 2026-05-26 data-model deep audit §F6
 - **Files:** `reservations/models/booking.py:387–493`
 
 ## Problem

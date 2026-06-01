@@ -66,6 +66,7 @@ Status icons:
 | [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ⬜ |
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ split into audit-retention vs PII-retention |
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ⬜ |
+| [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ⬜ (blocks BUG-006/FG-004/BUG-008 SD slice) |
 
 Q-012 was resolved (Payment gateway → Flywire).
 

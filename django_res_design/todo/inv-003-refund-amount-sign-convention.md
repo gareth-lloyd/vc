@@ -7,7 +7,7 @@
   "subtract refunds" code path exists or is needed in the current track.
   If a future net-position ledger view is added, codify the rule then.
 - **Severity:** Investigation
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` "What I'd
+- **Source:** the 2026-05-26 data-model deep audit "What I'd
   want to investigate further" item 3
 
 ## Question

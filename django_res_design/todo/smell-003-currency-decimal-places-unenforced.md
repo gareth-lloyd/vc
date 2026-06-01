@@ -1,7 +1,7 @@
 # SMELL-003 — `Currency.decimal_places` is informational, not enforced
 
 - **Severity:** 🟡 Smell
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S3
+- **Source:** the 2026-05-26 data-model deep audit §S3
 - **Files:** `pricing/models/currency.py`, money-bearing fields on
   `Payment`, `RateRule`, `QuotationLine`, etc.
 

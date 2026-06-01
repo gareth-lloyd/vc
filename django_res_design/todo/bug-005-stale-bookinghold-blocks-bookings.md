@@ -1,7 +1,7 @@
 # BUG-005 — Stale `BookingHold` rows can block valid bookings indefinitely
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B5
+- **Source:** the 2026-05-26 data-model deep audit §B5
 - **Files:** `reservations/migrations/0002_postgres_exclude_constraints.py:23–29`,
   the hold-sweeper Celery task
 

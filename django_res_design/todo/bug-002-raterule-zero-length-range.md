@@ -1,7 +1,7 @@
 # BUG-002 — `RateRule` allows zero-length date ranges
 
 - **Severity:** 🔴 Bug
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §B2
+- **Source:** the 2026-05-26 data-model deep audit §B2
 - **Files:** `pricing/models/rate.py:100–103`
 
 ## Problem

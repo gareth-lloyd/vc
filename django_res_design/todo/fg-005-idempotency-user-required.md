@@ -1,7 +1,7 @@
 # FG-005 — `IdempotencyRecord.user` is required; system actors can't dedupe
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F5
+- **Source:** the 2026-05-26 data-model deep audit §F5
 - **Files:** `core/models/idempotency.py:22–26`
 
 ## Problem

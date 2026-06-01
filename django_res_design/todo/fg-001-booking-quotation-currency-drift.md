@@ -1,7 +1,7 @@
 # FG-001 — `Booking` and `Quotation` currencies are independent
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F1
+- **Source:** the 2026-05-26 data-model deep audit §F1
 - **Files:** `reservations/models/booking.py:63–67`,
   `reservations/models/quotation.py:42–46`,
   `reservations/services/bookings.py` (`create_from_quotation_line`),

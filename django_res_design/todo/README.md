@@ -6,7 +6,7 @@ file is one ticket. Filenames encode `<bucket>-<id>-<short-slug>.md`.
 ## Buckets
 
 - **`bug-*`** — schema or service allows invalid state today. Source:
-  `findings/2026-05-26-data-model-deep-audit.md` (🔴 Bugs).
+  the 2026-05-26 data-model deep audit (🔴 Bugs).
 - **`fg-*`** — footguns. Correct only if callers are careful; nothing
   enforces it. Source: same audit (🟠 Footguns).
 - **`smell-*`** — works today, will hurt later. Same audit (🟡 Smells).

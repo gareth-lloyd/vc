@@ -1,7 +1,7 @@
 # SMELL-001 — `Booking.archived_at` is a second status loosely coupled to `status`
 
 - **Severity:** 🟡 Smell
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S1
+- **Source:** the 2026-05-26 data-model deep audit §S1
 - **Files:** `reservations/models/booking.py:136–139`
 
 ## Problem

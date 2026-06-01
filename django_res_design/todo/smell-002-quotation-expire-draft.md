@@ -1,7 +1,7 @@
 # SMELL-002 — `Quotation.expire()` only handles `SENT → EXPIRED`
 
 - **Severity:** 🟡 Smell
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S2
+- **Source:** the 2026-05-26 data-model deep audit §S2
 - **Files:** `reservations/models/quotation.py:119–122`
 
 ## Problem

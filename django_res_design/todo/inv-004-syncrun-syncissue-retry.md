@@ -1,7 +1,7 @@
 # INV-004 — `integrations.SyncRun` / `SyncIssue` failure handling
 
 - **Severity:** Investigation
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` "What I'd
+- **Source:** the 2026-05-26 data-model deep audit "What I'd
   want to investigate further" item 4
 
 ## Question

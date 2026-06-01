@@ -1,7 +1,7 @@
 # FG-004 — `Payment` fields aren't gated by `purpose`
 
 - **Severity:** 🟠 Footgun
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §F4
+- **Source:** the 2026-05-26 data-model deep audit §F4
 - **Files:** `payments/models/payment.py:39–110`
 
 ## Problem

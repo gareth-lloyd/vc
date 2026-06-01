@@ -6,7 +6,7 @@
   free-text `country` on `Property`. The CLAUDE.md note refers to a
   Canary-project convention, not this codebase.
 - **Severity:** 🟡 Smell / verification
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` §S5
+- **Source:** the 2026-05-26 data-model deep audit §S5
 - **Files:** `properties/models/property.py`, `properties/migrations/*`
 
 ## Problem

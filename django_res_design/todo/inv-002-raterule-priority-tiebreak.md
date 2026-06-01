@@ -7,7 +7,7 @@
   `test_engine.py::test_quote_tiebreak_higher_priority_wins` and
   `::test_quote_tiebreak_equal_priority_narrower_range_wins`.
 - **Severity:** Investigation
-- **Source:** `findings/2026-05-26-data-model-deep-audit.md` "What I'd
+- **Source:** the 2026-05-26 data-model deep audit "What I'd
   want to investigate further" item 2
 
 ## Question

@@ -12,12 +12,34 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from comms.models import EmailLog
-from comms.serializers import EmailLogSerializer
+from comms.serializers import EmailLogDetailSerializer, EmailLogSerializer
 from comms.services import EmailService
 from core.api.permissions import IsReservationsWriter
 
 if TYPE_CHECKING:
     from accounts.models import User
+
+
+class EmailLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Top-level read-only EmailLog list + detail (GAP-001 slice 1).
+
+    Backs the operator UI's Comms tab. List omits the rendered body
+    (`EmailLogSerializer`); detail includes it (`EmailLogDetailSerializer`).
+    Read for any authenticated staff; no write surface here — sending is
+    driven by `EmailService` and the booking-scoped resend action.
+    """
+
+    permission_classes = [IsAuthenticated, IsReservationsWriter]
+
+    def get_queryset(self) -> Any:
+        return EmailLog.objects.select_related("sender_user", "smtp_profile").order_by(
+            "-queued_at", "-id"
+        )
+
+    def get_serializer_class(self) -> type[EmailLogSerializer]:
+        if self.action == "retrieve":
+            return EmailLogDetailSerializer
+        return EmailLogSerializer
 
 
 class BookingEmailViewSet(viewsets.GenericViewSet):

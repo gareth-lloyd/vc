@@ -1,3 +1,3 @@
-from comms.views.email_log import BookingEmailViewSet
+from comms.views.email_log import BookingEmailViewSet, EmailLogViewSet
 
-__all__ = ["BookingEmailViewSet"]
+__all__ = ["BookingEmailViewSet", "EmailLogViewSet"]

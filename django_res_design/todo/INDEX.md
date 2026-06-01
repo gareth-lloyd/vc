@@ -76,7 +76,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 
 | Id | Title | Status |
 |---|---|---|
-| [GAP-001](gap-001-comms-empty-url-surface.md) | `comms/urls.py` empty | ⬜ |
+| [GAP-001](gap-001-comms-empty-url-surface.md) | `comms/urls.py` empty | ✅ resolved (slice 1: EmailLog list+detail) |
 | [GAP-002](gap-002-integrations-empty-url-surface.md) | `integrations/urls.py` empty | ⬜ **highest-leverage gap** (Flywire webhook) |
 | [GAP-003](gap-003-endpoint-coverage-gap.md) | Endpoint coverage gap vs. designed surface | ❌ DROPPED — framing only |
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ⬜ (tracker) |

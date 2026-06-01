@@ -20,7 +20,7 @@ class EmailLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EmailLog
-        fields = (
+        fields: tuple[str, ...] = (
             "id",
             "template_key",
             "template_version",
@@ -38,4 +38,20 @@ class EmailLogSerializer(serializers.ModelSerializer):
             "provider_reference",
             "correlation",
         )
+        read_only_fields = fields
+
+
+class EmailLogDetailSerializer(EmailLogSerializer):
+    """Detail serializer for `/email-logs/{id}`.
+
+    Extends the list serializer with the rendered body (plain + HTML) —
+    too heavy for the list surface but the whole point of opening a single
+    row in the operator UI's Comms tab.
+    """
+
+    body = serializers.CharField(source="rendered_body", read_only=True)
+    body_html = serializers.CharField(source="rendered_body_html", read_only=True)
+
+    class Meta(EmailLogSerializer.Meta):
+        fields: tuple[str, ...] = (*EmailLogSerializer.Meta.fields, "body", "body_html")
         read_only_fields = fields

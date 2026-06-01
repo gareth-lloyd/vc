@@ -332,9 +332,9 @@ Steps:
 
 The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote. `pick_rule_for_night` returns a tagged result distinguishing `Picked` (rule matched), `OutOfRange` (rules cover the night but party doesn't match any bracket → `PartyOutOfRange`), and `NoCoverage` (no rule covers the night → `NoRateAvailable`).
 
-#### Occupancy bracket: matched, not defaulted-to-highest
+#### Occupancy bracket: matched, not silently fallen-back
 
-`PricingEngine.quote()` resolves the `RateRule` whose `(min_party, max_party)` interval contains the inquiry's party size. This is a behaviour change from the legacy `sp_getQuotationData` stored procedure, which defaulted to the highest occupancy bracket when occupancy was ambiguous — over-quoting for small parties on multi-bracket cards. See `09-departures.md` "Legacy correctness bugs explicitly fixed" #2. The legacy default-to-highest behaviour is not preserved under any flag.
+`PricingEngine.quote()` resolves the `RateRule` whose `(min_party, max_party)` interval contains the inquiry's party size, and raises `PartyOutOfRange` when no band matches. This is a behaviour change from the legacy quote path (`ResService.cs:ProcessQuotationItemAsync` + `RatesModel.Calculate()`, not the same-named search proc): when a party matched no occupancy band, legacy silently fell back to the **base weekly rate ÷ 7** (`ResService.cs:2117-2134`, `weeklyPrice += priceObj.WeeklyPrice / 7`) rather than surfacing the gap. See `09-departures.md` "Legacy correctness bugs explicitly fixed" #2. The legacy silent fallback is not preserved under any flag.
 
 ### `pricing.services.FxConverter`
 ```python

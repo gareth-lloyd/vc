@@ -52,6 +52,16 @@ there is no migration impact.
 - `grep -ri "highest occupancy bracket" django_res_design/` is clean.
 - The rewrite's `PartyOutOfRange` behaviour is unchanged.
 
+## Resolution
+
+✅ Doc-only. Corrected both claims to describe legacy's actual behaviour — a
+silent fallback to the base weekly rate ÷ 7 (`ResService.cs:2117-2134`) when a
+party matched no band, sourced from `ResService.cs:ProcessQuotationItemAsync` +
+`RatesModel.Calculate()` (not the same-named search proc). `04-pricing.md`
+heading + paragraph and `09-departures.md` row #2 updated; the rewrite's
+`PartyOutOfRange` behaviour is unchanged. `grep -ri "highest occupancy bracket"
+django_res_design/` is clean outside this ticket.
+
 ## Dependencies
 
 - None. Pairs with [BUG-009](bug-009-price-basis-ignored-by-engine.md) and the

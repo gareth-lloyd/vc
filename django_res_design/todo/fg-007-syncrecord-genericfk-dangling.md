@@ -35,6 +35,23 @@ Recommendation: option 1 for now.
 - `_meta.related_objects` walk in `Contact.merge` is updated if needed
   to handle the SyncRecord cleanup.
 
+## Resolution
+
+✅ Chose option 1 (`post_delete` cleanup), wired into the existing
+`register_sync_target` registry rather than per-model in each app's `ready()`.
+`integrations/signals.py` now connects a `_post_delete_handler` (dispatch_uid
+`…:del`) alongside the save handlers; `unregister_sync_target` disconnects it.
+The handler deletes every `SyncRecord` whose `(content_type, object_id)` matches
+the deleted target, in the same transaction. Because it keys off the registry,
+it only fires for registered sync targets (none in production yet — hence the
+"no live targets" note), and any future-registered model is covered for free,
+including `Contact.merge`'s hard-delete of the absorbed row and direct
+`Quotation` deletes.
+
+Tests (`integrations/tests/test_signals.py`):
+`test_delete_target_removes_its_sync_records` and
+`test_unregister_sync_target_disconnects_delete_handler`.
+
 ## Dependencies
 
 None.

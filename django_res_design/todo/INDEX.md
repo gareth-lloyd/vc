@@ -35,7 +35,7 @@ Status icons:
 | [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ⬜ |
 | [FG-005](fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✏️ revise: resolve dead-vs-live status first |
 | [FG-006](fg-006-modify-without-select-for-update.md) | `modify_dates` / `modify_guests` re-run pricing without row locks | ✅ resolved (row lock + reload) |
-| [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ⬜ (downgrade to smell — no live targets) |
+| [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |
 | [FG-008](fg-008-property-timezone.md) | Property has no timezone | ⬜ (**upgrade to 🔴 bug** — breaks every wall-clock reminder) |
 
 ## 🟡 Smells

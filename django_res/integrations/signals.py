@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from django.db import models
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 
 from integrations.enums import SyncDirection, SyncStatus
 
@@ -72,6 +72,11 @@ def register_sync_target(
         sender=model,
         dispatch_uid=f"integrations.sync:{model._meta.label}:post",
     )
+    post_delete.connect(
+        _post_delete_handler,
+        sender=model,
+        dispatch_uid=f"integrations.sync:{model._meta.label}:del",
+    )
 
 
 def unregister_sync_target(model: type[models.Model]) -> None:
@@ -89,6 +94,11 @@ def unregister_sync_target(model: type[models.Model]) -> None:
         _post_save_handler,
         sender=model,
         dispatch_uid=f"integrations.sync:{model._meta.label}:post",
+    )
+    post_delete.disconnect(
+        _post_delete_handler,
+        sender=model,
+        dispatch_uid=f"integrations.sync:{model._meta.label}:del",
     )
 
 
@@ -149,6 +159,31 @@ def _post_save_handler(
         if not was_created and record.status != SyncStatus.PENDING.value:
             record.status = SyncStatus.PENDING.value
             record.save(update_fields=["status", "updated_at"])
+
+
+def _post_delete_handler(
+    sender: type[models.Model],
+    instance: models.Model,
+    **_: Any,
+) -> None:
+    """Remove the deleted target's `SyncRecord` rows (FG-007).
+
+    `SyncRecord` points at its target via a GenericFK (`content_type`,
+    `object_id`), so Django's FK `on_delete` can't cascade. Without this,
+    hard-deleting a registered target (e.g. the absorbed row in
+    `Contact.merge`, or a `Quotation` delete) would orphan its SyncRecords —
+    `.target` then silently resolves to `None`. Delete them in the same
+    transaction as the target. Only registered sync-target models reach here.
+    """
+    if _registry.get(sender) is None:
+        return
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from integrations.models import SyncRecord
+
+    content_type = ContentType.objects.get_for_model(sender)
+    SyncRecord.objects.filter(content_type=content_type, object_id=instance.pk).delete()
 
 
 def _register() -> None:

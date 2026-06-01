@@ -134,8 +134,17 @@ class Quotation(AuditedModel):
 
     @transaction.atomic
     def expire(self) -> Quotation:
-        """SENT → EXPIRED. Called by the Celery beat after `expires_at` passes."""
-        self._assert_from((QuotationStatus.SENT.value,), QuotationStatus.EXPIRED.value)
+        """DRAFT/SENT → EXPIRED. Called by the Celery beat after `expires_at` passes.
+
+        Both live states age out: a DRAFT never sent to the guest is just as
+        stale once `expires_at` passes as a SENT one, and the sweeper shouldn't
+        have to leave un-sent drafts lingering (the time-based EXPIRED status
+        keeps them distinct from an operator's DRAFT → CANCELLED).
+        """
+        self._assert_from(
+            (QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
+            QuotationStatus.EXPIRED.value,
+        )
         self.status = QuotationStatus.EXPIRED.value
         self.save(update_fields=["status", "updated_at"])
         return self

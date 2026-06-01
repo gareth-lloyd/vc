@@ -113,6 +113,23 @@ def test_expire_from_sent(quotation: Quotation) -> None:
 
 
 @pytest.mark.django_db
+def test_expire_from_draft(quotation: Quotation) -> None:
+    """A DRAFT that ages past `expires_at` can be swept to EXPIRED (SMELL-002)."""
+    assert quotation.status == QuotationStatus.DRAFT.value
+    quotation.expire()
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.EXPIRED.value
+
+
+@pytest.mark.django_db
+def test_expire_from_terminal_raises(quotation: Quotation) -> None:
+    """Expiry only applies to live quotations — not already-terminal ones."""
+    quotation.cancel("withdrawn")
+    with pytest.raises(InvalidTransition):
+        quotation.expire()
+
+
+@pytest.mark.django_db
 def test_cancel_with_reason(quotation: Quotation) -> None:
     quotation.cancel("client withdrew")
     quotation.refresh_from_db()

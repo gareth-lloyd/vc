@@ -43,7 +43,7 @@ Status icons:
 | Id | Title | Status |
 |---|---|---|
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
-| [SMELL-002](smell-002-quotation-expire-draft.md) | `Quotation.expire()` only handles `SENT → EXPIRED` | ⬜ |
+| [SMELL-002](smell-002-quotation-expire-draft.md) | `Quotation.expire()` only handles `SENT → EXPIRED` | ✅ resolved (DRAFT/SENT → EXPIRED) |
 | [SMELL-003](smell-003-currency-decimal-places-unenforced.md) | `Currency.decimal_places` informational only | ⬜ |
 | [SMELL-004](smell-004-emaillog-content-hash-scope.md) | `EmailLog` content hash dedupe scope ambiguous | ⬜ (contract is documented in code — add pinning test or close) |
 | [SMELL-005](smell-005-residual-property-country-charfield.md) | Verify no residual `Property.country` free-text | ❌ DROPPED — verified clean |

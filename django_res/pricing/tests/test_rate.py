@@ -12,11 +12,25 @@ from pricing.models import RateCard, RateRule
 
 
 @pytest.mark.django_db
-def test_raterule_date_from_must_be_lte_date_to(card: RateCard) -> None:
+def test_raterule_date_from_must_be_lt_date_to(card: RateCard) -> None:
     with pytest.raises(IntegrityError), transaction.atomic():
         RateRule.objects.create(
             card=card,
             date_from=date(2026, 7, 1),
+            date_to=date(2026, 6, 1),
+            min_party=1,
+            max_party=4,
+            nightly=Decimal("100"),
+        )
+
+
+@pytest.mark.django_db
+def test_raterule_rejects_zero_length_range(card: RateCard) -> None:
+    """A `[d, d)` rule covers zero nights — Booking/QuotationLine use `__lt`."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RateRule.objects.create(
+            card=card,
+            date_from=date(2026, 6, 1),
             date_to=date(2026, 6, 1),
             min_party=1,
             max_party=4,

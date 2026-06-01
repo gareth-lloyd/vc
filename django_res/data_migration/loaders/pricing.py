@@ -155,7 +155,8 @@ class RateRuleLoader(BaseLoader):
             date_from = date_from.date()
         if hasattr(date_to, "date"):
             date_to = date_to.date()
-        if date_to < date_from:
+        if date_to <= date_from:
+            # Zero-length / inverted ranges violate raterule_date_from_lt_date_to.
             return None
         party = int(row.get("PartySize") or 0)
         if party <= 0:

@@ -16,7 +16,7 @@ Status icons:
 | Id | Title | Status |
 |---|---|---|
 | [BUG-001](bug-001-cancelled-status-requires-cancelled-at.md) | `CANCELLED` status must imply `cancelled_at IS NOT NULL` | ⬜ |
-| [BUG-002](bug-002-raterule-zero-length-range.md) | `RateRule` allows zero-length date ranges | ⬜ (pre-check legacy data) |
+| [BUG-002](bug-002-raterule-zero-length-range.md) | `RateRule` allows zero-length date ranges | ✅ resolved |
 | [BUG-003](bug-003-raterule-poa-vs-price-contradiction.md) | `RateRule` lets `is_poa=True` coexist with a numeric price | ⬜ |
 | [BUG-004](bug-004-owner-approval-race.md) | Owner-approval race | ✅ resolved (promote "Watch" item) |
 | [BUG-005](bug-005-stale-bookinghold-blocks-bookings.md) | Stale `BookingHold` rows block valid bookings | ✏️ revise: prefer sweeper + opportunistic expire |

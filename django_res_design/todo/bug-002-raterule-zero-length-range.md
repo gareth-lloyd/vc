@@ -34,3 +34,12 @@ have `date_from == date_to` before running on staging (one-liner query).
 ## Dependencies
 
 None.
+
+## Resolution
+
+✅ Constraint renamed `raterule_date_from_lte_date_to` → `raterule_date_from_lt_date_to`
+(`__lte` → `__lt`) in `pricing/models/rate.py`; migration `pricing/0006`.
+`RateRuleLoader._process_row` guard tightened `date_to < date_from` →
+`date_to <= date_from` so legacy zero-length ranges skip rather than crash the
+new constraint. Regression test `test_raterule_rejects_zero_length_range` in
+`pricing/tests/test_rate.py`.

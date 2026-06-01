@@ -98,8 +98,8 @@ class RateRule(AuditedModel):
         ordering = ["card", "-priority", "date_from"]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(date_from__lte=models.F("date_to")),
-                name="raterule_date_from_lte_date_to",
+                condition=models.Q(date_from__lt=models.F("date_to")),
+                name="raterule_date_from_lt_date_to",
             ),
             models.CheckConstraint(
                 condition=models.Q(min_party__lte=models.F("max_party")),

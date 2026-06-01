@@ -26,6 +26,18 @@ Either:
 Worth confirming with whoever owns comms — `S4` reads like option 1 is
 what's wanted, but it's a question.
 
+## Resolution
+
+✅ Chose option 1 (document + pin). Expanded the `_idempotency_hash` docstring
+(`comms/services.py`) to state the contract explicitly: dedupe is
+**one-template-render-per-correlation**, keyed on `(template_key, sorted(to),
+correlation)` only — the rendered `context`/body is deliberately excluded.
+Added `test_send_dedupes_across_differing_context` in
+`comms/tests/test_email_service.py`: two sends with the same template +
+recipients + correlation but different contexts dedupe to one row and one
+outbox message (the first render wins). The existing
+`test_send_idempotent_on_repeat` already pins recipient-order insensitivity.
+
 ## Dependencies
 
 None.

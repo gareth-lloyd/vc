@@ -83,13 +83,21 @@ def _idempotency_hash(
     correlation: dict[str, Any],
 ) -> str:
     """Hash the *logical* identity of an email — what is being sent, to whom,
-    against what business object — not the template version.
+    against what business object — not the rendered output or template version.
 
-    Versioning the hash on `template.version` would re-send the same logical
-    event every time ops edits a template (which bumps the active version),
-    so a content tweak deployed between two scheduler ticks would email the
-    guest twice. The version is captured on the EmailLog row for audit but
-    is intentionally excluded from the dedupe key.
+    Contract: **one template-render per correlation**, not one distinct-body
+    per correlation. The dedupe key is `(template_key, sorted(to), correlation)`
+    only. The rendered `context`/body is deliberately NOT hashed — two sends of
+    the same template to the same recipients against the same business object
+    dedupe even if their contexts differ (e.g. a re-fetched booking total). If
+    the intent were ever one-distinct-body-per-correlation, the rendered body
+    would have to enter the hash; it does not.
+
+    Versioning the hash on `template.version` would likewise re-send the same
+    logical event every time ops edits a template (which bumps the active
+    version), so a content tweak deployed between two scheduler ticks would
+    email the guest twice. The version is captured on the EmailLog row for
+    audit but is intentionally excluded from the dedupe key.
     """
     payload = json.dumps(
         {

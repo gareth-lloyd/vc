@@ -188,6 +188,47 @@ def test_send_idempotent_on_repeat(
 
 
 @pytest.mark.django_db
+def test_send_dedupes_across_differing_context(
+    system_profile: SmtpProfile,
+    booking_template: EmailTemplate,
+) -> None:
+    """Pin the SMELL-004 contract: dedupe is one-render-per-correlation, NOT
+    one-distinct-body-per-correlation. Same (template_key, to, correlation) with
+    a *different* context (→ different rendered body) must still dedupe to one
+    row, because the rendered body is excluded from the idempotency hash.
+    """
+    mail.outbox.clear()
+
+    log1 = EmailService.send(
+        template_key="test.booking.confirmation",
+        context={
+            "booking_reference": "BK-009",
+            "guest_first_name": "Ada",
+            "property_name": "Villa Uno",
+        },
+        to=["guest@example.com"],
+        correlation={"booking_id": 9},
+    )
+    log2 = EmailService.send(
+        template_key="test.booking.confirmation",
+        # Different context → different rendered subject/body...
+        context={
+            "booking_reference": "BK-009",
+            "guest_first_name": "Grace",
+            "property_name": "Villa Dos",
+        },
+        # ...but same template + recipients + correlation.
+        to=["guest@example.com"],
+        correlation={"booking_id": 9},
+    )
+
+    assert log1.pk == log2.pk
+    assert len(mail.outbox) == 1
+    # The first render wins; the second send is a no-op that returns the original.
+    assert log2.rendered_subject == log1.rendered_subject
+
+
+@pytest.mark.django_db
 def test_send_raises_when_template_missing(system_profile: SmtpProfile) -> None:
     with pytest.raises(EmailTemplateNotFound):
         EmailService.send(

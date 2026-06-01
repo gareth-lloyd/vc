@@ -193,6 +193,9 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
               <div className="space-y-2">
                 <Label htmlFor="qle-total">{t("detail.dialogs.line_edit.total_label")}</Label>
                 <Input id="qle-total" type="text" inputMode="decimal" {...form.register("total")} />
+                {form.formState.errors.total ? (
+                  <p className="text-destructive text-xs">{form.formState.errors.total.message}</p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="qle-reason">

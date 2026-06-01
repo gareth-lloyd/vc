@@ -77,6 +77,68 @@ describe("LineEditDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("blocks submit with an inline error when a manual line has no total", async () => {
+    let patched = false;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, () => {
+        patched = true;
+        return HttpResponse.json(makeLine());
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog
+        open
+        onOpenChange={vi.fn()}
+        quotationId={QUOTATION_ID}
+        line={makeLine({ is_manual: true, total: "", price_override_reason: "Agreed rate" })}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    const total = (await within(dialog).findByLabelText(/manual total/i)) as HTMLInputElement;
+    await userEvent.clear(total);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    expect(await within(dialog).findByText(/total greater than zero/i)).toBeInTheDocument();
+    // The client-side guard short-circuits the request entirely.
+    expect(patched).toBe(false);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the server 400 on field_errors.total inline (belt and suspenders)", async () => {
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, () =>
+        HttpResponse.json(
+          {
+            code: "invalid",
+            detail: "Validation failed",
+            field_errors: {
+              total: ["A manual line requires a total greater than zero."],
+            },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    renderWithProviders(
+      <LineEditDialog
+        open
+        onOpenChange={vi.fn()}
+        quotationId={QUOTATION_ID}
+        // Client refine passes (positive total + reason); the server still
+        // rejects, exercising the applyApiErrorToForm path for `total`.
+        line={makeLine({ is_manual: true, total: "100.00", price_override_reason: "Agreed rate" })}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByLabelText(/manual total/i);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    expect(
+      await within(dialog).findByText(/requires a total greater than zero/i),
+    ).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("surfaces the server 400 on a manual line without a reason inline", async () => {
     server.use(
       http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, () =>

@@ -178,8 +178,21 @@ export async function deleteQuotationLine(quotationId: QuotationId, lineId: numb
   await apiSend<void>("DELETE", `/quotations/${quotationId}/lines/${lineId}`);
 }
 
-export async function fetchQuotationPreview(id: QuotationId): Promise<QuotationPreview> {
-  const data = await apiGet<unknown>(`/quotations/${id}:preview`);
+// Optional overrides (subject/intro/signoff) flow through as query params so
+// the returned html + fields reflect the operator's edits. Passing nothing
+// keeps the server's default render.
+export async function fetchQuotationPreview(
+  id: QuotationId,
+  overrides?: Partial<QuotationSendOverrides>,
+): Promise<QuotationPreview> {
+  const query: QueryParams | undefined = overrides
+    ? {
+        subject: overrides.subject,
+        intro: overrides.intro,
+        signoff: overrides.signoff,
+      }
+    : undefined;
+  const data = await apiGet<unknown>(`/quotations/${id}:preview`, { query });
   return quotationPreviewSchema.parse(data);
 }
 

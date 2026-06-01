@@ -29,14 +29,15 @@ import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
 import { PropertyThumbnail } from "./components/PropertyThumbnail";
-import { fetchQuotationPreview } from "./api";
 import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
+import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import {
   useDeleteQuotationLine,
   useDuplicateQuotation,
   useMarkQuotationManuallySent,
   useQuotation,
   useQuotationLines,
+  useQuotationPreview,
 } from "./hooks";
 import { TERMINAL_QUOTATION_STATUSES, type QuotationDetail, type QuotationLine } from "./schemas";
 
@@ -159,6 +160,7 @@ interface RailSummaryProps {
   duplicating: boolean;
   onCopy: () => void;
   copying: boolean;
+  copyReason: string | null;
 }
 
 function RailSummary({
@@ -171,6 +173,7 @@ function RailSummary({
   duplicating,
   onCopy,
   copying,
+  copyReason,
 }: RailSummaryProps) {
   const { t } = useTranslation("quotations");
 
@@ -245,7 +248,7 @@ function RailSummary({
         <ActionButton
           label={copying ? t("detail.actions.copying") : t("detail.actions.copy_to_clipboard")}
           onClick={onCopy}
-          disableReason={sendReason}
+          disableReason={sendReason ?? copyReason}
           disabled={copying}
         />
         <ActionButton
@@ -281,6 +284,11 @@ export function QuotationDetailLayout() {
   const markManuallySent = useMarkQuotationManuallySent(query.data?.id ?? 0);
   const linesQuery = useQuotationLines(query.data?.id);
   const { copy } = useCopyToClipboard();
+  // Prefetch the guest-facing preview so the rail "Copy" button can write to
+  // the clipboard synchronously inside the click (no awaited fetch first,
+  // which would lose the transient-activation window in Safari/Firefox).
+  // Only worth fetching once we know the quotation id and the user can act.
+  const previewQuery = useQuotationPreview(query.data?.id ?? 0, !!query.data && canWrite);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeLine, setActiveLine] = useState<QuotationLine | null>(null);
@@ -329,13 +337,19 @@ export function QuotationDetailLayout() {
     }
   };
 
-  // Path B (Outlook): pull the guest-facing HTML, copy it to the clipboard,
-  // then record the SENT state so it mirrors the Path A bookkeeping.
+  // Path B (Outlook): copy the PREFETCHED guest-facing HTML, then record the
+  // SENT state so it mirrors the Path A bookkeeping. The clipboard write MUST
+  // stay synchronous within the click — awaiting a fetch first would lose the
+  // transient-activation window in Safari/Firefox (NotAllowedError). The
+  // button is disabled until `previewQuery.data` is cached, so it's present.
+  const previewHtml = previewQuery.data?.html ?? null;
   const handleCopyToClipboard = async () => {
+    if (!previewHtml) return;
     setCopying(true);
+    // Synchronous: reach clipboard.write inside the click's user activation.
+    const copied = copy(previewHtml, htmlToPlainText(previewHtml));
     try {
-      const previewData = await fetchQuotationPreview(quotation.id);
-      const ok = await copy(previewData.html);
+      const ok = await copied;
       if (!ok) {
         toast.error(t("detail.dialogs.send_preview.toasts.copy_failed"));
         return;
@@ -392,6 +406,7 @@ export function QuotationDetailLayout() {
             duplicating={duplicate.isPending}
             onCopy={handleCopyToClipboard}
             copying={copying || markManuallySent.isPending}
+            copyReason={previewHtml ? null : t("detail.actions.disable_reasons.preview_loading")}
           />
         }
       >

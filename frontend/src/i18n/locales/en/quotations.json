@@ -11,7 +11,8 @@
   "schema_errors": {
     "at_least_one_adult": "At least one adult",
     "date_to_after_date_from": "Must be after the start date",
-    "override_reason_required": "A reason is required when overriding the price"
+    "override_reason_required": "A reason is required when overriding the price",
+    "manual_total_required": "A manual line needs a total greater than zero"
   },
   "list": {
     "title": "Quotations",
@@ -98,7 +99,8 @@
         "not_draft": "Only draft quotes can be sent.",
         "terminal": "Already accepted, cancelled, or expired.",
         "not_sent": "Send the quote to the guest before converting.",
-        "no_lines": "Add at least one line before converting."
+        "no_lines": "Add at least one line before converting.",
+        "preview_loading": "Preparing the quote — one moment."
       }
     },
     "dialogs": {

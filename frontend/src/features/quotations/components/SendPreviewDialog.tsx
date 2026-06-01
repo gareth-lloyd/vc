@@ -20,6 +20,7 @@ import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
+import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import { useMarkQuotationManuallySent, useQuotationPreview, useSendQuotation } from "../hooks";
 import {
   quotationSendOverridesSchema,
@@ -37,7 +38,6 @@ const EMPTY: QuotationSendOverrides = { subject: "", intro: "", signoff: "" };
 
 export function SendPreviewDialog({ open, onOpenChange, quotation }: Props) {
   const { t } = useTranslation("quotations");
-  const preview = useQuotationPreview(quotation.id, open);
   const send = useSendQuotation(quotation.id);
   const markManuallySent = useMarkQuotationManuallySent(quotation.id);
   const { copy } = useCopyToClipboard();
@@ -48,19 +48,50 @@ export function SendPreviewDialog({ open, onOpenChange, quotation }: Props) {
     defaultValues: EMPTY,
   });
 
-  // Seed the editable fields from the preview defaults once it loads.
-  const previewData = preview.data;
+  // Watch the editable fields so the preview can re-render the operator's
+  // edits live. We seed once from the server defaults (no overrides) and only
+  // start passing overrides once that seed has landed — otherwise the first
+  // fetch would post empty strings before we know the defaults.
+  const [seeded, setSeeded] = useState(false);
+  const subject = form.watch("subject");
+  const intro = form.watch("intro");
+  const signoff = form.watch("signoff");
+
+  // Debounce the watched values so each keystroke doesn't refire the preview.
+  const [debounced, setDebounced] = useState<QuotationSendOverrides>(EMPTY);
   useEffect(() => {
-    if (open && previewData) {
+    const handle = setTimeout(() => setDebounced({ subject, intro, signoff }), 350);
+    return () => clearTimeout(handle);
+  }, [subject, intro, signoff]);
+
+  // Pass overrides only once the form is seeded; before that we want the
+  // server's stored defaults so the editable fields can be populated.
+  const preview = useQuotationPreview(quotation.id, open, seeded ? debounced : undefined);
+  const previewData = preview.data;
+
+  // Seed the editable fields from the preview defaults once they load.
+  useEffect(() => {
+    if (open && previewData && !seeded) {
       form.reset({
         subject: previewData.subject,
         intro: previewData.intro,
         signoff: previewData.signoff,
       });
+      setDebounced({
+        subject: previewData.subject,
+        intro: previewData.intro,
+        signoff: previewData.signoff,
+      });
       setTopLevelError(null);
+      setSeeded(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, previewData]);
+  }, [open, previewData, seeded]);
+
+  // Reset the seed latch when the dialog closes so a re-open starts fresh.
+  useEffect(() => {
+    if (!open) setSeeded(false);
+  }, [open]);
 
   const busy = send.isPending || markManuallySent.isPending;
 
@@ -80,12 +111,18 @@ export function SendPreviewDialog({ open, onOpenChange, quotation }: Props) {
     }
   };
 
-  // Path B — copy the rendered HTML, then record the SENT state so the
-  // Outlook flow mirrors Path A's bookkeeping.
+  // Path B — copy the already-loaded HTML, then record the SENT state so the
+  // Outlook flow mirrors Path A's bookkeeping. The clipboard write MUST stay
+  // synchronous within the click handler (no awaited fetch first) or Safari /
+  // Firefox drop the transient-activation window and throw NotAllowedError.
+  // Because the preview is kept in sync with the operator's edits (Fix A),
+  // `previewData.html` is already the edited content.
   const handleCopy = async () => {
     if (!previewData) return;
+    // Synchronous: reach clipboard.write inside the click's user activation.
+    const copied = copy(previewData.html, htmlToPlainText(previewData.html));
     try {
-      const ok = await copy(previewData.html);
+      const ok = await copied;
       if (!ok) {
         toast.error(t("detail.dialogs.send_preview.toasts.copy_failed"));
         return;

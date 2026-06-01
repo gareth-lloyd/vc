@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { queryKeys, type QuotationId } from "@/lib/query/keys";
 import {
@@ -52,12 +52,21 @@ export function useQuotationLines(id: QuotationId | undefined) {
 
 // Guest-facing preview. Read-only and only fired while the send/copy flow
 // is active — the caller passes `enabled` so we don't fetch for every
-// closed dialog in a list.
-export function useQuotationPreview(id: QuotationId, enabled: boolean) {
+// closed dialog in a list. Optional `overrides` (subject/intro/signoff)
+// flow into both the request and the query key, so the cached html
+// re-fetches whenever the operator's edits change.
+export function useQuotationPreview(
+  id: QuotationId,
+  enabled: boolean,
+  overrides?: Partial<QuotationSendOverrides>,
+) {
   return useQuery({
-    queryKey: queryKeys.quotations.preview(id),
-    queryFn: () => fetchQuotationPreview(id),
+    queryKey: queryKeys.quotations.preview(id, overrides),
+    queryFn: () => fetchQuotationPreview(id, overrides),
     enabled,
+    // Keep the last rendered preview on screen while an override refetch is in
+    // flight, so the iframe / form don't flicker back to skeleton on each edit.
+    placeholderData: keepPreviousData,
   });
 }
 

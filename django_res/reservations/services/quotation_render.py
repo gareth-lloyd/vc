@@ -12,6 +12,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from django.conf import settings
 from django.template.loader import render_to_string
 
 from core.text import render_markdown
@@ -31,13 +32,39 @@ def _money(amount: Decimal) -> str:
     return f"{amount:,.2f}"
 
 
+def _absolute_media_url(url: str | None) -> str | None:
+    """Make a media URL absolute for the email / preview / clipboard render.
+
+    `Property.hero_image_url()` returns `image.url`, which under the
+    dev/WhiteNoise config (`FileSystemStorage`, `MEDIA_URL="/media/"`) is a
+    host-relative path with no scheme/domain. The render seam embeds it as an
+    `<img src>` in copy-to-Outlook HTML and a sandboxed (null-origin) preview
+    iframe, where a relative src can't resolve — so the guest gets a broken
+    thumbnail.
+
+    `FRONTEND_URL` is the canonical public origin: production/staging is a
+    single-origin deploy where Django (WhiteNoise) serves both the SPA and
+    `/media/`, so it is the host that actually serves the file. Only prefix a
+    host-relative path (starts with `/`); a storage that already returns an
+    absolute URL (e.g. S3, `http(s)://…`) is left untouched so we never
+    double-prefix.
+    """
+    if url is None or not url.startswith("/"):
+        return url
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}{url}"
+
+
 def _hero_image_url(line: QuotationLine) -> str | None:
-    """Best-effort absolute-or-relative URL for the line property's hero image.
+    """Absolute URL for the line property's hero image, or None.
 
     Thin wrapper over `Property.hero_image_url()` — the single source of
-    truth shared with the line serializer and the bulk-quote API.
+    truth shared with the line serializer and the bulk-quote API — absolutised
+    for the email / preview / clipboard render so the `<img src>` resolves off
+    the same-origin SPA. (The API serializer keeps the relative form; the SPA
+    consumes it same-origin.)
     """
-    return line.property.hero_image_url()
+    return _absolute_media_url(line.property.hero_image_url())
 
 
 def build_quotation_context(
@@ -58,6 +85,11 @@ def build_quotation_context(
     the centralised defaults apply, so the preview and the dispatched email
     never drift. A non-None override replaces the default in the returned
     context (and thus in the rendered HTML and the email subject).
+
+    `subject` is special-cased: a blank/whitespace override (the FE sends `""`
+    when the operator clears the field) coerces to the default — a blank email
+    subject is never acceptable. `intro`/`signoff` keep `is not None`
+    semantics: `""` is a legitimate "no paragraph" and is respected.
     """
     lines_qs = (
         quotation.lines.exclude(legacy_id__startswith="booking-")
@@ -105,15 +137,26 @@ def build_quotation_context(
         "grand_total": _money(grand_total),
         "expires_at": quotation.expires_at,
         "terms_html": terms_html,
-        "subject": subject if subject is not None else f"Your quotation {quotation.reference}",
+        "subject": (subject or "").strip() or f"Your quotation {quotation.reference}",
         "intro": intro if intro is not None else DEFAULT_INTRO,
         "signoff": signoff if signoff is not None else DEFAULT_SIGNOFF,
     }
 
 
-def render_quotation_html(quotation: Quotation) -> str:
-    """Render the branded, self-contained quote HTML for a quotation."""
+def render_quotation_html(
+    quotation: Quotation,
+    *,
+    subject: str | None = None,
+    intro: str | None = None,
+    signoff: str | None = None,
+) -> str:
+    """Render the branded, self-contained quote HTML for a quotation.
+
+    `subject`/`intro`/`signoff` are the same operator copy overrides accepted
+    by `build_quotation_context`; they're threaded through so the preview HTML
+    reflects the operator's in-flight edits. The no-arg call renders defaults.
+    """
     return render_to_string(
         "reservations/quotation_quote.html",
-        build_quotation_context(quotation),
+        build_quotation_context(quotation, subject=subject, intro=intro, signoff=signoff),
     )

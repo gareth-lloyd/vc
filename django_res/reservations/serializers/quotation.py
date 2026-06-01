@@ -72,6 +72,25 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
     REQUIRE a `price_override_reason` for the audit trail.
     """
 
+    # Accept a blank/absent `total` at the field layer (the FE sends `""` when
+    # the operator clears the field) so the manual-line presence check lands in
+    # `validate()` as an explicit, i18n-agnostic field error rather than DRF's
+    # generic "A valid number is required." For a non-manual line the supplied
+    # total is server-recomputed by `_reprice` regardless.
+    total = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+
+    def to_internal_value(self, data: dict) -> dict:
+        # Coerce an empty-string `total` to None so the DecimalField doesn't
+        # reject it field-level; the manual-vs-not rule is decided in validate.
+        if isinstance(data, dict) and data.get("total") == "":
+            data = {**data, "total": None}
+        return super().to_internal_value(data)
+
     class Meta:
         model = QuotationLine
         fields = [
@@ -103,6 +122,24 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
                 raise serializers.ValidationError(
                     {"price_override_reason": ["This field is required for a manual line."]}
                 )
+            # A manual line owns its `total` — it must be a present, positive
+            # value. Raise an explicit, i18n-agnostic field error here rather
+            # than letting a blank/absent total fall through to the engine
+            # (which would silently 0-default) or to DRF's generic "A valid
+            # number is required." On a partial update fall back to the
+            # instance, mirroring the reason check above.
+            total = attrs.get("total")
+            if total is None and self.instance is not None and "total" not in attrs:
+                total = self.instance.total
+            if total is None or total <= 0:
+                raise serializers.ValidationError(
+                    {"total": ["This field is required for a manual line."]}
+                )
+        elif attrs.get("total") is None:
+            # Non-manual line: `total` is server-recomputed by `_reprice`. Drop
+            # an explicit None so it never reaches the non-nullable model field;
+            # the model default / repricing supplies the real value.
+            attrs.pop("total", None)
         return attrs
 
 

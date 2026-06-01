@@ -535,6 +535,27 @@ def test_preview_returns_html_subject_intro_signoff(
 
 
 @pytest.mark.django_db
+def test_preview_applies_query_param_overrides(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """`:preview` reads subject/intro/signoff from query params so the preview
+    reflects the operator's in-flight edits, not just the defaults."""
+    api_client.force_login(staff)
+    response = api_client.get(
+        f"/api/v1/quotations/{quotation.pk}:preview",
+        {"subject": "Custom", "intro": "Hello"},
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["subject"] == "Custom"
+    assert response.data["intro"] == "Hello"
+    assert "Hello" in response.data["html"]
+
+
+@pytest.mark.django_db
 def test_send_applies_subject_and_intro_overrides(
     api_client: APIClient,
     staff: User,
@@ -717,6 +738,55 @@ def test_discount_clamps_total_at_zero(
     )
     assert create.status_code == 201, create.data
     assert QuotationLine.objects.get().total == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_manual_line_missing_total_is_clean_field_error(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A manual line with no/blank total returns a clean 400 field error on
+    `total`, not DRF's opaque generic 'A valid number is required.'"""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "price_override_reason": "Negotiated rate",
+        },
+        format="json",
+    )
+    assert create.status_code == 400, create.data
+    assert "total" in create.data["field_errors"]
+
+
+@pytest.mark.django_db
+def test_manual_line_patch_missing_total_is_clean_field_error(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    line: QuotationLine,
+    rate_rule: object,
+) -> None:
+    """PATCHing a line to is_manual=True with a blank total is a clean 400 on
+    `total`, reading is_manual from the body and total fallback from instance."""
+    api_client.force_login(staff)
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"is_manual": True, "total": "", "price_override_reason": "Negotiated rate"},
+        format="json",
+    )
+    assert patch.status_code == 400, patch.data
+    assert "total" in patch.data["field_errors"]
 
 
 @pytest.mark.django_db

@@ -162,7 +162,23 @@ export const quotationLineWriteInputSchema = z
   .refine((v) => !v.is_manual || (v.price_override_reason ?? "").trim().length > 0, {
     path: ["price_override_reason"],
     message: i18n.t("quotations:schema_errors.override_reason_required"),
-  });
+  })
+  // Mirror the server's manual-total rule: a manual line needs a non-empty
+  // total that parses to a number > 0. The server's 400 on `total` still
+  // surfaces inline as a belt-and-suspenders if this slips through.
+  .refine(
+    (v) => {
+      if (!v.is_manual) return true;
+      const raw = (v.total ?? "").trim();
+      if (raw === "") return false;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed > 0;
+    },
+    {
+      path: ["total"],
+      message: i18n.t("quotations:schema_errors.manual_total_required"),
+    },
+  );
 export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSchema>;
 
 // Current terms version — returned by GET /terms-versions/current.

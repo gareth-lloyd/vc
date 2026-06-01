@@ -26,6 +26,7 @@ class QuotationLineInput(TypedDict, total=False):
     children: int
     notes: str
     is_manual: bool
+    total: Decimal
 
 
 class QuotationService:
@@ -104,17 +105,26 @@ class QuotationService:
                 line_input["date_from"],
                 allow_override=allow_changeover_override,
             )
-            line = QuotationLine.objects.create(
-                quotation=quotation,
-                property=line_input["property"],
-                date_from=line_input["date_from"],
-                date_to=line_input["date_to"],
-                adults=adults,
-                children=children,
-                is_manual=bool(line_input.get("is_manual", False)),
-                notes=line_input.get("notes", ""),
-            )
-            cls.price_line(quotation, line)
+            is_manual = bool(line_input.get("is_manual", False))
+            create_kwargs: dict[str, Any] = {
+                "quotation": quotation,
+                "property": line_input["property"],
+                "date_from": line_input["date_from"],
+                "date_to": line_input["date_to"],
+                "adults": adults,
+                "children": children,
+                "is_manual": is_manual,
+                "notes": line_input.get("notes", ""),
+            }
+            # A manual line carries the operator-supplied total (or the model
+            # default if none given); the engine must not stamp it.
+            if is_manual and "total" in line_input:
+                create_kwargs["total"] = line_input["total"]
+            line = QuotationLine.objects.create(**create_kwargs)
+            # Only non-manual lines are priced — mirror the API `_reprice`
+            # guard so a manual line keeps its operator total either way.
+            if not is_manual:
+                cls.price_line(quotation, line)
             HoldService.place(
                 property=line_input["property"],
                 date_from=line_input["date_from"],

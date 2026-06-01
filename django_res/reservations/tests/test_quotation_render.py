@@ -131,6 +131,72 @@ def test_override_flows_into_rendered_html(
 
 
 @pytest.mark.django_db
+def test_render_quotation_html_applies_overrides(
+    priced_quotation: Quotation,
+) -> None:
+    """`render_quotation_html` threads operator overrides into the HTML so the
+    preview reflects the same copy the email will dispatch."""
+    html = render_quotation_html(priced_quotation, intro="A bespoke preview intro.")
+    assert "A bespoke preview intro." in html
+    assert DEFAULT_INTRO not in html
+
+
+@pytest.mark.django_db
+def test_blank_subject_override_coerced_to_default(
+    priced_quotation: Quotation,
+) -> None:
+    """An empty-string subject (operator cleared the field) must NOT produce a
+    blank email subject — it coerces to the non-blank default."""
+    ctx = build_quotation_context(priced_quotation, subject="")
+    assert ctx["subject"] == f"Your quotation {priced_quotation.reference}"
+    assert ctx["subject"].strip()
+
+    ctx_ws = build_quotation_context(priced_quotation, subject="   ")
+    assert ctx_ws["subject"] == f"Your quotation {priced_quotation.reference}"
+
+
+@pytest.mark.django_db
+def test_blank_intro_override_respected_as_empty(
+    priced_quotation: Quotation,
+) -> None:
+    """An empty-string intro is a legitimate 'no intro paragraph' — keep it,
+    don't fall back to the default (only `subject` coerces blank→default)."""
+    ctx = build_quotation_context(priced_quotation, intro="", signoff="")
+    assert ctx["intro"] == ""
+    assert ctx["signoff"] == ""
+
+
+@pytest.mark.django_db
+def test_hero_image_url_is_absolute_in_render_seam(
+    priced_quotation: Quotation,
+    property_: Property,
+) -> None:
+    """The render seam embeds the hero image as `<img src>` in copy-to-Outlook
+    HTML and a sandboxed (null-origin) preview iframe, where a host-relative
+    `/media/...` src can't resolve. The render-seam URL must be absolute."""
+    from django.conf import settings
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from properties.enums import ImageKind
+    from properties.models import PropertyImage
+
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+
+    ctx = build_quotation_context(priced_quotation)
+    hero_url = ctx["lines"][0]["hero_image_url"]
+    assert hero_url is not None
+    assert hero_url.startswith(("http://", "https://"))
+    assert hero_url.startswith(settings.FRONTEND_URL.rstrip("/"))
+
+    html = render_quotation_html(priced_quotation)
+    assert f'src="{hero_url}"' in html
+
+
+@pytest.mark.django_db
 def test_build_quotation_context_carries_discount_and_inclusions(
     priced_quotation: Quotation,
     property_: Property,

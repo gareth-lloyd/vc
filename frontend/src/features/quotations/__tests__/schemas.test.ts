@@ -107,6 +107,59 @@ describe("quotation schemas", () => {
     }
   });
 
+  it("rejects a manual line write with a missing total", () => {
+    const result = quotationLineWriteInputSchema.safeParse({
+      property: 1,
+      date_from: "2026-07-01",
+      date_to: "2026-07-08",
+      adults: 2,
+      children: 0,
+      is_manual: true,
+      // total omitted
+      price_override_reason: "Agreed rate",
+      notes: "",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.includes("total"))).toBe(true);
+    }
+  });
+
+  it("rejects a manual line write with a blank or non-positive total", () => {
+    for (const total of ["", "   ", "0", "-5", "abc"]) {
+      const result = quotationLineWriteInputSchema.safeParse({
+        property: 1,
+        date_from: "2026-07-01",
+        date_to: "2026-07-08",
+        adults: 2,
+        children: 0,
+        is_manual: true,
+        total,
+        price_override_reason: "Agreed rate",
+        notes: "",
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((i) => i.path.includes("total"))).toBe(true);
+      }
+    }
+  });
+
+  it("accepts a manual line write with a positive total and a reason", () => {
+    const result = quotationLineWriteInputSchema.safeParse({
+      property: 1,
+      date_from: "2026-07-01",
+      date_to: "2026-07-08",
+      adults: 2,
+      children: 0,
+      is_manual: true,
+      total: "999.00",
+      price_override_reason: "Agreed rate",
+      notes: "",
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("allows a non-manual line write without total or reason", () => {
     const result = quotationLineWriteInputSchema.safeParse({
       property: 1,

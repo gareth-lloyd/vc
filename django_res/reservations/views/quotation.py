@@ -72,16 +72,23 @@ class QuotationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request: Request, pk: str | None = None) -> Response:
-        """Render the quote HTML + the default copy an operator can edit.
+        """Render the quote HTML + the copy an operator can edit.
 
-        Reads `subject`/`intro`/`signoff` from the shared render context so the
-        preview the operator sees is byte-for-byte what `:send` will dispatch.
+        Optional `subject`/`intro`/`signoff` query params are operator copy
+        overrides; threading them through means the preview the operator sees
+        reflects their in-flight edits and is byte-for-byte what `:send` will
+        dispatch with the same overrides. Omitting them previews the defaults.
         """
         quotation = self.get_object()
-        context = build_quotation_context(quotation)
+        overrides = {
+            key: request.query_params[key]
+            for key in ("subject", "intro", "signoff")
+            if key in request.query_params
+        }
+        context = build_quotation_context(quotation, **overrides)
         return Response(
             {
-                "html": render_quotation_html(quotation),
+                "html": render_quotation_html(quotation, **overrides),
                 "subject": context["subject"],
                 "intro": context["intro"],
                 "signoff": context["signoff"],

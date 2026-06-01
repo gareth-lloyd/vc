@@ -543,3 +543,39 @@ def test_genuine_card_vs_property_conflict_raises(
             party=4,
             currency=gbp,
         )
+
+
+@pytest.mark.django_db
+def test_repeat_guest_discount_never_applied(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    """REPEAT_GUEST is a recognised-but-unimplemented enum (GAP-009).
+
+    A `REPEAT_GUEST` discount that would otherwise match (active, in-window,
+    min_nights satisfied) must never reduce the total — the engine excludes
+    it at the queryset, so it can't silently mis-apply.
+    """
+    from pricing.enums import DiscountKind, RuleKind
+    from pricing.models import Discount
+
+    Discount.objects.create(
+        property=property_,
+        name="Welcome back",
+        rule_kind=RuleKind.REPEAT_GUEST,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("50.00"),  # would halve the stay if applied
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),  # 7 nights x 200 = 1400
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.discount == Decimal("0.00")
+    assert quote.total == Decimal("1400.00")

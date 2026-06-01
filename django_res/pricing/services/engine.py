@@ -334,11 +334,18 @@ class PricingEngine:
         as_of: date,
         discount_code: str | None,
     ) -> Decimal:
-        qs = Discount.objects.filter(
-            is_active=True,
-            valid_from__lte=date_from,
-            valid_to__gte=date_from,
-        ).filter(Q(card=card) | Q(card__isnull=True, property=property))
+        qs = (
+            Discount.objects.filter(
+                is_active=True,
+                valid_from__lte=date_from,
+                valid_to__gte=date_from,
+            )
+            .filter(Q(card=card) | Q(card__isnull=True, property=property))
+            # REPEAT_GUEST is recognised but unimplemented in v1 (no repeat-guest
+            # detection exists yet — see GAP-009). Exclude it here so it can never
+            # silently mis-apply; keep the enum member to avoid migration/API churn.
+            .exclude(rule_kind=RuleKind.REPEAT_GUEST)
+        )
 
         applied_total = Decimal("0")
         for d in qs:
@@ -356,8 +363,6 @@ class PricingEngine:
                 if d.rule_kind == RuleKind.LAST_MINUTE and d.threshold_days is not None:
                     if (date_from - as_of).days > d.threshold_days:
                         continue
-                if d.rule_kind == RuleKind.REPEAT_GUEST:
-                    continue
             applied_total += apply_discount(d, subtotal=subtotal)
 
         if discount_code is not None:

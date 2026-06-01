@@ -58,6 +58,25 @@ Three loose ends, plus a framing correction:
 - `09-departures.md` records the discount disposition + `DiscountApply` drop.
 - A follow-up note (here) tracks the deferred `uses_count`/`max_uses` wiring.
 
+## Resolution
+
+✅ Now-slice shipped (code + docs).
+- `_apply_discounts` (`engine.py`): `REPEAT_GUEST` is now excluded at the
+  queryset (`.exclude(rule_kind=RuleKind.REPEAT_GUEST)`) with a comment marking
+  it "recognised but unimplemented in v1"; the dead inner `continue` was removed.
+  It can no longer silently mis-apply.
+- Test `test_repeat_guest_discount_never_applied` in `pricing/tests/test_engine.py`
+  proves a would-otherwise-match REPEAT_GUEST discount never reduces the total.
+- `04-pricing.md` step 7 drops REPEAT_GUEST from the auto-apply list and adds the
+  "not implemented in v1" note.
+- `09-departures.md` Pricing table: the Discount row now records the Added/Replaced
+  disposition (legacy stored-but-never-applied), the `repeat_guest` v1 exclusion,
+  the deferred `uses_count`/`max_uses` wiring, and the intentional `DiscountApply` drop.
+
+**Deferred (still open, booking-redemption slice):** `uses_count` increment +
+`max_uses` enforcement on the booking-creation path; the discount-total ≤ subtotal
+cap; repeat-guest detection if/when REPEAT_GUEST is wanted.
+
 ## Dependencies
 
 - `uses_count`/`max_uses` enforcement depends on the booking-creation slice.

@@ -325,7 +325,7 @@ Steps:
 4. Compute rate subtotal.
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).
 6. Apply caller-supplied opt-in `Extra`s (the `opt_in_extras` argument).
-7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE, REPEAT_GUEST) plus optional PROMO_CODE.
+7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE) plus optional PROMO_CODE. `REPEAT_GUEST` is a recognised enum member but **not implemented in v1** (no repeat-guest detection exists yet); the engine excludes it at the queryset so it can never silently mis-apply (see GAP-009).
 8. Apply commission from `property.finance.effective_commission()` (the resolver in `03-finance-config.md`).
 9. Apply tax last from `property.finance.effective_tax_policy()` — tax base is rate subtotal + extras − discounts.
 10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). The breakdown carries `total`, `commission`, `tax`, `is_provisional`, and `net_to_owner = total - commission - tax` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.

@@ -630,3 +630,61 @@ def test_modify_dates_into_overlap_raises_overlapping_booking(
     second.refresh_from_db()
     assert second.date_from == date(2026, 7, 1)
     assert second.date_to == date(2026, 7, 8)
+
+
+# ---------------------------------------------------------------------------
+# FG-006 — modify must lock + reload committed state before re-pricing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_modify_dates_reloads_committed_state_before_repricing(
+    booking: Booking, rate_rule: RateRule
+) -> None:
+    """`modify_dates` must re-read the row under a lock before re-pricing.
+
+    Simulates the lost-update window single-threaded: a stale handle (`stale`)
+    is loaded, then another writer commits new dates through a second handle.
+    When `stale.modify_dates(...)` runs, `_lock_for_update` re-fetches the row
+    under `SELECT … FOR UPDATE`, so the event's `from` reflects the *committed*
+    dates — not the stale ones the handle was loaded with. Without the lock
+    helper the method would operate on the stale instance and record the wrong
+    `from`, clobbering the other writer's change.
+    """
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+
+    # A handle loaded before a concurrent writer commits — its in-memory
+    # date_from/date_to are now stale.
+    stale = Booking.objects.get(pk=booking.pk)
+
+    # Another writer moves the dates and commits.
+    Booking.objects.get(pk=booking.pk).modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+
+    # The stale handle now modifies dates; the lock + reload must make it see
+    # the committed July dates as its starting point, not the original June ones.
+    stale.modify_dates(date(2026, 8, 1), date(2026, 8, 8))
+
+    latest = BookingEvent.objects.filter(booking=booking).latest("created_at", "id")
+    assert latest.meta["from"] == [date(2026, 7, 1).isoformat(), date(2026, 7, 8).isoformat()]
+    assert latest.meta["to"] == [date(2026, 8, 1).isoformat(), date(2026, 8, 8).isoformat()]
+
+    booking.refresh_from_db()
+    assert booking.date_from == date(2026, 8, 1)
+    assert booking.date_to == date(2026, 8, 8)
+
+
+@pytest.mark.django_db
+def test_modify_guests_reloads_committed_state_before_repricing(
+    booking: Booking, rate_rule: RateRule
+) -> None:
+    """`modify_guests` takes the same lock + reload (FG-006)."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+
+    stale = Booking.objects.get(pk=booking.pk)
+    Booking.objects.get(pk=booking.pk).modify_guests(adults=3, children=0)
+
+    stale.modify_guests(adults=5, children=1)
+
+    latest = BookingEvent.objects.filter(booking=booking).latest("created_at", "id")
+    assert latest.meta["from"] == {"adults": 3, "children": 0}
+    assert latest.meta["to"] == {"adults": 5, "children": 1}

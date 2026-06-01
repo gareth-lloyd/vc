@@ -43,6 +43,25 @@ service-layer helper to avoid repeating it.
 - Regression test (using two threads / `transaction.atomic` blocks)
   that today flakes/loses-writes now serialises cleanly.
 
+## Resolution
+
+✅ Added `Booking._lock_for_update()` (`reservations/models/booking.py`) — takes
+`SELECT … FOR UPDATE` on the row then `refresh_from_db()` — and call it as the
+first statement inside both `modify_dates` and `modify_guests` (both already
+`@transaction.atomic`). The lock serialises a second concurrent caller behind
+the first; the reload makes `self` reflect the committed state before re-pricing,
+so the later writer can't clobber the earlier with stale data.
+
+Regression tests in `reservations/tests/test_booking.py`
+(`test_modify_dates_reloads_committed_state_before_repricing`,
+`test_modify_guests_reloads_committed_state_before_repricing`) reproduce the
+lost-update window single-threaded: a stale handle is loaded, a second handle
+commits a change, then the stale handle modifies — the event's `from` must reflect
+the committed value, not the stale one. Both fail without the lock helper. A
+threaded `transaction=True` variant was dropped in favour of the deterministic
+single-threaded form (the threaded version raced its own DB teardown and
+destabilised the rest of the suite).
+
 ## Dependencies
 
 None.

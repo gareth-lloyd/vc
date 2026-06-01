@@ -400,6 +400,20 @@ class Booking(AuditedModel):
             BookingStatus.BALANCE_PAID.value,
         )
 
+    def _lock_for_update(self) -> None:
+        """Take a row lock on this booking and reload its fields.
+
+        `modify_dates` / `modify_guests` recompute pricing from the booking's
+        own fields, so two concurrent calls can lost-update each other under
+        Postgres' default `READ COMMITTED` (both read the old fields, both
+        write — the later commit silently clobbers the earlier). Taking
+        `SELECT … FOR UPDATE` on entry serialises the second caller behind the
+        first; the reload then makes `self` reflect the freshly-committed state
+        before we re-price. Must be called inside the method's `atomic` block.
+        """
+        Booking.objects.select_for_update().get(pk=self.pk)
+        self.refresh_from_db()
+
     def _rerun_pricing(
         self,
         *,
@@ -430,6 +444,7 @@ class Booking(AuditedModel):
         reason: str = "",
     ) -> Booking:
         """Re-run pricing for new dates; preserves `status`."""
+        self._lock_for_update()
         if self.status not in self._modify_allowed_states():
             raise InvalidTransition(
                 self.status,
@@ -500,6 +515,7 @@ class Booking(AuditedModel):
         reason: str = "",
     ) -> Booking:
         """Re-run pricing for new party size; preserves `status`."""
+        self._lock_for_update()
         allowed = (
             BookingStatus.DRAFT.value,
             BookingStatus.PENDING_OWNER_APPROVAL.value,

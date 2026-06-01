@@ -80,7 +80,14 @@ class Quotation(AuditedModel):
             raise InvalidTransition(self.status, to, allowed=list(allowed_from))
 
     @transaction.atomic
-    def send(self, *, actor: Any = None) -> Quotation:
+    def send(
+        self,
+        *,
+        actor: Any = None,
+        subject: str | None = None,
+        intro: str | None = None,
+        signoff: str | None = None,
+    ) -> Quotation:
         """DRAFT → SENT via the in-app SMTP path.
 
         Delegates the downstream state writes (status flip, enquiry
@@ -88,6 +95,10 @@ class Quotation(AuditedModel):
         `record_quote_sent` helper so the manual-mark endpoint produces
         identical state. Fires the `quotation_sent` signal afterwards so
         `comms.signals.quotation_sent_handler` can dispatch the email.
+
+        Optional `subject`/`intro`/`signoff` are operator copy overrides:
+        they ride the signal so `quotation_sent_handler` can thread them into
+        `build_quotation_context` and the guest email reflects the edited copy.
         """
         # Local import — keeps the service module out of the model's import
         # graph and matches the existing `quotation_sent` signal pattern.
@@ -98,7 +109,13 @@ class Quotation(AuditedModel):
         from reservations.signals import quotation_sent
 
         record_quote_sent(self, send_path=SEND_PATH_SMTP, actor=actor)
-        quotation_sent.send(sender=Quotation, quotation=self)
+        quotation_sent.send(
+            sender=Quotation,
+            quotation=self,
+            subject=subject,
+            intro=intro,
+            signoff=signoff,
+        )
         return self
 
     @transaction.atomic
@@ -172,6 +189,9 @@ class QuotationLine(AuditedModel):
     children = models.PositiveSmallIntegerField(default=0)
     pricing_snapshot = models.JSONField(default=dict)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    inclusions = models.TextField(blank=True)
+    price_override_reason = models.TextField(blank=True)
     is_selected = models.BooleanField(default=False)
     is_manual = models.BooleanField(default=False)
     notes = models.TextField(blank=True)

@@ -127,12 +127,17 @@ export function SaveQuoteDialog({
       try {
         await Promise.all(
           lines.map((line) => {
+            // Builder stages non-manual lines only; the server prices them,
+            // so we omit `total`/`price_override_reason` (decimal fields can't
+            // take an empty string).
             const body: QuotationLineWriteInput = {
               property: line.property_id,
               date_from: line.date_from,
               date_to: line.date_to,
               adults: line.adults,
               children: line.children,
+              discount: "0",
+              inclusions: "",
               is_manual: line.is_manual,
               notes: line.notes,
             };

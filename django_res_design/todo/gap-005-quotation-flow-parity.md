@@ -35,9 +35,41 @@ the booking.
   (`features/bookings/tabs/ConciergeTab.tsx`, `reservations/models/concierge.py`).
   **Decision (2026-06-02): accepted; no quote-time concierge.**
 
+## Foundation correctness gaps (found while grounding the parity work)
+
+Two bugs sat *underneath* the cosmetic parity gaps; the parity work would have
+sat on sand without them. Both are now fixed on branch
+`gap-005-quotation-flow-parity` (Phase 0 of the program of work).
+
+- **F1 — API-created quotation lines were never priced.**
+  `QuotationLineViewSet.perform_create` only called `serializer.save()`; there
+  was no pricing hook on `QuotationLine` and no signal, so lines saved via
+  `POST /quotations/{id}/lines` (the builder's save path) landed with
+  `total=0` and an empty `pricing_snapshot`. Only
+  `QuotationService.create_from_enquiry` priced correctly, which masked the bug
+  in `seed_dev` data. **Fix:** extracted `QuotationService.price_line` and call
+  it from `perform_create`/`perform_update` (non-manual lines), under
+  `select_for_update` per [FG-006](fg-006-modify-without-select-for-update.md).
+- **F2 — The quotation email was a content-less stub.**
+  `quotation_sent_handler` passed only guest/agent/reference (and never the
+  `{{ property_name }}` the template referenced); the MJML body had no line
+  items, dates, prices, or terms. Guests received an email that didn't contain
+  the quote. **Fix:** new shared render seam
+  `reservations/services/quotation_render.py`
+  (`build_quotation_context` / `render_quotation_html`) now backs the email,
+  the `:preview` endpoint, and copy-to-clipboard from one source of truth.
+
 ## Open implementation gaps (design says yes, code says no)
 
 Priority order below reflects operator-pain / spec-commitment.
+
+> **Implementation status (branch `gap-005-quotation-flow-parity`):**
+> ✅ done — #1 preview-before-send, #2 copy-to-Outlook, #4 imagery,
+> #5 per-line discount, #6 inclusions, #7 price-override-with-reason.
+> ⏸ deferred — #3 auto-hold (needs hold surface), #8 PDF (render seam is
+> ready; PDF is the fast-follow), #9 two-pane builder, #10 availability
+> badges (blocked on [Q-013](q-013-rate-card-incomplete-pricing.md)),
+> #11 TBC mode, #12 line pagination.
 
 ### P1 — Send experience (highest operator-touch)
 

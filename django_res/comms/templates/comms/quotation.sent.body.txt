@@ -1,8 +1,22 @@
 Hi {{ guest_first_name }},
 
-Please find your quotation for {{ property_name }} attached.
+{{ intro }}
 
-Reply to this email and I'll be glad to help with any questions.
+Your quotation ({{ quotation_reference }}):
+{% for line in lines %}
+- {{ line.property_name }}
+  {{ line.date_from }} to {{ line.date_to }} ({{ line.nights }} nights, {{ line.adults }} adults + {{ line.children }} children)
+  Total: {{ currency_code }} {{ line.total }}{% if line.discount and line.discount != "0.00" %} (incl. {{ currency_code }} {{ line.discount }} discount){% endif %}{% if line.inclusions %}
+  Includes: {{ line.inclusions }}{% endif %}{% if line.notes %}
+  Note: {{ line.notes }}{% endif %}
+{% endfor %}
+Grand total: {{ currency_code }} {{ grand_total }}
+{% if expires_at %}This quotation is valid until {{ expires_at }}.{% endif %}
 
+{{ signoff }}
+{% if agent_name %}
 Best,
-{{ agent_name }}
+{{ agent_name }}{% endif %}
+{% if terms_html %}
+---
+Terms & conditions apply. {{ terms_html|striptags }}{% endif %}

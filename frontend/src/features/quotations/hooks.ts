@@ -10,14 +10,22 @@ import {
   fetchCurrentTermsVersion,
   fetchQuotation,
   fetchQuotationLines,
+  fetchQuotationPreview,
   fetchQuotations,
+  markQuotationManuallySent,
   searchQuoteOptions,
   sendQuotation,
   updateQuotationLine,
   withdrawQuotation,
   type ConvertQuotationInput,
 } from "./api";
-import type { QuotationFilters, QuotationLineWriteInput, QuoteCriteriaInput } from "./schemas";
+import type {
+  QuotationDetail,
+  QuotationFilters,
+  QuotationLineWriteInput,
+  QuotationSendOverrides,
+  QuoteCriteriaInput,
+} from "./schemas";
 
 export const QUOTATIONS_PAGE_SIZE = 50;
 
@@ -40,6 +48,17 @@ export function useQuotation(id: QuotationId | undefined) {
 // real quote ever pushes the cap.
 export function useQuotationLines(id: QuotationId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.quotations.lines, fetchQuotationLines));
+}
+
+// Guest-facing preview. Read-only and only fired while the send/copy flow
+// is active — the caller passes `enabled` so we don't fetch for every
+// closed dialog in a list.
+export function useQuotationPreview(id: QuotationId, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.quotations.preview(id),
+    queryFn: () => fetchQuotationPreview(id),
+    enabled,
+  });
 }
 
 export function useCurrentTermsVersion() {
@@ -90,18 +109,35 @@ function invalidateQuotationLines(qc: ReturnType<typeof useQueryClient>, id: Quo
   qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
 }
 
+function invalidateAfterSend(
+  qc: ReturnType<typeof useQueryClient>,
+  id: QuotationId,
+  quotation: QuotationDetail,
+) {
+  invalidateQuotationStatus(qc, id);
+  // Parent enquiry status flips to QUOTED — refresh that view too.
+  if (quotation.enquiry != null) {
+    qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
+    qc.invalidateQueries({ queryKey: queryKeys.enquiries.activity(quotation.enquiry) });
+  }
+}
+
+// Path A — sends the guest email. Optional overrides (subject/intro/signoff)
+// flow into the email; no-arg callers keep working.
 export function useSendQuotation(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => sendQuotation(id),
-    onSuccess: (quotation) => {
-      invalidateQuotationStatus(qc, id);
-      // Parent enquiry status flips to QUOTED — refresh that view too.
-      if (quotation.enquiry != null) {
-        qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
-        qc.invalidateQueries({ queryKey: queryKeys.enquiries.activity(quotation.enquiry) });
-      }
-    },
+    mutationFn: (overrides?: QuotationSendOverrides) => sendQuotation(id, overrides),
+    onSuccess: (quotation) => invalidateAfterSend(qc, id, quotation),
+  });
+}
+
+// Path B — records SENT without dispatching email (copy-to-clipboard flow).
+export function useMarkQuotationManuallySent(id: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => markQuotationManuallySent(id),
+    onSuccess: (quotation) => invalidateAfterSend(qc, id, quotation),
   });
 }
 

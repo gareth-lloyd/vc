@@ -32,6 +32,38 @@ class QuotationService:
     """Orchestrate quotation creation off the back of an enquiry."""
 
     @classmethod
+    def price_line(cls, quotation: Quotation, line: QuotationLine) -> QuotationLine:
+        """Run the PricingEngine for a line and persist its total + snapshot.
+
+        The single source of truth for line pricing — both the
+        enquiry-driven `create_from_enquiry` path and the API
+        `QuotationLineViewSet` path funnel through here so a line is priced
+        identically however it's created. Manual-override lines must not be
+        passed in; the caller decides whether to reprice.
+        """
+        party = line.adults + line.children
+        quote = PricingEngine.quote(
+            property=line.property,
+            date_from=line.date_from,
+            date_to=line.date_to,
+            party=party,
+            currency=quotation.currency,
+        )
+        gross = quote.total.quantize(Decimal("0.01"))
+        # Annotate the snapshot so the gross (pre-discount engine figure) and
+        # the applied discount survive alongside the engine breakdown — the
+        # stored `total` is the net the guest pays.
+        snapshot = dict(quote.breakdown)
+        snapshot["gross"] = f"{gross:.2f}"
+        snapshot["discount"] = f"{line.discount:.2f}"
+        line.pricing_snapshot = snapshot
+        # Net the operator discount; never let a large discount drive the
+        # quoted price negative (mirrors Booking's non-negative money intent).
+        line.total = max(gross - line.discount, Decimal("0"))
+        line.save(update_fields=["pricing_snapshot", "total", "updated_at"])
+        return line
+
+    @classmethod
     @transaction.atomic
     def create_from_enquiry(
         cls,
@@ -65,31 +97,24 @@ class QuotationService:
         for line_input in lines:
             adults = int(line_input.get("adults", enquiry.adults))
             children = int(line_input.get("children", enquiry.children))
-            party = adults + children
+            # Changeover validation must run before pricing — an invalid
+            # arrival aborts the whole atomic block before any line lands.
             ChangeoverService.validate_arrival(
                 line_input["property"],
                 line_input["date_from"],
                 allow_override=allow_changeover_override,
             )
-            quote = PricingEngine.quote(
-                property=line_input["property"],
-                date_from=line_input["date_from"],
-                date_to=line_input["date_to"],
-                party=party,
-                currency=currency,
-            )
-            QuotationLine.objects.create(
+            line = QuotationLine.objects.create(
                 quotation=quotation,
                 property=line_input["property"],
                 date_from=line_input["date_from"],
                 date_to=line_input["date_to"],
                 adults=adults,
                 children=children,
-                pricing_snapshot=quote.breakdown,
-                total=quote.total.quantize(Decimal("0.01")),
                 is_manual=bool(line_input.get("is_manual", False)),
                 notes=line_input.get("notes", ""),
             )
+            cls.price_line(quotation, line)
             HoldService.place(
                 property=line_input["property"],
                 date_from=line_input["date_from"],

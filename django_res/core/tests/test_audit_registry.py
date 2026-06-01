@@ -30,6 +30,7 @@ EXPECTED_TRACKED_MODELS = {
     "reservations.Booking",
     "reservations.BookingGuest",
     "reservations.Guest",
+    "reservations.QuotationLine",
 }
 
 

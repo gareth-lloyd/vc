@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quotation {{ quotation_reference }}</title>
+<style>
+  body { margin: 0; padding: 0; background-color: #f4f4f4; }
+  .vc-wrap { font-family: Helvetica, Arial, sans-serif; color: #555555; font-size: 15px; line-height: 22px; }
+  .vc-card { max-width: 640px; margin: 0 auto; background-color: #ffffff; }
+  .vc-pad { padding: 32px 24px; }
+  .vc-h1 { font-size: 22px; font-weight: bold; color: #222222; margin: 0 0 16px; }
+  .vc-h2 { font-size: 17px; font-weight: bold; color: #222222; margin: 24px 0 8px; }
+  table.vc-lines { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  table.vc-lines th { text-align: left; font-size: 13px; color: #888888; border-bottom: 2px solid #eeeeee; padding: 8px 6px; }
+  table.vc-lines td { font-size: 14px; color: #333333; border-bottom: 1px solid #f0f0f0; padding: 10px 6px; vertical-align: top; }
+  td.vc-right, th.vc-right { text-align: right; }
+  .vc-thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; display: block; }
+  .vc-grand { font-size: 18px; font-weight: bold; color: #222222; text-align: right; padding: 12px 6px; }
+  .vc-meta { font-size: 13px; color: #888888; }
+  .vc-terms { font-size: 13px; color: #777777; border-top: 1px solid #eeeeee; padding-top: 16px; margin-top: 24px; }
+  .vc-notes { font-size: 13px; color: #888888; font-style: italic; }
+  .vc-incl { font-size: 13px; color: #555555; margin-top: 4px; }
+  .vc-disc { font-size: 12px; color: #2e7d32; font-weight: normal; }
+</style>
+</head>
+<body>
+<div class="vc-wrap">
+  <div class="vc-card">
+    <div class="vc-pad">
+      <p class="vc-h1">Your quotation</p>
+      <p>Hi {{ guest_first_name }},</p>
+      <p>{{ intro }}</p>
+
+      <table class="vc-lines">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Property</th>
+            <th>Dates</th>
+            <th class="vc-right">Nights</th>
+            <th class="vc-right">Guests</th>
+            <th class="vc-right">Total ({{ currency_code }})</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+          <tr>
+            <td>
+              {% if line.hero_image_url %}<img class="vc-thumb" src="{{ line.hero_image_url }}" alt="{{ line.property_name }}" />{% endif %}
+            </td>
+            <td>
+              <strong>{{ line.property_name }}</strong>
+              {% if line.notes %}<div class="vc-notes">{{ line.notes }}</div>{% endif %}
+              {% if line.inclusions %}<div class="vc-incl"><strong>Includes:</strong> {{ line.inclusions }}</div>{% endif %}
+            </td>
+            <td>{{ line.date_from }} &ndash; {{ line.date_to }}</td>
+            <td class="vc-right">{{ line.nights }}</td>
+            <td class="vc-right">{{ line.adults }}+{{ line.children }}</td>
+            <td class="vc-right">
+              {{ line.total }}
+              {% if line.discount and line.discount != "0.00" %}<div class="vc-disc">incl. {{ currency_code }} {{ line.discount }} discount</div>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6" class="vc-grand">Total: {{ currency_code }} {{ grand_total }}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <p class="vc-meta">Quotation reference: {{ quotation_reference }}{% if expires_at %} &middot; valid until {{ expires_at }}{% endif %}</p>
+
+      <p>{{ signoff }}</p>
+      {% if agent_name %}<p>Best,<br />{{ agent_name }}</p>{% endif %}
+
+      {% if terms_html %}
+      <div class="vc-terms">
+        <p class="vc-h2">Terms &amp; conditions</p>
+        {{ terms_html|safe }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

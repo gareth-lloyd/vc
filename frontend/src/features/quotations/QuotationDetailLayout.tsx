@@ -24,13 +24,17 @@ import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { SendQuotationDialog } from "./components/SendQuotationDialog";
+import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
+import { PropertyThumbnail } from "./components/PropertyThumbnail";
+import { fetchQuotationPreview } from "./api";
+import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
 import {
   useDeleteQuotationLine,
   useDuplicateQuotation,
+  useMarkQuotationManuallySent,
   useQuotation,
   useQuotationLines,
 } from "./hooks";
@@ -73,6 +77,8 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
           <TableHead>{t("detail.lines.columns.property")}</TableHead>
           <TableHead>{t("detail.lines.columns.dates")}</TableHead>
           <TableHead>{t("detail.lines.columns.guests")}</TableHead>
+          <TableHead className="text-right">{t("detail.lines.columns.discount")}</TableHead>
+          <TableHead>{t("detail.lines.columns.inclusions")}</TableHead>
           <TableHead className="text-right">{t("detail.lines.columns.total")}</TableHead>
           <TableHead>{t("detail.lines.columns.selected")}</TableHead>
           <TableHead className="text-right">{t("detail.lines.columns.actions")}</TableHead>
@@ -83,13 +89,30 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
           <TableRow key={line.id}>
             <TableCell className="font-mono text-xs">#{line.id}</TableCell>
             <TableCell>
-              {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
+              <div className="flex items-center gap-2">
+                <PropertyThumbnail
+                  src={line.hero_image_url}
+                  fallbackText={line.property_name}
+                  alt={t("detail.lines.thumbnail_alt", {
+                    name: line.property_name ?? `#${line.property}`,
+                  })}
+                />
+                <span>
+                  {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
+                </span>
+              </div>
             </TableCell>
             <TableCell>
               {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
             </TableCell>
             <TableCell>
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}
+            </TableCell>
+            <TableCell className="text-right">
+              {formatMoney(line.discount ?? null, quotation.currency ?? null)}
+            </TableCell>
+            <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
+              {line.inclusions?.trim() || "—"}
             </TableCell>
             <TableCell className="text-right">
               {formatMoney(line.total ?? null, quotation.currency ?? null)}
@@ -134,6 +157,8 @@ interface RailSummaryProps {
   onOpen: (dialog: DialogKind) => void;
   onDuplicate: () => void;
   duplicating: boolean;
+  onCopy: () => void;
+  copying: boolean;
 }
 
 function RailSummary({
@@ -144,6 +169,8 @@ function RailSummary({
   onOpen,
   onDuplicate,
   duplicating,
+  onCopy,
+  copying,
 }: RailSummaryProps) {
   const { t } = useTranslation("quotations");
 
@@ -216,6 +243,12 @@ function RailSummary({
           disableReason={sendReason}
         />
         <ActionButton
+          label={copying ? t("detail.actions.copying") : t("detail.actions.copy_to_clipboard")}
+          onClick={onCopy}
+          disableReason={sendReason}
+          disabled={copying}
+        />
+        <ActionButton
           label={duplicating ? t("detail.actions.duplicating") : t("detail.actions.duplicate")}
           onClick={onDuplicate}
           disableReason={roleReason ?? (duplicating ? t("detail.actions.duplicating") : null)}
@@ -245,10 +278,13 @@ export function QuotationDetailLayout() {
   const canWrite = useHasReservationsRole();
   const duplicate = useDuplicateQuotation(query.data?.id ?? 0);
   const deleteLineMut = useDeleteQuotationLine(query.data?.id ?? 0);
+  const markManuallySent = useMarkQuotationManuallySent(query.data?.id ?? 0);
   const linesQuery = useQuotationLines(query.data?.id);
+  const { copy } = useCopyToClipboard();
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeLine, setActiveLine] = useState<QuotationLine | null>(null);
+  const [copying, setCopying] = useState(false);
 
   if (query.isLoading) {
     return (
@@ -293,6 +329,30 @@ export function QuotationDetailLayout() {
     }
   };
 
+  // Path B (Outlook): pull the guest-facing HTML, copy it to the clipboard,
+  // then record the SENT state so it mirrors the Path A bookkeeping.
+  const handleCopyToClipboard = async () => {
+    setCopying(true);
+    try {
+      const previewData = await fetchQuotationPreview(quotation.id);
+      const ok = await copy(previewData.html);
+      if (!ok) {
+        toast.error(t("detail.dialogs.send_preview.toasts.copy_failed"));
+        return;
+      }
+      await markManuallySent.mutateAsync();
+      toast.success(t("detail.dialogs.send_preview.toasts.copied"));
+    } catch (error) {
+      const message =
+        error instanceof ApiError && error.detail
+          ? error.detail
+          : t("detail.dialogs.send_preview.toasts.copy_failed");
+      toast.error(message);
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const handleDeleteLine = async () => {
     if (!activeLine) return;
     try {
@@ -330,6 +390,8 @@ export function QuotationDetailLayout() {
             onOpen={setDialog}
             onDuplicate={handleDuplicate}
             duplicating={duplicate.isPending}
+            onCopy={handleCopyToClipboard}
+            copying={copying || markManuallySent.isPending}
           />
         }
       >
@@ -351,7 +413,7 @@ export function QuotationDetailLayout() {
       </TwoColumn>
 
       {dialog === "send" ? (
-        <SendQuotationDialog
+        <SendPreviewDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
           quotation={quotation}

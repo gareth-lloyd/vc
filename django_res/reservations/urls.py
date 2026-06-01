@@ -103,6 +103,11 @@ _enquiry_actions: list[URLPattern | URLResolver] = [
 # ----------------------------------------------------------------------
 _quotation_actions: list[URLPattern | URLResolver] = [
     path(
+        "quotations/<int:pk>:preview",
+        QuotationViewSet.as_view({"get": "preview"}),
+        name="quotation-preview",
+    ),
+    path(
         "quotations/<int:pk>:send",
         QuotationViewSet.as_view({"post": "send_quote"}),
         name="quotation-send",

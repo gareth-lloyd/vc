@@ -71,6 +71,7 @@ export function QuotationBuilderPage() {
       const next: StagedLine = {
         property_id: option.property_id,
         property_name: option.property_name,
+        hero_image_url: option.hero_image_url ?? null,
         date_from: lastCriteria.date_from,
         date_to: lastCriteria.date_to,
         adults: lastCriteria.adults,

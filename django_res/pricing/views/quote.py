@@ -56,9 +56,15 @@ class PricingQuoteBulkView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         currency = get_object_or_404(Currency, code=data["currency"].upper())
+        # Batch-load every requested property (with its images) up front so the
+        # per-entry hero_image_url lookup doesn't fire a query per row.
+        property_ids = [entry["property_id"] for entry in data["requests"]]
+        properties_by_id = {
+            p.pk: p for p in Property.objects.filter(pk__in=property_ids).prefetch_related("images")
+        }
         quotes: list[dict[str, Any]] = []
         for entry in data["requests"]:
-            property_obj = Property.objects.filter(pk=entry["property_id"]).first()
+            property_obj = properties_by_id.get(entry["property_id"])
             if property_obj is None:
                 quotes.append({"property_id": entry["property_id"], "available": False})
                 continue
@@ -78,5 +84,12 @@ class PricingQuoteBulkView(APIView):
                     }
                 )
                 continue
-            quotes.append({"property_id": entry["property_id"], "available": True, **breakdown})
+            quotes.append(
+                {
+                    "property_id": entry["property_id"],
+                    "available": True,
+                    "hero_image_url": property_obj.hero_image_url(),
+                    **breakdown,
+                }
+            )
         return Response({"quotes": quotes})

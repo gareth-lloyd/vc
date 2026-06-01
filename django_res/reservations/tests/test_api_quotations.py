@@ -168,7 +168,10 @@ def test_lines_crud(
     staff: User,
     quotation: Quotation,
     property_: Property,
+    rate_rule: object,
 ) -> None:
+    # rate_rule gives the property a priceable rate so the create/patch
+    # repricing path resolves a quote rather than 409-ing on no rates.
     api_client.force_login(staff)
 
     # Create
@@ -203,6 +206,109 @@ def test_lines_crud(
     # Delete
     delete = api_client.delete(f"/api/v1/quotations/{quotation.pk}/lines/{line_pk}")
     assert delete.status_code == 204
+
+
+@pytest.mark.django_db
+def test_create_line_prices_via_pricing_engine(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A line created via POST is repriced — non-zero total + populated snapshot."""
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line = QuotationLine.objects.get()
+    # 7 nights @ £200 = £1400.00
+    assert line.total == Decimal("1400.00")
+    assert line.pricing_snapshot != {}
+    # Response echoes the priced values.
+    assert Decimal(str(create.data["total"])) == Decimal("1400.00")
+    assert create.data["pricing_snapshot"] != {}
+
+
+@pytest.mark.django_db
+def test_update_line_reprices(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """PATCHing a non-manual line reprices it from scratch."""
+    api_client.force_login(staff)
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+    )
+    assert line.total == Decimal("0")
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"adults": 3},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+
+    line.refresh_from_db()
+    assert line.total == Decimal("1400.00")
+    assert line.pricing_snapshot != {}
+    assert Decimal(str(patch.data["total"])) == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_manual_line_is_not_repriced(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """is_manual lines are NOT touched by the pricing engine.
+
+    A manual line honours the operator-supplied total and requires a reason;
+    crucially the engine does not stamp it, so its total stays the operator's
+    figure rather than the 7-night @ £200 = £1400 engine price.
+    """
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "total": "750.00",
+            "price_override_reason": "Negotiated package rate",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line = QuotationLine.objects.get()
+    assert line.is_manual is True
+    assert line.total == Decimal("750.00")
+    assert line.pricing_snapshot == {}
 
 
 @pytest.mark.django_db
@@ -401,3 +507,311 @@ def test_pdf_returns_501(api_client: APIClient, staff: User, quotation: Quotatio
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/quotations/{quotation.pk}/pdf")
     assert response.status_code == 501
+
+
+# ----------------------------------------------------------------------
+# Task 1a — :preview + send-time copy overrides
+# ----------------------------------------------------------------------
+@pytest.mark.django_db
+def test_preview_returns_html_subject_intro_signoff(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    property_: Property,
+) -> None:
+    from reservations.services.quotation_render import DEFAULT_INTRO, DEFAULT_SIGNOFF
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}:preview")
+
+    assert response.status_code == 200, response.data
+    assert set(response.data) >= {"html", "subject", "intro", "signoff"}
+    assert response.data["subject"] == f"Your quotation {quotation.reference}"
+    assert response.data["intro"] == DEFAULT_INTRO
+    assert response.data["signoff"] == DEFAULT_SIGNOFF
+    expected_name = property_.display_name or property_.name
+    assert expected_name in response.data["html"]
+
+
+@pytest.mark.django_db
+def test_send_applies_subject_and_intro_overrides(
+    api_client: APIClient,
+    staff: User,
+    system_profile: object,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    from comms.management.commands.seed_email_templates import sync_templates
+    from comms.models import EmailLog
+
+    sync_templates()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:send",
+        {"subject": "A bespoke subject", "intro": "A bespoke intro paragraph."},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+
+    log = EmailLog.objects.get(template_key="quotation.sent")
+    assert log.rendered_subject == "A bespoke subject"
+    assert "A bespoke intro paragraph." in log.rendered_body_html
+
+
+# ----------------------------------------------------------------------
+# Task 2a — hero_image_url + N+1 guard
+# ----------------------------------------------------------------------
+def _add_hero(property_: Property) -> None:
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from properties.enums import ImageKind
+    from properties.models import PropertyImage
+
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+
+
+@pytest.mark.django_db
+def test_line_serializer_exposes_hero_image_url(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    property_: Property,
+) -> None:
+    _add_hero(property_)
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}")
+    assert response.status_code == 200
+    assert response.data["hero_image_url"] is not None
+    assert ".jpg" in response.data["hero_image_url"]
+
+
+@pytest.mark.django_db
+def test_line_serializer_hero_image_url_null_without_hero(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}")
+    assert response.status_code == 200
+    assert response.data["hero_image_url"] is None
+
+
+@pytest.mark.django_db
+def test_lines_list_constant_query_count(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+) -> None:
+    from core.tests import assert_max_queries
+
+    _add_hero(property_)
+    for offset in range(4):
+        QuotationLine.objects.create(
+            quotation=quotation,
+            property=property_,
+            date_from=date(2026, 6, 10 + offset),
+            date_to=date(2026, 6, 17 + offset),
+            adults=2,
+            total=Decimal("1400.00"),
+        )
+    api_client.force_login(staff)
+    with assert_max_queries(12):
+        response = api_client.get(f"/api/v1/quotations/{quotation.pk}/lines")
+    assert response.status_code == 200
+    assert response.data["count"] == 4
+
+
+@pytest.mark.django_db
+def test_quotation_detail_constant_query_count(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+) -> None:
+    from core.tests import assert_max_queries
+
+    _add_hero(property_)
+    for offset in range(4):
+        QuotationLine.objects.create(
+            quotation=quotation,
+            property=property_,
+            date_from=date(2026, 6, 10 + offset),
+            date_to=date(2026, 6, 17 + offset),
+            adults=2,
+            total=Decimal("1400.00"),
+        )
+    api_client.force_login(staff)
+    with assert_max_queries(12):
+        response = api_client.get(f"/api/v1/quotations/{quotation.pk}")
+    assert response.status_code == 200
+    assert len(response.data["lines"]) == 4
+
+
+# ----------------------------------------------------------------------
+# Task 3 — discount, inclusions, reasoned price override
+# ----------------------------------------------------------------------
+@pytest.mark.django_db
+def test_create_line_with_discount_reduces_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "150.00",
+            "inclusions": "Welcome hamper",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line_obj = QuotationLine.objects.get()
+    # Gross = 7 nights @ £200 = £1400; net = 1400 - 150 = 1250.
+    assert line_obj.total == Decimal("1250.00")
+    assert line_obj.discount == Decimal("150.00")
+    assert line_obj.inclusions == "Welcome hamper"
+    assert create.data["total"] == "1250.00"
+    assert create.data["discount"] == "150.00"
+    assert create.data["inclusions"] == "Welcome hamper"
+
+
+@pytest.mark.django_db
+def test_discount_clamps_total_at_zero(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "99999.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    assert QuotationLine.objects.get().total == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_manual_line_requires_override_reason(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "total": "999.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 400
+    assert "price_override_reason" in create.data["field_errors"]
+
+
+@pytest.mark.django_db
+def test_manual_line_with_reason_persists_operator_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "total": "999.00",
+            "price_override_reason": "Repeat guest goodwill discount",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_obj = QuotationLine.objects.get()
+    assert line_obj.is_manual is True
+    assert line_obj.total == Decimal("999.00")
+    assert line_obj.price_override_reason == "Repeat guest goodwill discount"
+    assert create.data["price_override_reason"] == "Repeat guest goodwill discount"
+
+
+@pytest.mark.django_db
+def test_discount_change_writes_audit_log(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_pk = QuotationLine.objects.get().pk
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line_pk}",
+        {"discount": "200.00"},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    assert patch.data["total"] == "1200.00"
+
+    ct = ContentType.objects.get_for_model(QuotationLine)
+    audited = AuditLog.objects.filter(content_type=ct, object_id=str(line_pk))
+    assert audited.exists()
+    assert any("discount" in row.field_diffs for row in audited)

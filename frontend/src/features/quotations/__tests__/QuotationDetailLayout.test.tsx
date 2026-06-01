@@ -159,10 +159,18 @@ describe("QuotationDetailLayout", () => {
     );
   });
 
-  it("posts to :send on confirm", async () => {
+  it("posts to :send on confirm after the preview loads", async () => {
     asReservationsUser();
     let sendCalled = false;
     server.use(
+      http.get("/api/v1/quotations/7:preview", () =>
+        HttpResponse.json({
+          html: "<html><body>Hello</body></html>",
+          subject: "Your quote",
+          intro: "Dear guest",
+          signoff: "Kind regards",
+        }),
+      ),
       http.post("/api/v1/quotations/7:send", () => {
         sendCalled = true;
         return HttpResponse.json({ ...baseQuotation, status: "sent" });
@@ -171,7 +179,9 @@ describe("QuotationDetailLayout", () => {
     setup();
     await userEvent.click(await screen.findByRole("button", { name: /send to guest/i }));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: /mark sent/i }));
+    // The submit button is enabled only once the preview resolves.
+    const sendBtn = await within(dialog).findByRole("button", { name: /^send to guest$/i });
+    await userEvent.click(sendBtn);
     await waitFor(() => expect(sendCalled).toBe(true));
   });
 

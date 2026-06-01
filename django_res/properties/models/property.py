@@ -126,3 +126,23 @@ class Property(AuditedModel):
         from properties.enums import ImageKind
 
         return self.images.filter(kind=ImageKind.HERO, is_active=True).first()
+
+    def hero_image_url(self) -> str | None:
+        """Best-effort URL for the active hero image, or None.
+
+        Single source of truth for the hero URL across the quote render seam,
+        the quotation-line serializer, and the bulk-quote API — so a guest
+        email, an operator preview, and the catalogue all derive the thumbnail
+        the same way. Returns None when there's no hero, no stored file, or a
+        storage field with no backing file.
+        """
+        hero = self.hero_image()
+        if hero is None:
+            return None
+        image = getattr(hero, "image", None)
+        if not image:
+            return None
+        try:
+            return image.url
+        except (ValueError, AttributeError):
+            return None

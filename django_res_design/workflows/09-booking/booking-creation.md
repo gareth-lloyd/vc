@@ -64,6 +64,21 @@ Optional:
    - `_apiService.PushVillaBookingToWP(payload)` → POST to `{site}/Import_Booking`.
    - Persist the returned URL: `UPDATE VillaBooking SET BookingUrl='{url}' WHERE Id={id}` `[SECURITY]` raw SQL.
 
+   #### Redesign
+
+   The WordPress round-trip is removed. Per `10-decisions.md` ("Guest
+   booking/checkout journey hosted in the SPA, not WordPress"), the guest
+   checkout journey is hosted first-party in the React SPA. There is no push
+   to WordPress and no returned URL to persist. Instead, the booking gets a
+   first-party `Booking.checkout_url` (URLField — see `05-reservations.md`)
+   pointing at the SPA route `portal.villacollective.com/booking?ref=<reference>`.
+   The URL is derived from the booking's `reference`, so it can be built
+   locally without any external call. The guest checkout page then talks
+   directly to the Django API and Flywire — see
+   `10-payment/checkout-flow.md` for the redesigned checkout journey. This
+   moves a first-party checkout page plus first-party Flywire return/webhook
+   handling into M1 (see `11-milestones.md`).
+
 7. **Send guest email** — `SentEmailAsync(EmailTemplate.INITIAL_PAYMENT_TEMPLATE, QuotationNo)` (renders via `SP_GET_EMAIL_TEMPLATE_DATA`, sends via `EmailService`).
 
 8. **Send owner email** (when not the "No Send" variant and owner provided) — `SentEmailToOwner(QuotationNo)`; logs template via `SP_SAVE_VC_EMAIL_TEMPLATE` with `Type=CC_VO_BOOKING_CONFIRMATION`.
@@ -77,7 +92,7 @@ Optional:
   - Booking → "Underway" (button colour change at `Booking.razor:36`)
   - Availability → status 50 (Booked)
 - **Emails out:** guest (`INITIAL_PAYMENT_TEMPLATE`); owner (`CC_BOOKING_CONFIRM` template logged via SP).
-- **WordPress:** booking imported, checkout URL returned and stored.
+- **WordPress:** booking imported, checkout URL returned and stored. **Redesign:** no WordPress import; instead `Booking.checkout_url` is set to the first-party SPA route (see step 6 Redesign).
 - **Zoho:** record in `VILLA_BOOKING` module.
 
 ### Data transformations for storage

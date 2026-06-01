@@ -89,10 +89,11 @@ Anonymous / unstructured inquiry from website or agent. **Kept separate from Quo
 - `agent` — FK accounts.Contact SET_NULL, null=True  # external agent / intermediary representing the guest; distinct from `assigned_to`
 - `assigned_to` — FK User SET_NULL, null=True, blank=True, related_name="assigned_enquiries"  # internal staff owner of this enquiry, backing `?assigned_to=` filter and `:assign` action. Separate from `agent`: `agent` is who is *acting on behalf of the guest*; `assigned_to` is *which staff member owns the work*. See reconciliation issue #26.
 - `site_source` — TextChoices (`MAIN_WEBSITE`, `AGENT_PORTAL`, `EMAIL_INBOUND`, `PHONE`, `OTHER`)
-- `status` — TextChoices (`NEW`, `CONTACTED`, `QUOTED`, `LOST`, `CONVERTED`)
+- `status` — TextChoices (`NEW`, `CONTACTED`, `QUOTED`, `LOST`, `CONVERTED`) — the **workflow stage**, advanced only by transition methods (below), never a free-choice edit
+- `lead_status` — TextChoices (`HOT`, `WARM`, `COLD`, `DEAD`), default `WARM` — **lead temperature**, orthogonal to `status`. A subjective sales signal the operator sets directly (an inline dropdown that persists immediately), distinct from the workflow stage. Pushed to Zoho as a CRM tag (see `08-integrations.md`). New in the rebuild — legacy res2 had no lead-quality field; the res3 mockup introduced hot/cold/dead. See `10-decisions.md` "`Enquiry.lead_status`".
 - `inbound_message` — TextField(blank=True) — the original message the lead submitted via the public form (single field, write-once at capture, treated as immutable provenance)
 
-Indexes: `(status, created_at)`, `email`, `(property, date_from)`.
+Indexes: `(status, created_at)`, `email`, `(property, date_from)`, `(lead_status, status)`.
 
 Note collection is via `EnquiryNote` (see below). Operator scratchpads (legacy `Notes`, `PreferencesNote`, `internal_notes`) collapse into `EnquiryNote` rows with `kind` discriminator.
 
@@ -105,6 +106,19 @@ One enquiry typically accumulates **multiple `Quotation` rows** over its lifetim
 - **Conversion is measured per `Enquiry`, not per `Quotation`.** As soon as any child `Quotation.status` flips to `ACCEPTED`, the parent `Enquiry.status` transitions to `CONVERTED`. Reporting that quotes a "conversion rate" counts enquiries, not quotes. See decisions row "Conversion is measured per `Enquiry`, not per `Quotation`" in `10-decisions.md`.
 - **Staff UI groups every quote under the parent enquiry.** Re-quoting is the default operator action on an open enquiry — a single ordered list (most recent first), with the most recent expanded by default. There is no separate top-level "quote-bundle" entity; the FK is enough.
 - **Quote reference numbers stay independent.** `Q-2026-000123` increments globally, not within an enquiry. Grouping is via the FK, not a derived prefix.
+
+#### Enquiry-list inline editing
+
+The operator enquiry/quote list (the res3 "Quotes & Inquiries" table) exposes **inline
+dropdowns that persist on change** for the two operator-owned, free-set fields: `assigned_to`
+(salesperson — auto-set to whoever picks up the enquiry; a manager can re-assign) and
+`lead_status` (temperature). Each inline edit PATCHes the single field and writes an
+`EnquiryEvent` (`ASSIGNED` / `LEAD_STATUS_CHANGED`).
+
+`status` (workflow stage) is **not** an inline free-choice dropdown — it advances only through
+the transition methods below, driven by operator actions (contacting, sending a quote,
+converting, losing). Surfacing stage as a free dropdown was a res3-mockup affordance the
+stakeholder explicitly wanted replaced with action-driven transitions (`10-decisions.md`).
 
 #### Date-spread heuristic on intake
 
@@ -130,7 +144,7 @@ Append-only state-machine audit on `Enquiry`. Mirrors `BookingEvent`: it is a do
 
 - `enquiry` — FK Enquiry PROTECT
 - `from_status`, `to_status` — TextChoices (mirror `Enquiry.status`); equal when the event is non-transitional (e.g. assignment change, note-added flag, manual `:reopen` from `LOST` back to a prior status)
-- `kind` — TextChoices (`STATUS_CHANGE`, `ASSIGNED`, `UNASSIGNED`, `CONTACTED`, `QUOTE_SENT`, `CONVERTED`, `LOST`, `REOPENED`, `NOTE_ADDED`) — keeps the activity stream queryable without parsing free-text reasons
+- `kind` — TextChoices (`STATUS_CHANGE`, `ASSIGNED`, `UNASSIGNED`, `CONTACTED`, `QUOTE_SENT`, `CONVERTED`, `LOST`, `REOPENED`, `NOTE_ADDED`, `LEAD_STATUS_CHANGED`) — keeps the activity stream queryable without parsing free-text reasons. `LEAD_STATUS_CHANGED` is non-transitional (`from_status == to_status`); the temperature change rides in `meta` (`{"lead_status_from": "WARM", "lead_status_to": "HOT"}`)
 - `actor` — FK User SET_NULL, null=True
 - `source` — TextChoices (`USER`, `OWNER`, `WEBHOOK`, `SYSTEM`, `ADMIN`)
 - `reason` — CharField(blank=True)
@@ -138,7 +152,7 @@ Append-only state-machine audit on `Enquiry`. Mirrors `BookingEvent`: it is a do
 
 Indexes: `(enquiry, created_at)`.
 
-Enquiry history is `events.order_by('created_at')` — same pattern as `BookingEvent`. Every transition method on `Enquiry` (`contact()`, `quote_sent()`, `assign(user)`, `convert()`, `lose(reason)`, `reopen()`) writes one row in the same `transaction.atomic` block. `NOTE_ADDED` is the only event-kind written outside a transition method — emitted by an `EnquiryNote.post_save` signal so the activity timeline shows note authorship inline with status changes.
+Enquiry history is `events.order_by('created_at')` — same pattern as `BookingEvent`. Every transition method on `Enquiry` (`contact()`, `quote_sent()`, `assign(user)`, `convert()`, `lose(reason)`, `reopen()`) writes one row in the same `transaction.atomic` block. `set_lead_status(value)` is a non-transitional mutation (it leaves `status` unchanged) that writes a `LEAD_STATUS_CHANGED` event for the activity timeline. `NOTE_ADDED` is the only event-kind written outside a transition method — emitted by an `EnquiryNote.post_save` signal so the activity timeline shows note authorship inline with status changes.
 
 See reconciliation issue #27.
 
@@ -198,6 +212,7 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `terms_version` — FK TermsVersion PROTECT
 - `terms_accepted_at` — DateTimeField
 - `payment_method` — TextChoices (`CARD`, `BANK_TRANSFER`)
+- `checkout_url` — URLField(blank=True)  # first-party SPA guest-checkout link (`portal.villacollective.com/booking?ref=<reference>`). Replaces the legacy WordPress `VillaBooking.BookingUrl`: the checkout journey is hosted in the SPA, not WordPress, so this is an internally-generated route, not a value pushed back from WP. See `10-decisions.md` "Guest booking/checkout journey hosted in the SPA" and `workflows/10-payment/checkout-flow.md`.
 - `cancel_reason` — TextField(blank=True)
 - `cancelled_at` — DateTimeField(null=True, blank=True)
 - `is_archived` — bool(default=False)  # operator-facing "tidy out of main list" flag. Orthogonal to `status` — a terminal-state booking can be archived without changing its status. Only meaningful in terminal states. See state machine in `06-availability.md` for `archive()`/`restore()` semantics.

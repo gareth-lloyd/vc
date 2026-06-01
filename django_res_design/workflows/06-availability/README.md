@@ -29,6 +29,20 @@ The legacy system uses small magic integers for availability status. They appear
 
 The Django redesign should turn these into named `TextChoices` and drop the magic numbers.
 
+### Rebuild operator vocabulary
+
+The 2026-05-29 stakeholder call fixed the operator-facing status set the calendar surfaces: **Available / On Hold / Booked / Booked-VC / Stop Sale**. These are display statuses (`AvailabilityService.calendar()`'s `CellStatus`, see `../../06-availability.md`), derived from the underlying `Booking.status` + live `BookingHold.reason` — not stored status codes.
+
+| Rebuild status | Underlying state | Legacy code |
+|---|---|---|
+| Available | No active booking, no live hold | 10 |
+| On Hold | Live `BookingHold` (`QUOTATION_OPEN` / `BOOKING_DEPOSIT_PENDING` / `MANUAL`) | 40 |
+| Booked | Active `Booking`, non-VC origin | 50 |
+| Booked-VC | Active `Booking` of VC origin | 60 |
+| Stop Sale | Live `BookingHold` (`OWNER_BLOCK` / `MAINTENANCE` / `STOP_SALE`) — persistent owner/operator block | — (new; generalises legacy 30 "manual block" plus owner-use) |
+
+`Stop Sale` is the one genuinely new rebuild status: it has no single legacy code, instead generalising the legacy code 30 ("Unavailable" / manual block) plus owner-use (owner staying in the villa, blocked, not for rent, or booked by a competitor). It maps onto the existing `OWNER_BLOCK` no-auto-expiry semantics — see `../../10-decisions.md` "Stop Sale in the availability display vocabulary".
+
 ## Entities touched
 
 - `VillaAvailability` — one row per (property, available-date) with status. `StartDate`/`EndDate` capture the original range that produced the row; `Notes`, `QuotationNo`, `CreatedAt`/`CreatedBy`/`UpdatedAt`/`UpdatedBy`.

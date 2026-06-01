@@ -92,5 +92,22 @@ Optional bulk-rates payload (creates rates immediately along with the season):
 2. New `VillaSeasonDates` rows written for the target dates.
 3. Rates from the source are duplicated (handled inside SP; not visible in committed code).
 
-### Open questions
-- Behaviour of `IsManualUpdate` flag on copied rates is unclear — should the copy inherit it or reset to `false`?
+### Redesign — carryover is automated and provisional by default
+
+The legacy manual "Copy" is replaced as the *default* next-year path by
+`pricing.services.RateCarryoverService.roll_forward()` + the `carry_over_rates` Celery task
+(see `04-pricing.md` "Carryover & provisional rates"). The redesign resolves the legacy open
+questions as follows:
+
+- **The `IsManualUpdate`-on-copy ambiguity is settled.** Carried-over clones are marked
+  `RateRule.is_provisional=True` (a *guide* rate, quotable but flagged "inquire for accurate
+  rate") and `carried_over_from=<source rule>`. They are **not** locked (`is_locked` is for
+  hand-set rates surviving bulk ops); a subsequent carryover run is idempotent per
+  `(property, year)` and updates the provisional set in place. Confirming the real rate clears
+  `is_provisional`, after which carryover leaves the rule alone.
+- **Date mapping is an injected, swappable function** (`date_map`), defaulting to
+  changeover-weekday alignment. Whether the business wants weekday-alignment or same-calendar-
+  date is an **open follow-up** pending Bryony's listing Loom — see `10-decisions.md`
+  "Carryover date-mapping rule". Do not hard-code it into the clone.
+- Manual ad-hoc copy of one season to arbitrary dates remains available in the admin; it
+  produces the same provisional clones.

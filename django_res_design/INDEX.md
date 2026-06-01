@@ -8,7 +8,7 @@ A detailed, implementation-ready Django data-model specification. Per-app file l
 
 See [`README.md`](./README.md) for the package's own index.
 
-Files: `00-conventions.md`, `01-accounts.md`, `02-properties.md`, `03-finance-config.md`, `04-pricing.md`, `05-reservations.md`, `06-availability.md`, `07-payments.md`, `08-integrations.md`, `09-departures.md`, `10-comms.md`, `10-decisions.md`.
+Files: `00-conventions.md`, `01-accounts.md`, `02-properties.md`, `03-finance-config.md`, `04-pricing.md`, `05-reservations.md`, `06-availability.md`, `07-payments.md`, `08-integrations.md`, `09-departures.md`, `10-comms.md`, `10-decisions.md`, `11-milestones.md`.
 
 **Scope**: Backend models, fields, constraints, services. Database-enforced integrity, state machines, audit, soft-delete. Domain-by-domain (accounts, properties, pricing, reservations, availability, payments, integrations) with a per-table mapping of legacy → new in `09-departures.md`.
 
@@ -52,3 +52,5 @@ Specifically:
 ## Open work
 
 `product-design/06-verification.md` lists 15 open questions that should be answered before implementation begins (payment gateway choice, cancellation policy thresholds, owner pre-approval SLA, channel scope for v1, etc.). Resolve these and fold answers back into the relevant docs.
+
+`11-milestones.md` is the **authoritative delivery-phasing layer**: it defines what ships in **Milestone 1** versus what is deferred to **M2+**. When a doc and a milestone scope appear to disagree on whether something is in scope "now," `11-milestones.md` wins. (For example, the narrow reference-scoped guest checkout is Milestone 1 — see `product-design/02-frontend-design.md` §7.5 — while the full post-booking guest portal is deferred to M2+.)

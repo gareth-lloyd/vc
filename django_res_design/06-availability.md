@@ -15,11 +15,11 @@ A soft reservation while a quotation is open or a booking awaits deposit. Replac
 - `date_from`, `date_to` — DateField
 - `expires_at` — DateTimeField(db_index=True)
 - `released_at` — DateTimeField(null=True, blank=True)
-- `reason` — TextChoices (`QUOTATION_OPEN`, `BOOKING_DEPOSIT_PENDING`, `OWNER_BLOCK`, `MAINTENANCE`, `MANUAL`)
+- `reason` — TextChoices (`QUOTATION_OPEN`, `BOOKING_DEPOSIT_PENDING`, `OWNER_BLOCK`, `MAINTENANCE`, `MANUAL`, `STOP_SALE`)
 
 Constraints:
 - `CheckConstraint(date_from < date_to)`
-- `CheckConstraint(quotation IS NOT NULL OR booking IS NOT NULL OR reason IN ('OWNER_BLOCK','MAINTENANCE','MANUAL'))`
+- `CheckConstraint(quotation IS NOT NULL OR booking IS NOT NULL OR reason IN ('OWNER_BLOCK','MAINTENANCE','MANUAL','STOP_SALE'))`
 - `EXCLUDE USING gist (property_id WITH =, daterange(date_from, date_to, '[)') WITH &&) WHERE (released_at IS NULL AND expires_at > now())` — no overlapping live holds for a property
 - An equivalent exclude on `Booking` (see 05-reservations.md) covers active bookings.
 
@@ -49,6 +49,23 @@ Implementation of `is_available`:
 5. Return bool.
 
 `calendar()` builds an on-demand grid for the admin UI from these queries — cheap with btree_gist indices.
+
+#### `CellStatus` — the operator-facing display vocabulary
+
+`CellStatus` is the *display* status each calendar cell surfaces; it is not a stored field. It is derived per-date from the underlying `Booking.status` plus any live `BookingHold.reason`, giving operators the vocabulary agreed on the 2026-05-29 stakeholder call: **Available / On Hold / Booked / Booked-VC / Stop Sale** (see `10-decisions.md` "Stop Sale in the availability display vocabulary").
+
+```python
+class CellStatus(models.TextChoices):
+    AVAILABLE = "available"      # no active booking, no live hold
+    ON_HOLD = "on_hold"          # live hold, reason QUOTATION_OPEN / BOOKING_DEPOSIT_PENDING / MANUAL (short-term)
+    BOOKED = "booked"            # active Booking, non-VC origin
+    BOOKED_VC = "booked_vc"      # active Booking of VC origin
+    STOP_SALE = "stop_sale"      # live hold, reason OWNER_BLOCK / MAINTENANCE / STOP_SALE (persistent owner/operator block)
+```
+
+Derivation precedence: an active `Booking` wins (→ `BOOKED` / `BOOKED_VC`); otherwise a live persistent block hold (`OWNER_BLOCK` / `MAINTENANCE` / `STOP_SALE`) → `STOP_SALE`; otherwise a live short-term hold (`QUOTATION_OPEN` / `BOOKING_DEPOSIT_PENDING` / `MANUAL`) → `ON_HOLD`; otherwise `AVAILABLE`.
+
+`BOOKED_VC` is a presentation distinction drawn from a Booking's origin (`site_source` / VC-internal), **not** a separate model — there is no `Booking.status` value for it. `STOP_SALE` is likewise a presentation reconciliation over the persistent block reasons rather than a new hold mechanism; the only model-level addition is the optional `STOP_SALE` `reason` value (above), used when a Stop Sale must be distinguished from an internal owner-block/maintenance in reporting.
 
 #### Search & filter UX
 
@@ -172,7 +189,7 @@ def _transition(self, allowed_from, to, *, actor=None, source="USER", reason="",
 
 ## Owner block / maintenance
 
-Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `expires_at` (set to far future or special sentinel; or make `expires_at` nullable for these reasons specifically — choose at implementation time). They participate in the same `EXCLUDE` constraint, so no special-case query.
+Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `expires_at` (set to far future or special sentinel; or make `expires_at` nullable for these reasons specifically — choose at implementation time). They participate in the same `EXCLUDE` constraint, so no special-case query. `STOP_SALE` joins these as a persistent, no-auto-expiry block reason (the `expire_holds` task only touches rows with `expires_at < now()`); it is the model backing the operator-facing "Stop Sale" `CellStatus` — owner using the villa, blocked, not for rent, or booked by a competitor (see `10-decisions.md` "Stop Sale in the availability display vocabulary").
 
 ## Out of scope (future)
 

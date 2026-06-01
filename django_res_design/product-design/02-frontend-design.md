@@ -123,7 +123,8 @@ React Router v6+ with data routes. URLs are the source of truth for which tab is
 /admin/tags
 /admin/users
 /admin/config
-/owner/...                          (separate owner portal shell; see §7)
+/owner/...                          (separate owner portal shell; see §7.3)
+/booking?ref=<reference>            (guest checkout; reference-scoped, no login; see §7.5)
 ```
 
 **Drawer-as-route** pattern. When you want a focused edit without losing context:
@@ -738,9 +739,45 @@ Owners get a **separate shell** under `/owner/*`. Same React app, different layo
 
 Operators with the "view as owner" permission can preview the owner portal for a given owner (admin tool).
 
+> **Scope note.** The owner portal above is an operator/owner-facing surface. The separate, much larger **post-booking guest portal** (itinerary, messaging, concierge requests, document vault) remains **deferred** — see `11-milestones.md`. Do not conflate it with the narrow guest checkout in §7.5, which is the only guest-facing surface in Milestone 1.
+
 ### 7.4 Property-Scoped Access (client-side)
 
 Permissions returned per session include `property_ids: number[]` or `all`. Lists filter client-side after server-side filtering, but the source of truth is always server enforcement (client filtering is UX-only — never security). UI hides fields rather than disables when the user can't see them; disables when they can see but not change.
+
+### 7.5 Guest Checkout (reference-scoped, Milestone 1)
+
+A single guest-facing screen that lives in this same React SPA but **outside** the operator/owner shells. It is hosted at `portal.villacollective.com/booking?ref=<reference>` (off WordPress; see `10-decisions.md`) and is part of **Milestone 1** — see `11-milestones.md` for the authoritative phasing.
+
+This is **not** an authenticated guest account and **not** the full post-booking guest portal (itinerary, messaging, concierge — all **deferred**, see §7.3 scope note and `11-milestones.md`). It is a deliberately narrow checkout: a guest follows a link from a confirmation/payment-request email, the booking is looked up by its `reference` (an unguessable token, not a sequential id), the guest reviews their booking, supplies/confirms personal details, and pays.
+
+No sidebar, no command palette, no site switcher — a clean, single-column, mobile-friendly layout with the Villa Collective brand topbar only.
+
+```
++--------------------------------------------------------------+
+| Villa Collective                                            |
++--------------------------------------------------------------+
+|  Your booking — Casa Norte                                  |
+|  14–21 May 2026 (7 nights) · 8 guests                       |
+|  ──────────────────────────────────────────────            |
+|  (1) Your details  →  (2) Payment                           |
+|                                                              |
+|  Lead guest name   [ ........................ ]             |
+|  Email             [ ........................ ]             |
+|  Phone             [ ........................ ]             |
+|  ──────────────────────────────────────────────            |
+|  Total            £12,400 GBP                               |
+|  Due now (deposit) £3,720 GBP                               |
+|                                                              |
+|              [ Continue to payment → ]                      |
++--------------------------------------------------------------+
+```
+
+- **Access** — reference-scoped only. The `ref` token resolves a single booking server-side; no login, no session, no access to any other booking. An expired/invalid/already-paid reference shows a friendly terminal state ("This payment link is no longer active — contact us") rather than the operator login.
+- **Step 1 — Your details** — review booking summary (villa, dates, guests, line-item total via `<MoneyDisplay>`); confirm/complete lead-guest personal info (name, email, phone). Pre-filled from the booking where known.
+- **Step 2 — Payment** — hand off to **Flywire** for the amount due (deposit or balance, as the booking dictates). On return, show a confirmation state; payment status reconciles server-side via the Flywire webhook (the screen does not trust the client redirect as proof of payment).
+- Reuses existing primitives (`<Stepper>`, `<MoneyDisplay>`, RHF + Zod, `<EmptyState>`/`<ErrorState>`) but renders in its own minimal shell, not `<AppShell>`.
+- Fully responsive — guests are frequently on phones. Unlike the operator rates editor (§8.3), this screen *must* work at phone width.
 
 ---
 

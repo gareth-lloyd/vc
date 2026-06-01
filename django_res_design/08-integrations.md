@@ -112,6 +112,8 @@ class SyncClient:
 ### `ZohoSyncClient`
 Pushes `Property`, `Quotation`, `Booking`, `Guest` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
 
+Enquiries also carry CRM tags on push: `Enquiry.lead_status` (the `HOT`/`WARM`/`COLD`/`DEAD` TextChoices added in `05-reservations.md`) is pushed to Zoho as a lead tag, alongside the existing loss reason captured on the `LOST` `EnquiryEvent`. See `05-reservations.md`.
+
 > **Open question — lead-management primacy.** The sales team may move inquiry management from Res into Zoho. Two shapes are on the table: (a) **Res-primary** (current; Zoho mirrors via this client), or (b) **Zoho-primary for leads** (Res consumes via inbound pull, with the Zoho-side `Enquiry` module as source of truth). MVP keeps Res-primary; flipping primacy is a v2 decision driven by the sales-team interview after the 2026-05-26 scoping session. Tracked in `10-decisions.md` "Open follow-ups".
 
 Auth: reads the active `OAuthCredential(provider=ZOHO_CRM, is_active=True)` row via `OAuthService.get_access_token("ZOHO_CRM")` on every call. If the access token is within 5 minutes of expiry, the service refreshes it inline against the Zoho `/oauth/v2/token` endpoint (grant_type=refresh_token), writes the new `access_token` + `expires_at` to the row, and returns the fresh token. If no active credential exists, the client raises `OAuthNotConnectedError` and the calling Celery task records a `SyncIssue(kind=VALIDATION, severity=ERROR, message="Zoho not connected — operator must run /zoho:connect")`.
@@ -277,10 +279,12 @@ We deliberately avoid:
 
 Inbound WP endpoints live under a single URL prefix `/api/wordpress/*` so the permission class, throttle, and `IP allowlist` middleware can be applied to the whole subtree:
 
-- `POST /api/wordpress/enquiries/` — marketing-form enquiry capture.
-- `POST /api/wordpress/checkout/` — guest checkout submission (legacy `SaveCheckoutInfo`).
-- `POST /api/wordpress/payments/return/` — Flywire return-page callback (legacy `TokenisePaymentStatus`).
-- `POST /api/wordpress/payments/webhook/` — Flywire server-to-server webhook proxied via the WP site (legacy `PaymentStatusWebHook`; see `workflows/11-integrations/flywire-gateway.md` for the open question of whether this stays WP-proxied or moves direct-to-Django).
+- `POST /api/wordpress/enquiries/` — marketing-form enquiry capture. **Stays inbound from WordPress** — WP remains the public lead-capture source.
+- ~~`POST /api/wordpress/checkout/`~~ — guest checkout submission (legacy `SaveCheckoutInfo`). **Moves first-party in Milestone 1.** The guest checkout journey is now hosted by the React SPA (`portal.villacollective.com/booking?ref=…`) and submits directly to the Django API, not via WordPress. See `11-milestones.md`, `workflows/10-payment/checkout-flow.md`, and `10-decisions.md` "Guest booking/checkout journey hosted in the SPA".
+- ~~`POST /api/wordpress/payments/return/`~~ — Flywire return-page callback (legacy `TokenisePaymentStatus`). **Moves first-party in Milestone 1** — the SPA hosts the Flywire return page and the callback lands directly on the Django API.
+- ~~`POST /api/wordpress/payments/webhook/`~~ — Flywire server-to-server webhook (legacy `PaymentStatusWebHook`). **Moves direct-to-Django in Milestone 1.** This resolves the open question in `workflows/11-integrations/flywire-gateway.md` (WP-proxied vs. direct-to-Django) toward **direct-to-Django** for the rebuild: Flywire posts straight to the Django API rather than being proxied through the WP site.
+
+> **First-party checkout (M1) — honest scope note.** Per `10-decisions.md` "Guest booking/checkout journey hosted in the SPA", the checkout / payment-return / payment-webhook endpoints above leave the inbound WordPress surface in Milestone 1. The security win is real: this removes the legacy unauthenticated `WordPressApi/*` checkout surface entirely. But be honest — this is **not** a net simplification. It *adds* first-party Flywire return-page hosting and first-party return/webhook handling to M1 (work that is currently WP-proxied), in exchange for owning the journey end-to-end. This is scoped narrowly to the checkout page; the broader post-booking guest portal stays deferred. The marketing-form enquiry capture (`POST /api/wordpress/enquiries/`) is unaffected and remains inbound from WordPress.
 
 Each endpoint:
 - Uses a focused DRF serializer that accepts **only** the fields it consumes. No `extra` dict, no passthrough.
@@ -337,6 +341,6 @@ def zoho_id(self) -> str | None:
 
 ## Out of scope
 
-- **Outbound** WordPress sync details (Django → WP `WP_Sync_*` push protocol, multi-`SiteId` fan-out, response shapes) — the `SyncRecord(provider=WORDPRESS_SITE)` framework holds the state, but the wire protocol is still being captured in `workflows/11-integrations/public-website-sync.md`. The **inbound** direction (WP → Django) is fully defined above.
+- **Outbound** WordPress sync details (Django → WP `WP_Sync_*` push protocol, multi-`SiteId` fan-out, response shapes) — the `SyncRecord(provider=WORDPRESS_SITE)` framework holds the state, but the wire protocol is still being captured in `workflows/11-integrations/public-website-sync.md`. The **inbound** direction (WP → Django) is fully defined above. **Rate/pricing data is never pushed to WordPress** — it is internal-only and stays within the Res system; the outbound sync covers villa content (descriptions, imagery, slugs), not rates.
 - **iCal feed ingest** from per-villa public calendars. ~30 villas in the catalogue publish iCal feeds today and the legacy team mirrors them manually through shared Outlook calendars (per scoping-session 2026-05-26). Recognised high-value v2 force-multiplier; not in MVP. When this lands, the natural shape is a new `provider=ICAL` value on `SyncRecord` plus a Celery beat task that polls each feed and writes `BookingHold(reason=OWNER_BLOCK, …)` rows idempotently keyed on the iCal `UID`. See also `06-availability.md` "Out of scope (future)" and `10-decisions.md` "Deferred".
 - Channel manager integrations (Booking.com, Vrbo, Airbnb) — none in the legacy system; future scope.

@@ -2,6 +2,28 @@
 
 Captures guest personal info before payment, and accepts confirm/reject decisions from the gateway page.
 
+## Redesign
+
+The entire guest checkout journey moves off WordPress and is hosted
+first-party in the React SPA, served by the Django API directly. Per
+`10-decisions.md` ("Guest booking/checkout journey hosted in the SPA, not
+WordPress"):
+
+- The guest hits `portal.villacollective.com/booking?ref=<reference>` (the
+  `Booking.checkout_url` set at booking creation — see
+  `09-booking/booking-creation.md` and `05-reservations.md`).
+- The page submits personal/additional info to a first-party Django endpoint
+  (a booking-scoped checkout endpoint), **not** the WordPress-proxied
+  `/api/wordpress/checkout/` (`SaveCheckoutInfo`) path described below.
+- The Flywire return and webhook are handled first-party — direct-to-Django,
+  not WordPress-proxied. See `08-integrations.md` for the Flywire integration
+  surface.
+
+Scope note: this is deliberately narrow — only the checkout page is in scope.
+The deferred post-booking guest portal is **not** in scope. The legacy
+descriptions below are preserved as reference for the behaviour being
+reproduced.
+
 ## Save checkout personal info
 
 **ID:** `PAYMENT.CHECKOUT.SAVE_INFO`
@@ -52,8 +74,18 @@ Captures guest personal info before payment, and accepts confirm/reject decision
 
 Cross-reference: see `09-booking/booking-confirmation.md` for full detail. The payment controller is a second entry point to the same workflow — the redesign should unify on one.
 
+### Redesign
+
+Resolved: the rebuild unifies on the single first-party booking-confirmation
+workflow (`09-booking/booking-confirmation.md`). The payment-controller second
+entry point (`POST /api/WordPressApi/Payment/ConfirmBooking`) is dropped — with
+the checkout journey hosted in the SPA and served direct-to-Django (see the
+Redesign note at the top of this file and `10-decisions.md`), there is no
+WordPress gateway page and no need for a parallel payment-controller endpoint.
+
 ### Open questions
-- Two endpoints into one workflow is a smell. Consolidate.
+- ~~Two endpoints into one workflow is a smell. Consolidate.~~ Resolved — see
+  Redesign above.
 
 ---
 

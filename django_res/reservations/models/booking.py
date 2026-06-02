@@ -56,30 +56,38 @@ def _is_overlap_violation(exc: IntegrityError) -> bool:
 
 
 class BookingQuerySet(models.QuerySet["Booking"]):
-    def overlapping_blocking(
+    def occupying(
         self,
         *,
         date_from: date_type,
         date_to: date_type,
         property: Any = None,
     ) -> BookingQuerySet:
-        """Bookings whose date range overlaps `[date_from, date_to)` and whose
-        status occupies the property.
+        """Bookings that occupy `[date_from, date_to)` for availability reads.
 
-        The single source of truth for the booking-overlap predicate — the same
-        half-open overlap and `OVERLAP_BLOCKING_BOOKING_STATUSES` set enshrined
-        in the `booking_no_overlap_blocking` DB constraint. Shared by the
-        availability calendar (`AvailabilityService`) and catalogue search
-        (`properties` filters). Pass `property` to scope to one villa; omit it
-        for a cross-property sweep.
+        The single source of truth for "is this villa taken on these dates?",
+        shared by the availability calendar (`AvailabilityService`) and
+        catalogue search (`properties` filters) so the two can never drift on
+        which bookings occupy a range. Pass `property` to scope to one villa;
+        omit it for a cross-property sweep.
 
-        `DRAFT` is deliberately *not* blocking: a Booking is born `DRAFT` but is
-        driven out of it inside its own creation transaction, so it is never an
-        observable resting state — matching the DB constraint, which also lets
-        drafts overlap.
+        A booking occupies the range unless it has reached a *terminal* state
+        (`TERMINAL_BOOKING_STATUSES`). This deliberately includes `DRAFT`:
+        a service-created booking is only ever `DRAFT` transiently inside its
+        own creation transaction (never an observable resting state), but the
+        legacy migration *rests* imported reservations in `DRAFT`
+        (`data_migration.loaders.bookings`) to bypass the
+        `booking_no_overlap_blocking` EXCLUDE constraint, which lets historical
+        overlapping rows coexist. Those resting DRAFT rows are real occupancy
+        and must show as taken.
+
+        Note the deliberate asymmetry with `OVERLAP_BLOCKING_BOOKING_STATUSES`
+        (the narrower set the DB constraint enforces on *writes*, which omits
+        `DRAFT`): a migrated DRAFT booking *occupies* the calendar yet does not
+        *block* a new insert at the DB level. That gap is what lets the
+        migration load the legacy overlaps in the first place.
         """
-        qs = self.filter(
-            status__in=OVERLAP_BLOCKING_BOOKING_STATUSES,
+        qs = self.exclude(status__in=TERMINAL_BOOKING_STATUSES).filter(
             date_from__lt=date_to,
             date_to__gt=date_from,
         )

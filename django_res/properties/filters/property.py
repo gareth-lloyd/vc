@@ -167,15 +167,15 @@ def _unavailable_property_ids(date_from: date, date_to: date) -> set[int]:
     `.exclude(id__in=…)` so the main property query stays a single round-trip.
 
     Both predicates are the canonical model-layer ones
-    (`Booking.objects.overlapping_blocking` / `BookingHold.live_overlapping`),
-    shared verbatim with the availability calendar so search and calendar can
-    never drift on which bookings/holds occupy a range. The cross-app import is
-    kept lazy inside the function — `properties → reservations` is a blessed
+    (`Booking.objects.occupying` / `BookingHold.live_overlapping`), shared
+    verbatim with the availability calendar so search and calendar can never
+    drift on which bookings/holds occupy a range. The cross-app import is kept
+    lazy inside the function — `properties → reservations` is a blessed
     catalogue-search seam (see the import-linter contract), not an app-load edge.
     """
     from reservations.models.booking import Booking, BookingHold
 
-    booked_ids = Booking.objects.overlapping_blocking(
+    booked_ids = Booking.objects.occupying(
         date_from=date_from,
         date_to=date_to,
     ).values_list("property_id", flat=True)

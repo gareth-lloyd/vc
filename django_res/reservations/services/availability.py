@@ -1,10 +1,11 @@
-"""Availability queries backed by live holds and blocking bookings.
+"""Availability queries backed by live holds and occupying bookings.
 
 A property date range is unavailable if it overlaps either:
 
-- a *blocking* `reservations.Booking`
-  (`Booking.objects.overlapping_blocking(...)` — `status IN
-  reservations.enums.OVERLAP_BLOCKING_BOOKING_STATUSES`), or
+- an *occupying* `reservations.Booking`
+  (`Booking.objects.occupying(...)` — any booking not in
+  `reservations.enums.TERMINAL_BOOKING_STATUSES`, so resting legacy DRAFT
+  imports count), or
 - a *live* `reservations.BookingHold`
   (`BookingHold.live_overlapping(...)` — `released_at IS NULL` and
   `expires_at > now`).
@@ -129,7 +130,7 @@ class AvailabilityService:
 
     @classmethod
     def _active_bookings(cls, property: Any, date_from: date, date_to: date) -> Any:
-        return Booking.objects.overlapping_blocking(
+        return Booking.objects.occupying(
             property=property,
             date_from=date_from,
             date_to=date_to,

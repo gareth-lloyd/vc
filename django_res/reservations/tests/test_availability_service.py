@@ -1,4 +1,4 @@
-"""AvailabilityService — backed by live BookingHold + blocking Booking.
+"""AvailabilityService — backed by live BookingHold + occupying Booking.
 
 These exercise the read paths the calendar view depends on. Manual
 blocks/holds/bookings must actually suppress availability (the service used
@@ -185,6 +185,35 @@ def test_non_terminal_booking_blocks_without_hold(
     assert AvailabilityService.is_available(property_, date(2026, 7, 3), date(2026, 7, 5)) is False
     conflicts = AvailabilityService.conflicts(property_, date(2026, 7, 1), date(2026, 7, 8))
     assert [c.kind for c in conflicts] == ["booked"]
+
+
+# ----------------------------------------------------------------------
+# 5b. A resting DRAFT booking (legacy migration imports rest in DRAFT to
+# bypass the overlap constraint) still occupies the range — it is real
+# occupancy even though the DB write-constraint set omits DRAFT.
+# ----------------------------------------------------------------------
+def test_resting_draft_booking_occupies_range(
+    property_: Property,
+    gbp: Currency,
+    guest: Guest,
+    terms: TermsVersion,
+) -> None:
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 8, 10),
+        date_to=date(2026, 8, 17),
+        status=BookingStatus.DRAFT.value,
+    )
+    assert (
+        AvailabilityService.is_available(property_, date(2026, 8, 12), date(2026, 8, 14)) is False
+    )
+    conflicts = AvailabilityService.conflicts(property_, date(2026, 8, 10), date(2026, 8, 17))
+    assert [c.kind for c in conflicts] == ["booked"]
+    cal = AvailabilityService.calendar(property_, date(2026, 8, 9), date(2026, 8, 18))
+    assert cal[date(2026, 8, 12)].reason == "booked"
 
 
 # ----------------------------------------------------------------------

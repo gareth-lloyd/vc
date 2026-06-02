@@ -130,12 +130,20 @@ name = "spine layers — imports point down the stack"
 type = "layers"
 # High → low. A layer may import those below it; a lower layer importing a
 # higher one is a violation unless explicitly blessed below.
+#
+# `integrations` (outbound third-party sync) sits low in the spine: domain
+# apps reach *down* into it to enqueue a push (`reservations → integrations`),
+# and it reaches further down for the auth identity it syncs against
+# (`integrations → accounts`). Both are clean downward edges, so it needs no
+# blessed exception — but it MUST be listed, or its position is unconstrained
+# and a future upward edge (e.g. `integrations → reservations`) goes uncaught.
 layers = [
     "comms",
     "payments",
     "reservations",
     "pricing",
     "properties",
+    "integrations",
     "accounts",
 ]
 ignore_imports = [

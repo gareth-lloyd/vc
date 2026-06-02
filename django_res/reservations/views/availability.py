@@ -4,7 +4,7 @@
 calendar slice (GET) and write/update/delete on individual blocks plus
 search/bulk operations.
 
-Calendar reads come from `pricing.services.AvailabilityService` (computes
+Calendar reads come from `reservations.services.AvailabilityService` (computes
 per-day cell status) — keep all business logic out of the view.
 """
 
@@ -22,7 +22,6 @@ from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
 from core.exceptions import DomainError, ReadOnlyHold
-from pricing.services import AvailabilityService
 from properties.models import Property
 from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS
 from reservations.serializers.availability import (
@@ -32,6 +31,7 @@ from reservations.serializers.availability import (
     AvailabilitySearchSerializer,
     AvailabilityWriteSerializer,
 )
+from reservations.services import AvailabilityService
 from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:

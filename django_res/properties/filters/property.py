@@ -161,30 +161,28 @@ class PropertyFilter(filters.FilterSet):
 def _unavailable_property_ids(date_from: date, date_to: date) -> set[int]:
     """Bulk-query the unavailable property-id set for a date range.
 
-    One query each for overlap-blocking bookings and live holds — both flat
+    One query each for blocking bookings and live holds — both flat
     set-membership reads that scale with the number of conflicts, not with the
     number of properties under consideration. The result is fed straight into
     `.exclude(id__in=…)` so the main property query stays a single round-trip.
 
-    Imported lazily inside the function to avoid an app-load cycle from the
-    properties → reservations direction.
+    Both predicates are the canonical model-layer ones
+    (`Booking.objects.overlapping_blocking` / `BookingHold.live_overlapping`),
+    shared verbatim with the availability calendar so search and calendar can
+    never drift on which bookings/holds occupy a range. The cross-app import is
+    kept lazy inside the function — `properties → reservations` is a blessed
+    catalogue-search seam (see the import-linter contract), not an app-load edge.
     """
-    from django.utils import timezone
-
-    from reservations.enums import OVERLAP_BLOCKING_BOOKING_STATUSES
     from reservations.models.booking import Booking, BookingHold
 
-    booked_ids = Booking.objects.filter(
-        status__in=OVERLAP_BLOCKING_BOOKING_STATUSES,
-        date_from__lt=date_to,
-        date_to__gt=date_from,
+    booked_ids = Booking.objects.overlapping_blocking(
+        date_from=date_from,
+        date_to=date_to,
     ).values_list("property_id", flat=True)
 
-    held_ids = BookingHold.objects.filter(
-        released_at__isnull=True,
-        expires_at__gt=timezone.now(),
-        date_from__lt=date_to,
-        date_to__gt=date_from,
+    held_ids = BookingHold.live_overlapping(
+        date_from=date_from,
+        date_to=date_to,
     ).values_list("property_id", flat=True)
 
     return {*booked_ids, *held_ids}

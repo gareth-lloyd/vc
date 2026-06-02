@@ -55,8 +55,43 @@ def _is_overlap_violation(exc: IntegrityError) -> bool:
     return _OVERLAP_CONSTRAINT_NAME in str(exc)
 
 
+class BookingQuerySet(models.QuerySet["Booking"]):
+    def overlapping_blocking(
+        self,
+        *,
+        date_from: date_type,
+        date_to: date_type,
+        property: Any = None,
+    ) -> BookingQuerySet:
+        """Bookings whose date range overlaps `[date_from, date_to)` and whose
+        status occupies the property.
+
+        The single source of truth for the booking-overlap predicate — the same
+        half-open overlap and `OVERLAP_BLOCKING_BOOKING_STATUSES` set enshrined
+        in the `booking_no_overlap_blocking` DB constraint. Shared by the
+        availability calendar (`AvailabilityService`) and catalogue search
+        (`properties` filters). Pass `property` to scope to one villa; omit it
+        for a cross-property sweep.
+
+        `DRAFT` is deliberately *not* blocking: a Booking is born `DRAFT` but is
+        driven out of it inside its own creation transaction, so it is never an
+        observable resting state — matching the DB constraint, which also lets
+        drafts overlap.
+        """
+        qs = self.filter(
+            status__in=OVERLAP_BLOCKING_BOOKING_STATUSES,
+            date_from__lt=date_to,
+            date_to__gt=date_from,
+        )
+        if property is not None:
+            qs = qs.filter(property=property)
+        return qs
+
+
 class Booking(AuditedModel):
     """The reservation. Locked to a QuotationLine pricing snapshot at creation."""
+
+    objects = BookingQuerySet.as_manager()
 
     reference = models.CharField(max_length=32, unique=True)
     quotation_line = models.ForeignKey(
@@ -689,23 +724,26 @@ class BookingHold(AuditedModel):
     def live_overlapping(
         cls,
         *,
-        property: Any,
         date_from: date_type,
         date_to: date_type,
+        property: Any = None,
         exclude_ids: list[int] | None = None,
     ) -> Any:
-        """Live (unreleased, unexpired) holds for `property` overlapping the range.
+        """Live (unreleased, unexpired) holds overlapping the range.
 
         The single source of truth for the hold-overlap predicate, shared by
-        `HoldService` and `pricing.AvailabilityService`.
+        `HoldService`, the availability calendar (`AvailabilityService`) and
+        catalogue search (`properties` filters). Pass `property` to scope to one
+        villa; omit it for a cross-property sweep.
         """
         qs = cls.objects.filter(
-            property=property,
             released_at__isnull=True,
             expires_at__gt=timezone.now(),
             date_from__lt=date_to,
             date_to__gt=date_from,
         )
+        if property is not None:
+            qs = qs.filter(property=property)
         if exclude_ids:
             qs = qs.exclude(pk__in=exclude_ids)
         return qs

@@ -74,7 +74,7 @@ class BookingViewSet(
     ordering = ["-created_at"]
 
     def get_queryset(self) -> Any:
-        qs = Booking.objects.filter(is_archived=False).select_related(
+        qs: QuerySet[Booking] = Booking.objects.filter(is_archived=False).select_related(
             "property",
             "guest",
             "agent",
@@ -204,7 +204,7 @@ class BookingArchiveViewSet(
     ordering = ["-archived_at"]
 
     def get_queryset(self) -> Any:
-        qs = Booking.objects.filter(is_archived=True).select_related(
+        qs: QuerySet[Booking] = Booking.objects.filter(is_archived=True).select_related(
             "property",
             "guest",
             "agent",

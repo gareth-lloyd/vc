@@ -1,18 +1,21 @@
-"""Availability queries backed by live holds and non-terminal bookings.
+"""Availability queries backed by live holds and blocking bookings.
 
 A property date range is unavailable if it overlaps either:
 
-- a non-terminal `reservations.Booking`
-  (`status NOT IN reservations.enums.TERMINAL_BOOKING_STATUSES`), or
-- a *live* `reservations.BookingHold` (`released_at IS NULL` and
+- a *blocking* `reservations.Booking`
+  (`Booking.objects.overlapping_blocking(...)` — `status IN
+  reservations.enums.OVERLAP_BLOCKING_BOOKING_STATUSES`), or
+- a *live* `reservations.BookingHold`
+  (`BookingHold.live_overlapping(...)` — `released_at IS NULL` and
   `expires_at > now`).
+
+Both predicates are the canonical model-layer ones, shared verbatim with the
+catalogue-search filter (`properties.filters.property`), so the calendar and
+search can never drift on which bookings/holds occupy a range.
 
 Bookings are queried directly — `BookingService.create_from_quotation_line`
 releases the quotation hold and does *not* place a booking-scoped hold, so
 a confirmed booking has no covering hold row.
-
-The reservations models are imported lazily inside each method to avoid an
-app-load cycle (the views layer follows the same convention).
 """
 
 from __future__ import annotations
@@ -23,11 +26,8 @@ from typing import TYPE_CHECKING, Any
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from reservations.enums import (
-    OPERATOR_EDITABLE_HOLD_REASONS,
-    TERMINAL_BOOKING_STATUSES,
-    BookingHoldReason,
-)
+from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS, BookingHoldReason
+from reservations.models.booking import Booking, BookingHold
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -120,8 +120,6 @@ class AvailabilityService:
         *,
         ignore_hold_ids: Iterable[int] | None = None,
     ) -> Any:
-        from reservations.models.booking import BookingHold
-
         return BookingHold.live_overlapping(
             property=property,
             date_from=date_from,
@@ -131,13 +129,11 @@ class AvailabilityService:
 
     @classmethod
     def _active_bookings(cls, property: Any, date_from: date, date_to: date) -> Any:
-        from reservations.models.booking import Booking
-
-        return Booking.objects.filter(
+        return Booking.objects.overlapping_blocking(
             property=property,
-            date_from__lt=date_to,
-            date_to__gt=date_from,
-        ).exclude(status__in=TERMINAL_BOOKING_STATUSES)
+            date_from=date_from,
+            date_to=date_to,
+        )
 
     @classmethod
     def is_available(

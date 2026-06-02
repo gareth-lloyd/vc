@@ -1,8 +1,8 @@
-"""AvailabilityService — backed by live BookingHold + non-terminal Booking.
+"""AvailabilityService — backed by live BookingHold + blocking Booking.
 
-These exercise the read paths that the calendar view and the pricing
-engine depend on. Manual blocks/holds/bookings must actually suppress
-availability (the service used to be an inert stub).
+These exercise the read paths the calendar view depends on. Manual
+blocks/holds/bookings must actually suppress availability (the service used
+to be an inert stub).
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import pytest
 from django.utils import timezone
 
 from core.tests import assert_max_queries
-from pricing.services import AvailabilityService
 from reservations.enums import BookingHoldReason, BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
@@ -25,6 +24,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services import AvailabilityService
 
 if TYPE_CHECKING:
     from pricing.models import Currency

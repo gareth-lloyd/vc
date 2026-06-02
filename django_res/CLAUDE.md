@@ -365,18 +365,21 @@ into pre-commit and CI next to `mypy`). Two contracts:
 - **Spine layers point down.** App imports flow high → low:
 
   ```
-  comms  >  payments  >  reservations  >  pricing  >  properties  >  accounts
+  comms  >  payments  >  reservations  >  pricing  >  properties  >  integrations  >  accounts
   ```
 
   A layer may import those below it; a lower layer importing a higher one is a
-  violation. The handful of sanctioned back-edges are listed as commented
-  `ignore_imports` lines — one per deliberate seam — namely catalogue
-  availability search (`properties → reservations`, a single lazy filter that
-  routes through the canonical `Booking.objects.overlapping_blocking` /
-  `BookingHold.live_overlapping` predicates) and notification edges into
-  `comms` (the cross-cutting email sink that every domain app may send into).
-  `seeding` and `data_migration` are top-of-stack orchestrators, deliberately
-  outside the layers contract, but still bound by the `core`-foundation rule.
+  violation. `integrations` (outbound third-party sync) sits low: domain apps
+  reach *down* into it to enqueue a push, and it reaches *down* into `accounts`
+  for the identity it syncs — both clean downward edges. The handful of
+  sanctioned back-edges are listed as commented `ignore_imports` lines — one per
+  deliberate seam — namely catalogue availability search
+  (`properties → reservations`, a single lazy filter that routes through the
+  canonical `Booking.objects.occupying` / `BookingHold.live_overlapping`
+  predicates) and notification edges into `comms` (the cross-cutting email sink
+  that every domain app may send into). `seeding` and `data_migration` are
+  top-of-stack orchestrators, deliberately outside the layers contract, but
+  still bound by the `core`-foundation rule.
 
   Adding a new cross-app import that isn't one of these makes CI fail. If you
   genuinely need a new seam, add it as a commented `ignore_imports` line with a

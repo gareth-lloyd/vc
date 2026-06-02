@@ -25,9 +25,12 @@ Constraints:
 
 Together the two exclude constraints make double-booking impossible at the DB level.
 
-### `AvailabilityService` (in `pricing.services`)
+### `AvailabilityService` (in `reservations.services`)
 
-Why in `pricing`: change-over rules live there and need to be applied at quote time too.
+Why in `reservations`: it reads `Booking` / `BookingHold` occupancy directly, so homing
+it here keeps `pricing` free of any upward `pricing → reservations` import (the cycle
+that move dissolved). Change-over times are still resolved from property settings and
+applied at quote time.
 
 ```python
 class AvailabilityService:
@@ -42,7 +45,7 @@ class AvailabilityService:
 ```
 
 Implementation of `is_available`:
-1. Check no active Booking overlaps (status in active set, exclude constraint already enforces, but query confirms for UX).
+1. Check no Booking *occupies* the range (`Booking.objects.occupying` — any status **not** in `TERMINAL_BOOKING_STATUSES`). This is deliberately broader than the DB `OVERLAP_BLOCKING` write-constraint set: it also catches resting `DRAFT` rows (see below) that the constraint lets overlap.
 2. Check no live BookingHold overlaps (`released_at IS NULL AND expires_at > now()`), optionally excluding hold ids we own (so a quotation can convert to a booking without fighting its own hold).
 3. Check check-in date matches `ChangeOverRule` for the property (any rule for the active window must allow the weekday; if zero rules, all weekdays allowed).
 4. Check `PropertySettings.min_nights_rental` (effective value after group fallback).
@@ -158,6 +161,8 @@ These methods on `Booking` write a `BookingEvent` row (with `from_status == to_s
 `AWAITING_DEPOSIT`, `DEPOSIT_PAID`, `AWAITING_BALANCE`, `BALANCE_PAID`, `CHECKED_IN`. These rows participate in the no-overlap rule. The exclude constraint is partial: `WHERE status IN (...)`.
 
 `PENDING_OWNER_APPROVAL` and `DRAFT` do not block the DB constraint but are protected by their `BookingHold` (which has its own exclude constraint).
+
+Note the availability **service** is broader than the DB constraint: `Booking.objects.occupying` treats any non-terminal booking as occupying the range, including resting `DRAFT` rows. The legacy migration rests imported reservations in `DRAFT` (`data_migration.loaders.bookings`) precisely to bypass the EXCLUDE constraint so historical overlaps can coexist — those rows still show as unavailable on the calendar and in catalogue search. See the `occupying` docstring in `reservations/models/booking.py` for the deliberate occupies-vs-blocks asymmetry.
 
 ### Why not django-fsm
 

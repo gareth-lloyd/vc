@@ -143,3 +143,81 @@ def test_discount_lookup_code_not_found(
         format="json",
     )
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_quote_bulk_carries_hero_image_url(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Each available bulk quote carries hero_image_url (str for HERO, null otherwise)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from pricing.models import RateCard, RatePlan
+    from pricing.models import RateRule as RR
+    from properties.enums import ImageKind
+    from properties.models import Property, PropertyImage
+
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+
+    # A second priceable property with no HERO image.
+    no_hero = Property.objects.create(
+        name="No Hero Villa",
+        display_name="No Hero Villa",
+        slug="no-hero-villa",
+        category=property_.category,
+        group=property_.group,
+        region=property_.region,
+    )
+    plan2 = RatePlan.objects.create(
+        property=no_hero,
+        name="Summer 2026",
+        currency=gbp,
+        effective_from=date(2026, 1, 1),
+        effective_to=date(2026, 12, 31),
+    )
+    card2 = RateCard.objects.create(plan=plan2, name="Default", sort_order=0)
+    RR.objects.create(
+        card=card2,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("200.00"),
+    )
+
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "currency": "GBP",
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 4,
+                },
+                {
+                    "property_id": no_hero.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 4,
+                },
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    by_id = {q["property_id"]: q for q in response.json()["quotes"]}
+    assert by_id[property_.pk]["available"] is True
+    assert by_id[property_.pk]["hero_image_url"] is not None
+    assert ".jpg" in by_id[property_.pk]["hero_image_url"]
+    assert by_id[no_hero.pk]["hero_image_url"] is None

@@ -6,13 +6,51 @@
     </mj-attributes>
   </mj-head>
   <mj-body background-color="#f4f4f4">
-    <mj-section background-color="#ffffff" padding="40px 24px">
+    <mj-section background-color="#ffffff" padding="32px 24px">
       <mj-column>
-        <mj-text font-size="20px" font-weight="bold" color="#222222">Your quotation</mj-text>
+        <mj-text font-size="22px" font-weight="bold" color="#222222">Your quotation</mj-text>
         <mj-text>Hi {{ guest_first_name }},</mj-text>
-        <mj-text>Please find your quotation for <strong>{{ property_name }}</strong> attached.</mj-text>
-        <mj-text>Reply to this email and I'll be glad to help with any questions.</mj-text>
-        <mj-text>Best,<br />{{ agent_name }}</mj-text>
+        <mj-text>{{ intro }}</mj-text>
+        <mj-raw>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:Helvetica,Arial,sans-serif;">
+            <thead>
+              <tr>
+                <th style="text-align:left;font-size:13px;color:#888888;border-bottom:2px solid #eeeeee;padding:8px 6px;">Property</th>
+                <th style="text-align:left;font-size:13px;color:#888888;border-bottom:2px solid #eeeeee;padding:8px 6px;">Dates</th>
+                <th style="text-align:right;font-size:13px;color:#888888;border-bottom:2px solid #eeeeee;padding:8px 6px;">Nights</th>
+                <th style="text-align:right;font-size:13px;color:#888888;border-bottom:2px solid #eeeeee;padding:8px 6px;">Guests</th>
+                <th style="text-align:right;font-size:13px;color:#888888;border-bottom:2px solid #eeeeee;padding:8px 6px;">Total ({{ currency_code }})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for line in lines %}
+              <tr>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;"><strong>{{ line.property_name }}</strong>{% if line.notes %}<br /><span style="font-size:13px;color:#888888;font-style:italic;">{{ line.notes }}</span>{% endif %}{% if line.inclusions %}<br /><span style="font-size:13px;color:#555555;"><strong>Includes:</strong> {{ line.inclusions }}</span>{% endif %}</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;">{{ line.date_from }} &ndash; {{ line.date_to }}</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ line.nights }}</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ line.adults }}+{{ line.children }}</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ line.total }}{% if line.discount and line.discount != "0.00" %}<br /><span style="font-size:12px;color:#2e7d32;">incl. {{ currency_code }} {{ line.discount }} discount</span>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" style="font-size:18px;font-weight:bold;color:#222222;text-align:right;padding:12px 6px;">Total: {{ currency_code }} {{ grand_total }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </mj-raw>
+        <mj-text font-size="13px" color="#888888">Quotation reference: {{ quotation_reference }}{% if expires_at %} &middot; valid until {{ expires_at }}{% endif %}</mj-text>
+        <mj-text>{{ signoff }}</mj-text>
+        <mj-text>{% if agent_name %}Best,<br />{{ agent_name }}{% endif %}</mj-text>
+        <mj-raw>
+          {% if terms_html %}
+          <div style="font-size:13px;color:#777777;border-top:1px solid #eeeeee;padding-top:16px;margin-top:24px;font-family:Helvetica,Arial,sans-serif;">
+            <p style="font-size:17px;font-weight:bold;color:#222222;margin:0 0 8px;">Terms &amp; conditions</p>
+            {{ terms_html|safe }}
+          </div>
+          {% endif %}
+        </mj-raw>
       </mj-column>
     </mj-section>
   </mj-body>

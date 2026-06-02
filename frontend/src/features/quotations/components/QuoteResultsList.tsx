@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney } from "@/lib/format/money";
+import { PropertyThumbnail } from "./PropertyThumbnail";
 import type { QuoteOption } from "../schemas";
 
 interface Props {
@@ -58,16 +59,23 @@ export function QuoteResultsList({
       {available.map((option) => (
         <article
           key={option.property_id}
-          className="border-border flex items-center justify-between rounded-md border p-3"
+          className="border-border flex items-center justify-between gap-3 rounded-md border p-3"
         >
-          <div>
-            <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
-            <p className="text-muted-foreground text-xs">
-              {t("builder.results.total")}:{" "}
-              <span className="text-foreground font-medium">
-                {formatMoney(option.total ?? null, currency)}
-              </span>
-            </p>
+          <div className="flex items-center gap-3">
+            <PropertyThumbnail
+              src={option.hero_image_url}
+              fallbackText={option.property_name}
+              alt={t("builder.results.thumbnail_alt", { name: option.property_name })}
+            />
+            <div>
+              <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
+              <p className="text-muted-foreground text-xs">
+                {t("builder.results.total")}:{" "}
+                <span className="text-foreground font-medium">
+                  {formatMoney(option.total ?? null, currency)}
+                </span>
+              </p>
+            </div>
           </div>
           <Button
             type="button"

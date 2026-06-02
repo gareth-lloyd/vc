@@ -1,1 +1,1 @@
-Your quotation for {{ property_name }}
+{{ subject }}

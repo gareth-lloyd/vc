@@ -27,10 +27,15 @@ from reservations.serializers import (
     QuotationWriteSerializer,
 )
 from reservations.services.bookings import BookingService
+from reservations.services.quotation_render import (
+    build_quotation_context,
+    render_quotation_html,
+)
 from reservations.services.quotation_transmission import (
     SEND_PATH_MANUAL,
     record_quote_sent,
 )
+from reservations.services.quotations import QuotationService
 
 
 class QuotationViewSet(viewsets.ModelViewSet):
@@ -40,12 +45,19 @@ class QuotationViewSet(viewsets.ModelViewSet):
     # internal fixtures created by the data-migration loader so legacy bookings
     # can satisfy the QuotationLine PROTECT FK. They aren't real quotes and
     # must not surface in the public API.
-    queryset = Quotation.objects.select_related(
-        "currency",
-        "guest",
-        "enquiry",
-        "agent",
-    ).exclude(legacy_id__startswith="booking-")
+    queryset = (
+        Quotation.objects.select_related(
+            "currency",
+            "guest",
+            "enquiry",
+            "agent",
+        )
+        # The detail serializer nests `lines`, each of which derives a
+        # hero_image_url from its property's images — prefetch the whole
+        # walk so a quotation with N lines stays at a constant query count.
+        .prefetch_related("lines__property__images")
+        .exclude(legacy_id__startswith="booking-")
+    )
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter
     ordering_fields = ["created_at", "updated_at", "status"]
@@ -58,11 +70,45 @@ class QuotationViewSet(viewsets.ModelViewSet):
             return QuotationWriteSerializer
         return QuotationDetailSerializer
 
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request: Request, pk: str | None = None) -> Response:
+        """Render the quote HTML + the copy an operator can edit.
+
+        Optional `subject`/`intro`/`signoff` query params are operator copy
+        overrides; threading them through means the preview the operator sees
+        reflects their in-flight edits and is byte-for-byte what `:send` will
+        dispatch with the same overrides. Omitting them previews the defaults.
+        """
+        quotation = self.get_object()
+        overrides = {
+            key: request.query_params[key]
+            for key in ("subject", "intro", "signoff")
+            if key in request.query_params
+        }
+        context = build_quotation_context(quotation, **overrides)
+        return Response(
+            {
+                "html": render_quotation_html(quotation, **overrides),
+                "subject": context["subject"],
+                "intro": context["intro"],
+                "signoff": context["signoff"],
+            }
+        )
+
     @action(detail=True, methods=["post"], url_path="send")
     def send_quote(self, request: Request, pk: str | None = None) -> Response:
-        """DRAFT → SENT via the in-app SMTP path."""
+        """DRAFT → SENT via the in-app SMTP path.
+
+        Optional `subject`/`intro`/`signoff` in the body are operator copy
+        overrides; omitting them sends the centralised defaults.
+        """
         quotation = self.get_object()
-        quotation.send(actor=request.user)
+        quotation.send(
+            actor=request.user,
+            subject=request.data.get("subject"),
+            intro=request.data.get("intro"),
+            signoff=request.data.get("signoff"),
+        )
         return Response(QuotationDetailSerializer(quotation).data)
 
     @action(detail=True, methods=["post"], url_path="mark-manually-sent")
@@ -103,8 +149,11 @@ class QuotationViewSet(viewsets.ModelViewSet):
                     children=line.children,
                     pricing_snapshot=line.pricing_snapshot,
                     total=line.total,
+                    discount=line.discount,
+                    inclusions=line.inclusions,
                     is_selected=False,
                     is_manual=line.is_manual,
+                    price_override_reason=line.price_override_reason,
                     notes=line.notes,
                 )
         return Response(
@@ -175,6 +224,9 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"])
             .exclude(legacy_id__startswith="booking-")
             .select_related("property")
+            # The read serializer derives hero_image_url per line — prefetch
+            # the property's images so a list of N lines stays constant-query.
+            .prefetch_related("property__images")
             .order_by("pk")
         )
 
@@ -183,9 +235,63 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             return QuotationLineWriteSerializer
         return QuotationLineSerializer
 
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        # The write serializer doesn't carry total/pricing_snapshot — echo the
+        # freshly-priced line back through the read serializer so the FE sees
+        # the server-computed values without a follow-up GET.
+        read = QuotationLineSerializer(serializer.instance)
+        return Response(read.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        read = QuotationLineSerializer(serializer.instance)
+        return Response(read.data)
+
     def perform_create(self, serializer: Any) -> None:
         quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
-        serializer.save(quotation=quotation)
+        line = serializer.save(quotation=quotation)
+        self._reprice(line)
+
+    def perform_update(self, serializer: Any) -> None:
+        # Persist the edited fields (adults, discount, …) BEFORE repricing so
+        # `_reprice` re-reads them off the row. Without the save the patched
+        # values would never reach the DB and the engine would price the stale
+        # row.
+        line = serializer.save()
+        self._reprice(line)
+
+    def _reprice(self, line: QuotationLine) -> None:
+        """Recompute a non-manual line's total + pricing_snapshot.
+
+        Manual-override lines (`is_manual=True`) keep whatever total /
+        pricing_snapshot the operator supplied — the manual-override write
+        surface is a later phase, so for now a manual line is simply left
+        untouched here.
+
+        Per FG-006 we re-read the row under `select_for_update` inside a
+        transaction before repricing, so a concurrent write to the same line
+        serialises behind this update rather than racing it.
+        """
+        if line.is_manual:
+            return
+        with transaction.atomic():
+            locked = (
+                QuotationLine.objects.select_for_update()
+                .select_related("property", "quotation__currency")
+                .get(pk=line.pk)
+            )
+            QuotationService.price_line(locked.quotation, locked)
+        # Reflect the persisted price back onto the serializer's instance so
+        # the response (built from it) carries the server-computed values.
+        line.total = locked.total
+        line.pricing_snapshot = locked.pricing_snapshot
 
     @action(detail=False, methods=["post"], url_path="reorder")
     def reorder(self, request: Request, quotation_pk: str | None = None) -> Response:

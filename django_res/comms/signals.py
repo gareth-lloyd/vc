@@ -138,9 +138,18 @@ def quotation_sent_handler(
     sender: Any,
     *,
     quotation: Quotation,
+    subject: str | None = None,
+    intro: str | None = None,
+    signoff: str | None = None,
     **_: Any,
 ) -> None:
-    """Send the quotation email as the agent when a personal SMTP profile exists."""
+    """Send the quotation email as the agent when a personal SMTP profile exists.
+
+    `subject`/`intro`/`signoff` are operator copy overrides forwarded from
+    `Quotation.send`; they flow through `build_quotation_context` so the
+    rendered subject + body reflect the edited copy (and stay identical to the
+    operator's preview).
+    """
     recipient = guest_email(quotation.guest)
     if recipient is None:
         logger.warning(
@@ -149,17 +158,21 @@ def quotation_sent_handler(
         )
         return
     agent_user = agent_user_for(quotation)
-    agent = quotation.agent
-    agent_name = ""
-    if agent is not None:
-        agent_name = f"{agent.first_name} {agent.last_name}".strip()
+    # The shared render seam assembles the full quote context (line rows,
+    # totals, currency, validity, terms HTML, subject) once — the same context
+    # the preview modal and copy-to-clipboard consume. It already carries
+    # guest_first_name / agent_name / quotation_reference, so the legacy
+    # keys keep working.
+    from reservations.services.quotation_render import build_quotation_context
+
     _safe_send(
         template_key="quotation.sent",
-        context={
-            "guest_first_name": quotation.guest.first_name,
-            "agent_name": agent_name,
-            "quotation_reference": quotation.reference,
-        },
+        context=build_quotation_context(
+            quotation,
+            subject=subject,
+            intro=intro,
+            signoff=signoff,
+        ),
         to=[recipient],
         sender_user=agent_user,
         correlation={"quotation_id": quotation.pk},

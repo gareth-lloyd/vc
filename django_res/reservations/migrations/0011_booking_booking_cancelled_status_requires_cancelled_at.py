@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
         ("accounts", "0005_user_preferred_language"),
         ("pricing", "0007_raterule_raterule_poa_excludes_price"),
         ("properties", "0011_hold_duration_hours"),
-        ("reservations", "0008_bookingguest"),
+        ("reservations", "0010_alter_quotationline_discount"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

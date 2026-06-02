@@ -10,7 +10,12 @@ class ReservationsConfig(AppConfig):
     def ready(self) -> None:
         from core.audit import track
         from reservations import signals  # noqa: F401
-        from reservations.models import Booking, BookingGuest, Guest
+        from reservations.models import (
+            Booking,
+            BookingGuest,
+            Guest,
+            QuotationLine,
+        )
 
         # Guest PII: track verbatim so anonymisation runs are auditable.
         # No `sensitive=` fields — staff need to see what was redacted
@@ -67,5 +72,19 @@ class ReservationsConfig(AppConfig):
                 "guest_id",
                 "role",
                 "email_override",
+            ],
+        )
+        # QuotationLine money + decision fields. Like Booking, the chatty
+        # `pricing_snapshot` JSON is skipped; the dollar and override columns
+        # capture what an auditor needs to reconstruct a quoted price —
+        # especially a manual override and its stated reason.
+        track(
+            QuotationLine,
+            fields=[
+                "total",
+                "discount",
+                "is_manual",
+                "is_selected",
+                "price_override_reason",
             ],
         )

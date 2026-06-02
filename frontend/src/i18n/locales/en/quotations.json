@@ -10,7 +10,9 @@
   },
   "schema_errors": {
     "at_least_one_adult": "At least one adult",
-    "date_to_after_date_from": "Must be after the start date"
+    "date_to_after_date_from": "Must be after the start date",
+    "override_reason_required": "A reason is required when overriding the price",
+    "manual_total_required": "A manual line needs a total greater than zero"
   },
   "list": {
     "title": "Quotations",
@@ -61,10 +63,13 @@
         "property": "Property",
         "dates": "Dates",
         "guests": "Guests",
+        "discount": "Discount",
+        "inclusions": "Inclusions",
         "total": "Total",
         "selected": "Selected",
         "actions": "Actions"
       },
+      "thumbnail_alt": "{{name}} thumbnail",
       "selected_yes": "Yes",
       "selected_no": "No",
       "actions": {
@@ -82,6 +87,8 @@
       "section_label": "Actions",
       "send": "Send to guest",
       "send_again": "Mark sent again",
+      "copy_to_clipboard": "Copy quote to clipboard",
+      "copying": "Copying…",
       "duplicate": "Duplicate",
       "duplicating": "Duplicating…",
       "convert": "Convert to booking",
@@ -92,7 +99,8 @@
         "not_draft": "Only draft quotes can be sent.",
         "terminal": "Already accepted, cancelled, or expired.",
         "not_sent": "Send the quote to the guest before converting.",
-        "no_lines": "Add at least one line before converting."
+        "no_lines": "Add at least one line before converting.",
+        "preview_loading": "Preparing the quote — one moment."
       }
     },
     "dialogs": {
@@ -105,6 +113,31 @@
         "toasts": {
           "success": "Quotation sent",
           "failed": "Couldn't send quotation."
+        }
+      },
+      "send_preview": {
+        "title": "Send quotation to guest",
+        "description": "Review the guest-facing quote for {{reference}}. Edit the email subject and message, then send.",
+        "preview_title": "Guest quote preview",
+        "preview_heading": "Preview",
+        "loading_preview": "Loading preview…",
+        "preview_error": "Couldn't load the preview. Try again.",
+        "fields": {
+          "subject": "Subject",
+          "intro": "Introduction",
+          "signoff": "Sign-off"
+        },
+        "copy": "Copy quote to clipboard",
+        "copying": "Copying…",
+        "copied": "Copied",
+        "cancel": "Cancel",
+        "confirm": "Send to guest",
+        "sending": "Sending…",
+        "toasts": {
+          "success": "Quotation sent",
+          "failed": "Couldn't send quotation.",
+          "copied": "Quote copied — paste it into your email",
+          "copy_failed": "Couldn't copy the quote."
         }
       },
       "duplicate": {
@@ -153,8 +186,17 @@
       },
       "line_edit": {
         "title": "Edit line",
-        "description": "Adjust the dates, party size, or notes. The server will re-price on save.",
+        "description": "Adjust the dates, party size, or pricing. The server re-prices priced lines on save.",
         "notes_label": "Notes",
+        "discount_label": "Discount",
+        "discount_hint": "Subtracted from the priced total.",
+        "inclusions_label": "Inclusions",
+        "inclusions_placeholder": "e.g. Daily housekeeping, welcome hamper",
+        "manual_label": "Override the price manually",
+        "manual_hint": "Replace the engine price with a fixed total. A reason is required.",
+        "total_label": "Manual total",
+        "price_override_reason_label": "Reason for price override",
+        "price_override_reason_placeholder": "e.g. Agreed rate with returning guest",
         "cancel": "Cancel",
         "confirm": "Save changes",
         "saving": "Saving…",
@@ -208,6 +250,7 @@
     "results": {
       "title": "Results",
       "total": "Total",
+      "thumbnail_alt": "{{name}} thumbnail",
       "add": "Add to quote",
       "added": "Added",
       "idle": {
@@ -231,9 +274,12 @@
         "property": "Property",
         "dates": "Dates",
         "guests": "Guests",
+        "discount": "Discount",
+        "inclusions": "Inclusions",
         "total": "Total",
         "actions": "Actions"
       },
+      "thumbnail_alt": "{{name}} thumbnail",
       "remove": "Remove"
     },
     "rail": {

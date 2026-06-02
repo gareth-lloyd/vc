@@ -47,12 +47,16 @@ export const quotationLineSchema = z.object({
   quotation: z.number().optional(),
   property: z.number().nullable().optional(),
   property_name: z.string().nullable().optional(),
+  hero_image_url: z.string().nullable().optional(),
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),
   adults: z.number().optional().default(0),
   children: z.number().optional().default(0),
   pricing_snapshot: z.unknown().optional(),
   total: z.union([z.string(), z.number()]).nullable().optional(),
+  discount: z.union([z.string(), z.number()]).nullable().optional(),
+  inclusions: z.string().optional().default(""),
+  price_override_reason: z.string().optional().default(""),
   is_selected: z.boolean().optional().default(false),
   is_manual: z.boolean().optional().default(false),
   notes: z.string().optional().default(""),
@@ -90,6 +94,7 @@ export const quoteOptionSchema = z.object({
   property_id: z.number(),
   property_name: z.string(),
   property_slug: z.string().nullable().optional(),
+  hero_image_url: z.string().nullable().optional(),
   available: z.boolean(),
   total: z.union([z.string(), z.number()]).nullable().optional(),
   currency: z.string().nullable().optional(),
@@ -107,6 +112,7 @@ export type QuoteOption = z.infer<typeof quoteOptionSchema>;
 export interface StagedLine {
   property_id: number;
   property_name: string;
+  hero_image_url: string | null;
   date_from: string;
   date_to: string;
   adults: number;
@@ -128,16 +134,51 @@ export const quotationWriteInputSchema = z.object({
 });
 export type QuotationWriteInput = z.infer<typeof quotationWriteInputSchema>;
 
-// Line write — what `POST /quotations/{id}/lines` accepts.
-export const quotationLineWriteInputSchema = z.object({
-  property: z.number().int(),
-  date_from: z.string().min(1),
-  date_to: z.string().min(1),
-  adults: z.number().int().min(1),
-  children: z.number().int().min(0),
-  is_manual: z.boolean(),
-  notes: z.string(),
-});
+// Line write — what `POST/PATCH /quotations/{id}/lines` accepts.
+// Decimal fields (`discount`, `total`) travel as strings to avoid float
+// drift through DRF's DecimalField. When `is_manual` is on, the server
+// requires `price_override_reason` — we mirror that in Zod for early UX,
+// but the server stays the source of truth (its 400 is surfaced inline).
+// Decimal fields (`discount`, `total`) travel as strings (e.g. "100.00") so
+// they round-trip DRF's DecimalField without float drift. They are optional
+// on the wire: omit `total` for a priced (non-manual) line — the server
+// prices it — and only send `price_override_reason` for the manual path.
+export const quotationLineWriteInputSchema = z
+  .object({
+    property: z.number().int(),
+    date_from: z.string().min(1),
+    date_to: z.string().min(1),
+    adults: z.number().int().min(1),
+    children: z.number().int().min(0),
+    discount: z.string().optional(),
+    inclusions: z.string().optional(),
+    is_manual: z.boolean(),
+    total: z.string().optional(),
+    price_override_reason: z.string().optional(),
+    notes: z.string(),
+  })
+  // Mirror the server's manual-reason rule for early UX. The server stays
+  // authoritative — its 400 still surfaces inline if this slips through.
+  .refine((v) => !v.is_manual || (v.price_override_reason ?? "").trim().length > 0, {
+    path: ["price_override_reason"],
+    message: i18n.t("quotations:schema_errors.override_reason_required"),
+  })
+  // Mirror the server's manual-total rule: a manual line needs a non-empty
+  // total that parses to a number > 0. The server's 400 on `total` still
+  // surfaces inline as a belt-and-suspenders if this slips through.
+  .refine(
+    (v) => {
+      if (!v.is_manual) return true;
+      const raw = (v.total ?? "").trim();
+      if (raw === "") return false;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed > 0;
+    },
+    {
+      path: ["total"],
+      message: i18n.t("quotations:schema_errors.manual_total_required"),
+    },
+  );
 export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSchema>;
 
 // Current terms version — returned by GET /terms-versions/current.
@@ -162,6 +203,26 @@ export const quotationDetailSchema = quotationListItemSchema.extend({
   lines: z.array(quotationLineSchema).optional().default([]),
 });
 export type QuotationDetail = z.infer<typeof quotationDetailSchema>;
+
+// Guest-facing quote preview — returned by GET /quotations/{id}:preview.
+// `html` is a self-contained inline-CSS document; the rest are editable
+// email defaults the operator can override before sending.
+export const quotationPreviewSchema = z.object({
+  html: z.string(),
+  subject: z.string(),
+  intro: z.string(),
+  signoff: z.string(),
+});
+export type QuotationPreview = z.infer<typeof quotationPreviewSchema>;
+
+// Editable email overrides — what the operator submits when sending. Empty
+// strings still post; the server treats them as overrides.
+export const quotationSendOverridesSchema = z.object({
+  subject: z.string(),
+  intro: z.string(),
+  signoff: z.string(),
+});
+export type QuotationSendOverrides = z.infer<typeof quotationSendOverridesSchema>;
 
 export const quotationListResponseSchema = paginated(quotationListItemSchema);
 

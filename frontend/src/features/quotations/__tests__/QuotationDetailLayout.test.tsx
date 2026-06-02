@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
@@ -159,10 +159,18 @@ describe("QuotationDetailLayout", () => {
     );
   });
 
-  it("posts to :send on confirm", async () => {
+  it("posts to :send on confirm after the preview loads", async () => {
     asReservationsUser();
     let sendCalled = false;
     server.use(
+      http.get("/api/v1/quotations/7:preview", () =>
+        HttpResponse.json({
+          html: "<html><body>Hello</body></html>",
+          subject: "Your quote",
+          intro: "Dear guest",
+          signoff: "Kind regards",
+        }),
+      ),
       http.post("/api/v1/quotations/7:send", () => {
         sendCalled = true;
         return HttpResponse.json({ ...baseQuotation, status: "sent" });
@@ -171,7 +179,9 @@ describe("QuotationDetailLayout", () => {
     setup();
     await userEvent.click(await screen.findByRole("button", { name: /send to guest/i }));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: /mark sent/i }));
+    // The submit button is enabled only once the preview resolves.
+    const sendBtn = await within(dialog).findByRole("button", { name: /^send to guest$/i });
+    await userEvent.click(sendBtn);
     await waitFor(() => expect(sendCalled).toBe(true));
   });
 
@@ -193,6 +203,79 @@ describe("QuotationDetailLayout", () => {
     );
     await userEvent.click(within(dialog).getByRole("button", { name: /^withdraw$/i }));
     await waitFor(() => expect(captured.reason).toBe("Quote superseded by a new option."));
+  });
+
+  it("copy-to-clipboard waits for the prefetched preview, then writes synchronously", async () => {
+    asReservationsUser();
+    let manuallySent = false;
+    server.use(
+      http.get("/api/v1/quotations/7:preview", () =>
+        HttpResponse.json({
+          html: "<html><body><h1>Villa Sol quote</h1></body></html>",
+          subject: "Your quote",
+          intro: "Dear guest",
+          signoff: "Kind regards",
+        }),
+      ),
+      http.post("/api/v1/quotations/7:mark-manually-sent", () => {
+        manuallySent = true;
+        return HttpResponse.json({ ...baseQuotation, status: "sent" });
+      }),
+    );
+
+    const originalClipboard = navigator.clipboard;
+    const originalClipboardItem = (globalThis as { ClipboardItem?: unknown }).ClipboardItem;
+    const write = vi.fn().mockResolvedValue(undefined);
+    // jsdom Blobs hide their content, so spy on the Blob constructor to record
+    // each flavour's string as it's built.
+    const blobContent = new WeakMap<object, string>();
+    const RealBlob = globalThis.Blob;
+    class SpyBlob extends RealBlob {
+      constructor(parts: BlobPart[], opts?: BlobPropertyBag) {
+        super(parts, opts);
+        blobContent.set(this, parts.map(String).join(""));
+      }
+    }
+    vi.stubGlobal("Blob", SpyBlob);
+    const flavours: Record<string, string> = {};
+    class FakeClipboardItem {
+      constructor(items: Record<string, Blob>) {
+        for (const [mime, blob] of Object.entries(items)) {
+          flavours[mime] = blobContent.get(blob) ?? "";
+        }
+      }
+    }
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write, writeText: vi.fn() },
+      configurable: true,
+    });
+    (globalThis as { ClipboardItem?: unknown }).ClipboardItem = FakeClipboardItem;
+
+    try {
+      setup();
+      // Before the prefetch resolves the rail copy button is disabled (it
+      // never await-then-writes). Once the cached preview lands it enables.
+      // ActionButton swaps the tooltip-wrapped (disabled) node for a plain
+      // button when the reason clears, so re-query rather than holding a node.
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /copy quote to clipboard/i })).toBeEnabled(),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /copy quote to clipboard/i }));
+
+      await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+      expect(Object.keys(flavours)).toEqual(["text/html", "text/plain"]);
+      expect(flavours["text/plain"]).toContain("Villa Sol quote");
+      expect(flavours["text/plain"]).not.toContain("<html");
+      await waitFor(() => expect(manuallySent).toBe(true));
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        value: originalClipboard,
+        configurable: true,
+      });
+      (globalThis as { ClipboardItem?: unknown }).ClipboardItem = originalClipboardItem;
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
   });
 
   it("renders the not-found error on 404", async () => {

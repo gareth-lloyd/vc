@@ -10,6 +10,7 @@ import {
   quotationLineSchema,
   quotationLinesResponseSchema,
   quotationListResponseSchema,
+  quotationPreviewSchema,
   quoteOptionSchema,
   termsVersionSchema,
   type GuestSummary,
@@ -18,6 +19,8 @@ import {
   type QuotationLine,
   type QuotationLineWriteInput,
   type QuotationListItem,
+  type QuotationPreview,
+  type QuotationSendOverrides,
   type QuotationWriteInput,
   type QuoteCriteriaInput,
   type QuoteOption,
@@ -67,6 +70,7 @@ interface PricingBulkResponse {
     total?: string;
     rate_subtotal?: string;
     currency_code?: string;
+    hero_image_url?: string | null;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -136,6 +140,7 @@ export async function searchQuoteOptions(
       property_id: q.property_id,
       property_name: property?.name ?? `Property #${q.property_id}`,
       property_slug: property?.slug ?? null,
+      hero_image_url: q.hero_image_url ?? null,
       available: q.available !== false && !q.error_code,
       total: q.total ?? null,
       currency: q.currency_code ?? currency,
@@ -173,8 +178,38 @@ export async function deleteQuotationLine(quotationId: QuotationId, lineId: numb
   await apiSend<void>("DELETE", `/quotations/${quotationId}/lines/${lineId}`);
 }
 
-export async function sendQuotation(id: QuotationId): Promise<QuotationDetail> {
-  const data = await apiSend<unknown>("POST", `/quotations/${id}:send`);
+// Optional overrides (subject/intro/signoff) flow through as query params so
+// the returned html + fields reflect the operator's edits. Passing nothing
+// keeps the server's default render.
+export async function fetchQuotationPreview(
+  id: QuotationId,
+  overrides?: Partial<QuotationSendOverrides>,
+): Promise<QuotationPreview> {
+  const query: QueryParams | undefined = overrides
+    ? {
+        subject: overrides.subject,
+        intro: overrides.intro,
+        signoff: overrides.signoff,
+      }
+    : undefined;
+  const data = await apiGet<unknown>(`/quotations/${id}:preview`, { query });
+  return quotationPreviewSchema.parse(data);
+}
+
+// Optional overrides flow into the guest email; passing nothing keeps the
+// server's stored defaults (back-compat for the bare-confirm callers).
+export async function sendQuotation(
+  id: QuotationId,
+  overrides?: QuotationSendOverrides,
+): Promise<QuotationDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:send`, overrides);
+  return quotationDetailSchema.parse(data);
+}
+
+// Path B (Outlook): records the SENT state without dispatching an email —
+// used after the operator copies the quote HTML to the clipboard.
+export async function markQuotationManuallySent(id: QuotationId): Promise<QuotationDetail> {
+  const data = await apiSend<unknown>("POST", `/quotations/${id}:mark-manually-sent`);
   return quotationDetailSchema.parse(data);
 }
 

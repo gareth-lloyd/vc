@@ -24,15 +24,20 @@ import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { SendQuotationDialog } from "./components/SendQuotationDialog";
+import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
+import { PropertyThumbnail } from "./components/PropertyThumbnail";
+import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
+import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import {
   useDeleteQuotationLine,
   useDuplicateQuotation,
+  useMarkQuotationManuallySent,
   useQuotation,
   useQuotationLines,
+  useQuotationPreview,
 } from "./hooks";
 import { TERMINAL_QUOTATION_STATUSES, type QuotationDetail, type QuotationLine } from "./schemas";
 
@@ -73,6 +78,8 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
           <TableHead>{t("detail.lines.columns.property")}</TableHead>
           <TableHead>{t("detail.lines.columns.dates")}</TableHead>
           <TableHead>{t("detail.lines.columns.guests")}</TableHead>
+          <TableHead className="text-right">{t("detail.lines.columns.discount")}</TableHead>
+          <TableHead>{t("detail.lines.columns.inclusions")}</TableHead>
           <TableHead className="text-right">{t("detail.lines.columns.total")}</TableHead>
           <TableHead>{t("detail.lines.columns.selected")}</TableHead>
           <TableHead className="text-right">{t("detail.lines.columns.actions")}</TableHead>
@@ -83,13 +90,30 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
           <TableRow key={line.id}>
             <TableCell className="font-mono text-xs">#{line.id}</TableCell>
             <TableCell>
-              {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
+              <div className="flex items-center gap-2">
+                <PropertyThumbnail
+                  src={line.hero_image_url}
+                  fallbackText={line.property_name}
+                  alt={t("detail.lines.thumbnail_alt", {
+                    name: line.property_name ?? `#${line.property}`,
+                  })}
+                />
+                <span>
+                  {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
+                </span>
+              </div>
             </TableCell>
             <TableCell>
               {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
             </TableCell>
             <TableCell>
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}
+            </TableCell>
+            <TableCell className="text-right">
+              {formatMoney(line.discount ?? null, quotation.currency ?? null)}
+            </TableCell>
+            <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
+              {line.inclusions?.trim() || "—"}
             </TableCell>
             <TableCell className="text-right">
               {formatMoney(line.total ?? null, quotation.currency ?? null)}
@@ -134,6 +158,9 @@ interface RailSummaryProps {
   onOpen: (dialog: DialogKind) => void;
   onDuplicate: () => void;
   duplicating: boolean;
+  onCopy: () => void;
+  copying: boolean;
+  copyReason: string | null;
 }
 
 function RailSummary({
@@ -144,6 +171,9 @@ function RailSummary({
   onOpen,
   onDuplicate,
   duplicating,
+  onCopy,
+  copying,
+  copyReason,
 }: RailSummaryProps) {
   const { t } = useTranslation("quotations");
 
@@ -216,6 +246,12 @@ function RailSummary({
           disableReason={sendReason}
         />
         <ActionButton
+          label={copying ? t("detail.actions.copying") : t("detail.actions.copy_to_clipboard")}
+          onClick={onCopy}
+          disableReason={sendReason ?? copyReason}
+          disabled={copying}
+        />
+        <ActionButton
           label={duplicating ? t("detail.actions.duplicating") : t("detail.actions.duplicate")}
           onClick={onDuplicate}
           disableReason={roleReason ?? (duplicating ? t("detail.actions.duplicating") : null)}
@@ -245,10 +281,18 @@ export function QuotationDetailLayout() {
   const canWrite = useHasReservationsRole();
   const duplicate = useDuplicateQuotation(query.data?.id ?? 0);
   const deleteLineMut = useDeleteQuotationLine(query.data?.id ?? 0);
+  const markManuallySent = useMarkQuotationManuallySent(query.data?.id ?? 0);
   const linesQuery = useQuotationLines(query.data?.id);
+  const { copy } = useCopyToClipboard();
+  // Prefetch the guest-facing preview so the rail "Copy" button can write to
+  // the clipboard synchronously inside the click (no awaited fetch first,
+  // which would lose the transient-activation window in Safari/Firefox).
+  // Only worth fetching once we know the quotation id and the user can act.
+  const previewQuery = useQuotationPreview(query.data?.id ?? 0, !!query.data && canWrite);
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [activeLine, setActiveLine] = useState<QuotationLine | null>(null);
+  const [copying, setCopying] = useState(false);
 
   if (query.isLoading) {
     return (
@@ -293,6 +337,36 @@ export function QuotationDetailLayout() {
     }
   };
 
+  // Path B (Outlook): copy the PREFETCHED guest-facing HTML, then record the
+  // SENT state so it mirrors the Path A bookkeeping. The clipboard write MUST
+  // stay synchronous within the click — awaiting a fetch first would lose the
+  // transient-activation window in Safari/Firefox (NotAllowedError). The
+  // button is disabled until `previewQuery.data` is cached, so it's present.
+  const previewHtml = previewQuery.data?.html ?? null;
+  const handleCopyToClipboard = async () => {
+    if (!previewHtml) return;
+    setCopying(true);
+    // Synchronous: reach clipboard.write inside the click's user activation.
+    const copied = copy(previewHtml, htmlToPlainText(previewHtml));
+    try {
+      const ok = await copied;
+      if (!ok) {
+        toast.error(t("detail.dialogs.send_preview.toasts.copy_failed"));
+        return;
+      }
+      await markManuallySent.mutateAsync();
+      toast.success(t("detail.dialogs.send_preview.toasts.copied"));
+    } catch (error) {
+      const message =
+        error instanceof ApiError && error.detail
+          ? error.detail
+          : t("detail.dialogs.send_preview.toasts.copy_failed");
+      toast.error(message);
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const handleDeleteLine = async () => {
     if (!activeLine) return;
     try {
@@ -330,6 +404,9 @@ export function QuotationDetailLayout() {
             onOpen={setDialog}
             onDuplicate={handleDuplicate}
             duplicating={duplicate.isPending}
+            onCopy={handleCopyToClipboard}
+            copying={copying || markManuallySent.isPending}
+            copyReason={previewHtml ? null : t("detail.actions.disable_reasons.preview_loading")}
           />
         }
       >
@@ -351,7 +428,7 @@ export function QuotationDetailLayout() {
       </TwoColumn>
 
       {dialog === "send" ? (
-        <SendQuotationDialog
+        <SendPreviewDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
           quotation={quotation}

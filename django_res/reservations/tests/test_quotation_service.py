@@ -67,6 +67,45 @@ def test_create_from_enquiry_happy_path(
 
 
 @pytest.mark.django_db
+def test_create_from_enquiry_does_not_reprice_manual_line(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """A manual enquiry line keeps its supplied total — the engine must not
+    clobber it, mirroring the API `_reprice` guard."""
+    from decimal import Decimal
+
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        [
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+                "adults": 2,
+                "children": 0,
+                "is_manual": True,
+                "total": Decimal("750.00"),
+            },
+        ],
+        currency=gbp,
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    line = quotation.lines.get()
+    assert line.is_manual is True
+    # Engine price would be 7 nights @ £200 = £1400; the manual total survives.
+    assert line.total == Decimal("750.00")
+    assert line.pricing_snapshot == {}
+
+
+@pytest.mark.django_db
 def test_create_from_enquiry_requires_guest(
     gbp: Currency,
     terms: TermsVersion,

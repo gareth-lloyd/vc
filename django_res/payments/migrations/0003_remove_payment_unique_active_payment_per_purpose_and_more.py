@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("payments", "0002_payment_legacy_id"),
         ("pricing", "0008_rateplan_fallback_nightly"),
-        ("reservations", "0009_booking_booking_cancelled_status_requires_cancelled_at"),
+        ("reservations", "0011_booking_booking_cancelled_status_requires_cancelled_at"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

@@ -122,7 +122,38 @@ class Property(AuditedModel):
         return date_from - timedelta(days=int(days_before))
 
     def hero_image(self) -> PropertyImage | None:
-        """Return the property's active hero image, if any."""
+        """Return the property's active hero image, if any.
+
+        Iterate the related set in Python rather than `.filter()` so a caller's
+        `prefetch_related("images")` is actually used — a `.filter()` on a
+        prefetched reverse manager re-queries the DB and silently defeats the
+        prefetch (quotation lines, bulk quote, and the email render all rely on
+        this staying constant-query). The `unique_active_hero_per_property`
+        constraint guarantees at most one match, so first-match is exact.
+        """
         from properties.enums import ImageKind
 
-        return self.images.filter(kind=ImageKind.HERO, is_active=True).first()
+        return next(
+            (img for img in self.images.all() if img.kind == ImageKind.HERO and img.is_active),
+            None,
+        )
+
+    def hero_image_url(self) -> str | None:
+        """Best-effort URL for the active hero image, or None.
+
+        Single source of truth for the hero URL across the quote render seam,
+        the quotation-line serializer, and the bulk-quote API — so a guest
+        email, an operator preview, and the catalogue all derive the thumbnail
+        the same way. Returns None when there's no hero, no stored file, or a
+        storage field with no backing file.
+        """
+        hero = self.hero_image()
+        if hero is None:
+            return None
+        image = getattr(hero, "image", None)
+        if not image:
+            return None
+        try:
+            return image.url
+        except (ValueError, AttributeError):
+            return None

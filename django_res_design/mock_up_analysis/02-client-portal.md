@@ -722,7 +722,7 @@ The product owner needs to decide each row. The simplest answer is: co-traveller
 20. **`maxOccupancy` on guest portal.** This is a `Property` field, but the portal shows it as a booking-level fact. Source decision. (§3.1)
 21. **Acknowledge semantics.** What does "Acknowledged" mean operationally — that the guest accepts the contents, or merely that they've read & confirmed? Display-only or load-bearing for an audit chain?
 22. **VILLA_IMAGES empty.** Production needs to read `PropertyImage` rows (role-tagged `hero`, `gallery`). Decide hero-only vs gallery slideshow.
-23. **Booking reference format.** Mockup uses `VC3345` (4 digits, no separator). Spec uses `BK-2391` style (`01-domain-model.md:47-48`). Pick one and align the seed format in `SystemDefaults.booking_reference_prefix`.
+23. **Booking reference format.** ✅ **RESOLVED (GAP-006)** — the mockup's `VC3345` (no separator) was right; it matches the legacy `ResSystem` format. Bookings are `VC{number}` and quotations `QVC{number}`, the booking number carried forward from its quotation. Prefixes default in `core.refs` and override via `SystemSettings.settings` (`booking_no_prefix` / `quotation_no_prefix`). See `01-domain-model.md` "Reference numbers" and `todo/gap-006-legacy-reference-format-parity.md`.
 24. **Booking reference is the credential.** If the booking reference is part of the login factor, brute-force is a concern. Rate-limiting, lockout, and progressive friction need explicit spec.
 25. **Co-traveller revoke.** Mockup has a `×` button per row but no confirm dialog. Add `<ConfirmDialog>` (cf. `product-design/02-frontend-design.md:679-697` §6.3) since access revocation is destructive.
 

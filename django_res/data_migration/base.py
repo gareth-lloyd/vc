@@ -79,12 +79,29 @@ class BaseLoader:
             cursor.execute(self._apply_since(self.legacy_query))
             rows = list(rows_as_dicts(cursor))
 
-        with transaction.atomic():
-            for row in rows:
-                self._process_row(row, report)
+        self._load_rows(rows, report)
 
         report.duration_s = time.monotonic() - started
         return report
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        """Process every row, isolating each write in its own savepoint.
+
+        The outer `atomic` keeps the whole load as one transaction; the inner
+        `atomic` per row is a savepoint, so a write-time failure on one row
+        (e.g. an `IntegrityError` from a unique collision) is rolled back to the
+        savepoint, recorded in `report.errors`, and skipped — without aborting
+        the rows that follow. `_process_row` already catches `transform()`
+        errors itself (recording them once and returning), so only write-time
+        exceptions reach the `except` here.
+        """
+        with transaction.atomic():
+            for row in rows:
+                try:
+                    with transaction.atomic():
+                        self._process_row(row, report)
+                except Exception as exc:  # isolate one bad row from the rest
+                    report.errors.append((str(row.get(self.legacy_pk_column)), repr(exc)))
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         legacy_id = row.get(self.legacy_pk_column)

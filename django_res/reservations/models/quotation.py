@@ -11,7 +11,7 @@ from django.db.models import Q
 
 from core.exceptions import InvalidTransition
 from core.models.base import AuditedModel
-from core.refs import generate_reference
+from core.refs import next_quotation_number, quotation_reference
 from reservations.enums import EnquiryStatus, QuotationStatus
 
 
@@ -19,6 +19,7 @@ class Quotation(AuditedModel):
     """Operator-issued quote — DRAFT → SENT → ACCEPTED / EXPIRED / CANCELLED."""
 
     reference = models.CharField(max_length=32, unique=True)
+    number = models.PositiveIntegerField(null=True, blank=True, unique=True)
     enquiry = models.ForeignKey(
         "reservations.Enquiry",
         null=True,
@@ -70,7 +71,13 @@ class Quotation(AuditedModel):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.reference:
-            self.reference = generate_reference("Q", model=type(self))
+            # Allocate a sequence-backed number and derive the customer-facing
+            # reference (legacy `QVC{number}`). A loader that supplies both
+            # `number` and `reference` short-circuits here, preserving exact
+            # legacy numbers without drawing from the sequence.
+            if self.number is None:
+                self.number = next_quotation_number()
+            self.reference = quotation_reference(self.number)
         super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------

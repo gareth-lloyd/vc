@@ -45,7 +45,7 @@ All timestamps stored UTC. `Property.timezone` is the property's IANA timezone (
 Numeric `BigAutoField` PKs for entities frequently referenced in URLs (`Booking.id`, `Property.id`). UUIDs for entities where leaking sequential IDs is undesirable (`MagicLink`, `WebhookEvent`, `AuditLog`).
 
 ### Reference numbers
-`Booking.reference` (e.g., `BK-12345`) and `Quotation.reference` (e.g., `Q-184`) are user-facing alphanumeric strings. Prefixes (`BK`, `Q`) live in `SystemDefaults`. Separate from the internal PK.
+`Quotation.reference` (e.g., `QVC184`) and `Booking.reference` (e.g., `VC184`) are user-facing alphanumeric strings, matching the legacy `ResSystem` format. The **booking number is carried forward from its quotation**, not an independent sequence: a quote `QVC184` becomes booking `VC184` — same digits, prefix swapped. `Quotation.number` is the canonical integer (sequence-backed, `unique`); both references derive from it. Prefixes (`QVC`, `VC`) default in `core.refs` and are overridable via `SystemSettings.settings` (`quotation_no_prefix` / `booking_no_prefix`). Separate from the internal PK. See [GAP-006](../todo/gap-006-legacy-reference-format-parity.md).
 
 ---
 
@@ -184,7 +184,7 @@ Fields: `enquiry` (FK), `author` (FK User), `kind` (`general` / `internal` / `pr
 ### Quotation
 Header for a multi-villa quote. Original `VillaQuotationMaster`.
 
-Fields: `enquiry` (FK, nullable), `guest` (FK), `agent` (FK to Contact, nullable), `reference` (e.g., `Q-184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
+Fields: `enquiry` (FK, nullable), `guest` (FK), `agent` (FK to Contact, nullable), `number` (int, sequence-backed, unique), `reference` (e.g., `QVC184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
 
 **Status**: `draft`, `sent`, `viewed`, `converted`, `withdrawn`, `lost`.
 
@@ -200,7 +200,7 @@ Fields: `quotation` (FK), `property` (FK), `from_date`, `to_date`, `nights`, `pr
 ### Booking
 The confirmed reservation. Original `VillaBooking`.
 
-Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable — **external** agent / intermediary), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`. Backs `?assigned_to=` filter and `:assign` action — see reconciliation issue #26), `reference` (e.g., `BK-2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
+Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable — **external** agent / intermediary), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`. Backs `?assigned_to=` filter and `:assign` action — see reconciliation issue #26), `reference` (e.g., `VC2391` — carried forward from the quotation's `QVC2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
 
 Note: operator notes (legacy `Notes`, `ConciergeNotes`, internal-notes, villa-notes textareas) are not stored as flat columns. They live in `BookingNote` (below), keyed by `kind`.
 

@@ -49,7 +49,7 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 ## 8. Global search (Cmd-K palette) — entirely new
 
 **Was**: No global search.
-**Now**: Cmd-K palette anywhere. Type `BK-2391` to jump to a booking, `Q-184` to a quote, a guest email to their contact, a villa name to its detail. Scoped prefixes (`b:`, `e:`, `p:`, `c:`, `>`). Action verbs ("New booking", "Send reminder for ..."). Recent items on empty input.
+**Now**: Cmd-K palette anywhere. Type `VC2391` to jump to a booking, `QVC184` to a quote, a guest email to their contact, a villa name to its detail. Scoped prefixes (`b:`, `e:`, `p:`, `c:`, `>`). Action verbs ("New booking", "Send reminder for ..."). Recent items on empty input.
 **Why**: For ops users who handle dozens of entities per hour, a keyboard-first jump is the single highest leverage UX investment.
 
 ## 9. Email send → always preview-before-send

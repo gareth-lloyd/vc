@@ -7,6 +7,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from core.console import render_table
+from core.refs import sync_quotation_sequence
 from data_migration.base import LoadReport
 from data_migration.registry import LOADERS
 
@@ -57,6 +58,16 @@ class Command(BaseCommand):
 
         since = options.get("since")
         reports = [LOADERS[name](since=since).load() for name in names]
+
+        # Loaders set Quotation.number directly (preserving exact legacy digits),
+        # which does not advance quotation_number_seq. Fast-forward it past the
+        # imported high-water mark so the first organic quotation after the run
+        # doesn't draw a low nextval that collides with an imported QVC{n}.
+        high_water = sync_quotation_sequence()
+        self.stdout.write(
+            self.style.SUCCESS(f"Quotation number sequence synced to high-water mark {high_water}.")
+        )
+
         self._print_summary(reports)
 
     def _print_summary(self, reports: list[LoadReport]) -> None:

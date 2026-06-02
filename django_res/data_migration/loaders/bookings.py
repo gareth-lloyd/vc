@@ -18,7 +18,9 @@ from typing import Any
 
 from django.utils import timezone
 
+from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders._util import legacy_quotation_no
 from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
@@ -51,7 +53,7 @@ class BookingLoader(BaseLoader):
     target_model = Booking
     legacy_query = (
         "SELECT Id, VillaId, Guest, FromDate, ToDate, RentalPrice, "
-        "DepositAmount, BalanceDue, IsDepositePaid, CurrencyId, "
+        "DepositAmount, BalanceDue, IsDepositePaid, CurrencyId, QuotationNo, "
         "ConciergeNotes, Notes, CreatedAt "
         "FROM VillaBooking WHERE DeletedAt IS NULL"
     )
@@ -87,12 +89,19 @@ class BookingLoader(BaseLoader):
         terms = _ensure_default_terms()
         booking_legacy = f"booking-{row['Id']}"
 
-        # Synthesise quotation+line per booking (legacy lacks the link).
+        # The synthesised quotation is an internal artifact (hidden from public
+        # APIs via the `booking-` legacy_id prefix) and must NOT claim the
+        # legacy QuotationNo as its `number`: the real QuotationLoader already
+        # owns that number on the originating `QVC{QuotationNo}` quotation, and
+        # `number`/`reference` are unique. So we leave `number` NULL and pin a
+        # deterministic per-booking sentinel reference instead. The legacy
+        # number is carried forward on the *booking* reference below.
         quotation, _ = Quotation.objects.update_or_create(
             legacy_id=booking_legacy,
             defaults={
                 "guest": guest,
                 "currency": currency,
+                "reference": f"QVC-TMP-{row['Id']}"[:32],
                 "expires_at": timezone.now() + timedelta(days=7),
                 "status": QuotationStatus.DRAFT,
                 "terms_version": terms,
@@ -130,6 +139,18 @@ class BookingLoader(BaseLoader):
             "terms_accepted_at": timezone.now(),
             "payment_method": PaymentMethod.BANK_TRANSFER,
         }
+        # Carry the legacy QuotationNo forward as the customer-facing
+        # `VC{QuotationNo}` (legacy parity), set explicitly because the
+        # synthesised quotation deliberately has no `number` to derive from.
+        # Only stamp the reference when *creating* the row: re-runs must not
+        # rewrite an existing reference (idempotency), and a second legacy
+        # booking sharing the QuotationNo is preserved with a `VC{n}-…` suffix
+        # rather than colliding. Absent QuotationNo → omit, so Booking.save()
+        # falls to its `VC-TMP-…` sentinel rather than a bare `VC{int}`.
+        qn = legacy_quotation_no(row)
+        existing = Booking.objects.filter(legacy_id=str(row["Id"])).first()
+        if existing is None and qn is not None:
+            defaults["reference"] = booking_reference(qn, model=Booking)
         booking, created = Booking.objects.update_or_create(
             legacy_id=str(row["Id"]),
             defaults=defaults,

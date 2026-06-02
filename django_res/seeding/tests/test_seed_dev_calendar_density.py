@@ -87,6 +87,33 @@ def test_seed_dev_mixed_renders_changeover_day() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_seed_dev_dense_two_properties_still_books() -> None:
+    """A tiny portfolio must still honour `--bookings`. The empty-tier floor is
+    capped at `n - 1`, so `--properties 2` leaves one stay-bearing villa instead
+    of consuming the whole portfolio and silently producing zero bookings."""
+    from reservations.models.booking import Booking
+
+    _seed("mixed", properties=2, bookings=10, seed=7)
+    assert Booking.objects.count() == 10
+
+
+@pytest.mark.django_db(transaction=True)
+def test_seed_dev_changeover_days_are_today_or_later() -> None:
+    """Forced changeover pairs are non-terminal (they never pay a deposit), so a
+    past changeover day would be an AWAITING_DEPOSIT stay production never
+    reaches. Every AM/PM changeover cell must fall on today or later."""
+    _seed("mixed", properties=10, bookings=60, seed=42)
+    today = date.today()
+    changeover_days = [
+        day for cal in _calendars(today).values() for day, cell in cal.items() if cell.segments
+    ]
+    assert changeover_days, "expected at least one changeover cell"
+    assert min(changeover_days) >= today, (
+        f"changeover days must be today-or-later, earliest was {min(changeover_days)}"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_seed_dev_mixed_populates_the_current_month() -> None:
     """The availability tab opens on the current month, so at least one villa
     must show occupancy inside [today, today+30]."""

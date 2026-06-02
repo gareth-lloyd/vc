@@ -32,9 +32,11 @@ from seeding.registry import Stage, register
 
 # Share of the active portfolio assigned to each density tier. EMPTY villas get
 # no stays — they read as new/unlisted and double as candidates for the
-# property_lifecycle (draft/archive) pass.
+# property_lifecycle (draft/archive) pass. `light` is intentionally absent: it
+# is the remainder after packed/busy/empty are carved out (see _partition_tiers),
+# and it carries a budget weight in _TIER_WEIGHT below.
 _TIER_SHARES: dict[str, float] = {"packed": 0.15, "busy": 0.25, "empty": 0.25}
-# Relative pull on the booking budget per stay-bearing property.
+# Relative pull on the booking budget per stay-bearing property (light included).
 _TIER_WEIGHT: dict[str, int] = {"packed": 6, "busy": 3, "light": 1}
 _STAY_BEARING_TIERS = ("packed", "busy", "light")
 
@@ -137,6 +139,10 @@ def _partition_tiers(props: list[Any], rng: Any) -> dict[str, list[Any]]:
     Floors: ≥2 empty villas (so property_lifecycle always has candidates) and
     ≥1 packed villa (so the "busy villa" always exists) whenever any stays are
     produced. Light mops up the remainder.
+
+    The empty floor never eats the last stay-bearing villa: it is capped at
+    `n - 1` so a tiny portfolio (e.g. `--properties 2`) still books — otherwise
+    `stay_bearing` hits 0 and `--bookings` is silently ignored.
     """
     shuffled = list(props)
     rng.shuffle(shuffled)
@@ -145,7 +151,7 @@ def _partition_tiers(props: list[Any], rng: Any) -> dict[str, list[Any]]:
     if n == 0:
         return out
 
-    n_empty = min(n, max(2, round(n * _TIER_SHARES["empty"]))) if n >= 2 else 0
+    n_empty = min(max(2, round(n * _TIER_SHARES["empty"])), n - 1) if n >= 2 else 0
     stay_bearing = n - n_empty
     n_packed = min(stay_bearing, max(1, round(n * _TIER_SHARES["packed"]))) if stay_bearing else 0
     n_busy = min(stay_bearing - n_packed, round(n * _TIER_SHARES["busy"])) if stay_bearing else 0
@@ -233,6 +239,11 @@ def _add_changeover_pairs(stays: list[dict[str, Any]], rng: Any, count: int, k0:
     n_pairs = 2 if count >= 6 else 1
     candidates = list(range(count - 1))
     rng.shuffle(candidates)
+    # Prefer pairs whose left member is today-or-later: the forced non-terminal
+    # changeover never pays a deposit (it stays AWAITING_DEPOSIT), which only
+    # reads correctly for a future stay. Stable-sort after the shuffle keeps the
+    # pick deterministic; past buckets are a fallback when no future pair exists.
+    candidates.sort(key=lambda j: stays[j]["from_off"] < 0)
     used: set[int] = set()
     placed = 0
     for j in candidates:

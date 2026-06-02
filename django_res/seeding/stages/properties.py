@@ -103,9 +103,12 @@ def _run(ctx: SeedContext) -> int:
         )
         if villa is not None:
             ctx.property_villa[prop.pk] = villa["slug"]
+        # Collect every dirtied PropertySettings field so a pre-approval villa
+        # with changeover times writes once, not twice.
+        dirty_settings: list[str] = []
         if wants_pre_approval:
             prop.settings.bookings_require_pre_approval = True
-            prop.settings.save(update_fields=["bookings_require_pre_approval"])
+            dirty_settings.append("bookings_require_pre_approval")
         # Clock times let back-to-back stays render an AM/PM changeover day on
         # the availability calendar. Off (None, None) for happy, which keeps
         # the times null and the changeover split suppressed.
@@ -113,7 +116,9 @@ def _run(ctx: SeedContext) -> int:
         if check_out is not None and check_in is not None:
             prop.settings.check_out_time = _parse_hhmm(check_out)
             prop.settings.check_in_time = _parse_hhmm(check_in)
-            prop.settings.save(update_fields=["check_out_time", "check_in_time"])
+            dirty_settings += ["check_out_time", "check_in_time"]
+        if dirty_settings:
+            prop.settings.save(update_fields=dirty_settings)
         plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
         card = RateCardFactory(plan=plan)
         RateRuleFactory(card=card, **rule_kwargs)

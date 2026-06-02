@@ -11,6 +11,11 @@ The autouse fixture below idempotently ensures the countries exist before each
 seed_dev test that touches the DB: re-seeded after the flush for transactional
 tests, and seeded inside the rolled-back transaction for non-transactional ones
 (equivalent to the migration rows they used to rely on).
+
+This fixture is deliberately scoped to the `seeding/` app — it is the only app
+with transactional `seed_dev` tests today. Other apps that add `transaction=True`
+tests depending on migration-seeded reference rows can lift this same pattern
+into their own conftest rather than re-architecting the shared test DB.
 """
 
 from __future__ import annotations
@@ -25,8 +30,11 @@ def _ensure_iso_countries() -> None:
 
     from properties.models import Country
 
-    if Country.objects.exists():
-        return
+    # Always upsert rather than short-circuiting on `Country.objects.exists()`:
+    # a non-empty table does not imply the *full* ISO set is present (a future
+    # fixture might seed just GB), and the seeder's `Country.objects.get(iso2=…)`
+    # would then raise for a missing manifest country. `ignore_conflicts` makes
+    # this a single cheap `INSERT … ON CONFLICT DO NOTHING` that tops up gaps.
     Country.objects.bulk_create(
         [
             Country(

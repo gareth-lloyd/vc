@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from django.contrib import admin
+from typing import TYPE_CHECKING
 
+from django.contrib import admin, messages
+
+from core.exceptions import NoRateAvailable
 from pricing.models import (
     Currency,
     Discount,
@@ -14,6 +17,11 @@ from pricing.models import (
     RateRule,
     VillaPricingSummary,
 )
+from pricing.services.carryover import RateCarryoverService
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from django.http import HttpRequest
 
 
 @admin.register(Currency)
@@ -44,6 +52,33 @@ class RatePlanAdmin(admin.ModelAdmin):
     )
     list_filter = ("price_basis", "is_active", "currency")
     search_fields = ("name",)
+    actions = ("carry_forward_next_year",)
+
+    @admin.action(description="Carry forward to next year (editable rows)")
+    def carry_forward_next_year(self, request: HttpRequest, queryset: QuerySet[RatePlan]) -> None:
+        """Materialise editable rows for each selected plan's following year.
+
+        Idempotent: a plan whose next year already exists is left untouched. The
+        anchor is resolved per (property, currency), so selecting any plan for a
+        villa carries that villa's most recent year forward.
+        """
+        created = 0
+        for plan in queryset:
+            try:
+                RateCarryoverService.materialise(
+                    plan.property,
+                    target_year=plan.effective_from.year + 1,
+                    currency=plan.currency,
+                )
+                created += 1
+            except NoRateAvailable as exc:
+                self.message_user(request, str(exc), level=messages.WARNING)
+        if created:
+            self.message_user(
+                request,
+                f"Carried forward {created} plan(s) to the following year.",
+                level=messages.SUCCESS,
+            )
 
 
 @admin.register(RateCard)

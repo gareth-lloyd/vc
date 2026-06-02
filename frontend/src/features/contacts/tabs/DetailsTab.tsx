@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -79,7 +80,7 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
       {contact.emails.length === 0 ? (
         <EmptyState title={t("empty.emails")} />
       ) : (
-        <ul className="border-border bg-card divide-border divide-y rounded-lg border">
+        <ActivityList as="ul">
           {contact.emails.map((e) => (
             <li key={e.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
               <div className="flex min-w-0 items-center gap-2">
@@ -118,7 +119,7 @@ function EmailsSection({ contact, canWrite }: { contact: Contact; canWrite: bool
               ) : null}
             </li>
           ))}
-        </ul>
+        </ActivityList>
       )}
 
       {addOpen ? (
@@ -205,7 +206,7 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
       {contact.phones.length === 0 ? (
         <EmptyState title={t("empty.phones")} />
       ) : (
-        <ul className="border-border bg-card divide-border divide-y rounded-lg border">
+        <ActivityList as="ul">
           {contact.phones.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
               <div className="flex min-w-0 items-center gap-2">
@@ -244,7 +245,7 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
               ) : null}
             </li>
           ))}
-        </ul>
+        </ActivityList>
       )}
 
       {addOpen ? (

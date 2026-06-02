@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -97,7 +98,7 @@ export function CommsTab() {
 
   return (
     <div className="p-6">
-      <ol className="border-border bg-card divide-border divide-y rounded-lg border">
+      <ActivityList as="ol">
         {rows.map((email) => {
           const timestamp = email.sent_at ?? email.queued_at ?? null;
           return (
@@ -137,7 +138,7 @@ export function CommsTab() {
             </li>
           );
         })}
-      </ol>
+      </ActivityList>
 
       <ConfirmDialog
         open={pendingResend != null}

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,7 +94,7 @@ export function DetailsTab() {
             onRetry={() => rooms.refetch()}
           />
         ) : rooms.data?.results.length ? (
-          <ul className="border-border bg-card divide-border divide-y rounded-lg border">
+          <ActivityList as="ul">
             {rooms.data.results.map((room) => (
               <li key={room.id} className="flex items-center justify-between px-4 py-2 text-sm">
                 <span>{room.name || t("details.rooms.fallback_name", { id: room.id })}</span>
@@ -102,7 +103,7 @@ export function DetailsTab() {
                 ) : null}
               </li>
             ))}
-          </ul>
+          </ActivityList>
         ) : (
           <EmptyState title={t("details.rooms.empty_title")} />
         )}

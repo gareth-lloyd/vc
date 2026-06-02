@@ -163,6 +163,45 @@ def test_duplicate_quotation_clones_lines(
 
 
 @pytest.mark.django_db
+def test_duplicate_quotation_clones_line_money_and_override_fields(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+) -> None:
+    """The clone must carry discount/inclusions and the manual-override fields.
+
+    Dropping `price_override_reason` would leave a cloned manual line that
+    can't be PATCHed (the write serializer requires a reason); dropping
+    `discount`/`inclusions` silently re-prices and re-reads the clone.
+    """
+    source = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("900.00"),
+        discount=Decimal("125.00"),
+        inclusions="Welcome hamper",
+        is_manual=True,
+        price_override_reason="Repeat guest goodwill",
+    )
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}:duplicate")
+
+    assert response.status_code == 201
+    clone = QuotationLine.objects.get(quotation_id=response.data["id"])
+    assert clone.pk != source.pk
+    assert clone.discount == Decimal("125.00")
+    assert clone.inclusions == "Welcome hamper"
+    assert clone.is_manual is True
+    assert clone.total == Decimal("900.00")
+    assert clone.price_override_reason == "Repeat guest goodwill"
+
+
+@pytest.mark.django_db
 def test_lines_crud(
     api_client: APIClient,
     staff: User,
@@ -738,6 +777,38 @@ def test_discount_clamps_total_at_zero(
     )
     assert create.status_code == 201, create.data
     assert QuotationLine.objects.get().total == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_negative_discount_rejected(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A negative discount must 400, not inflate the total.
+
+    `price_line` computes `total = max(gross - discount, 0)`, so a negative
+    discount would charge the guest MORE than the engine price under a label
+    that reads as a reduction. Reject it at the field level.
+    """
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "-500.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 400, create.data
+    assert "discount" in create.data["field_errors"]
+    assert QuotationLine.objects.count() == 0
 
 
 @pytest.mark.django_db

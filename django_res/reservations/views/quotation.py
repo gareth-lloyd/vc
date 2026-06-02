@@ -149,8 +149,11 @@ class QuotationViewSet(viewsets.ModelViewSet):
                     children=line.children,
                     pricing_snapshot=line.pricing_snapshot,
                     total=line.total,
+                    discount=line.discount,
+                    inclusions=line.inclusions,
                     is_selected=False,
                     is_manual=line.is_manual,
+                    price_override_reason=line.price_override_reason,
                     notes=line.notes,
                 )
         return Response(

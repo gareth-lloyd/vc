@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 
@@ -189,7 +190,12 @@ class QuotationLine(AuditedModel):
     children = models.PositiveSmallIntegerField(default=0)
     pricing_snapshot = models.JSONField(default=dict)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    discount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+    )
     inclusions = models.TextField(blank=True)
     price_override_reason = models.TextField(blank=True)
     is_selected = models.BooleanField(default=False)

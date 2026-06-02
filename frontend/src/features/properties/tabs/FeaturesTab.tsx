@@ -15,6 +15,7 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { ApiError } from "@/lib/api/errors";
 import { useUpdatePropertyFeatures } from "../hooks";
 import type { PropertyDetail } from "../schemas";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface FeaturesContext {
   property: PropertyDetail;
@@ -225,14 +226,7 @@ export function FeaturesTab() {
         </div>
       )}
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
     </div>
   );
 }

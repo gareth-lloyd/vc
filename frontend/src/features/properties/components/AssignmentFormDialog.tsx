@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +20,7 @@ import {
 } from "../schemas";
 import type { Contact } from "@/features/contacts/schemas";
 import { ContactPicker } from "@/features/contacts/components/ContactPicker";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   propertyId: PropertyId;
@@ -167,22 +169,15 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <CheckboxLabel>
             <Checkbox
               checked={!!form.watch("is_primary")}
               onCheckedChange={(v) => form.setValue("is_primary", v === true)}
             />
             <span>{t("people.assignment_dialog.primary_label")}</span>
-          </label>
+          </CheckboxLabel>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -64,7 +65,7 @@ function SeasonsList({
     return <EmptyState title={t("pricing.seasons.empty")} />;
   }
   return (
-    <ul className="border-border bg-card divide-border divide-y rounded-lg border">
+    <ActivityList as="ul">
       {seasons.map((plan) => (
         <li key={plan.id} className="flex items-center gap-2 pr-2">
           <button
@@ -108,7 +109,7 @@ function SeasonsList({
           ) : null}
         </li>
       ))}
-    </ul>
+    </ActivityList>
   );
 }
 

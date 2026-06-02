@@ -1,3 +1,4 @@
+import { cva } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 import { serviceColorVar, type ServiceKey } from "@/styles/tokens";
 
@@ -29,10 +30,17 @@ interface ServiceDotProps {
   label: string;
 }
 
-const SIZE_CLASSES = {
-  sm: "size-2.5 border",
-  md: "size-3.5 border-2",
-} as const;
+const serviceDotVariants = cva("inline-block rounded-full", {
+  variants: {
+    size: {
+      sm: "size-2.5 border",
+      md: "size-3.5 border-2",
+    },
+  },
+  defaultVariants: {
+    size: "md",
+  },
+});
 
 export function ServiceDot({
   service,
@@ -48,7 +56,7 @@ export function ServiceDot({
       role="img"
       aria-label={label}
       title={label}
-      className={cn("inline-block rounded-full", SIZE_CLASSES[size], className)}
+      className={cn(serviceDotVariants({ size }), className)}
       style={{ borderColor: ringColor, backgroundColor: fill }}
     />
   );

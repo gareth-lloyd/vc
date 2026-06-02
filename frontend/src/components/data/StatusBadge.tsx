@@ -1,5 +1,6 @@
 import { Circle, CheckCircle2, Archive, AlertCircle, Pencil } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
+import { cva } from "class-variance-authority";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 
@@ -7,31 +8,29 @@ type StatusKind = "active" | "draft" | "archived" | "pending" | "error" | "neutr
 
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
-const KIND_MAP: Record<StatusKind, { icon: IconType; classes: string }> = {
-  active: {
-    icon: CheckCircle2,
-    classes: "border-success/40 bg-success/10 text-success",
+const statusBadgeVariants = cva("gap-1 font-medium capitalize", {
+  variants: {
+    kind: {
+      active: "border-success/40 bg-success/10 text-success",
+      draft: "border-warning/40 bg-warning/10 text-warning",
+      archived: "border-status-neutral/40 bg-status-neutral/10 text-status-neutral",
+      pending: "border-info/40 bg-info/10 text-info",
+      error: "border-danger/40 bg-danger/10 text-danger",
+      neutral: "border-border bg-muted text-muted-foreground",
+    },
   },
-  draft: {
-    icon: Pencil,
-    classes: "border-warning/40 bg-warning/10 text-warning",
+  defaultVariants: {
+    kind: "neutral",
   },
-  archived: {
-    icon: Archive,
-    classes: "border-status-neutral/40 bg-status-neutral/10 text-status-neutral",
-  },
-  pending: {
-    icon: Circle,
-    classes: "border-info/40 bg-info/10 text-info",
-  },
-  error: {
-    icon: AlertCircle,
-    classes: "border-danger/40 bg-danger/10 text-danger",
-  },
-  neutral: {
-    icon: Circle,
-    classes: "border-border bg-muted text-muted-foreground",
-  },
+});
+
+const KIND_ICON: Record<StatusKind, IconType> = {
+  active: CheckCircle2,
+  draft: Pencil,
+  archived: Archive,
+  pending: Circle,
+  error: AlertCircle,
+  neutral: Circle,
 };
 
 const STATUS_TO_KIND: Record<string, StatusKind> = {
@@ -65,9 +64,9 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, kind, className }: StatusBadgeProps) {
   const resolved = kind ?? STATUS_TO_KIND[status.toLowerCase()] ?? "neutral";
-  const { icon: Icon, classes } = KIND_MAP[resolved];
+  const Icon = KIND_ICON[resolved];
   return (
-    <Badge variant="outline" className={cn("gap-1 font-medium capitalize", classes, className)}>
+    <Badge variant="outline" className={cn(statusBadgeVariants({ kind: resolved }), className)}>
       <Icon className="size-3.5" aria-hidden />
       <span>{status}</span>
     </Badge>

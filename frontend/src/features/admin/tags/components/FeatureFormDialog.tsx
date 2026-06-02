@@ -27,6 +27,7 @@ import {
   type FeatureWriteInput,
 } from "../schemas";
 import { useCreateFeature, useUpdateFeature } from "../hooks";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   open: boolean;
@@ -231,14 +232,7 @@ export function FeatureFormDialog(props: Props) {
             <Label htmlFor="f-active">{t("tags.features.dialog.fields.is_active")}</Label>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

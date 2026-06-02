@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -126,11 +127,11 @@ export function AuditTab() {
 
   return (
     <div className="space-y-4 p-6">
-      <ol className="border-border bg-card divide-border divide-y rounded-lg border">
+      <ActivityList as="ol">
         {entries.map((entry) => (
           <AuditEntryRow key={entry.id} entry={entry} />
         ))}
-      </ol>
+      </ActivityList>
       {totalPages > 1 || hasNext || hasPrevious ? (
         <div className="flex items-center justify-end gap-2">
           <Button

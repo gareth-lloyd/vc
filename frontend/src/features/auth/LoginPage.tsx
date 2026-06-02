@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
@@ -11,6 +12,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { loginInputSchema, type LoginInput } from "./schemas";
 import { useLogin } from "./hooks";
 import { useNextPath } from "./useNextPath";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 export function LoginPage() {
   const { t } = useTranslation("auth");
@@ -103,26 +105,19 @@ export function LoginPage() {
           </div>
 
           <div className="flex items-center justify-between">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <CheckboxLabel>
               <Checkbox
                 checked={!!rememberCtrl.field.value}
                 onCheckedChange={(v) => rememberCtrl.field.onChange(v === true)}
               />
               <span>{t("login.remember_device")}</span>
-            </label>
+            </CheckboxLabel>
             <Link to="/forgot-password" className="text-muted-foreground text-sm hover:underline">
               {t("login.forgot_password")}
             </Link>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <Button type="submit" className="w-full" disabled={login.isPending}>
             {login.isPending ? t("login.submitting") : t("login.submit")}

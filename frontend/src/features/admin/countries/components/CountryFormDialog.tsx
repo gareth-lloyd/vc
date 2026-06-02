@@ -12,6 +12,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { countryWriteInputSchema, type Country, type CountryWriteInput } from "../schemas";
 import { useCreateCountry, useUpdateCountry } from "../hooks";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   open: boolean;
@@ -165,14 +166,7 @@ export function CountryFormDialog(props: Props) {
             <Label htmlFor="country-active">{t("countries.dialog.fields.is_active")}</Label>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 export interface ReasonFormDialogProps<TInput extends FieldValues> {
   open: boolean;
@@ -113,14 +114,7 @@ export function ReasonFormDialog<TInput extends FieldValues>({
             ) : null}
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <DialogFooter>
             <Button

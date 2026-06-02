@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -48,7 +49,7 @@ export function ActivityTab() {
 
   return (
     <div className="p-6">
-      <ol className="border-border bg-card divide-border divide-y rounded-lg border">
+      <ActivityList as="ol">
         {events.map((event) => (
           <li key={event.id} className="px-4 py-3 text-sm">
             <div className="flex items-baseline justify-between gap-4">
@@ -64,7 +65,7 @@ export function ActivityTab() {
             ) : null}
           </li>
         ))}
-      </ol>
+      </ActivityList>
     </div>
   );
 }

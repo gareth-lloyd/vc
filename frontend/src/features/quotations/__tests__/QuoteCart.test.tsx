@@ -1,0 +1,145 @@
+import { useState } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { renderWithProviders } from "@/test/render";
+import { useAuthStore } from "@/features/auth/store";
+import { QuoteCart } from "../components/QuoteCart";
+import type { StagedLine } from "../schemas";
+
+function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
+  return {
+    property_id: 7,
+    property_name: "Villa Sol",
+    hero_image_url: null,
+    date_from: "2026-07-01",
+    date_to: "2026-07-08",
+    priced_date_from: "2026-07-01",
+    priced_date_to: "2026-07-08",
+    adults: 2,
+    children: 0,
+    total: "4500.00",
+    discount: "0",
+    inclusions: "",
+    price_override_reason: "",
+    is_manual: false,
+    notes: "",
+    ...overrides,
+  };
+}
+
+// Controlled wrapper: the page owns the staged lines, so the cart only edits
+// via callbacks. Mirror that here so discount edits actually re-render.
+function Harness({ initial }: { initial: StagedLine[] }) {
+  const [lines, setLines] = useState(initial);
+  return (
+    <QuoteCart
+      lines={lines}
+      currency="USD"
+      onUpdateLine={(id, patch) =>
+        setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
+      }
+      onRemove={(id) => setLines((prev) => prev.filter((l) => l.property_id !== id))}
+      onSaveDraft={() => undefined}
+      onSendToGuest={() => undefined}
+    />
+  );
+}
+
+beforeEach(() => {
+  useAuthStore.setState({ role: "RESERVATIONS", isSuperuser: false, status: "authenticated" });
+});
+afterEach(() => {
+  useAuthStore.getState().clear();
+});
+
+describe("QuoteCart", () => {
+  it("lists the staged lines and sums their effective totals into the subtotal", () => {
+    renderWithProviders(
+      <Harness
+        initial={[
+          stagedLine(),
+          stagedLine({ property_id: 8, property_name: "Villa Azul", total: "7200.00" }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Villa Sol")).toBeInTheDocument();
+    expect(screen.getByText("Villa Azul")).toBeInTheDocument();
+    // 4500 + 7200.
+    expect(screen.getByText("$11,700.00")).toBeInTheDocument();
+  });
+
+  it("applies a discount to the line total and the subtotal", async () => {
+    renderWithProviders(
+      <Harness
+        initial={[
+          stagedLine(),
+          stagedLine({ property_id: 8, property_name: "Villa Azul", total: "7200.00" }),
+        ]}
+      />,
+    );
+
+    // Expand the first line and discount it by 500.
+    await userEvent.click(screen.getAllByRole("button", { name: /edit line/i })[0]);
+    const discount = screen.getByLabelText(/^discount$/i);
+    await userEvent.clear(discount);
+    await userEvent.type(discount, "500");
+
+    // 4500 − 500 = 4000 on the line; subtotal 4000 + 7200 = 11200.
+    expect(screen.getByText("$4,000.00")).toBeInTheDocument();
+    expect(screen.getByText("$11,200.00")).toBeInTheDocument();
+  });
+
+  it("blocks the commit actions until a manual override has a total and reason", async () => {
+    renderWithProviders(<Harness initial={[stagedLine()]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /override the price manually/i }));
+
+    // Manual on, but total + reason blank → commit blocked.
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(/manual total/i), "5000");
+    await userEvent.type(screen.getByLabelText(/reason for price override/i), "Agreed rate");
+
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /send to guest/i })).toBeEnabled();
+  });
+
+  it("renders the priced date range and guest count for a line", () => {
+    renderWithProviders(<Harness initial={[stagedLine({ adults: 2, children: 1 })]} />);
+    expect(screen.getByText(/1 Jul 2026 – 8 Jul 2026/i)).toBeInTheDocument();
+    expect(screen.getByText(/2A · 1C/)).toBeInTheDocument();
+  });
+
+  it("blocks the commit actions and shows an inline error for a non-numeric discount", async () => {
+    renderWithProviders(<Harness initial={[stagedLine()]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
+    const discount = screen.getByLabelText(/^discount$/i);
+    await userEvent.clear(discount);
+    await userEvent.type(discount, "abc");
+
+    expect(screen.getByText(/enter a valid discount amount/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+  });
+
+  it("blocks the commit actions for a priced line that has no engine total", () => {
+    renderWithProviders(<Harness initial={[stagedLine({ total: null })]} />);
+
+    // An available option that arrived without a price contributes nothing to
+    // the subtotal, so it must not be silently saveable.
+    expect(screen.getByText(/this option has no price/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+  });
+
+  it("disables the commit actions for a user without the reservations role", () => {
+    useAuthStore.setState({ role: "VIEWER", isSuperuser: false, status: "authenticated" });
+    renderWithProviders(<Harness initial={[stagedLine()]} />);
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+  });
+});

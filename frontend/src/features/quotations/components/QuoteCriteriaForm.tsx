@@ -10,6 +10,9 @@ import { quoteCriteriaInputSchema, type QuoteCriteriaInput } from "../schemas";
 interface Props {
   initial: Partial<QuoteCriteriaInput>;
   isSubmitting: boolean;
+  // Block submit for reasons other than an in-flight search (e.g. the currency
+  // hasn't loaded yet), without showing the "Searching…" label.
+  disabled?: boolean;
   onSubmit: (values: QuoteCriteriaInput) => void;
 }
 
@@ -25,7 +28,7 @@ const DEFAULTS: QuoteCriteriaInput = {
   q: "",
 };
 
-export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
+export function QuoteCriteriaForm({ initial, isSubmitting, disabled = false, onSubmit }: Props) {
   const { t } = useTranslation("quotations");
 
   const form = useForm<QuoteCriteriaInput>({
@@ -156,7 +159,7 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
       </div>
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting || disabled}>
           {isSubmitting ? t("builder.criteria.searching") : t("builder.criteria.search")}
         </Button>
       </div>

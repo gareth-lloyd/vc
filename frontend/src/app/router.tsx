@@ -251,6 +251,13 @@ export const router = createBrowserRouter([
                     },
                   },
                   {
+                    path: "/concierge",
+                    lazy: async () => {
+                      const m = await import("@/features/concierge/ConciergeOverviewPage");
+                      return { Component: m.ConciergeOverviewPage };
+                    },
+                  },
+                  {
                     element: <RequireAdmin />,
                     children: [
                       {

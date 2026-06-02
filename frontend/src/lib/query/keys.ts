@@ -93,6 +93,10 @@ export const queryKeys = {
     preview: (id: QuotationId, overrides?: unknown) =>
       ["quotations", "detail", id, "preview", overrides ?? null] as const,
   },
+  concierge: {
+    all: () => ["concierge"] as const,
+    overview: () => ["concierge", "overview"] as const,
+  },
   audit: {
     all: () => ["audit"] as const,
     list: <F>(filters: F) => ["audit", "list", filters] as const,

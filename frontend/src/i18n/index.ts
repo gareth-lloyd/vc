@@ -15,6 +15,7 @@ import quotationsEn from "./locales/en/quotations.json";
 import auditEn from "./locales/en/audit.json";
 import adminEn from "./locales/en/admin.json";
 import dashboardEn from "./locales/en/dashboard.json";
+import conciergeEn from "./locales/en/concierge.json";
 
 import commonEl from "./locales/el/common.json";
 import authEl from "./locales/el/auth.json";
@@ -27,6 +28,7 @@ import quotationsEl from "./locales/el/quotations.json";
 import auditEl from "./locales/el/audit.json";
 import adminEl from "./locales/el/admin.json";
 import dashboardEl from "./locales/el/dashboard.json";
+import conciergeEl from "./locales/el/concierge.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "el"] as const;
 export const DEFAULT_LANGUAGE: (typeof SUPPORTED_LANGUAGES)[number] = "en";
@@ -50,6 +52,7 @@ export const I18N_NAMESPACES = [
   "audit",
   "admin",
   "dashboard",
+  "concierge",
 ] as const;
 
 const supportedLngs: string[] = [...SUPPORTED_LANGUAGES];
@@ -72,6 +75,7 @@ void i18n
         audit: auditEn,
         admin: adminEn,
         dashboard: dashboardEn,
+        concierge: conciergeEn,
       },
       el: {
         common: commonEl,
@@ -85,6 +89,7 @@ void i18n
         audit: auditEl,
         admin: adminEl,
         dashboard: dashboardEl,
+        concierge: conciergeEl,
       },
     },
     fallbackLng: DEFAULT_LANGUAGE,

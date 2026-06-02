@@ -1,0 +1,63 @@
+{
+  "page": {
+    "title": "Concierge",
+    "subtitle": "Service coverage across every live booking."
+  },
+  "columns": {
+    "booking": "Booking",
+    "villa": "Villa",
+    "arrival": "Arrival",
+    "progress": "Progress",
+    "tier": "Tier"
+  },
+  "services": {
+    "car": "Car hire",
+    "transfers": "Transfers",
+    "boat": "Boat",
+    "chef": "Chef",
+    "grocery": "Grocery",
+    "firstnight": "First night",
+    "restaurant": "Restaurant",
+    "gifting": "Gifting",
+    "activities": "Activities",
+    "spa": "Spa",
+    "wine": "Wine",
+    "nanny": "Nanny",
+    "other": "Other"
+  },
+  "statuses": {
+    "not_started": "Not started",
+    "working_on_it": "Working on it",
+    "waiting": "Waiting",
+    "arranged_independently": "Arranged independently",
+    "not_required": "Not required",
+    "done": "Done"
+  },
+  "countdown": {
+    "departed": "Departed",
+    "today": "Arrives today",
+    "in_days_one": "In {{count}} day",
+    "in_days_other": "In {{count}} days"
+  },
+  "progress_label": "{{percent}}%",
+  "legend": {
+    "title": "Service status"
+  },
+  "popover": {
+    "title": "Set {{service}} status",
+    "aria_label": "Set {{service}} status for {{reference}}"
+  },
+  "role_required_tooltip": "Reservations role required to update services.",
+  "empty": {
+    "title": "No live bookings",
+    "body": "Bookings with upcoming or in-progress stays will appear here."
+  },
+  "error": {
+    "title": "Couldn't load the matrix",
+    "body": "Something went wrong loading concierge coverage."
+  },
+  "toasts": {
+    "updated": "Service status updated",
+    "update_failed": "Couldn't update the service status"
+  }
+}

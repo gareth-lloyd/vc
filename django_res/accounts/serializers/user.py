@@ -6,8 +6,8 @@ from typing import Any
 
 from rest_framework import serializers
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 
 
 class UserSerializer(serializers.ModelSerializer[User]):

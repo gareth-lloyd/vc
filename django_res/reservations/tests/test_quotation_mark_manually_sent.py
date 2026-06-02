@@ -22,9 +22,9 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
 from comms.models import EmailLog
+from core.enums import StaffRole
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from reservations.enums import (

@@ -18,10 +18,10 @@ from django.core import mail
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
+from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
 from properties.models import Property

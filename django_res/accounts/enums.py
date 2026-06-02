@@ -3,13 +3,6 @@ from __future__ import annotations
 from django.db import models
 
 
-class StaffRole(models.TextChoices):
-    ADMIN = "admin", "Admin"
-    RESERVATIONS = "reservations", "Reservations"
-    ACCOUNTS = "accounts", "Accounts"
-    VIEWER = "viewer", "Viewer"
-
-
 class TfaMethod(models.TextChoices):
     NONE = "none", "None"
     TOTP = "totp", "TOTP"

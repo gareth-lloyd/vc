@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 from properties.models import (
     Country,
     Property,

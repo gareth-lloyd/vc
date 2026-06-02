@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from accounts.enums import StaffRole
+from core.enums import StaffRole
 
 
 @api_view(["GET"])

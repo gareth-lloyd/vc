@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 
 
 @pytest.mark.django_db

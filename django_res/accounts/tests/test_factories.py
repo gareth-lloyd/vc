@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 
 from accounts import factories, models
-from accounts.enums import StaffRole
+from core.enums import StaffRole
 
 pytestmark = pytest.mark.django_db
 

@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from accounts.enums import ContactPreferredMethod, ContactStatus, EmailLabel, PhoneLabel, StaffRole
+from accounts.enums import ContactPreferredMethod, ContactStatus, EmailLabel, PhoneLabel
 from accounts.models import Contact, ContactEmail, ContactPhone, User
+from core.enums import StaffRole
 from data_migration.base import BaseLoader
 
 

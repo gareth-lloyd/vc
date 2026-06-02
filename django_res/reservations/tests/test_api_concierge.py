@@ -9,8 +9,8 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import ConciergeStatus, PaymentMethod

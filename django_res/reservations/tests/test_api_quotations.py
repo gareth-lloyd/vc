@@ -9,8 +9,8 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 from pricing.models import Currency
 from properties.enums import PrefilledChangeOverDay
 from properties.models import Property

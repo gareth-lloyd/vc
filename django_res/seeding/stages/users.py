@@ -7,9 +7,9 @@ log in without hunting through generated rows. These are upserted by email
 
 from __future__ import annotations
 
-from accounts.enums import StaffRole
 from accounts.factories import ContactEmailFactory, ContactPhoneFactory, UserFactory
 from accounts.models import User
+from core.enums import StaffRole
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 

@@ -4,8 +4,9 @@ from decimal import Decimal
 
 import pytest
 
-from accounts.enums import ContactRole, StaffRole
+from accounts.enums import ContactRole
 from accounts.models import Contact, User
+from core.enums import StaffRole
 from data_migration.base import LoadReport
 from data_migration.loaders.finance import GroupFinanceLoader
 from properties.models.contacts import PropertyContactAssignment

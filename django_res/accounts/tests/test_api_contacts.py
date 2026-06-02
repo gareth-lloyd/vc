@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import Contact, ContactEmail, ContactPhone, User
+from core.enums import StaffRole
 
 
 @pytest.fixture

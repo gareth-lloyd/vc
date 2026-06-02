@@ -3,8 +3,9 @@ from __future__ import annotations
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-from accounts.enums import StaffRole, TfaMethod
+from accounts.enums import TfaMethod
 from accounts.managers import UserManager
+from core.enums import StaffRole
 from core.fields import EncryptedTextField
 
 

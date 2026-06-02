@@ -9,8 +9,9 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import EmailLabel, PhoneLabel, StaffRole
+from accounts.enums import EmailLabel, PhoneLabel
 from accounts.models import Contact, ContactEmail, ContactPhone, User
+from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
 from properties.enums import CommissionCalcType, PriceBasis

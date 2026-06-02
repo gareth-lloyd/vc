@@ -7,8 +7,8 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 from payments.enums import (
     PaymentPurpose,
     PaymentStatus,

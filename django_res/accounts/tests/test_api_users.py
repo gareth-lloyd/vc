@@ -6,8 +6,9 @@ import pyotp
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole, TfaMethod
+from accounts.enums import TfaMethod
 from accounts.models import User
+from core.enums import StaffRole
 
 
 @pytest.fixture

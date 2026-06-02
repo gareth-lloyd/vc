@@ -14,10 +14,10 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
 from comms.enums import EmailLogStatus
 from comms.models import EmailLog, SmtpProfile
+from core.enums import StaffRole
 from core.tests import assert_max_queries
 
 

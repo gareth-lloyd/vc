@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import StaffRole
 from accounts.models import User
+from core.enums import StaffRole
 from reservations.enums import GuestStatus
 from reservations.models import Guest
 

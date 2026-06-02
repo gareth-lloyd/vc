@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useBooking } from "./hooks";
+import { dueTone } from "./finance";
 import { BookingActions } from "./components/BookingActions";
 import type { BookingDetail } from "./schemas";
 import { BOOKING_TABS } from "./tabConfig";
@@ -31,7 +32,7 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
     {
       label: t("detail.rail.due"),
       value: formatMoney(booking.balance_due, currency),
-      tone: outstanding > 0 ? "warning" : "muted",
+      tone: dueTone(outstanding, booking.balance_due_at),
     },
   ];
   return (

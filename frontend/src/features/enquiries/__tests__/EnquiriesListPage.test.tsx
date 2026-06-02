@@ -122,6 +122,28 @@ describe("EnquiriesListPage", () => {
     expect(screen.queryByTestId("kanban-column-new")).not.toBeInTheDocument();
   });
 
+  it("ignores ?status= in kanban view so no column is silently emptied", async () => {
+    let seenStatus: string | null = "unset";
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seenStatus = new URL(request.url).searchParams.get("status");
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?status=new&view=kanban");
+
+    await screen.findByTestId("kanban-column-new");
+    // The board query dropped the status filter…
+    await waitFor(() => expect(seenStatus).toBeNull());
+    // …so cards from other statuses still populate their columns.
+    expect(
+      within(screen.getByTestId("kanban-column-contacted")).getByText("Grace Hopper"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("kanban-column-quoted")).getByText("Linus Torvalds"),
+    ).toBeInTheDocument();
+  });
+
   it("kanban toggle remains reachable when a status filter is active", async () => {
     // Landing from the dashboard "New enquiries" KPI puts ?status=new in the
     // URL, which flips the implicit default to "list". The user must still be

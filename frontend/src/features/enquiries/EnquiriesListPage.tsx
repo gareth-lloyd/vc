@@ -153,7 +153,12 @@ export function EnquiriesListPage() {
     updateParam("ordering", sortingToOrdering(sorting));
   };
 
-  const query = useEnquiries(filters);
+  // The Kanban shows every status as a column and has no filter UI, so a
+  // lingering `?status=` (e.g. from a dashboard deep-link) would silently empty
+  // most columns. Drop it for the board query; the URL param is preserved for
+  // when the user switches back to the list view (where the bar shows it).
+  const effectiveFilters = view === "kanban" ? { ...filters, status: undefined } : filters;
+  const query = useEnquiries(effectiveFilters);
   const statusCounts = useEnquiryStatusCounts(filters);
   const moveMutation = useMoveEnquiry();
   const enquiryColumns = useEnquiryColumns();

@@ -5,6 +5,7 @@ import { FactGrid, FactGridItem } from "@/components/data/FactGrid";
 import { StatTiles, type StatTileData } from "@/components/data/StatTiles";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
+import { dueTone } from "../finance";
 import type { BookingOutletContext } from "../BookingDetailLayout";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -40,9 +41,6 @@ export function OverviewTab() {
   const total = booking.total ?? booking.rental_price;
   const paid = parseMoney(total) - parseMoney(booking.balance_due);
   const outstanding = parseMoney(booking.balance_due);
-  const overdue =
-    booking.balance_due_at != null &&
-    booking.balance_due_at < new Date().toISOString().slice(0, 10);
   const tiles: StatTileData[] = [
     { label: t("detail.rail.total"), value: formatMoney(total, currency) },
     {
@@ -53,7 +51,7 @@ export function OverviewTab() {
     {
       label: t("detail.rail.due"),
       value: formatMoney(booking.balance_due, currency),
-      tone: outstanding > 0 ? (overdue ? "danger" : "warning") : "muted",
+      tone: dueTone(outstanding, booking.balance_due_at),
       hint: booking.balance_due_at ? formatDate(booking.balance_due_at) : undefined,
     },
     { label: t("overview.fields.nights"), value: nights != null ? nights : "—" },

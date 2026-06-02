@@ -6,14 +6,14 @@ import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { cn } from "@/lib/cn";
+import { isBalanceOverdue } from "./finance";
 import type { BookingListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 
 /** Outstanding balance reads danger once past its due date, warning otherwise. */
 function balanceTone(balanceDueAt: string | null | undefined): string {
-  const overdue = balanceDueAt != null && balanceDueAt < new Date().toISOString().slice(0, 10);
-  return overdue ? "text-danger" : "text-warning";
+  return isBalanceOverdue(balanceDueAt) ? "text-danger" : "text-warning";
 }
 
 export function useBookingColumns(): ColumnDef<BookingListItem>[] {

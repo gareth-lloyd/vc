@@ -1,6 +1,7 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { isPositiveMoney } from "@/lib/format/money";
 
 export const quotationStatusSchema = z.enum(["draft", "sent", "accepted", "expired", "cancelled"]);
 export type QuotationStatus = z.infer<typeof quotationStatusSchema>;
@@ -136,7 +137,15 @@ export interface StagedLine {
   priced_date_to: string;
   adults: number;
   children: number;
+  // The engine gross for a priced line, or the operator-typed total for a
+  // manual line. The cart's effective total nets `discount` off this (priced
+  // lines only), floored at zero — see `lineEffectiveTotal`.
   total: string | number | null;
+  // Per-line edits the cart exposes; mirror the fields the backend already
+  // supports (GAP-005 #5–#7). Decimal `discount` travels as a string.
+  discount: string;
+  inclusions: string;
+  price_override_reason: string;
   is_manual: boolean;
   notes: string;
 }
@@ -183,21 +192,13 @@ export const quotationLineWriteInputSchema = z
     message: i18n.t("quotations:schema_errors.override_reason_required"),
   })
   // Mirror the server's manual-total rule: a manual line needs a non-empty
-  // total that parses to a number > 0. The server's 400 on `total` still
-  // surfaces inline as a belt-and-suspenders if this slips through.
-  .refine(
-    (v) => {
-      if (!v.is_manual) return true;
-      const raw = (v.total ?? "").trim();
-      if (raw === "") return false;
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) && parsed > 0;
-    },
-    {
-      path: ["total"],
-      message: i18n.t("quotations:schema_errors.manual_total_required"),
-    },
-  );
+  // total that parses to a number > 0. Uses the same comma-tolerant parser as
+  // the cart (`isPositiveMoney`); the server's 400 on `total` still surfaces
+  // inline as a belt-and-suspenders if this slips through.
+  .refine((v) => !v.is_manual || isPositiveMoney(v.total ?? ""), {
+    path: ["total"],
+    message: i18n.t("quotations:schema_errors.manual_total_required"),
+  });
 export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSchema>;
 
 // Current terms version — returned by GET /terms-versions/current.

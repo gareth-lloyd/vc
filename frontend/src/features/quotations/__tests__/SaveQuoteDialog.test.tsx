@@ -19,54 +19,65 @@ const enquiry = {
   email: "ada@example.com",
 } as unknown as EnquiryDetail;
 
-// Requested 1–8 Jul, but the engine priced the changeover-day stay from 4 Jul.
-const shiftedLine: StagedLine = {
-  property_id: 7,
-  property_name: "Villa Sol",
-  hero_image_url: null,
-  date_from: "2026-07-01",
-  date_to: "2026-07-08",
-  priced_date_from: "2026-07-04",
-  priced_date_to: "2026-07-11",
-  adults: 2,
-  children: 0,
-  total: "4500.00",
-  is_manual: false,
-  notes: "",
-};
+function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
+  return {
+    property_id: 7,
+    property_name: "Villa Sol",
+    hero_image_url: null,
+    date_from: "2026-07-01",
+    date_to: "2026-07-08",
+    priced_date_from: "2026-07-01",
+    priced_date_to: "2026-07-08",
+    adults: 2,
+    children: 0,
+    total: "4500.00",
+    discount: "0",
+    inclusions: "",
+    price_override_reason: "",
+    is_manual: false,
+    notes: "",
+    ...overrides,
+  };
+}
+
+function mockSaveEndpoints(captureLineBody: (body: Record<string, unknown>) => void) {
+  server.use(
+    http.get("/api/v1/currencies", () =>
+      HttpResponse.json(drfPage([{ id: 1, code: "USD", name: "US Dollar", is_active: true }])),
+    ),
+    http.get("/api/v1/terms-versions/current", () =>
+      HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+    ),
+    http.post("/api/v1/quotations", () =>
+      HttpResponse.json(
+        { id: 50, reference: "Q-50", status: "draft", currency: "USD" },
+        { status: 201 },
+      ),
+    ),
+    http.post("/api/v1/quotations/50/lines", async ({ request }) => {
+      captureLineBody((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json({ id: 1 }, { status: 201 });
+    }),
+  );
+}
 
 afterEach(() => server.resetHandlers());
 
 describe("SaveQuoteDialog", () => {
   it("posts the operator's requested dates, leaving the backend as the single changeover shifter", async () => {
     let lineBody: Record<string, unknown> | null = null;
-    server.use(
-      http.get("/api/v1/currencies", () =>
-        HttpResponse.json(drfPage([{ id: 1, code: "USD", name: "US Dollar", is_active: true }])),
-      ),
-      http.get("/api/v1/terms-versions/current", () =>
-        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
-      ),
-      http.post("/api/v1/quotations", () =>
-        HttpResponse.json(
-          { id: 50, reference: "Q-50", status: "draft", currency: "USD" },
-          { status: 201 },
-        ),
-      ),
-      http.post("/api/v1/quotations/50/lines", async ({ request }) => {
-        lineBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ id: 1 }, { status: 201 });
-      }),
-    );
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
 
+    // Requested 1–8 Jul, but the engine priced the changeover-day stay from 4 Jul.
     renderWithProviders(
       <SaveQuoteDialog
         open
         onOpenChange={() => undefined}
         enquiry={enquiry}
-        lines={[shiftedLine]}
+        lines={[stagedLine({ priced_date_from: "2026-07-04", priced_date_to: "2026-07-11" })]}
         currencyCode="USD"
-        onCurrencyChange={() => undefined}
         onSaved={() => undefined}
       />,
     );
@@ -81,5 +92,150 @@ describe("SaveQuoteDialog", () => {
       date_from: "2026-07-01",
       date_to: "2026-07-08",
     });
+  });
+
+  it("persists the per-line discount and inclusions instead of zeroing them", async () => {
+    let lineBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine({ discount: "150.00", inclusions: "Welcome hamper" })]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(lineBody).not.toBeNull());
+    // Regression: the builder used to hardcode discount "0" / inclusions "".
+    expect(lineBody).toMatchObject({
+      discount: "150.00",
+      inclusions: "Welcome hamper",
+      is_manual: false,
+    });
+    // Non-manual lines omit the manual-only fields entirely.
+    expect(lineBody).not.toHaveProperty("total");
+    expect(lineBody).not.toHaveProperty("price_override_reason");
+  });
+
+  it("normalises a comma-typed discount to a canonical 2-dp decimal", async () => {
+    let lineBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine({ discount: "1,000" })]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(lineBody).not.toBeNull());
+    // The wire always gets "1000.00", never the raw "1,000" the user typed.
+    expect(lineBody).toMatchObject({ discount: "1000.00" });
+  });
+
+  it("never persists a discount on a manual line", async () => {
+    let lineBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
+
+    // A discount was typed before the operator toggled the line to manual.
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({
+            is_manual: true,
+            discount: "150.00",
+            total: "5000.00",
+            price_override_reason: "Agreed rate",
+          }),
+        ]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(lineBody).not.toBeNull());
+    // Regression (#5): the server skips re-pricing manual lines, so a stale
+    // discount would be stored yet never applied. Force it to "0".
+    expect(lineBody).toMatchObject({ is_manual: true, discount: "0", total: "5000.00" });
+  });
+
+  it("sends total + reason for a manual-override line", async () => {
+    let lineBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({
+            is_manual: true,
+            total: "5000.00",
+            price_override_reason: "Agreed rate",
+          }),
+        ]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(lineBody).not.toBeNull());
+    expect(lineBody).toMatchObject({
+      is_manual: true,
+      total: "5000.00",
+      price_override_reason: "Agreed rate",
+    });
+  });
+
+  it("blocks save when a manual line is missing its total/reason", async () => {
+    let lineBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      lineBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine({ is_manual: true, total: "", price_override_reason: "" })]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    // The pre-save gate fires before any line POST.
+    expect(await screen.findByText(/missing its total or reason/i)).toBeInTheDocument();
+    expect(lineBody).toBeNull();
   });
 });

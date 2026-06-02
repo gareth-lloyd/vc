@@ -81,6 +81,16 @@ exclude = ["migrations/"]
 [tool.django-stubs]
 django_settings_module = "villacollective.settings.test"
 
+[tool.pyright]
+# Editor/ad-hoc type checker. The enforced type gate is mypy + django-stubs
+# (pre-commit + CI). pyright has no Django plugin, so it cannot see dynamically
+# synthesised ORM attributes (reverse relations, FK `_id` shadows, related
+# managers); those few residual errors are expected and covered by mypy.
+venvPath = "."        # relative to this file → django_res/
+venv = ".venv"        # → django_res/.venv, the uv-managed env with django-stubs
+pythonVersion = "3.13"
+exclude = ["**/migrations"]   # parity with mypy's migrations exclude
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "villacollective.settings.test"
 python_files = ["test_*.py", "tests.py"]

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
@@ -301,14 +302,7 @@ function OperationalForm({
         </label>
       </div>
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>
@@ -584,14 +578,7 @@ function FinanceForm({
         />
       </div>
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>

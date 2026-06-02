@@ -19,6 +19,7 @@ import type { EnquiryId } from "@/lib/query/keys";
 import { useUsers } from "@/features/users/hooks";
 import { userDisplayName, type UserSummary } from "@/features/users/schemas";
 import { useAssignEnquiry } from "../hooks";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface AssignDialogProps {
   enquiryId: EnquiryId;
@@ -168,14 +169,7 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
               <p className="text-muted-foreground text-xs">{t("assign.no_operators")}</p>
             ) : null}
           </div>
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
         </div>
         <DialogFooter>
           <Button

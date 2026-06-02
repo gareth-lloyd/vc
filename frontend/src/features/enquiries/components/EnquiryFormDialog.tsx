@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -342,14 +343,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
             <Textarea id="enq-message" rows={3} {...form.register("inbound_message")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

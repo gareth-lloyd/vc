@@ -19,6 +19,7 @@ import {
 } from "../schemas";
 import type { Contact } from "@/features/contacts/schemas";
 import { ContactPicker } from "@/features/contacts/components/ContactPicker";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   propertyId: PropertyId;
@@ -175,14 +176,7 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
             <span>{t("people.assignment_dialog.primary_label")}</span>
           </label>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

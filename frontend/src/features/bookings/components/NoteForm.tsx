@@ -1,4 +1,5 @@
 import { useController, type UseFormReturn } from "react-hook-form";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,14 +102,7 @@ export function NoteForm({
         <span>{t("notes.form.pin")}</span>
       </label>
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>

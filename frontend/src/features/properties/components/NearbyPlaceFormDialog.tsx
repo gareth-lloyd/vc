@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -182,14 +183,7 @@ export function NearbyPlaceFormDialog(props: NearbyPlaceFormDialogProps) {
             <Textarea id="property-nearby-notes" rows={2} {...form.register("notes")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

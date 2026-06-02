@@ -26,6 +26,7 @@ import {
   type RatePlanWriteInput,
 } from "../schemas";
 import { CurrencyPicker } from "./CurrencyPicker";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   propertyId: number;
@@ -239,14 +240,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
             <Textarea id="season-inclusion" rows={2} {...form.register("inclusion")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

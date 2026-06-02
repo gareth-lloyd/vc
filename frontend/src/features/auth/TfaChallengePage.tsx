@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api/errors";
 import { useVerifyTfa } from "./hooks";
 import { useAuthStore } from "./store";
 import { useNextPath } from "./useNextPath";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 export function TfaChallengePage() {
   const { t } = useTranslation("auth");
@@ -62,14 +63,7 @@ export function TfaChallengePage() {
           />
         </div>
 
-        {error ? (
-          <div
-            className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-            role="alert"
-          >
-            {error}
-          </div>
-        ) : null}
+        <FormErrorAlert message={error} />
 
         <Button type="submit" className="w-full" disabled={verify.isPending || code.length < 4}>
           {verify.isPending ? t("tfa.submitting") : t("tfa.submit")}

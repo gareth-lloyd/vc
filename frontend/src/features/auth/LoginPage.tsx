@@ -11,6 +11,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { loginInputSchema, type LoginInput } from "./schemas";
 import { useLogin } from "./hooks";
 import { useNextPath } from "./useNextPath";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 export function LoginPage() {
   const { t } = useTranslation("auth");
@@ -115,14 +116,7 @@ export function LoginPage() {
             </Link>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <Button type="submit" className="w-full" disabled={login.isPending}>
             {login.isPending ? t("login.submitting") : t("login.submit")}

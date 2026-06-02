@@ -4,10 +4,17 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { StagePips } from "@/components/data/StagePips";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, parseMoney } from "@/lib/format/money";
+import { cn } from "@/lib/cn";
 import type { BookingListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
+
+/** Outstanding balance reads danger once past its due date, warning otherwise. */
+function balanceTone(balanceDueAt: string | null | undefined): string {
+  const overdue = balanceDueAt != null && balanceDueAt < new Date().toISOString().slice(0, 10);
+  return overdue ? "text-danger" : "text-warning";
+}
 
 export function useBookingColumns(): ColumnDef<BookingListItem>[] {
   const { t } = useTranslation("bookings");
@@ -79,13 +86,27 @@ export function useBookingColumns(): ColumnDef<BookingListItem>[] {
         ),
       },
       {
-        id: "total",
-        header: t("columns.total"),
+        id: "finance",
+        header: t("columns.finance"),
         enableSorting: false,
         cell: ({ row }) => {
-          const { total, rental_price, currency_code } = row.original;
+          const { total, rental_price, currency_code, balance_due, balance_due_at } = row.original;
+          const currency = currency_code ?? null;
           const amount = total ?? rental_price;
-          return <span className="text-sm">{formatMoney(amount, currency_code ?? null)}</span>;
+          const outstanding = parseMoney(balance_due);
+          const settled = Number.isFinite(outstanding) && outstanding <= 0;
+          return (
+            <div className="text-sm tabular-nums">
+              <div>{formatMoney(amount, currency)}</div>
+              {settled ? (
+                <div className="text-success text-xs">{t("columns.paid_off")}</div>
+              ) : (
+                <div className={cn("text-xs", balanceTone(balance_due_at))}>
+                  {t("columns.due_amount", { amount: formatMoney(balance_due, currency) })}
+                </div>
+              )}
+            </div>
+          );
         },
       },
     ],

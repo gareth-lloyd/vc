@@ -219,81 +219,18 @@ Each app owns a `factories.py` of `factory-boy` factories
 (`properties/`, `pricing/`, `accounts/`, `reservations/`). They are the
 single source of test-data builders: pytest fixtures and the `seed_dev`
 command both compose them, so a builder is exercised the same way in
-tests and in a populated dev DB.
+tests and in a populated dev DB. `seed_dev` is **additive** (never
+truncates), builds the Enquiry → Quotation → Booking → Payment graph
+through the real service layer, and is guarded by
+`settings.SEED_DEV_ALLOWED` (False in `base`/production).
 
-`./manage.py seed_dev [--scale small|medium|large] [--properties N]
-[--bookings N] [--seed S] [--i-understand]` generates realistic
-dev/staging data. It is **additive** — every run appends a fresh batch
-and never truncates. The transactional graph
-(Enquiry → Quotation → Booking → Payment) is built through the real
-service layer (`QuotationService`, `BookingService`, `PaymentScheduler`,
-`SecurityDepositService`), so statuses, events, holds and pricing
-snapshots are production-faithful; a fraction of bookings are walked
-down the state machine for status variety.
+New factories must mirror two invariants: combine the per-process
+`RUN_TOKEN` (`core/factories.py`) into unique fields so additive runs
+never collide, and use `django_get_or_create` for migration-seeded /
+canonical models so they reuse the seeded row.
 
-Conventions baked in — mirror them in new factories:
-
-- **Cross-run uniqueness.** `factory.Sequence` is an in-process counter,
-  *not* unique across runs. Unique fields combine the per-process
-  `RUN_TOKEN` (a uuid defined in `core/factories.py`, imported *down* by
-  every app's factories) with the sequence, so additive runs never
-  collide on a unique constraint (slug, email, phone).
-- **Respect seeded/canonical rows.** Factories for migration-seeded or
-  canonical models (`CountryFactory`, `CurrencyFactory`,
-  `PropertyCategoryFactory`, `TermsVersionFactory`) use
-  `django_get_or_create` so they reuse the seeded row instead of
-  fighting its unique constraint — the analogue of the `get_or_create`
-  fixture rule above.
-- **Production block.** Guarded by `settings.SEED_DEV_ALLOWED` (False in
-  `base`/production, True in `dev`/`test`/`staging`). `--i-understand`
-  documents intent only — it does **not** bypass the production block.
-
-Reference: `django_res/seeding/management/commands/seed_dev.py`,
-`properties/factories.py`, and the per-app `tests/test_factories.py`.
-
-### Villa image pool — manifest-driven seed imagery
-
-`seed_dev` draws property imagery *and* property identity from a committed
-pool of villa images under `core/seed_data/villa_images/`, so dev/staging
-catalogue/detail screens render real villas instead of grey 1×1
-placeholders. `manifest.yaml` is the single source of truth: one entry per
-villa with `slug`, `display_name`, `location_tag`, `country_iso2`,
-`style_anchor`, and per-kind `prompts`. Each entry owns a subdirectory of
-`hero.jpg` / `interior.jpg` / `exterior.jpg` / `gallery.jpg` (no floor
-plans — the model produces poor ones; `FLOOR_PLAN` falls back to the 1×1
-placeholder).
-
-How it wires together (mirror this if you extend it):
-
-- `properties.factories.villa_manifest()` returns the manifest entries that
-  have a `hero.jpg` on disk. The `properties` seed stage cycles that list,
-  **exhausting every villa before any repeat**, and builds each property's
-  `display_name` / `region` / `country` (loud `Country.objects.get` on the
-  seeded ISO row) / description from the entry.
-- `PropertyFactory` writes the HERO via the `children__villa` post-gen
-  kwarg; the `gallery` stage writes the non-HERO images from the *same*
-  villa, tracked on `SeedContext.property_villa` (pk → slug). Image bytes
-  are memoised per `(slug, kind)`. Missing files / non-manifest properties
-  fall back to the 1×1 placeholder, so a checkout without the pool (and the
-  `tests/test_factories.py` cases) still works — they `pytest.skip` when the
-  pool is absent.
-
-Regenerate / expand the pool with the one-off command (writes the working
-tree, not the DB; **not** gated by `SEED_DEV_ALLOWED`):
-
-`./manage.py generate_seed_images [--only <slug>] [--kind <hero|interior|
-exterior|gallery>] [--quality <low|medium|high|auto>] [--dry-run] [--force]`
-
-It builds each image from the manifest via OpenAI `gpt-image-1`
-(`1536×1024`, 3:2), re-encodes to ~1200 px JPEG q80 with Pillow, is
-idempotent (skips existing files unless `--force`), and refuses to run
-without `OPEN_AI_API_KEY`. That key (and any local secret) is read from the
-**repo-root `.env`**, loaded by `villacollective/settings/base.py` via
-`environ.Env.read_env(BASE_DIR.parent / ".env")`.
-
-Reference: `core/management/commands/generate_seed_images.py`,
-`core/seed_data/villa_images/{manifest.yaml,README.md}`,
-`seeding/stages/{properties,gallery}.py`.
+Full reference — command flags, density-tier calendars, and the
+manifest-driven villa image pool — lives in `seeding/README.md`.
 
 ### Validate data-migration changes via `reconcile_legacy`
 
@@ -332,13 +269,10 @@ and write shapes are identical. Reference:
 
 ## Principles
 
-1. This is a Django REST framework app to support the Villa Collective management suite.
+The project-wide principles (TDD, off-the-shelf over bespoke, KISS, no soft
+delete) live in the root `CLAUDE.md`. Backend-specific structure follows.
 
-2. **Off-the-shelf over bespoke.** Reach for established libraries (DRF,
-   `django-filter`, `dj-rest-auth` / `django-allauth`, `factory-boy`,
-   etc.) before writing custom
-
-3. Layered architecture:
+1. Layered architecture:
 
 - DRF handles serialization and deserialization from HTTP
 - ALL business logic needs to be OUTSIDE of the view code, in its own service layer
@@ -385,4 +319,4 @@ into pre-commit and CI next to `mypy`). Two contracts:
   genuinely need a new seam, add it as a commented `ignore_imports` line with a
   one-line justification — don't reach across apps silently.
 
-4. One model per file in <app>/models/\*
+2. One model per file in <app>/models/\*

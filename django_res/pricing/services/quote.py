@@ -70,4 +70,8 @@ class Quote:
     total: Decimal
     net_to_owner: Decimal
     changeover_shifted_from: date | None = None
+    # True when no real plan covered the stay and the quote was derived from a
+    # prior year's rates — a guide rate, not a confirmed price. The provenance
+    # lives in `breakdown["projection"]`.
+    is_projected: bool = False
     breakdown: dict[str, Any] = field(default_factory=dict)

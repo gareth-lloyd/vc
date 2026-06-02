@@ -28,6 +28,7 @@ from pricing.models import (
 )
 from pricing.services.discounts import apply_discount
 from pricing.services.extras import calc_extra, date_ranges_overlap
+from pricing.services.projection import PricingContext, RateProjectionService
 from pricing.services.quote import AppliedExtra, Quote, QuoteLine
 from pricing.services.rates import (
     NoCoverage,
@@ -55,6 +56,7 @@ class PricingEngine:
         discount_code: str | None = None,
         opt_in_extras: list[int] | None = None,
         as_of: date | None = None,
+        allow_projection: bool = True,
     ) -> Quote:
         if date_to <= date_from:
             raise NoRateAvailable("date_to must be strictly after date_from")
@@ -63,15 +65,28 @@ class PricingEngine:
 
         as_of = as_of or date.today()
 
-        plan = cls._resolve_plan(property, currency, date_from, date_to)
-
-        cards = list(
-            RateCard.objects.filter(plan=plan, is_active=True).order_by("sort_order", "pk")
-        )
-        if not cards:
-            raise NoRateAvailable(
-                f"No active RateCard on plan {plan.pk} for {date_from}..{date_to}"
+        # Resolve a real plan covering the stay; when none does (a year with no
+        # rate card) fall through to a lazily-derived guide rate projected from
+        # the most recent year that has rates. `allow_projection=False` forces the
+        # hard `NoRateAvailable` for callers that must not price on a guide (e.g. a
+        # booking-time guard). See `04-pricing.md` "Projected pricing for future
+        # years".
+        context = cls._load_real_context(property, currency, date_from, date_to)
+        if context is None and allow_projection:
+            context = RateProjectionService.project(
+                property=property,
+                date_from=date_from,
+                date_to=date_to,
+                currency=currency,
             )
+        if context is None:
+            raise NoRateAvailable(
+                f"No active RatePlan for property {getattr(property, 'pk', '?')} "
+                f"currency {currency.code} covering {date_from}..{date_to}"
+            )
+        plan = context.plan
+        cards = context.cards
+        rules_by_card = context.rules_by_card
 
         # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
         # arrival forward to the next valid changeover day rather than
@@ -85,10 +100,6 @@ class PricingEngine:
         )
 
         stay_nights = nights(date_from, date_to)
-
-        rules_by_card: dict[int, list[RateRule]] = {}
-        for rule in RateRule.objects.filter(card__in=cards, is_approved=True):
-            rules_by_card.setdefault(rule.card_id, []).append(rule)
 
         lines: list[QuoteLine] = []
         chosen_cards: dict[int, RateCard] = {}
@@ -242,6 +253,12 @@ class PricingEngine:
             "changeover_shifted_from": (
                 changeover_shifted_from.isoformat() if changeover_shifted_from is not None else None
             ),
+            # A projected quote is a guide rate carried from a prior year; the
+            # provenance lets the quotation generator / email render the "rates
+            # carried over — inquire for accurate rate" marker and is persisted
+            # into the booking snapshot.
+            "is_projected": context.is_projected,
+            "projection": context.projection,
         }
 
         return Quote(
@@ -260,17 +277,25 @@ class PricingEngine:
             total=total,
             net_to_owner=net_to_owner,
             changeover_shifted_from=changeover_shifted_from,
+            is_projected=context.is_projected,
             breakdown=breakdown,
         )
 
     @staticmethod
-    def _resolve_plan(
+    def _load_real_context(
         property: Any,
         currency: Currency,
         date_from: date,
         date_to: date,
-    ) -> RatePlan:
-        candidates = (
+    ) -> PricingContext | None:
+        """Load the (plan, cards, rules) triple from a real plan covering the stay.
+
+        Returns `None` when no active plan covers the whole `[date_from, date_to)`
+        range — the signal for the caller to try a projection. A plan that *does*
+        cover the dates but has no active cards is a misconfiguration, not a
+        projection trigger, so it still raises `NoRateAvailable`.
+        """
+        plan = (
             RatePlan.objects.filter(
                 property=property,
                 currency=currency,
@@ -279,14 +304,21 @@ class PricingEngine:
             )
             .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=date_to))
             .order_by("-effective_from", "-pk")
+            .first()
         )
-        plan = candidates.first()
         if plan is None:
+            return None
+        cards = list(
+            RateCard.objects.filter(plan=plan, is_active=True).order_by("sort_order", "pk")
+        )
+        if not cards:
             raise NoRateAvailable(
-                f"No active RatePlan for property {getattr(property, 'pk', '?')} "
-                f"currency {currency.code} covering {date_from}..{date_to}"
+                f"No active RateCard on plan {plan.pk} for {date_from}..{date_to}"
             )
-        return plan
+        rules_by_card: dict[int, list[RateRule]] = {}
+        for rule in RateRule.objects.filter(card__in=cards, is_approved=True):
+            rules_by_card.setdefault(rule.card_id, []).append(rule)
+        return PricingContext(plan=plan, cards=cards, rules_by_card=rules_by_card)
 
     @staticmethod
     def _validate_card_against_stay(card: RateCard, *, nights: int) -> None:

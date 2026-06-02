@@ -616,3 +616,107 @@ def test_repeat_guest_discount_never_applied(
 
     assert quote.discount == Decimal("0.00")
     assert quote.total == Decimal("1400.00")
+
+
+# --- Lazy projection for future years (no real plan) ------------------------
+
+
+@pytest.mark.django_db
+def test_quote_projects_from_prior_year_when_no_plan(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    """A 2028 stay with only a 2026 plan derives a guide rate from 2026."""
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2028, 7, 4),
+        date_to=date(2028, 7, 11),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.is_projected is True
+    assert len(quote.lines) == 7
+    assert all(ln.nightly == Decimal("200.00") for ln in quote.lines)
+    # Lines reference the real 2026 source rule for traceability.
+    assert all(ln.rule_id == rule.pk for ln in quote.lines)
+    assert quote.breakdown["is_projected"] is True
+    assert quote.breakdown["projection"]["source_year"] == 2026
+    assert quote.breakdown["projection"]["target_year"] == 2028
+    assert quote.breakdown["projection"]["source_plan_id"] == rule.card.plan.pk
+
+
+@pytest.mark.django_db
+def test_quote_prefers_real_plan_over_projection(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    """A real plan covering the stay wins; projection never runs."""
+    plan_2028 = RatePlan.objects.create(
+        property=property_,
+        name="Summer 2028",
+        currency=gbp,
+        effective_from=date(2028, 1, 1),
+        effective_to=date(2028, 12, 31),
+    )
+    card_2028 = RateCard.objects.create(plan=plan_2028, name="Default", sort_order=0)
+    RateRule.objects.create(
+        card=card_2028,
+        date_from=date(2028, 6, 1),
+        date_to=date(2028, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("250.00"),
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2028, 7, 4),
+        date_to=date(2028, 7, 11),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.is_projected is False
+    assert all(ln.nightly == Decimal("250.00") for ln in quote.lines)
+    assert quote.breakdown["projection"] is None
+
+
+@pytest.mark.django_db
+def test_quote_not_projected_for_a_normal_in_year_stay(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+    assert quote.is_projected is False
+    assert quote.breakdown["is_projected"] is False
+
+
+@pytest.mark.django_db
+def test_quote_no_projection_without_anchor_raises(property_: Property, gbp: Currency) -> None:
+    with pytest.raises(NoRateAvailable):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2028, 7, 4),
+            date_to=date(2028, 7, 11),
+            party=4,
+            currency=gbp,
+        )
+
+
+@pytest.mark.django_db
+def test_quote_allow_projection_false_raises_even_with_anchor(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    with pytest.raises(NoRateAvailable):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2028, 7, 4),
+            date_to=date(2028, 7, 11),
+            party=4,
+            currency=gbp,
+            allow_projection=False,
+        )

@@ -297,12 +297,24 @@ Section B is scope triage: each row is a feature whose API spec appears in `04-r
 - **Decision:** **KEEP+MODEL.** Operationally essential — confirmation PDFs and contracts are part of the booking flow, not optional. The entity is already declared and small. Generation is async via the generic `/jobs/{id}` surface (issue #16).
 - **Follow-ups:** API surface stands. Backend gap: PDF rendering pipeline (template + WeasyPrint or similar) is implementation — flag in backend doc as a v1 deliverable, not a model gap.
 
-### #19 — Quotation PDF. — **Resolved (KEEP+MODEL)**
+### #19 — Quotation PDF. — **Reversed → DROP (2026-06-02)**
 
-- **API surface:** `/quotations/{id}/pdf` (§2.7).
-- **Backend:** Not separately modelled; rendered on-demand from `Quotation` + `QuotationLine`.
-- **Decision:** **KEEP+MODEL.** Operationally essential — quotations are sent to guests as PDFs; the legacy app does this. No new model required — the PDF is a render of existing data. If we want to cache rendered output we can borrow `BookingDocument` shape under a `QuotationDocument` later, but v1 renders synchronously on request.
-- **Follow-ups:** API surface stands. Implementation note: same PDF pipeline as #18.
+- **API surface:** `/quotations/{id}/pdf` — **removed** from §2.7.
+- **Original decision (2026-05-12):** KEEP+MODEL, justified by "quotations
+  are sent to guests as PDFs; the legacy app does this."
+- **Reversal (2026-06-02):** the premise was false. Legacy
+  (`ResService.SentQuotation` / `SentQuotationNew` → `SentQuoteEmail`)
+  sends quotations as **inline HTML email only — no PDF, no attachment,
+  and no download/print affordance.** Legacy's `wkhtmltopdf` pipeline is
+  used *only* for booking receipts (see #18), never quotations. The
+  rebuild already matches legacy: a rich inline-HTML quote email plus a
+  copy-to-Outlook clipboard path. A guest-saveable quotation PDF is
+  therefore net-new scope beyond legacy parity — overreach — and is
+  dropped. Revisit only if a concrete operator/guest requirement appears
+  post-v1, at which point the existing `render_quotation_html` seam can
+  back it cheaply.
+- **Follow-ups:** drop the `:pdf` endpoint stub
+  (`reservations/views/quotation.py`).
 
 ### #20 — Audit log (global + per-resource alias). — **Resolved (KEEP+MODEL)**
 
@@ -465,7 +477,8 @@ Section B is scope triage: each row is a feature whose API spec appears in `04-r
 | 2026-05-12 | #16 | KEEP+MODEL. Reports are MVP (owner statements, commissions, tax, refunds, enquiry-funnel). `Export`, `ReportRun`, `ScheduledReport` already declared in `01-domain-model.md` §10. Generic `/jobs/{id}` polling reused by exports and document generation (#18). | Backend follow-up: thin service-layer spec for S3 key convention and file expiry. |
 | 2026-05-12 | #17 | DROP. Outbound webhook subscriptions are future scope. Internal integrations (Zoho push, WordPress fan-out) run as Celery jobs configured through `/system/integrations`, not customer-facing subscriptions. | Rewrote §1 webhook convention to remove `/webhook-subscriptions` reference. |
 | 2026-05-12 | #18 | KEEP+MODEL. Confirmation/contract/voucher PDFs are MVP operational essentials. `BookingDocument` entity already declared in `01-domain-model.md` §4. API surface stands; async generation rides the `/jobs/{id}` surface from #16. | PDF rendering pipeline (WeasyPrint or similar) is implementation, not a model gap. |
-| 2026-05-12 | #19 | KEEP+MODEL. Quotation PDF is operationally essential — quotations are sent to guests. Single endpoint, synchronous render from `Quotation` + `QuotationLine`. No new model. | Shares PDF pipeline with #18. |
+| 2026-05-12 | #19 | KEEP+MODEL. Quotation PDF is operationally essential — quotations are sent to guests. Single endpoint, synchronous render from `Quotation` + `QuotationLine`. No new model. | **Superseded — see 2026-06-02 row.** |
+| 2026-06-02 | #19 | **REVERSED → DROP.** Premise was false: legacy sends quotations as inline HTML email only (no PDF/attachment); `wkhtmltopdf` is used only for booking receipts (#18). Rebuild already matches legacy (HTML email + copy-to-Outlook). Quotation PDF is beyond-legacy overreach. Removed `/quotations/{id}/pdf` from §2.7. | Revisit post-v1 if a real requirement appears; `render_quotation_html` seam would back it. |
 | 2026-05-12 | #20 | KEEP+MODEL. `AuditLog` entity already declared in `01-domain-model.md` §11 and is referenced by issues #4 and #7. `BookingEvent` / `PaymentEvent` stay as workflow-state audit; `AuditLog` is the generic cross-entity record. API surface stands. | Backend follow-up: service-layer helper `record_change(entity, before, after, actor, action)`. |
 | 2026-05-12 | #21 | KEEP+MODEL minimal. Required by issue #1 resolution (WordPress fan-out config) and Zoho OAuth. Config-row identity is the `key`, backed by `SystemDefaults` + existing `ZohoSyncJob` / `SyncRecord` state — no new top-level `Integration` entity in v1. Promote post-v1 if needed. | §2.28 expanded with intent note. |
 | 2026-05-12 | #22 | Closed (no action). `GuestPreference` was dropped backend-side and never exposed in the API. Verified `/guests/{id}/preferences` does not appear in §2.17. Re-add as a sub-resource if a real requirement appears post-v1. | Listed for completeness only. |

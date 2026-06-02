@@ -7,7 +7,6 @@
   - `frontend/src/features/quotations/` (builder, detail, send dialog)
   - `django_res/reservations/models/quotation.py` (`Quotation`,
     `QuotationLine`)
-  - `django_res/reservations/views/quotation.py` (`:pdf` stub)
   - Legacy reference: `ResSystem/NewResSystem/Pages/Bookings/Booking.razor`
 
 ## Context — the one-screen → three-stage split
@@ -66,10 +65,11 @@ Priority order below reflects operator-pain / spec-commitment.
 > **Implementation status (branch `gap-005-quotation-flow-parity`):**
 > ✅ done — #1 preview-before-send, #2 copy-to-Outlook, #4 imagery,
 > #5 per-line discount, #6 inclusions, #7 price-override-with-reason.
-> ⏸ deferred — #3 auto-hold (needs hold surface), #8 PDF (render seam is
-> ready; PDF is the fast-follow), #9 two-pane builder, #10 availability
-> badges (blocked on [Q-013](q-013-rate-card-incomplete-pricing.md)),
-> #11 TBC mode, #12 line pagination.
+> ⏸ deferred — #3 auto-hold (needs hold surface), #9 two-pane builder,
+> #10 availability badges (blocked on
+> [Q-013](q-013-rate-card-incomplete-pricing.md)), #11 TBC mode,
+> #12 line pagination.
+> ❌ dropped — #8 PDF (beyond-legacy overreach; see below).
 
 ### P1 — Send experience (highest operator-touch)
 
@@ -105,7 +105,7 @@ Priority order below reflects operator-pain / spec-commitment.
      `sort_order`, and a set-hero concept. Slice: (a) add `hero_image_url`
      to the quote-search/quote-bulk response, (b) render it on result card +
      lines panel + detail lines, (c) carry it into the guest-facing
-     quote/email/PDF.
+     quote/email.
 
 ### P2 — Line richness
 
@@ -122,9 +122,15 @@ Priority order below reflects operator-pain / spec-commitment.
 
 ### P3 — Artifacts & builder shape
 
-8. **Quotation PDF** — `GET /quotations/{id}:pdf` returns 501
-   (`views/quotation.py`). Legacy renders quotation HTML/templates;
-   confirm whether a guest-saveable PDF is wanted.
+8. **Quotation PDF** — ❌ **DROPPED (2026-06-02).** Beyond-legacy
+   overreach. Legacy sends quotations as inline HTML email only — no PDF,
+   no attachment, no download/print (legacy's `wkhtmltopdf` is used solely
+   for booking receipts). The rebuild already matches legacy with the rich
+   HTML preview + copy-to-Outlook path, so a guest-saveable PDF is net-new
+   scope, not parity. Decision #19 reversed in
+   `../product-design/07-api-schema-reconciliation.md`; the `:pdf` endpoint
+   stub is removed. Revisit post-v1 only on a concrete requirement — the
+   `render_quotation_html` seam would back it cheaply.
 9. **Builder shape diverges from spec.** Design specs a two-pane,
    always-visible **cart** with inline price-edit under each result card,
    drag-reorder, and a "From £X / To £Y" range. We built a linear wizard

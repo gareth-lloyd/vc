@@ -99,7 +99,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 7. **Decision point — empty quote guard.** Operator cannot proceed to preview with 0 villas.
 
-8. **Preview & send.** "Preview quote" button opens a full-page modal with the rendered guest-facing quote (PDF preview + email body). Editable fields in the email: subject, intro paragraph, sign-off. Villa cards are not directly editable in preview (would have to go back).
+8. **Preview & send.** "Preview quote" button opens a full-page modal with the rendered guest-facing quote (HTML email body — no PDF). Editable fields in the email: subject, intro paragraph, sign-off. Villa cards are not directly editable in preview (would have to go back).
 
 9. **Send.** Awaited. Options: "Send to guest now", "Save & send later", "Save as draft". On send, the quotation gets a `QuotationNo` (server-generated, sequential, prefixed by site code), status becomes `Sent`, and the enquiry status advances from `New` → `Quoted`.
 

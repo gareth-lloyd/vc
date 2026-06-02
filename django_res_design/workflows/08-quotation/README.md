@@ -36,5 +36,9 @@ Plus pricing-engine SPs (see `04-pricing/pricing-engine.md`).
 
 - The data-model design (`../05-reservations.md`) plans `reservations.Quotation` and `reservations.QuotationLine` with proper relational design and FKs to `Guest`, `Agent`, `Property`. Drop the denormalised copies on the master.
 - Stage as `TextChoices`; explicit state transitions with audit rows.
-- PDF generation should be a deliberate add (WeasyPrint / Playwright) — but consider whether HTML email is enough.
+- **No quotation PDF.** Delivery is the inline HTML email (legacy parity —
+  legacy sends HTML only, never a PDF). A guest-saveable PDF was considered
+  and dropped as beyond-legacy overreach; see decision #19 (reversed) in
+  `../../product-design/07-api-schema-reconciliation.md`. Revisit post-v1
+  only on a concrete requirement.
 - Decide what "Expire" means — currently nothing expires quotes other than the linked Availability hold; consider an explicit quote expiry/SLA.

@@ -422,7 +422,6 @@ Headers + line items; quote-send is a notable side-effecting action.
 | POST | `/quotations/{id}:duplicate` | Clone |
 | POST | `/quotations/{id}:convert` | Convert chosen line(s) to booking(s) |
 | POST | `/quotations/{id}:withdraw` | Mark withdrawn |
-| GET | `/quotations/{id}/pdf` | Rendered PDF (sync for small, async otherwise) |
 
 #### Quotation lines (per-villa lines)
 | Method | Path | Purpose |

@@ -13,7 +13,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from core.api.responses import not_implemented_response
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
@@ -204,11 +203,6 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         reason = request.data.get("reason", "")
         quotation.cancel(reason=reason)
         return Response(QuotationDetailSerializer(quotation).data)
-
-    @action(detail=True, methods=["get"], url_path="pdf")
-    def pdf(self, request: Request, pk: str | None = None) -> Response:
-        """PDF rendering — follow-up work."""
-        return not_implemented_response("Quotation PDF rendering is not yet implemented.")
 
 
 class QuotationLineViewSet(viewsets.ModelViewSet):

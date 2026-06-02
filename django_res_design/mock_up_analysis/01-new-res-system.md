@@ -785,7 +785,7 @@ Before the staff res system can be built, the owner needs to decide on:
 
 17. **Agent: Individual vs Company toggle.** Are these subtypes (single-table inheritance) or one table with a discriminator? Sub-agents have a different model from agents — confirm 1:N.
 
-18. **Quote "Unbranded Links" toggle.** What does this do — strip VC branding from the client-facing quote PDF? Important for trade/agent flows.
+18. **Quote "Unbranded Links" toggle.** What does this do — strip VC branding from the client-facing quote (HTML email)? Important for trade/agent flows.
 
 19. **Per-user SMTP credentials.** Is this scope creep, or actually needed? If a user leaves, do their pending mail-sends fail? Recommend a single shared MailProvider config instead.
 

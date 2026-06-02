@@ -577,13 +577,6 @@ def test_withdraw_quotation(api_client: APIClient, staff: User, quotation: Quota
     assert quotation.status == QuotationStatus.CANCELLED.value
 
 
-@pytest.mark.django_db
-def test_pdf_returns_501(api_client: APIClient, staff: User, quotation: Quotation) -> None:
-    api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/quotations/{quotation.pk}/pdf")
-    assert response.status_code == 501
-
-
 # ----------------------------------------------------------------------
 # Task 1a — :preview + send-time copy overrides
 # ----------------------------------------------------------------------

@@ -51,7 +51,7 @@ Grouped by the workflow that already demands the email. The mockup catalogues 14
 
 | Template | Workflow ref | Legacy ref | What it contains |
 |---|---|---|---|
-| **Quotation email to client** | `workflows/08-quotation/transmission.md` | Hardcoded subject `"Quotation from Villa Collective"` in legacy `SentQuotation` | Renders the quotation HTML + PDF attachment. **Per-agent "send as" via per-user SMTP** — this is a live decision in `../10-decisions.md` ("Per-user SMTP reinstated as `comms.SmtpProfile`"). Note `04a` §10 finding #9: the legacy plumbing exists in `UserMaster` but is dead-coded (`SentQuotation` not wired to any active page). Django port re-activates it on this template only. |
+| **Quotation email to client** | `workflows/08-quotation/transmission.md` | Hardcoded subject `"Quotation from Villa Collective"` in legacy `SentQuotation` | Renders the quotation as an inline HTML email — no PDF attachment (legacy is HTML-only; the quote PDF was dropped, see decision #19 reversed). **Per-agent "send as" via per-user SMTP** — this is a live decision in `../10-decisions.md` ("Per-user SMTP reinstated as `comms.SmtpProfile`"). Note `04a` §10 finding #9: the legacy plumbing exists in `UserMaster` but is dead-coded (`SentQuotation` not wired to any active page). Django port re-activates it on this template only. |
 | **Quotation reminder to guest** (optional, debounced) | `workflows/08-quotation/lifecycle.md` | None | Soft chase if `Quotation.status` stays `sent` past N days. v1.1 candidate; ship the template, gate the scheduler. |
 
 ### Booking workflow (`../workflows/09-booking/`)

@@ -134,11 +134,6 @@ _quotation_actions: list[URLPattern | URLResolver] = [
         name="quotation-withdraw",
     ),
     path(
-        "quotations/<int:pk>/pdf",
-        QuotationViewSet.as_view({"get": "pdf"}),
-        name="quotation-pdf",
-    ),
-    path(
         "quotations/<int:quotation_pk>/lines",
         QuotationLineViewSet.as_view({"get": "list", "post": "create"}),
         name="quotation-lines",

@@ -168,6 +168,42 @@ class ConciergeStatus(models.TextChoices):
     DELIVERED = "delivered", "Delivered"
 
 
+class ConciergeService(models.TextChoices):
+    """Fixed service columns of the concierge coverage matrix (mock-up 01).
+
+    Values mirror the frontend `ServiceKey` palette in `styles/tokens.ts`.
+    """
+
+    CAR = "car", "Car hire"
+    TRANSFERS = "transfers", "Transfers"
+    BOAT = "boat", "Boat"
+    CHEF = "chef", "Chef"
+    GROCERY = "grocery", "Grocery"
+    FIRSTNIGHT = "firstnight", "First night"
+    RESTAURANT = "restaurant", "Restaurant"
+    GIFTING = "gifting", "Gifting"
+    ACTIVITIES = "activities", "Activities"
+    SPA = "spa", "Spa"
+    WINE = "wine", "Wine"
+    NANNY = "nanny", "Nanny"
+    OTHER = "other", "Other"
+
+
+class ServiceStatus(models.TextChoices):
+    """Per-service progress state in the coverage matrix.
+
+    Mirrors the frontend `SERVICE_STATUSES` in `components/data/ServiceDot.tsx`.
+    `NOT_REQUIRED` rows are excluded from the progress denominator.
+    """
+
+    NOT_STARTED = "not_started", "Not started"
+    WORKING_ON_IT = "working_on_it", "Working on it"
+    WAITING = "waiting", "Waiting"
+    ARRANGED_INDEPENDENTLY = "arranged_independently", "Arranged independently"
+    NOT_REQUIRED = "not_required", "Not required"
+    DONE = "done", "Done"
+
+
 class PaymentMethod(models.TextChoices):
     CARD = "card", "Card"
     BANK_TRANSFER = "bank_transfer", "Bank transfer"

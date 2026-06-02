@@ -13,6 +13,7 @@ class ReservationsConfig(AppConfig):
         from reservations.models import (
             Booking,
             BookingGuest,
+            BookingServiceCoverage,
             Guest,
             QuotationLine,
         )
@@ -86,5 +87,17 @@ class ReservationsConfig(AppConfig):
                 "is_manual",
                 "is_selected",
                 "price_override_reason",
+            ],
+        )
+        # BookingServiceCoverage: one progress status per (booking, service)
+        # behind the concierge matrix. The status transition is the only
+        # actionable column — who moved a service to `done`/`waiting` and when
+        # is exactly the trail a concierge review needs.
+        track(
+            BookingServiceCoverage,
+            fields=[
+                "booking_id",
+                "service",
+                "status",
             ],
         )

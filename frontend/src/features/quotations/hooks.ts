@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { queryKeys, type QuotationId } from "@/lib/query/keys";
+import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import {
   convertQuotation,
   createGuest,
@@ -12,6 +13,7 @@ import {
   fetchQuotationLines,
   fetchQuotationPreview,
   fetchQuotations,
+  quotationStatusCountsQuery,
   markQuotationManuallySent,
   searchQuoteOptions,
   sendQuotation,
@@ -33,6 +35,14 @@ export function useQuotations(filters: QuotationFilters) {
   return useQuery({
     queryKey: queryKeys.quotations.list(filters),
     queryFn: () => fetchQuotations(filters),
+  });
+}
+
+export function useQuotationStatusCounts(filters: QuotationFilters) {
+  const query = quotationStatusCountsQuery(filters);
+  return useQuery({
+    queryKey: queryKeys.quotations.statusCounts(query),
+    queryFn: () => fetchStatusCounts("/quotations/status-counts", query),
   });
 }
 
@@ -94,6 +104,8 @@ export function useCreateQuotation() {
     mutationFn: createQuotation,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+      // A new draft row shifts the status tab-bar badge counts.
+      qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
     },
   });
 }
@@ -110,6 +122,8 @@ function invalidateQuotationStatus(qc: ReturnType<typeof useQueryClient>, id: Qu
   // Lifecycle actions can change the row visible on the list (status, etc.).
   qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
   qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+  // The status tab-bar badges count by status, so any transition restains them.
+  qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
 }
 
 function invalidateQuotationLines(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
@@ -156,6 +170,8 @@ export function useDuplicateQuotation(id: QuotationId) {
     mutationFn: () => duplicateQuotation(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
+      // The duplicate is a new draft row, shifting the status tab-bar badges.
+      qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
     },
   });
 }
@@ -174,9 +190,10 @@ export function useConvertQuotation(id: QuotationId) {
     mutationFn: (input: ConvertQuotationInput) => convertQuotation(id, input),
     onSuccess: (booking) => {
       // The quotation flips to ACCEPTED and a new booking row appears —
-      // refresh both feature lists + the new booking detail.
+      // refresh both feature lists + the new booking detail + both badge sets.
       invalidateQuotationStatus(qc, id);
       qc.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
+      qc.invalidateQueries({ queryKey: queryKeys.bookings.statusCountsAll() });
       qc.invalidateQueries({ queryKey: queryKeys.bookings.detail(booking.id) });
     },
   });

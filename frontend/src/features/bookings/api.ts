@@ -55,6 +55,18 @@ export async function fetchBookings(filters: BookingFilters): Promise<Paginated<
   return bookingListResponseSchema.parse(data);
 }
 
+// The query that scopes the status counts: every filter EXCEPT the ones that
+// don't change the totals (status/page/ordering). Exported so the hook keys on
+// this stripped shape — keying on the full filters refetches identical counts
+// on every chip click, page, or sort.
+export function bookingStatusCountsQuery(filters: BookingFilters): QueryParams {
+  const query = toQuery(filters);
+  delete query.status;
+  delete query.page;
+  delete query.ordering;
+  return query;
+}
+
 export async function fetchBooking(id: BookingId): Promise<BookingDetail> {
   const data = await apiGet<unknown>(`/bookings/${id}`);
   return bookingDetailSchema.parse(data);

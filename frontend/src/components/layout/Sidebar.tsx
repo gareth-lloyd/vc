@@ -3,6 +3,7 @@ import {
   Banknote,
   Building2,
   CalendarCheck,
+  ConciergeBell,
   FileText,
   Globe,
   Home,
@@ -93,6 +94,12 @@ export function Sidebar() {
       label: t("nav.bookings"),
       icon: CalendarCheck,
       prefetch: () => import("@/features/bookings/BookingsListPage"),
+    },
+    {
+      to: "/concierge",
+      label: t("nav.concierge"),
+      icon: ConciergeBell,
+      prefetch: () => import("@/features/concierge/ConciergeOverviewPage"),
     },
   ];
   const library: NavItem[] = [

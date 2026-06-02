@@ -24,6 +24,7 @@ from reservations.serializers import (
     BookingWriteSerializer,
 )
 from reservations.serializers.booking import BookingEventSerializer
+from reservations.views.status_counts import StatusCountsMixin
 
 
 def _parse_date(value: Any) -> date_type:
@@ -60,6 +61,7 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
 
 
 class BookingViewSet(
+    StatusCountsMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,

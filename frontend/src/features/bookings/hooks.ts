@@ -3,9 +3,11 @@ import { toast } from "sonner";
 import { queryKeys, type BookingId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { ApiError } from "@/lib/api/errors";
+import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import {
   archiveBooking,
+  bookingStatusCountsQuery,
   cancelBooking,
   checkInBooking,
   checkOutBooking,
@@ -57,6 +59,14 @@ export function useBookings(filters: BookingFilters) {
   return useQuery({
     queryKey: queryKeys.bookings.list(filters),
     queryFn: () => fetchBookings(filters),
+  });
+}
+
+export function useBookingStatusCounts(filters: BookingFilters) {
+  const query = bookingStatusCountsQuery(filters);
+  return useQuery({
+    queryKey: queryKeys.bookings.statusCounts(query),
+    queryFn: () => fetchStatusCounts("/bookings/status-counts", query),
   });
 }
 
@@ -138,6 +148,8 @@ function onActionSuccess(queryClient: QueryClient, bookingId: BookingId, updated
   queryClient.setQueryData(queryKeys.bookings.detail(bookingId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
+  // The status tab-bar badges count by status, so any transition restains them.
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.statusCountsAll() });
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
 

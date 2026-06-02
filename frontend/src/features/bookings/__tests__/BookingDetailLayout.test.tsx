@@ -96,6 +96,25 @@ describe("BookingDetailLayout", () => {
     expect(screen.getAllByText("£2,500.00").length).toBeGreaterThan(0);
   });
 
+  it("stains the rail Due tile danger when the balance is overdue", async () => {
+    const overdue = { ...bookingFixture, balance_due: "1000.00", balance_due_at: "2020-01-01" };
+    server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(overdue)));
+    setup("/bookings/51/overview");
+    await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
+    const dueValues = screen.getAllByText("£1,000.00");
+    expect(dueValues.some((el) => el.className.includes("text-danger"))).toBe(true);
+  });
+
+  it("keeps the rail Due tile warning (not danger) when not yet overdue", async () => {
+    const upcoming = { ...bookingFixture, balance_due: "1000.00", balance_due_at: "2099-01-01" };
+    server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(upcoming)));
+    setup("/bookings/51/overview");
+    await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
+    const dueValues = screen.getAllByText("£1,000.00");
+    expect(dueValues.some((el) => el.className.includes("text-warning"))).toBe(true);
+    expect(dueValues.some((el) => el.className.includes("text-danger"))).toBe(false);
+  });
+
   it("renders Overview content for the guest + property", async () => {
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)));
     setup("/bookings/51/overview");

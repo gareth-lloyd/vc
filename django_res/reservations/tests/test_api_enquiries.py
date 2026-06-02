@@ -429,3 +429,23 @@ def test_viewer_cannot_create_enquiry(api_client: APIClient, viewer: User, guest
         format="json",
     )
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_enquiry_status_counts__groups_by_status(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    Enquiry.objects.create(guest=guest, first_name="A", last_name="B", email="a@b.com")
+    Enquiry.objects.create(
+        guest=guest,
+        first_name="C",
+        last_name="D",
+        email="c@d.com",
+        status=EnquiryStatus.LOST.value,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries/status-counts")
+
+    assert response.status_code == 200
+    assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.LOST.value: 1}

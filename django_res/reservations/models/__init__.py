@@ -14,6 +14,7 @@ from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.models.guest import Guest
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
+from reservations.models.service_coverage import BookingServiceCoverage
 from reservations.models.terms import TermsVersion
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "BookingGuest",
     "BookingHold",
     "BookingNote",
+    "BookingServiceCoverage",
     "Enquiry",
     "EnquiryEvent",
     "EnquiryNote",

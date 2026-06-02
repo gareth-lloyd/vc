@@ -1,4 +1,8 @@
 {
+  "status_filter": {
+    "aria_label": "Φιλτράρισμα κατά κατάσταση",
+    "all": "Όλα"
+  },
   "actions": {
     "save": "Αποθήκευση",
     "saving": "Αποθήκευση…",
@@ -56,6 +60,7 @@
     "enquiries": "Αιτήματα",
     "quotes": "Προσφορές",
     "bookings": "Κρατήσεις",
+    "concierge": "Κονσιέρζ",
     "properties": "Ακίνητα",
     "contacts": "Επαφές",
     "users": "Χρήστες",

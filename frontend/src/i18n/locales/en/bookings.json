@@ -96,6 +96,9 @@
     "dates": "Dates",
     "stage": "Stage",
     "total": "Total",
+    "finance": "Finance",
+    "paid_off": "Paid in full",
+    "due_amount": "{{amount}} due",
     "nights_one": "{{count}} night",
     "nights_other": "{{count}} nights"
   },

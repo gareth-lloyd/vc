@@ -96,6 +96,9 @@
     "dates": "Ημερομηνίες",
     "stage": "Στάδιο",
     "total": "Σύνολο",
+    "finance": "Οικονομικά",
+    "paid_off": "Πληρωμένο πλήρως",
+    "due_amount": "Οφειλή {{amount}}",
     "nights_one": "{{count}} βράδυ",
     "nights_other": "{{count}} βράδια"
   },

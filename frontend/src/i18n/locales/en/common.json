@@ -1,4 +1,8 @@
 {
+  "status_filter": {
+    "aria_label": "Filter by status",
+    "all": "All"
+  },
   "actions": {
     "save": "Save",
     "saving": "Saving…",
@@ -61,6 +65,7 @@
     "enquiries": "Enquiries",
     "quotes": "Quotes",
     "bookings": "Bookings",
+    "concierge": "Concierge",
     "properties": "Properties",
     "contacts": "Contacts",
     "users": "Users",

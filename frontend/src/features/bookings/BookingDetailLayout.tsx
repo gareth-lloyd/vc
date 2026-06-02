@@ -4,12 +4,14 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactList, FactRow } from "@/components/data/FactList";
+import { StatTiles, type StatTileData } from "@/components/data/StatTiles";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useBooking } from "./hooks";
+import { dueTone } from "./finance";
 import { BookingActions } from "./components/BookingActions";
 import type { BookingDetail } from "./schemas";
 import { BOOKING_TABS } from "./tabConfig";
@@ -19,6 +21,20 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
   const currency = booking.currency_code ?? null;
   const total = booking.total ?? booking.rental_price;
   const paid = parseMoney(total) - parseMoney(booking.balance_due);
+  const outstanding = parseMoney(booking.balance_due);
+  const tiles: StatTileData[] = [
+    { label: t("detail.rail.total"), value: formatMoney(total, currency) },
+    {
+      label: t("detail.rail.paid"),
+      value: Number.isFinite(paid) ? formatMoney(paid, currency) : "—",
+      tone: "success",
+    },
+    {
+      label: t("detail.rail.due"),
+      value: formatMoney(booking.balance_due, currency),
+      tone: dueTone(outstanding, booking.balance_due_at),
+    },
+  ];
   return (
     <div className="space-y-4">
       <div>
@@ -28,6 +44,7 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
         </p>
       </div>
       <StatusBadge status={booking.status} />
+      <StatTiles tiles={tiles} />
       <FactList>
         <FactRow
           label={t("detail.rail.dates")}
@@ -37,12 +54,6 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
           label={t("detail.rail.guest")}
           value={booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
         />
-        <FactRow label={t("detail.rail.total")} value={formatMoney(total, currency)} />
-        <FactRow
-          label={t("detail.rail.paid")}
-          value={Number.isFinite(paid) ? formatMoney(paid, currency) : "—"}
-        />
-        <FactRow label={t("detail.rail.due")} value={formatMoney(booking.balance_due, currency)} />
       </FactList>
       <BookingActions booking={booking} />
     </div>

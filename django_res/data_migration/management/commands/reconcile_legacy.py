@@ -221,38 +221,70 @@ class Command(BaseCommand):
         return blockers
 
     def _zoho_continuity_section(self, cursor: Any) -> list[str]:
-        """Per Zoho source: non-blank legacy ZohoId vs backfilled SyncRecord.
+        """Per Zoho source: backfilled SyncRecord vs the legacy rows that need one.
 
-        A gap means a legacy external id has no SyncRecord — the first
-        post-cutover push would mint a duplicate Zoho record, so it blocks.
+        The continuity question is "does every *loaded* row that carried a
+        legacy ZohoId now have a SyncRecord?" — because only a loaded row has a
+        Django object the first post-cutover push could duplicate against. So we
+        compare the count of SyncRecords against `loaded`: the legacy rows with a
+        non-blank ZohoId whose `legacy_id` actually resolves to an imported row.
+
+        This deliberately resolves through `legacy_id__in` rather than re-deriving
+        the legacy count with a per-table WHERE: a ZohoId on a row the domain
+        loader dropped (soft-deleted `DeletedAt`, empty `Name`, an unresolvable
+        FK) has no push target and is *not* a continuity failure — counting it
+        would be a false blocker. `legacy ext id` is still shown raw so the
+        operator can see how many ZohoId rows were not imported.
+
+        `external_id__gt=""` mirrors the model's partial-unique condition and the
+        loader's own non-blank guard: a transmitted-but-not-pushed record (e.g.
+        `quotation_transmission` mints a PENDING SyncRecord with a blank
+        external_id) must not be counted as a captured external id, or it would
+        mask a genuinely missing one.
+
+        Limitation: this compares counts, not values. A full `loadlegacy --all`
+        refreshes every external_id (`update_or_create`), but a value that
+        drifted on a delta-only `--since` load whose `UpdatedAt` did not advance
+        would not be caught here.
         """
-        rows: list[tuple[str, int, int, int, str]] = []
+        rows: list[tuple[str, int, int, int, int, str]] = []
         blockers: list[str] = []
         for spec in SyncRecordZohoLoader.SPECS:
             cursor.execute(
-                f"SELECT COUNT(*) FROM {spec.table} "
+                f"SELECT Id FROM {spec.table} "
                 f"WHERE ZohoId IS NOT NULL AND LTRIM(RTRIM(ZohoId)) <> ''"
             )
-            legacy_ext = int(cursor.fetchone()[0])
+            legacy_ids = [str(r[0]) for r in cursor.fetchall()]
+            legacy_ext = len(legacy_ids)
+            loaded = (
+                spec.model._default_manager.filter(legacy_id__in=legacy_ids).count()
+                if legacy_ids
+                else 0
+            )
             sync_records = SyncRecord.objects.filter(
                 provider=SyncProvider.ZOHO_CRM,
                 content_type=ContentType.objects.get_for_model(spec.model),
+                external_id__gt="",
             ).count()
-            gap = legacy_ext - sync_records
+            gap = loaded - sync_records
             ok = gap == 0
             if not ok:
-                blockers.append(f"{spec.table}.ZohoId: {gap} external id(s) without a SyncRecord")
+                blockers.append(
+                    f"{spec.table}.ZohoId: continuity gap {gap} "
+                    f"({loaded} loaded with a ZohoId vs {sync_records} SyncRecord(s))"
+                )
             rows.append(
                 (
                     f"{spec.table}.ZohoId",
                     legacy_ext,
+                    loaded,
                     sync_records,
                     gap,
                     "OK" if ok else "BLOCKER",
                 )
             )
 
-        header = ("zoho source", "legacy ext id", "sync records", "gap", "status")
+        header = ("zoho source", "legacy ext id", "loaded", "sync records", "gap", "status")
         self.stdout.write("\n\nZoho external-ID continuity:\n")
         self.stdout.write(render_table(header, rows))
         return blockers

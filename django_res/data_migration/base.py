@@ -32,6 +32,16 @@ class LoadReport:
     duration_s: float = 0.0
 
 
+def legacy_datetime_literal(value: datetime) -> str:
+    """Format a parsed `--since` datetime as a SQL Server literal.
+
+    Whole-second precision; the value is a validated `datetime`, not user SQL.
+    Shared by every loader that threads `--since` into an inline ``WHERE`` so
+    the literal format can't drift between implementations.
+    """
+    return value.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 @runtime_checkable
 class Loader(Protocol):
     """Structural contract the registry and `loadlegacy` rely on.
@@ -80,10 +90,7 @@ class BaseLoader:
     def _apply_since(self, query: str) -> str:
         if not self.since:
             return query
-        # since is a validated datetime, formatted to SQL Server's literal
-        # format — not user-supplied SQL.
-        literal = self.since.strftime("%Y-%m-%dT%H:%M:%S")
-        clause = f"{self.since_column} > '{literal}'"
+        clause = f"{self.since_column} > '{legacy_datetime_literal(self.since)}'"
         if " where " in query.lower():
             return f"{query} AND {clause}"
         return f"{query} WHERE {clause}"

@@ -77,13 +77,20 @@ The `--integrations` flag adds, after the main table:
 
 - **Zoho external-ID continuity** (enforced): per source table
   (`VillaMaster`, `VillaContact`, `VillaEnquire`, `VillaQuotationMaster`,
-  `VillaBooking`), the count of non-blank legacy `ZohoId`s vs the count of
-  backfilled `SyncRecord(provider=ZOHO_CRM)` rows for that model. A non-zero
-  gap is a **blocker** (the command exits non-zero): an external id with no
-  `SyncRecord` would duplicate on first push. Cutover must not proceed until
-  the gap is zero, or the operator records it as an accepted loss with a
-  written justification (e.g. "the 12 archived bookings with stale Zoho ids
-  predate the current Zoho account and would 404 on push anyway").
+  `VillaBooking`), the count of backfilled `SyncRecord(provider=ZOHO_CRM)` rows
+  (with a non-blank `external_id`) vs the number of **loaded** rows that carried
+  a legacy `ZohoId` — i.e. legacy rows whose `ZohoId` is non-blank *and* whose
+  `legacy_id` resolves to an imported Django row. The raw legacy `ZohoId` count
+  is shown alongside (`legacy ext id`) so you can see how many were not imported,
+  but the gap is computed against `loaded`: a `ZohoId` on a row the loaders
+  intentionally dropped (soft-deleted, empty `Name`, unresolvable FK) has no push
+  target, so it is *not* a continuity failure and does not block. A non-zero gap
+  is a **blocker** (the command exits non-zero): a loaded row whose `ZohoId` has
+  no `SyncRecord` would duplicate on first push. Cutover must not proceed until
+  the gap is zero, or the operator records it as an accepted loss with a written
+  justification. (The check compares counts, not values; a full `loadlegacy
+  --all` refreshes every `external_id`, but a value drifted on a delta-only
+  `--since` pass whose `UpdatedAt` did not advance is not caught here.)
 - **WordPress surface** (informational only): legacy `VillaBooking.BookingUrl`
   and `VillaSyncDetail` volume. The WordPress backfill is **not built yet** —
   multi-site fan-out needs a `provider_instance` field on `SyncRecord` that

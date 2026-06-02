@@ -43,7 +43,7 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from accounts.models import Contact
-from data_migration.base import LoadReport
+from data_migration.base import LoadReport, legacy_datetime_literal
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
@@ -87,9 +87,7 @@ class SyncRecordZohoLoader:
         cols = "Id, ZohoId, CreatedAt, UpdatedAt" if spec.has_timestamps else "Id, ZohoId"
         query = f"SELECT {cols} FROM {spec.table}"
         if self.since and spec.has_timestamps:
-            # since is a validated datetime, not user SQL.
-            literal = self.since.strftime("%Y-%m-%dT%H:%M:%S")
-            query = f"{query} WHERE UpdatedAt > '{literal}'"
+            query = f"{query} WHERE UpdatedAt > '{legacy_datetime_literal(self.since)}'"
         return query
 
     def load(self) -> LoadReport:

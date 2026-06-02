@@ -6,7 +6,7 @@ dependency-aware orchestration harder to reason about.
 
 from __future__ import annotations
 
-from data_migration.base import BaseLoader
+from data_migration.base import Loader
 from data_migration.loaders.bookings import BookingLoader, PaymentLoader
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.finance import (
@@ -15,6 +15,7 @@ from data_migration.loaders.finance import (
     QuotationLineLoader,
     QuotationLoader,
 )
+from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.loaders.lookups import (
     CurrencyLoader,
     FeatureCategoryLoader,
@@ -52,7 +53,7 @@ from data_migration.loaders.reservations import (
     PropertyContactAssignmentLoader,
 )
 
-LOADERS: dict[str, type[BaseLoader]] = {
+LOADERS: dict[str, type[Loader]] = {
     CountryLoader.name: CountryLoader,
     RegionLoader.name: RegionLoader,
     CurrencyLoader.name: CurrencyLoader,
@@ -85,4 +86,8 @@ LOADERS: dict[str, type[BaseLoader]] = {
     QuotationLineLoader.name: QuotationLineLoader,
     BookingLoader.name: BookingLoader,
     PaymentLoader.name: PaymentLoader,
+    # External-ID backfill — registered last so every domain target row
+    # (Property/Contact/Enquiry/Quotation/Booking) already carries its
+    # legacy_id when SyncRecord rows are written.
+    SyncRecordZohoLoader.name: SyncRecordZohoLoader,
 }

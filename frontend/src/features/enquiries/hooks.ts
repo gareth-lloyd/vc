@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys, type EnquiryId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
+import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import {
   assignEnquiry,
   closeEnquiry,
   convertEnquiry,
   createEnquiry,
   createEnquiryNote,
+  enquiryStatusCountsQuery,
   fetchEnquiries,
-  fetchEnquiryStatusCounts,
   fetchEnquiry,
   fetchEnquiryActivity,
   fetchEnquiryNotes,
@@ -37,9 +38,10 @@ export function useEnquiries(filters: EnquiryFilters) {
 }
 
 export function useEnquiryStatusCounts(filters: EnquiryFilters) {
+  const query = enquiryStatusCountsQuery(filters);
   return useQuery({
-    queryKey: queryKeys.enquiries.statusCounts(filters),
-    queryFn: () => fetchEnquiryStatusCounts(filters),
+    queryKey: queryKeys.enquiries.statusCounts(query),
+    queryFn: () => fetchStatusCounts("/enquiries/status-counts", query),
   });
 }
 
@@ -59,6 +61,9 @@ function onDetailUpdated(queryClient: QueryClient, enquiryId: EnquiryId, updated
   queryClient.setQueryData(queryKeys.enquiries.detail(enquiryId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.activity(enquiryId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
+  // The status tab-bar badges count by status, so any transition (incl. a
+  // Kanban move) restains them.
+  queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
 

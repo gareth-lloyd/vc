@@ -1,6 +1,5 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
-import { fetchStatusCounts, type StatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import type { EnquiryId } from "@/lib/query/keys";
 import {
@@ -37,14 +36,16 @@ export async function fetchEnquiries(filters: EnquiryFilters): Promise<Paginated
   return enquiryListResponseSchema.parse(data);
 }
 
-export function fetchEnquiryStatusCounts(filters: EnquiryFilters): Promise<StatusCounts> {
-  // Status & paging don't scope the counts (the bar tots every status within
-  // the other filters); strip them so the cache key stays stable.
+// The query that scopes the status counts: every filter EXCEPT the ones that
+// don't change the totals (status/page/ordering). Exported so the hook keys on
+// this stripped shape — keying on the full filters refetches identical counts
+// on every chip click, page, or sort.
+export function enquiryStatusCountsQuery(filters: EnquiryFilters): QueryParams {
   const query = toQuery(filters);
   delete query.status;
   delete query.page;
   delete query.ordering;
-  return fetchStatusCounts("/enquiries/status-counts", query);
+  return query;
 }
 
 export async function fetchEnquiry(id: EnquiryId): Promise<EnquiryDetail> {

@@ -1,13 +1,22 @@
+import { cva } from "class-variance-authority";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
-import { STAGE_TOTAL_PIPS, stageForStatus, type StageTone } from "./stageMap";
+import { STAGE_TOTAL_PIPS, stageForStatus } from "./stageMap";
 
-const TONE_FILLED: Record<StageTone, string> = {
-  neutral: "bg-muted-foreground",
-  active: "bg-foreground",
-  complete: "bg-success",
-  failed: "bg-destructive",
-};
+const pipVariants = cva("h-1.5 w-4 rounded-full", {
+  variants: {
+    fill: {
+      muted: "bg-muted",
+      neutral: "bg-muted-foreground",
+      active: "bg-foreground",
+      complete: "bg-success",
+      failed: "bg-destructive",
+    },
+  },
+  defaultVariants: {
+    fill: "muted",
+  },
+});
 
 export function StagePips({ status, className }: { status: string; className?: string }) {
   const { t } = useTranslation();
@@ -24,7 +33,7 @@ export function StagePips({ status, className }: { status: string; className?: s
             key={i}
             data-pip="true"
             data-pip-filled={isFilled ? "true" : "false"}
-            className={cn("h-1.5 w-4 rounded-full", isFilled ? TONE_FILLED[tone] : "bg-muted")}
+            className={pipVariants({ fill: isFilled ? tone : "muted" })}
           />
         );
       })}

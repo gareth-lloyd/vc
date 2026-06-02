@@ -50,7 +50,6 @@ class RateCardSerializer(serializers.ModelSerializer[RateCard]):
             "description",
             "min_nights",
             "max_nights",
-            "changeover_weekday",
             "sort_order",
             "is_active",
             "notes",

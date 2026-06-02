@@ -29,6 +29,7 @@ import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
 import { PropertyThumbnail } from "./components/PropertyThumbnail";
+import { ChangeoverShiftedNote } from "./components/ChangeoverShiftedNote";
 import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
 import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import {
@@ -105,6 +106,7 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
             </TableCell>
             <TableCell>
               {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
+              <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
             </TableCell>
             <TableCell>
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}

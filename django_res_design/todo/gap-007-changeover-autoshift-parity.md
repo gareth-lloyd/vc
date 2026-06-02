@@ -70,15 +70,42 @@ Reintroduce the auto-shift. Chosen semantics:
 
 ✅ Added `ChangeoverService.required_weekday` + `ChangeoverService.align_forward`
 (pure shift, night-count preserving) in `properties/services/changeover.py`.
-`PricingEngine.quote()` resolves the allowed weekday set (card `changeover_weekday`
-if the active cards agree on one, else the property's effective day) and aligns
-`date_from`/`date_to` before the night loop. `Quote.changeover_shifted_from`
-(+ breakdown key) surfaces the original arrival. `_validate_card_against_stay`'s
-existing `changeover_weekday` branch now runs on the shifted date as the
-genuine-conflict backstop. Tests in `pricing/tests/test_engine.py`
-(property-rule shift, card-weekday shift, no-shift-when-valid,
-no-shift-when-no-rules, genuine card-vs-property conflict). Docs: `04-pricing.md`
-step 1a, `09-departures.md`, `10-decisions.md`.
+`PricingEngine.quote()` aligns `date_from`/`date_to` before the night loop and
+surfaces the original arrival via `Quote.changeover_shifted_from` (+ breakdown
+key).
+
+### Follow-up: property-only, always-shift (final design)
+
+The first cut carried two changeover sources (per-card `RateCard.changeover_weekday`
+reconciled with the property day) *and* a hard-reject gate
+(`ChangeoverService.validate_arrival` + `allow_changeover_override`) that
+contradicted the silent shift. Per the user's goal — **"get a quote with a
+visible 'we moved your dates' note"** — these were collapsed:
+
+- **Property is the single source.** `RateCard.changeover_weekday` was retired
+  (model field + serializer + `0009_remove_ratecard_changeover_weekday`; it was a
+  rebuild invention, null everywhere). `PricingEngine.quote()` resolves the
+  allowed weekday from `ChangeoverService.required_weekday(property, date_from)`
+  only. The card backstop in `_validate_card_against_stay` is gone.
+- **Always shift, never reject.** `validate_arrival` and the
+  `allow_changeover_override` escape were deleted from the changeover service, the
+  quotation/booking services, and the `:convert` endpoint. An off-changeover
+  arrival is always shifted and surfaced; there is no way to force one.
+- **Shifted dates persisted everywhere.** `QuotationService.price_line` writes
+  the shifted `date_from`/`date_to` back to the line; the hold is placed on the
+  shifted dates; the booking inherits them. `QuotationLineSerializer` exposes a
+  read-only `changeover_shifted_from` (from the snapshot) for the FE note.
+- **Breaking v1 API change** (drop `changeover_weekday` from the rate-card
+  surface; drop `allow_changeover_override` from `:convert`) — needs the paired
+  FE PR.
+
+Tests: `pricing/tests/test_engine.py` (property-rule shift, two-card regression,
+no-shift-when-valid, no-shift-when-no-rules);
+`properties/tests/test_changeover_service.py` (`effective_day` /
+`required_weekday` / `align_forward`); `reservations/tests/` quotation-service
+(line + hold carry shifted dates), booking-service (inherits line dates),
+api-quotations (convert never 422s; builder line shifts + surfaces). Docs:
+`04-pricing.md`, `09-departures.md`, `10-decisions.md`.
 
 ## Dependencies
 

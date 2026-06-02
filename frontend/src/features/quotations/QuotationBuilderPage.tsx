@@ -72,8 +72,15 @@ export function QuotationBuilderPage() {
         property_id: option.property_id,
         property_name: option.property_name,
         hero_image_url: option.hero_image_url ?? null,
+        // Persist the operator's requested stay; the backend shifts a
+        // non-conforming arrival to the changeover day on save and records the
+        // move (GAP-007), so it stays the single source of the shift.
         date_from: lastCriteria.date_from,
         date_to: lastCriteria.date_to,
+        // Display the dates the engine actually priced — possibly shifted
+        // forward. The note fires when they differ from the requested dates.
+        priced_date_from: option.date_from ?? lastCriteria.date_from,
+        priced_date_to: option.date_to ?? lastCriteria.date_to,
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         total: option.total ?? null,

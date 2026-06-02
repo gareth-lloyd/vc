@@ -12,7 +12,6 @@ from typing import Any
 from django.db.models import Q
 
 from core.exceptions import (
-    ChangeoverViolation,
     DiscountNotApplicable,
     MinNightsNotMet,
     NoRateAvailable,
@@ -75,17 +74,12 @@ class PricingEngine:
             )
 
         # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
-        # arrival forward to the next valid changeover weekday rather than
-        # rejecting it. Card-level `changeover_weekday` takes precedence when
-        # the active cards agree on a single day; otherwise the property's
-        # effective changeover day (ChangeOverRule window → settings chain)
-        # decides. An empty set / `any` means no shift.
-        card_weekdays = {c.changeover_weekday for c in cards if c.changeover_weekday is not None}
-        if len(card_weekdays) == 1:
-            allowed_weekdays = card_weekdays
-        else:
-            property_weekday = ChangeoverService.required_weekday(property, date_from)
-            allowed_weekdays = {property_weekday} if property_weekday is not None else set()
+        # arrival forward to the next valid changeover day rather than
+        # rejecting it. The property's effective changeover day (a
+        # ChangeOverRule window, else the settings chain) is the single source
+        # of truth; `any` / unconstrained means no shift.
+        property_weekday = ChangeoverService.required_weekday(property, date_from)
+        allowed_weekdays = {property_weekday} if property_weekday is not None else set()
         date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
             allowed_weekdays, date_from, date_to
         )
@@ -156,12 +150,7 @@ class PricingEngine:
             None,
         )
         if winning_card is not None:
-            cls._validate_card_against_stay(
-                winning_card,
-                date_from=date_from,
-                date_to=date_to,
-                nights=len(stay_nights),
-            )
+            cls._validate_card_against_stay(winning_card, nights=len(stay_nights))
 
         rate_subtotal = sum((ln.nightly for ln in lines), Decimal("0")).quantize(Decimal("0.01"))
 
@@ -300,13 +289,7 @@ class PricingEngine:
         return plan
 
     @staticmethod
-    def _validate_card_against_stay(
-        card: RateCard,
-        *,
-        date_from: date,
-        date_to: date,
-        nights: int,
-    ) -> None:
+    def _validate_card_against_stay(card: RateCard, *, nights: int) -> None:
         if nights < card.min_nights:
             raise MinNightsNotMet(
                 f"RateCard {card.pk} requires min_nights={card.min_nights}, got {nights}"
@@ -314,11 +297,6 @@ class PricingEngine:
         if card.max_nights is not None and nights > card.max_nights:
             raise MinNightsNotMet(
                 f"RateCard {card.pk} caps max_nights={card.max_nights}, got {nights}"
-            )
-        if card.changeover_weekday is not None and date_from.weekday() != card.changeover_weekday:
-            raise ChangeoverViolation(
-                f"RateCard {card.pk} requires changeover on weekday "
-                f"{card.changeover_weekday}, got {date_from.weekday()}"
             )
 
     @staticmethod

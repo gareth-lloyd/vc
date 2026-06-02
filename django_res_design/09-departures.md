@@ -62,14 +62,14 @@ Disposition column legend:
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
 | `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container (name, notes, inclusion, currency, envelope dates) |
-| — (legacy had no equivalent) | `pricing.RateCard` | Added | Operator-mental-unit: name, min/max nights, changeover, discount profile. Sits between Plan and Rule. |
+| — (legacy had no equivalent) | `pricing.RateCard` | Added | Operator-mental-unit: name, min/max nights, discount profile. Sits between Plan and Rule. (Changeover is property-level, not card-level — GAP-007.) |
 | `VillaSeasonRate` | `pricing.RateRule` | Replaced | Price row with date range + party range + priority; one card has many rules (one per band / disjoint sub-range) |
 | `VillaSeasonDate` | Folded into `RateRule.date_from/date_to` | Merged | Production data showed ~1.0 ranges per season; separate table was vestigial |
 | `VillaOccupencyPrice` | Folded into sibling `RateRule` rows on the same card | Merged | Only 3% of legacy rates used banding; sibling rules with disjoint party ranges express the same shape |
 | `VillaWebsitePricing`, `VillaMapping` | `pricing.VillaPricingSummary` (signal-rebuilt cache, named explicitly) | Replaced | Honest about being a cache; single owner |
 | `VillaCurrency` | `pricing.Currency` | Renamed | — |
 | `ChangeOverDays` | `pricing.ChangeOverRule` (per-property, date-bounded) + enforcement in service | Replaced | Was unused as a constraint in legacy |
-| Legacy changeover auto-shift (`ResService.cs:2028-2041`, silently advanced arrival to next valid weekday) | `ChangeoverService.align_forward` called from `PricingEngine.quote()` (step 1a) | Reinstated | The rebuild first hard-rejected off-weekday arrivals (`ChangeoverViolation`); GAP-007 restores the nudge, preserving the night count and surfacing `Quote.changeover_shifted_from`. |
+| Legacy changeover auto-shift (`ResService.cs:2028-2041`, silently advanced arrival to next valid weekday) | `ChangeoverService.align_forward` called from `PricingEngine.quote()` (step 1a) | Reinstated | The rebuild first hard-rejected off-weekday arrivals (`ChangeoverViolation`); GAP-007 restores the nudge as the **single** mechanism — property-level changeover only, always shift + surface (`Quote.changeover_shifted_from`), never reject. The hard-reject gate and override flag were removed; the shifted dates are persisted onto the line, hold, and booking. |
 | `CalculationType` | TextChoices on `RateRule` and `Extra.calc` | Replaced | Fixed enum |
 | `sp_getQuotationData` (500+ LOC stored proc) | `pricing.services.PricingEngine.quote()` returning `Quote` dataclass | Replaced | Testable, composable, snapshotable |
 | Legacy no-rate-for-night default (`SettingNightlyPrice × 7`, `ResService.cs:2150-2160`) | `pricing.RatePlan.fallback_nightly` (opt-in, per-plan/currency) + engine synthetic fallback line | Reinstated (opt-in) | The rebuild first dropped this (raised `NoRateAvailable`); GAP-008 restores it as an explicit field rather than a silent property-price echo. `NULL` = keep the hard error. |

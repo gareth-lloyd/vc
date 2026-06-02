@@ -115,7 +115,7 @@ External-platform IDs for a property. Fields: `property` (FK), `channel` (enum: 
 "Rent as alternative" or "Rent together" link to a related property. Fields: `property`, `alternative_property`, `relationship_type` (enum: `alternative` / `rent_together`), `order`. Original `VillaRentalAlternative`.
 
 ### ChangeOverRule
-Per-property bounded set of allowed check-in weekdays. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Backed by `pricing.ChangeOverRule` (lives in the pricing app, FK to `Property`). Fields: `property` (FK), `weekday` (0=Mon ... 6=Sun), `effective_from`, `effective_to` (nullable for open-ended), `notes`. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day) and `RateCard.changeover_weekday` (per-card override that supersedes the property rule when set). Operator-facing CRUD at `/properties/{id}/change-over-rules` and the flat alias `/change-over-rules/{id}`; see reconciliation issue #30.
+Per-property bounded set of allowed check-in weekdays. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Backed by `pricing.ChangeOverRule` (lives in the pricing app, FK to `Property`). Fields: `property` (FK), `weekday` (0=Mon ... 6=Sun), `effective_from`, `effective_to` (nullable for open-ended), `notes`. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day). Changeover is property-level only — there is no per-card override (GAP-007 retired `RateCard.changeover_weekday`). Operator-facing CRUD at `/properties/{id}/change-over-rules` and the flat alias `/change-over-rules/{id}`; see reconciliation issue #30.
 
 ---
 
@@ -131,9 +131,9 @@ Named pricing period for a property. Original `VillaSeason`. Holds metadata only
 Fields: `property` (FK), `name`, `notes`, `inclusion` (free amenities text), `currency` (FK), `price_basis` (`gross` / `net`), `effective_from`, `effective_to` (nullable), `is_active`. `carried_rates` and `parent_season` are out of scope unless required by a real workflow — defer.
 
 ### RateCard
-The operator's editable unit within a season — what they think of as "the summer week price". Attaches min/max nights, changeover restriction, and discount rules. Original `VillaSeasonRate` (the "card-level" parts).
+The operator's editable unit within a season — what they think of as "the summer week price". Attaches min/max nights and discount rules. Original `VillaSeasonRate` (the "card-level" parts). Changeover is property-level, not card-level (GAP-007).
 
-Fields: `season` (FK), `name`, `description`, `min_nights`, `max_nights` (nullable), `changeover_weekday` (nullable; overrides property changeover rule), `sort_order`, `is_active`, `notes`.
+Fields: `season` (FK), `name`, `description`, `min_nights`, `max_nights` (nullable), `sort_order`, `is_active`, `notes`.
 
 The card has **no date range or price of its own** — those live on its child `RateRule` rows.
 

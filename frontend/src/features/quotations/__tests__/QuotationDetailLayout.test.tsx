@@ -83,8 +83,9 @@ describe("QuotationDetailLayout", () => {
               id: 33,
               quotation: 7,
               property: 12,
-              date_from: "2026-07-01",
-              date_to: "2026-07-08",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              changeover_shifted_from: "2026-07-01",
               adults: 2,
               children: 1,
               total: "1234.50",
@@ -100,6 +101,11 @@ describe("QuotationDetailLayout", () => {
     expect(await screen.findByText("#33")).toBeInTheDocument();
     expect(screen.getByText("#12")).toBeInTheDocument();
     expect(screen.getByText(/€1,234\.50/)).toBeInTheDocument();
+    // The arrival was shifted to the changeover day — the detail line table
+    // surfaces the same "we moved your dates" note as the builder/convert.
+    expect(
+      screen.getByText(/arrival moved from .+ to the property's changeover day/i),
+    ).toBeInTheDocument();
   });
 
   it("disables action buttons when the user lacks the reservations role", async () => {

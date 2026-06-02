@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 import pytest
 
-from core.exceptions import ChangeoverViolation
 from properties.enums import PrefilledChangeOverDay
 from properties.models.settings import PropertySettings
 from reservations.enums import BookingGuestRole
@@ -50,26 +49,24 @@ def test_create_from_quotation_line__is_idempotent(
 
 
 @pytest.mark.django_db
-def test_create_from_quotation_line_enforces_changeover(
+def test_create_from_quotation_line_inherits_line_dates(
     quotation_line: QuotationLine,
     terms: TermsVersion,
 ) -> None:
-    """A quote can pre-date a ChangeOverRule; confirmation re-validates."""
+    """Confirmation never re-validates changeover (GAP-007): any shift already
+    happened at pricing time and was persisted onto the line, so the booking
+    inherits the line's dates verbatim — even an off-changeover arrival."""
     PropertySettings.objects.create(
         property=quotation_line.property,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    # quotation_line fixture arrives 2026-06-10 (Wednesday).
-    with pytest.raises(ChangeoverViolation):
-        BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
-    assert not Booking.objects.filter(quotation_line=quotation_line).exists()
+    # quotation_line fixture arrives 2026-06-10 (Wednesday); the line was never
+    # repriced, so its dates stand as-is and the booking copies them.
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
-    booking = BookingService.create_from_quotation_line(
-        quotation_line,
-        terms_version=terms,
-        allow_changeover_override=True,
-    )
     assert booking.pk is not None
+    assert booking.date_from == quotation_line.date_from
+    assert booking.date_to == quotation_line.date_to
 
 
 @pytest.mark.django_db

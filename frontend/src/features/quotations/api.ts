@@ -73,7 +73,6 @@ interface PricingBulkResponse {
     hero_image_url?: string | null;
     date_from?: string;
     date_to?: string;
-    changeover_shifted_from?: string | null;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -150,7 +149,6 @@ export async function searchQuoteOptions(
       rate_subtotal: q.rate_subtotal ?? null,
       date_from: q.date_from ?? null,
       date_to: q.date_to ?? null,
-      changeover_shifted_from: q.changeover_shifted_from ?? null,
       error_code: q.error_code ?? null,
       error_detail: q.error_detail ?? null,
       breakdown: q,

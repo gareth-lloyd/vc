@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { useConvertQuotation, useQuotationLines } from "../hooks";
+import { ChangeoverShiftedNote } from "./ChangeoverShiftedNote";
 import type { QuotationDetail, QuotationLine } from "../schemas";
 
 interface Props {
@@ -145,13 +146,10 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
                           })}{" "}
                           · {formatMoney(line.total ?? null, quotation.currency ?? null)}
                         </span>
-                        {line.changeover_shifted_from ? (
-                          <span className="text-muted-foreground block text-xs italic">
-                            {t("detail.dialogs.convert.changeover_shifted", {
-                              from: formatDate(line.changeover_shifted_from),
-                            })}
-                          </span>
-                        ) : null}
+                        <ChangeoverShiftedNote
+                          from={line.changeover_shifted_from}
+                          className="italic"
+                        />
                       </span>
                     </Label>
                   );

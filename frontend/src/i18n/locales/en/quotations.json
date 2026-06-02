@@ -14,6 +14,9 @@
     "override_reason_required": "A reason is required when overriding the price",
     "manual_total_required": "A manual line needs a total greater than zero"
   },
+  "notes": {
+    "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day"
+  },
   "list": {
     "title": "Quotations",
     "breadcrumb_root": "Operations",
@@ -174,7 +177,6 @@
           "card": "Card",
           "bank_transfer": "Bank transfer"
         },
-        "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day",
         "cancel": "Cancel",
         "confirm": "Convert to booking",
         "converting": "Converting…",
@@ -279,7 +281,6 @@
         "actions": "Actions"
       },
       "thumbnail_alt": "{{name}} thumbnail",
-      "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day",
       "remove": "Remove"
     },
     "rail": {

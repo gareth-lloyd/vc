@@ -105,10 +105,10 @@ export const quoteOptionSchema = z.object({
   nights: z.number().optional(),
   // The dates the engine actually priced — may differ from the requested
   // criteria when the arrival was nudged forward to the changeover day
-  // (GAP-007). `changeover_shifted_from` carries the original arrival.
+  // (GAP-007). The builder displays these and flags the shift by comparing
+  // them against the requested dates.
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),
-  changeover_shifted_from: z.string().nullable().optional(),
   error_code: z.string().nullable().optional(),
   error_detail: z.string().nullable().optional(),
   breakdown: z.unknown().optional(),
@@ -122,11 +122,18 @@ export interface StagedLine {
   property_id: number;
   property_name: string;
   hero_image_url: string | null;
+  // The operator's requested stay — what we POST. The backend is the single
+  // changeover shifter (GAP-007): it nudges a non-conforming arrival forward
+  // on save and records the move on the line, so we send what was requested
+  // rather than pre-shifting here.
   date_from: string;
   date_to: string;
-  // Original arrival if the engine shifted the stay to the changeover day
-  // (GAP-007); null when the priced dates match what was requested.
-  changeover_shifted_from: string | null;
+  // The dates the engine actually priced — equal to the requested dates unless
+  // the arrival was shifted to the changeover day. Displayed in the builder so
+  // the shown dates match the shown total; the shift note fires when they
+  // differ from the requested dates.
+  priced_date_from: string;
+  priced_date_to: string;
   adults: number;
   children: number;
   total: string | number | null;

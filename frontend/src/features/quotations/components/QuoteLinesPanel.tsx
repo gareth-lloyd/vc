@@ -12,6 +12,7 @@ import {
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { PropertyThumbnail } from "./PropertyThumbnail";
+import { ChangeoverShiftedNote } from "./ChangeoverShiftedNote";
 import type { StagedLine } from "../schemas";
 
 interface Props {
@@ -59,14 +60,11 @@ export function QuoteLinesPanel({ lines, currency, onRemove }: Props) {
               </div>
             </TableCell>
             <TableCell>
-              {formatDate(line.date_from)} – {formatDate(line.date_to)}
-              {line.changeover_shifted_from ? (
-                <span className="text-muted-foreground mt-0.5 block text-xs">
-                  {t("builder.staged.changeover_shifted", {
-                    from: formatDate(line.changeover_shifted_from),
-                  })}
-                </span>
-              ) : null}
+              {formatDate(line.priced_date_from)} – {formatDate(line.priced_date_to)}
+              <ChangeoverShiftedNote
+                from={line.priced_date_from !== line.date_from ? line.date_from : null}
+                className="mt-0.5"
+              />
             </TableCell>
             <TableCell>
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}

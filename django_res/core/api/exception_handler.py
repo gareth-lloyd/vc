@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models.deletion import ProtectedError, RestrictedError
 from rest_framework import exceptions, status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_default_handler
@@ -40,6 +41,19 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
                 "field_errors": {},
             },
             status=getattr(exc, "status_code", status.HTTP_409_CONFLICT),
+        )
+
+    # A delete blocked by an on_delete=PROTECT / RESTRICT foreign key is a
+    # "state refused this operation" conflict, not a server fault. DRF leaves
+    # these DB-layer exceptions unhandled (→ 500), so map them to 409 here.
+    if isinstance(exc, (ProtectedError, RestrictedError)):
+        return Response(
+            {
+                "code": "protected",
+                "detail": str(exc) or "Cannot delete: record is still referenced.",
+                "field_errors": {},
+            },
+            status=status.HTTP_409_CONFLICT,
         )
 
     response = drf_default_handler(exc, context)

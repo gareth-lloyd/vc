@@ -123,3 +123,34 @@ def test_invite_portal_returns_501(api_client: APIClient, staff: User, contact: 
     response = api_client.post(f"/api/v1/contacts/{contact.pk}:invite-portal")
 
     assert response.status_code == 501
+
+
+@pytest.mark.django_db
+def test_delete_contact_referenced_by_protected_fk_returns_409(
+    api_client: APIClient, staff: User, contact: Contact
+) -> None:
+    # A contact assigned to a property is referenced through a PROTECT FK;
+    # deleting it must surface a clean 409, not an uncaught 500.
+    from properties.factories import PropertyContactAssignmentFactory
+
+    PropertyContactAssignmentFactory(contact=contact)
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/contacts/{contact.pk}")
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "protected"
+    assert Contact.objects.filter(pk=contact.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_unreferenced_contact_succeeds(
+    api_client: APIClient, staff: User, contact: Contact
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/contacts/{contact.pk}")
+
+    assert response.status_code == 204
+    assert not Contact.objects.filter(pk=contact.pk).exists()

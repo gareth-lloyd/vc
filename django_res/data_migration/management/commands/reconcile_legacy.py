@@ -30,12 +30,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
 
 from accounts.models import Contact, User
 from accounts.models.contact import ContactEmail, ContactPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
+from data_migration.loaders.integrations import SyncRecordZohoLoader
+from integrations.enums import SyncProvider
+from integrations.models import SyncRecord
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
 from pricing.models.rate import RatePlan, RateRule
@@ -164,34 +168,126 @@ _CHECKS: list[_Check] = [
 class Command(BaseCommand):
     help = "Compare legacy row counts vs loaded Django row counts."
 
+    def add_arguments(self, parser: Any) -> None:
+        parser.add_argument(
+            "--integrations",
+            action="store_true",
+            help=(
+                "Also check external-ID continuity: legacy Zoho ids vs "
+                "backfilled SyncRecord rows (a blocker if any are missing), "
+                "plus an informational WordPress surface."
+            ),
+        )
+
     def handle(self, *args: Any, **options: Any) -> None:
-        rows: list[tuple[str, int, int, int, int, str]] = []
         blockers: list[str] = []
         with legacy_cursor() as cursor:
-            for check in _CHECKS:
-                cursor.execute(check.legacy_query)
-                legacy_count = int(cursor.fetchone()[0])
-                loaded_count = check.model._default_manager.count()
-                gap = legacy_count - loaded_count
-                ok = gap == check.expected_gap
-                if not ok:
-                    blockers.append(f"{check.label}: gap {gap} != expected {check.expected_gap}")
-                rows.append(
-                    (
-                        check.label,
-                        legacy_count,
-                        loaded_count,
-                        gap,
-                        check.expected_gap,
-                        "OK" if ok else "BLOCKER",
-                    )
-                )
-
-        header = ("table", "legacy", "loaded", "gap", "expected", "status")
-        self.stdout.write(render_table(header, rows))
+            blockers += self._row_count_section(cursor)
+            if options["integrations"]:
+                blockers += self._zoho_continuity_section(cursor)
+                self._wordpress_info_section(cursor)
 
         if blockers:
             raise CommandError(
                 f"{len(blockers)} reconcile blocker(s) — cutover must not proceed:\n  "
                 + "\n  ".join(blockers)
             )
+
+    def _row_count_section(self, cursor: Any) -> list[str]:
+        """Main legacy-vs-loaded row-count table. Returns blocker messages."""
+        rows: list[tuple[str, int, int, int, int, str]] = []
+        blockers: list[str] = []
+        for check in _CHECKS:
+            cursor.execute(check.legacy_query)
+            legacy_count = int(cursor.fetchone()[0])
+            loaded_count = check.model._default_manager.count()
+            gap = legacy_count - loaded_count
+            ok = gap == check.expected_gap
+            if not ok:
+                blockers.append(f"{check.label}: gap {gap} != expected {check.expected_gap}")
+            rows.append(
+                (
+                    check.label,
+                    legacy_count,
+                    loaded_count,
+                    gap,
+                    check.expected_gap,
+                    "OK" if ok else "BLOCKER",
+                )
+            )
+
+        header = ("table", "legacy", "loaded", "gap", "expected", "status")
+        self.stdout.write(render_table(header, rows))
+        return blockers
+
+    def _zoho_continuity_section(self, cursor: Any) -> list[str]:
+        """Per Zoho source: non-blank legacy ZohoId vs backfilled SyncRecord.
+
+        A gap means a legacy external id has no SyncRecord — the first
+        post-cutover push would mint a duplicate Zoho record, so it blocks.
+        """
+        rows: list[tuple[str, int, int, int, str]] = []
+        blockers: list[str] = []
+        for spec in SyncRecordZohoLoader.SPECS:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {spec.table} "
+                f"WHERE ZohoId IS NOT NULL AND LTRIM(RTRIM(ZohoId)) <> ''"
+            )
+            legacy_ext = int(cursor.fetchone()[0])
+            sync_records = SyncRecord.objects.filter(
+                provider=SyncProvider.ZOHO_CRM,
+                content_type=ContentType.objects.get_for_model(spec.model),
+            ).count()
+            gap = legacy_ext - sync_records
+            ok = gap == 0
+            if not ok:
+                blockers.append(f"{spec.table}.ZohoId: {gap} external id(s) without a SyncRecord")
+            rows.append(
+                (
+                    f"{spec.table}.ZohoId",
+                    legacy_ext,
+                    sync_records,
+                    gap,
+                    "OK" if ok else "BLOCKER",
+                )
+            )
+
+        header = ("zoho source", "legacy ext id", "sync records", "gap", "status")
+        self.stdout.write("\n\nZoho external-ID continuity:\n")
+        self.stdout.write(render_table(header, rows))
+        return blockers
+
+    def _wordpress_info_section(self, cursor: Any) -> None:
+        """Informational WordPress surface — never blocks.
+
+        The WordPress SyncRecord backfill is not built yet (it needs a
+        `provider_instance` model change — see the audit), so this reports the
+        legacy WP external-id volume an operator must account for rather than
+        asserting continuity and printing a false "all clear".
+        """
+        rows: list[tuple[str, str, str]] = []
+
+        def _count(label: str, query: str) -> None:
+            try:
+                cursor.execute(query)
+                rows.append((label, str(int(cursor.fetchone()[0])), "INFO"))
+            except Exception as exc:
+                # Defensive: a dry-run dump may predate VillaSyncDetail. This
+                # section is informational, so degrade to "n/a" rather than
+                # aborting the whole reconcile.
+                rows.append((label, f"n/a ({type(exc).__name__})", "INFO"))
+
+        _count(
+            "VillaBooking.BookingUrl",
+            "SELECT COUNT(*) FROM VillaBooking "
+            "WHERE BookingUrl IS NOT NULL AND LTRIM(RTRIM(BookingUrl)) <> ''",
+        )
+        _count("VillaSyncDetail (rows)", "SELECT COUNT(*) FROM VillaSyncDetail")
+        _count(
+            "VillaSyncDetail (sites)",
+            "SELECT COUNT(DISTINCT SiteId) FROM VillaSyncDetail",
+        )
+
+        header = ("wordpress source", "legacy count", "status")
+        self.stdout.write("\n\nWordPress external-ID surface (informational — loader not built):\n")
+        self.stdout.write(render_table(header, rows))

@@ -18,6 +18,9 @@ from django.core.management.base import CommandError
 
 from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
+from integrations.enums import SyncProvider
+from integrations.factories import SyncRecordFactory
+from properties.factories import PropertyFactory
 from reservations.factories import EnquiryFactory
 from reservations.models.enquiry import Enquiry
 
@@ -45,9 +48,9 @@ def _patch(monkeypatch: pytest.MonkeyPatch, checks: list[_Check], counts: list[i
     monkeypatch.setattr(reconcile_legacy, "legacy_cursor", _fake_cursor)
 
 
-def _run() -> str:
+def _run(*args: str) -> str:
     out = StringIO()
-    call_command("reconcile_legacy", stdout=out)
+    call_command("reconcile_legacy", *args, stdout=out)
     return out.getvalue()
 
 
@@ -117,6 +120,59 @@ def test_check_has_no_dead_extra_filter_field() -> None:
     # extra_filter was unused; ensure it's gone so no dead config lingers.
     field_names = {f for f in _Check.__dataclass_fields__}
     assert "extra_filter" not in field_names
+
+
+# --- --integrations flag (P0b) ---
+#
+# With _CHECKS patched to [], the cursor is driven only by the integration
+# sections: 5 Zoho-source COUNTs (one per SyncRecordZohoLoader.SPECS) then 3
+# WordPress informational COUNTs — 8 scripted values total.
+
+
+@pytest.mark.django_db
+def test_no_integration_sections_without_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch(monkeypatch, [_Check("q", Enquiry, "Enquiry")], counts=[0])
+
+    output = _run()
+
+    assert "Zoho external-ID continuity" not in output
+    assert "WordPress external-ID surface" not in output
+
+
+@pytest.mark.django_db
+def test_integrations_flag_renders_both_sections(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch(monkeypatch, [], counts=[0, 0, 0, 0, 0, 7, 12, 2])
+
+    output = _run("--integrations")
+
+    assert "Zoho external-ID continuity" in output
+    assert "VillaMaster.ZohoId" in output
+    assert "WordPress external-ID surface" in output
+    assert "VillaBooking.BookingUrl" in output
+    # WordPress counts are informational, never a blocker.
+    assert "INFO" in output
+    assert "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_zoho_id_without_sync_record_is_a_blocker(monkeypatch: pytest.MonkeyPatch) -> None:
+    # VillaMaster has 3 non-blank ZohoIds but no SyncRecord rows exist.
+    _patch(monkeypatch, [], counts=[3, 0, 0, 0, 0, 0, 0, 0])
+
+    with pytest.raises(CommandError, match=r"VillaMaster\.ZohoId: 3 external id"):
+        _run("--integrations")
+
+
+@pytest.mark.django_db
+def test_zoho_continuity_ok_when_sync_record_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    prop = PropertyFactory()
+    SyncRecordFactory(target=prop, provider=SyncProvider.ZOHO_CRM)
+    # VillaMaster legacy ext-id count 1 matches the one SyncRecord → gap 0.
+    _patch(monkeypatch, [], counts=[1, 0, 0, 0, 0, 0, 0, 0])
+
+    output = _run("--integrations")
+
+    assert "BLOCKER" not in output
 
 
 def test_documented_expected_gaps_are_encoded() -> None:

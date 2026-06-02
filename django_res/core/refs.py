@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 # comment (migrations must not import app runtime code).
 QUOTATION_NUMBER_SEQ = "quotation_number_seq"
 
+# `Quotation`'s db_table, as a literal. `core` is the foundation layer and
+# may import no domain app (the import-linter `core`-foundation contract), so
+# the high-water sync below cannot reach for `Quotation._meta.db_table`. The
+# name is fixed by migration 0012's `OWNED BY reservations_quotation.number`.
+QUOTATION_TABLE = "reservations_quotation"
+
 
 def _now_suffix() -> str:
     return f"{int(time.time() * 1000) % 1_000_000:06d}"
@@ -96,13 +102,10 @@ def sync_quotation_sequence() -> int:
     already-imported `QVC{n}`. Idempotent: `setval` to the current max is a
     no-op on re-run. Returns the new high-water value.
     """
-    from reservations.models.quotation import Quotation
-
-    table = Quotation._meta.db_table
     with connection.cursor() as cursor:
         cursor.execute(
-            # `table` is a trusted model db_table name, not user input.
-            f"SELECT setval(%s, (SELECT COALESCE(MAX(number), 1) FROM {table}))",
+            # `QUOTATION_TABLE` is a trusted table-name literal, not user input.
+            f"SELECT setval(%s, (SELECT COALESCE(MAX(number), 1) FROM {QUOTATION_TABLE}))",
             [QUOTATION_NUMBER_SEQ],
         )
         row = cursor.fetchone()

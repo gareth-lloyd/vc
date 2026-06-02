@@ -22,6 +22,7 @@ import { MoreHorizontal } from "lucide-react";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -60,7 +61,12 @@ function CategoriesSection({ canWrite }: { canWrite: boolean }) {
       accessorKey: "name",
       header: t("tags.categories.columns.name"),
       enableSorting: false,
-      cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <span className="flex items-center gap-2 font-medium">
+          <FeatureIcon name={row.original.icon} className="text-muted-foreground size-4 shrink-0" />
+          {row.original.name}
+        </span>
+      ),
     },
     {
       accessorKey: "slug",
@@ -227,7 +233,12 @@ function FeaturesSection({ canWrite }: { canWrite: boolean }) {
       accessorKey: "name",
       header: t("tags.features.columns.name"),
       enableSorting: false,
-      cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <span className="flex items-center gap-2 font-medium">
+          <FeatureIcon name={row.original.icon} className="text-muted-foreground size-4 shrink-0" />
+          {row.original.name}
+        </span>
+      ),
     },
     {
       accessorKey: "category",

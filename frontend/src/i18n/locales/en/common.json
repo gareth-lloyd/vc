@@ -42,6 +42,14 @@
     "placeholder": "Search…",
     "aria_label": "Search"
   },
+  "iconPicker": {
+    "placeholder": "Choose an icon…",
+    "search_placeholder": "Search icons…",
+    "no_results": "No matching icons.",
+    "clear": "Clear icon",
+    "more_results_one": "{{count}} more — refine your search.",
+    "more_results_other": "{{count}} more — refine your search."
+  },
   "states": {
     "loading": "Loading…",
     "empty": "Nothing here yet."

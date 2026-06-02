@@ -13,54 +13,62 @@ from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
 _CATEGORIES = [
-    ("Outdoor", "outdoor"),
-    ("Kitchen", "kitchen"),
-    ("Bedroom", "bedroom"),
-    ("Bathroom", "bathroom"),
-    ("Entertainment", "entertainment"),
+    # (name, slug, icon) — icon is a lucide-react icon name (kebab-case).
+    ("Outdoor", "outdoor", "trees"),
+    ("Kitchen", "kitchen", "utensils-crossed"),
+    ("Bedroom", "bedroom", "bed-double"),
+    ("Bathroom", "bathroom", "bath"),
+    ("Entertainment", "entertainment", "tv"),
 ]
 
 _FEATURES = [
-    # (slug, name, category_slug, service_type)
-    ("pool", "Private pool", "outdoor", FeatureServiceType.AMENITY),
-    ("hot-tub", "Hot tub", "outdoor", FeatureServiceType.AMENITY),
-    ("bbq", "BBQ", "outdoor", FeatureServiceType.AMENITY),
-    ("garden", "Garden", "outdoor", FeatureServiceType.AMENITY),
-    ("sea-view", "Sea view", "outdoor", FeatureServiceType.AMENITY),
-    ("dishwasher", "Dishwasher", "kitchen", FeatureServiceType.AMENITY),
-    ("oven", "Oven", "kitchen", FeatureServiceType.AMENITY),
-    ("coffee-machine", "Coffee machine", "kitchen", FeatureServiceType.AMENITY),
-    ("welcome-pack", "Welcome pack", "kitchen", FeatureServiceType.INCLUDED_SERVICE),
-    ("private-chef", "Private chef", "kitchen", FeatureServiceType.PAID_ADDON),
-    ("king-bed", "King-size bed", "bedroom", FeatureServiceType.AMENITY),
-    ("cot", "Cot available", "bedroom", FeatureServiceType.AMENITY),
-    ("blackout", "Blackout blinds", "bedroom", FeatureServiceType.AMENITY),
-    ("ensuite-bathroom", "Ensuite bathroom", "bathroom", FeatureServiceType.AMENITY),
-    ("rain-shower", "Rain shower", "bathroom", FeatureServiceType.AMENITY),
-    ("bath-tub", "Bath tub", "bathroom", FeatureServiceType.AMENITY),
-    ("smart-tv", "Smart TV", "entertainment", FeatureServiceType.AMENITY),
-    ("wifi", "Wi-Fi", "entertainment", FeatureServiceType.INCLUDED_SERVICE),
-    ("games-room", "Games room", "entertainment", FeatureServiceType.AMENITY),
-    ("daily-housekeeping", "Daily housekeeping", "entertainment", FeatureServiceType.PAID_ADDON),
+    # (slug, name, category_slug, service_type, icon)
+    ("pool", "Private pool", "outdoor", FeatureServiceType.AMENITY, "waves"),
+    ("hot-tub", "Hot tub", "outdoor", FeatureServiceType.AMENITY, "droplets"),
+    ("bbq", "BBQ", "outdoor", FeatureServiceType.AMENITY, "flame"),
+    ("garden", "Garden", "outdoor", FeatureServiceType.AMENITY, "sprout"),
+    ("sea-view", "Sea view", "outdoor", FeatureServiceType.AMENITY, "sailboat"),
+    ("dishwasher", "Dishwasher", "kitchen", FeatureServiceType.AMENITY, "utensils"),
+    ("oven", "Oven", "kitchen", FeatureServiceType.AMENITY, "cooking-pot"),
+    ("coffee-machine", "Coffee machine", "kitchen", FeatureServiceType.AMENITY, "coffee"),
+    ("welcome-pack", "Welcome pack", "kitchen", FeatureServiceType.INCLUDED_SERVICE, "gift"),
+    ("private-chef", "Private chef", "kitchen", FeatureServiceType.PAID_ADDON, "chef-hat"),
+    ("king-bed", "King-size bed", "bedroom", FeatureServiceType.AMENITY, "bed-double"),
+    ("cot", "Cot available", "bedroom", FeatureServiceType.AMENITY, "baby"),
+    ("blackout", "Blackout blinds", "bedroom", FeatureServiceType.AMENITY, "blinds"),
+    ("ensuite-bathroom", "Ensuite bathroom", "bathroom", FeatureServiceType.AMENITY, "shower-head"),
+    ("rain-shower", "Rain shower", "bathroom", FeatureServiceType.AMENITY, "droplets"),
+    ("bath-tub", "Bath tub", "bathroom", FeatureServiceType.AMENITY, "bath"),
+    ("smart-tv", "Smart TV", "entertainment", FeatureServiceType.AMENITY, "tv"),
+    ("wifi", "Wi-Fi", "entertainment", FeatureServiceType.INCLUDED_SERVICE, "wifi"),
+    ("games-room", "Games room", "entertainment", FeatureServiceType.AMENITY, "gamepad-2"),
+    (
+        "daily-housekeeping",
+        "Daily housekeeping",
+        "entertainment",
+        FeatureServiceType.PAID_ADDON,
+        "sparkles",
+    ),
 ]
 
 
 def _ensure_catalogue() -> list[Feature]:
     categories: dict[str, FeatureCategory] = {}
-    for name, slug in _CATEGORIES:
+    for name, slug, icon in _CATEGORIES:
         cat, _ = FeatureCategory.objects.get_or_create(
             slug=slug,
-            defaults={"name": name},
+            defaults={"name": name, "icon": icon},
         )
         categories[slug] = cat
     features: list[Feature] = []
-    for slug, name, cat_slug, service_type in _FEATURES:
+    for slug, name, cat_slug, service_type, icon in _FEATURES:
         feature, _ = Feature.objects.get_or_create(
             slug=slug,
             defaults={
                 "name": name,
                 "category": categories[cat_slug],
                 "service_type": service_type,
+                "icon": icon,
             },
         )
         features.append(feature)

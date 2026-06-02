@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useFeatureCategories, useFeatures } from "@/features/admin/tags/hooks";
 import type { Feature, FeatureCategory } from "@/features/admin/tags/schemas";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
@@ -42,7 +43,10 @@ function CategorySection({
   );
   return (
     <section className="space-y-3">
-      <h3 className="text-foreground text-sm font-semibold">{category.name}</h3>
+      <h3 className="text-foreground flex items-center gap-2 text-sm font-semibold">
+        <FeatureIcon name={category.icon} className="text-muted-foreground size-4" />
+        {category.name}
+      </h3>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((feature) => {
           const id = `feature-${feature.id}`;
@@ -58,7 +62,11 @@ function CategorySection({
                 disabled={!canWrite}
                 onCheckedChange={() => onToggle(feature.id)}
               />
-              <Label htmlFor={id} className="text-sm font-normal">
+              <Label htmlFor={id} className="flex items-center gap-1.5 text-sm font-normal">
+                <FeatureIcon
+                  name={feature.icon}
+                  className="text-muted-foreground size-4 shrink-0"
+                />
                 {feature.name}
               </Label>
             </div>

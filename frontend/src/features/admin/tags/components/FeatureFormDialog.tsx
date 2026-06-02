@@ -28,6 +28,7 @@ import {
 } from "../schemas";
 import { useCreateFeature, useUpdateFeature } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { IconPicker } from "@/components/data/IconPicker";
 
 interface CommonProps {
   open: boolean;
@@ -91,6 +92,7 @@ export function FeatureFormDialog(props: Props) {
   const categoryValue = form.watch("category");
   const serviceTypeValue = form.watch("service_type");
   const isActiveValue = form.watch("is_active");
+  const iconValue = form.watch("icon");
   const idleSubmitLabel = isCreate
     ? t("tags.features.dialog.submit_create")
     : t("common:actions.save");
@@ -210,7 +212,12 @@ export function FeatureFormDialog(props: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="f-icon">{t("tags.features.dialog.fields.icon")}</Label>
-              <Input id="f-icon" {...form.register("icon")} />
+              <IconPicker
+                id="f-icon"
+                aria-label={t("tags.features.dialog.fields.icon")}
+                value={iconValue ?? ""}
+                onChange={(name) => form.setValue("icon", name)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="f-sort">{t("tags.features.dialog.fields.sort_order")}</Label>

@@ -18,6 +18,7 @@ import {
 } from "../schemas";
 import { useCreateFeatureCategory, useUpdateFeatureCategory } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { IconPicker } from "@/components/data/IconPicker";
 
 interface CommonProps {
   open: boolean;
@@ -69,6 +70,7 @@ export function FeatureCategoryFormDialog(props: Props) {
   const updateMutation = useUpdateFeatureCategory(isCreate ? 0 : props.category.id);
   const submitting = createMutation.isPending || updateMutation.isPending;
   const isActiveValue = form.watch("is_active");
+  const iconValue = form.watch("icon");
   const idleSubmitLabel = isCreate
     ? t("tags.categories.dialog.submit_create")
     : t("common:actions.save");
@@ -141,7 +143,12 @@ export function FeatureCategoryFormDialog(props: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="fc-icon">{t("tags.categories.dialog.fields.icon")}</Label>
-              <Input id="fc-icon" {...form.register("icon")} />
+              <IconPicker
+                id="fc-icon"
+                aria-label={t("tags.categories.dialog.fields.icon")}
+                value={iconValue ?? ""}
+                onChange={(name) => form.setValue("icon", name)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="fc-sort">{t("tags.categories.dialog.fields.sort_order")}</Label>

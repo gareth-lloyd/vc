@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useTranslation } from "react-i18next";
-import { useForm } from "react-hook-form";
+import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,14 +9,23 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import type { PropertyId } from "@/lib/query/keys";
 import { useCreatePropertyContact, useUpdatePropertyContact } from "../hooks";
 import {
+  PROPERTY_CONTACT_ROLES,
   propertyContactAssignmentWriteInputSchema,
   type PropertyContactAssignment,
   type PropertyContactAssignmentWriteInput,
+  type PropertyContactRole,
 } from "../schemas";
 import type { Contact } from "@/features/contacts/schemas";
 import { ContactPicker } from "@/features/contacts/components/ContactPicker";
@@ -41,9 +50,19 @@ interface EditProps extends CommonProps {
 
 type AssignmentFormDialogProps = CreateProps | EditProps;
 
+// The role <Select> starts unset (showing a placeholder) so the user must make
+// an explicit choice; the empty string fails the required-enum validation.
+const UNSET_ROLE = "" as PropertyContactRole;
+
+function asRole(value: string | null | undefined): PropertyContactRole {
+  return PROPERTY_CONTACT_ROLES.includes(value as PropertyContactRole)
+    ? (value as PropertyContactRole)
+    : UNSET_ROLE;
+}
+
 const CREATE_DEFAULTS: PropertyContactAssignmentWriteInput = {
   contact: 0,
-  role: "",
+  role: UNSET_ROLE,
   start_date: "",
   end_date: "",
   is_primary: false,
@@ -52,7 +71,7 @@ const CREATE_DEFAULTS: PropertyContactAssignmentWriteInput = {
 function defaultsFromAssignment(a: PropertyContactAssignment): PropertyContactAssignmentWriteInput {
   return {
     contact: a.contact,
-    role: a.role ?? "",
+    role: asRole(a.role),
     start_date: a.start_date ?? "",
     end_date: a.end_date ?? "",
     is_primary: a.is_primary ?? false,
@@ -68,6 +87,7 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
     resolver: zodResolver(propertyContactAssignmentWriteInputSchema),
     defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromAssignment(props.assignment),
   });
+  const roleCtrl = useController({ control: form.control, name: "role" });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(
     isCreate ? null : props.contact,
@@ -146,11 +166,24 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
 
           <div className="space-y-2">
             <Label htmlFor="assignment-role">{t("people.assignment_dialog.role_label")}</Label>
-            <Input
-              id="assignment-role"
-              placeholder={t("people.assignment_dialog.role_placeholder")}
-              {...form.register("role")}
-            />
+            <Select
+              value={roleCtrl.field.value || undefined}
+              onValueChange={roleCtrl.field.onChange}
+            >
+              <SelectTrigger
+                id="assignment-role"
+                aria-label={t("people.assignment_dialog.role_label")}
+              >
+                <SelectValue placeholder={t("people.assignment_dialog.role_placeholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {PROPERTY_CONTACT_ROLES.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {t(`people.assignment_dialog.roles.${role}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {form.formState.errors.role ? (
               <p className="text-destructive text-sm" role="alert">
                 {form.formState.errors.role.message}

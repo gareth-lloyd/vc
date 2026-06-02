@@ -332,7 +332,15 @@
       "edit_title": "Edit assignment",
       "contact_label": "Contact",
       "role_label": "Role",
-      "role_placeholder": "e.g. owner, cleaner",
+      "role_placeholder": "Select a role",
+      "role_required": "Choose a role",
+      "roles": {
+        "owner": "Owner",
+        "manager": "Manager",
+        "agent": "Agent",
+        "housekeeper": "Housekeeper",
+        "owners_rep": "Owner's representative"
+      },
       "start_label": "Start date",
       "end_label": "End date",
       "primary_label": "Primary contact",

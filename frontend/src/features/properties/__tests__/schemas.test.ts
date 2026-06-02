@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PROPERTY_CONTACT_ROLES,
   availabilityBlockWriteInputSchema,
   availabilityCellSchema,
   propertyContactAssignmentWriteInputSchema,
@@ -119,15 +120,20 @@ describe("propertyContactAssignmentWriteInputSchema", () => {
     expect(() => propertyContactAssignmentWriteInputSchema.parse({ contact: 1.5 })).toThrow();
   });
 
-  it("trims and enforces max-length on role", () => {
-    const result = propertyContactAssignmentWriteInputSchema.parse({
-      contact: 1,
-      role: "  owner  ",
-    });
-    expect(result.role).toBe("owner");
+  it("accepts every allowed role", () => {
+    for (const role of PROPERTY_CONTACT_ROLES) {
+      const result = propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role });
+      expect(result.role).toBe(role);
+    }
+  });
 
+  it("requires role and rejects values outside the enum", () => {
+    expect(() => propertyContactAssignmentWriteInputSchema.parse({ contact: 1 })).toThrow();
     expect(() =>
-      propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role: "x".repeat(121) }),
+      propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role: "cleaner" }),
+    ).toThrow();
+    expect(() =>
+      propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role: "" }),
     ).toThrow();
   });
 });

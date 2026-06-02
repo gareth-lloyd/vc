@@ -1,5 +1,24 @@
 import { z } from "zod";
+import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+
+/**
+ * Allowed contact-assignment roles. Mirrors the backend `accounts.ContactRole`
+ * enum (`django_res/accounts/enums.py`); the model field is NOT NULL with these
+ * choices, so the role is required and constrained to exactly these values.
+ */
+export const PROPERTY_CONTACT_ROLES = [
+  "owner",
+  "manager",
+  "agent",
+  "housekeeper",
+  "owners_rep",
+] as const;
+
+export const propertyContactRoleSchema = z.enum(PROPERTY_CONTACT_ROLES, {
+  error: () => i18n.t("properties:people.assignment_dialog.role_required"),
+});
+export type PropertyContactRole = z.infer<typeof propertyContactRoleSchema>;
 
 export const propertyListItemSchema = z.object({
   id: z.number(),
@@ -519,7 +538,7 @@ export type PropertyFinanceWriteInput = z.infer<typeof propertyFinanceWriteInput
 
 export const propertyContactAssignmentWriteInputSchema = z.object({
   contact: z.number().int(),
-  role: z.string().trim().max(120).optional(),
+  role: propertyContactRoleSchema,
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   is_primary: z.boolean().optional(),

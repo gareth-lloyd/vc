@@ -33,7 +33,12 @@ import { contactDisplayName } from "@/features/contacts/display";
 import { ContactFormDialog } from "@/features/contacts/components/ContactFormDialog";
 import { EmailFormDialog } from "@/features/contacts/components/EmailFormDialog";
 import { PhoneFormDialog } from "@/features/contacts/components/PhoneFormDialog";
-import type { PropertyContactAssignment, PropertyDetail } from "../schemas";
+import {
+  PROPERTY_CONTACT_ROLES,
+  type PropertyContactAssignment,
+  type PropertyContactRole,
+  type PropertyDetail,
+} from "../schemas";
 import { AssignmentFormDialog } from "../components/AssignmentFormDialog";
 
 interface PeopleContext {
@@ -352,7 +357,10 @@ function AssignmentRow({
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className="text-muted-foreground capitalize">
-            {assignment.role?.replace(/_/g, " ") ?? t("people.fallback.role_unset")}
+            {assignment.role &&
+            PROPERTY_CONTACT_ROLES.includes(assignment.role as PropertyContactRole)
+              ? t(`people.assignment_dialog.roles.${assignment.role as PropertyContactRole}`)
+              : (assignment.role?.replace(/_/g, " ") ?? t("people.fallback.role_unset"))}
           </span>
           {assignment.is_primary ? (
             <Badge variant="secondary">{t("common:status.primary")}</Badge>

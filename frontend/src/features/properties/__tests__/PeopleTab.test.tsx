@@ -98,7 +98,9 @@ describe("PeopleTab", () => {
     expect(await screen.findByText("Sparkle Cleaning Ltd")).toBeInTheDocument();
     expect(screen.getAllByText("alice@example.com").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Primary/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("owner")).toBeInTheDocument();
+    // Known roles render their human label; unknown legacy values fall back to
+    // the raw (underscore-spaced) string.
+    expect(screen.getByText("Owner")).toBeInTheDocument();
     expect(screen.getByText("cleaner")).toBeInTheDocument();
   });
 

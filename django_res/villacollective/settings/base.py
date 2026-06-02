@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "integrations",
     "comms",
     "data_migration",
+    "seeding",
 ]
 
 MIDDLEWARE = [

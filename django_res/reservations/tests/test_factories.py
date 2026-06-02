@@ -54,3 +54,20 @@ def test_booking_note_factory_persists_when_booking_supplied(
     )
     assert note.pk is not None
     assert note.booking_id == booking.pk
+
+
+def test_service_coverage_factory_persists_when_booking_supplied(
+    quotation_line: object,
+    terms: object,
+) -> None:
+    from reservations.enums import ServiceStatus
+    from reservations.services.bookings import BookingService
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)  # type: ignore[arg-type]
+    coverage = cast(
+        models.BookingServiceCoverage,
+        factories.BookingServiceCoverageFactory(booking=booking),
+    )
+    assert coverage.pk is not None
+    assert coverage.booking_id == booking.pk
+    assert coverage.status == ServiceStatus.NOT_STARTED.value

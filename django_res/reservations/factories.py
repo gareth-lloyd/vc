@@ -19,9 +19,11 @@ from reservations.enums import (
     BookingGuestRole,
     BookingNoteKind,
     BookingNoteVisibility,
+    ConciergeService,
     EnquiryNoteKind,
     EnquiryRequestType,
     EnquiryStatus,
+    ServiceStatus,
 )
 
 
@@ -107,3 +109,17 @@ class BookingNoteFactory(DjangoModelFactory):
     visibility = BookingNoteVisibility.STAFF_ONLY
     body = factory.Faker("sentence")
     is_pinned = False
+
+
+class BookingServiceCoverageFactory(DjangoModelFactory):
+    """One concierge coverage cell on a Booking. Caller must supply `booking=`
+    (`Booking` rows are service-built, so there is no SubFactory default).
+    `(booking, service)` is unique — vary `service` when building several."""
+
+    class Meta:
+        model = models.BookingServiceCoverage
+
+    booking = None  # required: provided by caller
+    service = ConciergeService.CHEF
+    status = ServiceStatus.NOT_STARTED
+    notes = ""

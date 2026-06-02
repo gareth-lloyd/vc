@@ -29,6 +29,7 @@ EXPECTED_TRACKED_MODELS = {
     "properties.PropertyFinance",
     "reservations.Booking",
     "reservations.BookingGuest",
+    "reservations.BookingServiceCoverage",
     "reservations.Guest",
     "reservations.QuotationLine",
 }

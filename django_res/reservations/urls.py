@@ -22,6 +22,7 @@ from reservations.views import (
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
     BookingViewSet,
+    ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
     PropertyAvailabilityView,
@@ -282,6 +283,23 @@ _concierge_routes: list[URLPattern | URLResolver] = [
 ]
 
 
+# ----------------------------------------------------------------------
+# Concierge coverage matrix (cross-booking overview + per-cell set-status)
+# ----------------------------------------------------------------------
+_concierge_overview_routes: list[URLPattern | URLResolver] = [
+    path(
+        "concierge/overview",
+        ConciergeOverviewViewSet.as_view({"get": "list"}),
+        name="concierge-overview",
+    ),
+    path(
+        "concierge/<int:booking_id>/coverage/<str:service>:set-status",
+        ConciergeOverviewViewSet.as_view({"post": "set_status"}),
+        name="concierge-coverage-set-status",
+    ),
+]
+
+
 _availability_routes: list[URLPattern | URLResolver] = [
     path(
         "properties/<int:property_id>/availability",
@@ -353,6 +371,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     *_quotation_actions,
     *_booking_actions,
     *_concierge_routes,
+    *_concierge_overview_routes,
     *_availability_routes,
     *_terms_routes,
     path("", include(_root.urls)),

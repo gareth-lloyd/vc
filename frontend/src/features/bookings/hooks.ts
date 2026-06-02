@@ -23,6 +23,7 @@ import {
   fetchBookingEmails,
   fetchBookingNotes,
   fetchBookings,
+  fetchBookingStatusCounts,
   fetchDepositTrack,
   fetchSecurityTrack,
   markPaid,
@@ -57,6 +58,13 @@ export function useBookings(filters: BookingFilters) {
   return useQuery({
     queryKey: queryKeys.bookings.list(filters),
     queryFn: () => fetchBookings(filters),
+  });
+}
+
+export function useBookingStatusCounts(filters: BookingFilters) {
+  return useQuery({
+    queryKey: queryKeys.bookings.statusCounts(filters),
+    queryFn: () => fetchBookingStatusCounts(filters),
   });
 }
 

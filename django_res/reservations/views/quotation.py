@@ -36,9 +36,10 @@ from reservations.services.quotation_transmission import (
     record_quote_sent,
 )
 from reservations.services.quotations import QuotationService
+from reservations.views.status_counts import StatusCountsMixin
 
 
-class QuotationViewSet(viewsets.ModelViewSet):
+class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     """`/quotations` CRUD + colon-verb actions."""
 
     # Booking-synthesised quotations (`legacy_id` prefixed `booking-`) are

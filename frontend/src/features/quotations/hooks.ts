@@ -12,6 +12,7 @@ import {
   fetchQuotationLines,
   fetchQuotationPreview,
   fetchQuotations,
+  fetchQuotationStatusCounts,
   markQuotationManuallySent,
   searchQuoteOptions,
   sendQuotation,
@@ -33,6 +34,13 @@ export function useQuotations(filters: QuotationFilters) {
   return useQuery({
     queryKey: queryKeys.quotations.list(filters),
     queryFn: () => fetchQuotations(filters),
+  });
+}
+
+export function useQuotationStatusCounts(filters: QuotationFilters) {
+  return useQuery({
+    queryKey: queryKeys.quotations.statusCounts(filters),
+    queryFn: () => fetchQuotationStatusCounts(filters),
   });
 }
 

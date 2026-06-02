@@ -5,24 +5,18 @@ import type { SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
+import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { ApiError } from "@/lib/api/errors";
 import { useEnquiryColumns } from "./columns";
-import { ENQUIRIES_PAGE_SIZE, useEnquiries, useMoveEnquiry } from "./hooks";
+import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts, useMoveEnquiry } from "./hooks";
 import { EnquiryCard } from "./components/EnquiryCard";
 import { KanbanBoard, type KanbanColumn } from "./components/KanbanBoard";
 import { EnquiryFormDialog } from "./components/EnquiryFormDialog";
@@ -160,15 +154,13 @@ export function EnquiriesListPage() {
   };
 
   const query = useEnquiries(filters);
+  const statusCounts = useEnquiryStatusCounts(filters);
   const moveMutation = useMoveEnquiry();
   const enquiryColumns = useEnquiryColumns();
   const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / ENQUIRIES_PAGE_SIZE)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
 
-  const statusOptions = [
-    { value: ALL_VALUE, label: t("list.any_status") },
-    ...enquiryStatusOptions(),
-  ];
+  const statusOptions = useMemo(() => enquiryStatusOptions(), []);
 
   const handleRowClick = (row: EnquiryListItem) => {
     navigate(`/enquiries/${row.id}/details`);
@@ -221,28 +213,21 @@ export function EnquiriesListPage() {
         ]}
       />
       <div className="space-y-4 p-6">
+        {view === "list" ? (
+          <StatusFilterBar
+            options={statusOptions}
+            counts={statusCounts.data}
+            value={filters.status}
+            onChange={(v) => updateParam("status", v)}
+            allLabel={t("common:status_filter.all")}
+          />
+        ) : null}
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder={t("list.search_placeholder")}
           filters={
             <>
-              <Select
-                value={filters.status ?? ALL_VALUE}
-                onValueChange={(v) => updateParam("status", v)}
-              >
-                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_status_aria")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               <div
                 role="tablist"
                 aria-label={t("list.view_aria")}

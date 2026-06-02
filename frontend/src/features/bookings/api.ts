@@ -1,5 +1,6 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
+import { fetchStatusCounts, type StatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import type { BookingId } from "@/lib/query/keys";
 import {
@@ -53,6 +54,16 @@ function toQuery(filters: BookingFilters): QueryParams {
 export async function fetchBookings(filters: BookingFilters): Promise<Paginated<BookingListItem>> {
   const data = await apiGet<unknown>("/bookings", { query: toQuery(filters) });
   return bookingListResponseSchema.parse(data);
+}
+
+export function fetchBookingStatusCounts(filters: BookingFilters): Promise<StatusCounts> {
+  // Status & paging don't scope the counts (the bar tots every status within
+  // the other filters); strip them so the cache key stays stable.
+  const query = toQuery(filters);
+  delete query.status;
+  delete query.page;
+  delete query.ordering;
+  return fetchStatusCounts("/bookings/status-counts", query);
 }
 
 export async function fetchBooking(id: BookingId): Promise<BookingDetail> {

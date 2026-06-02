@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
+import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useBookingColumns } from "./columns";
-import { BOOKINGS_PAGE_SIZE, useBookings } from "./hooks";
+import { BOOKINGS_PAGE_SIZE, useBookings, useBookingStatusCounts } from "./hooks";
 import {
   bookingStatusOptions,
   bookingStatusSchema,
@@ -60,10 +61,7 @@ export function BookingsListPage() {
   const [search, setSearch] = useState(filters.q ?? "");
   const columns = useBookingColumns();
 
-  const statusOptions = useMemo(
-    () => [{ value: ALL_VALUE, label: t("filters.any_status") }, ...bookingStatusOptions()],
-    [t],
-  );
+  const statusOptions = useMemo(() => bookingStatusOptions(), []);
   const siteOptions = useMemo(
     () => [
       { value: ALL_VALUE, label: t("filters.any_source") },
@@ -124,6 +122,7 @@ export function BookingsListPage() {
   };
 
   const query = useBookings(filters);
+  const statusCounts = useBookingStatusCounts(filters);
   const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / BOOKINGS_PAGE_SIZE)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
 
@@ -141,27 +140,19 @@ export function BookingsListPage() {
         ]}
       />
       <div className="space-y-4 p-6">
+        <StatusFilterBar
+          options={statusOptions}
+          counts={statusCounts.data}
+          value={filters.status}
+          onChange={(v) => updateParam("status", v)}
+          allLabel={t("common:status_filter.all")}
+        />
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder={t("list.search_placeholder")}
           filters={
             <>
-              <Select
-                value={filters.status ?? ALL_VALUE}
-                onValueChange={(v) => updateParam("status", v)}
-              >
-                <SelectTrigger className="w-[180px]" aria-label={t("list.filter_status_aria")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <Select
                 value={filters.site ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("site", v)}

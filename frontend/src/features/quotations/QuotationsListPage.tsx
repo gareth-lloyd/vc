@@ -4,21 +4,15 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
+import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { buildQuotationColumns } from "./columns";
-import { useQuotations, QUOTATIONS_PAGE_SIZE } from "./hooks";
+import { useQuotations, useQuotationStatusCounts, QUOTATIONS_PAGE_SIZE } from "./hooks";
 import { quotationStatusOptions, type QuotationFilters, type QuotationListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";
@@ -96,6 +90,7 @@ export function QuotationsListPage() {
   };
 
   const query = useQuotations(filters);
+  const statusCounts = useQuotationStatusCounts(filters);
   const pageCount = query.data
     ? Math.max(1, Math.ceil(query.data.count / QUOTATIONS_PAGE_SIZE))
     : 1;
@@ -127,28 +122,17 @@ export function QuotationsListPage() {
         actions={newButton}
       />
       <div className="space-y-4 p-6">
+        <StatusFilterBar
+          options={quotationStatusOptions()}
+          counts={statusCounts.data}
+          value={filters.status}
+          onChange={(v) => updateParam("status", v)}
+          allLabel={t("common:status_filter.all")}
+        />
         <Toolbar
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder={t("list.search_placeholder")}
-          filters={
-            <Select
-              value={filters.status ?? ALL_VALUE}
-              onValueChange={(v) => updateParam("status", v)}
-            >
-              <SelectTrigger className="w-[160px]" aria-label={t("list.filters.status_label")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>{t("list.filters.status_any")}</SelectItem>
-                {quotationStatusOptions().map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          }
         />
 
         {query.isError ? (

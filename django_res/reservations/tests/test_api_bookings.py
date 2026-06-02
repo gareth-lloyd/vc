@@ -848,3 +848,39 @@ def test_notes_crud(api_client: APIClient, staff: User, booking: Booking) -> Non
         format="json",
     )
     assert patch.status_code == 200
+
+
+@pytest.mark.django_db
+def test_status_counts__groups_by_status(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings/status-counts")
+
+    assert response.status_code == 200
+    assert response.data == {BookingStatus.AWAITING_DEPOSIT.value: 1}
+
+
+@pytest.mark.django_db
+def test_status_counts__ignores_status_filter_but_honours_others(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+
+    # A `status=` param must NOT scope the counts — the bar shows every status
+    # within the *other* active filters, so the chip you clicked still totals.
+    scoped = api_client.get("/api/v1/bookings/status-counts?status=confirmed")
+    assert scoped.data == {BookingStatus.AWAITING_DEPOSIT.value: 1}
+
+    # A non-status filter (free-text search) IS applied.
+    miss = api_client.get("/api/v1/bookings/status-counts?q=no-such-booking")
+    assert miss.data == {}
+
+
+@pytest.mark.django_db
+def test_status_counts__constant_query_count(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    with assert_max_queries(6):
+        api_client.get("/api/v1/bookings/status-counts")

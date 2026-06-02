@@ -1,5 +1,6 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
+import { fetchStatusCounts, type StatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import type { EnquiryId } from "@/lib/query/keys";
 import {
@@ -34,6 +35,16 @@ function toQuery(filters: EnquiryFilters): QueryParams {
 export async function fetchEnquiries(filters: EnquiryFilters): Promise<Paginated<EnquiryListItem>> {
   const data = await apiGet<unknown>("/enquiries", { query: toQuery(filters) });
   return enquiryListResponseSchema.parse(data);
+}
+
+export function fetchEnquiryStatusCounts(filters: EnquiryFilters): Promise<StatusCounts> {
+  // Status & paging don't scope the counts (the bar tots every status within
+  // the other filters); strip them so the cache key stays stable.
+  const query = toQuery(filters);
+  delete query.status;
+  delete query.page;
+  delete query.ordering;
+  return fetchStatusCounts("/enquiries/status-counts", query);
 }
 
 export async function fetchEnquiry(id: EnquiryId): Promise<EnquiryDetail> {

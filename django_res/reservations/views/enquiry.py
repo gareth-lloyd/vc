@@ -24,6 +24,7 @@ from reservations.serializers import (
     EnquiryNoteSerializer,
     EnquiryWriteSerializer,
 )
+from reservations.views.status_counts import StatusCountsMixin
 
 
 def _quotations_prefetch() -> Prefetch:
@@ -45,7 +46,7 @@ def _detail_queryset() -> Any:
     ).prefetch_related(_quotations_prefetch())
 
 
-class EnquiryViewSet(viewsets.ModelViewSet):
+class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     """`/enquiries` CRUD plus colon-verb action endpoints."""
 
     queryset = Enquiry.objects.select_related("guest", "property", "region", "agent", "assigned_to")

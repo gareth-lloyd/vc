@@ -1,5 +1,6 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
+import { fetchStatusCounts, type StatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import type { QuotationId } from "@/lib/query/keys";
 import { propertyListResponseSchema } from "@/features/properties/schemas";
@@ -43,6 +44,16 @@ export async function fetchQuotations(
 ): Promise<Paginated<QuotationListItem>> {
   const data = await apiGet<unknown>("/quotations", { query: toQuery(filters) });
   return quotationListResponseSchema.parse(data);
+}
+
+export function fetchQuotationStatusCounts(filters: QuotationFilters): Promise<StatusCounts> {
+  // Status & paging don't scope the counts (the bar tots every status within
+  // the other filters); strip them so the cache key stays stable.
+  const query = toQuery(filters);
+  delete query.status;
+  delete query.page;
+  delete query.ordering;
+  return fetchStatusCounts("/quotations/status-counts", query);
 }
 
 export async function fetchQuotation(id: QuotationId): Promise<QuotationDetail> {

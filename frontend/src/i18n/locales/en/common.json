@@ -1,4 +1,8 @@
 {
+  "status_filter": {
+    "aria_label": "Filter by status",
+    "all": "All"
+  },
   "actions": {
     "save": "Save",
     "saving": "Saving…",

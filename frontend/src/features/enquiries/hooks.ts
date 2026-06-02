@@ -8,6 +8,7 @@ import {
   createEnquiry,
   createEnquiryNote,
   fetchEnquiries,
+  fetchEnquiryStatusCounts,
   fetchEnquiry,
   fetchEnquiryActivity,
   fetchEnquiryNotes,
@@ -32,6 +33,13 @@ export function useEnquiries(filters: EnquiryFilters) {
   return useQuery({
     queryKey: queryKeys.enquiries.list(filters),
     queryFn: () => fetchEnquiries(filters),
+  });
+}
+
+export function useEnquiryStatusCounts(filters: EnquiryFilters) {
+  return useQuery({
+    queryKey: queryKeys.enquiries.statusCounts(filters),
+    queryFn: () => fetchEnquiryStatusCounts(filters),
   });
 }
 

@@ -18,7 +18,7 @@ from factory.django import DjangoModelFactory
 
 from comms import models
 from comms.enums import SmtpScope
-from properties.factories import RUN_TOKEN
+from core.factories import RUN_TOKEN
 
 
 class SmtpProfileFactory(DjangoModelFactory):

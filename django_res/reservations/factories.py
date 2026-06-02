@@ -13,7 +13,8 @@ from datetime import date, timedelta
 import factory
 from factory.django import DjangoModelFactory
 
-from properties.factories import RUN_TOKEN, CountryFactory, PropertyFactory
+from core.factories import RUN_TOKEN
+from properties.factories import CountryFactory, PropertyFactory
 from reservations import models
 from reservations.enums import (
     BookingGuestRole,

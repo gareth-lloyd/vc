@@ -33,6 +33,7 @@ dev = [
     "pytest-django>=4.9",
     "factory-boy>=3.3",
     "types-markdown>=3.10.2.20260518",
+    "import-linter>=2.0",
 ]
 
 [tool.ruff]
@@ -84,3 +85,76 @@ django_settings_module = "villacollective.settings.test"
 DJANGO_SETTINGS_MODULE = "villacollective.settings.test"
 python_files = ["test_*.py", "tests.py"]
 addopts = "-ra --strict-markers --reuse-db"
+
+# ---------------------------------------------------------------------------
+# import-linter — the horizontal (app-to-app) layering contract.
+#
+# The vertical layering (view → service → model) is enforced by directory
+# structure; this enforces the *horizontal* DAG that was previously unwritten.
+# Run with `uv run lint-imports`; wired into pre-commit and CI alongside mypy.
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_packages = [
+    "core",
+    "accounts",
+    "properties",
+    "pricing",
+    "reservations",
+    "payments",
+    "comms",
+    "integrations",
+    "seeding",
+    "data_migration",
+]
+
+[[tool.importlinter.contracts]]
+name = "core is the foundation — it imports no domain app"
+type = "forbidden"
+source_modules = ["core"]
+forbidden_modules = [
+    "accounts",
+    "properties",
+    "pricing",
+    "reservations",
+    "payments",
+    "comms",
+    "integrations",
+    "seeding",
+    "data_migration",
+]
+# Test scaffolding may reach anywhere; the contract governs runtime code.
+ignore_imports = ["core.tests.** -> **"]
+
+[[tool.importlinter.contracts]]
+name = "spine layers — imports point down the stack"
+type = "layers"
+# High → low. A layer may import those below it; a lower layer importing a
+# higher one is a violation unless explicitly blessed below.
+layers = [
+    "comms",
+    "payments",
+    "reservations",
+    "pricing",
+    "properties",
+    "accounts",
+]
+ignore_imports = [
+    # Test scaffolding and migrations may reach across apps freely — the
+    # contract governs runtime application code only.
+    "*.tests.** -> **",
+    "*.migrations.** -> **",
+    # --- Blessed runtime back-edges (each a deliberate architectural seam) ---
+    # Catalogue availability search: the property-search filter reads booking /
+    # hold occupancy to drop unavailable villas. Single lazy, deduped seam that
+    # routes through the canonical model predicates (Step 3c).
+    "properties.filters.property -> reservations.models.booking",
+    # `comms` is the cross-cutting notification sink: domain apps import it to
+    # send transactional email / mount its email surface. Blessed in-bound edges:
+    "accounts.services.password_reset -> comms.services",
+    "reservations.urls -> comms.views",
+    "payments.tasks -> comms.enums",
+    "payments.tasks -> comms.models",
+    "payments.tasks -> comms.exceptions",
+    "payments.tasks -> comms.recipients",
+    "payments.tasks -> comms.services",
+]

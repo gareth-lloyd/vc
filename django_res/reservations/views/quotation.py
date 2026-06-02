@@ -14,8 +14,7 @@ from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from core.api.responses import not_implemented_response
-from payments.enums import PaymentMethod
-from reservations.enums import QuotationStatus
+from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
 from reservations.serializers import (

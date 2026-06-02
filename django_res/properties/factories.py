@@ -19,7 +19,6 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
 import factory
 import yaml
@@ -30,6 +29,7 @@ from faker import Faker
 from PIL import Image
 
 from accounts.enums import ContactRole
+from core.factories import RUN_TOKEN
 from properties import models
 from properties.enums import (
     CommissionCalcType,
@@ -62,12 +62,6 @@ _CATEGORIES = [
 ]
 
 _faker = Faker("en_GB")
-
-# `factory.Sequence` is an in-process counter — it restarts at 0 every
-# command invocation, so a bare `f"villa-{n}"` collides with rows a previous
-# run already wrote. A per-process token keeps additive re-runs unique while
-# in-process builds stay unique via `n`. Exported for sibling factory modules.
-RUN_TOKEN = uuid4().hex[:8]
 
 
 def _tiny_png() -> ContentFile:

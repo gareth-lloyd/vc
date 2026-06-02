@@ -235,8 +235,8 @@ Conventions baked in — mirror them in new factories:
 
 - **Cross-run uniqueness.** `factory.Sequence` is an in-process counter,
   *not* unique across runs. Unique fields combine the per-process
-  `RUN_TOKEN` (a uuid defined in `properties/factories.py`, imported by
-  the sibling factories) with the sequence, so additive runs never
+  `RUN_TOKEN` (a uuid defined in `core/factories.py`, imported *down* by
+  every app's factories) with the sequence, so additive runs never
   collide on a unique constraint (slug, email, phone).
 - **Respect seeded/canonical rows.** Factories for migration-seeded or
   canonical models (`CountryFactory`, `CurrencyFactory`,
@@ -248,7 +248,7 @@ Conventions baked in — mirror them in new factories:
   `base`/production, True in `dev`/`test`/`staging`). `--i-understand`
   documents intent only — it does **not** bypass the production block.
 
-Reference: `django_res/core/management/commands/seed_dev.py`,
+Reference: `django_res/seeding/management/commands/seed_dev.py`,
 `properties/factories.py`, and the per-app `tests/test_factories.py`.
 
 ### Villa image pool — manifest-driven seed imagery
@@ -293,7 +293,7 @@ without `OPEN_AI_API_KEY`. That key (and any local secret) is read from the
 
 Reference: `core/management/commands/generate_seed_images.py`,
 `core/seed_data/villa_images/{manifest.yaml,README.md}`,
-`core/seed/stages/{properties,gallery}.py`.
+`seeding/stages/{properties,gallery}.py`.
 
 ### Validate data-migration changes via `reconcile_legacy`
 
@@ -349,5 +349,37 @@ django_res
 ./models/<model name>
 ./views/<view name>
 ./tests/
+
+The above is the **vertical** layering (within an app: view → service →
+model), enforced by directory structure. There is also a **horizontal**
+layering — which app may import which — enforced by `import-linter`
+(`[tool.importlinter]` in `pyproject.toml`; run `uv run lint-imports`, wired
+into pre-commit and CI next to `mypy`). Two contracts:
+
+- **`core` is the foundation.** `core` holds cross-cutting primitives
+  (`enums`, `exceptions`, `models/base`, `api/permissions`, `factories`,
+  `console`, `refs`) and may import **no** domain app. Everything imports
+  *down* into `core`; `core` imports nothing back. This is the crown-jewel
+  invariant — keep it pristine.
+
+- **Spine layers point down.** App imports flow high → low:
+
+  ```
+  comms  >  payments  >  reservations  >  pricing  >  properties  >  accounts
+  ```
+
+  A layer may import those below it; a lower layer importing a higher one is a
+  violation. The handful of sanctioned back-edges are listed as commented
+  `ignore_imports` lines — one per deliberate seam — namely catalogue
+  availability search (`properties → reservations`, a single lazy filter that
+  routes through the canonical `Booking.objects.overlapping_blocking` /
+  `BookingHold.live_overlapping` predicates) and notification edges into
+  `comms` (the cross-cutting email sink that every domain app may send into).
+  `seeding` and `data_migration` are top-of-stack orchestrators, deliberately
+  outside the layers contract, but still bound by the `core`-foundation rule.
+
+  Adding a new cross-app import that isn't one of these makes CI fail. If you
+  genuinely need a new seam, add it as a commented `ignore_imports` line with a
+  one-line justification — don't reach across apps silently.
 
 4. One model per file in <app>/models/\*

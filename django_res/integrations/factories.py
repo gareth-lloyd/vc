@@ -20,6 +20,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from factory.django import DjangoModelFactory
 
+from core.factories import RUN_TOKEN
 from integrations import models
 from integrations.enums import (
     OAuthProvider,
@@ -31,7 +32,6 @@ from integrations.enums import (
     SyncRunStatus,
     SyncStatus,
 )
-from properties.factories import RUN_TOKEN
 
 
 class OAuthCredentialFactory(DjangoModelFactory):

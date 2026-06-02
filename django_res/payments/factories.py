@@ -11,9 +11,9 @@ from __future__ import annotations
 import factory
 from factory.django import DjangoModelFactory
 
+from core.factories import RUN_TOKEN
 from payments import models
 from payments.enums import WebhookProvider
-from properties.factories import RUN_TOKEN
 
 
 class WebhookDeliveryFactory(DjangoModelFactory):

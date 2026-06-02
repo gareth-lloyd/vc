@@ -35,7 +35,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from core.console import render_table
-from properties.factories import RUN_TOKEN
+from core.factories import RUN_TOKEN
 from seeding import stages as _stages_pkg  # noqa: F401  (registers all stages)
 from seeding.context import _PROFILES, _SCALES, Profile, SeedContext
 from seeding.registry import STAGES, StageReport

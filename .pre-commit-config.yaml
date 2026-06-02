@@ -31,6 +31,14 @@ repos:
         pass_filenames: false
         entry: bash -c 'cd django_res && uv run mypy .'
 
+      - id: import-linter
+        name: import-linter (django_res layering)
+        language: system
+        types: [python]
+        files: ^django_res/.*\.py$
+        pass_filenames: false
+        entry: bash -c 'cd django_res && uv run lint-imports'
+
       - id: prettier
         name: prettier (frontend)
         language: system

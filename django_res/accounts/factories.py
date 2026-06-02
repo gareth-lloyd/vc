@@ -8,7 +8,7 @@ from factory.django import DjangoModelFactory
 from accounts import models
 from accounts.enums import ContactStatus, EmailLabel, PhoneLabel
 from core.enums import StaffRole
-from properties.factories import RUN_TOKEN
+from core.factories import RUN_TOKEN
 
 
 class UserFactory(DjangoModelFactory):

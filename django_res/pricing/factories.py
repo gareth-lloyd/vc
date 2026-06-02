@@ -13,9 +13,10 @@ from decimal import Decimal
 import factory
 from factory.django import DjangoModelFactory
 
+from core.factories import RUN_TOKEN
 from pricing import models
 from pricing.enums import DiscountKind, ExtraCalc, ExtraKind, RuleKind
-from properties.factories import RUN_TOKEN, PropertyFactory
+from properties.factories import PropertyFactory
 
 # Wide enough that generated stays (a few months out) always land inside it.
 _WINDOW_FROM = date.today() - timedelta(days=30)

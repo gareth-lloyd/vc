@@ -87,10 +87,11 @@ The `--integrations` flag adds, after the main table:
 - **WordPress surface** (informational only): legacy `VillaBooking.BookingUrl`
   and `VillaSyncDetail` volume. The WordPress backfill is **not built yet** —
   multi-site fan-out needs a `provider_instance` field on `SyncRecord` that
-  the model doesn't have (see the integrations audit). This row reports the
-  surface so it isn't silently treated as "all clear"; it never blocks. If WP
-  continuity matters for this cutover, that model change and a
-  `SyncRecordWordPressLoader` must land first.
+  the model doesn't have. This row reports the surface so it isn't silently
+  treated as "all clear"; it never blocks. If WP continuity matters for this
+  cutover, that model change and a `SyncRecordWordPressLoader` must land
+  first — see `data_migration/WORDPRESS_BACKFILL.md` for the data-shape
+  queries to run during this dry-run and the build-vs-descope decision.
 
 Note: there is **no "disable outbound push" step at M1** — there is no push
 engine to disable yet. Re-introduce a stop-the-bleeding posture (pause beat,

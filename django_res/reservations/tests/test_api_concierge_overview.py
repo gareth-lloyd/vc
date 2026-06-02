@@ -155,8 +155,9 @@ def test_overview_reflects_coverage_and_progress(
     assert row["services"]["car"] == ServiceStatus.WORKING_ON_IT.value
     assert row["services"]["boat"] == ServiceStatus.NOT_REQUIRED.value
     assert row["services"]["spa"] == ServiceStatus.NOT_STARTED.value
-    # 1 done of 2 counted (chef, car) → 50%.
-    assert row["progress"] == 50
+    # Full-matrix denominator: 13 services minus boat (not_required) = 12
+    # applicable; chef is the only one done → round(1/12*100) = 8.
+    assert row["progress"] == 8
 
 
 def test_overview_derives_tier_from_concierge_items(
@@ -297,3 +298,46 @@ def test_set_status_forbidden_for_viewer(
         format="json",
     )
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "days_from, days_to, mutate",
+    [
+        # Departed: already checked out by date.
+        (-20, -10, None),
+        # Terminal: cancelled.
+        (30, 37, lambda b: b.cancel("test")),
+        # Archived.
+        (50, 57, lambda b: (b.cancel("test"), b.archive())),
+    ],
+)
+def test_set_status_404_for_non_live_booking(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    days_from: int,
+    days_to: int,
+    mutate: object,
+) -> None:
+    """Writes resolve through the live scope: non-live bookings 404, no row written."""
+    booking = _make_booking(
+        guest=guest,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        days_from=days_from,
+        days_to=days_to,
+    )
+    if mutate is not None:
+        mutate(booking)  # type: ignore[operator]
+    api_client.force_login(staff)
+    response = api_client.post(
+        _set_status_url(booking.pk, "chef"),
+        {"status": ServiceStatus.DONE.value},
+        format="json",
+    )
+    assert response.status_code == 404
+    assert not BookingServiceCoverage.objects.filter(booking=booking).exists()

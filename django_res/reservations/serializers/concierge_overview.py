@@ -82,20 +82,23 @@ class ConciergeOverviewSerializer(serializers.ModelSerializer[Booking]):
         }
 
     def get_progress(self, obj: Booking) -> int:
-        """Percent of the *touched* (row-bearing) services marked ``done``.
+        """Percent of the *full* service matrix marked ``done``.
 
-        `not_required` cells drop out of the denominator; a booking nobody has
-        started reads 0.
+        The denominator is every `ConciergeService` minus those whose cell is
+        ``not_required`` (so opting a service out shrinks the matrix rather than
+        capping progress below 100). Absent/untouched cells count as not-done,
+        so the bar tracks the whole grid, not just the cells someone touched.
         """
-        rows = [
-            cov
-            for cov in obj.service_coverage.all()
-            if cov.status != ServiceStatus.NOT_REQUIRED.value
+        by_service = {cov.service: cov.status for cov in obj.service_coverage.all()}
+        applicable = [
+            service.value
+            for service in ConciergeService
+            if by_service.get(service.value) != ServiceStatus.NOT_REQUIRED.value
         ]
-        if not rows:
+        if not applicable:
             return 0
-        done = sum(1 for cov in rows if cov.status == ServiceStatus.DONE.value)
-        return round(done / len(rows) * 100)
+        done = sum(1 for s in applicable if by_service.get(s) == ServiceStatus.DONE.value)
+        return round(done / len(applicable) * 100)
 
     def get_manager(self, obj: Booking) -> str | None:
         manager = obj.assigned_to

@@ -94,6 +94,15 @@ describe("ConciergeOverviewPage", () => {
     expect(screen.getByText("40%")).toBeInTheDocument();
   });
 
+  it("labels an in-residence booking as in-house, not departed", async () => {
+    grantWriterRole();
+    server.use(http.get(OVERVIEW, () => HttpResponse.json([row({ arrival_in_days: -2 })])));
+    setup();
+    await screen.findByText("B-CON-100");
+    expect(screen.getByText(/in residence/i)).toBeInTheDocument();
+    expect(screen.queryByText(/departed/i)).not.toBeInTheDocument();
+  });
+
   it("renders the legend of all six statuses", async () => {
     grantWriterRole();
     server.use(http.get(OVERVIEW, () => HttpResponse.json([row()])));

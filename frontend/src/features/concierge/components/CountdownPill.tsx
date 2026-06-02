@@ -3,9 +3,11 @@ import { statusToneVar, type StatusTone } from "@/styles/tokens";
 
 /**
  * Days-to-arrival pill with a tone ramp: imminent stays glow danger, near-term
- * warning, everything else neutral. Departed/today get their own copy. Colours
- * come from the status-tone tokens via inline `color-mix` (the same data-driven
- * pattern as TierBadge) so the pill stays token-only.
+ * warning, everything else neutral. The matrix only lists live bookings
+ * (`date_to >= today`), so a negative countdown means the guest is in
+ * residence — not departed. Colours come from the status-tone tokens via
+ * inline `color-mix` (the same data-driven pattern as TierBadge) so the pill
+ * stays token-only.
  */
 function toneFor(days: number): StatusTone {
   if (days <= 3) return "danger";
@@ -19,7 +21,7 @@ export function CountdownPill({ days }: { days: number }) {
   const color = statusToneVar[tone];
   const label =
     days < 0
-      ? t("countdown.departed")
+      ? t("countdown.in_house")
       : days === 0
         ? t("countdown.today")
         : t("countdown.in_days", { count: days });

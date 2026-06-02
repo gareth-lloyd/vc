@@ -34,7 +34,7 @@
     "done": "Done"
   },
   "countdown": {
-    "departed": "Departed",
+    "in_house": "In residence",
     "today": "Arrives today",
     "in_days_one": "In {{count}} day",
     "in_days_other": "In {{count}} days"

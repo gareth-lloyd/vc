@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from pricing.models import Currency
@@ -83,4 +85,34 @@ def test_set_status_is_idempotent_upsert(booking: Booking) -> None:
     )
     assert second.pk == first.pk
     assert second.status == ServiceStatus.DONE.value
+    assert BookingServiceCoverage.objects.filter(booking=booking, service="chef").count() == 1
+
+
+def test_set_status_recovers_from_upsert_race(booking: Booking) -> None:
+    """An upsert that loses the unique-constraint race is recovered, not 500'd.
+
+    Simulate a concurrent writer that inserted the row between our read and
+    write: ``update_or_create`` raises ``IntegrityError``. The service must
+    re-fetch the now-existing row and apply its status (last-write-wins).
+    """
+    racer = BookingServiceCoverage.objects.create(
+        booking=booking, service="chef", status=ServiceStatus.WAITING.value
+    )
+
+    def raise_integrity_error(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("uniq_booking_service_coverage")
+
+    with patch.object(
+        BookingServiceCoverage.objects,
+        "update_or_create",
+        side_effect=raise_integrity_error,
+    ):
+        coverage = ConciergeCoverageService.set_status(
+            booking=booking, service="chef", status=ServiceStatus.DONE.value
+        )
+
+    assert coverage.pk == racer.pk
+    assert coverage.status == ServiceStatus.DONE.value
+    coverage.refresh_from_db()
+    assert coverage.status == ServiceStatus.DONE.value
     assert BookingServiceCoverage.objects.filter(booking=booking, service="chef").count() == 1

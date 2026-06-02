@@ -34,7 +34,7 @@
     "done": "Ολοκληρώθηκε"
   },
   "countdown": {
-    "departed": "Αναχώρησε",
+    "in_house": "Διαμένει",
     "today": "Άφιξη σήμερα",
     "in_days_one": "Σε {{count}} ημέρα",
     "in_days_other": "Σε {{count}} ημέρες"

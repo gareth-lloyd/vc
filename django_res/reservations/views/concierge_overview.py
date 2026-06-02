@@ -65,7 +65,8 @@ class ConciergeOverviewViewSet(viewsets.ViewSet):
             return self._bad_request(f"Unknown service '{service}'")
         if new_status not in ServiceStatus.values:
             return self._bad_request(f"Unknown status '{new_status}'")
-        booking = get_object_or_404(Booking, pk=booking_id)
+        # Write scope must match read scope: only live bookings are writable.
+        booking = get_object_or_404(self._live_bookings(date.today()), pk=booking_id)
         coverage = ConciergeCoverageService.set_status(
             booking=booking,
             service=service,

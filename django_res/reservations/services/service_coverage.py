@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import IntegrityError, transaction
+
 from reservations.models import Booking, BookingServiceCoverage
 
 
@@ -28,10 +30,24 @@ class ConciergeCoverageService:
         status: str,
         actor: Any = None,
     ) -> BookingServiceCoverage:
-        """Upsert the coverage cell for `(booking, service)` to `status`."""
-        coverage, _ = BookingServiceCoverage.objects.update_or_create(
-            booking=booking,
-            service=service,
-            defaults={"status": status},
-        )
-        return coverage
+        """Upsert the coverage cell for `(booking, service)` to `status`.
+
+        ``update_or_create`` is read-then-write, so a concurrent insert (e.g. a
+        double-click) can lose the `(booking, service)` unique-constraint race.
+        The except sits *outside* the `atomic()` block — a failed statement
+        poisons the surrounding transaction — and recovers by re-fetching the
+        row the racer created and applying our status (last-write-wins).
+        """
+        try:
+            with transaction.atomic():
+                coverage, _ = BookingServiceCoverage.objects.update_or_create(
+                    booking=booking,
+                    service=service,
+                    defaults={"status": status},
+                )
+            return coverage
+        except IntegrityError:
+            coverage = BookingServiceCoverage.objects.get(booking=booking, service=service)
+            coverage.status = status
+            coverage.save(update_fields=["status"])
+            return coverage

@@ -688,3 +688,20 @@ def test_modify_guests_reloads_committed_state_before_repricing(
     latest = BookingEvent.objects.filter(booking=booking).latest("created_at", "id")
     assert latest.meta["from"] == {"adults": 3, "children": 0}
     assert latest.meta["to"] == {"adults": 5, "children": 1}
+
+
+@pytest.mark.django_db
+def test_lock_for_update_locks_and_reloads_in_one_query(booking: Booking) -> None:
+    """The lock + reload is a single `SELECT … FOR UPDATE` round-trip.
+
+    `_lock_for_update` must not take the lock with one query and then refresh
+    the in-memory fields with a second, unlocked read — the locking select
+    already returns the fresh row.
+    """
+    from core.tests import assert_max_queries
+
+    # `django_db` runs the test inside an atomic block, so `select_for_update`
+    # is permitted without an explicit `transaction.atomic()` (which would add
+    # SAVEPOINT statements to the captured query count).
+    with assert_max_queries(1):
+        booking._lock_for_update()

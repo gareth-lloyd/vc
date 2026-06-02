@@ -334,13 +334,21 @@ class PricingEngine:
         as_of: date,
         discount_code: str | None,
     ) -> Decimal:
+        # Property-scoped card-less discounts always apply; this card's own
+        # discounts apply only when a card actually won. On an all-fallback
+        # stay `card is None` — guard the `Q(card=card)` disjunct, which would
+        # otherwise collapse to `Q(card__isnull=True)` and leak every other
+        # property's card-less discount into this quote.
+        scope = Q(card__isnull=True, property=property)
+        if card is not None:
+            scope |= Q(card=card)
         qs = (
             Discount.objects.filter(
                 is_active=True,
                 valid_from__lte=date_from,
                 valid_to__gte=date_from,
             )
-            .filter(Q(card=card) | Q(card__isnull=True, property=property))
+            .filter(scope)
             # REPEAT_GUEST is recognised but unimplemented in v1 (no repeat-guest
             # detection exists yet — see GAP-009). Exclude it here so it can never
             # silently mis-apply; keep the enum member to avoid migration/API churn.

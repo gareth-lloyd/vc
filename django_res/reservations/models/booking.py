@@ -408,11 +408,12 @@ class Booking(AuditedModel):
         Postgres' default `READ COMMITTED` (both read the old fields, both
         write — the later commit silently clobbers the earlier). Taking
         `SELECT … FOR UPDATE` on entry serialises the second caller behind the
-        first; the reload then makes `self` reflect the freshly-committed state
-        before we re-price. Must be called inside the method's `atomic` block.
+        first; the reload makes `self` reflect the freshly-committed state
+        before we re-price. One query both locks and refreshes (the locking
+        select returns the fresh row). Must be called inside the method's
+        `atomic` block.
         """
-        Booking.objects.select_for_update().get(pk=self.pk)
-        self.refresh_from_db()
+        self.refresh_from_db(from_queryset=Booking.objects.select_for_update())
 
     def _rerun_pricing(
         self,

@@ -423,6 +423,57 @@ def test_fallback_does_not_mask_party_out_of_range(
         )
 
 
+@pytest.mark.django_db
+def test_all_fallback_stay_ignores_other_propertys_card_less_discount(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    """An all-fallback stay must not pick up a *different* property's
+    card-less discount.
+
+    With no covering rule there is no winning card, so `_apply_discounts`
+    runs with `card=None`. The property scope must still hold: a card-less
+    discount belonging to another property must never apply here. (Regression
+    guard — `Q(card=card)` collapses to `Q(card__isnull=True)` when `card`
+    is `None`, which would otherwise match every property's card-less rule.)
+    """
+    from pricing.enums import DiscountKind, RuleKind
+    from pricing.models import Discount
+    from properties.models import Property
+
+    other = Property.objects.create(
+        name="Other Villa",
+        display_name="Other Villa",
+        slug="other-villa",
+        category=property_.category,
+        group=property_.group,
+        region=property_.region,
+    )
+    Discount.objects.create(
+        property=other,
+        name="Other LOS",
+        rule_kind=RuleKind.LENGTH_OF_STAY,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("50.00"),  # would halve the stay if it leaked across
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    plan.fallback_nightly = Decimal("100.00")
+    plan.save(update_fields=["fallback_nightly"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 13),  # 3 uncovered nights (no `rule` fixture)
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.rate_subtotal == Decimal("300.00")
+    assert quote.discount == Decimal("0.00")
+
+
 # ---------------------------------------------------------------------------
 # GAP-007 — changeover auto-shift: nudge a non-conforming arrival forward
 # ---------------------------------------------------------------------------

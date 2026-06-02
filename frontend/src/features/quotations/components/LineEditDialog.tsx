@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -176,13 +177,13 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
           </div>
 
           <div className="space-y-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <CheckboxLabel>
               <Checkbox
                 checked={!!form.watch("is_manual")}
                 onCheckedChange={(v) => form.setValue("is_manual", v === true)}
               />
               <span>{t("detail.dialogs.line_edit.manual_label")}</span>
-            </label>
+            </CheckboxLabel>
             <p className="text-muted-foreground text-xs">
               {t("detail.dialogs.line_edit.manual_hint")}
             </p>

@@ -19,6 +19,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useModifyBookingGuests } from "../hooks";
 import { modifyGuestsInputSchema, type BookingDetail, type ModifyGuestsInput } from "../schemas";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface ModifyGuestsDialogProps {
   booking: BookingDetail;
@@ -130,14 +131,7 @@ export function ModifyGuestsDialog({ booking, open, onOpenChange }: ModifyGuests
             ) : null}
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <DialogFooter>
             <Button

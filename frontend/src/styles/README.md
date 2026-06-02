@@ -21,7 +21,7 @@ Edit the lowest layer needed for what you want to change:
 - **Whole rebrand** → edit the ramps (`--brand-*`, `--accent-*`, `--neutral-*`)
   in `:root`. Everything cascades.
 - **One status hue** (e.g. make "warning" orange instead of amber) → edit
-  `--status-warning` in `:root` and `.dark`.
+  `--status-warning` in `:root`.
 - **Service colour** → edit `--svc-{name}`.
 
 ## Available tokens
@@ -36,9 +36,7 @@ Edit the lowest layer needed for what you want to change:
 | Tier         | `--tier-quintessential`, `--tier-signature`                           |
 | Service      | `--svc-car / transfers / boat / chef / grocery / firstnight / …` (13) |
 | Lead status  | `--lead-hot / warm / cold / dead`                                     |
-| Navigation   | `--nav-active`, `--nav-active-foreground`, `--nav-hover`              |
 | Typography   | `--font-sans` (Inter), `--font-serif` (Fraunces), `--font-mono`       |
-| Spacing      | `--space-1` … `--space-16`                                            |
 | Radii        | `--radius`, `--radius-sm / md / lg / xl / pill`                       |
 | Shadows      | `--shadow-card / popover / modal`                                     |
 
@@ -72,7 +70,7 @@ The `var(--…)` value still lives in CSS, so a re-skin is still one file.
 
 ## Adding a new status tone
 
-1. Add the OKLCH value to `:root` and `.dark` in `globals.css`:
+1. Add the OKLCH value to `:root` in `globals.css`:
    ```css
    --status-newtone: oklch(0.6 0.15 100);
    ```

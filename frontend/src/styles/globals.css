@@ -55,6 +55,8 @@
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
   --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
   --color-brand-500: var(--brand-500);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
@@ -86,11 +88,6 @@
   --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-border: var(--sidebar-border);
-
-  /* Nav (legacy — kept so any stragglers compile) */
-  --color-nav-active: var(--nav-active);
-  --color-nav-active-foreground: var(--nav-active-foreground);
-  --color-nav-hover: var(--nav-hover);
 
   /* Typography — Tailwind picks up `font-sans`, `font-serif`, `font-mono` */
   --font-sans: var(--font-sans);
@@ -209,11 +206,6 @@
   --sidebar-hover: color-mix(in oklch, var(--neutral-0) 6%, transparent);
   --sidebar-border: color-mix(in oklch, var(--neutral-0) 8%, transparent);
 
-  /* -------- Nav (legacy — soft brand wash on linen) */
-  --nav-active: var(--brand-50);
-  --nav-active-foreground: var(--brand-700);
-  --nav-hover: color-mix(in oklch, var(--brand-50) 60%, transparent);
-
   /* -------- Concierge service palette (retuned slightly warm) */
   --svc-car: oklch(0.65 0.13 25);
   --svc-transfers: oklch(0.65 0.13 55);
@@ -242,18 +234,6 @@
   --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  /* -------- Spacing scale */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
-
   /* -------- Radii */
   --radius: 0.625rem;
 
@@ -262,55 +242,6 @@
   --shadow-popover: 0 4px 12px oklch(0.15 0 0 / 0.1), 0 2px 4px oklch(0.15 0 0 / 0.06);
   --shadow-modal: 0 20px 48px oklch(0.15 0 0 / 0.18);
   --shadow-sun: var(--shadow-card);
-}
-
-.dark {
-  --background: var(--neutral-900);
-  --foreground: var(--neutral-50);
-  --card: var(--neutral-800);
-  --card-foreground: var(--neutral-50);
-  --popover: var(--neutral-800);
-  --popover-foreground: var(--neutral-50);
-  --primary: var(--brand-300);
-  --primary-foreground: var(--brand-900);
-  --secondary: var(--neutral-700);
-  --secondary-foreground: var(--neutral-50);
-  --muted: var(--neutral-700);
-  --muted-foreground: var(--neutral-300);
-  --accent: color-mix(in oklch, var(--brand-700) 40%, transparent);
-  --accent-foreground: var(--brand-100);
-  --destructive: oklch(0.7 0.19 22);
-  --destructive-foreground: var(--neutral-50);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: var(--brand-400);
-
-  --status-success: oklch(0.72 0.16 145);
-  --status-warning: oklch(0.74 0.16 80);
-  --status-danger: oklch(0.72 0.2 22);
-  --status-info: oklch(0.72 0.13 230);
-  --status-neutral: var(--neutral-400);
-  --status-hold: oklch(0.72 0.16 290);
-
-  --tier-quintessential: var(--accent-300);
-  --tier-signature: var(--brand-300);
-
-  --sidebar: oklch(0.13 0.015 56);
-  --sidebar-foreground: var(--neutral-100);
-  --sidebar-muted: var(--neutral-400);
-  --sidebar-active: var(--brand-500);
-  --sidebar-active-foreground: var(--neutral-50);
-  --sidebar-hover: color-mix(in oklch, var(--neutral-0) 5%, transparent);
-  --sidebar-border: color-mix(in oklch, var(--neutral-0) 6%, transparent);
-
-  --nav-active: color-mix(in oklch, var(--brand-300) 18%, transparent);
-  --nav-active-foreground: var(--brand-100);
-  --nav-hover: color-mix(in oklch, var(--brand-300) 8%, transparent);
-
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 1px 3px oklch(0 0 0 / 0.5);
-  --shadow-popover: 0 4px 12px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.4);
-  --shadow-modal: 0 24px 48px oklch(0 0 0 / 0.6);
-  --shadow-sun: 0 12px 28px -10px oklch(0 0 0 / 0.5);
 }
 
 @layer base {

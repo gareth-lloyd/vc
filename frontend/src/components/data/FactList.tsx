@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { ActivityList } from "./ActivityList";
 
 export function FactRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -12,13 +13,8 @@ export function FactRow({ label, value }: { label: string; value: ReactNode }) {
 
 export function FactList({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <dl
-      className={cn(
-        "border-border bg-card divide-border divide-y rounded-lg border px-4",
-        className,
-      )}
-    >
+    <ActivityList as="dl" className={cn("px-4", className)}>
       {children}
-    </dl>
+    </ActivityList>
   );
 }

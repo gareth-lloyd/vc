@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -452,11 +453,11 @@ function AssignmentsList({
   canWrite: boolean;
 }) {
   return (
-    <ul className="border-border bg-card divide-border divide-y rounded-lg border">
+    <ActivityList as="ul">
       {assignments.map((a) => (
         <AssignmentRow key={a.id} assignment={a} propertyId={propertyId} canWrite={canWrite} />
       ))}
-    </ul>
+    </ActivityList>
   );
 }
 

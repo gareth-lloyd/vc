@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -263,13 +265,13 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
             </p>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <CheckboxLabel>
             <Checkbox
               checked={!!flexibleCtrl.field.value}
               onCheckedChange={(v) => flexibleCtrl.field.onChange(v === true)}
             />
             <span>{t("form_dialog.fields.flexible_dates")}</span>
-          </label>
+          </CheckboxLabel>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -342,14 +344,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
             <Textarea id="enq-message" rows={3} {...form.register("inbound_message")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

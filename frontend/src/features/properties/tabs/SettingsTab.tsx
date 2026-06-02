@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
@@ -279,7 +281,7 @@ function OperationalForm({
       </div>
 
       <div className="space-y-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <CheckboxLabel>
           <Checkbox
             checked={preApproval === true}
             disabled={!canWrite}
@@ -288,8 +290,8 @@ function OperationalForm({
             }
           />
           <span>{t("settings.operational.fields.bookings_require_pre_approval")}</span>
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        </CheckboxLabel>
+        <CheckboxLabel>
           <Checkbox
             checked={enquiryFirst === true}
             disabled={!canWrite}
@@ -298,17 +300,10 @@ function OperationalForm({
             }
           />
           <span>{t("settings.operational.fields.requires_enquiry_first")}</span>
-        </label>
+        </CheckboxLabel>
       </div>
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>
@@ -542,7 +537,7 @@ function FinanceForm({
       </div>
 
       <div className="space-y-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <CheckboxLabel>
           <Checkbox
             checked={form.watch("deposit_required") === true}
             disabled={!canWrite}
@@ -551,8 +546,8 @@ function FinanceForm({
             }
           />
           <span>{t("settings.finance.fields.deposit_required")}</span>
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        </CheckboxLabel>
+        <CheckboxLabel>
           <Checkbox
             checked={form.watch("security_deposit_required") === true}
             disabled={!canWrite}
@@ -561,8 +556,8 @@ function FinanceForm({
             }
           />
           <span>{t("settings.finance.fields.security_deposit_required")}</span>
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        </CheckboxLabel>
+        <CheckboxLabel>
           <Checkbox
             checked={form.watch("tax_is_exempt") === true}
             disabled={!canWrite}
@@ -571,7 +566,7 @@ function FinanceForm({
             }
           />
           <span>{t("settings.finance.fields.tax_is_exempt")}</span>
-        </label>
+        </CheckboxLabel>
       </div>
 
       <div className="space-y-2">
@@ -584,14 +579,7 @@ function FinanceForm({
         />
       </div>
 
-      {topLevelError ? (
-        <div
-          className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {topLevelError}
-        </div>
-      ) : null}
+      <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>

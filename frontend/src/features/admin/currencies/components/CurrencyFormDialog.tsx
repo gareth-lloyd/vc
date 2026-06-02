@@ -12,6 +12,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { currencyWriteInputSchema, type Currency, type CurrencyWriteInput } from "../schemas";
 import { useCreateCurrency, useUpdateCurrency } from "../hooks";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   open: boolean;
@@ -156,14 +157,7 @@ export function CurrencyFormDialog(props: Props) {
             <Label htmlFor="currency-active">{t("currencies.dialog.fields.is_active")}</Label>
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

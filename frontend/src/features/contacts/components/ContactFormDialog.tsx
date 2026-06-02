@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/errors";
 import type { ContactId } from "@/lib/query/keys";
 import { useCreateContact, useUpdateContact } from "../hooks";
 import { contactWriteInputSchema, type Contact, type ContactWriteInput } from "../schemas";
+import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   open: boolean;
@@ -173,14 +174,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
             <Textarea id="contact-notes" rows={3} {...form.register("notes")} />
           </div>
 
-          {topLevelError ? (
-            <div
-              className="bg-destructive/10 text-destructive border-destructive/40 rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {topLevelError}
-            </div>
-          ) : null}
+          <FormErrorAlert message={topLevelError} />
 
           <div className="flex justify-end gap-2">
             <Button

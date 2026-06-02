@@ -38,7 +38,6 @@ Edit the lowest layer needed for what you want to change:
 | Lead status  | `--lead-hot / warm / cold / dead`                                     |
 | Navigation   | `--nav-active`, `--nav-active-foreground`, `--nav-hover`              |
 | Typography   | `--font-sans` (Inter), `--font-serif` (Fraunces), `--font-mono`       |
-| Spacing      | `--space-1` … `--space-16`                                            |
 | Radii        | `--radius`, `--radius-sm / md / lg / xl / pill`                       |
 | Shadows      | `--shadow-card / popover / modal`                                     |
 

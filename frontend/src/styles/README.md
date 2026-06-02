@@ -36,7 +36,6 @@ Edit the lowest layer needed for what you want to change:
 | Tier         | `--tier-quintessential`, `--tier-signature`                           |
 | Service      | `--svc-car / transfers / boat / chef / grocery / firstnight / …` (13) |
 | Lead status  | `--lead-hot / warm / cold / dead`                                     |
-| Navigation   | `--nav-active`, `--nav-active-foreground`, `--nav-hover`              |
 | Typography   | `--font-sans` (Inter), `--font-serif` (Fraunces), `--font-mono`       |
 | Radii        | `--radius`, `--radius-sm / md / lg / xl / pill`                       |
 | Shadows      | `--shadow-card / popover / modal`                                     |

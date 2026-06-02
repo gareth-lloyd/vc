@@ -55,6 +55,8 @@
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
   --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
   --color-brand-500: var(--brand-500);
   --color-brand-600: var(--brand-600);
   --color-brand-700: var(--brand-700);
@@ -86,11 +88,6 @@
   --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-border: var(--sidebar-border);
-
-  /* Nav (legacy — kept so any stragglers compile) */
-  --color-nav-active: var(--nav-active);
-  --color-nav-active-foreground: var(--nav-active-foreground);
-  --color-nav-hover: var(--nav-hover);
 
   /* Typography — Tailwind picks up `font-sans`, `font-serif`, `font-mono` */
   --font-sans: var(--font-sans);
@@ -208,11 +205,6 @@
   --sidebar-active-foreground: var(--neutral-50);
   --sidebar-hover: color-mix(in oklch, var(--neutral-0) 6%, transparent);
   --sidebar-border: color-mix(in oklch, var(--neutral-0) 8%, transparent);
-
-  /* -------- Nav (legacy — soft brand wash on linen) */
-  --nav-active: var(--brand-50);
-  --nav-active-foreground: var(--brand-700);
-  --nav-hover: color-mix(in oklch, var(--brand-50) 60%, transparent);
 
   /* -------- Concierge service palette (retuned slightly warm) */
   --svc-car: oklch(0.65 0.13 25);

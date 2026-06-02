@@ -131,9 +131,8 @@ def test_seed_dev_mixed_populates_the_current_month() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_seed_dev_mixed_covers_reachable_cell_states() -> None:
-    """Aggregate over the portfolio the calendar exercises every *reachable*
-    state. `booking_deposit` is deliberately absent — no backend path produces
-    a BOOKING_DEPOSIT_PENDING hold (see the stage's Findings)."""
+    """Aggregate over the portfolio the calendar exercises every reachable
+    state."""
     _seed("mixed", properties=12, bookings=80, seed=42)
     today = date.today()
     reasons: set[str] = set()
@@ -152,8 +151,6 @@ def test_seed_dev_mixed_covers_reachable_cell_states() -> None:
     # show up at this scale.
     block_kinds = {"owner_block", "maintenance", "manual"}
     assert len(reasons & block_kinds) >= 2, reasons
-    # Dead state must never appear from seeding.
-    assert "booking_deposit" not in reasons, reasons
 
 
 @pytest.mark.django_db(transaction=True)

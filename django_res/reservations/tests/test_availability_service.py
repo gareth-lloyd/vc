@@ -346,31 +346,6 @@ def test_quotation_hold_maps_to_quotation_reason_no_block_id(
     assert cal[date(2026, 6, 12)].block_id is None
 
 
-def test_booking_deposit_hold_maps_to_booking_deposit_reason(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
-) -> None:
-    booking = _make_booking(
-        property=property_,
-        currency=gbp,
-        guest=guest,
-        terms=terms,
-        date_from=date(2026, 9, 1),
-        date_to=date(2026, 9, 8),
-        status=BookingStatus.AWAITING_DEPOSIT.value,
-    )
-    BookingHold.objects.create(
-        property=property_,
-        booking=booking,
-        date_from=date(2026, 10, 1),
-        date_to=date(2026, 10, 8),
-        expires_at=timezone.now() + timedelta(days=5),
-        reason=BookingHoldReason.BOOKING_DEPOSIT_PENDING.value,
-    )
-    cal = AvailabilityService.calendar(property_, date(2026, 10, 1), date(2026, 10, 8))
-    assert cal[date(2026, 10, 3)].reason == "booking_deposit"
-    assert cal[date(2026, 10, 3)].block_id is None
-
-
 def test_booking_cell_has_no_block_id_and_booked_outranks_manual(
     property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
 ) -> None:

@@ -92,7 +92,6 @@
       "booked": "Κρατημένο",
       "on_hold": "Δεσμευμένο",
       "quotation": "Δέσμευση προσφοράς",
-      "booking_deposit": "Εκκρεμεί προκαταβολή",
       "owner_block": "Αποκλεισμός ιδιοκτήτη",
       "maintenance": "Συντήρηση",
       "manual": "Χειροκίνητος αποκλεισμός",
@@ -105,7 +104,6 @@
     "cell_aria": "{{date}}: {{status}}",
     "hold_reasons": {
       "quotation_open": "Ανοιχτή προσφορά",
-      "booking_deposit_pending": "Εκκρεμεί προκαταβολή",
       "owner_block": "Αποκλεισμός ιδιοκτήτη",
       "maintenance": "Συντήρηση",
       "manual": "Χειροκίνητη δέσμευση"
@@ -115,7 +113,6 @@
     "reason_labels": {
       "booked": "Κρατημένο",
       "quotation": "Δέσμευση προσφοράς",
-      "booking_deposit": "Εκκρεμεί προκαταβολή",
       "owner_block": "Αποκλεισμός ιδιοκτήτη",
       "maintenance": "Συντήρηση",
       "manual": "Χειροκίνητος αποκλεισμός",

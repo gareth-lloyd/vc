@@ -126,14 +126,13 @@ class BookingNoteVisibility(models.TextChoices):
 
 class BookingHoldReason(models.TextChoices):
     QUOTATION_OPEN = "quotation_open", "Quotation open"
-    BOOKING_DEPOSIT_PENDING = "booking_deposit_pending", "Booking deposit pending"
     OWNER_BLOCK = "owner_block", "Owner block"
     MAINTENANCE = "maintenance", "Maintenance"
     MANUAL = "manual", "Manual"
 
 
 # Reasons an operator may create/edit/remove from the availability calendar.
-# Quotation/booking-deposit holds are managed via their source, never here.
+# Quotation holds are managed via their source (the quotation), never here.
 OPERATOR_EDITABLE_HOLD_REASONS: tuple[str, ...] = (
     BookingHoldReason.OWNER_BLOCK.value,
     BookingHoldReason.MAINTENANCE.value,

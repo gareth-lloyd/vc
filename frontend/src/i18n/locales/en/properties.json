@@ -92,7 +92,6 @@
       "booked": "Booked",
       "on_hold": "On hold",
       "quotation": "Quotation hold",
-      "booking_deposit": "Deposit pending",
       "owner_block": "Owner block",
       "maintenance": "Maintenance",
       "manual": "Manual block",
@@ -105,7 +104,6 @@
     "cell_aria": "{{date}}: {{status}}",
     "hold_reasons": {
       "quotation_open": "Quotation open",
-      "booking_deposit_pending": "Deposit pending",
       "owner_block": "Owner block",
       "maintenance": "Maintenance",
       "manual": "Manual hold"
@@ -115,7 +113,6 @@
     "reason_labels": {
       "booked": "Booked",
       "quotation": "Quotation hold",
-      "booking_deposit": "Deposit pending",
       "owner_block": "Owner block",
       "maintenance": "Maintenance",
       "manual": "Manual block",

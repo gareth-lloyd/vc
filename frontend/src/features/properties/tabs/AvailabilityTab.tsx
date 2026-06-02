@@ -52,7 +52,6 @@ const LEGEND_REASONS = [
   "available",
   "booked",
   "quotation",
-  "booking_deposit",
   "owner_block",
   "maintenance",
   "manual",
@@ -65,8 +64,6 @@ function reasonClasses(reason: string): string {
       return "bg-primary text-primary-foreground font-medium";
     case "quotation":
       return "bg-warning/25 text-warning";
-    case "booking_deposit":
-      return "bg-warning/45 text-warning";
     case "owner_block":
       return "bg-hold/35 text-hold";
     case "maintenance":

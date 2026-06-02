@@ -69,13 +69,11 @@ _REASON_PRIORITY = {
     "owner_block": 5,
     "maintenance": 4,
     "manual": 3,
-    "booking_deposit": 2,
     "quotation": 1,
 }
 
 _HOLD_REASON_KIND = {
     BookingHoldReason.QUOTATION_OPEN.value: "quotation",
-    BookingHoldReason.BOOKING_DEPOSIT_PENDING.value: "booking_deposit",
     BookingHoldReason.OWNER_BLOCK.value: "owner_block",
     BookingHoldReason.MAINTENANCE.value: "maintenance",
     BookingHoldReason.MANUAL.value: "manual",

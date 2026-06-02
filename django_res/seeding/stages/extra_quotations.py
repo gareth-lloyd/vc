@@ -22,7 +22,9 @@ def _run(ctx: SeedContext) -> int:
     active_properties = [p for p in ctx.properties if p.status == "active"] or ctx.properties
     target = max(1, int(ctx.n_bookings * ctx.knobs.pct_extra_quotation_per_booking))
     outcomes = ("sent", "expired", "cancelled")
-    expires_at = timezone.now() + timedelta(days=7)
+    # Longer live window on dense runs so SENT quotation cells stay visible
+    # across the demo calendar; the legacy 7 days otherwise.
+    expires_at = timezone.now() + timedelta(days=30 if ctx.knobs.dense_calendar else 7)
     made = 0
     for i in range(target):
         prop = active_properties[i % len(active_properties)]

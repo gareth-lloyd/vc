@@ -7,7 +7,7 @@ calls, they are seeder-only glue around the production service layer.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from seeding.context import SeedContext
 
@@ -108,6 +108,88 @@ def advance_status(booking: Any, i: int, ctx: SeedContext) -> None:
     if track == 3:
         return  # CHECKED_IN
     booking.check_out()  # track == 4 -> CHECKED_OUT
+
+
+def create_one_booking(
+    ctx: SeedContext,
+    prop: Any,
+    *,
+    date_from: date,
+    date_to: date,
+    i: int,
+    currency: Any,
+    terms: Any,
+    expires_at: Any,
+    force_occupying: bool = False,
+) -> Any:
+    """Build one Enquiry -> Quotation -> Booking for `prop` over the given dates.
+
+    The single source of truth for opening a seeded booking, shared by the
+    legacy round-robin path and the dense-calendar path so the two never drift.
+    Always goes through the real service layer (the only path that satisfies the
+    LEAD BookingGuest invariant).
+
+    `force_occupying` leaves the booking in its initial non-terminal state
+    (AWAITING_DEPOSIT, or PENDING_OWNER_APPROVAL on a pre-approval property) by
+    skipping `advance_status`, so the cell stays `booked` and a back-to-back
+    changeover day survives. Otherwise the booking is walked down its state
+    machine for status variety.
+    """
+    from django.db import transaction
+
+    from reservations.enums import BookingStatus, EnquiryStatus
+    from reservations.factories import EnquiryFactory
+    from reservations.models.enquiry import Enquiry
+    from reservations.services.bookings import BookingService
+    from reservations.services.quotations import QuotationService
+
+    guest = pick_guest(ctx)
+    enquiry = cast(
+        Enquiry,
+        EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
+    )
+    ctx.enquiry_pks.append(enquiry.pk)
+    with transaction.atomic():
+        quotation = QuotationService.create_from_enquiry(
+            enquiry,
+            [
+                {
+                    "property": prop,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "adults": 2,
+                    "children": 1,
+                }
+            ],
+            currency=currency,
+            terms_version=terms,
+            expires_at=expires_at,
+        )
+        line = quotation.lines.first()
+        if line is None:
+            raise RuntimeError("QuotationService produced no lines")
+        quotation.send()
+        requires_pre_approval = bool(
+            cast(Any, prop.settings).effective("bookings_require_pre_approval")
+        )
+        if not requires_pre_approval:
+            quotation.accept(line)
+        booking = BookingService.create_from_quotation_line(line, terms_version=terms)
+        ctx.booking_pks.append(booking.pk)
+        populate_payments(booking)
+        if not force_occupying:
+            advance_status(booking, i, ctx)
+        booking.refresh_from_db()
+        if booking.status not in (
+            BookingStatus.DECLINED.value,
+            BookingStatus.PENDING_OWNER_APPROVAL.value,
+        ):
+            enquiry.refresh_from_db()
+            # `Quotation.accept()` flips the parent enquiry to CONVERTED inside
+            # its own atomic block, so only convert here if it hasn't already.
+            if enquiry.status != EnquiryStatus.CONVERTED.value:
+                enquiry.convert(quotation)
+    return booking
 
 
 def advance_pre_approval(booking: Any, i: int, ctx: SeedContext) -> None:

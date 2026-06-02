@@ -1,6 +1,17 @@
 """Build the transactional graph: Enquiry -> Quotation -> Booking, then walk
 each booking a step down its state machine for status variety.
 
+Two layouts share one per-stay builder (`create_one_booking`):
+
+* **Legacy round-robin** (`dense_calendar=False`, i.e. happy): the budget is
+  spread one-at-a-time across properties near today. Byte-for-byte reproduces
+  the pre-density seeder so smoke tests stay deterministic.
+* **Dense calendar** (`dense_calendar=True`, i.e. mixed / chaos): properties are
+  partitioned into density tiers (packed / busy / light / empty) and the budget
+  is allocated by tier weight, then laid across the full date window with
+  positive gaps. Packed villas get a couple of back-to-back changeover pairs and
+  a current-month stay, both forced non-terminal so they render on the calendar.
+
 Repeat-guest pool is initialised here on first call so later stages
 (`extra_quotations`, `orphan_enquiries`, `notes`, …) can reuse it via
 `ctx.guest_pool`.
@@ -8,24 +19,24 @@ Repeat-guest pool is initialised here on first call so later stages
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
-from typing import Any, cast
+from typing import Any
 
-from django.db import transaction
 from django.utils import timezone
 
-from reservations.factories import EnquiryFactory, GuestFactory
-from reservations.models.enquiry import Enquiry
-from reservations.services.bookings import BookingService
-from reservations.services.quotations import QuotationService
-from seeding._booking_helpers import (
-    advance_status,
-    next_stay_start,
-    pick_guest,
-    populate_payments,
-)
+from reservations.factories import GuestFactory
+from seeding._booking_helpers import create_one_booking, next_stay_start
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
+
+# Share of the active portfolio assigned to each density tier. EMPTY villas get
+# no stays — they read as new/unlisted and double as candidates for the
+# property_lifecycle (draft/archive) pass.
+_TIER_SHARES: dict[str, float] = {"packed": 0.15, "busy": 0.25, "empty": 0.25}
+# Relative pull on the booking budget per stay-bearing property.
+_TIER_WEIGHT: dict[str, int] = {"packed": 6, "busy": 3, "light": 1}
+_STAY_BEARING_TIERS = ("packed", "busy", "light")
 
 
 def _init_guest_pool(ctx: SeedContext) -> None:
@@ -55,6 +66,12 @@ def _run(ctx: SeedContext) -> int:
     if not ctx.properties:
         return 0
     _init_guest_pool(ctx)
+    if ctx.knobs.dense_calendar:
+        return _run_dense(ctx)
+    return _run_legacy(ctx)
+
+
+def _run_legacy(ctx: SeedContext) -> int:
     active_properties = [p for p in ctx.properties if p.status == "active"] or ctx.properties
     expires_at = timezone.now() + timedelta(days=7)
     cursors: dict[int, date] = {}
@@ -64,59 +81,171 @@ def _run(ctx: SeedContext) -> int:
         date_from = next_stay_start(prop, cursors, ctx)
         date_to = date_from + timedelta(days=7)
         cursors[prop.pk] = date_to + timedelta(days=7)
-
-        guest = pick_guest(ctx)
-        terms = _terms_for(prop, ctx)
-        currency = _currency_for(prop, ctx)
-        enquiry = cast(
-            Enquiry,
-            EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
+        create_one_booking(
+            ctx,
+            prop,
+            date_from=date_from,
+            date_to=date_to,
+            i=i,
+            currency=_currency_for(prop, ctx),
+            terms=_terms_for(prop, ctx),
+            expires_at=expires_at,
         )
-        ctx.enquiry_pks.append(enquiry.pk)
-        with transaction.atomic():
-            quotation = QuotationService.create_from_enquiry(
-                enquiry,
-                [
-                    {
-                        "property": prop,
-                        "date_from": date_from,
-                        "date_to": date_to,
-                        "adults": 2,
-                        "children": 1,
-                    }
-                ],
-                currency=currency,
-                terms_version=terms,
-                expires_at=expires_at,
-            )
-            line = quotation.lines.first()
-            if line is None:
-                raise RuntimeError("QuotationService produced no lines")
-            quotation.send()
-            requires_pre_approval = bool(
-                cast(Any, prop.settings).effective("bookings_require_pre_approval")
-            )
-            if not requires_pre_approval:
-                quotation.accept(line)
-            booking = BookingService.create_from_quotation_line(line, terms_version=terms)
-            ctx.booking_pks.append(booking.pk)
-            populate_payments(booking)
-            advance_status(booking, i, ctx)
-            from reservations.enums import BookingStatus, EnquiryStatus
-
-            booking.refresh_from_db()
-            if booking.status not in (
-                BookingStatus.DECLINED.value,
-                BookingStatus.PENDING_OWNER_APPROVAL.value,
-            ):
-                enquiry.refresh_from_db()
-                # `Quotation.accept()` now flips the parent enquiry to
-                # CONVERTED inside its own atomic block (T3.2), so we only
-                # need to convert here if accept() hasn't already done so.
-                if enquiry.status != EnquiryStatus.CONVERTED.value:
-                    enquiry.convert(quotation)
         made += 1
     return made
+
+
+def _run_dense(ctx: SeedContext) -> int:
+    active = [p for p in ctx.properties if p.status == "active"] or ctx.properties
+    # Longer hold expiry than the legacy 7 days so quotation cells stay live
+    # across the demo window.
+    expires_at = timezone.now() + timedelta(days=30)
+    spread = ctx.knobs.booking_date_spread_days or 180
+
+    tiers = _partition_tiers(active, ctx.rng)
+    counts = _allocate_stays(tiers, ctx.n_bookings)
+
+    made = 0
+    i = 0  # global counter so advance_status keeps its modulo status variety
+    for tier in _STAY_BEARING_TIERS:
+        for prop in tiers[tier]:
+            count = counts.get(prop.pk, 0)
+            if count <= 0:
+                continue
+            currency = _currency_for(prop, ctx)
+            terms = _terms_for(prop, ctx)
+            for stay in _stay_plan(count, spread, ctx.rng, packed=(tier == "packed")):
+                create_one_booking(
+                    ctx,
+                    prop,
+                    date_from=ctx.today + timedelta(days=stay["from_off"]),
+                    date_to=ctx.today + timedelta(days=stay["to_off"]),
+                    i=i,
+                    currency=currency,
+                    terms=terms,
+                    expires_at=expires_at,
+                    force_occupying=stay["force"],
+                )
+                made += 1
+                i += 1
+    return made
+
+
+def _partition_tiers(props: list[Any], rng: Any) -> dict[str, list[Any]]:
+    """Split the active portfolio into density tiers deterministically.
+
+    Floors: ≥2 empty villas (so property_lifecycle always has candidates) and
+    ≥1 packed villa (so the "busy villa" always exists) whenever any stays are
+    produced. Light mops up the remainder.
+    """
+    shuffled = list(props)
+    rng.shuffle(shuffled)
+    n = len(shuffled)
+    out: dict[str, list[Any]] = {"packed": [], "busy": [], "light": [], "empty": []}
+    if n == 0:
+        return out
+
+    n_empty = min(n, max(2, round(n * _TIER_SHARES["empty"]))) if n >= 2 else 0
+    stay_bearing = n - n_empty
+    n_packed = min(stay_bearing, max(1, round(n * _TIER_SHARES["packed"]))) if stay_bearing else 0
+    n_busy = min(stay_bearing - n_packed, round(n * _TIER_SHARES["busy"])) if stay_bearing else 0
+    n_light = stay_bearing - n_packed - n_busy
+
+    idx = 0
+    for tier, size in (
+        ("packed", n_packed),
+        ("busy", n_busy),
+        ("light", n_light),
+        ("empty", n_empty),
+    ):
+        out[tier] = shuffled[idx : idx + size]
+        idx += size
+    return out
+
+
+def _allocate_stays(tiers: dict[str, list[Any]], budget: int) -> dict[int, int]:
+    """Distribute exactly `budget` stays across the stay-bearing properties by
+    tier weight (largest-remainder method).
+
+    Honours `--bookings` exactly: heavier tiers take the integer floor of their
+    proportional share and the leftover goes to the largest fractional parts.
+    When the budget is smaller than the property count, the lightest villas
+    simply get 0 — the budget is never inflated to give everyone a stay.
+    """
+    weighted: list[tuple[Any, int]] = [
+        (prop, _TIER_WEIGHT[tier]) for tier in _STAY_BEARING_TIERS for prop in tiers[tier]
+    ]
+    total_w = sum(w for _, w in weighted)
+    if total_w == 0 or budget <= 0:
+        return {}
+
+    raw = {prop.pk: budget * w / total_w for prop, w in weighted}
+    counts = {pk: math.floor(share) for pk, share in raw.items()}
+    leftover = budget - sum(counts.values())
+    # Hand the leftover to the largest fractional parts (ties broken by the
+    # larger raw share, then stable weighted order) for a deterministic split.
+    order = sorted(raw, key=lambda pk: (raw[pk] - math.floor(raw[pk]), raw[pk]), reverse=True)
+    for pk in order[:leftover]:
+        counts[pk] += 1
+    return counts
+
+
+def _stay_plan(count: int, spread: int, rng: Any, *, packed: bool) -> list[dict[str, Any]]:
+    """Lay `count` non-overlapping stays across [today-spread, today+spread].
+
+    Each stay lives in its own equal-width bucket with ≥2-day gaps, so holds and
+    the no-overlap booking constraint never collide. The bucket straddling today
+    is biased positive and forced non-terminal so the default-open current month
+    is populated. Packed villas additionally get 1-2 back-to-back changeover
+    pairs (the second stay snapped onto the first's check-out day), both members
+    forced non-terminal so the AM/PM changeover day survives.
+    """
+    if count <= 0:
+        return []
+    window = 2 * spread
+    bucket = max(12, window // count)
+    k0 = max(0, min(count - 1, round(spread / bucket)))  # bucket containing today
+    stays: list[dict[str, Any]] = []
+    for k in range(count):
+        base = -spread + k * bucket
+        nights = rng.randint(5, 9)
+        slack = max(0, bucket - nights - 2)
+        if k == k0:
+            lo, hi = max(base, 1), base + slack
+            start = rng.randint(lo, hi) if lo <= hi else base
+            force = True
+        else:
+            start = base + (rng.randint(0, slack) if slack else 0)
+            force = False
+        stays.append(
+            {"from_off": start, "to_off": start + nights, "nights": nights, "force": force}
+        )
+
+    if packed and count >= 2:
+        _add_changeover_pairs(stays, rng, count, k0)
+    return stays
+
+
+def _add_changeover_pairs(stays: list[dict[str, Any]], rng: Any, count: int, k0: int) -> None:
+    """Snap a stay onto its predecessor's check-out day to form a changeover
+    pair. The right member only ever moves left into the gap, so downstream
+    stays never collide. The current-month stay (`k0`) is left untouched."""
+    n_pairs = 2 if count >= 6 else 1
+    candidates = list(range(count - 1))
+    rng.shuffle(candidates)
+    used: set[int] = set()
+    placed = 0
+    for j in candidates:
+        if placed >= n_pairs:
+            break
+        if j in used or (j + 1) in used or j == k0 or (j + 1) == k0:
+            continue
+        prev, nxt = stays[j], stays[j + 1]
+        nxt["from_off"] = prev["to_off"]
+        nxt["to_off"] = nxt["from_off"] + nxt["nights"]
+        prev["force"] = nxt["force"] = True
+        used.update({j, j + 1})
+        placed += 1
 
 
 register(Stage(name="bookings", run=_run, depends_on=("properties",)))

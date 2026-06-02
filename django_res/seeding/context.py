@@ -18,11 +18,15 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
-# Rows per stage for each scale preset.
+# Rows per stage for each scale preset. Booking budgets are deliberately
+# generous for the non-happy profiles: the `bookings` stage spreads them
+# across density tiers (a few packed villas, several busy, many light, some
+# empty) so default calendars read as realistically dense rather than near
+# empty. `--bookings` still overrides the total exactly.
 _SCALES: dict[str, dict[str, int]] = {
-    "small": {"properties": 5, "users": 4, "bookings": 8},
-    "medium": {"properties": 20, "users": 8, "bookings": 40},
-    "large": {"properties": 60, "users": 15, "bookings": 150},
+    "small": {"properties": 5, "users": 4, "bookings": 30},
+    "medium": {"properties": 20, "users": 8, "bookings": 110},
+    "large": {"properties": 60, "users": 15, "bookings": 400},
 }
 
 
@@ -93,6 +97,16 @@ class ProfileKnobs:
     blocks_per_property: tuple[int, int] = (0, 0)
     # Inclusive day-length range of each placed block.
     block_length_days: tuple[int, int] = (0, 0)
+    # When True, the `bookings` stage spreads its budget across density tiers
+    # (packed / busy / light / empty villas) and lays stays across the full
+    # date window instead of a flat round-robin, so calendars read as densely
+    # but realistically varied. happy stays False (legacy round-robin).
+    dense_calendar: bool = False
+    # Per-property check-out/check-in clock times as "HH:MM" strings, written
+    # onto PropertySettings so back-to-back stays render an AM/PM changeover
+    # day on the availability calendar. (None, None) leaves the times null
+    # (happy), so no changeover split is produced.
+    changeover_times: tuple[str | None, str | None] = (None, None)
 
 
 _PROFILES: dict[Profile, ProfileKnobs] = {
@@ -116,7 +130,7 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         pct_enquiry_lost_only=0.10,
         pct_enquiry_contacted_only=0.10,
         repeat_guest_pool_size=4,
-        booking_date_spread_days=180,
+        booking_date_spread_days=365,
         # v2 dials:
         do_system_setup=True,
         n_property_groups=3,
@@ -129,9 +143,14 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         pct_notes=0.40,
         runs_per_channel=3,
         pct_webhooks=0.60,
-        pct_properties_with_blocks=0.35,
-        blocks_per_property=(1, 2),
+        # Blocks land on a bit over half the active villas (a mix, not every
+        # calendar), 1-3 each, so owner_block / maintenance / manual show up
+        # densely without smothering bookable availability.
+        pct_properties_with_blocks=0.55,
+        blocks_per_property=(1, 3),
         block_length_days=(2, 5),
+        dense_calendar=True,
+        changeover_times=("10:00", "16:00"),
     ),
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
@@ -165,6 +184,8 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         pct_properties_with_blocks=0.55,
         blocks_per_property=(1, 4),
         block_length_days=(2, 7),
+        dense_calendar=True,
+        changeover_times=("10:00", "16:00"),
     ),
 }
 

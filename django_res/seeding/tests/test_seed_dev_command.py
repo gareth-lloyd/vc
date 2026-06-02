@@ -195,7 +195,10 @@ def test_seed_dev_mixed_emits_quotation_lifecycle_variety() -> None:
 
 
 def test_seed_dev_mixed_drives_pre_approval_path() -> None:
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
+    # The dense mixed distribution can drop the lone pre-approval villa into the
+    # empty (no-booking) tier at small property counts; a slightly larger
+    # portfolio guarantees a pre-approval villa actually receives bookings.
+    _run(properties=12, bookings=40, profile="mixed", seed=42)
 
     # At least one booking has touched the PENDING_OWNER_APPROVAL state
     # (either still there, or transitioned to DECLINED / AWAITING_DEPOSIT

@@ -15,7 +15,7 @@ output to the pre-v2 seeder).
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, cast
 
 from pricing.factories import (
@@ -35,6 +35,11 @@ from properties.factories import (
 from properties.models import Country
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
+
+
+def _parse_hhmm(value: str) -> time:
+    """Parse an "HH:MM" changeover-time knob into a `time`."""
+    return datetime.strptime(value, "%H:%M").time()
 
 
 def _run(ctx: SeedContext) -> int:
@@ -101,6 +106,14 @@ def _run(ctx: SeedContext) -> int:
         if wants_pre_approval:
             prop.settings.bookings_require_pre_approval = True
             prop.settings.save(update_fields=["bookings_require_pre_approval"])
+        # Clock times let back-to-back stays render an AM/PM changeover day on
+        # the availability calendar. Off (None, None) for happy, which keeps
+        # the times null and the changeover split suppressed.
+        check_out, check_in = ctx.knobs.changeover_times
+        if check_out is not None and check_in is not None:
+            prop.settings.check_out_time = _parse_hhmm(check_out)
+            prop.settings.check_in_time = _parse_hhmm(check_in)
+            prop.settings.save(update_fields=["check_out_time", "check_in_time"])
         plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
         card = RateCardFactory(plan=plan)
         RateRuleFactory(card=card, **rule_kwargs)

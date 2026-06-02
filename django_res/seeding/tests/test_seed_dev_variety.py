@@ -53,11 +53,12 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     plus the shape contracts on currencies / terms / refunds / bookings /
     properties."""
 
-    # `--scale small` (5 properties / 8 bookings) is too thin to exercise the
-    # mod-4 refund walk *and* leave a property free of overlap-blocking
-    # bookings (the lifecycle stage skips properties with bookings in any
-    # OVERLAP_BLOCKING state). Bump both knobs so variety contracts hold
-    # without paying the full `--scale medium` cost.
+    # `--scale small` is too thin to exercise the mod-4 refund walk *and* leave
+    # a property free of overlap-blocking bookings (the lifecycle stage skips
+    # properties with bookings in any OVERLAP_BLOCKING state). The mixed
+    # profile also spreads its budget across density tiers, so a thin budget
+    # lands too few cancellable bookings to seed a refund. Bump both knobs so
+    # variety contracts hold without paying the full `--scale medium` cost.
     call_command(
         "seed_dev",
         "--scale",
@@ -65,7 +66,7 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
         "--properties",
         "20",
         "--bookings",
-        "24",
+        "40",
         "--profile",
         "mixed",
         "--seed",

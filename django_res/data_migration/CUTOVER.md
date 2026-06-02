@@ -51,42 +51,51 @@ Expect this to finish in ~2 minutes on the live snapshot. Watch for any
 non-zero `errors` column in the per-loader summary; investigate before
 proceeding.
 
-## 4b. Verify external-ID continuity (Zoho + WordPress)
+## 4b. Capture external IDs into `SyncRecord` (Zoho)
 
-Before unpausing any outbound integration tasks, confirm that every
-legacy external id has been migrated into `integrations.SyncRecord`.
-Dropping these ids causes the first post-cutover sync to duplicate
-records on the remote side (Zoho creates new records, orphaning years
-of CRM activity; WordPress allocates new posts, breaking already-emailed
-booking URLs). See `django_res_design/08-integrations.md` →
-"Migrating legacy external IDs" for the full rationale.
+This step **captures** the external ids Zoho already issued against legacy
+rows into `integrations.SyncRecord`, while the legacy DB is still readable.
+The `syncrecord_zoho` loader runs as part of `loadlegacy --all` in step 4,
+so there is nothing extra to run here — this step is the verification.
+
+Why it is time-critical even though nothing syncs yet: the legacy DB is the
+only home of these ids and it is decommissioned 24–48h after cutover (step
+10). These ids are the routing keys for every future push — when outbound
+sync goes live (deferred to v1.1; the engine in `integrations/tasks.py` is
+`NotImplementedError` today, so **no push fires at the M1 cutover**), a
+missing id makes Zoho INSERT a new record instead of UPDATE, orphaning years
+of CRM activity. Capture them now or lose them. See
+`django_res_design/08-integrations.md` → "Migrating legacy external IDs".
+
+Verify continuity:
 
 ```bash
 uv run python manage.py reconcile_legacy --integrations
 ```
 
-The `--integrations` flag extends the normal reconcile output with:
+The `--integrations` flag adds, after the main table:
 
-- Per legacy column (`VillaMaster.ZohoId`, `VillaContact.ZohoId`,
-  `VillaEnquire.ZohoId`, `VillaQuotationMaster.ZohoId`,
-  `VillaBooking.ZohoId`, `VillaBooking.BookingUrl`,
-  `VIllaConcierges.Slug`): count of non-blank legacy values vs count of
-  matching `SyncRecord` rows.
-- For `VillaSyncDetail`: per-`SiteId` row count vs
-  `SyncRecord(provider=WORDPRESS_SITE, provider_instance=SiteId)` row
-  count.
+- **Zoho external-ID continuity** (enforced): per source table
+  (`VillaMaster`, `VillaContact`, `VillaEnquire`, `VillaQuotationMaster`,
+  `VillaBooking`), the count of non-blank legacy `ZohoId`s vs the count of
+  backfilled `SyncRecord(provider=ZOHO_CRM)` rows for that model. A non-zero
+  gap is a **blocker** (the command exits non-zero): an external id with no
+  `SyncRecord` would duplicate on first push. Cutover must not proceed until
+  the gap is zero, or the operator records it as an accepted loss with a
+  written justification (e.g. "the 12 archived bookings with stale Zoho ids
+  predate the current Zoho account and would 404 on push anyway").
+- **WordPress surface** (informational only): legacy `VillaBooking.BookingUrl`
+  and `VillaSyncDetail` volume. The WordPress backfill is **not built yet** —
+  multi-site fan-out needs a `provider_instance` field on `SyncRecord` that
+  the model doesn't have (see the integrations audit). This row reports the
+  surface so it isn't silently treated as "all clear"; it never blocks. If WP
+  continuity matters for this cutover, that model change and a
+  `SyncRecordWordPressLoader` must land first.
 
-Any non-zero gap is a **blocker**. Cutover must not proceed until every
-external id has been transplanted, or the operator has explicitly
-recorded the gap as an accepted loss with a written justification (e.g.
-"the 12 archived bookings with stale Zoho ids predate the current Zoho
-account and would 404 on push anyway").
-
-**While the gap is non-zero, keep outbound push tasks paused.** Either
-set `SyncRecord.status=DISABLED` for the affected providers, or pause
-the Celery beat schedule for the `push_*` and `reconcile_*` tasks. Do
-not rely on the prod-only environment gate in legacy as a safety net —
-the new system pushes from every environment by default.
+Note: there is **no "disable outbound push" step at M1** — there is no push
+engine to disable yet. Re-introduce a stop-the-bleeding posture (pause beat,
+`SyncRecord.status=DISABLED`) in the v1.1 cutover checklist when `push_*` /
+`reconcile_*` actually exist.
 
 ## 5. Verify with `reconcile_legacy`
 
@@ -94,15 +103,21 @@ the new system pushes from every environment by default.
 uv run python manage.py reconcile_legacy
 ```
 
-Every row should have `gap == expected_gap`. **Documented expected losses**
-(safe to accept):
+The command now enforces this itself: it prints an `expected`/`status`
+column and **exits non-zero** if any row's `gap != expected_gap`, so this
+step passes iff the command succeeds — no manual cross-reference needed.
+
+The expected-gap numbers live in `reconcile_legacy.py` (`_CHECKS`), which is
+their single source of truth. The table below is a human-readable mirror;
+if the live dump legitimately shifts a number, change it in the code (that
+is where the dry-run calibration happens), not just here.
 
 | Source table              | Expected gap | Reason |
 |---------------------------|--------------|--------|
-| `VillaCollectionsMappings`| ~308         | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
-| `VillaFinance`            | ~1236        | 413 contact-default rows mirror onto `GroupFinance` (no 1:1 mapping); 676 parent-child override rows have no schema equivalent. |
-| `VillaCurrency`           | ~4           | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeasonRate`         | ~3462        | Rows with no price (`NightlyPrice IS NULL AND WeeklyPrice IS NULL AND Price IS NULL AND IsPOA = 0`) are skipped — they were unusable in legacy too. |
+| `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
+| `VillaFinance`            | 1236         | 413 contact-default rows mirror onto `GroupFinance` (no 1:1 mapping); 676 parent-child override rows have no schema equivalent. |
+| `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
+| `VillaSeasonRate`         | 3462         | Rows with no price (`NightlyPrice IS NULL AND WeeklyPrice IS NULL AND Price IS NULL AND IsPOA = 0`) are skipped — they were unusable in legacy too. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 
@@ -171,5 +186,6 @@ re-seeded any time by:
 2. `uv run python manage.py migrate`
 3. `uv run python manage.py loadlegacy --all`
 
-All loaders are idempotent (upserts keyed on `legacy_id`), so re-running
-from scratch is safe.
+All loaders are idempotent (upserts keyed on `legacy_id`, or on the
+content-type tuple for `syncrecord_zoho`), so re-running from scratch is
+safe.

@@ -105,7 +105,7 @@ One enquiry typically accumulates **multiple `Quotation` rows** over its lifetim
 
 - **Conversion is measured per `Enquiry`, not per `Quotation`.** As soon as any child `Quotation.status` flips to `ACCEPTED`, the parent `Enquiry.status` transitions to `CONVERTED`. Reporting that quotes a "conversion rate" counts enquiries, not quotes. See decisions row "Conversion is measured per `Enquiry`, not per `Quotation`" in `10-decisions.md`.
 - **Staff UI groups every quote under the parent enquiry.** Re-quoting is the default operator action on an open enquiry — a single ordered list (most recent first), with the most recent expanded by default. There is no separate top-level "quote-bundle" entity; the FK is enough.
-- **Quote reference numbers stay independent.** `Q-2026-000123` increments globally, not within an enquiry. Grouping is via the FK, not a derived prefix.
+- **Quote reference numbers increment globally.** `QVC123` (`Quotation.number` from a single global sequence), not within an enquiry. Grouping is via the FK, not a derived prefix. The *booking* number is carried forward from its accepted quote (`QVC123` → `VC123`); see GAP-006 and `01-domain-model.md` "Reference numbers".
 
 #### Enquiry-list inline editing
 
@@ -159,7 +159,8 @@ See reconciliation issue #27.
 ## Quotation
 
 ### `Quotation(AuditedModel)`
-- `reference` — CharField(unique) — `Q-2026-000123`
+- `number` — PositiveIntegerField(null=True, unique=True) — canonical sequence-backed integer (`quotation_number_seq`); NULL only on synthesised/interim rows
+- `reference` — CharField(unique) — `QVC123` (legacy parity), derived from `number` via `core.refs.quotation_prefix()`
 - `enquiry` — FK Enquiry SET_NULL, null=True (quotations can be created agent-direct without an enquiry)
 - `guest` — FK Guest PROTECT — required (anonymous must convert to a Guest before quoting)
 - `agent` — FK accounts.Contact PROTECT, null=True
@@ -192,7 +193,7 @@ Constraint: `CheckConstraint(date_from < date_to)`. `UniqueConstraint(quotation,
 ### `Booking(AuditedModel)`
 The reservation. Proper FK to the source `QuotationLine`, with the price locked at creation by snapshotting `pricing_snapshot`.
 
-- `reference` — CharField(unique) — `B-2026-000123`
+- `reference` — CharField(unique) — `VC123` (legacy parity), **carried forward** from the source quotation's `number` (`QVC123` → `VC123`); falls to a `VC-TMP-…` sentinel when the quotation has no `number`. See `core.refs.booking_prefix()` and GAP-006.
 - `quotation_line` — FK QuotationLine PROTECT  # real FK, not the legacy integer `QuotationNo`
 - `guest` — FK Guest PROTECT
 - `property` — FK properties.Property PROTECT  # denormalised from quotation_line for query speed; enforced equal in clean()

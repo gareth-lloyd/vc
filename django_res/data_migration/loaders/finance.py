@@ -20,8 +20,10 @@ from django.utils import timezone
 
 from accounts.enums import ContactRole
 from accounts.models import Contact
+from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
+from data_migration.loaders._util import legacy_quotation_no
 from pricing.models.currency import Currency
 from properties.enums import (
     CommissionCalcType,
@@ -337,8 +339,20 @@ class QuotationLoader(BaseLoader):
             else None
         )
         terms = _ensure_default_terms()
-        return {
-            "reference": f"Q-{int(row.get('QuotationNo') or row['Id']):06d}"[:32],
+        # Carry the legacy QuotationNo forward as the canonical `number` so the
+        # booking can derive `VC{number}` from `QVC{number}`. Setting both
+        # `number` and `reference` short-circuits Quotation.save()'s sequence
+        # draw, preserving the exact legacy digits.
+        #
+        # When QuotationNo is missing/0, we still want a numeric, customer-safe
+        # reference (`QVC{Id}` — not a `QVC-TMP` sentinel that would leak into
+        # the public quotation list), but we must NOT claim a `number`: the Id
+        # namespace overlaps real QuotationNos and `number` is unique. So the
+        # `number` key is set only when a genuine QuotationNo is present.
+        qn = legacy_quotation_no(row)
+        display = qn if qn is not None else int(row["Id"])
+        defaults: dict[str, Any] = {
+            "reference": quotation_reference(display)[:32],
             "guest": guest,
             "agent": agent,
             "currency": currency,
@@ -346,6 +360,9 @@ class QuotationLoader(BaseLoader):
             "status": QuotationStatus.DRAFT,
             "terms_version": terms,
         }
+        if qn is not None:
+            defaults["number"] = qn
+        return defaults
 
 
 class QuotationLineLoader(BaseLoader):

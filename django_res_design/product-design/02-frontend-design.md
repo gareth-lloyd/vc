@@ -162,11 +162,11 @@ Replaces the property-list dashboard. The job: *what do I need to act on today?*
 |  • ...                                                         |
 +----------------------------------------------------------------+
 | Departures today (2)        | Overdue balances (5)             |
-|  • ...                      |  • #BK-2391 £4,200  +3d          |
+|  • ...                      |  • #VC2391 £4,200  +3d          |
 |                             |  • ...                           |
 +----------------------------------------------------------------+
 | Recent enquiries                        Quotes activity         |
-|  • Smith — 2 villas, Aug   |  • Quote #Q-184 viewed 2h ago     |
+|  • Smith — 2 villas, Aug   |  • Quote #QVC184 viewed 2h ago     |
 |  • ...                     |  • ...                            |
 +----------------------------------------------------------------+
 ```
@@ -314,7 +314,7 @@ Linked from a band click, from `/properties/:id/availability`, and from the time
 | Casa Norte — May 2026  [‹][›]    | Selected: 18 May |
 |                                  | Booked           |
 |  Mo Tu We Th Fr Sa Su            | Guest: Tan       |
-|   1  2  3  4  5  6  7            | BK-2391          |
+|   1  2  3  4  5  6  7            | VC2391          |
 |   8  9 10 11 12 13 14            | [Open booking]   |
 |  15 16 17 ▓▓ ▓▓ ▓▓ ▓▓            |                  |
 |  ...                             |                  |
@@ -331,8 +331,8 @@ Fixes the "status is colour-only" pain via a richer status component and a lifec
 | [Search ref/guest/villa]  [Status ▾] [Stage ▾] [Site ▾] [Date]|
 +----------------------------------------------------------------+
 | □ | Ref     Villa     Guest   Dates           Stage     £     |
-| □ | BK-2391 Casa N.   Tan     14–21 May 26    [●●●○○] D! 12,400|
-| □ | BK-2392 Villa A.  Mooney  10–17 Jul 26    [●●●●○] B  18,200|
+| □ | VC2391 Casa N.   Tan     14–21 May 26    [●●●○○] D! 12,400|
+| □ | VC2392 Villa A.  Mooney  10–17 Jul 26    [●●●●○] B  18,200|
 | □ | ...                                                        |
 +----------------------------------------------------------------+
 ```
@@ -349,11 +349,11 @@ The 11-card scroll becomes 6 tabs + a persistent right rail summary.
 
 ```
 +----------------------------------------------------------------+
-| ← Bookings / BK-2391                                           |
+| ← Bookings / VC2391                                           |
 | Casa Norte · Tan party · 14–21 May 2026                        |
 | [Overview][Finance][Pay][Concierge][Comms][Owner][Timeline]    |
 +--------------------------------------------+-------------------+
-|                                            | BK-2391           |
+|                                            | VC2391           |
 |   Tab body                                 | Confirmed         |
 |                                            | 14–21 May (7n)    |
 |                                            | 8 guests          |
@@ -449,7 +449,7 @@ Kanban + list views, toggle in the header. Kanban is the default because enquiri
 |----------------+----------------+----------------+-------------|
 | ┌────────────┐ | ┌────────────┐ | ┌────────────┐ | ...         |
 | │ Smith      │ | │ Tan        │ | │ Mooney     │ |             |
-| │ 2 villas   │ | │ 1 villa    │ | │ Q-184 sent │ |             |
+| │ 2 villas   │ | │ 1 villa    │ | │ QVC184 sent │ |             |
 | │ Aug 26     │ | │ Jul 26     │ | │ 2d ago     │ |             |
 | │ source:    │ | │ source:    │ | │ ...        │ |             |
 | │  website   │ | │  agent     │ | │            │ |             |
@@ -468,7 +468,7 @@ Three parallel tracks. Each track is a row of milestones.
 
 ```
 +----------------------------------------------------------------+
-| Payments — BK-2391                                             |
+| Payments — VC2391                                             |
 +----------------------------------------------------------------+
 | Deposit (30%)                                                  |
 |  ●─────────●─────────○         £3,720 of £3,720  ✓ Paid        |
@@ -532,7 +532,7 @@ Two surfaces:
 
 ```
 +----------------------------------------------------------------+
-| Concierge — BK-2391                          [+ Add service]   |
+| Concierge — VC2391                          [+ Add service]   |
 +----------------------------------------------------------------+
 | Service        When         Supplier   Price  Status    Paid   |
 | Airport pickup 14 May 15:00 GoTransfer  £180  Confirmed Yes ✓  |
@@ -688,8 +688,8 @@ Use **modals** only for:
 A `<CommandPalette>` opens on `Cmd/Ctrl + K`. Sections:
 
 - **Go to** — routes (`Dashboard`, `Availability`, etc.).
-- **Find** — fuzzy search across bookings (by ref `BK-2391` or guest), properties, contacts, quotes (`Q-184`). Backend endpoint `/search?q=`.
-- **Actions** — `New booking`, `New quote`, `Send reminder for #BK-2391`.
+- **Find** — fuzzy search across bookings (by ref `VC2391` or guest), properties, contacts, quotes (`QVC184`). Backend endpoint `/search?q=`.
+- **Actions** — `New booking`, `New quote`, `Send reminder for #VC2391`.
 
 Keyboard-only: a power user creates a booking in three keystrokes.
 

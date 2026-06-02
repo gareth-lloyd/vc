@@ -105,6 +105,29 @@ engine to disable yet. Re-introduce a stop-the-bleeding posture (pause beat,
 `SyncRecord.status=DISABLED`) in the v1.1 cutover checklist when `push_*` /
 `reconcile_*` actually exist.
 
+## 4c. Quotation-number high-water mark (automatic)
+
+The loaders set `Quotation.number` explicitly from the legacy `QuotationNo`
+(so `QVC{number}` / `VC{number}` references keep their exact legacy digits).
+Setting the column directly does **not** advance the `quotation_number_seq`
+sequence, so the first organically-created quotation after cutover would
+otherwise draw a low `nextval` that collides with an already-imported
+`QVC2`/`QVC3`/…
+
+`loadlegacy` now fast-forwards the sequence past the highest imported number
+automatically at the end of the run (it prints
+`Quotation number sequence synced to high-water mark <N>.`), so no manual step
+is required. Verify that line appears, then confirm the next organic quotation
+lands above the imported range before going live.
+
+If you ever need to re-sync by hand (e.g. after a manual `number` edit), the
+equivalent is idempotent — `setval` to the current max is a no-op on re-run:
+
+```bash
+uv run python manage.py dbshell -c \
+  "SELECT setval('quotation_number_seq', (SELECT COALESCE(MAX(number), 1) FROM reservations_quotation));"
+```
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash

@@ -1,0 +1,117 @@
+"""BookingLoader reference parity (GAP-006).
+
+A legacy booking carries its `QuotationNo` forward as `VC{QuotationNo}` (same
+digits as the originating `QVC{QuotationNo}` quotation). The synthesised
+quotation must NOT claim that number — the real QuotationLoader owns it — so it
+stays NULL with a per-booking sentinel reference. A booking with no QuotationNo
+falls to a non-numeric `VC-TMP-…` sentinel, never a bare `VC{int}`.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+
+import pytest
+
+from data_migration.base import LoadReport
+from data_migration.loaders.bookings import BookingLoader
+from pricing.models.currency import Currency
+from properties.models.property import Property
+from reservations.models.booking import Booking
+from reservations.models.guest import Guest
+
+
+@pytest.fixture
+def seeded(db: None) -> Property:
+    from properties.models import Country, PropertyCategory, PropertyGroup, Region
+
+    country, _ = Country.objects.get_or_create(
+        iso2="GB", defaults={"name": "United Kingdom", "iso3": "GBR"}
+    )
+    region = Region.objects.create(country=country, name="South West", slug="south-west")
+    category = PropertyCategory.objects.create(name="Villa", slug="villa")
+    group = PropertyGroup.objects.create(name="Test group")
+    prop = Property.objects.create(
+        name="Test Villa",
+        display_name="Test Villa",
+        slug="test-villa",
+        category=category,
+        group=group,
+        region=region,
+        legacy_id="900",
+    )
+    Guest.objects.create(
+        first_name="Ada", last_name="Lovelace", email="ada@example.com", legacy_id="55"
+    )
+    Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="2")
+    return prop
+
+
+def _row(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "Id": 7,
+        "VillaId": 900,
+        "Guest": 55,
+        "FromDate": date(2026, 6, 10),
+        "ToDate": date(2026, 6, 17),
+        "RentalPrice": Decimal("1400.00"),
+        "BalanceDue": Decimal("700.00"),
+        "CurrencyId": 2,
+        "QuotationNo": 1805,
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.django_db
+def test_booking_carries_quotationno_forward(seeded: Property) -> None:
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.reference == "VC1805"
+    # Synthesised quotation must not claim the legacy number (the real
+    # QuotationLoader owns `1805` on its own `QVC1805` row).
+    assert booking.quotation_line.quotation.number is None
+
+
+@pytest.mark.django_db
+def test_booking_without_quotationno_uses_interim_sentinel(seeded: Property) -> None:
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(QuotationNo=None), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.reference.startswith("VC-TMP")
+
+
+@pytest.mark.django_db
+def test_booking_loader_is_idempotent(seeded: Property) -> None:
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(), report)
+    BookingLoader()._process_row(_row(), report)
+
+    assert Booking.objects.filter(legacy_id="7").count() == 1
+    assert Booking.objects.get(legacy_id="7").reference == "VC1805"
+
+
+@pytest.mark.django_db
+def test_two_bookings_sharing_quotationno_are_preserved_with_suffix(seeded: Property) -> None:
+    """A second legacy booking reusing a QuotationNo must be preserved with a
+    uniquified `VC{n}-…` reference, not crash the import (the old behaviour
+    raised IntegrityError on the unique `reference`)."""
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(Id=7, QuotationNo=1805), report)
+    BookingLoader()._process_row(_row(Id=8, QuotationNo=1805), report)
+
+    first = Booking.objects.get(legacy_id="7")
+    second = Booking.objects.get(legacy_id="8")
+    assert first.reference == "VC1805"
+    assert second.reference.startswith("VC1805-")
+    assert first.reference != second.reference
+
+    # Re-running the loader leaves the suffixed reference untouched (idempotent).
+    suffixed = second.reference
+    BookingLoader()._process_row(_row(Id=8, QuotationNo=1805), report)
+    second.refresh_from_db()
+    assert second.reference == suffixed

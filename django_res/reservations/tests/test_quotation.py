@@ -40,7 +40,7 @@ def line(quotation: Quotation, property_: Property) -> QuotationLine:
 
 @pytest.mark.django_db
 def test_quotation_reference_auto_generated(quotation: Quotation) -> None:
-    assert quotation.reference.startswith("Q-")
+    assert quotation.reference.startswith("QVC")
 
 
 @pytest.mark.django_db

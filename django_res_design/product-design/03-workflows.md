@@ -294,7 +294,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 **Entry points:**
 - Booking detail → Payments panel → "Take deposit" CTA (visible when deposit state is `Awaiting`).
 - Deposit-request email reply triage drawer.
-- Cmd-K → "Booking BK-12345 deposit".
+- Cmd-K → "Booking VC12345 deposit".
 
 **Steps:**
 
@@ -498,7 +498,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
    - "Block weekends only" — pattern-based bulk set.
    - "Mirror from another villa" — copy availability pattern (for villas with shared owner).
 
-8. **Decision point — overwriting a booking.** Setting a `Booked` cell to anything else requires confirmation ("This will sever cell from booking BK-12345 — proceed?") and is logged. Admin only.
+8. **Decision point — overwriting a booking.** Setting a `Booked` cell to anything else requires confirmation ("This will sever cell from booking VC12345 — proceed?") and is logged. Admin only.
 
 9. **Conflict detection.** If operator tries to set `Booked-Manual` on a range that overlaps an existing booking, blocked with conflict info.
 
@@ -934,7 +934,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 4. **Keyboard nav.** Up/down to select, Enter to open in drawer (default) or Cmd+Enter to open in full page.
 
-5. **Direct routing.** Typing a number like "QN12345" or "BK67890" routes directly. Typing "?" surfaces help / shortcuts.
+5. **Direct routing.** Typing a number like "QVC12345" or "VC67890" routes directly. Typing "?" surfaces help / shortcuts.
 
 6. **Scoped search.** Prefix with type to scope: `b:` bookings only, `e:` enquiries, `p:` properties, `c:` contacts, `>` for actions. Example: `> new booking`.
 

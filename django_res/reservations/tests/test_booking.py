@@ -349,7 +349,7 @@ def test_booking_transitioned_signal_fires(booking: Booking) -> None:
 
 @pytest.mark.django_db
 def test_reference_auto_generated(booking: Booking) -> None:
-    assert booking.reference.startswith("B-")
+    assert booking.reference.startswith("VC")
 
 
 # ---------------------------------------------------------------------------

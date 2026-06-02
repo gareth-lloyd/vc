@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
 from core.models.base import AuditedModel, TimestampedModel
-from core.refs import generate_reference
+from core.refs import booking_reference, generate_reference
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
     OVERLAP_BLOCKING_BOOKING_STATUSES,
@@ -210,8 +210,27 @@ class Booking(AuditedModel):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.reference:
-            self.reference = generate_reference("B", model=type(self))
+            self.reference = self._derive_reference()
         super().save(*args, **kwargs)
+
+    def _derive_reference(self) -> str:
+        """Carry the booking number forward from its quotation (legacy parity).
+
+        The legacy app rendered a booking as `VC{QuotationNo}` — same digits as
+        the quotation's `QVC{QuotationNo}`, prefix swapped. We mirror that: the
+        booking reference is derived from `quotation.number`, never an
+        independent sequence.
+
+        Two fallbacks: a quotation with no `number` (synthesised/interim legacy
+        rows) yields a non-numeric sentinel rather than a bare `VC{int}`; a
+        pre-existing collision on the derived reference appends a UUID suffix.
+        The collision path is defensive only — the real flow is one quote → one
+        booking, so the carry-forward value is unique by construction.
+        """
+        quotation = self.quotation_line.quotation
+        if quotation.number is None:
+            return generate_reference("VC-TMP", model=type(self))
+        return booking_reference(quotation.number, model=type(self), exclude_pk=self.pk)
 
     # ------------------------------------------------------------------
     # Transition plumbing

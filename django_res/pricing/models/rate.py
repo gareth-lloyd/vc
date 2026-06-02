@@ -67,7 +67,6 @@ class RateCard(AuditedModel):
     description = models.TextField(blank=True)
     min_nights = models.PositiveSmallIntegerField(default=1)
     max_nights = models.PositiveSmallIntegerField(null=True, blank=True)
-    changeover_weekday = models.PositiveSmallIntegerField(null=True, blank=True)
     sort_order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)

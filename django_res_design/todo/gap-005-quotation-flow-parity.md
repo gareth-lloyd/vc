@@ -147,16 +147,16 @@ Priority order below reflects operator-pain / spec-commitment.
 
 ## Follow-up surfaced by code review (not yet fixed)
 
-- **Builder line create/update skips changeover validation.**
-  `QuotationLineViewSet.perform_create`/`perform_update` reprice the line but
-  do not call `ChangeoverService.validate_arrival` (nor place a hold) the way
-  `create_from_enquiry` and the `:convert` path do. A line added or re-dated
-  via `POST`/`PATCH /quotations/{id}/lines` can therefore land on a forbidden
-  changeover day unvalidated. Deferred here because reinstating it is a
-  behaviour change that overlaps
-  [GAP-007](gap-007-changeover-autoshift-parity.md) (changeover auto-shift
-  parity) — fix the two together, with an `allow_changeover_override` escape
-  mirroring `:convert`. (Hold placement on this path stays deferred per #3.)
+- **Builder line create/update changeover.** ✅ Resolved by
+  [GAP-007](gap-007-changeover-autoshift-parity.md). There is no separate
+  changeover *validation* to reinstate: changeover is now always handled by the
+  auto-shift inside `PricingEngine.quote()`, and `QuotationLineViewSet._reprice`
+  reflects the engine's shifted `date_from`/`date_to` (plus
+  `changeover_shifted_from`) back onto the response. A line added or re-dated
+  via `POST`/`PATCH /quotations/{id}/lines` on a forbidden changeover day is
+  nudged forward and surfaced rather than rejected. (Hold placement on this
+  builder path stays deferred per #3 — holds are still only placed by
+  `create_from_enquiry`.)
 
 ## Approach
 

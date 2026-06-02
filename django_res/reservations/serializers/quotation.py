@@ -12,6 +12,10 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
 
     property_name = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
+    # The original arrival when the engine nudged it forward to the property's
+    # changeover day (GAP-007). `null` when the dates weren't moved. The FE
+    # renders the "we moved your dates" note from this + `date_from`.
+    changeover_shifted_from = serializers.SerializerMethodField()
 
     class Meta:
         model = QuotationLine
@@ -23,6 +27,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "hero_image_url",
             "date_from",
             "date_to",
+            "changeover_shifted_from",
             "adults",
             "children",
             "pricing_snapshot",
@@ -41,6 +46,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "quotation",
             "property_name",
             "hero_image_url",
+            "changeover_shifted_from",
             "pricing_snapshot",
             "total",
             "discount",
@@ -50,6 +56,10 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "created_at",
             "updated_at",
         ]
+
+    def get_changeover_shifted_from(self, obj: QuotationLine) -> str | None:
+        snapshot = obj.pricing_snapshot or {}
+        return snapshot.get("changeover_shifted_from")
 
     def get_property_name(self, obj: QuotationLine) -> str | None:
         prop = obj.property

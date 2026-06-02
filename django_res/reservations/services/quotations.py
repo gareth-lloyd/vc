@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from django.db import transaction
 
 from pricing.services import PricingEngine
-from properties.services.changeover import ChangeoverService
 from reservations.enums import BookingHoldReason, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
@@ -61,7 +60,14 @@ class QuotationService:
         # Net the operator discount; never let a large discount drive the
         # quoted price negative (mirrors Booking's non-negative money intent).
         line.total = max(gross - line.discount, Decimal("0"))
-        line.save(update_fields=["pricing_snapshot", "total", "updated_at"])
+        # The engine may have nudged the arrival forward to the property's
+        # changeover day (GAP-007). Persist the dates it actually priced so the
+        # line, its hold, and any downstream booking stay coherent with the
+        # snapshot; `changeover_shifted_from` in the snapshot carries the
+        # original arrival for the "we moved your dates" note.
+        line.date_from = quote.date_from
+        line.date_to = quote.date_to
+        line.save(update_fields=["pricing_snapshot", "total", "date_from", "date_to", "updated_at"])
         return line
 
     @classmethod
@@ -77,7 +83,6 @@ class QuotationService:
         guest: Any | None = None,
         agent: Any | None = None,
         actor: Any = None,
-        allow_changeover_override: bool = False,
     ) -> Quotation:
         """Build Quotation + lines, run PricingEngine per line, place holds."""
         resolved_guest = guest if guest is not None else enquiry.guest
@@ -98,13 +103,6 @@ class QuotationService:
         for line_input in lines:
             adults = int(line_input.get("adults", enquiry.adults))
             children = int(line_input.get("children", enquiry.children))
-            # Changeover validation must run before pricing — an invalid
-            # arrival aborts the whole atomic block before any line lands.
-            ChangeoverService.validate_arrival(
-                line_input["property"],
-                line_input["date_from"],
-                allow_override=allow_changeover_override,
-            )
             is_manual = bool(line_input.get("is_manual", False))
             create_kwargs: dict[str, Any] = {
                 "quotation": quotation,
@@ -125,10 +123,13 @@ class QuotationService:
             # guard so a manual line keeps its operator total either way.
             if not is_manual:
                 cls.price_line(quotation, line)
+            # Hold the line's *persisted* dates: pricing may have nudged a
+            # non-conforming arrival forward to the changeover day, so we must
+            # hold what we priced, not the raw requested dates.
             HoldService.place(
-                property=line_input["property"],
-                date_from=line_input["date_from"],
-                date_to=line_input["date_to"],
+                property=line.property,
+                date_from=line.date_from,
+                date_to=line.date_to,
                 expires_at=expires_at,
                 reason=BookingHoldReason.QUOTATION_OPEN.value,
                 quotation=quotation,

@@ -281,6 +281,44 @@ def test_create_line_prices_via_pricing_engine(
 
 
 @pytest.mark.django_db
+def test_create_off_changeover_line_shifts_and_surfaces_dates(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Builder line on a Saturday-changeover property: a Wednesday arrival is
+    nudged to Saturday, and the create response carries the shifted dates plus
+    `changeover_shifted_from` for the "we moved your dates" note (GAP-007)."""
+    PropertySettings.objects.create(
+        property=property_,
+        changeover_day=PrefilledChangeOverDay.SAT.value,
+    )
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",  # Wednesday
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    assert create.data["date_from"] == "2026-06-13"  # next Saturday
+    assert create.data["date_to"] == "2026-06-20"  # nights preserved
+    assert create.data["changeover_shifted_from"] == "2026-06-10"
+
+    line = QuotationLine.objects.get()
+    assert line.date_from == date(2026, 6, 13)
+    assert line.date_to == date(2026, 6, 20)
+
+
+@pytest.mark.django_db
 def test_update_line_reprices(
     api_client: APIClient,
     staff: User,
@@ -425,12 +463,15 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
 
 
 @pytest.mark.django_db
-def test_convert_enforces_changeover_with_override_escape(
+def test_convert_never_rejects_off_changeover_arrival(
     api_client: APIClient,
     staff: User,
     quotation: Quotation,
     line: QuotationLine,
 ) -> None:
+    """Convert never 422s on changeover (GAP-007): any shift happened at
+    pricing time, so converting succeeds and the booking inherits the line's
+    persisted dates."""
     PropertySettings.objects.create(
         property=line.property,
         changeover_day=PrefilledChangeOverDay.SAT.value,
@@ -438,23 +479,18 @@ def test_convert_enforces_changeover_with_override_escape(
     quotation.send()
     api_client.force_login(staff)
 
-    # 2026-06-10 (line fixture) is a Wednesday — wrong changeover day.
-    rejected = api_client.post(
+    # 2026-06-10 (line fixture) is a Wednesday; the line was never repriced, so
+    # its dates stand and the booking copies them.
+    response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
         {"line": line.pk},
         format="json",
     )
-    assert rejected.status_code == 422, rejected.data
-    assert rejected.data["code"] == "changeover_violation"
-    assert Booking.objects.count() == 0
-
-    accepted = api_client.post(
-        f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk, "allow_changeover_override": True},
-        format="json",
-    )
-    assert accepted.status_code == 201, accepted.data
+    assert response.status_code == 201, response.data
     assert Booking.objects.count() == 1
+    booking = Booking.objects.get()
+    assert booking.date_from == line.date_from
+    assert booking.date_to == line.date_to
 
 
 @pytest.mark.django_db

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
-from core.exceptions import ChangeoverViolation
 from properties.enums import PrefilledChangeOverDay
 from properties.models.settings import PropertySettings
 from reservations.enums import BookingHoldReason, EnquiryStatus
@@ -187,42 +186,46 @@ def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: Terms
 
 
 @pytest.mark.django_db
-def test_create_from_enquiry_enforces_changeover(
+def test_create_from_enquiry_shifts_off_changeover_arrival(
     guest: Guest,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
     rate_rule: RateRule,
 ) -> None:
+    """An off-changeover arrival is never rejected: the engine nudges it
+    forward to the property's changeover day and the shifted dates are
+    persisted onto the line *and* its hold, with the original arrival
+    surfaced on the snapshot for the "we moved your dates" note (GAP-007)."""
     PropertySettings.objects.create(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
     enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
     # 2026-06-10 is a Wednesday — not the Saturday changeover day.
-    line = {
+    line_input = {
         "property": property_,
         "date_from": date(2026, 6, 10),
         "date_to": date(2026, 6, 17),
         "adults": 2,
     }
 
-    with pytest.raises(ChangeoverViolation):
-        QuotationService.create_from_enquiry(
-            enquiry,
-            [line],
-            currency=gbp,
-            terms_version=terms,
-            expires_at=timezone.now() + timedelta(days=7),
-        )
-
     quotation = QuotationService.create_from_enquiry(
         enquiry,
-        [line],
+        [line_input],
         currency=gbp,
         terms_version=terms,
         expires_at=timezone.now() + timedelta(days=7),
-        allow_changeover_override=True,
     )
+
     assert quotation.lines.count() == 1
-    assert BookingHold.objects.filter(quotation=quotation).count() == 1
+    line = quotation.lines.get()
+    # Line carries the shifted dates (Wed 06-10 → Sat 06-13, nights preserved).
+    assert line.date_from == date(2026, 6, 13)
+    assert line.date_to == date(2026, 6, 20)
+    assert line.pricing_snapshot["changeover_shifted_from"] == "2026-06-10"
+
+    # The hold was placed on the shifted dates, not the raw request.
+    hold = BookingHold.objects.get(quotation=quotation)
+    assert hold.date_from == date(2026, 6, 13)
+    assert hold.date_to == date(2026, 6, 20)

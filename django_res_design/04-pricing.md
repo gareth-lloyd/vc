@@ -42,7 +42,7 @@ Constraint: `UniqueConstraint(base, quote, as_of)`.
 Three levels: **RatePlan → RateCard → RateRule**. Each level carries the metadata that its scope owns.
 
 - `RatePlan` — the operator's "Season". Names the period, owns currency and price basis, no prices.
-- `RateCard` — the operator's "rate card". The unit of editing in the admin UI: has name, min/max nights, changeover restriction, and is what `Discount` rules attach to.
+- `RateCard` — the operator's "rate card". The unit of editing in the admin UI: has name, min/max nights, and is what `Discount` rules attach to. (Changeover is property-level, not card-level — GAP-007.)
 - `RateRule` — the price row. One per (date sub-range × party-size band) inside a card. Occupancy bands are sibling rules sharing date range with different `(min_party, max_party)`.
 
 This three-level split honours the operator mental model (see `product-design/03-workflows.md` flow 13) without re-introducing the legacy `VillaSeasonDate` table — date ranges live on `RateRule`. Production data confirms this is the right shape: 96% of legacy seasons had a single date range; only 3% of rate rows had occupancy bands, so a separate band table is unjustified.
@@ -64,13 +64,12 @@ Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. 
 - `inclusion` — TextField(blank=True) — free-text "what's included" copy (e.g. chef, daily housekeeping)
 
 ### `RateCard(AuditedModel)`
-The operator-facing rate-card unit; the level at which length-of-stay rules, discounts, and changeover restrictions attach. Has no prices of its own — those live on child `RateRule`s.
+The operator-facing rate-card unit; the level at which length-of-stay rules and discounts attach. Has no prices of its own — those live on child `RateRule`s. Changeover is **not** a card-level concern — it resolves from the property (`PropertySettings.changeover_day` chain + `ChangeOverRule` windows) only (GAP-007).
 - `plan` — FK RatePlan CASCADE
 - `name` — CharField (e.g. "Peak weeks", "Shoulder")
 - `description` — TextField(blank=True)
 - `min_nights` — PositiveSmallInteger(default=1)
 - `max_nights` — PositiveSmallInteger(null=True, blank=True)
-- `changeover_weekday` — PositiveSmallInteger(null=True, blank=True) — overrides property `ChangeOverRule` when set; null means defer to property rule
 - `sort_order` — int(default=0)
 - `is_active` — bool(default=True)
 - `notes` — TextField(blank=True)
@@ -300,27 +299,25 @@ class PricingEngine:
 Steps:
 1. Resolve `RatePlan` for property + currency + date range.
 1a. **Changeover auto-shift (GAP-007):** before pricing, nudge a non-conforming
-   arrival forward to the next valid changeover weekday (legacy
-   `ResService.cs:2028-2041`). Allowed-weekday precedence: the active cards'
-   `changeover_weekday` when they agree on a single day; otherwise the property's
-   effective changeover day (`ChangeoverService` — `ChangeOverRule` window →
+   arrival forward to the next valid changeover day (legacy
+   `ResService.cs:2028-2041`). The property's effective changeover day is the
+   single source (`ChangeoverService` — `ChangeOverRule` window →
    `PropertySettings`/group chain; `any` = no shift). `date_from` advances to the
    next allowed weekday and `date_to` shifts by the **same delta** so the night
    count is preserved (legacy kept `date_to` fixed, silently shortening the stay —
    we don't). The original arrival is surfaced as `Quote.changeover_shifted_from`
-   (`None` when no shift). A winning card that still demands a weekday the
-   alignment couldn't satisfy raises `ChangeoverViolation` as a genuine-conflict
-   backstop (step 2).
-2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True` (provisional rules pass this filter — `is_provisional` does not hide a rule, it only flags the quote), then pick the highest-priority rule matching date + party. If any picked rule is `is_provisional`, set `Quote.is_provisional = True`. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` / `changeover_weekday` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` / `ChangeoverViolation` if the matched card's constraints fail.
+   (`None` when no shift). An off-changeover arrival is **never rejected** — it is
+   always shifted and surfaced; there is no override flag and no hard-reject gate.
+2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True` (provisional rules pass this filter — `is_provisional` does not hide a rule, it only flags the quote), then pick the highest-priority rule matching date + party. If any picked rule is `is_provisional`, set `Quote.is_provisional = True`. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` if the matched card's length-of-stay constraints fail. (Changeover is handled entirely in step 1a — cards carry no changeover constraint.)
    - **No-coverage fallback (GAP-008):** if no rule covers a night at all
      (`NoCoverage`) and the plan sets `RatePlan.fallback_nightly`, the night is
      priced at that opt-in rate via a synthetic `QuoteLine` with
      `rule_id=None` / `card_id=None`. When `fallback_nightly is None` the night
      raises `NoRateAvailable` as before. The fallback never masks a party-bracket
      miss (`OutOfRange` still raises `PartyOutOfRange`). If *every* night is
-     fallback there is no winning card, so the card `min_nights` / `max_nights` /
-     `changeover_weekday` validation is skipped (legacy had no card concept on
-     the `SettingNightlyPrice` path).
+     fallback there is no winning card, so the card `min_nights` / `max_nights`
+     validation is skipped (legacy had no card concept on the
+     `SettingNightlyPrice` path).
 3. Build per-night `QuoteLine`s (carrying `card_id` and `rule_id` for traceability — both `None` on a fallback line).
 4. Compute rate subtotal.
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).

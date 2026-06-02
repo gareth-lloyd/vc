@@ -1,8 +1,9 @@
-"""ChangeoverService — resolve the effective changeover day and enforce it.
+"""ChangeoverService — resolve the effective changeover day and align arrivals.
 
 Resolution order: a ChangeOverRule window covering the arrival date wins;
 otherwise the PropertySettings.effective() chain (property -> group);
-`any` means no constraint.
+`any` means no constraint. A non-conforming arrival is never rejected — it is
+nudged forward to the next valid changeover day (GAP-007).
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ from datetime import date
 
 import pytest
 
-from core.exceptions import ChangeoverViolation
 from properties.enums import PrefilledChangeOverDay
 from properties.models import ChangeOverRule, Property
 from properties.models.settings import PropertySettings
@@ -24,37 +24,25 @@ WEDNESDAY = date(2026, 6, 10)
 SATURDAY = date(2026, 6, 13)
 
 
-def test_arrival_on_required_day_passes(property_: Property) -> None:
+# ---------------------------------------------------------------------------
+# effective_day / required_weekday — resolution order
+# ---------------------------------------------------------------------------
+def test_effective_day_from_property_settings(property_: Property) -> None:
     PropertySettings.objects.create(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    ChangeoverService.validate_arrival(property_, SATURDAY)  # no raise
+    assert ChangeoverService.effective_day(property_, WEDNESDAY) == PrefilledChangeOverDay.SAT.value
+    assert ChangeoverService.required_weekday(property_, WEDNESDAY) == 5  # Saturday
 
 
-def test_arrival_on_wrong_day_raises(property_: Property) -> None:
-    PropertySettings.objects.create(
-        property=property_,
-        changeover_day=PrefilledChangeOverDay.SAT.value,
-    )
-    with pytest.raises(ChangeoverViolation):
-        ChangeoverService.validate_arrival(property_, WEDNESDAY)
+def test_effective_day_defaults_to_group_any(property_: Property) -> None:
+    # No PropertySettings row; group default is ANY (unconstrained).
+    assert ChangeoverService.effective_day(property_, WEDNESDAY) == PrefilledChangeOverDay.ANY.value
+    assert ChangeoverService.required_weekday(property_, WEDNESDAY) is None
 
 
-def test_override_bypasses_violation(property_: Property) -> None:
-    PropertySettings.objects.create(
-        property=property_,
-        changeover_day=PrefilledChangeOverDay.SAT.value,
-    )
-    ChangeoverService.validate_arrival(property_, WEDNESDAY, allow_override=True)  # no raise
-
-
-def test_any_day_default_never_raises(property_: Property) -> None:
-    # No PropertySettings row; group default is ANY.
-    ChangeoverService.validate_arrival(property_, WEDNESDAY)  # no raise
-
-
-def test_changeover_rule_window_overrides_default(property_: Property) -> None:
+def test_changeover_rule_window_overrides_settings(property_: Property) -> None:
     # Property default is ANY (group), but a rule forces Saturday in the window.
     ChangeOverRule.objects.create(
         property=property_,
@@ -62,8 +50,34 @@ def test_changeover_rule_window_overrides_default(property_: Property) -> None:
         starts_on=date(2026, 6, 1),
         ends_on=date(2026, 6, 30),
     )
-    with pytest.raises(ChangeoverViolation):
-        ChangeoverService.validate_arrival(property_, WEDNESDAY)
-
+    assert ChangeoverService.required_weekday(property_, WEDNESDAY) == 5  # in-window Saturday
     # Outside the rule window the ANY default applies again.
-    ChangeoverService.validate_arrival(property_, date(2026, 7, 8))  # Wednesday, no raise
+    assert ChangeoverService.required_weekday(property_, date(2026, 7, 8)) is None
+
+
+# ---------------------------------------------------------------------------
+# align_forward — pure night-count-preserving shift
+# ---------------------------------------------------------------------------
+def test_align_forward_shifts_to_next_allowed_weekday() -> None:
+    new_from, new_to, shifted_from = ChangeoverService.align_forward(
+        {5},
+        WEDNESDAY,
+        date(2026, 6, 17),  # Wed..Wed, 7 nights
+    )
+    assert new_from == SATURDAY  # next Saturday
+    assert new_to == date(2026, 6, 20)  # nights preserved
+    assert shifted_from == WEDNESDAY
+
+
+def test_align_forward_no_shift_when_already_on_weekday() -> None:
+    new_from, new_to, shifted_from = ChangeoverService.align_forward(
+        {5}, SATURDAY, date(2026, 6, 20)
+    )
+    assert (new_from, new_to, shifted_from) == (SATURDAY, date(2026, 6, 20), None)
+
+
+def test_align_forward_no_shift_when_unconstrained() -> None:
+    new_from, new_to, shifted_from = ChangeoverService.align_forward(
+        set(), WEDNESDAY, date(2026, 6, 17)
+    )
+    assert (new_from, new_to, shifted_from) == (WEDNESDAY, date(2026, 6, 17), None)

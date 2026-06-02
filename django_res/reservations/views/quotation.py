@@ -191,9 +191,6 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
                 agent=quotation.agent,
                 actor=request.user,
-                allow_changeover_override=bool(
-                    request.data.get("allow_changeover_override", False)
-                ),
             )
         return Response(
             BookingDetailSerializer(booking).data,
@@ -289,9 +286,12 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             )
             QuotationService.price_line(locked.quotation, locked)
         # Reflect the persisted price back onto the serializer's instance so
-        # the response (built from it) carries the server-computed values.
+        # the response (built from it) carries the server-computed values —
+        # including any changeover-shifted dates (GAP-007).
         line.total = locked.total
         line.pricing_snapshot = locked.pricing_snapshot
+        line.date_from = locked.date_from
+        line.date_to = locked.date_to
 
     @action(detail=False, methods=["post"], url_path="reorder")
     def reorder(self, request: Request, quotation_pk: str | None = None) -> Response:

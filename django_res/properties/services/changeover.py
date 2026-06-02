@@ -1,6 +1,6 @@
-"""ChangeoverService — resolve and enforce a property's changeover day.
+"""ChangeoverService — resolve a property's changeover day and align arrivals.
 
-`AVAILABILITY.CHANGEOVER.ENFORCE`. Resolution order for the arrival date:
+`AVAILABILITY.CHANGEOVER`. Resolution order for the arrival date:
 
 1. A `ChangeOverRule` whose `[starts_on, ends_on]` window contains the
    arrival date (peak-season override).
@@ -10,7 +10,9 @@
    (`GroupSettings.changeover_day`, which is non-null and defaults to
    `any`).
 
-`PrefilledChangeOverDay.ANY` means "no constraint".
+`PrefilledChangeOverDay.ANY` means "no constraint". A non-conforming arrival
+is never rejected — `align_forward` nudges it to the next valid changeover day
+(GAP-007, matching legacy `ResService.cs:2028-2041`).
 """
 
 from __future__ import annotations
@@ -18,7 +20,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
-from core.exceptions import ChangeoverViolation
 from properties.enums import PrefilledChangeOverDay
 from properties.models.settings import PropertySettings
 
@@ -38,7 +39,7 @@ _WEEKDAY = {
 
 
 class ChangeoverService:
-    """Resolve the effective changeover day and validate arrival dates."""
+    """Resolve the effective changeover day and align arrivals forward."""
 
     @staticmethod
     def effective_day(property: Property, on_date: date) -> str:
@@ -94,29 +95,3 @@ class ChangeoverService:
                     date_from,
                 )
         return date_from, date_to, None  # unreachable: a 7-day window covers every weekday
-
-    @classmethod
-    def validate_arrival(
-        cls,
-        property: Property,
-        date_from: date,
-        *,
-        allow_override: bool = False,
-    ) -> None:
-        """Raise `ChangeoverViolation` if `date_from` is the wrong weekday.
-
-        No-op when the effective day is `any`, when the arrival already
-        lands on the required weekday, or when `allow_override` is set.
-        """
-        if allow_override:
-            return
-        day = cls.effective_day(property, date_from)
-        required_weekday = _WEEKDAY.get(day)
-        if required_weekday is None:  # ANY / unknown -> unconstrained
-            return
-        if date_from.weekday() != required_weekday:
-            required_label = PrefilledChangeOverDay(day).label
-            raise ChangeoverViolation(
-                f"Arrival {date_from} is not on the property's changeover day "
-                f"({required_label}). An explicit override is required to proceed."
-            )

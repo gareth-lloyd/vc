@@ -169,7 +169,7 @@ Backed by `properties.PropertyDescription` (per-property × per-section child ro
 `NearbyPlaceType` (the FK target) is a small curated taxonomy exposed read-only at `GET /nearby-place-types` for dropdown population (see §2.3). No write CRUD in v1; seeded via data migration. See reconciliation issue #35.
 
 #### Change-over rules (allowed check-in weekdays)
-Per-property bounded set of weekdays on which a booking may start. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day) and `RateCard.changeover_weekday` (per-card override). See reconciliation issue #30.
+Per-property bounded set of weekdays on which a booking may start. Many rows per property = the set of allowed weekdays for that date window. Zero rows = any day allowed. Used by `AvailabilityService.is_available()` and `BookingHold.clean()`. Distinct from `PropertySettings.changeover_day` (single fallback day). Changeover is property-level only — no per-card override (GAP-007 retired `RateCard.changeover_weekday`). See reconciliation issue #30.
 
 | Method | Path | Purpose |
 |---|---|---|

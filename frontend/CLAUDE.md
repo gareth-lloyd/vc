@@ -201,7 +201,7 @@ Token layers (low → high):
 4. **Categorical palettes** — `--svc-*` (13 concierge service colours),
    `--lead-*` (Hot/Warm/Cold/Dead), `--tier-*` (Quintessential/Signature),
    `--nav-active` / `--nav-hover` (soft brand wash for sidebar).
-5. **Typography** — Fraunces (serif, page headings) + Inter (sans, body).
+5. **Typography** — Fraunces (serif, page headings) + Geist (sans, body).
 
 Reference docs / files:
 

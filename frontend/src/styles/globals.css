@@ -109,19 +109,19 @@
 }
 
 :root {
-  /* -------- Ramp: brand — muted terracotta
-     Hue 28-38. Chroma kept low so the brand reads as a refined warm
-     accent, not decorative. 600 is the primary action surface. */
-  --brand-50: oklch(0.975 0.008 36);
-  --brand-100: oklch(0.95 0.018 34);
-  --brand-200: oklch(0.9 0.035 32);
-  --brand-300: oklch(0.82 0.055 30);
-  --brand-400: oklch(0.71 0.07 28);
-  --brand-500: oklch(0.62 0.08 28);
-  --brand-600: oklch(0.54 0.085 28);
-  --brand-700: oklch(0.44 0.075 28);
-  --brand-800: oklch(0.34 0.055 28);
-  --brand-900: oklch(0.22 0.035 28);
+  /* -------- Ramp: brand — ink navy / indigo
+     Hue ~260. A crisp, trustworthy blue that reads dark and refined
+     against white. 600 is the primary action surface. */
+  --brand-50: oklch(0.97 0.012 262);
+  --brand-100: oklch(0.94 0.025 262);
+  --brand-200: oklch(0.88 0.045 262);
+  --brand-300: oklch(0.78 0.07 262);
+  --brand-400: oklch(0.66 0.095 262);
+  --brand-500: oklch(0.56 0.11 262);
+  --brand-600: oklch(0.46 0.11 260);
+  --brand-700: oklch(0.38 0.095 260);
+  --brand-800: oklch(0.3 0.075 260);
+  --brand-900: oklch(0.22 0.05 260);
 
   /* -------- Ramp: accent — soft ochre
      Used for tier badges and small celebratory moments. Chroma kept
@@ -136,25 +136,26 @@
   --accent-800: oklch(0.44 0.07 66);
   --accent-900: oklch(0.3 0.05 64);
 
-  /* -------- Ramp: neutral — barely-warm grey
-     Hue 60-70 with very low chroma. Reads as neutral grey under most
-     light, with the faintest warmth so the UI does not feel clinical. */
+  /* -------- Ramp: neutral — barely-cool grey
+     Hue ~255 with very low chroma. Reads as clean neutral grey with the
+     faintest cool cast — no beige, but not clinical blue. */
   --neutral-0: oklch(1 0 0);
-  --neutral-50: oklch(0.99 0.003 70);
-  --neutral-100: oklch(0.975 0.005 68);
-  --neutral-200: oklch(0.93 0.006 64);
-  --neutral-300: oklch(0.87 0.006 60);
-  --neutral-400: oklch(0.72 0.006 60);
-  --neutral-500: oklch(0.56 0.006 60);
-  --neutral-600: oklch(0.45 0.006 60);
-  --neutral-700: oklch(0.34 0.006 60);
-  --neutral-800: oklch(0.23 0.006 60);
-  --neutral-900: oklch(0.16 0.006 60);
+  --neutral-50: oklch(0.99 0.003 255);
+  --neutral-100: oklch(0.975 0.004 255);
+  --neutral-200: oklch(0.93 0.005 255);
+  --neutral-300: oklch(0.87 0.005 255);
+  --neutral-400: oklch(0.72 0.005 255);
+  --neutral-500: oklch(0.56 0.005 255);
+  --neutral-600: oklch(0.45 0.005 255);
+  --neutral-700: oklch(0.34 0.005 255);
+  --neutral-800: oklch(0.23 0.005 255);
+  --neutral-900: oklch(0.16 0.005 255);
 
   /* -------- Semantic shadcn surfaces, wired to the ramp */
-  /* Background is a very subtle off-white. Cards are pure white so they
-     still lift, but the contrast is quiet — business-software calm. */
-  --background: var(--neutral-50);
+  /* Background is a soft off-white — deep enough that pure-white cards
+     and shadow-card read as genuinely elevated, not flat. Also softens
+     the meeting point with the dark navigation rail. */
+  --background: var(--neutral-100);
   --foreground: var(--neutral-900);
   --card: var(--neutral-0);
   --card-foreground: var(--neutral-900);
@@ -197,11 +198,15 @@
 
   /* -------- Sidebar chrome
      Dark navigation rail — the one dark surface in an otherwise
-     dark-on-light app. Active row uses the muted brand. */
-  --sidebar: var(--neutral-900);
+     dark-on-light app. A cool near-charcoal — lifted off pure black so
+     the seam with the content area isn't a knife-edge. Active row uses
+     the navy brand. */
+  --sidebar: oklch(0.24 0.006 255);
   --sidebar-foreground: var(--neutral-100);
-  --sidebar-muted: oklch(0.65 0.006 60);
-  --sidebar-active: var(--brand-600);
+  --sidebar-muted: oklch(0.65 0.005 255);
+  /* Lighter brand step than --primary so the navy pill reads clearly
+     against the dark rail (brand-600 would sit too close to it). */
+  --sidebar-active: var(--brand-500);
   --sidebar-active-foreground: var(--neutral-50);
   --sidebar-hover: color-mix(in oklch, var(--neutral-0) 6%, transparent);
   --sidebar-border: color-mix(in oklch, var(--neutral-0) 8%, transparent);

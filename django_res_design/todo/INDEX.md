@@ -20,7 +20,7 @@ Status icons:
 | [BUG-003](bug-003-raterule-poa-vs-price-contradiction.md) | `RateRule` lets `is_poa=True` coexist with a numeric price | ✅ resolved |
 | [BUG-004](bug-004-owner-approval-race.md) | Owner-approval race | ✅ resolved (promote "Watch" item) |
 | [BUG-005](bug-005-stale-bookinghold-blocks-bookings.md) | Stale `BookingHold` rows block valid bookings | ✏️ revise: prefer sweeper + opportunistic expire |
-| [BUG-006](bug-006-payment-active-purpose-uniqueness.md) | `Payment.unique_active_payment_per_purpose` covers only DEPOSIT/BALANCE | ⬜ (refactor to three per-purpose constraints) |
+| [BUG-006](bug-006-payment-active-purpose-uniqueness.md) | `Payment.unique_active_payment_per_purpose` covers only DEPOSIT/BALANCE | ✅ resolved (three per-purpose constraints; SD hold superseded by capture) |
 | [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✏️ **fix is wrong** — `pre_save` doesn't fire on `bulk_create` |
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ (decision-blocked) |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |

@@ -15,6 +15,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from payments.enums import (
+    ACTIVE_PAYMENT_STATUSES,
+    EventSource,
     PaymentMethod,
     PaymentProvider,
     PaymentPurpose,
@@ -213,6 +215,12 @@ class SecurityDepositService:
         HELD       → PARTIALLY_REFUNDED (Refund for the residual)
         """
         if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
+            # The capture supersedes the pre-auth hold: settle the held
+            # authorisation into a captured charge. Retire the still-active
+            # hold Payment first so only the capture occupies the
+            # one-active-SECURITY_DEPOSIT-per-booking slot (BUG-006) — leaving
+            # both SUCCEEDED would double-count the deposit on the ledger.
+            cls._supersede_active_hold(sd, actor=actor)
             Payment.objects.create(
                 booking=sd.booking,
                 purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
@@ -246,6 +254,35 @@ class SecurityDepositService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _supersede_active_hold(sd: SecurityDeposit, *, actor: Any = None) -> None:
+        """Retire the still-active pre-auth hold Payment for `sd`.
+
+        The capture that follows mints its own SECURITY_DEPOSIT row; the hold
+        authorisation it settles must leave the active set so only one active
+        SECURITY_DEPOSIT row per booking survives (BUG-006) and the ledger
+        doesn't double-count. CANCELLED fires no payment signal, so retiring
+        the hold here has no downstream side effects.
+        """
+        hold = (
+            Payment.objects.filter(
+                booking=sd.booking,
+                purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                status__in=ACTIVE_PAYMENT_STATUSES,
+                meta__security_deposit_id=sd.pk,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if hold is not None:
+            hold.transition_to(
+                PaymentStatus.CANCELLED.value,
+                source=EventSource.SYSTEM.value,
+                actor=actor,
+                kind="SUPERSEDED_BY_CAPTURE",
+                reason="Pre-auth hold superseded by capture",
+            )
+
     @staticmethod
     def _kind_from_policy_method(method: str | None) -> str:
         """Map a `SecurityDepositPaymentMethod` value to a `SecurityDepositKind`."""

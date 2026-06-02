@@ -95,18 +95,34 @@ class Payment(AuditedModel):
             ("mark_paid_payment", "Can mark a payment as manually paid"),
         ]
         constraints = [
+            # One active row per booking for each single-cardinality purpose.
+            # CONCIERGE (one per item) and REFUND (one per source payment) are
+            # intentionally many-per-booking and have no constraint. See
+            # `bug-006-payment-active-purpose-uniqueness.md` for the cardinality
+            # table. Per-purpose constraints (vs. the old `purpose__in` blanket)
+            # keep each rule readable and make SECURITY_DEPOSIT — the dangerous
+            # one (a dup means two real holds on the guest's card) — explicit.
             models.UniqueConstraint(
-                fields=["booking", "purpose"],
+                fields=["booking"],
+                condition=(
+                    Q(status__in=ACTIVE_PAYMENT_STATUSES) & Q(purpose=PaymentPurpose.DEPOSIT.value)
+                ),
+                name="unique_active_deposit_per_booking",
+            ),
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=(
+                    Q(status__in=ACTIVE_PAYMENT_STATUSES) & Q(purpose=PaymentPurpose.BALANCE.value)
+                ),
+                name="unique_active_balance_per_booking",
+            ),
+            models.UniqueConstraint(
+                fields=["booking"],
                 condition=(
                     Q(status__in=ACTIVE_PAYMENT_STATUSES)
-                    & Q(
-                        purpose__in=[
-                            PaymentPurpose.DEPOSIT.value,
-                            PaymentPurpose.BALANCE.value,
-                        ]
-                    )
+                    & Q(purpose=PaymentPurpose.SECURITY_DEPOSIT.value)
                 ),
-                name="unique_active_payment_per_purpose",
+                name="unique_active_security_deposit_per_booking",
             ),
         ]
 

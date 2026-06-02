@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from django.db import transaction
 from django.db.models import Model
@@ -30,6 +30,23 @@ class LoadReport:
     skipped: int = 0
     errors: list[tuple[str, str]] = field(default_factory=list)
     duration_s: float = 0.0
+
+
+@runtime_checkable
+class Loader(Protocol):
+    """Structural contract the registry and `loadlegacy` rely on.
+
+    `BaseLoader` is the common implementation, but a loader that doesn't fit
+    its one-query / `legacy_id`-keyed-upsert shape (e.g. the cross-table
+    `SyncRecordZohoLoader`) only needs to satisfy this protocol to register
+    and run like any other loader.
+    """
+
+    name: ClassVar[str]
+
+    def __init__(self, since: str | None = None) -> None: ...
+
+    def load(self) -> LoadReport: ...
 
 
 class BaseLoader:

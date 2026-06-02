@@ -83,4 +83,4 @@ django_settings_module = "villacollective.settings.test"
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "villacollective.settings.test"
 python_files = ["test_*.py", "tests.py"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --reuse-db"

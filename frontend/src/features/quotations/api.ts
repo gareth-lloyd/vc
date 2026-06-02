@@ -71,6 +71,9 @@ interface PricingBulkResponse {
     rate_subtotal?: string;
     currency_code?: string;
     hero_image_url?: string | null;
+    date_from?: string;
+    date_to?: string;
+    changeover_shifted_from?: string | null;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -145,6 +148,9 @@ export async function searchQuoteOptions(
       total: q.total ?? null,
       currency: q.currency_code ?? currency,
       rate_subtotal: q.rate_subtotal ?? null,
+      date_from: q.date_from ?? null,
+      date_to: q.date_to ?? null,
+      changeover_shifted_from: q.changeover_shifted_from ?? null,
       error_code: q.error_code ?? null,
       error_detail: q.error_detail ?? null,
       breakdown: q,
@@ -226,7 +232,6 @@ export async function withdrawQuotation(id: QuotationId, reason: string): Promis
 export interface ConvertQuotationInput {
   line: number;
   payment_method?: "card" | "bank_transfer";
-  allow_changeover_override?: boolean;
 }
 
 export async function convertQuotation(

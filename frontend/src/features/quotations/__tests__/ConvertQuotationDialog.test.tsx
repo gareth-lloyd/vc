@@ -126,62 +126,47 @@ describe("ConvertQuotationDialog", () => {
     expect(await screen.findByTestId("booking-page")).toBeInTheDocument();
   });
 
-  it("shows the override CTA on a changeover violation and retries with the override flag", async () => {
-    let callCount = 0;
-    const requests: Array<Record<string, unknown>> = [];
+  it("renders the changeover shift note for a line whose arrival was moved", async () => {
     server.use(
-      linesHandler,
-      http.post("/api/v1/quotations/7:convert", async ({ request }) => {
-        callCount += 1;
-        requests.push((await request.json()) as Record<string, unknown>);
-        if (callCount === 1) {
-          return HttpResponse.json(
+      http.get("/api/v1/quotations/7/lines", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
             {
-              code: "changeover_violation",
-              detail: "Arrival must fall on the Saturday changeover day.",
-              field_errors: {},
+              id: 31,
+              quotation: 7,
+              property: 12,
+              // Engine nudged the arrival forward from 1 Jul to the changeover day.
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              changeover_shifted_from: "2026-07-01",
+              adults: 2,
+              children: 0,
+              total: "1200.00",
+              is_selected: true,
+              is_manual: false,
+              notes: "",
             },
-            { status: 422 },
-          );
-        }
-        return HttpResponse.json(
-          {
-            id: 101,
-            reference: "BK-101",
-            status: "awaiting_deposit",
-            property: 14,
-            guest: 42,
-            date_from: "2026-07-15",
-            date_to: "2026-07-22",
-            adults: 4,
-            children: 1,
-            currency: 1,
-            rental_price: "2400.00",
-            balance_due: "2400.00",
-            site_source: "main_website",
-          },
-          { status: 201 },
-        );
-      }),
+          ],
+        }),
+      ),
     );
 
     setup();
-    await userEvent.click(await screen.findByRole("button", { name: /^convert to booking$/i }));
-
-    // Override CTA appears; first request has no override flag.
     expect(
-      await screen.findByText(/arrival must fall on the saturday changeover day/i),
+      await screen.findByText(/arrival moved from .+ to the property's changeover day/i),
     ).toBeInTheDocument();
-    expect(requests[0]).toEqual({ line: 32, payment_method: "card" });
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: /override and convert anyway/i }));
-    await waitFor(() => expect(callCount).toBe(2));
-    expect(requests[1]).toEqual({
-      line: 32,
-      payment_method: "card",
-      allow_changeover_override: true,
-    });
-    expect(await screen.findByTestId("booking-page")).toBeInTheDocument();
+  it("does not render a shift note for a line whose dates weren't moved", async () => {
+    setup();
+    // Both fixture lines have no `changeover_shifted_from`.
+    await screen.findByLabelText(/property #12/i);
+    expect(
+      screen.queryByText(/moved from .+ to the property's changeover day/i),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a generic inline error for non-changeover 4xx", async () => {
@@ -201,52 +186,6 @@ describe("ConvertQuotationDialog", () => {
 
     setup();
     await userEvent.click(await screen.findByRole("button", { name: /^convert to booking$/i }));
-    const alerts = await screen.findAllByRole("alert");
-    expect(
-      alerts.some((node) => /quotation must be sent first/i.test(node.textContent ?? "")),
-    ).toBe(true);
-  });
-
-  it("clears the changeover banner when a retried submit fails for a different reason", async () => {
-    let callCount = 0;
-    server.use(
-      linesHandler,
-      http.post("/api/v1/quotations/7:convert", async () => {
-        callCount += 1;
-        if (callCount === 1) {
-          return HttpResponse.json(
-            {
-              code: "changeover_violation",
-              detail: "Arrival must fall on the Saturday changeover day.",
-              field_errors: {},
-            },
-            { status: 422 },
-          );
-        }
-        return HttpResponse.json(
-          {
-            code: "invalid_transition",
-            detail: "Quotation must be sent first.",
-            field_errors: {},
-          },
-          { status: 409 },
-        );
-      }),
-    );
-
-    setup();
-    await userEvent.click(await screen.findByRole("button", { name: /^convert to booking$/i }));
-
-    expect(
-      await screen.findByText(/arrival must fall on the saturday changeover day/i),
-    ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /override and convert anyway/i }));
-    await waitFor(() => expect(callCount).toBe(2));
-
-    expect(
-      screen.queryByText(/arrival must fall on the saturday changeover day/i),
-    ).not.toBeInTheDocument();
     const alerts = await screen.findAllByRole("alert");
     expect(
       alerts.some((node) => /quotation must be sent first/i.test(node.textContent ?? "")),

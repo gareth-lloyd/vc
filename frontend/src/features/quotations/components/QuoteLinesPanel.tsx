@@ -60,6 +60,13 @@ export function QuoteLinesPanel({ lines, currency, onRemove }: Props) {
             </TableCell>
             <TableCell>
               {formatDate(line.date_from)} – {formatDate(line.date_to)}
+              {line.changeover_shifted_from ? (
+                <span className="text-muted-foreground mt-0.5 block text-xs">
+                  {t("builder.staged.changeover_shifted", {
+                    from: formatDate(line.changeover_shifted_from),
+                  })}
+                </span>
+              ) : null}
             </TableCell>
             <TableCell>
               {line.adults}A{line.children ? ` · ${line.children}C` : ""}

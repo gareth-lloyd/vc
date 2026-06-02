@@ -50,6 +50,9 @@ export const quotationLineSchema = z.object({
   hero_image_url: z.string().nullable().optional(),
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),
+  // The original arrival when the engine nudged it forward to the property's
+  // changeover day (GAP-007). Null/absent when the dates weren't moved.
+  changeover_shifted_from: z.string().nullable().optional(),
   adults: z.number().optional().default(0),
   children: z.number().optional().default(0),
   pricing_snapshot: z.unknown().optional(),
@@ -100,6 +103,12 @@ export const quoteOptionSchema = z.object({
   currency: z.string().nullable().optional(),
   rate_subtotal: z.union([z.string(), z.number()]).nullable().optional(),
   nights: z.number().optional(),
+  // The dates the engine actually priced — may differ from the requested
+  // criteria when the arrival was nudged forward to the changeover day
+  // (GAP-007). `changeover_shifted_from` carries the original arrival.
+  date_from: z.string().nullable().optional(),
+  date_to: z.string().nullable().optional(),
+  changeover_shifted_from: z.string().nullable().optional(),
   error_code: z.string().nullable().optional(),
   error_detail: z.string().nullable().optional(),
   breakdown: z.unknown().optional(),
@@ -115,6 +124,9 @@ export interface StagedLine {
   hero_image_url: string | null;
   date_from: string;
   date_to: string;
+  // Original arrival if the engine shifted the stay to the changeover day
+  // (GAP-007); null when the priced dates match what was requested.
+  changeover_shifted_from: string | null;
   adults: number;
   children: number;
   total: string | number | null;

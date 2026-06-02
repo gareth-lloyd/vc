@@ -174,8 +174,7 @@
           "card": "Card",
           "bank_transfer": "Bank transfer"
         },
-        "changeover_title": "Arrival breaks the changeover rule",
-        "override_and_convert": "Override and convert anyway",
+        "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day",
         "cancel": "Cancel",
         "confirm": "Convert to booking",
         "converting": "Converting…",
@@ -280,6 +279,7 @@
         "actions": "Actions"
       },
       "thumbnail_alt": "{{name}} thumbnail",
+      "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day",
       "remove": "Remove"
     },
     "rail": {

@@ -72,8 +72,12 @@ export function QuotationBuilderPage() {
         property_id: option.property_id,
         property_name: option.property_name,
         hero_image_url: option.hero_image_url ?? null,
-        date_from: lastCriteria.date_from,
-        date_to: lastCriteria.date_to,
+        // Stage the dates the engine actually priced — they may have been
+        // nudged forward to the changeover day (GAP-007). Fall back to the
+        // requested criteria when the option carries no priced dates.
+        date_from: option.date_from ?? lastCriteria.date_from,
+        date_to: option.date_to ?? lastCriteria.date_to,
+        changeover_shifted_from: option.changeover_shifted_from ?? null,
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         total: option.total ?? null,

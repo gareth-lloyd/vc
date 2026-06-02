@@ -43,7 +43,6 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
   const [lineId, setLineId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
-  const [changeoverViolation, setChangeoverViolation] = useState<string | null>(null);
   const initialisedRef = useRef(false);
 
   useEffect(() => {
@@ -53,7 +52,6 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
       setLineId(null);
       setPaymentMethod("card");
       setTopLevelError(null);
-      setChangeoverViolation(null);
       return;
     }
     // Initialise the line selection exactly once per open session, so a
@@ -65,25 +63,18 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
     }
   }, [open, lines]);
 
-  const submit = async (allowChangeoverOverride: boolean) => {
+  const submit = async () => {
     if (lineId == null) return;
     setTopLevelError(null);
-    setChangeoverViolation(null);
     try {
       const booking = await convert.mutateAsync({
         line: lineId,
         payment_method: paymentMethod,
-        allow_changeover_override: allowChangeoverOverride || undefined,
       });
       toast.success(t("detail.dialogs.convert.toasts.success"));
       onOpenChange(false);
       navigate(`/bookings/${booking.id}`);
     } catch (error) {
-      if (error instanceof ApiError && error.code === "changeover_violation") {
-        // Surface the override CTA — operator opts in, we retry with the flag.
-        setChangeoverViolation(error.detail);
-        return;
-      }
       if (error instanceof ApiError && error.isClientError()) {
         setTopLevelError(error.detail);
       } else {
@@ -154,6 +145,13 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
                           })}{" "}
                           · {formatMoney(line.total ?? null, quotation.currency ?? null)}
                         </span>
+                        {line.changeover_shifted_from ? (
+                          <span className="text-muted-foreground block text-xs italic">
+                            {t("detail.dialogs.convert.changeover_shifted", {
+                              from: formatDate(line.changeover_shifted_from),
+                            })}
+                          </span>
+                        ) : null}
                       </span>
                     </Label>
                   );
@@ -191,29 +189,6 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
           </fieldset>
 
           <FormErrorAlert message={topLevelError} />
-
-          {changeoverViolation ? (
-            <div
-              className="border-warning/40 bg-warning/10 text-warning-foreground rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              <p className="font-medium">{t("detail.dialogs.convert.changeover_title")}</p>
-              <p className="text-muted-foreground mt-1">{changeoverViolation}</p>
-              <div className="mt-3 flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => submit(true)}
-                  disabled={busy}
-                >
-                  {busy
-                    ? t("detail.dialogs.convert.converting")
-                    : t("detail.dialogs.convert.override_and_convert")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
         </div>
 
         <div className="flex justify-end gap-2">
@@ -227,7 +202,7 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
           </Button>
           <Button
             type="button"
-            onClick={() => submit(false)}
+            onClick={() => submit()}
             disabled={busy || lineId == null || linesEmpty}
           >
             {busy ? t("detail.dialogs.convert.converting") : t("detail.dialogs.convert.confirm")}

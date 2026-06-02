@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
@@ -104,13 +105,13 @@ export function LoginPage() {
           </div>
 
           <div className="flex items-center justify-between">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <CheckboxLabel>
               <Checkbox
                 checked={!!rememberCtrl.field.value}
                 onCheckedChange={(v) => rememberCtrl.field.onChange(v === true)}
               />
               <span>{t("login.remember_device")}</span>
-            </label>
+            </CheckboxLabel>
             <Link to="/forgot-password" className="text-muted-foreground text-sm hover:underline">
               {t("login.forgot_password")}
             </Link>

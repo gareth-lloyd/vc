@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { useController, useForm } from "react-hook-form";
@@ -143,13 +144,13 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
               </SelectContent>
             </Select>
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <CheckboxLabel>
             <Checkbox
               checked={!!pinnedCtrl.field.value}
               onCheckedChange={(v) => pinnedCtrl.field.onChange(v === true)}
             />
             <span>{t("notes.form_dialog.fields.pin")}</span>
-          </label>
+          </CheckboxLabel>
 
           <FormErrorAlert message={topLevelError} />
 

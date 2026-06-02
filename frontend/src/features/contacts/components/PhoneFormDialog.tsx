@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
@@ -133,13 +134,13 @@ export function PhoneFormDialog(props: PhoneFormDialogProps) {
             />
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <CheckboxLabel>
             <Checkbox
               checked={!!form.watch("is_primary")}
               onCheckedChange={(v) => form.setValue("is_primary", v === true)}
             />
             <span>{t("checkboxes.primary_phone")}</span>
-          </label>
+          </CheckboxLabel>
 
           <FormErrorAlert message={topLevelError} />
 

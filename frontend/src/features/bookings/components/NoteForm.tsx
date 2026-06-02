@@ -1,4 +1,5 @@
 import { useController, type UseFormReturn } from "react-hook-form";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -94,13 +95,13 @@ export function NoteForm({
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-sm">
+      <CheckboxLabel>
         <Checkbox
           checked={!!pinnedCtrl.field.value}
           onCheckedChange={(v) => pinnedCtrl.field.onChange(v === true)}
         />
         <span>{t("notes.form.pin")}</span>
-      </label>
+      </CheckboxLabel>
 
       <FormErrorAlert message={topLevelError} />
 

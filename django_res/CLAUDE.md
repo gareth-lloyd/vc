@@ -7,7 +7,20 @@
 3. `uv sync`
 4. `uv run python manage.py migrate`
 5. `uv run pytest` — tests run against the same Postgres instance
-   (pytest-django creates and drops `test_villacollective` automatically).
+   (pytest-django creates `test_villacollective` automatically).
+
+### Running tests from multiple worktrees
+
+The test DB lives on the one shared Postgres container, so concurrent
+worktrees would otherwise collide on `test_villacollective`. Two guards:
+
+- A checkout under `.claude/worktrees/` automatically gets its own
+  `test_villacollective_<hash>` database (suffix derived from the checkout
+  path, in `settings/test.py`). The main checkout and CI keep the plain name.
+  Set `PYTEST_DB_SUFFIX` to override the suffix manually.
+- `--reuse-db` is on by default (`addopts`), so each worktree creates its DB
+  once and reuses it — no CREATE/DROP churn between runs. Pass `--create-db`
+  after changing migrations to rebuild it.
 
 ## Environments
 

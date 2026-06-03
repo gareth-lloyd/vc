@@ -11,12 +11,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict
 
-from owners.enums import OwnerMembershipStatus, OwnerOrgStatus
+from owners.enums import OwnerMembershipStatus, OwnerOrgStatus, OwnerRole
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from django.db.models import QuerySet
 
     from accounts.models import User
+
+
+# Role floors for the two owner write surfaces. VIEW_ONLY is read-only and is
+# absent from both. Booking approval is narrower than block requests: only an
+# org's ADMIN / PROPERTY_MANAGER may accept or decline a pending booking.
+BLOCK_WRITER_ROLES: tuple[str, ...] = (
+    OwnerRole.ADMIN.value,
+    OwnerRole.PROPERTY_MANAGER.value,
+    OwnerRole.FINANCE.value,
+    OwnerRole.EDITOR.value,
+)
+BOOKING_APPROVER_ROLES: tuple[str, ...] = (
+    OwnerRole.ADMIN.value,
+    OwnerRole.PROPERTY_MANAGER.value,
+)
 
 
 class Visibility(TypedDict):
@@ -48,6 +65,28 @@ def _active_grants(user: User) -> QuerySet:
 def owner_property_ids(user: User) -> set[int]:
     """The set of property ids `user` may view across all their active orgs."""
     return set(_active_grants(user).values_list("property_id", flat=True))
+
+
+def owner_property_ids_for_roles(user: User, roles: Sequence[str]) -> set[int]:
+    """Property ids `user` may *write*, given a membership role in `roles`.
+
+    The role, user, and status predicates MUST live in one `filter()` call so
+    they bind to the SAME membership join row. Do not chain `.filter(role=...)`
+    onto `_active_grants(...)`: that opens a second join to `memberships` and
+    could match a *different* member's role in the same org — the same
+    cross-row footgun `_active_grants`' docstring warns about for `.distinct()`.
+    """
+    from owners.models import OwnerOrgProperty
+
+    return set(
+        OwnerOrgProperty.objects.filter(
+            end_date__isnull=True,
+            organisation__status=OwnerOrgStatus.ACTIVE,
+            organisation__memberships__user=user,
+            organisation__memberships__status=OwnerMembershipStatus.ACTIVE,
+            organisation__memberships__role__in=roles,
+        ).values_list("property_id", flat=True)
+    )
 
 
 def owner_visibility_map(user: User) -> dict[int, Visibility]:

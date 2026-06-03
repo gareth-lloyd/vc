@@ -376,6 +376,16 @@ _owner_routes: list[URLPattern | URLResolver] = [
         name="owner-booking-detail",
     ),
     path(
+        "owner/bookings/<int:pk>:approve",
+        OwnerBookingViewSet.as_view({"post": "approve"}),
+        name="owner-booking-approve",
+    ),
+    path(
+        "owner/bookings/<int:pk>:decline",
+        OwnerBookingViewSet.as_view({"post": "decline"}),
+        name="owner-booking-decline",
+    ),
+    path(
         "owner/properties/<int:property_id>/calendar",
         OwnerPropertyCalendarView.as_view(),
         name="owner-property-calendar",

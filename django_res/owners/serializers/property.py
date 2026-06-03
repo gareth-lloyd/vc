@@ -16,6 +16,7 @@ class OwnerPropertySerializer(serializers.ModelSerializer[Property]):
     guests = serializers.SerializerMethodField()
     bedrooms = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
+    can_request_block = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -31,7 +32,13 @@ class OwnerPropertySerializer(serializers.ModelSerializer[Property]):
             "guests",
             "bedrooms",
             "hero_image_url",
+            "can_request_block",
         ]
+
+    def get_can_request_block(self, obj: Property) -> bool:
+        # The view places the role-scoped writable set in context; default empty
+        # so a serializer used without it never claims the capability.
+        return obj.id in self.context.get("block_writer_property_ids", set())
 
     @staticmethod
     def _capacity(obj: Property) -> PropertyCapacity | None:

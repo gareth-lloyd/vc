@@ -8,7 +8,11 @@ from django.db.models import Prefetch
 from rest_framework import viewsets
 
 from owners.permissions import IsOwner
-from owners.scoping import owner_property_ids
+from owners.scoping import (
+    BLOCK_WRITER_ROLES,
+    owner_property_ids,
+    owner_property_ids_for_roles,
+)
 from owners.serializers.property import OwnerPropertySerializer
 from properties.enums import ImageKind
 from properties.models import Property, PropertyImage
@@ -28,6 +32,13 @@ class OwnerPropertyViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = OwnerPropertySerializer
     permission_classes = [IsOwner]
+
+    def get_serializer_context(self) -> dict[str, object]:
+        context = super().get_serializer_context()
+        context["block_writer_property_ids"] = owner_property_ids_for_roles(
+            cast("User", self.request.user), BLOCK_WRITER_ROLES
+        )
+        return context
 
     def get_queryset(self) -> QuerySet[Property]:
         user = cast("User", self.request.user)

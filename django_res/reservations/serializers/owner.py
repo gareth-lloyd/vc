@@ -75,6 +75,11 @@ class OwnerBookingListSerializer(serializers.Serializer):
             data["balance_due"] = f"{obj.balance_due:.2f}"
         if vis["view_guest_details"] and guest is not None:
             data["guest_contact"] = {"email": guest.email, "phone": guest.phone}
+        # Capability flag: may *this* caller approve/decline this booking? Pure
+        # role capability — the UI combines it with the pending status. Sourced
+        # from a role-scoped set the view places in context (default empty so a
+        # serializer used without it never claims the capability).
+        data["can_approve"] = obj.property_id in self.context.get("approver_property_ids", set())
         if self.detail:
             self._add_financial_detail(data, obj, vis)
         return data

@@ -26,6 +26,7 @@ from rest_framework.views import APIView
 from owners.permissions import IsOwner
 from owners.scoping import (
     BLOCK_WRITER_ROLES,
+    BOOKING_APPROVER_ROLES,
     owner_property_ids,
     owner_property_ids_for_roles,
     owner_visibility_map,
@@ -186,9 +187,54 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     def get_serializer_context(self) -> dict[str, Any]:
+        user = cast("User", self.request.user)
         context = super().get_serializer_context()
-        context["visibility"] = owner_visibility_map(cast("User", self.request.user))
+        context["visibility"] = owner_visibility_map(user)
+        context["approver_property_ids"] = owner_property_ids_for_roles(
+            user, BOOKING_APPROVER_ROLES
+        )
         return context
+
+    def _approvable_booking(self, request: Request, pk: str | None) -> Booking:
+        """Fetch a booking the caller may *approve* (else 403/404).
+
+        `get_object` already 404s on a villa the caller can't read; this adds
+        the role floor: a readable booking on a villa the caller lacks an
+        approver role on → 403.
+        """
+        booking = self.get_object()
+        user = cast("User", request.user)
+        if booking.property_id not in owner_property_ids_for_roles(user, BOOKING_APPROVER_ROLES):
+            raise PermissionDenied("You do not have approval rights for this property.")
+        return booking
+
+    def _approval_response(self, booking: Booking) -> Response:
+        serializer = OwnerBookingDetailSerializer(booking, context=self.get_serializer_context())
+        return Response(serializer.data)
+
+    # GAP TODO (owner-portal MVP): nothing in v1 routes a booking *into*
+    # PENDING_OWNER_APPROVAL — there is no per-property "requires owner approval"
+    # flag on the submit/create path (only `tasks.escalate_pending_owner_approvals`
+    # and tests reference the state). So in production these endpoints have no
+    # inputs until that trigger lands; they are exercised today only via the
+    # seeded fixture. Follow-up: add `Property.requires_owner_approval` (settings-
+    # inheritable) and branch submit → PENDING_OWNER_APPROVAL vs auto_accept.
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request: Request, pk: str | None = None) -> Response:
+        """PENDING_OWNER_APPROVAL → AWAITING_DEPOSIT (fires lifecycle comms)."""
+        booking = self._approvable_booking(request, pk)
+        booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
+        return self._approval_response(booking)
+
+    @action(detail=True, methods=["post"], url_path="decline")
+    def decline(self, request: Request, pk: str | None = None) -> Response:
+        """PENDING_OWNER_APPROVAL → DECLINED. Requires a non-empty reason."""
+        booking = self._approvable_booking(request, pk)
+        reason = str(request.data.get("reason", "")).strip()
+        if not reason:
+            raise serializers.ValidationError({"reason": "A decline reason is required."})
+        booking.owner_decline(reason, actor=request.user)
+        return self._approval_response(booking)
 
 
 def _parse_iso_date(value: str | None) -> date | None:

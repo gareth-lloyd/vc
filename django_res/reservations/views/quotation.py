@@ -69,6 +69,24 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             return QuotationWriteSerializer
         return QuotationDetailSerializer
 
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Validate with the write serializer, but echo the *detail* shape.
+
+        DRF's default `create` re-serialises the response with the write
+        serializer, which omits `id`/`status`; the SPA parses the 201 as a
+        QuotationDetail and navigates to `/quotations/{id}` on save. Mirror the
+        colon-verb actions (`:duplicate`, `:convert`, `:send`) and return the
+        detail representation of the new row.
+        """
+        write = self.get_serializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        self.perform_create(write)
+        return Response(
+            QuotationDetailSerializer(write.instance).data,
+            status=status.HTTP_201_CREATED,
+            headers=self.get_success_headers(write.data),
+        )
+
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request: Request, pk: str | None = None) -> Response:
         """Render the quote HTML + the copy an operator can edit.

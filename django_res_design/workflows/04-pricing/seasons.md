@@ -92,22 +92,29 @@ Optional bulk-rates payload (creates rates immediately along with the season):
 2. New `VillaSeasonDates` rows written for the target dates.
 3. Rates from the source are duplicated (handled inside SP; not visible in committed code).
 
-### Redesign — carryover is automated and provisional by default
+### Redesign — next-year quoting via lazy projection (no default clone)
 
-The legacy manual "Copy" is replaced as the *default* next-year path by
-`pricing.services.RateCarryoverService.roll_forward()` + the `carry_over_rates` Celery task
-(see `04-pricing.md` "Carryover & provisional rates"). The redesign resolves the legacy open
+The legacy manual "Copy" is no longer the default next-year path. Instead, a quote that lands
+on a year with no `RatePlan` is priced by **lazy projection**: `PricingEngine.quote()` derives a
+guide rate at quote time from the most recent year that has rates
+(`RateProjectionService.project`), flags `Quote.is_projected`, and writes nothing (see
+`04-pricing.md` "Projected pricing for future years"). The redesign resolves the legacy open
 questions as follows:
 
-- **The `IsManualUpdate`-on-copy ambiguity is settled.** Carried-over clones are marked
-  `RateRule.is_provisional=True` (a *guide* rate, quotable but flagged "inquire for accurate
-  rate") and `carried_over_from=<source rule>`. They are **not** locked (`is_locked` is for
-  hand-set rates surviving bulk ops); a subsequent carryover run is idempotent per
-  `(property, year)` and updates the provisional set in place. Confirming the real rate clears
-  `is_provisional`, after which carryover leaves the rule alone.
+- **No default clone, no `is_provisional`.** Because the guide is derived at quote time and not
+  stored, there is no per-rule "provisional" flag and no `carry_over_rates` beat task rolling
+  the whole portfolio forward. The synthesized in-memory rows carry the source rows' pks, so the
+  quote breakdown still traces back to the real anchor rules. A projected quote renders an
+  "inquire for accurate rate" marker via `Quote.is_projected`.
 - **Date mapping is an injected, swappable function** (`date_map`), defaulting to
-  changeover-weekday alignment. Whether the business wants weekday-alignment or same-calendar-
-  date is an **open follow-up** pending Bryony's listing Loom — see `10-decisions.md`
-  "Carryover date-mapping rule". Do not hard-code it into the clone.
-- Manual ad-hoc copy of one season to arbitrary dates remains available in the admin; it
-  produces the same provisional clones.
+  changeover-weekday alignment, and shared by projection and the on-demand carry-forward.
+  Whether the business wants weekday-alignment or same-calendar-date is an **open follow-up**
+  pending Bryony's listing Loom — see `10-decisions.md` "Carryover date-mapping rule". It now
+  gates the default quoting path, so the default matters more than under the old design.
+- **Promoting a year to editable rows is on-demand**, not automatic:
+  `RateCarryoverService.materialise(property, *, target_year, currency, date_map, uplift)` clones
+  the anchor year into real `RatePlan`/`RateCard`/`RateRule` rows (idempotent per
+  `(property, currency, target_year)`, provenance in `RatePlan.notes`), exposed as a `RatePlan`
+  admin action and `POST /properties/{id}/seasons:carry-forward`. Materialised rows are ordinary
+  editable rules with no provisional flag. Manual ad-hoc copy of one season to arbitrary dates
+  remains available in the admin for cloning that isn't a straight year roll-forward.

@@ -89,9 +89,14 @@ The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` �
 - `is_poa` — BooleanField(default=False)
 - `is_locked` — BooleanField(default=False) — preserves the rule against bulk recompute / re-import. Bulk services (any future "regenerate rates for season X" admin action, CSV re-import, FX-driven mass adjustment) skip locked rules. Individual edits via the admin / API are unaffected and clear the lock implicitly only when the operator confirms in the UI. Replaces the legacy `IsManualUpdate` flag from `workflows/04-pricing/rates.md`.
 - `is_approved` — BooleanField(default=True) — gates engine visibility. Staff-created rules default to `True`; bulk-imported rules land as `False` and require an explicit approval pass before `PricingEngine.quote()` will consider them. Replaces the legacy `IsApprove` workflow step.
-- `is_provisional` — BooleanField(default=False) — a **carried-over guide rate** awaiting owner confirmation for the new year. Distinct from `is_approved`: provisional rules **are** quotable (the engine uses them), but the resulting quote is flagged so the generator/email render a "rates carried over — inquire for accurate rate" marker. Cleared when staff/owner confirm the real rate. See "Carryover & provisional rates" below.
-- `carried_over_from` — FK self SET_NULL, null=True, blank=True — the source rule a provisional clone was rolled forward from; for traceability and so a confirm action can compare against last year. Null for hand-entered rules.
 - `notes` — TextField(blank=True)
+
+> **No `is_provisional` / `carried_over_from`.** Next-year quoting is solved by
+> *lazy projection* (see "Projected pricing for future years" below), which derives
+> a guide rate at quote time and writes no rows — so there is no per-rule
+> "provisional" flag to carry. Earlier drafts added both fields for a
+> materialise-everything carryover design; that was superseded (`10-decisions.md`
+> row 50) before either field was built.
 
 Constraints (Postgres):
 - `CheckConstraint(date_from <= date_to)`
@@ -107,58 +112,96 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 #### Disjoint date ranges within a card
 A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.
 
-## Carryover & provisional rates
+## Projected pricing for future years
 
 At this time of year clients inquire for *next* year, but only ~10% of next-year rates are
 confirmed — so quoting next year is slow manual work, and owners are slow to return rates.
 Legacy handled this by hand: rename last year's season, shift its dates, copy each rate over.
-The rebuild **automates the roll-forward** and makes the provisional state first-class. This
-is an M1 feature (`11-milestones.md`) and the stated highest-value time-saver
-(`10-decisions.md` "Carryover / provisional rates").
+The rebuild solves it with **lazy projection**: when a quote lands on a year with no
+`RatePlan`, the engine *derives* a guide rate at quote time from the most recent year that has
+rates, flags the quote, and **writes nothing**. No speculative rows; always fresh, never stale;
+2028/2029/2030 answered from one code path. This is an M1 feature (`11-milestones.md`) and the
+stated highest-value time-saver (`10-decisions.md` row 50). Materialising editable rows is a
+separate, on-demand action — see "Carrying a year forward" below.
 
-### `pricing.services.RateCarryoverService`
+### `pricing.services.RateProjectionService`
 
 ```python
-class RateCarryoverService:
+class RateProjectionService:
+    @staticmethod
+    def find_anchor_plan(property, currency, date_from, date_to) -> RatePlan | None: ...
+
     @classmethod
-    def roll_forward(cls, plan: RatePlan, *, to_year: int, date_map=shift_to_changeover_weekday) -> RatePlan:
-        """Clone `plan` (cards + rules) into `to_year`. Cloned rules are marked
-        is_provisional=True and carried_over_from=<source rule>. Idempotent per
-        (property, to_year): re-running updates the existing provisional set, never
-        duplicates, and never touches rules an owner has already confirmed."""
+    def project(cls, *, property, date_from, date_to, currency,
+                date_map=shift_to_changeover_weekday,
+                uplift=Decimal("0")) -> PricingContext | None: ...
 ```
 
-- Default behaviour is to roll **every** active `RatePlan` forward into the next year (a
-  Celery beat task `pricing.tasks.carry_over_rates`, run at season boundary), so the quoting
-  team always has a guide rate to quote against. Manual per-plan invocation is also exposed in
-  the admin. This **supersedes the manual `:COPY`** as the default; manual copy stays for
-  ad-hoc cloning (`workflows/04-pricing/seasons.md`).
-- **Confirming real rates** clears `is_provisional` (and may adjust the figure). Once cleared,
-  the rule is an official rate and the carryover task leaves it alone on subsequent runs.
+- **Anchor** = the most recent active `RatePlan` for the property+currency whose
+  `effective_from` is before 1 Jan of the requested year. Restricting to an earlier year both
+  guarantees a forward projection and stops a partial same-year plan (or a previously
+  materialised carry-forward) from anchoring on itself. `None` for a brand-new villa with no
+  prior rates → the engine raises `NoRateAvailable` as usual.
+- **`project`** clones the anchor's active cards and `is_approved=True` rules into **unsaved**
+  in-memory instances whose `pk` is the source row's pk, packaged as a `PricingContext` the
+  engine prices exactly like a real one. Because the synthesized rows carry the source pks, the
+  quote breakdown (`QuoteLine.rule_id`, `winning_card_id`) points at the real anchor rows for
+  free traceability — and nothing is written. Rule date ranges move via `date_map`, preserving
+  the night count (`map_range`); the plan envelope moves by calendar year. Prices scale by
+  `1 + uplift`.
+- **Verbatim by default** (`uplift = 0`): the guide shows last year's number unchanged. The
+  parameter exists so a future `SystemSettings` escalator can feed a standard uplift, but no
+  settings plumbing is built — anything non-zero must be an explicit, signed-off figure.
 
-#### Date mapping — `date_map` *(open follow-up)*
+#### Date mapping — `date_map` *(open follow-up, now on the read path)*
 
-When a rule rolls forward, its `date_from`/`date_to` must move to the new year. There are two
-candidate rules and the source conversation (2026-05-29) does **not** definitively settle
-which the business wants:
+A rule's `date_from`/`date_to` must move into the target year. Two candidate rules; the source
+conversation (2026-05-29) does **not** settle which the business wants:
 
-- `shift_to_changeover_weekday` (default) — preserve the changeover weekday, so a Saturday-to-Saturday week stays Saturday-to-Saturday in the new year (dates shift by 1–2 days). Matches how villas with a `ChangeOverRule` actually let.
+- `shift_to_changeover_weekday` (default) — preserve the changeover weekday, so a
+  Saturday-to-Saturday week stays Saturday-to-Saturday in the new year (the start aligns to its
+  weekday; the end follows by the original span). Matches how villas with a `ChangeOverRule`
+  actually let.
 - `keep_calendar_date` — keep the same calendar dates, just relabel the year.
 
-The service takes `date_map` as a swappable function defaulting to the weekday-aligned mapping;
-the choice is flagged for confirmation against Bryony's listing Loom before it is hard-coded
-(`10-decisions.md` open follow-up "Carryover date-mapping rule"). Do not bake the rule into the
-clone logic — keep it in the injected function.
+The function is injected (defaulting to weekday alignment), so nothing is hard-coded — but note
+the default now gates the **default quoting path**, not just an occasional clone, so it matters
+more than under the old carryover-only design. Confirm against Bryony's listing Loom before
+treating it as settled (`10-decisions.md` open follow-up "Carryover date-mapping rule").
 
-### Engine behaviour for provisional rules
+### Engine behaviour for projected quotes
 
-`PricingEngine.quote()` treats `is_provisional` rules as fully quotable (unlike
-`is_approved=False`, which are filtered out before the resolver). When **any** rule
-contributing to a quote is provisional, the returned `Quote` carries `is_provisional=True` and
-`Quote.breakdown["is_provisional"] = True`, so the quote generator and the outbound quotation
-email render the "2027 rates carried over — guide rate, inquire for accurate rate" marker. The
-flag is also persisted into `QuotationLine.pricing_snapshot` / `Booking.pricing_snapshot` so a
-later reader can see the quote was built on provisional rates.
+`PricingEngine.quote()` first resolves a real plan covering the stay (`_load_real_context`); a
+real `RatePlan` must span the whole `[date_from, date_to)`, so a quote resolves exactly one
+plan and **real always beats projected** — projection only fills a genuine gap. When no real
+plan covers the stay it falls through to `RateProjectionService.project()`; if that also yields
+nothing it raises `NoRateAvailable` as before. The `allow_projection=False` kwarg forces the
+hard `NoRateAvailable` for callers that must not price on a guide (e.g. a booking-time guard).
+
+A projected quote carries `Quote.is_projected=True` and
+`Quote.breakdown["is_projected"] = True` plus `Quote.breakdown["projection"]` (source plan id,
+source/target year, uplift, date-map name), so the quote generator and the outbound quotation
+email render the "2028 — 2027 rates shown as a guide, inquire for accurate pricing" marker. The
+flag and provenance persist into `QuotationLine.pricing_snapshot` / `Booking.pricing_snapshot`
+so a later reader can see the quote was built on a projection and from which year.
+
+### Carrying a year forward (on-demand promote)
+
+When staff want **editable** rows for a year — an owner returned real numbers, or they want to
+hand-tune the guide before confirming — `pricing.services.RateCarryoverService.materialise(
+property, *, target_year, currency, date_map=…, uplift=…)` clones the anchor year into real
+`RatePlan` / `RateCard` / `RateRule` rows, reusing the same `date_map` + `uplift` as projection
+so the materialised rows match the guide a quote would have shown. It is idempotent per
+`(property, currency, target_year)` (a plan already starting in that year is returned
+untouched), records provenance in `RatePlan.notes`, and raises `NoRateAvailable` when there is
+no prior year to carry from. Materialised rows are ordinary editable rules staff then
+confirm/adjust — there is no per-rule "provisional" flag.
+
+It is exposed as a `RatePlan` admin action ("Carry forward to next year") and a
+`POST /properties/{id}/seasons:carry-forward` endpoint. It is **deliberately not** a Celery
+beat task — nothing rolls the whole portfolio forward speculatively. This supersedes the manual
+`:COPY` only as the *default*; manual ad-hoc copy stays for arbitrary cloning
+(`workflows/04-pricing/seasons.md`).
 
 ## Extras
 
@@ -286,8 +329,10 @@ class Quote:
     commission: Decimal
     tax: Decimal
     total: Decimal
-    is_provisional: bool = False  # True if any contributing RateRule.is_provisional — surfaces the "guide rate, inquire" marker
-    breakdown: dict           # full snapshotable JSON (also carries is_provisional)
+    net_to_owner: Decimal
+    changeover_shifted_from: date | None = None
+    is_projected: bool = False  # True when no real plan covered the stay and the quote was derived from a prior year — surfaces the "guide rate, inquire" marker
+    breakdown: dict           # full snapshotable JSON (also carries is_projected + projection provenance)
 
 class PricingEngine:
     @classmethod
@@ -308,7 +353,7 @@ Steps:
    we don't). The original arrival is surfaced as `Quote.changeover_shifted_from`
    (`None` when no shift). An off-changeover arrival is **never rejected** — it is
    always shifted and surfaced; there is no override flag and no hard-reject gate.
-2. For each night in range: walk all `RateCard`s in the plan; within each card, filter `RateRule`s by `is_approved=True` (provisional rules pass this filter — `is_provisional` does not hide a rule, it only flags the quote), then pick the highest-priority rule matching date + party. If any picked rule is `is_provisional`, set `Quote.is_provisional = True`. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` if the matched card's length-of-stay constraints fail. (Changeover is handled entirely in step 1a — cards carry no changeover constraint.)
+2. Resolve the pricing context: `_load_real_context` returns the (plan, cards, rules) triple from a real plan covering the whole stay, or `None`. On `None` (and unless `allow_projection=False`), fall through to `RateProjectionService.project()`, which returns an equivalent in-memory triple synthesized from the anchor year with `Quote.is_projected=True`; if that is also `None`, raise `NoRateAvailable`. Because a real plan must span the whole stay, real always beats projected. Then for each night in range: walk all `RateCard`s in the (real or projected) plan; within each card, filter `RateRule`s by `is_approved=True`, then pick the highest-priority rule matching date + party. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` if the matched card's length-of-stay constraints fail. (Changeover is handled entirely in step 1a — cards carry no changeover constraint.)
    - **No-coverage fallback (GAP-008):** if no rule covers a night at all
      (`NoCoverage`) and the plan sets `RatePlan.fallback_nightly`, the night is
      priced at that opt-in rate via a synthetic `QuoteLine` with
@@ -325,7 +370,7 @@ Steps:
 7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE) plus optional PROMO_CODE. `REPEAT_GUEST` is a recognised enum member but **not implemented in v1** (no repeat-guest detection exists yet); the engine excludes it at the queryset so it can never silently mis-apply (see GAP-009).
 8. Apply commission from `property.finance.effective_commission()` (the resolver in `03-finance-config.md`).
 9. Apply tax last from `property.finance.effective_tax_policy()` — tax base is rate subtotal + extras − discounts.
-10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). The breakdown carries `total`, `commission`, `tax`, `is_provisional`, and `net_to_owner = total - commission - tax` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.
+10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). The breakdown carries `total`, `commission`, `tax`, `is_projected`, `projection` (provenance, or `null`), and `net_to_owner = total - commission - tax` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.
 
 The engine raises typed exceptions (`NoRateAvailable`, `PartyOutOfRange`, `DiscountNotApplicable`, `MinNightsNotMet`, `ChangeoverViolation`) — the calling reservations code maps these to user-facing errors. `is_approved=False` rules are filtered before the resolver runs, so unapproved imports cannot leak into a quote. `pick_rule_for_night` returns a tagged result distinguishing `Picked` (rule matched), `OutOfRange` (rules cover the night but party doesn't match any bracket → `PartyOutOfRange`), and `NoCoverage` (no rule covers the night → `NoRateAvailable`).
 

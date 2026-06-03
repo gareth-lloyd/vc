@@ -92,8 +92,12 @@ class BookingService:
             role=BookingGuestRole.LEAD.value,
         )
 
-        # TODO: integrate with payments.PaymentScheduler.create_for_booking once
-        # the payments app lands. For now the Booking just records the balance.
+        # Payments are scheduled out-of-band: the `auto_accept`/`submit`
+        # transition below fires `booking_transitioned`, which a payments-side
+        # receiver consumes to call `PaymentScheduler.create_for_booking` once
+        # the booking reaches AWAITING_DEPOSIT. `reservations` must not import
+        # `payments` directly (it sits below it in the import spine), so the
+        # signal is the seam — see `payments/signals.py`.
 
         # Release competing holds for this property/date_range that we don't own.
         HoldService.release_for_quotation(quotation)

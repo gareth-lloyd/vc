@@ -42,7 +42,17 @@ class SecurityDepositService:
         Returns the new `SecurityDeposit` row, or `None` if no SD is required
         by the property's `SecurityDepositPolicy`.
         """
-        finance = booking.property.finance
+        # Idempotent on the booking: a re-entry (signal re-fire, retry) must
+        # return the existing row, never open a second one — two active rows
+        # would break the one-active-SECURITY_DEPOSIT-per-booking invariant
+        # (BUG-006). The booking FK is the natural idempotency key.
+        existing = SecurityDeposit.objects.filter(booking=booking).first()
+        if existing is not None:
+            return existing
+
+        finance = getattr(booking.property, "finance", None)
+        if finance is None:
+            return None
         policy = finance.effective_security_deposit_policy()
         if not policy.get("required"):
             return None

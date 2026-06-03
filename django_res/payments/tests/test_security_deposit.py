@@ -19,6 +19,43 @@ from payments.models import Payment, SecurityDeposit
 from payments.services.security_deposit import SecurityDepositService
 
 
+@pytest.mark.django_db
+def test_create_for_booking__is_idempotent(booking: Any, property_: Any) -> None:
+    """A second `create_for_booking` returns the existing SD, never a duplicate.
+
+    `create_for_booking` is reachable from the booking-creation signal and the
+    scheduler, so a re-entry must short-circuit — two active SECURITY_DEPOSIT
+    rows per booking would break the one-active-per-booking invariant (BUG-006).
+    """
+    from decimal import Decimal
+
+    from properties.models.finance import GroupFinance, PropertyFinance
+
+    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
+    gf.security_deposit_required = True
+    gf.security_deposit_amount = Decimal("500.00")
+    gf.security_deposit_calculation_type = "fixed"
+    gf.save(
+        update_fields=[
+            "security_deposit_required",
+            "security_deposit_amount",
+            "security_deposit_calculation_type",
+        ]
+    )
+    PropertyFinance.objects.get_or_create(property=property_)
+    from reservations.models import Booking
+
+    booking = Booking.objects.get(pk=booking.pk)
+
+    first = SecurityDepositService.create_for_booking(booking)
+    second = SecurityDepositService.create_for_booking(booking)
+
+    assert first is not None
+    assert second is not None
+    assert second.pk == first.pk
+    assert SecurityDeposit.objects.filter(booking=booking).count() == 1
+
+
 @pytest.fixture
 def pre_auth_sd(db: None, booking: Any, gbp: Any) -> SecurityDeposit:
     return SecurityDeposit.objects.create(

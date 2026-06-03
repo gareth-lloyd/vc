@@ -416,6 +416,38 @@ def test_convert_creates_booking(
 
 
 @pytest.mark.django_db
+def test_convert_schedules_payments_on_booking(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """A booking created via the accept-quotation API arrives with its payment
+    schedule attached — the bug this regression pins was an empty ledger on
+    every API-created booking."""
+    from payments.enums import PaymentPurpose
+    from payments.models import Payment
+    from properties.models.finance import PropertyFinance
+
+    # All-null finance row inherits the group's default deposit policy.
+    PropertyFinance.objects.get_or_create(property=line.property)
+    quotation.send()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    booking_id = response.data["id"]
+    purposes = set(Payment.objects.filter(booking_id=booking_id).values_list("purpose", flat=True))
+    assert PaymentPurpose.DEPOSIT.value in purposes
+    assert PaymentPurpose.BALANCE.value in purposes
+
+
+@pytest.mark.django_db
 def test_quotation_convert_endpoint_attributes_to_request_user(
     api_client: APIClient,
     staff: User,

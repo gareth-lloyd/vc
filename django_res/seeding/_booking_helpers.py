@@ -40,17 +40,6 @@ def pick_guest(ctx: SeedContext) -> Any:
     return GuestFactory()
 
 
-def populate_payments(booking: Any) -> None:
-    from payments.services.payment_scheduler import PaymentScheduler
-    from payments.services.security_deposit import SecurityDepositService
-    from reservations.enums import BookingStatus
-
-    if booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value:
-        return
-    PaymentScheduler.create_for_booking(booking)
-    SecurityDepositService.create_for_booking(booking)
-
-
 def mark_payment_paid(booking: Any, purpose: str) -> None:
     from payments.enums import PaymentMethod, PaymentStatus
     from payments.models.payment import Payment
@@ -176,7 +165,11 @@ def create_one_booking(
             quotation.accept(line)
         booking = BookingService.create_from_quotation_line(line, terms_version=terms)
         ctx.booking_pks.append(booking.pk)
-        populate_payments(booking)
+        # Payments are scheduled by the `booking_transitioned` receiver in the
+        # payments app the moment the booking reaches AWAITING_DEPOSIT (which
+        # `create_from_quotation_line` triggers via auto_accept). The seeder no
+        # longer schedules them by hand — seeded bookings now follow the exact
+        # production path, so there is no seeded-vs-real divergence to drift.
         if not force_occupying:
             advance_status(booking, i, ctx)
         booking.refresh_from_db()
@@ -201,9 +194,8 @@ def advance_pre_approval(booking: Any, i: int, ctx: SeedContext) -> None:
         return
     if i % 3 == 0:
         return  # leave PENDING_OWNER_APPROVAL
-    booking.owner_approve()
+    booking.owner_approve()  # → AWAITING_DEPOSIT; the payments receiver schedules here
     line = booking.quotation_line
     line.quotation.accept(line)
-    populate_payments(booking)
     booking.record_deposit()
     mark_payment_paid(booking, PaymentPurpose.DEPOSIT.value)

@@ -103,6 +103,36 @@ def test_admin_owner_approves(
     ]
 
 
+def test_approve_rolls_back_transition_when_payment_scheduling_fails(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    """If the payments receiver raises, the approve transition rolls back.
+
+    `booking_transitioned` is dispatched after `_transition` commits its own
+    atomic block, so the approve view must wrap `owner_approve()` in a
+    transaction — otherwise a payment-scheduling failure would leave the booking
+    committed in AWAITING_DEPOSIT with no payment rows and wedge any retry on
+    InvalidTransition. The booking must stay PENDING_OWNER_APPROVAL.
+    """
+    from unittest.mock import patch
+
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    OwnerOrgPropertyFactory(organisation=org, property=property_)
+    booking = _pending_booking(property_, gbp, terms, guest)
+    api_client.force_authenticate(user)
+
+    with patch(
+        "payments.services.payment_scheduler.PaymentScheduler.create_for_booking",
+        side_effect=RuntimeError("scheduler boom"),
+    ):
+        with pytest.raises(RuntimeError, match="scheduler boom"):
+            api_client.post(f"/api/v1/owner/bookings/{booking.id}:approve", format="json")
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value
+
+
 def test_decline_requires_reason(
     api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
 ) -> None:

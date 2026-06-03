@@ -10,6 +10,8 @@ from django.core.management import call_command
 
 from owners.enums import OwnerMembershipStatus, OwnerRole
 from owners.models import OwnerMembership, OwnerOrganisation, OwnerOrgProperty
+from reservations.enums import OwnerBlockRequestStatus
+from reservations.models import OwnerBlockRequest
 
 pytestmark = pytest.mark.django_db
 
@@ -33,8 +35,7 @@ def test_seed_builds_loginable_owner_with_grants() -> None:
     _seed()
 
     org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
-    membership = OwnerMembership.objects.get(organisation=org)
-    assert membership.role == OwnerRole.ADMIN
+    membership = OwnerMembership.objects.get(organisation=org, role=OwnerRole.ADMIN)
     assert membership.status == OwnerMembershipStatus.ACTIVE
 
     # The owner can actually authenticate.
@@ -50,14 +51,36 @@ def test_seed_builds_loginable_owner_with_grants() -> None:
     assert grants.filter(view_full_money=False).exists()
 
 
+def test_seed_adds_view_only_member() -> None:
+    _seed()
+    org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
+    view_only = OwnerMembership.objects.get(organisation=org, role=OwnerRole.VIEW_ONLY)
+    assert view_only.status == OwnerMembershipStatus.ACTIVE
+    assert view_only.user.email == "maria.kostas@example.com"
+
+
+def test_seed_builds_pending_block_request() -> None:
+    _seed()
+    org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
+    property_ids = list(
+        OwnerOrgProperty.objects.filter(organisation=org).values_list("property_id", flat=True)
+    )
+
+    block_requests = OwnerBlockRequest.objects.filter(property_id__in=property_ids)
+    assert block_requests.filter(status=OwnerBlockRequestStatus.PENDING.value).exists()
+
+
 def test_seed_is_idempotent_for_owner_fixture() -> None:
     _seed()
     _seed()
 
     assert OwnerOrganisation.objects.filter(name="Kostas Hospitality Ltd").count() == 1
     org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
-    # One membership, no duplicate grants per property.
-    assert OwnerMembership.objects.filter(organisation=org).count() == 1
+    # One membership per persona (owner admin + view-only), no duplicate grants.
+    assert OwnerMembership.objects.filter(organisation=org).count() == 2
     active_grants = OwnerOrgProperty.objects.filter(organisation=org, end_date__isnull=True)
     property_ids = list(active_grants.values_list("property_id", flat=True))
     assert len(property_ids) == len(set(property_ids))
+
+    # The block request is seeded once, not per run.
+    assert OwnerBlockRequest.objects.filter(property_id__in=property_ids).count() == 1

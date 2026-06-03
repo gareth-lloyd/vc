@@ -212,13 +212,12 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = OwnerBookingDetailSerializer(booking, context=self.get_serializer_context())
         return Response(serializer.data)
 
-    # GAP TODO (owner-portal MVP): nothing in v1 routes a booking *into*
-    # PENDING_OWNER_APPROVAL — there is no per-property "requires owner approval"
-    # flag on the submit/create path (only `tasks.escalate_pending_owner_approvals`
-    # and tests reference the state). So in production these endpoints have no
-    # inputs until that trigger lands; they are exercised today only via the
-    # seeded fixture. Follow-up: add `Property.requires_owner_approval` (settings-
-    # inheritable) and branch submit → PENDING_OWNER_APPROVAL vs auto_accept.
+    # The entry path into PENDING_OWNER_APPROVAL already exists:
+    # `BookingService.create_from_quotation_line` calls `booking.submit()` (vs
+    # `auto_accept()`) when the property's effective `bookings_require_pre_approval`
+    # setting is true. So these endpoints have real production inputs for any
+    # pre-approval villa — no extra trigger needed. (The mixed/chaos seed profiles
+    # mark some villas pre-approval, so dev data exercises this path too.)
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request: Request, pk: str | None = None) -> Response:
         """PENDING_OWNER_APPROVAL → AWAITING_DEPOSIT (fires lifecycle comms)."""

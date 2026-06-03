@@ -119,6 +119,12 @@ def test_create_quotation(
 
     assert response.status_code == 201, response.data
     assert Quotation.objects.count() == 1
+    # The 201 must echo the *detail* shape (with id + status), not the write
+    # serializer — the SPA parses the response as a QuotationDetail and
+    # navigates to /quotations/{id} on save.
+    created = Quotation.objects.get()
+    assert response.data["id"] == created.pk
+    assert response.data["status"] == QuotationStatus.DRAFT
 
 
 @pytest.mark.django_db

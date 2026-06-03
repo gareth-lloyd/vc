@@ -101,6 +101,43 @@ def test_materialise_applies_uplift(
 
 
 @pytest.mark.django_db
+def test_materialise_skips_inactive_cards_and_unapproved_rules(
+    property_: Property, gbp: Currency, anchor_rule: RateRule
+) -> None:
+    """The carried set matches the guide a quote would show — no dormant rows."""
+    anchor_plan = anchor_rule.card.plan
+    inactive = RateCard.objects.create(
+        plan=anchor_plan, name="Inactive", sort_order=1, is_active=False
+    )
+    RateRule.objects.create(
+        card=inactive,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("999.00"),
+    )
+    RateRule.objects.create(
+        card=anchor_rule.card,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 30),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("888.00"),
+        is_approved=False,
+    )
+
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
+    )
+
+    # Only the active card and the approved rule are carried forward.
+    assert new_plan.cards.count() == 1
+    assert new_plan.cards.get().name == "Peak"
+    assert RateRule.objects.filter(card__plan=new_plan).count() == 1
+
+
+@pytest.mark.django_db
 def test_materialise_without_anchor_raises(property_: Property, gbp: Currency) -> None:
     with pytest.raises(NoRateAvailable):
         RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)

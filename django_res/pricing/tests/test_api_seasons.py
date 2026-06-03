@@ -220,3 +220,22 @@ def test_carry_forward_requires_currency_and_year(
         format="json",
     )
     assert response.status_code == 400, response.content
+
+
+@pytest.mark.django_db
+def test_carry_forward_rejects_out_of_range_year(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Out-of-range years return 400, not an uncaught ValueError (500)."""
+    api_client.force_login(staff)
+    for bad_year in (0, 99999, -5):
+        response = api_client.post(
+            f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+            {"currency": gbp.code, "target_year": bad_year},
+            format="json",
+        )
+        assert response.status_code == 400, (bad_year, response.content)

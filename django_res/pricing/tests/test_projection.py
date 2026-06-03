@@ -82,9 +82,7 @@ def test_find_anchor_returns_most_recent_prior_plan(
         effective_from=date(2027, 1, 1),
         effective_to=date(2027, 12, 31),
     )
-    found = RateProjectionService.find_anchor_plan(
-        property_, gbp, date(2028, 7, 4), date(2028, 7, 11)
-    )
+    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
     assert found == newer
 
 
@@ -92,17 +90,13 @@ def test_find_anchor_returns_most_recent_prior_plan(
 def test_find_anchor_ignores_other_currency(
     property_: Property, gbp: Currency, usd: Currency, anchor_plan: RateRule
 ) -> None:
-    found = RateProjectionService.find_anchor_plan(
-        property_, usd, date(2028, 7, 4), date(2028, 7, 11)
-    )
+    found = RateProjectionService.find_anchor_plan(property_, usd, date(2028, 7, 4))
     assert found is None
 
 
 @pytest.mark.django_db
 def test_find_anchor_none_for_brand_new_villa(property_: Property, gbp: Currency) -> None:
-    found = RateProjectionService.find_anchor_plan(
-        property_, gbp, date(2028, 7, 4), date(2028, 7, 11)
-    )
+    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
     assert found is None
 
 
@@ -119,9 +113,7 @@ def test_find_anchor_excludes_same_year_plan(
         effective_from=date(2028, 1, 1),
         effective_to=date(2028, 3, 31),
     )
-    found = RateProjectionService.find_anchor_plan(
-        property_, gbp, date(2028, 7, 4), date(2028, 7, 11)
-    )
+    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
     assert found is not None
     assert found.name == "Summer 2026"
 
@@ -136,7 +128,6 @@ def test_project_builds_shifted_in_memory_context(
     ctx = RateProjectionService.project(
         property=property_,
         date_from=date(2028, 7, 4),
-        date_to=date(2028, 7, 11),
         currency=gbp,
         date_map=keep_calendar_date,
     )
@@ -165,7 +156,6 @@ def test_project_applies_uplift(property_: Property, gbp: Currency, anchor_plan:
     ctx = RateProjectionService.project(
         property=property_,
         date_from=date(2028, 7, 4),
-        date_to=date(2028, 7, 11),
         currency=gbp,
         date_map=keep_calendar_date,
         uplift=Decimal("0.05"),
@@ -186,7 +176,6 @@ def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: 
     ctx = RateProjectionService.project(
         property=property_,
         date_from=date(2028, 7, 4),
-        date_to=date(2028, 7, 11),
         currency=gbp,
     )
     assert ctx is not None
@@ -211,7 +200,6 @@ def test_project_skips_unapproved_rules(
     ctx = RateProjectionService.project(
         property=property_,
         date_from=date(2028, 7, 4),
-        date_to=date(2028, 7, 11),
         currency=gbp,
     )
     assert ctx is not None
@@ -225,7 +213,6 @@ def test_project_none_without_anchor(property_: Property, gbp: Currency) -> None
         RateProjectionService.project(
             property=property_,
             date_from=date(2028, 7, 4),
-            date_to=date(2028, 7, 11),
             currency=gbp,
         )
         is None

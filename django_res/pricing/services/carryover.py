@@ -26,9 +26,9 @@ from pricing.models import RateCard, RatePlan, RateRule
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
-    apply_uplift,
     keep_calendar_date,
-    map_range,
+    load_anchor_cards_with_rules,
+    projected_rule_fields,
     shift_to_changeover_weekday,
 )
 
@@ -67,9 +67,7 @@ class RateCarryoverService:
         if existing is not None:
             return existing
 
-        target_from = date(target_year, 1, 1)
-        target_to = date(target_year, 12, 31)
-        anchor = RateProjectionService.find_anchor_plan(property, currency, target_from, target_to)
+        anchor = RateProjectionService.find_anchor_plan(property, currency, date(target_year, 1, 1))
         if anchor is None:
             raise NoRateAvailable(
                 f"No prior RatePlan to carry forward for property "
@@ -96,7 +94,11 @@ class RateCarryoverService:
                 inclusion=anchor.inclusion,
                 notes=f"Carried forward from plan #{anchor.pk} ({anchor.effective_from.year}).",
             )
-            for card in RateCard.objects.filter(plan=anchor).order_by("sort_order", "pk"):
+            # Same active-card / approved-rule set the projection quotes, via the
+            # shared loader (batched, no per-card query) — so the materialised rows
+            # match the guide a quote would have shown, with no dormant inactive
+            # cards or unapproved rows carried forward.
+            for card, rules in load_anchor_cards_with_rules(anchor):
                 new_card = RateCard.objects.create(
                     plan=new_plan,
                     name=card.name,
@@ -107,20 +109,12 @@ class RateCarryoverService:
                     is_active=card.is_active,
                     notes=card.notes,
                 )
-                for rule in RateRule.objects.filter(card=card):
-                    new_from, new_to = map_range(rule.date_from, rule.date_to, year_delta, date_map)
+                for rule in rules:
                     RateRule.objects.create(
                         card=new_card,
-                        date_from=new_from,
-                        date_to=new_to,
-                        min_party=rule.min_party,
-                        max_party=rule.max_party,
-                        priority=rule.priority,
-                        nightly=apply_uplift(rule.nightly, factor),
-                        weekly=apply_uplift(rule.weekly, factor),
-                        is_poa=rule.is_poa,
-                        is_approved=rule.is_approved,
+                        is_approved=True,
                         is_locked=False,
                         notes=rule.notes,
+                        **projected_rule_fields(rule, year_delta, date_map, factor),
                     )
         return new_plan

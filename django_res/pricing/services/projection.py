@@ -108,6 +108,45 @@ def apply_uplift(value: Decimal | None, factor: Decimal) -> Decimal | None:
     return (Decimal(value) * factor).quantize(Decimal("0.01"))
 
 
+def load_anchor_cards_with_rules(anchor: RatePlan) -> list[tuple[RateCard, list[RateRule]]]:
+    """Active cards of `anchor`, each paired with its approved rules.
+
+    One query for the cards, one for all their rules (batched via `card__in`) —
+    not a query per card. These are exactly the `is_active` / `is_approved`
+    filters the engine's real path uses, so projection and carry-forward operate
+    on precisely the set a real quote would price (no dormant inactive cards or
+    unapproved rows leaking into either path).
+    """
+    cards = list(RateCard.objects.filter(plan=anchor, is_active=True).order_by("sort_order", "pk"))
+    rules_by_card: dict[int, list[RateRule]] = {}
+    for rule in RateRule.objects.filter(card__in=cards, is_approved=True).order_by("card_id", "pk"):
+        rules_by_card.setdefault(rule.card_id, []).append(rule)
+    return [(card, rules_by_card.get(card.pk, [])) for card in cards]
+
+
+def projected_rule_fields(
+    rule: RateRule, year_delta: int, date_map: DateMap, factor: Decimal
+) -> dict[str, Any]:
+    """The shifted + uplifted field values for a cloned rule.
+
+    Shared by in-memory projection and the on-demand carry-forward so the two can
+    never drift on how a rule moves into the target year. Excludes identity /
+    lifecycle fields (`card`, `is_approved`, `is_locked`, `notes`) — the caller
+    owns those.
+    """
+    new_from, new_to = map_range(rule.date_from, rule.date_to, year_delta, date_map)
+    return {
+        "date_from": new_from,
+        "date_to": new_to,
+        "min_party": rule.min_party,
+        "max_party": rule.max_party,
+        "priority": rule.priority,
+        "nightly": apply_uplift(rule.nightly, factor),
+        "weekly": apply_uplift(rule.weekly, factor),
+        "is_poa": rule.is_poa,
+    }
+
+
 class RateProjectionService:
     """Derive a guide-rate `PricingContext` for a year that has no rate plan."""
 
@@ -116,7 +155,6 @@ class RateProjectionService:
         property: Any,
         currency: Currency,
         date_from: date,
-        date_to: date,
     ) -> RatePlan | None:
         """The most recent active plan for this property+currency in an *earlier*
         year than the requested stay.
@@ -146,7 +184,6 @@ class RateProjectionService:
         *,
         property: Any,
         date_from: date,
-        date_to: date,
         currency: Currency,
         date_map: DateMap = shift_to_changeover_weekday,
         uplift: Decimal = Decimal("0"),
@@ -159,14 +196,12 @@ class RateProjectionService:
         weekday is irrelevant — only its rules are priced). Prices are multiplied by
         `1 + uplift`; the default `0` carries last year's figure verbatim.
         """
-        anchor = cls.find_anchor_plan(property, currency, date_from, date_to)
+        anchor = cls.find_anchor_plan(property, currency, date_from)
         if anchor is None:
             return None
 
-        cards = list(
-            RateCard.objects.filter(plan=anchor, is_active=True).order_by("sort_order", "pk")
-        )
-        if not cards:
+        cards_with_rules = load_anchor_cards_with_rules(anchor)
+        if not cards_with_rules:
             return None
 
         target_year = date_from.year
@@ -193,39 +228,28 @@ class RateProjectionService:
 
         proj_cards: list[RateCard] = []
         rules_by_card: dict[int, list[RateRule]] = {}
-        for card in cards:
-            proj_card = RateCard(
-                id=card.pk,
-                plan_id=anchor.pk,
-                name=card.name,
-                description=card.description,
-                min_nights=card.min_nights,
-                max_nights=card.max_nights,
-                sort_order=card.sort_order,
-                is_active=card.is_active,
-            )
-            proj_cards.append(proj_card)
-            proj_rules: list[RateRule] = []
-            # Mirror the engine's real-path filter: unapproved imports never
-            # quote, so they never seed a projection either.
-            for rule in RateRule.objects.filter(card=card, is_approved=True):
-                new_from, new_to = map_range(rule.date_from, rule.date_to, year_delta, date_map)
-                proj_rules.append(
-                    RateRule(
-                        id=rule.pk,
-                        card_id=card.pk,
-                        date_from=new_from,
-                        date_to=new_to,
-                        min_party=rule.min_party,
-                        max_party=rule.max_party,
-                        priority=rule.priority,
-                        nightly=apply_uplift(rule.nightly, factor),
-                        weekly=apply_uplift(rule.weekly, factor),
-                        is_poa=rule.is_poa,
-                        is_approved=True,
-                    )
+        for card, rules in cards_with_rules:
+            proj_cards.append(
+                RateCard(
+                    id=card.pk,
+                    plan_id=anchor.pk,
+                    name=card.name,
+                    description=card.description,
+                    min_nights=card.min_nights,
+                    max_nights=card.max_nights,
+                    sort_order=card.sort_order,
+                    is_active=card.is_active,
                 )
-            rules_by_card[card.pk] = proj_rules
+            )
+            rules_by_card[card.pk] = [
+                RateRule(
+                    id=rule.pk,
+                    card_id=card.pk,
+                    is_approved=True,
+                    **projected_rule_fields(rule, year_delta, date_map, factor),
+                )
+                for rule in rules
+            ]
 
         projection = {
             "source_plan_id": anchor.pk,

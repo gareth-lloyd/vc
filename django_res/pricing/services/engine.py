@@ -76,7 +76,6 @@ class PricingEngine:
             context = RateProjectionService.project(
                 property=property,
                 date_from=date_from,
-                date_to=date_to,
                 currency=currency,
             )
         if context is None:

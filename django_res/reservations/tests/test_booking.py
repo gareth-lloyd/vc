@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from django.utils import timezone
 
-from core.exceptions import InvalidTransition, OverlappingBooking
+from core.exceptions import InvalidTransition, NoRateAvailable, OverlappingBooking
 from pricing.models import Currency, RateRule
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
@@ -259,6 +259,22 @@ def test_modify_dates_rerun_pricing_and_writes_event(booking: Booking, rate_rule
         date(2026, 7, 1).isoformat(),
         date(2026, 7, 8).isoformat(),
     ]
+
+
+@pytest.mark.django_db
+def test_modify_dates_into_unrated_future_year_rejects_projection(
+    booking: Booking, rate_rule: RateRule
+) -> None:
+    """A booking is a contract: modifying into a year with no confirmed rates must
+    raise NoRateAvailable, not silently re-price onto a projected guide rate."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    with pytest.raises(NoRateAvailable):
+        booking.modify_dates(date(2028, 7, 4), date(2028, 7, 11))
+    booking.refresh_from_db()
+    # Original dates and price stand — nothing was overwritten with a guide.
+    assert booking.date_from == date(2026, 6, 10)
+    assert booking.date_to == date(2026, 6, 17)
+    assert booking.balance_due == Decimal("1400.00")
 
 
 @pytest.mark.django_db

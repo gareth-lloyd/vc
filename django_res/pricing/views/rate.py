@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -115,6 +116,15 @@ class PropertySeasonCarryForwardView(APIView):
         except (ValueError, TypeError, InvalidOperation):
             return Response(
                 {"detail": "target_year and uplift_pct must be numeric"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Bound the year to a sane window. Without this, a value like 0 or 10000
+        # reaches `date(target_year, 1, 1)` in the service and raises an uncaught
+        # ValueError (HTTP 500); anything outside a few decades is operator error.
+        this_year = date.today().year
+        if not (this_year <= target_year_int <= this_year + 20):
+            return Response(
+                {"detail": f"target_year must be between {this_year} and {this_year + 20}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         currency = get_object_or_404(Currency, code=code)

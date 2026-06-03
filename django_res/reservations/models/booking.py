@@ -489,12 +489,17 @@ class Booking(AuditedModel):
         from pricing.services import PricingEngine
 
         party = adults + children
+        # A booking is a contract, not an inquiry: never re-price it onto a
+        # projected guide rate. If the new dates fall in a year with no confirmed
+        # RatePlan, this raises NoRateAvailable and the modify is rejected rather
+        # than silently overwriting balance_due with an unconfirmed figure.
         return PricingEngine.quote(
             property=self.property,
             date_from=date_from,
             date_to=date_to,
             party=party,
             currency=self.currency,
+            allow_projection=False,
         )
 
     @transaction.atomic

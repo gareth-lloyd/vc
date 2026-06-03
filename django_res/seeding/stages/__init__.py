@@ -25,6 +25,7 @@ from seeding.stages import (
     nearby_places,  # noqa: F401
     notes,  # noqa: F401
     orphan_enquiries,  # noqa: F401
+    owner_orgs,  # noqa: F401
     properties,  # noqa: F401
     property_lifecycle,  # noqa: F401
     refunds,  # noqa: F401

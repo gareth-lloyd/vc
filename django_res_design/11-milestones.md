@@ -34,7 +34,7 @@ the new platform before any further scope is committed.
 | Area | Scope | Specs |
 |---|---|---|
 | **Properties** | Catalogue, rooms, features, images, finance config. Carry over as **canonical** — the property structure originated with the prior vendor ("16i"; built for Oxford/Bramble Ski) and is now VC-owned and stable. Field-stripping per the mockup is an open follow-up (see `10-decisions.md`). | `02-properties.md`, `03-finance-config.md` |
-| **Pricing** | `PricingEngine`, `RatePlan→RateCard→RateRule`, **occupancy bands** (already modeled), **carryover / provisional rates** (net-new — see risk callout). | `04-pricing.md`, `workflows/04-pricing/*` |
+| **Pricing** | `PricingEngine`, `RatePlan→RateCard→RateRule`, **occupancy bands** (already modeled), **next-year rate projection** + on-demand carry-forward (net-new — see risk callout). | `04-pricing.md`, `workflows/04-pricing/*` |
 | **Enquiry → Quote stack** | Multi-quote per enquiry (append-only), quote-may-diverge-from-enquiry, conversion measured per enquiry, assignee + action-driven stage (already designed), **`lead_status`** (net-new field). | `05-reservations.md` (Enquiry, Quotation), `10-comms.md` (quote send) |
 | **Booking** | Booking creation from an accepted quote line; booking state machine; **guest booking/checkout journey hosted in the SPA**, not WordPress (net-new — see risk callout). | `05-reservations.md` (Booking), `06-availability.md`, `workflows/09-booking/*`, `workflows/10-payment/checkout-flow.md` |
 | **Availability** | Range-query availability + holds; operator calendar; **Stop Sale** in the display vocabulary (vocabulary reconciliation, small). | `06-availability.md`, `workflows/06-availability/*` |
@@ -54,10 +54,14 @@ M1 by stakeholder direction; they are flagged here so they are tracked, not so t
    (it kills the legacy unauthenticated `WordPressApi/*` checkout endpoint), but it is real new
    work, not a simplification. Scoped narrowly to the **checkout page only** — the broader
    post-booking guest portal stays deferred (`10-decisions.md` rows 68/75).
-2. **Carryover / provisional rates.** Legacy does next-year roll-forward manually. M1 adds an
-   automated `RateCarryoverService` + a `is_provisional` "guide rate" concept surfaced by the
-   pricing engine (`04-pricing.md`). The **date-mapping rule** (same calendar date vs
-   changeover-weekday alignment) is an open follow-up pending Bryony's listing Loom.
+2. **Next-year rate projection.** Legacy does next-year roll-forward manually. M1 quotes a year
+   with no rate plan by *lazily projecting* a guide rate from the most recent year that has
+   rates (`RateProjectionService`), flagged `Quote.is_projected`, writing no rows; plus an
+   on-demand `RateCarryoverService.materialise` (admin action + `:carry-forward` endpoint) to
+   promote a year into editable rows when staff want to confirm/hand-tune (`04-pricing.md`). The
+   risk is projection correctness — chiefly the **date-mapping rule** (same calendar date vs
+   changeover-weekday alignment), an open follow-up pending Bryony's listing Loom that now gates
+   the default quoting path.
 
 ## Milestone 2+ — re-bucketed from the current "v1"
 
@@ -87,5 +91,5 @@ business need re-emerges.
   surface this file.
 - Adding a new capability? Decide its milestone here and add a `10-decisions.md` row that cites
   this file for phasing.
-- The two M1 risk items (checkout, carryover) are the ones to watch in estimation and to
+- The two M1 risk items (checkout, next-year projection) are the ones to watch in estimation and to
   validate first on staging.

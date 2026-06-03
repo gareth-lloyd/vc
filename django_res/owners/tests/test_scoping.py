@@ -9,14 +9,20 @@ import pytest
 
 from accounts.factories import UserFactory
 from accounts.models import User
-from owners.enums import OwnerMembershipStatus, OwnerOrgStatus
+from owners.enums import OwnerMembershipStatus, OwnerOrgStatus, OwnerRole
 from owners.factories import (
     OwnerMembershipFactory,
     OwnerOrganisationFactory,
     OwnerOrgPropertyFactory,
 )
 from owners.models import OwnerOrganisation
-from owners.scoping import owner_property_ids, owner_visibility_map
+from owners.scoping import (
+    BLOCK_WRITER_ROLES,
+    BOOKING_APPROVER_ROLES,
+    owner_property_ids,
+    owner_property_ids_for_roles,
+    owner_visibility_map,
+)
 from properties.factories import PropertyFactory
 from properties.models import Property
 
@@ -31,9 +37,11 @@ def _new_property() -> Property:
     return cast(Property, PropertyFactory())
 
 
-def _owner_of(org: OwnerOrganisation) -> User:
+def _owner_of(org: OwnerOrganisation, role: OwnerRole = OwnerRole.ADMIN) -> User:
     user = cast(User, UserFactory())
-    OwnerMembershipFactory(organisation=org, user=user, status=OwnerMembershipStatus.ACTIVE)
+    OwnerMembershipFactory(
+        organisation=org, user=user, role=role, status=OwnerMembershipStatus.ACTIVE
+    )
     return user
 
 
@@ -104,3 +112,56 @@ def test_co_owned_villa_or_merges_most_permissive() -> None:
     vis = owner_visibility_map(user)
     assert owner_property_ids(user) == {villa.id}
     assert vis[villa.id] == {"view_full_money": True, "view_guest_details": True}
+
+
+def test_role_scope_blocks_view_only() -> None:
+    """VIEW_ONLY can read but not write — excluded from every writer role set."""
+    org = _new_org()
+    user = _owner_of(org, role=OwnerRole.VIEW_ONLY)
+    prop = _new_property()
+    OwnerOrgPropertyFactory(organisation=org, property=prop)
+
+    assert owner_property_ids(user) == {prop.id}  # readable
+    assert owner_property_ids_for_roles(user, BLOCK_WRITER_ROLES) == set()
+    assert owner_property_ids_for_roles(user, BOOKING_APPROVER_ROLES) == set()
+
+
+def test_role_scope_editor_writes_blocks_not_approvals() -> None:
+    """EDITOR may request blocks but not approve bookings (ADMIN/PM only)."""
+    org = _new_org()
+    user = _owner_of(org, role=OwnerRole.EDITOR)
+    prop = _new_property()
+    OwnerOrgPropertyFactory(organisation=org, property=prop)
+
+    assert owner_property_ids_for_roles(user, BLOCK_WRITER_ROLES) == {prop.id}
+    assert owner_property_ids_for_roles(user, BOOKING_APPROVER_ROLES) == set()
+
+
+def test_role_scope_property_manager_can_do_both() -> None:
+    org = _new_org()
+    user = _owner_of(org, role=OwnerRole.PROPERTY_MANAGER)
+    prop = _new_property()
+    OwnerOrgPropertyFactory(organisation=org, property=prop)
+
+    assert owner_property_ids_for_roles(user, BLOCK_WRITER_ROLES) == {prop.id}
+    assert owner_property_ids_for_roles(user, BOOKING_APPROVER_ROLES) == {prop.id}
+
+
+def test_role_scope_binds_role_to_same_membership_row() -> None:
+    """A co-owning org where the user is VIEW_ONLY must not borrow another
+    member's ADMIN role on the same villa (single-join-row invariant)."""
+    org = _new_org()
+    user = _owner_of(org, role=OwnerRole.VIEW_ONLY)
+    # A different ADMIN member of the same org.
+    _owner_of(org, role=OwnerRole.ADMIN)
+    prop = _new_property()
+    OwnerOrgPropertyFactory(organisation=org, property=prop)
+
+    assert owner_property_ids_for_roles(user, BLOCK_WRITER_ROLES) == set()
+
+
+def test_role_scope_excludes_suspended_org_and_ended_grant() -> None:
+    org = _new_org(status=OwnerOrgStatus.SUSPENDED)
+    user = _owner_of(org, role=OwnerRole.ADMIN)
+    OwnerOrgPropertyFactory(organisation=org, property=_new_property())
+    assert owner_property_ids_for_roles(user, BLOCK_WRITER_ROLES) == set()

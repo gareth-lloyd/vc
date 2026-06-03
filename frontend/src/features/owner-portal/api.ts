@@ -1,8 +1,11 @@
-import { apiGet } from "@/lib/api/client";
+import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { BookingId, PropertyId } from "@/lib/query/keys";
 import {
+  blockRequestWriteInputSchema,
+  ownerBlockRequestSchema,
+  ownerBlockRequestsResponseSchema,
   ownerBookingDetailSchema,
   ownerBookingsResponseSchema,
   ownerCalendarSchema,
@@ -10,6 +13,9 @@ import {
   ownerMeSchema,
   ownerPropertiesResponseSchema,
   ownerPropertySchema,
+  type BlockRequestWriteInput,
+  type OwnerBlockRequest,
+  type OwnerBlockRequestFilters,
   type OwnerBookingDetail,
   type OwnerBookingFilters,
   type OwnerBookingListItem,
@@ -65,4 +71,43 @@ export async function fetchOwnerBookings(
 export async function fetchOwnerBooking(id: BookingId): Promise<OwnerBookingDetail> {
   const data = await apiGet<unknown>(`/owner/bookings/${id}`);
   return ownerBookingDetailSchema.parse(data);
+}
+
+export async function approveOwnerBooking(id: BookingId): Promise<OwnerBookingDetail> {
+  const data = await apiSend<unknown>("POST", `/owner/bookings/${id}:approve`);
+  return ownerBookingDetailSchema.parse(data);
+}
+
+export async function declineOwnerBooking(
+  id: BookingId,
+  reason: string,
+): Promise<OwnerBookingDetail> {
+  const data = await apiSend<unknown>("POST", `/owner/bookings/${id}:decline`, { reason });
+  return ownerBookingDetailSchema.parse(data);
+}
+
+function toBlockRequestQuery(filters: OwnerBlockRequestFilters): QueryParams {
+  return { property: filters.property, status: filters.status };
+}
+
+export async function fetchOwnerBlockRequests(
+  filters: OwnerBlockRequestFilters = {},
+): Promise<OwnerBlockRequest[]> {
+  const data = await apiGet<unknown>("/owner/block-requests", {
+    query: toBlockRequestQuery(filters),
+  });
+  return ownerBlockRequestsResponseSchema.parse(data);
+}
+
+export async function createOwnerBlockRequest(
+  input: BlockRequestWriteInput,
+): Promise<OwnerBlockRequest> {
+  const body = blockRequestWriteInputSchema.parse(input);
+  const data = await apiSend<unknown>("POST", "/owner/block-requests", body);
+  return ownerBlockRequestSchema.parse(data);
+}
+
+export async function cancelOwnerBlockRequest(id: number): Promise<OwnerBlockRequest> {
+  const data = await apiSend<unknown>("POST", `/owner/block-requests/${id}:cancel`);
+  return ownerBlockRequestSchema.parse(data);
 }

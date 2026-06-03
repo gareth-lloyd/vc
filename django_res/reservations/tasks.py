@@ -26,9 +26,11 @@ def expire_holds() -> list[int]:
     from reservations.signals import hold_expired
 
     now = timezone.now()
+    # NULL `expires_at` = indefinite block (owner/maintenance); never reaped.
     due = list(
         BookingHold.objects.filter(
             released_at__isnull=True,
+            expires_at__isnull=False,
             expires_at__lt=now,
         )
     )

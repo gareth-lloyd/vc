@@ -11,6 +11,7 @@ from reservations.views.availability import (
     AvailabilitySearchView,
     PropertyAvailabilityView,
 )
+from reservations.views.block_request import BlockRequestViewSet
 from reservations.views.booking import (
     BookingArchiveViewSet,
     BookingNoteViewSet,
@@ -25,6 +26,7 @@ from reservations.views.guest import (
     GuestViewSet,
 )
 from reservations.views.owner import (
+    OwnerBlockRequestViewSet,
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
@@ -44,6 +46,7 @@ __all__ = [
     "AvailabilityMultiView",
     "AvailabilityReleaseHoldView",
     "AvailabilitySearchView",
+    "BlockRequestViewSet",
     "BookingArchiveViewSet",
     "BookingConciergeItemViewSet",
     "BookingNoteViewSet",
@@ -54,6 +57,7 @@ __all__ = [
     "GuestAnonymizeView",
     "GuestMergeView",
     "GuestViewSet",
+    "OwnerBlockRequestViewSet",
     "OwnerBookingViewSet",
     "OwnerDashboardView",
     "OwnerPropertyCalendarView",

@@ -18,6 +18,7 @@ from reservations.views import (
     AvailabilityMultiView,
     AvailabilityReleaseHoldView,
     AvailabilitySearchView,
+    BlockRequestViewSet,
     BookingArchiveViewSet,
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
@@ -25,6 +26,7 @@ from reservations.views import (
     ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
+    OwnerBlockRequestViewSet,
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
@@ -374,9 +376,49 @@ _owner_routes: list[URLPattern | URLResolver] = [
         name="owner-booking-detail",
     ),
     path(
+        "owner/bookings/<int:pk>:approve",
+        OwnerBookingViewSet.as_view({"post": "approve"}),
+        name="owner-booking-approve",
+    ),
+    path(
+        "owner/bookings/<int:pk>:decline",
+        OwnerBookingViewSet.as_view({"post": "decline"}),
+        name="owner-booking-decline",
+    ),
+    path(
         "owner/properties/<int:property_id>/calendar",
         OwnerPropertyCalendarView.as_view(),
         name="owner-property-calendar",
+    ),
+    path(
+        "owner/block-requests",
+        OwnerBlockRequestViewSet.as_view({"get": "list", "post": "create"}),
+        name="owner-block-request-list",
+    ),
+    path(
+        "owner/block-requests/<int:pk>:cancel",
+        OwnerBlockRequestViewSet.as_view({"post": "cancel"}),
+        name="owner-block-request-cancel",
+    ),
+]
+
+
+# Operator-facing review queue for owner block requests.
+_block_request_routes: list[URLPattern | URLResolver] = [
+    path(
+        "block-requests",
+        BlockRequestViewSet.as_view({"get": "list"}),
+        name="block-request-list",
+    ),
+    path(
+        "block-requests/<int:pk>:approve",
+        BlockRequestViewSet.as_view({"post": "approve"}),
+        name="block-request-approve",
+    ),
+    path(
+        "block-requests/<int:pk>:decline",
+        BlockRequestViewSet.as_view({"post": "decline"}),
+        name="block-request-decline",
     ),
 ]
 
@@ -386,6 +428,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
     *_owner_routes,
+    *_block_request_routes,
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,

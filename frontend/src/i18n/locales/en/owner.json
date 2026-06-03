@@ -80,6 +80,63 @@
     "money": "Money",
     "gross_total": "Gross total",
     "commission": "Commission",
-    "net_to_owner": "Your share"
+    "net_to_owner": "Your share",
+    "approval_pending": "Awaiting your approval",
+    "approve": "Approve",
+    "decline": "Decline"
+  },
+  "blocks": {
+    "request_button": "Request block",
+    "list_title": "Your block requests",
+    "empty": "No block requests for this villa yet.",
+    "load_failed": "Couldn't load your block requests.",
+    "dialog": {
+      "title": "Request availability block",
+      "description": "Ask VC to hold these dates. An operator will review your request."
+    },
+    "fields": {
+      "date_from": "From",
+      "date_to": "To",
+      "kind": "Reason",
+      "notes": "Notes"
+    },
+    "kind": {
+      "owner_stay": "Owner stay",
+      "maintenance": "Maintenance",
+      "other": "Other"
+    },
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "declined": "Declined",
+      "cancelled": "Cancelled"
+    },
+    "actions": {
+      "submit": "Submit request",
+      "cancel_request": "Cancel"
+    },
+    "errors": {
+      "date_to_after_from": "End date must be after the start date.",
+      "required": "This field is required."
+    },
+    "toasts": {
+      "created": "Block request submitted.",
+      "cancelled": "Block request cancelled."
+    }
+  },
+  "approval": {
+    "decline_dialog": {
+      "title": "Decline booking",
+      "description": "Let VC know why you're declining. The guest will be notified.",
+      "reason_label": "Reason",
+      "submit": "Decline booking"
+    },
+    "errors": {
+      "reason_required": "Please give a reason for declining."
+    },
+    "toasts": {
+      "approved": "Booking approved.",
+      "declined": "Booking declined."
+    }
   }
 }

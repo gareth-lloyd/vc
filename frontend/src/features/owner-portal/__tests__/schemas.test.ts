@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockRequestWriteInputSchema,
+  ownerBlockRequestSchema,
   ownerBookingDetailSchema,
   ownerBookingListItemSchema,
   ownerCalendarSchema,
@@ -21,6 +23,7 @@ const baseBookingRow = {
   guest_name: "Ada Lovelace",
   guest_country: { code: "GB", name: "United Kingdom" },
   is_repeat_guest: true,
+  can_approve: false,
 };
 
 describe("ownerBookingListItemSchema", () => {
@@ -139,6 +142,7 @@ describe("ownerCalendarSchema", () => {
   it("parses cells with and without segments", () => {
     const parsed = ownerCalendarSchema.parse({
       property_id: 3,
+      can_request_block: true,
       cells: [
         { date: "2026-07-01", available: true, reason: null },
         { date: "2026-07-02", available: false, reason: "booked" },
@@ -155,5 +159,63 @@ describe("ownerCalendarSchema", () => {
     });
     expect(parsed.cells).toHaveLength(3);
     expect(parsed.cells[2].segments?.pm.reason).toBe("booked");
+  });
+});
+
+describe("ownerBlockRequestSchema", () => {
+  it("parses a pending request", () => {
+    const parsed = ownerBlockRequestSchema.parse({
+      id: 1,
+      property: 3,
+      date_from: "2026-08-01",
+      date_to: "2026-08-08",
+      kind: "owner_stay",
+      notes: "Family week",
+      status: "pending",
+      review_note: "",
+      reviewed_at: null,
+      created_at: "2026-06-03T10:00:00Z",
+    });
+    expect(parsed.status).toBe("pending");
+    expect(parsed.kind).toBe("owner_stay");
+  });
+
+  it("rejects an unknown kind", () => {
+    expect(() =>
+      ownerBlockRequestSchema.parse({
+        id: 1,
+        property: 3,
+        date_from: "2026-08-01",
+        date_to: "2026-08-08",
+        kind: "party",
+        notes: "",
+        status: "pending",
+        review_note: "",
+        reviewed_at: null,
+        created_at: "2026-06-03T10:00:00Z",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("blockRequestWriteInputSchema", () => {
+  const base = {
+    property: 3,
+    date_from: "2026-08-01",
+    date_to: "2026-08-08",
+    kind: "owner_stay" as const,
+    notes: "",
+  };
+
+  it("accepts a valid forward range", () => {
+    expect(blockRequestWriteInputSchema.parse(base).date_to).toBe("2026-08-08");
+  });
+
+  it("rejects date_to not after date_from", () => {
+    const result = blockRequestWriteInputSchema.safeParse({ ...base, date_to: "2026-08-01" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(["date_to"]);
+    }
   });
 });

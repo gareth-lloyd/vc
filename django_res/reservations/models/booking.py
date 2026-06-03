@@ -711,7 +711,9 @@ class BookingHold(AuditedModel):
     )
     date_from = models.DateField()
     date_to = models.DateField()
-    expires_at = models.DateTimeField(db_index=True)
+    # NULL = never expires (owner / maintenance blocks). Quotation/booking holds
+    # always carry a concrete expiry; `tasks.expire_holds` only reaps non-null rows.
+    expires_at = models.DateTimeField(db_index=True, null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)
     reason = models.CharField(
         max_length=32,
@@ -750,7 +752,10 @@ class BookingHold(AuditedModel):
         return f"Hold #{self.pk} on property {self.property_id}"
 
     def is_live(self) -> bool:
-        return self.released_at is None and self.expires_at > timezone.now()
+        # A null `expires_at` means the hold never expires (owner/maintenance block).
+        if self.released_at is not None:
+            return False
+        return self.expires_at is None or self.expires_at > timezone.now()
 
     @classmethod
     def live_overlapping(
@@ -769,8 +774,8 @@ class BookingHold(AuditedModel):
         villa; omit it for a cross-property sweep.
         """
         qs = cls.objects.filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
             released_at__isnull=True,
-            expires_at__gt=timezone.now(),
             date_from__lt=date_to,
             date_to__gt=date_from,
         )

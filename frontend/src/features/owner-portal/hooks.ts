@@ -1,8 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/errors";
 import { queryKeys, type BookingId, type PropertyId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
+  approveOwnerBooking,
+  cancelOwnerBlockRequest,
+  createOwnerBlockRequest,
+  declineOwnerBooking,
+  fetchOwnerBlockRequests,
   fetchOwnerBooking,
   fetchOwnerBookings,
   fetchOwnerDashboard,
@@ -12,7 +17,16 @@ import {
   fetchOwnerPropertyCalendar,
 } from "./api";
 import { useOwnerStore } from "./ownerStore";
-import type { OwnerBookingFilters } from "./schemas";
+import type {
+  BlockRequestWriteInput,
+  OwnerBlockRequestFilters,
+  OwnerBookingFilters,
+} from "./schemas";
+
+// Block requests live under a property's availability; invalidating the
+// property prefix sweeps its calendar (and detail) without enumerating ranges.
+const OWNER_BLOCK_REQUESTS_KEY = ["owner", "block-requests"] as const;
+const OWNER_BOOKINGS_KEY = ["owner", "bookings"] as const;
 
 export const OWNER_BOOKINGS_PAGE_SIZE = 50;
 
@@ -85,4 +99,58 @@ export function useOwnerBookings(filters: OwnerBookingFilters) {
 
 export function useOwnerBooking(id: BookingId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.owner.booking, fetchOwnerBooking));
+}
+
+export function useOwnerBlockRequests(filters: OwnerBlockRequestFilters = {}) {
+  return useQuery({
+    queryKey: queryKeys.owner.blockRequests(filters),
+    queryFn: () => fetchOwnerBlockRequests(filters),
+  });
+}
+
+export function useCreateBlockRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BlockRequestWriteInput) => createOwnerBlockRequest(input),
+    onSuccess: (request) => {
+      void queryClient.invalidateQueries({ queryKey: OWNER_BLOCK_REQUESTS_KEY });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.owner.property(request.property) });
+    },
+  });
+}
+
+export function useCancelBlockRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => cancelOwnerBlockRequest(id),
+    onSuccess: (request) => {
+      void queryClient.invalidateQueries({ queryKey: OWNER_BLOCK_REQUESTS_KEY });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.owner.property(request.property) });
+    },
+  });
+}
+
+function invalidateAfterBookingDecision(
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: BookingId,
+): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.owner.booking(id) });
+  void queryClient.invalidateQueries({ queryKey: OWNER_BOOKINGS_KEY });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.owner.dashboard() });
+}
+
+export function useApproveBooking(id: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => approveOwnerBooking(id),
+    onSuccess: () => invalidateAfterBookingDecision(queryClient, id),
+  });
+}
+
+export function useDeclineBooking(id: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => declineOwnerBooking(id, reason),
+    onSuccess: () => invalidateAfterBookingDecision(queryClient, id),
+  });
 }

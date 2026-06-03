@@ -12,13 +12,30 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { useOwnerProperty, useOwnerPropertyCalendar } from "./hooks";
-import type { OwnerCalendarCell } from "./schemas";
+import { ApiError } from "@/lib/api/errors";
+import { formatDate } from "@/lib/format/date";
+import { BlockRequestDialog } from "./BlockRequestDialog";
+import {
+  useCancelBlockRequest,
+  useOwnerBlockRequests,
+  useOwnerProperty,
+  useOwnerPropertyCalendar,
+} from "./hooks";
+import type { OwnerBlockRequest, OwnerCalendarCell } from "./schemas";
+
+// A request can still be withdrawn while pending, or after approval (which
+// releases the hold). Declined/cancelled rows are terminal.
+const CANCELLABLE_STATUSES: ReadonlySet<OwnerBlockRequest["status"]> = new Set([
+  "pending",
+  "approved",
+]);
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const CELL_BASE = "flex h-10 w-full items-center justify-center rounded text-sm";
@@ -56,6 +73,7 @@ export function OwnerPropertyCalendarPage() {
   const { id } = useParams<{ id: string }>();
   const propertyId = id ? Number(id) : undefined;
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
 
   const property = useOwnerProperty(propertyId);
 
@@ -77,15 +95,44 @@ export function OwnerPropertyCalendarPage() {
 
   const title = property.data?.display_name || property.data?.name || t("calendar.title");
 
+  const canRequestBlock = calendar.data?.can_request_block ?? false;
+  const blockRequests = useOwnerBlockRequests(propertyId != null ? { property: propertyId } : {});
+  const cancelMutation = useCancelBlockRequest();
+
+  const handleCancel = async (request: OwnerBlockRequest) => {
+    try {
+      await cancelMutation.mutateAsync(request.id);
+      toast.success(t("blocks.toasts.cancelled"));
+    } catch (error) {
+      if (!(error instanceof ApiError && error.isClientError())) {
+        toast.error(t("common:errors.generic"));
+      }
+    }
+  };
+
   return (
     <div>
+      {propertyId != null && blockDialogOpen ? (
+        <BlockRequestDialog
+          propertyId={propertyId}
+          open={blockDialogOpen}
+          onOpenChange={setBlockDialogOpen}
+        />
+      ) : null}
       <PageHeader
         title={title}
         breadcrumbs={[{ label: t("nav.properties"), to: "/owner/properties" }, { label: title }]}
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate("/owner/properties")}>
-            <ChevronLeft className="mr-1 size-4" /> {t("calendar.back")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {canRequestBlock ? (
+              <Button size="sm" onClick={() => setBlockDialogOpen(true)}>
+                <Plus className="mr-1 size-4" /> {t("blocks.request_button")}
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={() => navigate("/owner/properties")}>
+              <ChevronLeft className="mr-1 size-4" /> {t("calendar.back")}
+            </Button>
+          </div>
         }
       />
       <div className="space-y-6 px-6 pb-12">
@@ -166,6 +213,46 @@ export function OwnerPropertyCalendarPage() {
             })}
           </div>
         )}
+
+        <section className="space-y-3">
+          <h2 className="text-foreground text-base font-semibold">{t("blocks.list_title")}</h2>
+          {blockRequests.isError ? (
+            <ErrorState
+              description={t("blocks.load_failed")}
+              onRetry={() => blockRequests.refetch()}
+            />
+          ) : (blockRequests.data?.length ?? 0) === 0 ? (
+            <p className="text-muted-foreground text-sm">{t("blocks.empty")}</p>
+          ) : (
+            <ul className="divide-border bg-card shadow-card divide-y rounded-lg border">
+              {blockRequests.data?.map((request) => (
+                <li key={request.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">
+                      {formatDate(request.date_from)} – {formatDate(request.date_to)}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      {t(`blocks.kind.${request.kind}`)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="secondary">{t(`blocks.status.${request.status}`)}</Badge>
+                    {CANCELLABLE_STATUSES.has(request.status) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCancel(request)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        {t("blocks.actions.cancel_request")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );

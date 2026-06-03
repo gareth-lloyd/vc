@@ -17,8 +17,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from django.utils import timezone
 from rest_framework import serializers
 
+from reservations.enums import OwnerBlockKind
+from reservations.models import OwnerBlockRequest
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -72,6 +75,11 @@ class OwnerBookingListSerializer(serializers.Serializer):
             data["balance_due"] = f"{obj.balance_due:.2f}"
         if vis["view_guest_details"] and guest is not None:
             data["guest_contact"] = {"email": guest.email, "phone": guest.phone}
+        # Capability flag: may *this* caller approve/decline this booking? Pure
+        # role capability — the UI combines it with the pending status. Sourced
+        # from a role-scoped set the view places in context (default empty so a
+        # serializer used without it never claims the capability).
+        data["can_approve"] = obj.property_id in self.context.get("approver_property_ids", set())
         if self.detail:
             self._add_financial_detail(data, obj, vis)
         return data
@@ -93,3 +101,71 @@ class OwnerBookingDetailSerializer(OwnerBookingListSerializer):
     """Detail representation. Adds the gated gross/commission/net breakdown."""
 
     detail = True
+
+
+class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+    """Owner-facing read view of a block request.
+
+    Deliberately omits `resulting_hold` (the internal BookingHold id), mirroring
+    the calendar's hold-id redaction — an owner never acts on the hold directly.
+    """
+
+    class Meta:
+        model = OwnerBlockRequest
+        fields = [
+            "id",
+            "property",
+            "date_from",
+            "date_to",
+            "kind",
+            "notes",
+            "status",
+            "review_note",
+            "reviewed_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+    """Staff-facing read view — exposes the full request including the
+    reviewer, requester, and the resulting hold id (operators act on these)."""
+
+    class Meta:
+        model = OwnerBlockRequest
+        fields = [
+            "id",
+            "property",
+            "requested_by",
+            "date_from",
+            "date_to",
+            "kind",
+            "notes",
+            "status",
+            "reviewed_by",
+            "reviewed_at",
+            "review_note",
+            "resulting_hold",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class OwnerBlockRequestWriteSerializer(serializers.Serializer):
+    """Validate a block-request submission. The view resolves + scopes `property`."""
+
+    property = serializers.IntegerField()
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+    kind = serializers.ChoiceField(
+        choices=OwnerBlockKind.choices,
+        default=OwnerBlockKind.OWNER_STAY.value,
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if attrs["date_to"] <= attrs["date_from"]:
+            raise serializers.ValidationError({"date_to": "Must be after date_from."})
+        if attrs["date_to"] < timezone.localdate():
+            raise serializers.ValidationError({"date_to": "Cannot be in the past."})
+        return attrs

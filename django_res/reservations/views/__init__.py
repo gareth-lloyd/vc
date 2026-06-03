@@ -24,7 +24,11 @@ from reservations.views.guest import (
     GuestMergeView,
     GuestViewSet,
 )
-from reservations.views.owner import OwnerBookingViewSet, OwnerDashboardView
+from reservations.views.owner import (
+    OwnerBookingViewSet,
+    OwnerDashboardView,
+    OwnerPropertyCalendarView,
+)
 from reservations.views.quotation import QuotationLineViewSet, QuotationViewSet
 from reservations.views.terms import (
     TermsVersionCurrentView,
@@ -52,6 +56,7 @@ __all__ = [
     "GuestViewSet",
     "OwnerBookingViewSet",
     "OwnerDashboardView",
+    "OwnerPropertyCalendarView",
     "PropertyAvailabilityView",
     "QuotationLineViewSet",
     "QuotationViewSet",

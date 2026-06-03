@@ -14,8 +14,9 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
 from django.db.models import Count, Exists, OuterRef, Sum
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import serializers, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,6 +29,7 @@ from reservations.serializers.owner import (
     OwnerBookingDetailSerializer,
     OwnerBookingListSerializer,
 )
+from reservations.services.availability import AvailabilityService
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -174,3 +176,62 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         context = super().get_serializer_context()
         context["visibility"] = owner_visibility_map(cast("User", self.request.user))
         return context
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _owner_segment(segment: Any) -> dict[str, Any]:
+    # Only the public availability category — never the internal block id.
+    return {"available": segment.available, "reason": segment.reason}
+
+
+class OwnerPropertyCalendarView(APIView):
+    """`GET /owner/properties/{id}/calendar` — read-only availability.
+
+    Reuses `AvailabilityService.calendar` behind a scope gate: an ungranted
+    villa 404s. Cells expose only the availability category (booked / hold
+    kind / available) and changeover segments — never guest identity, and not
+    the internal hold `block_id` (owners can't act on holds).
+    """
+
+    permission_classes = [IsOwner]
+
+    def get(self, request: Request, property_id: int) -> Response:
+        user = cast("User", request.user)
+        property_obj = get_object_or_404(
+            Property.objects.filter(id__in=owner_property_ids(user)), pk=property_id
+        )
+        range_start = _parse_iso_date(request.query_params.get("from"))
+        range_end = _parse_iso_date(request.query_params.get("to"))
+        if range_start is None or range_end is None:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": "`from` and `to` query params are required (YYYY-MM-DD)",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cells = AvailabilityService.calendar(property_obj, range_start, range_end)
+        payload = []
+        for day, cell in sorted(cells.items()):
+            entry: dict[str, Any] = {
+                "date": day.isoformat(),
+                "available": cell.available,
+                "reason": cell.reason,
+            }
+            if cell.segments is not None:
+                entry["segments"] = {
+                    "am": _owner_segment(cell.segments["am"]),
+                    "pm": _owner_segment(cell.segments["pm"]),
+                }
+            payload.append(entry)
+        return Response({"property_id": property_obj.pk, "cells": payload})

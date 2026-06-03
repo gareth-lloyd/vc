@@ -300,6 +300,13 @@ class AvailabilityExtendHoldView(APIView):
         from reservations.models.booking import BookingHold
 
         hold = get_object_or_404(BookingHold, pk=self.kwargs["pk"])
+        if hold.expires_at is None:
+            # An indefinite block (owner/maintenance) has no expiry to extend.
+            # Writing a finite `expires_at` would let `expire_holds` reap it;
+            # release-hold is the way to remove it.
+            raise ReadOnlyHold(
+                "This block never expires and cannot be given an expiry; release it instead."
+            )
         serializer = AvailabilityExtendHoldSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         hold.expires_at = serializer.validated_data["expires_at"]

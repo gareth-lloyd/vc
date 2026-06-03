@@ -154,6 +154,35 @@ def test_extend_hold_action(api_client: APIClient, staff: User, property_: Prope
 
 
 @pytest.mark.django_db
+def test_extend_hold_rejects_indefinite_block(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """An indefinite (NULL-expiry) owner block has no expiry to extend.
+
+    Writing a finite `expires_at` would make `expire_holds` reap a block the
+    owner reserved and an operator approved — so extend-hold must refuse it and
+    leave the hold indefinite. Releasing is the correct way to remove it.
+    """
+    hold = BookingHold.objects.create(
+        property=property_,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 7),
+        expires_at=None,
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/availability/{hold.pk}:extend-hold",
+        data={"expires_at": (timezone.now() + timedelta(days=60)).isoformat()},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "read_only_hold"
+    hold.refresh_from_db()
+    assert hold.expires_at is None
+
+
+@pytest.mark.django_db
 def test_release_hold_action(api_client: APIClient, staff: User, property_: Property) -> None:
     hold = BookingHold.objects.create(
         property=property_,

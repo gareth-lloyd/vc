@@ -219,3 +219,9 @@ export interface OwnerBlockRequestFilters {
   property?: number;
   status?: OwnerBlockRequestStatus;
 }
+
+// Decline a pending booking — the reason is required (matches the endpoint).
+export const declineBookingInputSchema = z.object({
+  reason: z.string().min(1, "approval.errors.reason_required"),
+});
+export type DeclineBookingInput = z.infer<typeof declineBookingInputSchema>;

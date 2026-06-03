@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
+import { BookingApprovalActions } from "./BookingApprovalActions";
 import { useOwnerBooking } from "./hooks";
 
 export function OwnerBookingDetailPage() {
@@ -48,6 +49,7 @@ export function OwnerBookingDetailPage() {
   if (!booking) return null;
 
   const currency = booking.currency_code;
+  const awaitingApproval = booking.status === "pending_owner_approval" && booking.can_approve;
 
   return (
     <div>
@@ -58,9 +60,12 @@ export function OwnerBookingDetailPage() {
           { label: booking.reference },
         ]}
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate("/owner/bookings")}>
-            <ChevronLeft className="mr-1 size-4" /> {t("booking_detail.back")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {awaitingApproval ? <BookingApprovalActions bookingId={booking.id} /> : null}
+            <Button variant="outline" size="sm" onClick={() => navigate("/owner/bookings")}>
+              <ChevronLeft className="mr-1 size-4" /> {t("booking_detail.back")}
+            </Button>
+          </div>
         }
       />
       <div className="grid grid-cols-1 gap-8 px-6 pb-12 lg:grid-cols-2">

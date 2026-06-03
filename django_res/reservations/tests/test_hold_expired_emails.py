@@ -38,19 +38,23 @@ def _make_expired_hold(
     property_: Property,
     reason: str,
     quotation: Quotation | None = None,
+    offset_days: int = 30,
 ) -> BookingHold:
     """Create a hold that is already past `expires_at`.
 
     `reason` is required because the `bookinghold_has_source_or_blocking_reason`
     CHECK constraint rejects a hold with no quotation/booking unless `reason`
     is one of the blocking values (OWNER_BLOCK / MAINTENANCE / MANUAL).
+
+    `offset_days` shifts the (7-day) stay window so two holds on the same
+    property can coexist without tripping the no-overlap constraint.
     """
     now = timezone.now()
     return BookingHold.objects.create(
         property=property_,
         quotation=quotation,
-        date_from=date.today() + timedelta(days=30),
-        date_to=date.today() + timedelta(days=37),
+        date_from=date.today() + timedelta(days=offset_days),
+        date_to=date.today() + timedelta(days=offset_days + 7),
         expires_at=now - timedelta(minutes=1),
         reason=reason,
     )
@@ -91,10 +95,19 @@ def test_expire_holds_notifies_agent_for_quotation_hold(
         quotation=quotation,
         reason=BookingHoldReason.QUOTATION_OPEN.value,
     )
+    # An expired operator block on the same property (non-overlapping dates).
+    # A single expire_holds() call must release both disparate holds together
+    # while only the agent-bearing quotation hold yields an email.
+    operator_block = _make_expired_hold(
+        property_=quotation_line.property,
+        quotation=None,
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+        offset_days=60,
+    )
 
     released_ids = expire_holds()
 
-    assert released_ids == [hold.pk]
+    assert set(released_ids) == {hold.pk, operator_block.pk}
     logs = _logs_for_hold(hold)
     assert len(logs) == 1
     log = logs[0]
@@ -103,6 +116,8 @@ def test_expire_holds_notifies_agent_for_quotation_hold(
         "quotation_id": quotation.pk,
         "hold_id": hold.pk,
     }
+    # The operator block has no agent and must not yield an email.
+    assert _logs_for_hold(operator_block) == []
 
 
 @pytest.mark.django_db

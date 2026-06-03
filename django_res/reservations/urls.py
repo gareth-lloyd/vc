@@ -25,6 +25,7 @@ from reservations.views import (
     ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
+    OwnerBookingViewSet,
     OwnerDashboardView,
     PropertyAvailabilityView,
     QuotationLineViewSet,
@@ -361,6 +362,16 @@ _terms_routes: list[URLPattern | URLResolver] = [
 
 _owner_routes: list[URLPattern | URLResolver] = [
     path("owner/dashboard", OwnerDashboardView.as_view(), name="owner-dashboard"),
+    path(
+        "owner/bookings",
+        OwnerBookingViewSet.as_view({"get": "list"}),
+        name="owner-booking-list",
+    ),
+    path(
+        "owner/bookings/<int:pk>",
+        OwnerBookingViewSet.as_view({"get": "retrieve"}),
+        name="owner-booking-detail",
+    ),
 ]
 
 

@@ -171,8 +171,54 @@ def test_net_is_null_without_full_money_grant(
 
     api_client.force_authenticate(user)
     body = api_client.get(URL).json()
+    # No view_full_money grant → both money KPIs are withheld, but the
+    # operational booking count is still shown.
     assert body["ytd"]["net_to_owner"] is None
+    assert body["ytd"]["gross_revenue"] is None
+    assert body["ytd"]["bookings"] == 1
+
+
+def test_gross_revenue_only_sums_full_money_properties(
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    guest: Guest,
+    property_: Property,
+) -> None:
+    """Mixed grants: gross/net reflect only the view_full_money villa."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = cast(User, UserFactory())
+    OwnerMembershipFactory(organisation=org, user=user, status=OwnerMembershipStatus.ACTIVE)
+    visible = property_
+    hidden = cast(Property, PropertyFactory())
+    OwnerOrgPropertyFactory(organisation=org, property=visible, view_full_money=True)
+    OwnerOrgPropertyFactory(organisation=org, property=hidden, view_full_money=False)
+    today = timezone.localdate()
+    _make_booking(
+        property_=visible,
+        gbp=gbp,
+        terms=terms,
+        guest=guest,
+        date_from=date(today.year, 1, 10),
+        rental_price="1400.00",
+        status=BookingStatus.BALANCE_PAID.value,
+        snapshot={"total": "1400.00", "commission": "200.00", "tax": "100.00"},
+    )
+    _make_booking(
+        property_=hidden,
+        gbp=gbp,
+        terms=terms,
+        guest=guest,
+        date_from=date(today.year, 1, 12),
+        rental_price="5000.00",
+        status=BookingStatus.BALANCE_PAID.value,
+    )
+
+    api_client.force_authenticate(user)
+    body = api_client.get(URL).json()
+    # The hidden villa's 5000 must not appear in the gross figure.
     assert body["ytd"]["gross_revenue"] == "1400.00"
+    assert body["ytd"]["bookings"] == 2  # count is operational — both villas
 
 
 def test_upcoming_arrivals_window_and_naming(

@@ -10,11 +10,12 @@ stay in the `owners` app.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Exists, OuterRef, Sum
 from django.utils import timezone
+from rest_framework import serializers, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,8 +24,14 @@ from owners.scoping import owner_property_ids, owner_visibility_map
 from properties.models import Property
 from reservations.enums import BookingStatus
 from reservations.models import Booking
+from reservations.serializers.owner import (
+    OwnerBookingDetailSerializer,
+    OwnerBookingListSerializer,
+)
+from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
     from rest_framework.request import Request
 
     from accounts.models import User
@@ -39,28 +46,6 @@ _NON_COUNTING_STATUSES = (
 )
 _UPCOMING_WINDOW_DAYS = 30
 _UPCOMING_LIMIT = 5
-
-
-def _net_from_snapshot(snapshot: dict[str, Any]) -> Decimal | None:
-    """Owner-net from a pricing snapshot — mirrors BookingDetailSerializer.
-
-    Prefers the explicit `net_to_owner` the engine writes; falls back to
-    `total - commission - tax` for legacy/older snapshots. Returns None when
-    the snapshot lacks the figures (e.g. `{}` on imported rows).
-    """
-    try:
-        total = Decimal(str(snapshot["total"]))
-        commission = Decimal(str(snapshot["commission"]))
-        tax = Decimal(str(snapshot["tax"]))
-    except (KeyError, InvalidOperation, TypeError):
-        return None
-    raw_net = snapshot.get("net_to_owner")
-    if raw_net is not None:
-        try:
-            return Decimal(str(raw_net))
-        except (InvalidOperation, TypeError):
-            pass
-    return total - commission - tax
 
 
 class OwnerDashboardView(APIView):
@@ -84,19 +69,24 @@ class OwnerDashboardView(APIView):
             status__in=_NON_COUNTING_STATUSES
         )
         ytd = scoped.filter(date_from__gte=year_start, date_from__lte=today)
-        agg = ytd.aggregate(bookings=Count("id"), gross=Sum("rental_price"))
-        gross = agg["gross"] or Decimal("0")
+        # Booking count is operational, not financial — always shown.
+        bookings_count = ytd.count()
 
+        # Both money KPIs are gated to view_full_money properties: gross revenue
+        # is as sensitive as the per-booking rental_price the booking endpoint
+        # redacts (for a single booking the sum *is* that price). With no
+        # full-money grant, both stay null rather than leaking via aggregation.
         full_money_ids = {pid for pid, flags in visibility.items() if flags["view_full_money"]}
+        gross: Decimal | None = None
         net_to_owner: Decimal | None = None
         if full_money_ids:
+            money_ytd = ytd.filter(property_id__in=full_money_ids)
+            gross = money_ytd.aggregate(total=Sum("rental_price"))["total"] or Decimal("0")
             net_to_owner = Decimal("0")
-            for snapshot in ytd.filter(property_id__in=full_money_ids).values_list(
-                "pricing_snapshot", flat=True
-            ):
-                net = _net_from_snapshot(snapshot or {})
-                if net is not None:
-                    net_to_owner += net
+            for snapshot in money_ytd.values_list("pricing_snapshot", flat=True):
+                money = owner_money_from_snapshot(snapshot)
+                if money is not None:
+                    net_to_owner += money["net_to_owner"]
 
         by_status = {
             row["status"]: row["count"]
@@ -135,11 +125,52 @@ class OwnerDashboardView(APIView):
         return Response(
             {
                 "ytd": {
-                    "bookings": agg["bookings"],
-                    "gross_revenue": f"{gross:.2f}",
+                    "bookings": bookings_count,
+                    "gross_revenue": f"{gross:.2f}" if gross is not None else None,
                     "net_to_owner": f"{net_to_owner:.2f}" if net_to_owner is not None else None,
                 },
                 "properties": {"total": len(property_ids), "by_status": by_status},
                 "upcoming_arrivals": upcoming_payload,
             }
         )
+
+
+class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
+    """`GET /owner/bookings` (+ `/{id}`) — scoped, redacted booking reads.
+
+    Server-side scoping restricts to the caller's granted properties, so a
+    retrieve of any other booking 404s. Field-level redaction lives in the
+    serializer, keyed off the per-property visibility map placed in context.
+    DRAFT and archived bookings are hidden; cancellations stay visible as
+    history.
+    """
+
+    permission_classes = [IsOwner]
+
+    def get_serializer_class(self) -> type[serializers.BaseSerializer]:
+        if self.action == "retrieve":
+            return OwnerBookingDetailSerializer
+        return OwnerBookingListSerializer
+
+    def get_queryset(self) -> QuerySet[Booking]:
+        user = cast("User", self.request.user)
+        property_ids = owner_property_ids(user)
+        # "Repeat guest" = this guest has another booking at the caller's own
+        # villas — a single correlated EXISTS, constant-query regardless of rows.
+        repeat = Exists(
+            Booking.objects.filter(
+                guest_id=OuterRef("guest_id"), property_id__in=property_ids
+            ).exclude(pk=OuterRef("pk"))
+        )
+        return (
+            Booking.objects.filter(property_id__in=property_ids, is_archived=False)
+            .exclude(status=BookingStatus.DRAFT.value)
+            .select_related("property", "guest", "guest__country", "currency")
+            .annotate(is_repeat_guest=repeat)
+            .order_by("-date_from")
+        )
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        context = super().get_serializer_context()
+        context["visibility"] = owner_visibility_map(cast("User", self.request.user))
+        return context

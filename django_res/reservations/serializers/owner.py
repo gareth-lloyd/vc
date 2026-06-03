@@ -17,8 +17,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from django.utils import timezone
 from rest_framework import serializers
 
+from reservations.enums import OwnerBlockKind
+from reservations.models import OwnerBlockRequest
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -93,3 +96,47 @@ class OwnerBookingDetailSerializer(OwnerBookingListSerializer):
     """Detail representation. Adds the gated gross/commission/net breakdown."""
 
     detail = True
+
+
+class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+    """Owner-facing read view of a block request.
+
+    Deliberately omits `resulting_hold` (the internal BookingHold id), mirroring
+    the calendar's hold-id redaction — an owner never acts on the hold directly.
+    """
+
+    class Meta:
+        model = OwnerBlockRequest
+        fields = [
+            "id",
+            "property",
+            "date_from",
+            "date_to",
+            "kind",
+            "notes",
+            "status",
+            "review_note",
+            "reviewed_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class OwnerBlockRequestWriteSerializer(serializers.Serializer):
+    """Validate a block-request submission. The view resolves + scopes `property`."""
+
+    property = serializers.IntegerField()
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+    kind = serializers.ChoiceField(
+        choices=OwnerBlockKind.choices,
+        default=OwnerBlockKind.OWNER_STAY.value,
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if attrs["date_to"] <= attrs["date_from"]:
+            raise serializers.ValidationError({"date_to": "Must be after date_from."})
+        if attrs["date_to"] < timezone.localdate():
+            raise serializers.ValidationError({"date_to": "Cannot be in the past."})
+        return attrs

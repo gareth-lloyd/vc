@@ -14,25 +14,38 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
 from django.db.models import Count, Exists, OuterRef, Sum
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from owners.permissions import IsOwner
-from owners.scoping import owner_property_ids, owner_visibility_map
+from owners.scoping import (
+    BLOCK_WRITER_ROLES,
+    owner_property_ids,
+    owner_property_ids_for_roles,
+    owner_visibility_map,
+)
 from properties.models import Property
 from reservations.enums import BookingStatus
-from reservations.models import Booking
+from reservations.models import Booking, OwnerBlockRequest
 from reservations.serializers.owner import (
+    OwnerBlockRequestSerializer,
+    OwnerBlockRequestWriteSerializer,
     OwnerBookingDetailSerializer,
     OwnerBookingListSerializer,
 )
 from reservations.services.availability import AvailabilityService
+from reservations.services.owner_block_requests import OwnerBlockRequestService
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from django.db.models import QuerySet
     from rest_framework.request import Request
 
@@ -234,4 +247,84 @@ class OwnerPropertyCalendarView(APIView):
                     "pm": _owner_segment(cell.segments["pm"]),
                 }
             payload.append(entry)
-        return Response({"property_id": property_obj.pk, "cells": payload})
+        # `can_request_block` gates the "Request block" affordance without a
+        # second round-trip — sourced from the role-scoped writable set, not the
+        # broader readable set this view already filtered on.
+        can_request_block = property_obj.pk in owner_property_ids_for_roles(
+            user, BLOCK_WRITER_ROLES
+        )
+        return Response(
+            {
+                "property_id": property_obj.pk,
+                "can_request_block": can_request_block,
+                "cells": payload,
+            }
+        )
+
+
+def _resolve_writable_property(user: User, property_id: int, roles: Sequence[str]) -> Property:
+    """Resolve a property the caller may *write*, else 403 (readable) / 404.
+
+    Distinguishing 403 from 404 mirrors the read endpoints: a villa the caller
+    can see but not write returns 403; one they can't see at all 404s rather
+    than leaking its existence.
+    """
+    if property_id in owner_property_ids_for_roles(user, roles):
+        return get_object_or_404(Property, pk=property_id)
+    if property_id in owner_property_ids(user):
+        raise PermissionDenied("You do not have write access to this property.")
+    raise Http404
+
+
+class OwnerBlockRequestViewSet(viewsets.GenericViewSet):
+    """`/owner/block-requests` — owner-submitted availability block requests.
+
+    List/create the caller's own requests; cancel one they raised. Property
+    write-scope is enforced against `BLOCK_WRITER_ROLES` (VIEW_ONLY → 403).
+    """
+
+    permission_classes = [IsOwner]
+
+    def get_queryset(self) -> QuerySet[OwnerBlockRequest]:
+        user = cast("User", self.request.user)
+        return (
+            OwnerBlockRequest.objects.filter(requested_by=user)
+            .select_related("property")
+            .order_by("-created_at")
+        )
+
+    def list(self, request: Request) -> Response:
+        qs = self.get_queryset()
+        property_id = request.query_params.get("property")
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return Response(OwnerBlockRequestSerializer(qs, many=True).data)
+
+    def create(self, request: Request) -> Response:
+        user = cast("User", request.user)
+        serializer = OwnerBlockRequestWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        property_obj = _resolve_writable_property(user, data["property"], BLOCK_WRITER_ROLES)
+        block_request = OwnerBlockRequestService.create(
+            property=property_obj,
+            requested_by=user,
+            date_from=data["date_from"],
+            date_to=data["date_to"],
+            kind=data["kind"],
+            notes=data["notes"],
+        )
+        return Response(
+            OwnerBlockRequestSerializer(block_request).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request: Request, pk: str | None = None) -> Response:
+        user = cast("User", request.user)
+        block_request = get_object_or_404(OwnerBlockRequest, pk=pk, requested_by=user)
+        OwnerBlockRequestService.cancel(block_request, actor=user)
+        return Response(OwnerBlockRequestSerializer(block_request).data)

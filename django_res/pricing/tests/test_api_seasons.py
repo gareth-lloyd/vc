@@ -163,3 +163,79 @@ def test_season_detail_inlines_cards_with_rules(
 
 # Touch a couple of variables to silence "unused" complaints from the linter.
 _ = (date, Decimal)
+
+
+# --- Carry-forward (promote projection to editable rows) --------------------
+
+
+@pytest.mark.django_db
+def test_carry_forward_creates_editable_plan_for_future_year(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        {"currency": gbp.code, "target_year": 2028},
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    payload = response.json()
+    assert payload["effective_from"] == "2028-01-01"
+    assert payload["id"] != rule.card.plan.pk
+    # The materialised plan is a real, queryable row distinct from the anchor.
+    assert RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
+
+
+@pytest.mark.django_db
+def test_carry_forward_without_anchor_returns_409(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        {"currency": gbp.code, "target_year": 2028},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+
+
+@pytest.mark.django_db
+def test_carry_forward_requires_currency_and_year(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    rule: RateRule,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        {"target_year": 2028},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+
+
+@pytest.mark.django_db
+def test_carry_forward_rejects_out_of_range_year(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Out-of-range years return 400, not an uncaught ValueError (500)."""
+    api_client.force_login(staff)
+    for bad_year in (0, 99999, -5):
+        response = api_client.post(
+            f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+            {"currency": gbp.code, "target_year": bad_year},
+            format="json",
+        )
+        assert response.status_code == 400, (bad_year, response.content)

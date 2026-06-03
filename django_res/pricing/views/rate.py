@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
@@ -11,13 +13,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from pricing.models import RateCard, RatePlan, RateRule
+from pricing.models import Currency, RateCard, RatePlan, RateRule
 from pricing.serializers import (
     RateCardSerializer,
     RatePlanDetailSerializer,
     RatePlanSerializer,
     RateRuleSerializer,
 )
+from pricing.services.carryover import RateCarryoverService
 from properties.models import Property
 
 if TYPE_CHECKING:
@@ -78,6 +81,64 @@ class SeasonDuplicateView(APIView):
                     rule.save()
         return Response(
             RatePlanDetailSerializer(clone).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PropertySeasonCarryForwardView(APIView):
+    """`POST /properties/{id}/seasons:carry-forward` — promote a projection.
+
+    Materialises editable rate rows for a future year from the most recent prior
+    year (the demoted carryover verb). Lazy projection already quotes that year
+    without any rows; this is for when staff want to hand-tune or confirm. The
+    operation is idempotent per (property, currency, target_year).
+
+    Body: `{"currency": "GBP", "target_year": 2028, "uplift_pct": "0"}` —
+    `uplift_pct` optional (defaults to a verbatim carry-over).
+    """
+
+    permission_classes = [IsReservationsWriter]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
+        data = request.data if isinstance(request.data, dict) else {}
+
+        code = data.get("currency")
+        target_year = data.get("target_year")
+        if not code or target_year is None:
+            return Response(
+                {"detail": "currency and target_year are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            target_year_int = int(target_year)
+            uplift = Decimal(str(data.get("uplift_pct", "0"))) / Decimal("100")
+        except (ValueError, TypeError, InvalidOperation):
+            return Response(
+                {"detail": "target_year and uplift_pct must be numeric"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Bound the year to a sane window. Without this, a value like 0 or 10000
+        # reaches `date(target_year, 1, 1)` in the service and raises an uncaught
+        # ValueError (HTTP 500); anything outside a few decades is operator error.
+        this_year = date.today().year
+        if not (this_year <= target_year_int <= this_year + 20):
+            return Response(
+                {"detail": f"target_year must be between {this_year} and {this_year + 20}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        currency = get_object_or_404(Currency, code=code)
+
+        # NoRateAvailable (no prior year to carry from) propagates to the
+        # canonical domain-error handler as a 409.
+        plan = RateCarryoverService.materialise(
+            property_obj,
+            target_year=target_year_int,
+            currency=currency,
+            uplift=uplift,
+        )
+        return Response(
+            RatePlanDetailSerializer(plan).data,
             status=status.HTTP_201_CREATED,
         )
 

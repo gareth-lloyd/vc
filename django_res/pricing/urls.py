@@ -16,6 +16,7 @@ from pricing.views import (
     PricingQuoteView,
     PropertyDiscountListCreateView,
     PropertyExtraListCreateView,
+    PropertySeasonCarryForwardView,
     PropertySeasonListCreateView,
     RateCardDetailView,
     RateCardDiscountListCreateView,
@@ -43,6 +44,11 @@ _pricing_paths: list[URLPattern] = [
         "properties/<int:property_id>/seasons",
         PropertySeasonListCreateView.as_view(),
         name="property-season-list",
+    ),
+    path(
+        "properties/<int:property_id>/seasons:carry-forward",
+        PropertySeasonCarryForwardView.as_view(),
+        name="property-season-carry-forward",
     ),
     path(
         "seasons/<int:pk>",

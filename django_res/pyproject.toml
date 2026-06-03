@@ -34,6 +34,7 @@ dev = [
     "factory-boy>=3.3",
     "types-markdown>=3.10.2.20260518",
     "import-linter>=2.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.ruff]
@@ -94,7 +95,14 @@ exclude = ["**/migrations"]   # parity with mypy's migrations exclude
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "villacollective.settings.test"
 python_files = ["test_*.py", "tests.py"]
-addopts = "-ra --strict-markers --reuse-db"
+# `-n auto`: run in parallel across cores (pytest-xdist), default `load`
+# distribution — tests stream to whichever worker is free, which balances the
+# heavy `seeding/` tests across cores (measurably faster than `loadscope` here,
+# and the suite has no module/session-scoped fixtures that would need pinning).
+# pytest-django gives each worker its own `test_villacollective_gw{n}` DB, so
+# isolation is identical to serial. For the single-test TDD inner loop, pass
+# `-n0` to run serially with readable output and clean `-x` behaviour.
+addopts = "-ra --strict-markers --reuse-db -n auto"
 
 # ---------------------------------------------------------------------------
 # import-linter — the horizontal (app-to-app) layering contract.

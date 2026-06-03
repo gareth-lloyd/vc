@@ -45,6 +45,21 @@ jobs:
           cache-dependency-glob: django_res/uv.lock
 
       - run: uv sync --frozen
+
+      # Ephemeral CI DB — disable durability so fsync-bound COMMITs in the
+      # (parallel) test suite stop waiting on the disk. All three params are
+      # SIGHUP-context, so a reload applies them with no restart. Zero risk:
+      # the service container is thrown away when the job ends.
+      - name: Disable Postgres durability
+        env:
+          PGPASSWORD: villacollective
+        run: |
+          psql -h localhost -U villacollective -d villacollective_test \
+            -c "ALTER SYSTEM SET fsync = off;" \
+            -c "ALTER SYSTEM SET synchronous_commit = off;" \
+            -c "ALTER SYSTEM SET full_page_writes = off;" \
+            -c "SELECT pg_reload_conf();"
+
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run mypy .

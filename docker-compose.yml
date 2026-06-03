@@ -3,6 +3,15 @@ services:
     image: postgres:16
     container_name: villacollective-db
     restart: unless-stopped
+    # Durability is traded for speed: this is a disposable local dev/test DB,
+    # and fsync-bound COMMITs dominate the (write-heavy, parallel) test suite.
+    # An unclean crash can corrupt the data dir — rebuild with `migrate` +
+    # `seed_dev`. Never use these flags on a database you can't recreate.
+    command: >-
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
     environment:
       POSTGRES_USER: villa
       POSTGRES_PASSWORD: villa

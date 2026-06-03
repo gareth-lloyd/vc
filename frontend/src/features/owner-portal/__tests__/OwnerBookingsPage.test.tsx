@@ -22,6 +22,7 @@ const baseRow = {
   guest_name: "Ada Lovelace",
   guest_country: { code: "GB", name: "United Kingdom" },
   is_repeat_guest: false,
+  can_approve: false,
 };
 
 function renderPage() {

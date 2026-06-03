@@ -20,6 +20,7 @@ export const queryKeys = {
       ["owner", "properties", "detail", id, "calendar", from, to] as const,
     bookings: <F>(filters: F) => ["owner", "bookings", filters] as const,
     booking: (id: BookingId) => ["owner", "bookings", "detail", id] as const,
+    blockRequests: <F>(filters: F) => ["owner", "block-requests", filters] as const,
   },
   properties: {
     all: () => ["properties"] as const,

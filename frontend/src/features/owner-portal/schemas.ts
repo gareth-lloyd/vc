@@ -75,6 +75,8 @@ export const ownerPropertySchema = z.object({
   guests: z.number().nullable(),
   bedrooms: z.number().nullable(),
   hero_image_url: z.string().nullable(),
+  // True when the caller's role on this villa permits requesting blocks.
+  can_request_block: z.boolean(),
 });
 export type OwnerProperty = z.infer<typeof ownerPropertySchema>;
 
@@ -105,6 +107,8 @@ export const ownerBookingListItemSchema = z.object({
   guest_name: z.string().nullable(),
   guest_country: ownerGuestCountrySchema.nullable(),
   is_repeat_guest: z.boolean(),
+  // Capability flag: may this caller approve/decline the booking (role-scoped)?
+  can_approve: z.boolean(),
   // view_full_money grant only — absent otherwise.
   rental_price: z.string().optional(),
   balance_due: z.string().optional(),
@@ -130,6 +134,53 @@ export const ownerBookingDetailSchema = ownerBookingListItemSchema.extend({
 export type OwnerBookingDetail = z.infer<typeof ownerBookingDetailSchema>;
 
 // ----------------------------------------------------------------------
+// Owner block requests
+// ----------------------------------------------------------------------
+
+export const ownerBlockKindSchema = z.enum(["owner_stay", "maintenance", "other"]);
+export type OwnerBlockKind = z.infer<typeof ownerBlockKindSchema>;
+
+export const ownerBlockRequestStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "declined",
+  "cancelled",
+]);
+export type OwnerBlockRequestStatus = z.infer<typeof ownerBlockRequestStatusSchema>;
+
+export const ownerBlockRequestSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  date_from: z.string(),
+  date_to: z.string(),
+  kind: ownerBlockKindSchema,
+  notes: z.string(),
+  status: ownerBlockRequestStatusSchema,
+  review_note: z.string(),
+  reviewed_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export type OwnerBlockRequest = z.infer<typeof ownerBlockRequestSchema>;
+
+export const ownerBlockRequestsResponseSchema = z.array(ownerBlockRequestSchema);
+
+// Write input — `date_to` must be strictly after `date_from` (matches the
+// backend serializer + DB constraint). The refine message is an i18n key.
+export const blockRequestWriteInputSchema = z
+  .object({
+    property: z.number(),
+    date_from: z.string().min(1),
+    date_to: z.string().min(1),
+    kind: ownerBlockKindSchema,
+    notes: z.string(),
+  })
+  .refine((v) => v.date_to > v.date_from, {
+    path: ["date_to"],
+    message: "blocks.errors.date_to_after_from",
+  });
+export type BlockRequestWriteInput = z.infer<typeof blockRequestWriteInputSchema>;
+
+// ----------------------------------------------------------------------
 // /owner/properties/{id}/calendar
 // ----------------------------------------------------------------------
 
@@ -153,6 +204,8 @@ export type OwnerCalendarCell = z.infer<typeof ownerCalendarCellSchema>;
 
 export const ownerCalendarSchema = z.object({
   property_id: z.number(),
+  // True when the caller's role on this villa permits requesting blocks.
+  can_request_block: z.boolean(),
   cells: z.array(ownerCalendarCellSchema),
 });
 export type OwnerCalendar = z.infer<typeof ownerCalendarSchema>;
@@ -160,4 +213,9 @@ export type OwnerCalendar = z.infer<typeof ownerCalendarSchema>;
 export interface OwnerBookingFilters {
   ordering?: string;
   page?: number;
+}
+
+export interface OwnerBlockRequestFilters {
+  property?: number;
+  status?: OwnerBlockRequestStatus;
 }

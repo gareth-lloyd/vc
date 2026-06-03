@@ -12,10 +12,9 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.api import IsReservationsWriter, not_implemented_response
+from core.api import IsReservationsWriter, IsStaff, not_implemented_response
 from properties.filters import PropertyFilter
 from properties.models import Property
 from properties.serializers import (
@@ -45,7 +44,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self) -> list[Any]:
         if self.action in {"list", "retrieve"}:
-            return [IsAuthenticated()]
+            return [IsStaff()]
         return [IsReservationsWriter()]
 
     def get_serializer_class(self) -> type[Any]:

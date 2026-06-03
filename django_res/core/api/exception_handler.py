@@ -14,7 +14,6 @@ from typing import Any
 from django.db.models.deletion import ProtectedError, RestrictedError
 from rest_framework import exceptions, status
 from rest_framework.response import Response
-from rest_framework.views import exception_handler as drf_default_handler
 
 from core.exceptions import DomainError
 
@@ -55,6 +54,11 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
             },
             status=status.HTTP_409_CONFLICT,
         )
+
+    # Imported lazily: `core.api` is referenced by `DEFAULT_PERMISSION_CLASSES`,
+    # so eagerly importing `rest_framework.views` here would trip a circular
+    # import while DRF is still initialising that module.
+    from rest_framework.views import exception_handler as drf_default_handler
 
     response = drf_default_handler(exc, context)
     if response is None:

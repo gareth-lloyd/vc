@@ -18,6 +18,7 @@ from properties.models import Property
 @pytest.fixture
 def staff(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="pricing@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,

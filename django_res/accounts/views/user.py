@@ -8,7 +8,6 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -19,7 +18,7 @@ from accounts.serializers import (
     UserSerializer,
 )
 from accounts.services import SessionService, TwoFactorService
-from core.api import IsStaffRoleAdmin, not_implemented_response
+from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
 
 class UserFilterSet(FilterSet):
@@ -34,8 +33,8 @@ class UserFilterSet(FilterSet):
 class UserViewSet(viewsets.ModelViewSet[User]):
     """`/users` — CRUD + admin actions.
 
-    Reads available to any authenticated user (staff list visibility);
-    writes and destructive actions require `IsStaffRoleAdmin`.
+    Reads available to any staff user (staff list visibility); writes and
+    destructive actions require `IsStaffRoleAdmin`.
     """
 
     queryset = User.objects.all().order_by("email")
@@ -51,7 +50,7 @@ class UserViewSet(viewsets.ModelViewSet[User]):
 
     def get_permissions(self) -> list[Any]:
         if self.action in {"list", "retrieve"}:
-            return [IsAuthenticated()]
+            return [IsStaff()]
         return [IsStaffRoleAdmin()]
 
     def perform_destroy(self, instance: User) -> None:

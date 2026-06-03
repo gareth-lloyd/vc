@@ -67,6 +67,18 @@ describe("useOwnerMe", () => {
     await waitFor(() => expect(useOwnerStore.getState().status).toBe("not_owner"));
     expect(result.current.isError).toBe(false);
   });
+
+  it("still reaches a terminal store state on a 5xx so the guards never hang", async () => {
+    server.use(
+      http.get("/api/v1/owner/me", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
+    );
+    const client = createClient();
+    const { result } = renderHook(() => useOwnerMe(true), { wrapper: wrapper(client) });
+    // Store leaves "idle" (otherwise RequireStaff/RequireOwner wait forever);
+    // the query itself still surfaces the error for observability.
+    await waitFor(() => expect(useOwnerStore.getState().status).toBe("not_owner"));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
 });
 
 describe("useOwnerBookings", () => {

@@ -33,8 +33,15 @@ export function useOwnerMe(enabled: boolean) {
         setOwner(me);
         return me;
       } catch (err) {
+        // 401/403 is a definitive "not an owner". Any other failure
+        // (5xx/network) leaves us unable to confirm — but we must still reach a
+        // terminal store state, or the route guards (RequireOwner/RequireStaff)
+        // wait on "idle" forever and the app hangs on a blank screen. The
+        // server stays the real authz gate, so resolving to "not_owner" here is
+        // safe: a genuine owner is bounced to /login (recoverable), never
+        // stranded, and never granted access they don't have.
+        setNotOwner();
         if (err instanceof ApiError && (err.status === 403 || err.status === 401)) {
-          setNotOwner();
           return null;
         }
         throw err;

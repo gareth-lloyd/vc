@@ -37,6 +37,7 @@ def api_client() -> APIClient:
 @pytest.fixture
 def staff(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="emails-staff@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,
@@ -46,6 +47,7 @@ def staff(db: None) -> User:
 @pytest.fixture
 def viewer(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="emails-viewer@example.com",
         password="x",
         role=StaffRole.VIEWER,
@@ -394,6 +396,7 @@ def test_resend_falls_back_to_system_when_original_profile_deactivated(
     send, fall back to the system profile rather than the operator's.
     """
     former_owner = User.objects.create_user(
+        is_staff=True,
         email="former-agent@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,

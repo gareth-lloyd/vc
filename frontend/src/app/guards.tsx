@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/store";
+import { useOwnerStore } from "@/features/owner-portal/ownerStore";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 
 export function RequireAuth() {
@@ -16,6 +17,32 @@ export function RequireAuth() {
     return <Outlet />;
   }
   return null;
+}
+
+// Gates the staff app (AppShell) tree. Staff pass through. A non-staff owner
+// is bounced to their portal; anyone else lands on /login. The server is the
+// real gate (every staff endpoint is staff-only) — this just keeps an owner
+// from loading a staff shell that would only 403 on every call. Mirror of
+// RequireOwner. Waits on both the auth and owner-probe boots (status "idle").
+export function RequireStaff() {
+  const authStatus = useAuthStore((s) => s.status);
+  const isStaff = useAuthStore((s) => s.user?.is_staff ?? false);
+  const ownerStatus = useOwnerStore((s) => s.status);
+
+  if (authStatus === "unauthenticated") {
+    return <Navigate to="/login" replace />;
+  }
+  if (authStatus === "idle") {
+    return null;
+  }
+  if (isStaff) {
+    return <Outlet />;
+  }
+  // Non-staff: wait for the owner probe, then route owners to their portal.
+  if (ownerStatus === "idle") {
+    return null;
+  }
+  return <Navigate to={ownerStatus === "owner" ? "/owner/dashboard" : "/login"} replace />;
 }
 
 export function RequireAdmin() {

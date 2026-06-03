@@ -12,11 +12,10 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from core.api import IsStaffRoleAdmin
+from core.api import IsStaff, IsStaffRoleAdmin
 from reservations.models import Guest
 from reservations.serializers import (
     GuestBookingSerializer,
@@ -42,7 +41,7 @@ class GuestViewSet(viewsets.ModelViewSet[Guest]):
 
     queryset = Guest.objects.all()
     serializer_class = GuestSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = GuestFilterSet
     search_fields = ["first_name", "last_name", "email"]

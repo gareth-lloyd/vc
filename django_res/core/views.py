@@ -13,12 +13,12 @@ from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import filters, viewsets
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.api import IsStaffRoleAdmin
+from core.api import IsStaff, IsStaffRoleAdmin
 from core.models import AuditLog, SystemSettings
 from core.serializers.audit_log import AuditLogSerializer
 from core.serializers.system_settings import SystemSettingsSerializer
@@ -124,7 +124,7 @@ class SystemSettingsView(APIView):
 class CurrentPermissionsView(APIView):
     """Return the caller's `auth.Permission` codenames and staff role."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def get(self, request: Request) -> Response:
         user = request.user

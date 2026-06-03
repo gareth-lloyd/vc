@@ -62,7 +62,12 @@ class UserCreateSerializer(serializers.ModelSerializer[User]):
 
     def create(self, validated_data: dict[str, Any]) -> User:
         password = validated_data.pop("password")
-        is_staff = validated_data.pop("is_staff", False)
+        # /users is the staff-CRUD endpoint, so a created user is staff by
+        # default — staff access is gated on is_staff (see core.api.IsStaff),
+        # and a staff account created without it would be locked out of the
+        # whole staff API. Owners are provisioned elsewhere (the owners app),
+        # never here.
+        is_staff = validated_data.pop("is_staff", True)
         user: User = User.objects.create_user(
             email=validated_data.pop("email"),
             password=password,

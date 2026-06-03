@@ -18,13 +18,15 @@ def api_client() -> APIClient:
 
 @pytest.fixture
 def admin(db: None) -> User:
-    return User.objects.create_user(email="admin@example.com", password="x", role=StaffRole.ADMIN)
+    return User.objects.create_user(
+        is_staff=True, email="admin@example.com", password="x", role=StaffRole.ADMIN
+    )
 
 
 @pytest.fixture
 def staff(db: None) -> User:
     return User.objects.create_user(
-        email="staff@example.com", password="x", role=StaffRole.RESERVATIONS
+        is_staff=True, email="staff@example.com", password="x", role=StaffRole.RESERVATIONS
     )
 
 

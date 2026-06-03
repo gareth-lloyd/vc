@@ -17,6 +17,12 @@ def _user_role(request: Request) -> str | None:
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return None
+    # `User.role` defaults to VIEWER for *every* user, including non-staff
+    # principals such as portal owners. A staff role is only meaningful for a
+    # staff user — without this gate an owner would inherit VIEWER read access
+    # across the entire staff API.
+    if not getattr(user, "is_staff", False):
+        return None
     if getattr(user, "is_superuser", False):
         return StaffRole.ADMIN.value
     role = getattr(user, "role", None)
@@ -37,6 +43,23 @@ def actor_has_perm(actor: Any, perm: str) -> bool:
     return bool(has_perm(perm))
 
 
+class IsStaff(BasePermission):
+    """Baseline staff floor: the caller must be an authenticated staff user.
+
+    This is the secure default for the whole staff API (wired as DRF's
+    `DEFAULT_PERMISSION_CLASSES`). Non-staff principals — portal owners,
+    anonymous callers — are rejected. Endpoints that are legitimately
+    public (`AllowAny`) or owner-facing (`owners.permissions.IsOwner`) opt out
+    explicitly; everything else defaults to staff-only.
+    """
+
+    message = "Staff access required."
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
+
+
 class IsStaffRoleAdmin(BasePermission):
     """Grant access to superusers and users whose `User.role` is `ADMIN`.
 
@@ -52,7 +75,7 @@ class IsStaffRoleAdmin(BasePermission):
 
 
 class IsReservationsWriter(BasePermission):
-    """Read for any authenticated user; write for ADMIN or RESERVATIONS roles."""
+    """Read for any staff user; write for ADMIN or RESERVATIONS roles."""
 
     message = "Reservations role required for write access."
 
@@ -84,7 +107,7 @@ class AllowAnyReadStaffWrite(BasePermission):
 
 
 class IsAccountsWriter(BasePermission):
-    """Read for any authenticated user; write for ADMIN or ACCOUNTS roles.
+    """Read for any staff user; write for ADMIN or ACCOUNTS roles.
 
     Used to gate payment / refund / track action endpoints.
     """

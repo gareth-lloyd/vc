@@ -29,6 +29,7 @@ def api_client() -> APIClient:
 @pytest.fixture
 def staff(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="staff@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,
@@ -38,6 +39,7 @@ def staff(db: None) -> User:
 @pytest.fixture
 def admin(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="admin@example.com",
         password="x",
         role=StaffRole.ADMIN,
@@ -47,6 +49,7 @@ def admin(db: None) -> User:
 @pytest.fixture
 def viewer(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="viewer@example.com",
         password="x",
         role=StaffRole.VIEWER,

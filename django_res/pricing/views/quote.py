@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from django.shortcuts import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.api import IsStaff
 from core.exceptions import DomainError
 from pricing.models import Currency
 from pricing.serializers import (
@@ -36,7 +36,7 @@ def _run_quote(*, property: Property, currency: Currency, data: dict[str, Any]) 
 
 
 class PricingQuoteView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = PricingQuoteRequestSerializer(data=request.data)
@@ -49,7 +49,7 @@ class PricingQuoteView(APIView):
 
 
 class PricingQuoteBulkView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = PricingQuoteBulkRequestSerializer(data=request.data)

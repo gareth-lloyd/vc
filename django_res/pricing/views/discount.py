@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.api import IsReservationsWriter
+from core.api import IsReservationsWriter, IsStaff
 from pricing.enums import RuleKind
 from pricing.filters import DiscountFilter
 from pricing.models import Discount, RateCard
@@ -65,7 +64,7 @@ class RateCardDiscountListCreateView(generics.ListCreateAPIView):
 class DiscountLookupCodeView(APIView):
     """`POST /discounts:lookup-code` — validate a promo code."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = DiscountLookupCodeSerializer(data=request.data)

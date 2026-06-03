@@ -149,8 +149,13 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
+    # Secure default: the staff API is staff-only. Public endpoints opt out
+    # with `AllowAny`; owner-portal endpoints with `owners.permissions.IsOwner`;
+    # self-service identity endpoints (`/auth/me`, logout, …) with
+    # `IsAuthenticated`. Anything that forgets to declare a permission is
+    # locked to staff rather than leaking to any authenticated principal.
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
+        "core.api.permissions.IsStaff",
     ],
     "EXCEPTION_HANDLER": "core.api.exception_handler.canonical_exception_handler",
 }

@@ -28,6 +28,7 @@ def api_client() -> APIClient:
 
 def _make_accounts_user(email: str) -> User:
     user = User.objects.create_user(
+        is_staff=True,
         email=email,
         password="x",
         role=StaffRole.ACCOUNTS,

@@ -16,11 +16,10 @@ from typing import TYPE_CHECKING, Any
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, serializers, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.api import IsReservationsWriter
+from core.api import IsReservationsWriter, IsStaff
 from core.exceptions import DomainError, ReadOnlyHold
 from properties.models import Property
 from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS
@@ -87,7 +86,7 @@ class PropertyAvailabilityView(APIView):
 
     def get_permissions(self) -> list[Any]:
         if self.request.method == "GET":
-            return [IsAuthenticated()]
+            return [IsStaff()]
         return [IsReservationsWriter()]
 
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -185,7 +184,7 @@ class AvailabilityDetailView(generics.GenericAPIView):
 class AvailabilityMultiView(APIView):
     """`GET /availability` — multi-villa lookup."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         from reservations.models.booking import BookingHold
@@ -215,7 +214,7 @@ class AvailabilityMultiView(APIView):
 class AvailabilitySearchView(APIView):
     """`POST /availability:search` — find villas free in a window."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         from reservations.models.booking import BookingHold

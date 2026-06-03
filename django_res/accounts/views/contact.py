@@ -7,7 +7,6 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
@@ -18,7 +17,7 @@ from accounts.serializers import (
     ContactPhoneSerializer,
     ContactSerializer,
 )
-from core.api import not_implemented_response
+from core.api import IsStaff, not_implemented_response
 
 
 class ContactFilterSet(FilterSet):
@@ -35,7 +34,7 @@ class ContactViewSet(viewsets.ModelViewSet[Contact]):
 
     queryset = Contact.objects.all().prefetch_related("emails", "phones")
     serializer_class = ContactSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ContactFilterSet
     search_fields = ["first_name", "last_name", "company", "emails__email"]
@@ -69,7 +68,7 @@ class ContactViewSet(viewsets.ModelViewSet[Contact]):
 class ContactInvitePortalView(viewsets.ViewSet):
     """`POST /contacts/{id}:invite-portal` — owner portal invite (501)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def create(self, request: Request, contact_pk: str | None = None) -> Response:
         get_object_or_404(Contact, pk=contact_pk)
@@ -80,7 +79,7 @@ class ContactEmailViewSet(viewsets.ModelViewSet[ContactEmail]):
     """Nested `/contacts/{contact_id}/emails`."""
 
     serializer_class = ContactEmailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def get_queryset(self) -> models.QuerySet[ContactEmail]:
         return ContactEmail.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
@@ -96,7 +95,7 @@ class ContactPhoneViewSet(viewsets.ModelViewSet[ContactPhone]):
     """Nested `/contacts/{contact_id}/phones`."""
 
     serializer_class = ContactPhoneSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     def get_queryset(self) -> models.QuerySet[ContactPhone]:
         return ContactPhone.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
@@ -116,13 +115,13 @@ class ContactPropertiesView(viewsets.ViewSet):
     flat.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
 
 class SetPrimaryEmailView(viewsets.ViewSet):
     """`POST /contacts/{id}/emails/{email_id}:set-primary`."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     @transaction.atomic
     def create(
@@ -146,7 +145,7 @@ class SetPrimaryEmailView(viewsets.ViewSet):
 class SetPrimaryPhoneView(viewsets.ViewSet):
     """`POST /contacts/{id}/phones/{phone_id}:set-primary`."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
 
     @transaction.atomic
     def create(

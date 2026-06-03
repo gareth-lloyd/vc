@@ -19,6 +19,7 @@ def api_client() -> APIClient:
 @pytest.fixture
 def admin(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="admin@example.com",
         password="x",
         role=StaffRole.ADMIN,
@@ -28,6 +29,7 @@ def admin(db: None) -> User:
 @pytest.fixture
 def viewer(db: None) -> User:
     return User.objects.create_user(
+        is_staff=True,
         email="viewer@example.com",
         password="x",
         role=StaffRole.VIEWER,
@@ -62,7 +64,11 @@ def test_admin_can_create_user(api_client: APIClient, admin: User) -> None:
     )
 
     assert response.status_code == 201
-    assert User.objects.filter(email="new@example.com").exists()
+    created = User.objects.get(email="new@example.com")
+    # The staff-CRUD endpoint must mint a usable staff account: is_staff is the
+    # floor for the whole staff API, so a created user without it would be
+    # locked out despite their role.
+    assert created.is_staff is True
 
 
 @pytest.mark.django_db

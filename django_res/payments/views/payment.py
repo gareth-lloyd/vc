@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from rest_framework import mixins, viewsets
-from rest_framework.permissions import IsAuthenticated
 
+from core.api import IsStaff
 from payments.filters import PaymentFilter
 from payments.models import Payment
 from payments.serializers import PaymentSerializer
@@ -20,7 +20,7 @@ class PaymentViewSet(
     """Read-only flat list/detail across every track."""
 
     serializer_class = PaymentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaff]
     filterset_class = PaymentFilter
     ordering_fields = ["created_at", "settled_at", "due_at", "amount"]
     ordering = ["-created_at"]

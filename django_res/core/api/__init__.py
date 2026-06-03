@@ -7,6 +7,7 @@ from core.api.permissions import (
     AllowAnyReadStaffWrite,
     IsAccountsWriter,
     IsReservationsWriter,
+    IsStaff,
     IsStaffRoleAdmin,
 )
 from core.api.responses import not_implemented_response
@@ -15,6 +16,7 @@ __all__ = [
     "AllowAnyReadStaffWrite",
     "IsAccountsWriter",
     "IsReservationsWriter",
+    "IsStaff",
     "IsStaffRoleAdmin",
     "canonical_exception_handler",
     "not_implemented_response",

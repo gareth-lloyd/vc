@@ -48,14 +48,17 @@ def api_client() -> APIClient:
 @pytest.fixture
 def staff(db: None) -> User:
     return User.objects.create_user(
-        email="concierge-staff@example.com", password="x", role=StaffRole.RESERVATIONS
+        is_staff=True,
+        email="concierge-staff@example.com",
+        password="x",
+        role=StaffRole.RESERVATIONS,
     )
 
 
 @pytest.fixture
 def viewer(db: None) -> User:
     return User.objects.create_user(
-        email="concierge-viewer@example.com", password="x", role=StaffRole.VIEWER
+        is_staff=True, email="concierge-viewer@example.com", password="x", role=StaffRole.VIEWER
     )
 
 

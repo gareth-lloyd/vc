@@ -101,6 +101,7 @@ def test_hold_creation_uses_effective_setting(property_: Property) -> None:
     after = timezone.now()
 
     # Tolerate test execution time on either side of the now() call.
+    assert hold.expires_at is not None
     assert before + timedelta(hours=24) <= hold.expires_at <= after + timedelta(hours=24)
 
 
@@ -115,6 +116,7 @@ def test_hold_creation_falls_back_to_group_default(property_: Property) -> None:
     )
     after = timezone.now()
 
+    assert hold.expires_at is not None
     assert before + timedelta(hours=48) <= hold.expires_at <= after + timedelta(hours=48)
 
 
@@ -149,3 +151,43 @@ def test_expire_holds_task_releases_past_due(property_: Property) -> None:
     assert len(ids) == 1
     hold = BookingHold.objects.get(pk=ids[0])
     assert hold.released_at is not None
+
+
+@pytest.mark.django_db
+def test_place_never_expires_stores_null_expiry(property_: Property) -> None:
+    """An owner/maintenance block is placed with no expiry and reads as live."""
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+        never_expires=True,
+    )
+    assert hold.expires_at is None
+    assert hold.is_live() is True
+
+
+@pytest.mark.django_db
+def test_indefinite_hold_survives_expire_holds(property_: Property) -> None:
+    """A null-expiry hold is never reaped by the expiry task and stays overlapping."""
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+        never_expires=True,
+    )
+    assert expire_holds() == []
+    assert HoldService.expire_due() == []
+    hold.refresh_from_db()
+    assert hold.released_at is None
+    assert hold.is_live() is True
+    assert (
+        BookingHold.live_overlapping(
+            property=property_,
+            date_from=date(2026, 6, 12),
+            date_to=date(2026, 6, 14),
+        )
+        .filter(pk=hold.pk)
+        .exists()
+    )

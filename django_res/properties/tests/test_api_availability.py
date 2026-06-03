@@ -149,6 +149,7 @@ def test_extend_hold_action(api_client: APIClient, staff: User, property_: Prope
     )
     assert response.status_code == 200, response.content
     hold.refresh_from_db()
+    assert hold.expires_at is not None
     assert abs((hold.expires_at - new_expiry).total_seconds()) < 5
 
 

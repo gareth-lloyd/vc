@@ -67,6 +67,7 @@ class HoldService:
         date_from: date_type,
         date_to: date_type,
         expires_at: datetime | None = None,
+        never_expires: bool = False,
         reason: str = BookingHoldReason.MANUAL.value,
         quotation: Any = None,
         booking: Any = None,
@@ -77,6 +78,11 @@ class HoldService:
         When `expires_at` is omitted, defaults to
         `now() + property.settings.effective("hold_duration_hours")`. Callers
         may always pass an explicit value to override the per-villa default.
+
+        Pass `never_expires=True` for indefinite blocks (owner / maintenance):
+        the hold is stored with `expires_at=None` and `tasks.expire_holds`
+        never reaps it. `never_expires` and an explicit `expires_at` are
+        mutually exclusive.
         """
         if cls._has_overlapping_live_hold(
             property=property,
@@ -87,7 +93,10 @@ class HoldService:
                 f"An overlapping live hold already exists for property {property.pk} "
                 f"on {date_from}..{date_to}"
             )
-        if expires_at is None:
+        if never_expires:
+            if expires_at is not None:
+                raise ValueError("`never_expires=True` cannot be combined with `expires_at`")
+        elif expires_at is None:
             expires_at = _resolve_default_expiry(property)
         return BookingHold.objects.create(
             property=property,
@@ -171,9 +180,12 @@ class HoldService:
         This helper is the underlying DB operation.
         """
         now = timezone.now()
+        # `expires_at__lt` already excludes NULL rows in SQL, but the explicit
+        # `isnull=False` documents that indefinite holds are never reaped.
         due_ids = list(
             BookingHold.objects.filter(
                 released_at__isnull=True,
+                expires_at__isnull=False,
                 expires_at__lt=now,
             ).values_list("pk", flat=True)
         )

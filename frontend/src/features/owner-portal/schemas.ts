@@ -169,8 +169,8 @@ export const ownerBlockRequestsResponseSchema = z.array(ownerBlockRequestSchema)
 export const blockRequestWriteInputSchema = z
   .object({
     property: z.number(),
-    date_from: z.string().min(1),
-    date_to: z.string().min(1),
+    date_from: z.string().min(1, "blocks.errors.required"),
+    date_to: z.string().min(1, "blocks.errors.required"),
     kind: ownerBlockKindSchema,
     notes: z.string(),
   })

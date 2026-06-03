@@ -12,7 +12,9 @@
     "at_least_one_adult": "At least one adult",
     "date_to_after_date_from": "Must be after the start date",
     "override_reason_required": "A reason is required when overriding the price",
-    "manual_total_required": "A manual line needs a total greater than zero"
+    "manual_total_required": "A manual line needs a total greater than zero",
+    "discount_invalid": "Enter a valid discount amount",
+    "line_total_missing": "This option has no price — set a manual total or remove it"
   },
   "notes": {
     "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day"
@@ -245,6 +247,8 @@
       "max_bedrooms": "Max bedrooms",
       "q": "Name search",
       "q_placeholder": "e.g. Villa Sol",
+      "currency": "Currency",
+      "currency_hint": "Villas are priced in this currency. Changing it clears the cart and re-prices.",
       "search": "Search options",
       "searching": "Searching…"
     },
@@ -262,39 +266,49 @@
         "title": "No villas match these criteria",
         "description": "Widen the date range, drop a filter, or check region/country."
       },
-      "unavailable_count_one": "{{count}} option unavailable for these dates",
-      "unavailable_count_other": "{{count}} options unavailable for these dates"
+      "unavailable": "Unavailable for these dates",
+      "unavailable_aria": "{{name}} — unavailable for these dates"
     },
-    "staged": {
-      "title": "Staged lines",
-      "empty": {
-        "title": "Nothing staged yet",
-        "description": "Add priced options from the results list."
-      },
-      "columns": {
-        "property": "Property",
-        "dates": "Dates",
-        "guests": "Guests",
-        "discount": "Discount",
-        "inclusions": "Inclusions",
-        "total": "Total",
-        "actions": "Actions"
-      },
+    "cart": {
+      "heading": "Quote cart ({{count}})",
       "thumbnail_alt": "{{name}} thumbnail",
-      "remove": "Remove"
-    },
-    "rail": {
-      "staged_title": "This quote",
-      "staged_count_one": "{{count}} line staged",
-      "staged_count_other": "{{count}} lines staged",
-      "save": "Save quote",
-      "back_to_enquiry": "Back to enquiry"
+      "subtotal": "Subtotal",
+      "save_draft": "Save draft",
+      "send_to_guest": "Send to guest",
+      "edit": "Edit line",
+      "collapse": "Collapse line",
+      "empty": {
+        "title": "Your cart is empty",
+        "description": "Add priced villas from the results to build the quote."
+      },
+      "line": {
+        "nights_one": "{{count}} night",
+        "nights_other": "{{count}} nights",
+        "guests": "{{adults}}A · {{children}}C",
+        "remove": "Remove",
+        "discount": "Discount",
+        "discount_hint": "Subtracted from the priced total.",
+        "discount_manual_hint": "Not applied to a manual total.",
+        "inclusions": "Inclusions",
+        "inclusions_placeholder": "e.g. Daily housekeeping, welcome hamper",
+        "manual": "Override the price manually",
+        "manual_hint": "Replace the engine price with a fixed total. A reason is required.",
+        "total": "Manual total",
+        "reason": "Reason for price override",
+        "reason_placeholder": "e.g. Agreed rate with returning guest",
+        "note": "Note for this villa option"
+      },
+      "disable_reasons": {
+        "no_lines": "Add at least one villa to the cart.",
+        "invalid_line": "Fix the highlighted line — a price, discount, or reason needs attention."
+      }
     },
     "save": {
       "title": "Save quotation",
       "description_one": "Persist this quote with {{count}} line. The server will re-price each line.",
       "description_other": "Persist this quote with {{count}} lines. The server will re-price each line.",
       "currency": "Currency",
+      "currency_hint": "Set in the search criteria; the lines were priced in it.",
       "expires_at": "Expires at",
       "expires_hint": "After this date the quote stops being honourable.",
       "cancel": "Cancel",
@@ -307,6 +321,7 @@
         "no_lines": "Add at least one line before saving.",
         "no_currency": "Pick a currency.",
         "no_terms": "No current terms version is published. Ask an admin to publish one.",
+        "invalid_line": "A villa with a manual override is missing its total or reason. Fix it before saving.",
         "unknown": "Couldn't save the quotation. Please try again."
       },
       "toasts": {

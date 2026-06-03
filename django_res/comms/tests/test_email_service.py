@@ -13,6 +13,15 @@ from comms.models import EmailTemplate, SmtpProfile
 from comms.services import EmailService
 
 
+def _ctx(reference: str, first_name: str, property_name: str) -> dict[str, str]:
+    """Render context for the `test.booking.confirmation` template."""
+    return {
+        "booking_reference": reference,
+        "guest_first_name": first_name,
+        "property_name": property_name,
+    }
+
+
 @pytest.fixture
 def user(db: None) -> User:
     return User.objects.create_user(email="agent@example.com", password="pw")
@@ -53,11 +62,7 @@ def test_send_happy_path_renders_and_persists(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-001",
-            "guest_first_name": "Ada",
-            "property_name": "Villa Sol",
-        },
+        context=_ctx("BK-001", "Ada", "Villa Sol"),
         to=["guest@example.com"],
         correlation={"booking_id": 1},
     )
@@ -89,11 +94,7 @@ def test_send_uses_personal_profile_when_available(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-002",
-            "guest_first_name": "Bo",
-            "property_name": "Villa Mar",
-        },
+        context=_ctx("BK-002", "Bo", "Villa Mar"),
         to=["guest@example.com"],
         sender_user=user,
         correlation={"booking_id": 2},
@@ -115,11 +116,7 @@ def test_send_falls_back_to_system_when_no_personal_profile(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-003",
-            "guest_first_name": "Cy",
-            "property_name": "Villa Luna",
-        },
+        context=_ctx("BK-003", "Cy", "Villa Luna"),
         to=["guest@example.com"],
         sender_user=user,
         correlation={"booking_id": 3},
@@ -141,11 +138,7 @@ def test_send_falls_back_when_personal_profile_inactive(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-004",
-            "guest_first_name": "Di",
-            "property_name": "Villa Stella",
-        },
+        context=_ctx("BK-004", "Di", "Villa Stella"),
         to=["guest@example.com"],
         sender_user=user,
         correlation={"booking_id": 4},
@@ -163,21 +156,13 @@ def test_send_idempotent_on_repeat(
 
     log1 = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-005",
-            "guest_first_name": "Eve",
-            "property_name": "Villa Cielo",
-        },
+        context=_ctx("BK-005", "Eve", "Villa Cielo"),
         to=["guest@example.com", "extra@example.com"],
         correlation={"booking_id": 5},
     )
     log2 = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-005",
-            "guest_first_name": "Eve",
-            "property_name": "Villa Cielo",
-        },
+        context=_ctx("BK-005", "Eve", "Villa Cielo"),
         # Order should not matter for the dedupe.
         to=["extra@example.com", "guest@example.com"],
         correlation={"booking_id": 5},
@@ -201,22 +186,14 @@ def test_send_dedupes_across_differing_context(
 
     log1 = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-009",
-            "guest_first_name": "Ada",
-            "property_name": "Villa Uno",
-        },
+        context=_ctx("BK-009", "Ada", "Villa Uno"),
         to=["guest@example.com"],
         correlation={"booking_id": 9},
     )
     log2 = EmailService.send(
         template_key="test.booking.confirmation",
         # Different context → different rendered subject/body...
-        context={
-            "booking_reference": "BK-009",
-            "guest_first_name": "Grace",
-            "property_name": "Villa Dos",
-        },
+        context=_ctx("BK-009", "Grace", "Villa Dos"),
         # ...but same template + recipients + correlation.
         to=["guest@example.com"],
         correlation={"booking_id": 9},
@@ -243,11 +220,7 @@ def test_send_raises_when_no_system_profile(booking_template: EmailTemplate) -> 
     with pytest.raises(NoSmtpProfileAvailable):
         EmailService.send(
             template_key="test.booking.confirmation",
-            context={
-                "booking_reference": "X",
-                "guest_first_name": "Y",
-                "property_name": "Z",
-            },
+            context=_ctx("X", "Y", "Z"),
             to=["guest@example.com"],
         )
 
@@ -261,11 +234,7 @@ def test_send_does_not_bcc_internal_addresses_by_default(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-006",
-            "guest_first_name": "Fi",
-            "property_name": "Villa Nube",
-        },
+        context=_ctx("BK-006", "Fi", "Villa Nube"),
         to=["guest@example.com"],
         correlation={"booking_id": 6},
     )
@@ -324,11 +293,7 @@ def test_send_omits_html_alternative_when_template_has_no_mjml(
 
     log = EmailService.send(
         template_key="test.booking.confirmation",
-        context={
-            "booking_reference": "BK-007",
-            "guest_first_name": "Gi",
-            "property_name": "Villa Sin",
-        },
+        context=_ctx("BK-007", "Gi", "Villa Sin"),
         to=["guest@example.com"],
         correlation={"booking_id": 7},
     )

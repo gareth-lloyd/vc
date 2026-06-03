@@ -171,18 +171,26 @@ def test_seed_dev_notes_and_webhooks_only_touch_this_runs_rows() -> None:
 # ---------------------------------------------------------------------------
 # Profile: mixed (the new default — "interesting" data)
 # ---------------------------------------------------------------------------
-def test_seed_dev_mixed_emits_quotation_lifecycle_variety() -> None:
+def test_seed_dev_mixed_graph_has_full_variety() -> None:
+    """One mixed portfolio asserted across every aggregate-variety dimension.
+
+    `seed_dev` is deterministic at a fixed seed, so a single
+    `--properties 8 --bookings 24 --seed 42` run backs all of these — each was
+    previously its own identically-seeded test paying the full graph-build cost.
+    The mixed dials are stochastic, so everything here is verified in aggregate.
+    """
     # Bigger run so the percentage-based knobs actually emit each bucket.
     _run(properties=8, bookings=24, profile="mixed", seed=42)
 
-    statuses = set(Quotation.objects.values_list("status", flat=True))
+    # ---- Quotation lifecycle variety ----
     # Booking-bound quotations land on ACCEPTED; the extra_quotations stage
     # produces a slice of SENT / EXPIRED / CANCELLED. DRAFT is no longer
     # observable — the seeder always drives them past it.
-    assert QuotationStatus.ACCEPTED.value in statuses
+    quotation_statuses = set(Quotation.objects.values_list("status", flat=True))
+    assert QuotationStatus.ACCEPTED.value in quotation_statuses
     assert (
         len(
-            statuses
+            quotation_statuses
             & {
                 QuotationStatus.SENT.value,
                 QuotationStatus.EXPIRED.value,
@@ -191,7 +199,58 @@ def test_seed_dev_mixed_emits_quotation_lifecycle_variety() -> None:
         )
         >= 1
     )
-    assert QuotationStatus.DRAFT.value not in statuses
+    assert QuotationStatus.DRAFT.value not in quotation_statuses
+
+    # ---- Enquiry status spread ----
+    # The booking-path enquiries hit CONVERTED; orphan enquiries surface
+    # LOST + CONTACTED; quotation-only enquiries hit QUOTED.
+    enquiry_statuses = set(Enquiry.objects.values_list("status", flat=True))
+    assert EnquiryStatus.CONVERTED.value in enquiry_statuses
+    expected_others = {
+        EnquiryStatus.QUOTED.value,
+        EnquiryStatus.CONTACTED.value,
+        EnquiryStatus.LOST.value,
+    }
+    assert enquiry_statuses & expected_others, (
+        f"expected at least one of {expected_others} in {enquiry_statuses}"
+    )
+
+    # ---- Concierge items: ≥3 of the 4 realistic outcomes ----
+    # The stride bug used to clamp this to {REQUESTED, DELIVERED}.
+    assert BookingConciergeItem.objects.exists()
+    concierge_statuses = set(BookingConciergeItem.objects.values_list("status", flat=True))
+    realistic_concierge = {
+        ConciergeStatus.REQUESTED.value,
+        ConciergeStatus.CONFIRMED.value,
+        ConciergeStatus.DELIVERED.value,
+        ConciergeStatus.CANCELLED.value,
+    }
+    assert len(concierge_statuses & realistic_concierge) >= 3
+
+    # ---- Refund lifecycle: ≥2 realistic statuses ----
+    assert Refund.objects.exists()
+    refund_statuses = set(Refund.objects.values_list("status", flat=True))
+    realistic_refund = {
+        RefundStatus.PENDING.value,
+        RefundStatus.APPROVED.value,
+        RefundStatus.REJECTED.value,
+        RefundStatus.EXECUTING.value,
+        RefundStatus.SUCCEEDED.value,
+        RefundStatus.FAILED.value,
+    }
+    assert len(refund_statuses & realistic_refund) >= 2
+
+    # ---- Guest preferences ----
+    assert GuestPreference.objects.exists()
+
+    # ---- Temporal spread: bookings land on both sides of today, so dashboards
+    # see arrivals/departures every day of the dev week. ----
+    today = date.today()
+    earliest = Booking.objects.order_by("date_from").values_list("date_from", flat=True).first()
+    latest = Booking.objects.order_by("-date_from").values_list("date_from", flat=True).first()
+    assert earliest is not None and latest is not None
+    assert earliest < today
+    assert latest > today
 
 
 def test_seed_dev_mixed_drives_pre_approval_path() -> None:
@@ -222,53 +281,6 @@ def test_seed_dev_mixed_drives_pre_approval_path() -> None:
     )
 
 
-def test_seed_dev_mixed_emits_enquiry_status_spread() -> None:
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
-
-    statuses = set(Enquiry.objects.values_list("status", flat=True))
-    # The booking-path enquiries hit CONVERTED; orphan enquiries surface
-    # LOST + CONTACTED; quotation-only enquiries hit QUOTED.
-    assert EnquiryStatus.CONVERTED.value in statuses
-    expected_others = {
-        EnquiryStatus.QUOTED.value,
-        EnquiryStatus.CONTACTED.value,
-        EnquiryStatus.LOST.value,
-    }
-    assert statuses & expected_others, f"expected at least one of {expected_others} in {statuses}"
-
-
-def test_seed_dev_mixed_attaches_concierge_items() -> None:
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
-
-    assert BookingConciergeItem.objects.exists()
-    statuses = set(BookingConciergeItem.objects.values_list("status", flat=True))
-    realistic = {
-        ConciergeStatus.REQUESTED.value,
-        ConciergeStatus.CONFIRMED.value,
-        ConciergeStatus.DELIVERED.value,
-        ConciergeStatus.CANCELLED.value,
-    }
-    # The stride bug used to clamp this to {REQUESTED, DELIVERED} — assert the
-    # spread now exercises at least three of the four realistic outcomes.
-    assert len(statuses & realistic) >= 3
-
-
-def test_seed_dev_mixed_emits_refund_lifecycle() -> None:
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
-
-    assert Refund.objects.exists()
-    statuses = set(Refund.objects.values_list("status", flat=True))
-    realistic = {
-        RefundStatus.PENDING.value,
-        RefundStatus.APPROVED.value,
-        RefundStatus.REJECTED.value,
-        RefundStatus.EXECUTING.value,
-        RefundStatus.SUCCEEDED.value,
-        RefundStatus.FAILED.value,
-    }
-    assert len(statuses & realistic) >= 2
-
-
 def test_seed_dev_mixed_does_not_double_refund_on_rerun() -> None:
     """Each existing booking should pick up at most one refund across reruns —
     without the dedup guard the same cancelled booking gets sampled into the
@@ -293,12 +305,6 @@ def test_seed_dev_mixed_does_not_double_refund_on_rerun() -> None:
         assert second.get(booking_id, 0) == before, (
             f"booking {booking_id} grew from {before} to {second.get(booking_id)} refunds on rerun"
         )
-
-
-def test_seed_dev_mixed_attaches_guest_preferences() -> None:
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
-
-    assert GuestPreference.objects.exists()
 
 
 def test_seed_dev_mixed_spreads_property_status() -> None:
@@ -329,19 +335,6 @@ def test_seed_dev_lifecycle_does_not_archive_overlap_blocking_properties() -> No
         f"property_lifecycle archived properties with overlap-blocking "
         f"bookings: {list(inconsistent.values_list('pk', 'status'))}"
     )
-
-
-def test_seed_dev_mixed_spreads_booking_dates_around_today() -> None:
-    """The temporal-spread knob should produce bookings on both sides of
-    today, so dashboards see arrivals/departures every day of the dev week."""
-    _run(properties=8, bookings=24, profile="mixed", seed=42)
-
-    today = date.today()
-    earliest = Booking.objects.order_by("date_from").values_list("date_from", flat=True).first()
-    latest = Booking.objects.order_by("-date_from").values_list("date_from", flat=True).first()
-    assert earliest is not None and latest is not None
-    assert earliest < today
-    assert latest > today
 
 
 def test_seed_dev_produces_at_least_one_booking_with_owner_payload() -> None:

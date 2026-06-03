@@ -53,15 +53,25 @@ def _calendars(today: date) -> dict[int, dict[date, CellStatus]]:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_seed_dev_mixed_produces_varied_density() -> None:
-    """A spread of densities: ≥1 packed villa (heavily booked), a clearly
-    lighter tail, and ≥2 empty villas. The empty villas double as
-    property_lifecycle fodder, so they may end up DRAFT/ARCHIVED — count
-    occupancy across every status, not just active."""
+def test_seed_dev_mixed_calendar_is_dense_varied_and_current() -> None:
+    """One mixed portfolio asserted from every density angle.
+
+    `seed_dev` is deterministic at a fixed seed, so a single
+    `--properties 10 --bookings 60 --seed 42` run backs all of these checks —
+    each was previously its own identically-seeded test, and each `transaction=True`
+    run flushes + reseeds the whole DB, so collapsing them is a large wall-clock win:
+
+    * a varied density gradient (≥1 packed villa, a lighter tail, ≥2 empty);
+    * a back-to-back AM/PM changeover day, falling today or later;
+    * occupancy inside the current month.
+    """
     _seed("mixed", properties=10, bookings=60, seed=42)
     today = date.today()
-    booked = sorted(_booked_days(p, today) for p in Property.objects.all())
 
+    # ---- Varied density: ≥1 packed villa, a lighter tail, ≥2 empty ----
+    # Empty villas double as property_lifecycle fodder (may end up
+    # DRAFT/ARCHIVED), so count occupancy across every status, not just active.
+    booked = sorted(_booked_days(p, today) for p in Property.objects.all())
     packed = [n for n in booked if n >= 40]
     empty = [n for n in booked if n == 0]
     stay_bearing = [n for n in booked if n > 0]
@@ -73,17 +83,28 @@ def test_seed_dev_mixed_produces_varied_density() -> None:
     # A packed villa is busy, not wall-to-wall: gaps keep it bookable.
     assert max(booked) < 2 * _WINDOW.days, "a villa should never be fully booked"
 
-
-@pytest.mark.django_db(transaction=True)
-def test_seed_dev_mixed_renders_changeover_day() -> None:
-    """At least one property has a back-to-back changeover day (AM/PM segments),
-    which needs both adjacent stays non-terminal and check-in/out times set."""
-    _seed("mixed", properties=10, bookings=60, seed=42)
-    today = date.today()
-    has_changeover = any(
-        cell.segments for cal in _calendars(today).values() for cell in cal.values()
+    # ---- Changeover: ≥1 AM/PM segment cell, all today-or-later ----
+    # Needs both adjacent stays non-terminal and check-in/out times set; forced
+    # changeover pairs never pay a deposit, so a past changeover day would be an
+    # AWAITING_DEPOSIT stay production never reaches.
+    calendars = _calendars(today)
+    changeover_days = [
+        day for cal in calendars.values() for day, cell in cal.items() if cell.segments
+    ]
+    assert changeover_days, "expected at least one AM/PM changeover cell"
+    assert min(changeover_days) >= today, (
+        f"changeover days must be today-or-later, earliest was {min(changeover_days)}"
     )
-    assert has_changeover, "expected at least one AM/PM changeover cell"
+
+    # ---- Current-month occupancy: the availability tab opens on this month ----
+    month = today + timedelta(days=30)
+    occupied_now = any(
+        not cell.available
+        for cal in calendars.values()
+        for day, cell in cal.items()
+        if today <= day < month
+    )
+    assert occupied_now, "expected current-month occupancy on at least one villa"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -95,38 +116,6 @@ def test_seed_dev_dense_two_properties_still_books() -> None:
 
     _seed("mixed", properties=2, bookings=10, seed=7)
     assert Booking.objects.count() == 10
-
-
-@pytest.mark.django_db(transaction=True)
-def test_seed_dev_changeover_days_are_today_or_later() -> None:
-    """Forced changeover pairs are non-terminal (they never pay a deposit), so a
-    past changeover day would be an AWAITING_DEPOSIT stay production never
-    reaches. Every AM/PM changeover cell must fall on today or later."""
-    _seed("mixed", properties=10, bookings=60, seed=42)
-    today = date.today()
-    changeover_days = [
-        day for cal in _calendars(today).values() for day, cell in cal.items() if cell.segments
-    ]
-    assert changeover_days, "expected at least one changeover cell"
-    assert min(changeover_days) >= today, (
-        f"changeover days must be today-or-later, earliest was {min(changeover_days)}"
-    )
-
-
-@pytest.mark.django_db(transaction=True)
-def test_seed_dev_mixed_populates_the_current_month() -> None:
-    """The availability tab opens on the current month, so at least one villa
-    must show occupancy inside [today, today+30]."""
-    _seed("mixed", properties=10, bookings=60, seed=42)
-    today = date.today()
-    month = today + timedelta(days=30)
-    occupied_now = any(
-        not cell.available
-        for cal in _calendars(today).values()
-        for day, cell in cal.items()
-        if today <= day < month
-    )
-    assert occupied_now, "expected current-month occupancy on at least one villa"
 
 
 @pytest.mark.django_db(transaction=True)

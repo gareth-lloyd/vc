@@ -415,17 +415,35 @@ def _make_owner_contact(
     return contact
 
 
+def _make_finance(
+    property_: Property,
+    *,
+    contact: Contact | None = None,
+    calc_type: str | None = None,
+    amount: Decimal | None = None,
+    note: str = "",
+) -> PropertyFinance:
+    """Build the property's PropertyFinance row for the owner/commission tests."""
+    return PropertyFinance.objects.create(
+        property=property_,
+        contact=contact,
+        commission_calculation_type=calc_type,
+        commission_amount=amount,
+        commission_note=note,
+    )
+
+
 @pytest.mark.django_db
 def test_owner_payload_populated_when_finance_and_contact_exist(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
     owner = _make_owner_contact()
-    PropertyFinance.objects.create(
-        property=booking.property,
+    _make_finance(
+        booking.property,
         contact=owner,
-        commission_calculation_type=CommissionCalcType.PERCENT.value,
-        commission_amount=Decimal("12.50"),
-        commission_note="Includes seasonal uplift",
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+        note="Includes seasonal uplift",
     )
 
     api_client.force_login(staff)
@@ -454,7 +472,7 @@ def test_owner_primary_email_phone_null_when_no_primary_rows(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
     owner = _make_owner_contact(email=None, phone=None)
-    PropertyFinance.objects.create(property=booking.property, contact=owner)
+    _make_finance(booking.property, contact=owner)
 
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/bookings/{booking.pk}")
@@ -469,12 +487,10 @@ def test_owner_primary_email_phone_null_when_no_primary_rows(
 def test_owner_is_null_when_finance_has_no_contact(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
-    PropertyFinance.objects.create(
-        property=booking.property,
-        contact=None,
-        commission_calculation_type=CommissionCalcType.FIXED.value,
-        commission_amount=Decimal("500.00"),
-        commission_note="",
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.FIXED.value,
+        amount=Decimal("500.00"),
     )
 
     api_client.force_login(staff)
@@ -510,13 +526,7 @@ def test_owner_commission_falls_back_to_group_finance(
 ) -> None:
     # Property finance with everything null on commission — should fall back
     # to GroupFinance, which `properties.signals` auto-creates with defaults.
-    PropertyFinance.objects.create(
-        property=booking.property,
-        contact=None,
-        commission_calculation_type=None,
-        commission_amount=None,
-        commission_note="",
-    )
+    _make_finance(booking.property)
     group_finance = booking.property.group.finance
     group_finance.commission_calculation_type = CommissionCalcType.PERCENT.value
     group_finance.commission_amount = Decimal("8.00")
@@ -543,13 +553,7 @@ def test_owner_commission_null_when_group_finance_missing(
     the group fallback; the serializer must catch it and return None
     rather than 500.
     """
-    PropertyFinance.objects.create(
-        property=booking.property,
-        contact=None,
-        commission_calculation_type=None,
-        commission_amount=None,
-        commission_note="",
-    )
+    _make_finance(booking.property)
     # Drop the auto-created GroupFinance to simulate the legacy-import case.
     booking.property.group.finance.delete()
 
@@ -567,12 +571,10 @@ def test_owner_commission_note_empty_string_round_trips(
     # An explicit empty string at the property level should overshadow the
     # group default and stay an empty string in the serialized payload —
     # never null.
-    PropertyFinance.objects.create(
-        property=booking.property,
-        contact=None,
-        commission_calculation_type=CommissionCalcType.PERCENT.value,
-        commission_amount=Decimal("10.00"),
-        commission_note="",
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("10.00"),
     )
 
     api_client.force_login(staff)
@@ -587,11 +589,11 @@ def test_detail_query_count_bound_with_owner_and_commission(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
     owner = _make_owner_contact()
-    PropertyFinance.objects.create(
-        property=booking.property,
+    _make_finance(
+        booking.property,
         contact=owner,
-        commission_calculation_type=CommissionCalcType.PERCENT.value,
-        commission_amount=Decimal("12.50"),
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
     )
     api_client.force_login(staff)
 

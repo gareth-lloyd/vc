@@ -11,6 +11,7 @@ from reservations.views.availability import (
     AvailabilitySearchView,
     PropertyAvailabilityView,
 )
+from reservations.views.block_request import BlockRequestViewSet
 from reservations.views.booking import (
     BookingArchiveViewSet,
     BookingNoteViewSet,
@@ -45,6 +46,7 @@ __all__ = [
     "AvailabilityMultiView",
     "AvailabilityReleaseHoldView",
     "AvailabilitySearchView",
+    "BlockRequestViewSet",
     "BookingArchiveViewSet",
     "BookingConciergeItemViewSet",
     "BookingNoteViewSet",

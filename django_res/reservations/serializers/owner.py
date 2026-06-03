@@ -122,6 +122,30 @@ class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]
         read_only_fields = fields
 
 
+class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+    """Staff-facing read view — exposes the full request including the
+    reviewer, requester, and the resulting hold id (operators act on these)."""
+
+    class Meta:
+        model = OwnerBlockRequest
+        fields = [
+            "id",
+            "property",
+            "requested_by",
+            "date_from",
+            "date_to",
+            "kind",
+            "notes",
+            "status",
+            "reviewed_by",
+            "reviewed_at",
+            "review_note",
+            "resulting_hold",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
 class OwnerBlockRequestWriteSerializer(serializers.Serializer):
     """Validate a block-request submission. The view resolves + scopes `property`."""
 

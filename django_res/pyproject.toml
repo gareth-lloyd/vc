@@ -108,6 +108,7 @@ root_packages = [
     "core",
     "accounts",
     "properties",
+    "owners",
     "pricing",
     "reservations",
     "payments",

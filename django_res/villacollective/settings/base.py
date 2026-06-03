@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "core",
     "accounts",
     "properties",
+    "owners",
     "pricing",
     "reservations",
     "payments",

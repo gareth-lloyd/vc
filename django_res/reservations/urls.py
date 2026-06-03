@@ -25,6 +25,7 @@ from reservations.views import (
     ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
+    OwnerDashboardView,
     PropertyAvailabilityView,
     QuotationLineViewSet,
     QuotationViewSet,
@@ -358,10 +359,16 @@ _terms_routes: list[URLPattern | URLResolver] = [
 ]
 
 
+_owner_routes: list[URLPattern | URLResolver] = [
+    path("owner/dashboard", OwnerDashboardView.as_view(), name="owner-dashboard"),
+]
+
+
 urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
+    *_owner_routes,
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,

@@ -140,6 +140,28 @@ OPERATOR_EDITABLE_HOLD_REASONS: tuple[str, ...] = (
 )
 
 
+class OwnerBlockKind(models.TextChoices):
+    """Why an owner wants to block their villa's availability."""
+
+    OWNER_STAY = "owner_stay", "Owner stay"
+    MAINTENANCE = "maintenance", "Maintenance"
+    OTHER = "other", "Other"
+
+
+class OwnerBlockRequestStatus(models.TextChoices):
+    """Lifecycle of an owner-submitted availability block request.
+
+    A PENDING request reserves nothing — only on APPROVED does the operator
+    action create the real (indefinite) `BookingHold`. No soft delete; the
+    enum is the lifecycle.
+    """
+
+    PENDING = "pending", "Pending"
+    APPROVED = "approved", "Approved"
+    DECLINED = "declined", "Declined"
+    CANCELLED = "cancelled", "Cancelled"
+
+
 class EventSource(models.TextChoices):
     USER = "user", "User"
     OWNER = "owner", "Owner"

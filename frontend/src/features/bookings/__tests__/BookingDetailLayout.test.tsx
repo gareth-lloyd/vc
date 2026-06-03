@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { useAuthStore } from "@/features/auth/store";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 import { BookingDetailLayout } from "../BookingDetailLayout";
 import { OverviewTab } from "../tabs/OverviewTab";
@@ -172,6 +173,51 @@ describe("BookingDetailLayout", () => {
     const retry = await screen.findByRole("button", { name: /retry/i });
     await userEvent.click(retry);
     expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
+  });
+});
+
+describe("BookingDetailLayout — mutation refreshes the main display", () => {
+  afterEach(() => {
+    useAuthStore.getState().clear();
+  });
+
+  it("updates the rail dates after modifying dates from a string-id URL", async () => {
+    // The layout reads the id from the URL (string "51") while the mutation's
+    // success handler writes the cache with booking.id (number 51). The rail
+    // must re-render with the server-returned dates — this is the regression
+    // that the string/number query-key mismatch broke.
+    useAuthStore.getState().setMe(
+      {
+        id: 1,
+        email: "u@v.com",
+        first_name: "U",
+        last_name: "V",
+        is_active: true,
+        is_staff: true,
+        is_superuser: false,
+        preferred_language: "en",
+      },
+      { role: "RESERVATIONS", is_superuser: false, permissions: [] },
+    );
+
+    const updated = { ...bookingFixture, date_from: "2026-09-10", date_to: "2026-09-17" };
+    server.use(
+      http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)),
+      http.post("/api/v1/bookings/51:modify-dates", () => HttpResponse.json(updated)),
+    );
+
+    const user = userEvent.setup();
+    setup("/bookings/51/overview");
+
+    await waitFor(() => expect(screen.getByText("1 Jul 2026 – 8 Jul 2026")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /modify dates/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /save dates/i }));
+
+    await waitFor(() => expect(screen.getByText("10 Sep 2026 – 17 Sep 2026")).toBeInTheDocument());
   });
 });
 

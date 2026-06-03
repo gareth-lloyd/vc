@@ -6,6 +6,16 @@ export type EnquiryId = string | number;
 export type UserId = string | number;
 export type QuotationId = string | number;
 
+// Entity ids reach the key factory two ways: as a number (from a Zod-parsed
+// `entity.id`, used by mutation success handlers) and as a string (from
+// `useParams`, used by detail layouts). React Query hashes keys with
+// JSON.stringify, so `51 !== "51"` would split the same logical entity across
+// two cache entries — the mutation writes one, the layout observes the other,
+// and the display never refreshes. Normalize every id-position element to a
+// string so both paths hash identically. Slugs and codes are already strings,
+// so this is a no-op for them.
+const k = (id: string | number): string => String(id);
+
 export const queryKeys = {
   auth: {
     me: () => ["auth", "me"] as const,
@@ -15,47 +25,49 @@ export const queryKeys = {
     me: () => ["owner", "me"] as const,
     dashboard: () => ["owner", "dashboard"] as const,
     properties: <F>(filters: F) => ["owner", "properties", filters] as const,
-    property: (id: PropertyId) => ["owner", "properties", "detail", id] as const,
+    property: (id: PropertyId) => ["owner", "properties", "detail", k(id)] as const,
     propertyCalendar: (id: PropertyId, from: string, to: string) =>
-      ["owner", "properties", "detail", id, "calendar", from, to] as const,
+      ["owner", "properties", "detail", k(id), "calendar", from, to] as const,
     bookings: <F>(filters: F) => ["owner", "bookings", filters] as const,
-    booking: (id: BookingId) => ["owner", "bookings", "detail", id] as const,
+    booking: (id: BookingId) => ["owner", "bookings", "detail", k(id)] as const,
     blockRequests: <F>(filters: F) => ["owner", "block-requests", filters] as const,
   },
   properties: {
     all: () => ["properties"] as const,
     list: <F>(filters: F) => ["properties", "list", filters] as const,
-    detail: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug] as const,
+    detail: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug)] as const,
     descriptions: (idOrSlug: PropertyId) =>
-      ["properties", "detail", idOrSlug, "descriptions"] as const,
-    features: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "features"] as const,
-    rooms: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "rooms"] as const,
-    nearby: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "nearby"] as const,
-    changeover: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "changeover"] as const,
-    seasons: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "seasons"] as const,
-    seasonDetail: (seasonId: SeasonId) => ["properties", "seasons", "detail", seasonId] as const,
-    extras: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "extras"] as const,
-    discounts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "discounts"] as const,
-    contacts: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "contacts"] as const,
-    images: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "images"] as const,
-    settings: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "settings"] as const,
-    finance: (idOrSlug: PropertyId) => ["properties", "detail", idOrSlug, "finance"] as const,
-    holdsRoot: (propertyId: number) => ["properties", "detail", propertyId, "holds"] as const,
+      ["properties", "detail", k(idOrSlug), "descriptions"] as const,
+    features: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "features"] as const,
+    rooms: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "rooms"] as const,
+    nearby: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "nearby"] as const,
+    changeover: (idOrSlug: PropertyId) =>
+      ["properties", "detail", k(idOrSlug), "changeover"] as const,
+    seasons: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "seasons"] as const,
+    seasonDetail: (seasonId: SeasonId) => ["properties", "seasons", "detail", k(seasonId)] as const,
+    extras: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "extras"] as const,
+    discounts: (idOrSlug: PropertyId) =>
+      ["properties", "detail", k(idOrSlug), "discounts"] as const,
+    contacts: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "contacts"] as const,
+    images: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "images"] as const,
+    settings: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "settings"] as const,
+    finance: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "finance"] as const,
+    holdsRoot: (propertyId: number) => ["properties", "detail", k(propertyId), "holds"] as const,
     holds: (propertyId: number, from: string, to: string) =>
-      ["properties", "detail", propertyId, "holds", from, to] as const,
+      ["properties", "detail", k(propertyId), "holds", from, to] as const,
     availabilityRoot: (propertyId: number) =>
-      ["properties", "detail", propertyId, "availability"] as const,
+      ["properties", "detail", k(propertyId), "availability"] as const,
     availabilityCalendar: (propertyId: number, from: string, to: string) =>
-      ["properties", "detail", propertyId, "availability", from, to] as const,
+      ["properties", "detail", k(propertyId), "availability", from, to] as const,
     bookingsInRange: (propertyId: number, from: string, to: string) =>
-      ["properties", "detail", propertyId, "bookings", from, to] as const,
+      ["properties", "detail", k(propertyId), "bookings", from, to] as const,
   },
   contacts: {
     all: () => ["contacts"] as const,
     lists: () => ["contacts", "list"] as const,
     list: <F>(filters: F) => ["contacts", "list", filters] as const,
-    detail: (id: ContactId) => ["contacts", "detail", id] as const,
-    properties: (id: ContactId) => ["contacts", "detail", id, "properties"] as const,
+    detail: (id: ContactId) => ["contacts", "detail", k(id)] as const,
+    properties: (id: ContactId) => ["contacts", "detail", k(id), "properties"] as const,
     search: (q: string) => ["contacts", "search", q] as const,
   },
   bookings: {
@@ -64,14 +76,14 @@ export const queryKeys = {
     list: <F>(filters: F) => ["bookings", "list", filters] as const,
     statusCountsAll: () => ["bookings", "status-counts"] as const,
     statusCounts: <F>(filters: F) => ["bookings", "status-counts", filters] as const,
-    detail: (id: BookingId) => ["bookings", "detail", id] as const,
-    activity: (id: BookingId) => ["bookings", "detail", id, "activity"] as const,
-    notes: (id: BookingId) => ["bookings", "detail", id, "notes"] as const,
-    conciergeItems: (id: BookingId) => ["bookings", "detail", id, "concierge-items"] as const,
-    deposit: (id: BookingId) => ["bookings", "detail", id, "deposit"] as const,
-    balance: (id: BookingId) => ["bookings", "detail", id, "balance"] as const,
-    security: (id: BookingId) => ["bookings", "detail", id, "security"] as const,
-    emails: (id: BookingId) => ["bookings", "detail", id, "emails"] as const,
+    detail: (id: BookingId) => ["bookings", "detail", k(id)] as const,
+    activity: (id: BookingId) => ["bookings", "detail", k(id), "activity"] as const,
+    notes: (id: BookingId) => ["bookings", "detail", k(id), "notes"] as const,
+    conciergeItems: (id: BookingId) => ["bookings", "detail", k(id), "concierge-items"] as const,
+    deposit: (id: BookingId) => ["bookings", "detail", k(id), "deposit"] as const,
+    balance: (id: BookingId) => ["bookings", "detail", k(id), "balance"] as const,
+    security: (id: BookingId) => ["bookings", "detail", k(id), "security"] as const,
+    emails: (id: BookingId) => ["bookings", "detail", k(id), "emails"] as const,
   },
   enquiries: {
     all: () => ["enquiries"] as const,
@@ -79,9 +91,9 @@ export const queryKeys = {
     list: <F>(filters: F) => ["enquiries", "list", filters] as const,
     statusCountsAll: () => ["enquiries", "status-counts"] as const,
     statusCounts: <F>(filters: F) => ["enquiries", "status-counts", filters] as const,
-    detail: (id: EnquiryId) => ["enquiries", "detail", id] as const,
-    activity: (id: EnquiryId) => ["enquiries", "detail", id, "activity"] as const,
-    notes: (id: EnquiryId) => ["enquiries", "detail", id, "notes"] as const,
+    detail: (id: EnquiryId) => ["enquiries", "detail", k(id)] as const,
+    activity: (id: EnquiryId) => ["enquiries", "detail", k(id), "activity"] as const,
+    notes: (id: EnquiryId) => ["enquiries", "detail", k(id), "notes"] as const,
   },
   dashboard: {
     all: () => ["dashboard"] as const,
@@ -95,7 +107,7 @@ export const queryKeys = {
     all: () => ["users"] as const,
     lists: () => ["users", "list"] as const,
     list: <F>(filters: F) => ["users", "list", filters] as const,
-    detail: (id: UserId) => ["users", "detail", id] as const,
+    detail: (id: UserId) => ["users", "detail", k(id)] as const,
   },
   quotations: {
     all: () => ["quotations"] as const,
@@ -103,10 +115,10 @@ export const queryKeys = {
     list: <F>(filters: F) => ["quotations", "list", filters] as const,
     statusCountsAll: () => ["quotations", "status-counts"] as const,
     statusCounts: <F>(filters: F) => ["quotations", "status-counts", filters] as const,
-    detail: (id: QuotationId) => ["quotations", "detail", id] as const,
-    lines: (id: QuotationId) => ["quotations", "detail", id, "lines"] as const,
+    detail: (id: QuotationId) => ["quotations", "detail", k(id)] as const,
+    lines: (id: QuotationId) => ["quotations", "detail", k(id), "lines"] as const,
     preview: (id: QuotationId, overrides?: unknown) =>
-      ["quotations", "detail", id, "preview", overrides ?? null] as const,
+      ["quotations", "detail", k(id), "preview", overrides ?? null] as const,
   },
   concierge: {
     all: () => ["concierge"] as const,
@@ -132,13 +144,13 @@ export const queryKeys = {
     all: () => ["features"] as const,
     lists: () => ["features", "list"] as const,
     list: <F>(filters: F) => ["features", "list", filters] as const,
-    detail: (id: number | string) => ["features", "detail", id] as const,
+    detail: (id: number | string) => ["features", "detail", k(id)] as const,
   },
   tagFeatureCategories: {
     all: () => ["feature-categories"] as const,
     lists: () => ["feature-categories", "list"] as const,
     list: <F>(filters: F) => ["feature-categories", "list", filters] as const,
-    detail: (id: number | string) => ["feature-categories", "detail", id] as const,
+    detail: (id: number | string) => ["feature-categories", "detail", k(id)] as const,
   },
   systemSettings: {
     all: () => ["system", "settings"] as const,

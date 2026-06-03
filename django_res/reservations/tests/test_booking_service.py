@@ -126,3 +126,67 @@ def test_create_from_quotation_line__idempotent_does_not_double_lead(
     BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
     assert BookingGuest.objects.filter(booking=first, role=BookingGuestRole.LEAD.value).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line__schedules_payments(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A booking created through the service arrives with its payment schedule.
+
+    Bookings created via the real flow (accept-quotation API, owner portal)
+    must carry their deposit + balance Payment rows, not an empty ledger. The
+    scheduling is wired off the `booking_transitioned` signal (payments-side
+    receiver) and fires when the booking lands in AWAITING_DEPOSIT — so the
+    service never imports `payments` directly (which the import spine forbids).
+    """
+    from payments.enums import PaymentPurpose, PaymentStatus
+    from payments.models import Payment
+    from properties.models.finance import PropertyFinance
+
+    # An all-null PropertyFinance row inherits the group's default deposit
+    # policy (30% deposit), so the schedule resolves to deposit + balance.
+    PropertyFinance.objects.get_or_create(property=quotation_line.property)
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+    payments = list(Payment.objects.filter(booking=booking))
+    purposes = {p.purpose for p in payments}
+    assert PaymentPurpose.DEPOSIT.value in purposes
+    assert PaymentPurpose.BALANCE.value in purposes
+    assert all(p.status == PaymentStatus.PENDING.value for p in payments)
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line__no_finance_schedules_no_payments(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A property with no finance row degrades gracefully — booking creation
+    succeeds with no payments rather than crashing on the missing schedule
+    (mirrors `Property.balance_due_at`'s `getattr(self, "finance", None)`)."""
+    from payments.models import Payment
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+    assert booking.pk is not None
+    assert not Payment.objects.filter(booking=booking).exists()
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line__idempotent_does_not_double_payments(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A retry returns the existing booking and must not duplicate payments."""
+    from payments.models import Payment
+    from properties.models.finance import PropertyFinance
+
+    PropertyFinance.objects.get_or_create(property=quotation_line.property)
+
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    first_count = Payment.objects.filter(booking=booking).count()
+    BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+    assert Payment.objects.filter(booking=booking).count() == first_count

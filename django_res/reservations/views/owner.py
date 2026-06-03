@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
+from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -222,7 +223,16 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
     def approve(self, request: Request, pk: str | None = None) -> Response:
         """PENDING_OWNER_APPROVAL → AWAITING_DEPOSIT (fires lifecycle comms)."""
         booking = self._approvable_booking(request, pk)
-        booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
+        # Wrap the transition: it fires `booking_transitioned`, which the
+        # payments app consumes to schedule the booking's payments. The signal
+        # dispatch runs after `_transition`'s own atomic block commits, so
+        # without this outer transaction a scheduling failure would leave the
+        # booking committed in AWAITING_DEPOSIT with no payment rows (and wedge
+        # a retry on InvalidTransition). The atomic ties status + payments into
+        # one indivisible unit — the same guarantee the quotation-convert path
+        # gets from its own `transaction.atomic` (see views/quotation.py).
+        with transaction.atomic():
+            booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
         return self._approval_response(booking)
 
     @action(detail=True, methods=["post"], url_path="decline")

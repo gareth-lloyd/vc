@@ -1,4 +1,4 @@
-.PHONY: setup test lint typecheck dev-backend dev-frontend logs logs-backend logs-frontend hooks help
+.PHONY: setup test test-backend lint typecheck dev-backend dev-frontend logs logs-backend logs-frontend hooks help
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -21,6 +21,9 @@ hooks: ## Run all pre-commit hooks on all files
 test: ## Run backend + frontend tests
 	cd django_res && uv run pytest
 	cd frontend && npm test -- --run
+
+test-backend: ## Run backend tests only (parallel via -n auto)
+	cd django_res && uv run pytest
 
 lint: ## Run backend + frontend lint + format + typecheck
 	cd django_res && uv run ruff check

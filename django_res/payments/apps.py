@@ -9,8 +9,10 @@ class PaymentsConfig(AppConfig):
 
     def ready(self) -> None:
         from core.audit import track
-        from payments import signals  # noqa: F401
+        from payments import signals
         from payments.models import Payment, Refund
+
+        signals._register()
 
         track(
             Payment,

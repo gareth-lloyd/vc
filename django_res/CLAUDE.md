@@ -9,6 +9,30 @@
 5. `uv run pytest` — tests run against the same Postgres instance
    (pytest-django creates `test_villacollective` automatically).
 
+From the repo root, `make test-backend` runs the backend suite and `make test`
+runs backend + frontend together.
+
+### Parallel by default
+
+The suite runs in parallel via `pytest-xdist` (`-n auto` in `addopts`), so
+`uv run pytest`, `make test-backend`, the pre-push hook, and CI all parallelize
+automatically — there is one source of truth for the flag.
+pytest-django gives each worker its own `test_villacollective_gw{n}` test DB, so
+isolation is identical to a serial run — every worker rolls back its own
+transactions and the `transaction=True` seeding tests flush only their own DB.
+
+For the **single-test TDD inner loop**, pass `-n0` to run serially — readable
+output, live per-test progress, and clean `-x` (stop-on-first-failure)
+behaviour, without the worker-spawn overhead:
+
+```
+uv run pytest reservations/tests/test_references.py -n0
+```
+
+The local Postgres also runs with `fsync=off` (see `docker-compose.yml`) — pure
+test-speed convenience on a disposable DB. Never copy those flags to a database
+you can't recreate.
+
 ### Running tests from multiple worktrees
 
 The test DB lives on the one shared Postgres container, so concurrent

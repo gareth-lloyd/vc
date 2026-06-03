@@ -10,33 +10,73 @@ scheduler stays focused on the deposit/interim/balance track).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
 
 from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from properties.enums import DepositCalcType
 
+logger = logging.getLogger(__name__)
+
+# The schedule rows this service owns. The idempotency check is scoped to these
+# purposes so that an unrelated Payment on the booking (a SECURITY_DEPOSIT
+# hold, a REFUND, an ad-hoc charge) can't masquerade as "already scheduled" and
+# suppress the deposit/balance schedule.
+_SCHEDULE_PURPOSES = (PaymentPurpose.DEPOSIT.value, PaymentPurpose.BALANCE.value)
+
 
 class PaymentScheduler:
     """Build the deposit/interim/balance row schedule for a fresh booking."""
 
     @classmethod
+    @transaction.atomic
     def create_for_booking(cls, booking: Any) -> list[Payment]:
         """Create PENDING Payment rows for the booking's payment schedule.
 
         Returns the list of Payment rows created (deposit, optional interim,
         balance). The SecurityDeposit row is created separately via
         `SecurityDepositService.create_for_booking()`.
+
+        Atomic: the deposit/balance rows and the SecurityDeposit row are
+        written all-or-nothing, so a failure part-way never leaves a booking
+        with a deposit row but no balance row (or vice versa).
         """
         # Late import — `SecurityDepositService` lives in another module in
         # this package and we don't want a circular import at module load.
         from payments.services.security_deposit import SecurityDepositService
 
-        finance = booking.property.finance
+        # Idempotent: the scheduler is reachable from the booking-creation
+        # signal and from explicit callers, so a re-entry (signal re-fire, a
+        # webhook retry, an operator double-submit) must return the existing
+        # rows rather than mint a second deposit/balance set. A `Booking`
+        # naturally owns its schedule, so the FK (scoped to the schedule
+        # purposes) is the idempotency key.
+        existing = list(Payment.objects.filter(booking=booking, purpose__in=_SCHEDULE_PURPOSES))
+        if existing:
+            return existing
+
+        # A property with no `PropertyFinance` row has no schedule to size
+        # against. Degrade gracefully (no payments) rather than raising — the
+        # signal fires on every booking creation, so a financeless property
+        # must not break booking creation. Mirrors `Property.balance_due_at`'s
+        # `getattr(self, "finance", None)` guard. Log it: in production every
+        # property should resolve a finance row, so a miss is a misconfiguration
+        # (a booking that can collect no money) worth surfacing, not swallowing.
+        finance = getattr(booking.property, "finance", None)
+        if finance is None:
+            logger.warning(
+                "PaymentScheduler: booking %s on property %s has no PropertyFinance; "
+                "no payment schedule created",
+                getattr(booking, "pk", None),
+                getattr(booking, "property_id", None),
+            )
+            return []
         schedule = finance.effective_payment_schedule()
         currency = booking.currency
         total = cls._booking_total(booking)

@@ -11,20 +11,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
+import { parseMoney } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
 import { useCurrencies } from "@/features/admin/currencies/hooks";
 import { createQuotationLine } from "../api";
 import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
+import { isStagedLineValid } from "../lineTotals";
 import type { QuotationDetail, QuotationLineWriteInput, StagedLine } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 
@@ -33,9 +28,19 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   enquiry: EnquiryDetail | null;
   lines: StagedLine[];
+  // Read-only here — the currency is chosen in the criteria pane and the lines
+  // were priced in it; an editable picker at commit would let the operator pick
+  // a currency the cart totals were never priced in.
   currencyCode: string;
-  onCurrencyChange: (code: string) => void;
   onSaved: (quotation: QuotationDetail) => void;
+}
+
+// Normalise an operator-typed money string to a canonical 2-dp decimal for the
+// wire (e.g. "1,000" → "1000.00"), or null when it doesn't parse to a finite
+// number so callers can fall back. Matches the app's hardcoded 2-dp convention.
+function toDecimalString(value: string | number | null | undefined): string | null {
+  const parsed = parseMoney(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : null;
 }
 
 function defaultExpiresAt(): string {
@@ -52,7 +57,6 @@ export function SaveQuoteDialog({
   enquiry,
   lines,
   currencyCode,
-  onCurrencyChange,
   onSaved,
 }: Props) {
   const { t } = useTranslation("quotations");
@@ -80,6 +84,7 @@ export function SaveQuoteDialog({
     () => (currenciesQuery.data?.results ?? []).filter((c) => c.is_active),
     [currenciesQuery.data],
   );
+  const selectedCurrency = activeCurrencies.find((c) => c.code === currencyCode);
 
   const handleSubmit = async () => {
     setTopLevelError(null);
@@ -89,6 +94,13 @@ export function SaveQuoteDialog({
     }
     if (lines.length === 0) {
       setTopLevelError(t("builder.save.errors.no_lines"));
+      return;
+    }
+    // Final gate before the parallel line-POST fan-out: an invalid manual line
+    // (missing total/reason) would 400 mid-flight and leave a half-populated
+    // quotation. The cart already blocks Save, but guard here too.
+    if (!lines.every(isStagedLineValid)) {
+      setTopLevelError(t("builder.save.errors.invalid_line"));
       return;
     }
     const currency = activeCurrencies.find((c) => c.code === currencyCode);
@@ -127,20 +139,34 @@ export function SaveQuoteDialog({
       try {
         await Promise.all(
           lines.map((line) => {
-            // Builder stages non-manual lines only; the server prices them,
-            // so we omit `total`/`price_override_reason` (decimal fields can't
-            // take an empty string).
+            // Mirror LineEditDialog's wire shape: decimal fields can't take an
+            // empty string, so `total`/`price_override_reason` ride only on the
+            // manual path; the server prices non-manual lines and nets the
+            // discount. Persist the operator's real per-line edits — the old
+            // hardcoded `discount:"0"`/`inclusions:""` silently dropped them.
+            //
+            // A manual line never carries a discount: the field is disabled in
+            // the cart and the server skips re-pricing manual lines, so a stale
+            // discount would be stored yet never applied. Send "0" for those.
+            // Otherwise normalise the typed value to a canonical 2-dp decimal
+            // (`parseMoney` strips any thousands separators) so the wire always
+            // gets "1000.00", never the raw "1,000" the user may have typed.
+            const discount = line.is_manual ? "0" : (toDecimalString(line.discount) ?? "0");
             const body: QuotationLineWriteInput = {
               property: line.property_id,
               date_from: line.date_from,
               date_to: line.date_to,
               adults: line.adults,
               children: line.children,
-              discount: "0",
-              inclusions: "",
+              discount,
+              inclusions: line.inclusions,
               is_manual: line.is_manual,
               notes: line.notes,
             };
+            if (line.is_manual) {
+              body.total = toDecimalString(line.total) ?? "";
+              body.price_override_reason = line.price_override_reason;
+            }
             return createQuotationLine(quotation.id, body);
           }),
         );
@@ -174,19 +200,13 @@ export function SaveQuoteDialog({
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="qs-currency">{t("builder.save.currency")}</Label>
-            <Select value={currencyCode} onValueChange={onCurrencyChange}>
-              <SelectTrigger id="qs-currency" aria-label={t("builder.save.currency")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {activeCurrencies.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>{t("builder.save.currency")}</Label>
+            <p className="text-foreground text-sm">
+              {selectedCurrency
+                ? `${selectedCurrency.code} — ${selectedCurrency.name}`
+                : currencyCode}
+            </p>
+            <p className="text-muted-foreground text-xs">{t("builder.save.currency_hint")}</p>
           </div>
 
           <div className="space-y-2">

@@ -1,22 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { TwoColumn } from "@/components/layout/TwoColumn";
-import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api/errors";
+import { useCurrencies } from "@/features/admin/currencies/hooks";
 import { useEnquiry } from "@/features/enquiries/hooks";
 import { QuoteCriteriaForm } from "./components/QuoteCriteriaForm";
 import { QuoteResultsList } from "./components/QuoteResultsList";
-import { QuoteLinesPanel } from "./components/QuoteLinesPanel";
+import { QuoteCart } from "./components/QuoteCart";
 import { SaveQuoteDialog } from "./components/SaveQuoteDialog";
+import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { useQuoteOptionsSearch } from "./hooks";
-import type { QuoteCriteriaInput, QuoteOption, StagedLine } from "./schemas";
+import type { QuotationDetail, QuoteCriteriaInput, QuoteOption, StagedLine } from "./schemas";
 
-const DEFAULT_CURRENCY = "USD";
+// Which commit the operator triggered — Save draft lands on the detail page;
+// Send to guest persists first, then opens the send-preview dialog.
+type SaveIntent = "draft" | "send";
 
 export function QuotationBuilderPage() {
   const { t } = useTranslation("quotations");
@@ -28,12 +38,34 @@ export function QuotationBuilderPage() {
   const enquiryQuery = useEnquiry(enquiryId);
   const enquiry = enquiryQuery.data ?? null;
 
-  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  // Empty until the tenant's active currencies load — the effect below seeds it
+  // from the list rather than a hardcoded guess, so there's no flash of a
+  // currency the tenant may not have and the Select never binds an out-of-range
+  // value. `formatMoney`/search treat "" as not-yet-priced (renders "—").
+  const [currency, setCurrency] = useState("");
   const [staged, setStaged] = useState<StagedLine[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [saveIntent, setSaveIntent] = useState<SaveIntent>("draft");
+  const [sentQuotation, setSentQuotation] = useState<QuotationDetail | null>(null);
   const [lastCriteria, setLastCriteria] = useState<QuoteCriteriaInput | null>(null);
 
   const search = useQuoteOptionsSearch();
+  const currenciesQuery = useCurrencies({});
+  const activeCurrencies = useMemo(
+    () => (currenciesQuery.data?.results ?? []).filter((c) => c.is_active),
+    [currenciesQuery.data],
+  );
+
+  // Seed the currency from the tenant's active list as soon as it lands (and
+  // re-seed if the current code somehow isn't active). Fires at mount before any
+  // search, so there's no cart to clear, and never fights a manual choice — the
+  // picker only offers active codes.
+  useEffect(() => {
+    if (activeCurrencies.length === 0) return;
+    if (!activeCurrencies.some((c) => c.code === currency)) {
+      setCurrency(activeCurrencies[0].code);
+    }
+  }, [activeCurrencies, currency]);
 
   const initial = useMemo<Partial<QuoteCriteriaInput>>(() => {
     if (!enquiry) return {};
@@ -51,17 +83,40 @@ export function QuotationBuilderPage() {
     [staged],
   );
 
-  const handleSearch = async (values: QuoteCriteriaInput) => {
-    setLastCriteria(values);
+  // Returns whether the search succeeded so callers (currency change) can
+  // decide whether to act on stale state. Errors are caught + toasted here.
+  const runSearch = async (values: QuoteCriteriaInput, curr: string): Promise<boolean> => {
     try {
-      await search.mutateAsync({ criteria: values, currency });
+      await search.mutateAsync({ criteria: values, currency: curr });
+      return true;
     } catch (error) {
       const message =
         error instanceof ApiError
           ? error.detail || t("builder.errors.search_failed")
           : t("builder.errors.search_failed");
       toast.error(message);
+      return false;
     }
+  };
+
+  const handleSearch = (values: QuoteCriteriaInput) => {
+    setLastCriteria(values);
+    void runSearch(values, currency);
+  };
+
+  // Currency is a pricing input: the staged lines were priced in the old one,
+  // so re-run the last search in the new currency and clear the cart — but only
+  // once the new-currency results land. Clearing eagerly would wipe the cart
+  // even when the re-search fails (offline, transient 5xx), leaving the operator
+  // with nothing and no way back. On failure, revert the picker so cart and
+  // currency stay consistent.
+  const handleCurrencyChange = async (code: string) => {
+    const prev = currency;
+    setCurrency(code);
+    if (!lastCriteria) return; // nothing searched yet → nothing to lose
+    const ok = await runSearch(lastCriteria, code);
+    if (ok) setStaged([]);
+    else setCurrency(prev);
   };
 
   const handleAdd = (option: QuoteOption) => {
@@ -84,6 +139,9 @@ export function QuotationBuilderPage() {
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         total: option.total ?? null,
+        discount: "0",
+        inclusions: "",
+        price_override_reason: "",
         is_manual: false,
         notes: "",
       };
@@ -91,8 +149,28 @@ export function QuotationBuilderPage() {
     });
   };
 
+  const handleUpdateLine = (propertyId: number, patch: Partial<StagedLine>) => {
+    setStaged((prev) =>
+      prev.map((line) => (line.property_id === propertyId ? { ...line, ...patch } : line)),
+    );
+  };
+
   const handleRemove = (propertyId: number) => {
     setStaged((prev) => prev.filter((line) => line.property_id !== propertyId));
+  };
+
+  const openSave = (intent: SaveIntent) => {
+    setSaveIntent(intent);
+    setSaveOpen(true);
+  };
+
+  const handleSaved = (quotation: QuotationDetail) => {
+    if (saveIntent === "send") {
+      // Persisted first; now preview + send against the real quotation.
+      setSentQuotation(quotation);
+    } else {
+      navigate(`/quotations/${quotation.id}`);
+    }
   };
 
   if (enquiryQuery.isLoading) {
@@ -146,44 +224,36 @@ export function QuotationBuilderPage() {
         ]}
       />
 
-      <TwoColumn
-        rightRail={
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-foreground text-lg font-semibold">
-                {t("builder.rail.staged_title")}
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                {t("builder.rail.staged_count", { count: staged.length })}
-              </p>
-            </div>
-            <Button
-              type="button"
-              className="w-full"
-              disabled={staged.length === 0}
-              onClick={() => setSaveOpen(true)}
-            >
-              {t("builder.rail.save")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => navigate(`/enquiries/${enquiry.id}`)}
-            >
-              {t("builder.rail.back_to_enquiry")}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-6">
+      <div className="grid gap-6 px-6 py-6 lg:grid-cols-[1.6fr_1fr]">
+        <div className="min-w-0 space-y-6">
           <section className="space-y-3">
             <h3 className="text-foreground text-base font-semibold">
               {t("builder.criteria.title")}
             </h3>
+            <div className="space-y-2">
+              <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
+              <Select
+                value={currency}
+                onValueChange={(code) => void handleCurrencyChange(code)}
+                disabled={search.isPending}
+              >
+                <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeCurrencies.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.code} — {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
+            </div>
             <QuoteCriteriaForm
               initial={initial}
               isSubmitting={search.isPending}
+              disabled={!currency}
               onSubmit={handleSearch}
             />
           </section>
@@ -200,13 +270,19 @@ export function QuotationBuilderPage() {
               onAdd={handleAdd}
             />
           </section>
-
-          <section className="space-y-3">
-            <h3 className="text-foreground text-base font-semibold">{t("builder.staged.title")}</h3>
-            <QuoteLinesPanel lines={staged} currency={currency} onRemove={handleRemove} />
-          </section>
         </div>
-      </TwoColumn>
+
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          <QuoteCart
+            lines={staged}
+            currency={currency}
+            onUpdateLine={handleUpdateLine}
+            onRemove={handleRemove}
+            onSaveDraft={() => openSave("draft")}
+            onSendToGuest={() => openSave("send")}
+          />
+        </aside>
+      </div>
 
       <SaveQuoteDialog
         open={saveOpen}
@@ -214,9 +290,24 @@ export function QuotationBuilderPage() {
         enquiry={enquiry}
         lines={staged}
         currencyCode={currency}
-        onCurrencyChange={setCurrency}
-        onSaved={(quotation) => navigate(`/quotations/${quotation.id}`)}
+        onSaved={handleSaved}
       />
+
+      {sentQuotation ? (
+        <SendPreviewDialog
+          open={sentQuotation != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              // Whether sent or dismissed, the draft is persisted — leave the
+              // builder for the saved quotation's detail page.
+              const id = sentQuotation.id;
+              setSentQuotation(null);
+              navigate(`/quotations/${id}`);
+            }
+          }}
+          quotation={sentQuotation}
+        />
+      ) : null}
     </div>
   );
 }

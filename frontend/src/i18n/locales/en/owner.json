@@ -1,0 +1,85 @@
+{
+  "portal_label": "Owner Portal",
+  "nav": {
+    "dashboard": "Dashboard",
+    "properties": "Properties",
+    "bookings": "Bookings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Your villas at a glance.",
+    "load_failed": "Couldn't load your dashboard.",
+    "not_shared": "Not shared",
+    "kpis": {
+      "ytd_bookings": "Bookings YTD",
+      "ytd_gross": "Gross revenue YTD",
+      "your_share": "Your share",
+      "properties": "Properties"
+    },
+    "upcoming_arrivals": "Upcoming arrivals",
+    "no_arrivals": "No upcoming arrivals."
+  },
+  "properties": {
+    "title": "Properties",
+    "subtitle": "The villas in your portfolio.",
+    "load_failed": "Couldn't load your properties.",
+    "empty_title": "No properties yet",
+    "empty_hint": "Properties you own will appear here.",
+    "guests": "{{count}} guests",
+    "bedrooms": "{{count}} bedrooms"
+  },
+  "calendar": {
+    "title": "Availability",
+    "back": "Back to properties",
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "today": "Today",
+    "load_failed": "Couldn't load availability.",
+    "cell_aria": "{{date}}: {{status}}",
+    "legend": {
+      "booked": "Booked",
+      "hold": "VC hold",
+      "available": "Available"
+    }
+  },
+  "bookings": {
+    "title": "Bookings",
+    "subtitle": "Stays across your villas.",
+    "load_failed": "Couldn't load your bookings.",
+    "empty_title": "No bookings yet",
+    "empty_hint": "Bookings for your villas will appear here.",
+    "party": "{{adults}} adults, {{children}} children",
+    "columns": {
+      "reference": "Reference",
+      "property": "Villa",
+      "guest": "Guest",
+      "stay": "Stay",
+      "party": "Party",
+      "rental_price": "Rental price",
+      "status": "Status"
+    }
+  },
+  "booking_detail": {
+    "back": "Back to bookings",
+    "load_failed": "Couldn't load this booking.",
+    "not_found_title": "Booking not found",
+    "not_found_body": "This booking doesn't exist or isn't available to you.",
+    "stay": "Stay",
+    "property": "Villa",
+    "dates": "Dates",
+    "party": "Party",
+    "status": "Status",
+    "guest": "Guest",
+    "guest_name": "Name",
+    "guest_country": "Country",
+    "repeat_guest": "Repeat guest",
+    "repeat_yes": "Yes",
+    "repeat_no": "No",
+    "contact": "Contact",
+    "contact_via_vc": "Contact via VC",
+    "money": "Money",
+    "gross_total": "Gross total",
+    "commission": "Commission",
+    "net_to_owner": "Your share"
+  }
+}

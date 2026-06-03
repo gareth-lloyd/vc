@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { authChannel } from "@/lib/api/authChannel";
 import { useMe } from "@/features/auth/hooks";
 import { useAuthStore } from "@/features/auth/store";
+import { useOwnerMe } from "@/features/owner-portal/hooks";
+import { useOwnerStore } from "@/features/owner-portal/ownerStore";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const PUBLIC_PATH_PREFIX = "/login";
@@ -18,8 +20,30 @@ export function BootGate() {
 function AuthenticatedBoot() {
   const me = useMe();
   const status = useAuthStore((s) => s.status);
+  const isStaff = useAuthStore((s) => s.user?.is_staff ?? false);
   const setUnauthenticated = useAuthStore((s) => s.setUnauthenticated);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Probe owner status once authenticated. Non-staff users are the common
+  // owner case, but staff can also be owners — probe regardless and let the
+  // store record the outcome.
+  useOwnerMe(status === "authenticated");
+  const ownerStatus = useOwnerStore((s) => s.status);
+
+  // Route owners to their portal. They go there from the app root and bare
+  // /owner. A non-staff owner has no staff app to use, so the staff root and
+  // dashboard also funnel them to /owner/dashboard. Staff owners keep their
+  // staff landing and reach the portal explicitly via /owner.
+  useEffect(() => {
+    if (ownerStatus !== "owner") return;
+    const path = location.pathname;
+    const ownerLanding = path === "/" || path === "/owner" || path === "/owner/";
+    const staffLandingForNonStaff = !isStaff && path === "/dashboard";
+    if (ownerLanding || staffLandingForNonStaff) {
+      navigate("/owner/dashboard", { replace: true });
+    }
+  }, [ownerStatus, isStaff, location.pathname, navigate]);
 
   useEffect(() => {
     if (me.isError) setUnauthenticated();

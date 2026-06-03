@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
+import { OwnerShell } from "@/features/owner-portal/OwnerShell";
+import { RequireOwner } from "@/features/owner-portal/RequireOwner";
 import { RequireAdmin, RequireAuth } from "./guards";
 import { BootGate } from "./boot";
 import { RouteErrorBoundary } from "./RouteErrorBoundary";
@@ -56,6 +58,53 @@ export const router = createBrowserRouter([
       {
         element: <RequireAuth />,
         children: [
+          {
+            element: <RequireOwner />,
+            children: [
+              {
+                element: <OwnerShell />,
+                errorElement: <RouteErrorBoundary />,
+                children: [
+                  { path: "/owner", element: <Navigate to="/owner/dashboard" replace /> },
+                  {
+                    path: "/owner/dashboard",
+                    lazy: async () => {
+                      const m = await import("@/features/owner-portal/OwnerDashboardPage");
+                      return { Component: m.OwnerDashboardPage };
+                    },
+                  },
+                  {
+                    path: "/owner/properties",
+                    lazy: async () => {
+                      const m = await import("@/features/owner-portal/OwnerPropertiesPage");
+                      return { Component: m.OwnerPropertiesPage };
+                    },
+                  },
+                  {
+                    path: "/owner/properties/:id/calendar",
+                    lazy: async () => {
+                      const m = await import("@/features/owner-portal/OwnerPropertyCalendarPage");
+                      return { Component: m.OwnerPropertyCalendarPage };
+                    },
+                  },
+                  {
+                    path: "/owner/bookings",
+                    lazy: async () => {
+                      const m = await import("@/features/owner-portal/OwnerBookingsPage");
+                      return { Component: m.OwnerBookingsPage };
+                    },
+                  },
+                  {
+                    path: "/owner/bookings/:id",
+                    lazy: async () => {
+                      const m = await import("@/features/owner-portal/OwnerBookingDetailPage");
+                      return { Component: m.OwnerBookingDetailPage };
+                    },
+                  },
+                ],
+              },
+            ],
+          },
           {
             element: <AppShell />,
             children: [

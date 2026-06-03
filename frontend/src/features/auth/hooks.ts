@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
+import { useOwnerStore } from "@/features/owner-portal/ownerStore";
 import { fetchMe, fetchPermissions, login, logout, updateMe, verifyTfa } from "./api";
 import { useAuthStore } from "./store";
 import type { LoginInput, TfaVerifyInput, UserMe } from "./schemas";
@@ -61,9 +62,11 @@ export function useLogout() {
     mutationFn: () => logout(),
     onSuccess: () => {
       useAuthStore.getState().clear();
+      useOwnerStore.getState().clear();
       queryClient.removeQueries({ queryKey: queryKeys.auth.me() });
       queryClient.removeQueries({ queryKey: queryKeys.properties.all() });
       queryClient.removeQueries({ queryKey: queryKeys.bookings.all() });
+      queryClient.removeQueries({ queryKey: queryKeys.owner.all() });
     },
   });
 }

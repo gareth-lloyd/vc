@@ -10,6 +10,17 @@ export const queryKeys = {
   auth: {
     me: () => ["auth", "me"] as const,
   },
+  owner: {
+    all: () => ["owner"] as const,
+    me: () => ["owner", "me"] as const,
+    dashboard: () => ["owner", "dashboard"] as const,
+    properties: <F>(filters: F) => ["owner", "properties", filters] as const,
+    property: (id: PropertyId) => ["owner", "properties", "detail", id] as const,
+    propertyCalendar: (id: PropertyId, from: string, to: string) =>
+      ["owner", "properties", "detail", id, "calendar", from, to] as const,
+    bookings: <F>(filters: F) => ["owner", "bookings", filters] as const,
+    booking: (id: BookingId) => ["owner", "bookings", "detail", id] as const,
+  },
   properties: {
     all: () => ["properties"] as const,
     list: <F>(filters: F) => ["properties", "list", filters] as const,

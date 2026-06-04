@@ -32,7 +32,7 @@ Status icons:
 | [FG-001](fg-001-booking-quotation-currency-drift.md) | Booking ↔ Quotation currency drift | ✏️ revise: drop "silent corruption" framing |
 | [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ (consider downgrade to smell) |
 | [FG-003](fg-003-effective-crashes-on-null-group.md) | `effective()` crashes if `property.group` is null | ❌ DROPPED — `Property.group` is non-nullable |
-| [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ⬜ |
+| [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ⬜ (**unblocked** — BUG-006 landed; ready to build) |
 | [FG-005](fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✏️ revise: resolve dead-vs-live status first |
 | [FG-006](fg-006-modify-without-select-for-update.md) | `modify_dates` / `modify_guests` re-run pricing without row locks | ✅ resolved (row lock + reload) |
 | [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |
@@ -55,7 +55,7 @@ Status icons:
 | Id | Title | Status |
 |---|---|---|
 | [Q-001](q-001-cancellation-policy-thresholds.md) | Cancellation policy thresholds | ✏️ partially answered — re-scope to "bands in v1?" |
-| [Q-002](q-002-owner-pre-approval-sla.md) | Owner pre-approval SLA | ⬜ **highest leverage** |
+| [Q-002](q-002-owner-pre-approval-sla.md) | Owner pre-approval SLA | ✏️ partially answered — 24h `escalate_pending_owner_approvals` task (count-only); window not configurable, auto-approve TBD |
 | [Q-003](q-003-channel-sync-scope.md) | Channel sync scope (Airbnb / Booking.com / VRBO) | ✅ resolved — out of v1 |
 | [Q-004](q-004-hold-expiry-default.md) | Hold expiry default | ✅ resolved (shape) — numeric default TBD |
 | [Q-005](q-005-currency-display-base.md) | Reports base currency + FX source | ⬜ |
@@ -67,8 +67,8 @@ Status icons:
 | [Q-011](q-011-email-template-inheritance.md) | Email template inheritance chain | ✅ resolved — system → site, no property layer |
 | [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ⬜ |
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ split into audit-retention vs PII-retention |
-| [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ⬜ |
-| [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ⬜ (blocks BUG-006/FG-004/BUG-008 SD slice) |
+| [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
+| [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
 
 Q-012 was resolved (Payment gateway → Flywire).
 
@@ -81,7 +81,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-003](gap-003-endpoint-coverage-gap.md) | Endpoint coverage gap vs. designed surface | ❌ DROPPED — framing only |
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ✅ resolved — stale; all configured tabs built, placeholder mechanism dormant |
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy | ⬜ (tracker) |
-| [GAP-006](gap-006-legacy-reference-format-parity.md) | Customer-facing reference format must match legacy (`VC`/`QVC`) | ⬜ (decision made — ready to build) |
+| [GAP-006](gap-006-legacy-reference-format-parity.md) | Customer-facing reference format must match legacy (`VC`/`QVC`) | ✅ resolved — `core/refs.py`, sequence-backed quotation numbers, `test_references.py` |
 | [GAP-007](gap-007-changeover-autoshift-parity.md) | Changeover auto-shift dropped vs legacy — reinstate | ✅ resolved |
 | [GAP-008](gap-008-no-rate-night-fallback-parity.md) | No-rate-for-night fallback dropped vs legacy — reinstate via `RatePlan.fallback_nightly` | ✅ resolved |
 | [GAP-009](gap-009-discount-loose-ends.md) | Discount loose ends: REPEAT_GUEST dead, `uses_count` inert, `DiscountApply` dropped | ✅ resolved (now-slice; `uses_count`/`max_uses` deferred) |
@@ -116,7 +116,11 @@ After those three, the next-highest-value moves are:
 
 Highest-leverage unanswered Qs (block lots of downstream work):
 
-- **Q-002** — Owner pre-approval SLA (blocks Celery escalation + flow 15)
 - **Q-005** — Reports base currency + FX source (blocks every report)
 - **Q-013** — Rate-card incomplete-pricing behaviour (blocks quote builder)
-- **Q-015** — Owner financial visibility defaults (blocks portal MVP)
+- **Q-006** — Owner statement cadence + delivery (no code exists yet)
+- **BUG-008** — `DamageClaim` in v1? (scope call; blocks SD damage slice)
+
+Recently unblocked / resolved (was on this list): **Q-002** owner SLA
+(partially built), **Q-015** owner financial visibility (resolved),
+**Q-016** ledger lane (taken in code — just needs recording).

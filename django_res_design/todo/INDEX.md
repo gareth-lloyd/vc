@@ -32,7 +32,7 @@ Status icons:
 | [FG-001](fg-001-booking-quotation-currency-drift.md) | Booking ↔ Quotation currency drift | ✏️ revise: drop "silent corruption" framing |
 | [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ (consider downgrade to smell) |
 | [FG-003](fg-003-effective-crashes-on-null-group.md) | `effective()` crashes if `property.group` is null | ❌ DROPPED — `Property.group` is non-nullable |
-| [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ⬜ (**unblocked** — BUG-006 landed; ready to build) |
+| [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ✅ resolved — 3 check constraints (refund no `due_at`, `concierge_item` CONCIERGE-only, refund `amount >= 0`) |
 | [FG-005](fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✏️ revise: resolve dead-vs-live status first |
 | [FG-006](fg-006-modify-without-select-for-update.md) | `modify_dates` / `modify_guests` re-run pricing without row locks | ✅ resolved (row lock + reload) |
 | [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |

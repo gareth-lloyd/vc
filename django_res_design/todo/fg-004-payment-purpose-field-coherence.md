@@ -1,5 +1,15 @@
 # FG-004 — `Payment` fields aren't gated by `purpose`
 
+> **✅ RESOLVED (2026-06-04).** Three `CheckConstraint`s added to
+> `Payment.Meta` (migration `payments/0004`):
+> `payment_refund_has_no_due_at`,
+> `payment_concierge_item_only_for_concierge`, and
+> `payment_refund_amount_non_negative` (INV-003 positive-amount
+> convention, REFUND-scoped — ADJUSTMENT left unconstrained pending its
+> design). Tests in `payments/tests/test_payment_constraints.py`.
+> The signed-amount convention for non-REFUND purposes was deliberately
+> left out of scope.
+
 - **Severity:** 🟠 Footgun
 - **Source:** the 2026-05-26 data-model deep audit §F4
 - **Files:** `payments/models/payment.py:39–110`

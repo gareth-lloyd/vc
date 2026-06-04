@@ -124,6 +124,32 @@ class Payment(AuditedModel):
                 ),
                 name="unique_active_security_deposit_per_booking",
             ),
+            # Field-coherence (FG-004): single-table polymorphism means every
+            # row carries every column, so gate the columns that are nonsense
+            # for a given purpose.
+            #
+            # A refund is backward-looking — it settles an existing charge, so a
+            # `due_at` on it is meaningless. (DEPOSIT/BALANCE/SECURITY_DEPOSIT
+            # are the forward-looking purposes that legitimately schedule one.)
+            models.CheckConstraint(
+                condition=~(Q(purpose=PaymentPurpose.REFUND.value) & Q(due_at__isnull=False)),
+                name="payment_refund_has_no_due_at",
+            ),
+            # `concierge_item` only attaches to a CONCIERGE row.
+            models.CheckConstraint(
+                condition=(
+                    Q(purpose=PaymentPurpose.CONCIERGE.value) | Q(concierge_item__isnull=True)
+                ),
+                name="payment_concierge_item_only_for_concierge",
+            ),
+            # INV-003 convention: amounts are stored positive and `purpose`
+            # tags the direction (the ledger partitions by purpose, never sums
+            # signed). Lock it in for REFUND, the one purpose where a negative
+            # would silently invert a customer balance.
+            models.CheckConstraint(
+                condition=~(Q(purpose=PaymentPurpose.REFUND.value) & Q(amount__lt=0)),
+                name="payment_refund_amount_non_negative",
+            ),
         ]
 
     def __str__(self) -> str:

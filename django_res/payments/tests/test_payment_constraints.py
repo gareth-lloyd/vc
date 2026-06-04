@@ -13,9 +13,21 @@ from typing import Any
 
 import pytest
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from payments.enums import ACTIVE_PAYMENT_STATUSES, PaymentPurpose, PaymentStatus
 from payments.models import Payment
+
+
+@pytest.fixture
+def concierge_item(booking: Any, gbp: Any) -> Any:
+    from reservations.models import BookingConciergeItem
+
+    return BookingConciergeItem.objects.create(
+        booking=booking,
+        name="Airport transfer",
+        currency=gbp,
+    )
 
 
 def _make(booking: Any, gbp: Any, *, purpose: str, status: str) -> Payment:
@@ -86,3 +98,97 @@ def test_active_payment_statuses_membership_is_pinned() -> None:
         PaymentStatus.PROCESSING.value,
         PaymentStatus.SUCCEEDED.value,
     }
+
+
+# ---------------------------------------------------------------------------
+# Field-coherence constraints (FG-004): fields that are meaningless for a
+# `purpose` must not be populated for that purpose.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_refund_with_due_at_rejected(booking: Any, gbp: Any) -> None:
+    """A refund is backward-looking — a `due_at` on it is nonsense."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Payment.objects.create(
+            booking=booking,
+            purpose=PaymentPurpose.REFUND.value,
+            status=PaymentStatus.PROCESSING.value,
+            amount=Decimal("50.00"),
+            currency=gbp,
+            due_at=timezone.now(),
+        )
+
+
+@pytest.mark.django_db
+def test_refund_without_due_at_allowed(booking: Any, gbp: Any) -> None:
+    refund = _make(
+        booking, gbp, purpose=PaymentPurpose.REFUND.value, status=PaymentStatus.PROCESSING.value
+    )
+    assert refund.due_at is None
+    assert refund.pk is not None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "purpose",
+    [
+        PaymentPurpose.DEPOSIT.value,
+        PaymentPurpose.BALANCE.value,
+        PaymentPurpose.SECURITY_DEPOSIT.value,
+    ],
+)
+def test_forward_looking_purposes_may_carry_due_at(booking: Any, gbp: Any, purpose: str) -> None:
+    payment = Payment.objects.create(
+        booking=booking,
+        purpose=purpose,
+        status=PaymentStatus.PENDING.value,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        due_at=timezone.now(),
+    )
+    assert payment.pk is not None
+
+
+@pytest.mark.django_db
+def test_concierge_item_on_non_concierge_payment_rejected(
+    booking: Any, gbp: Any, concierge_item: Any
+) -> None:
+    """`concierge_item` only attaches to a CONCIERGE row."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Payment.objects.create(
+            booking=booking,
+            purpose=PaymentPurpose.DEPOSIT.value,
+            status=PaymentStatus.PENDING.value,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            concierge_item=concierge_item,
+        )
+
+
+@pytest.mark.django_db
+def test_concierge_item_on_concierge_payment_allowed(
+    booking: Any, gbp: Any, concierge_item: Any
+) -> None:
+    payment = Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.CONCIERGE.value,
+        status=PaymentStatus.PENDING.value,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        concierge_item=concierge_item,
+    )
+    assert payment.pk is not None
+
+
+@pytest.mark.django_db
+def test_negative_refund_amount_rejected(booking: Any, gbp: Any) -> None:
+    """INV-003: refund amounts are recorded positive; `purpose` tags direction."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Payment.objects.create(
+            booking=booking,
+            purpose=PaymentPurpose.REFUND.value,
+            status=PaymentStatus.PROCESSING.value,
+            amount=Decimal("-50.00"),
+            currency=gbp,
+        )

@@ -1248,6 +1248,7 @@ dependencies = [
     { name = "pymssql" },
     { name = "pyotp" },
     { name = "pyyaml" },
+    { name = "tzdata" },
     { name = "whitenoise" },
 ]
 
@@ -1283,6 +1284,7 @@ requires-dist = [
     { name = "pymssql", specifier = ">=2.3.13" },
     { name = "pyotp", specifier = ">=2.9.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "tzdata", specifier = ">=2025.1" },
     { name = "whitenoise", specifier = ">=6.8" },
 ]
 

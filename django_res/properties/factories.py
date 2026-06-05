@@ -41,6 +41,7 @@ from properties.enums import (
     PropertyStatus,
     RoomPlacement,
 )
+from properties.timezones import representative_timezone
 
 # Villa-rental markets. Every iso2 here is in the 249-row ISO-3166 seed
 # (`properties.0009`), so `django_get_or_create=("iso2",)` resolves to the
@@ -209,6 +210,7 @@ class PropertyFactory(DjangoModelFactory):
         models.PropertyLocation.objects.create(
             property=obj,
             country=obj.region.country,
+            timezone=representative_timezone(obj.region.country.iso2),
             address_line_1=_faker.street_address(),
             locality_town=obj.region.name,
             post_code=_faker.postcode(),

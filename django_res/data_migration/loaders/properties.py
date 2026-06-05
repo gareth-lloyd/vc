@@ -35,6 +35,7 @@ from properties.models.geo import Region
 from properties.models.location import PropertyLocation
 from properties.models.property import Property, PropertyCategory, PropertyGroup
 from properties.models.settings import GroupSettings, PropertySettings
+from properties.timezones import representative_timezone
 
 
 class PropertyGroupLoader(BaseLoader):
@@ -215,6 +216,7 @@ class PropertyLoader(BaseLoader):
                 "locality_town": (row.get("LocalityTown") or "")[:128],
                 "locality_region": (row.get("LocalityRegion") or "")[:128],
                 "country": country,
+                "timezone": representative_timezone(country.iso2),
                 "latitude": _decimal_or_none(row.get("Latitude")),
                 "longitude": _decimal_or_none(row.get("Longitude")),
             },

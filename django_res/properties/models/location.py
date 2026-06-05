@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.db import models
 
 from core.models.base import AuditedModel
+from properties.timezones import validate_iana_timezone
 
 
 class PropertyLocation(AuditedModel):
@@ -36,6 +37,14 @@ class PropertyLocation(AuditedModel):
         decimal_places=6,
         null=True,
         blank=True,
+    )
+    # IANA timezone name, a geographic fact of the place (follows `country`).
+    # Default UTC is the safe fallback before the country-derived value is set
+    # by the loader / factory / backfill; ops corrects outliers in the admin.
+    timezone = models.CharField(
+        max_length=64,
+        default="UTC",
+        validators=[validate_iana_timezone],
     )
 
     def __str__(self) -> str:

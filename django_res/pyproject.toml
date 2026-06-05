@@ -21,6 +21,10 @@ dependencies = [
     "openai>=2.38.0",
     "pyyaml>=6.0.3",
     "markdown>=3.10.2",
+    # zoneinfo's IANA database. The deploy image (python:3.13-slim) ships no
+    # system /usr/share/zoneinfo, so ZoneInfo(...) would raise on Linux without
+    # this. Unconditional (not the win32-marked transitive dep) — see FG-008.
+    "tzdata>=2025.1",
 ]
 
 [dependency-groups]

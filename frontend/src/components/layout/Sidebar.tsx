@@ -3,6 +3,7 @@ import {
   Banknote,
   Building2,
   CalendarCheck,
+  CalendarOff,
   ConciergeBell,
   FileText,
   Globe,
@@ -100,6 +101,12 @@ export function Sidebar() {
       label: t("nav.concierge"),
       icon: ConciergeBell,
       prefetch: () => import("@/features/concierge/ConciergeOverviewPage"),
+    },
+    {
+      to: "/owner-blocks",
+      label: t("nav.owner_blocks"),
+      icon: CalendarOff,
+      prefetch: () => import("@/features/owner-block-updates/OwnerBlockUpdatesPage"),
     },
   ];
   const library: NavItem[] = [

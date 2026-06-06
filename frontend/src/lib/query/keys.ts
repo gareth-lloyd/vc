@@ -116,6 +116,10 @@ export const queryKeys = {
     all: () => ["audit"] as const,
     list: <F>(filters: F) => ["audit", "list", filters] as const,
   },
+  ownerBlockUpdates: {
+    all: () => ["owner-block-updates"] as const,
+    list: <F>(filters: F) => ["owner-block-updates", "list", filters] as const,
+  },
   countries: {
     all: () => ["countries"] as const,
     lists: () => ["countries", "list"] as const,

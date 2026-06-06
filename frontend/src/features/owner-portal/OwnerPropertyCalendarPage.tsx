@@ -30,12 +30,9 @@ import {
 } from "./hooks";
 import type { OwnerBlockRequest, OwnerCalendarCell } from "./schemas";
 
-// A request can still be withdrawn while pending, or after approval (which
-// releases the hold). Declined/cancelled rows are terminal.
-const CANCELLABLE_STATUSES: ReadonlySet<OwnerBlockRequest["status"]> = new Set([
-  "pending",
-  "approved",
-]);
+// A live (approved) block can be lifted to release the hold. Cancelled rows
+// are terminal.
+const CANCELLABLE_STATUSES: ReadonlySet<OwnerBlockRequest["status"]> = new Set(["approved"]);
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const CELL_BASE = "flex h-10 w-full items-center justify-center rounded text-sm";

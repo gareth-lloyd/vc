@@ -163,7 +163,7 @@ describe("ownerCalendarSchema", () => {
 });
 
 describe("ownerBlockRequestSchema", () => {
-  it("parses a pending request", () => {
+  it("parses an approved (live) block", () => {
     const parsed = ownerBlockRequestSchema.parse({
       id: 1,
       property: 3,
@@ -171,13 +171,26 @@ describe("ownerBlockRequestSchema", () => {
       date_to: "2026-08-08",
       kind: "owner_stay",
       notes: "Family week",
-      status: "pending",
-      review_note: "",
-      reviewed_at: null,
+      status: "approved",
       created_at: "2026-06-03T10:00:00Z",
     });
-    expect(parsed.status).toBe("pending");
+    expect(parsed.status).toBe("approved");
     expect(parsed.kind).toBe("owner_stay");
+  });
+
+  it("rejects a removed status (pending)", () => {
+    expect(() =>
+      ownerBlockRequestSchema.parse({
+        id: 1,
+        property: 3,
+        date_from: "2026-08-01",
+        date_to: "2026-08-08",
+        kind: "owner_stay",
+        notes: "",
+        status: "pending",
+        created_at: "2026-06-03T10:00:00Z",
+      }),
+    ).toThrow();
   });
 
   it("rejects an unknown kind", () => {
@@ -189,9 +202,7 @@ describe("ownerBlockRequestSchema", () => {
         date_to: "2026-08-08",
         kind: "party",
         notes: "",
-        status: "pending",
-        review_note: "",
-        reviewed_at: null,
+        status: "approved",
         created_at: "2026-06-03T10:00:00Z",
       }),
     ).toThrow();

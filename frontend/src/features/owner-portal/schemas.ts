@@ -140,12 +140,7 @@ export type OwnerBookingDetail = z.infer<typeof ownerBookingDetailSchema>;
 export const ownerBlockKindSchema = z.enum(["owner_stay", "maintenance", "other"]);
 export type OwnerBlockKind = z.infer<typeof ownerBlockKindSchema>;
 
-export const ownerBlockRequestStatusSchema = z.enum([
-  "pending",
-  "approved",
-  "declined",
-  "cancelled",
-]);
+export const ownerBlockRequestStatusSchema = z.enum(["approved", "cancelled"]);
 export type OwnerBlockRequestStatus = z.infer<typeof ownerBlockRequestStatusSchema>;
 
 export const ownerBlockRequestSchema = z.object({
@@ -156,8 +151,6 @@ export const ownerBlockRequestSchema = z.object({
   kind: ownerBlockKindSchema,
   notes: z.string(),
   status: ownerBlockRequestStatusSchema,
-  review_note: z.string(),
-  reviewed_at: z.string().nullable(),
   created_at: z.string(),
 });
 export type OwnerBlockRequest = z.infer<typeof ownerBlockRequestSchema>;

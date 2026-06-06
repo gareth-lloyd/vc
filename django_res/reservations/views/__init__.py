@@ -26,7 +26,7 @@ from reservations.views.guest import (
     GuestViewSet,
 )
 from reservations.views.owner import (
-    OwnerBlockRequestViewSet,
+    OwnerBlockViewSet,
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
@@ -57,7 +57,7 @@ __all__ = [
     "GuestAnonymizeView",
     "GuestMergeView",
     "GuestViewSet",
-    "OwnerBlockRequestViewSet",
+    "OwnerBlockViewSet",
     "OwnerBookingViewSet",
     "OwnerDashboardView",
     "OwnerPropertyCalendarView",

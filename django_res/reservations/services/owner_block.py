@@ -1,4 +1,4 @@
-"""OwnerBlockRequestService — lifecycle for owner availability-block requests.
+"""OwnerBlockService — lifecycle for owner availability-block requests.
 
 A request reserves nothing while PENDING. Approval is where the real
 (indefinite) `BookingHold` is placed, so the overlap check that matters runs at
@@ -20,9 +20,9 @@ from core.exceptions import HoldUnavailable, InvalidTransition, OverlappingBooki
 from reservations.enums import (
     BookingHoldReason,
     OwnerBlockKind,
-    OwnerBlockRequestStatus,
+    OwnerBlockStatus,
 )
-from reservations.models import Booking, BookingHold, OwnerBlockRequest
+from reservations.models import Booking, BookingHold, OwnerBlock
 from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ _KIND_TO_HOLD_REASON = {
 _DEFAULT_HOLD_REASON = BookingHoldReason.OWNER_BLOCK.value
 
 
-class OwnerBlockRequestService:
+class OwnerBlockService:
     """Create / approve / decline / cancel owner block requests."""
 
     @staticmethod
@@ -64,12 +64,12 @@ class OwnerBlockRequestService:
         cls,
         *,
         property: Property,
-        requested_by: User,
+        created_by: User,
         date_from: date_type,
         date_to: date_type,
         kind: str = OwnerBlockKind.OWNER_STAY.value,
         notes: str = "",
-    ) -> OwnerBlockRequest:
+    ) -> OwnerBlock:
         """Submit a PENDING block request after an immediate-feedback overlap check.
 
         The submit-time check is advisory feedback for the owner; the
@@ -84,39 +84,37 @@ class OwnerBlockRequestService:
                 f"An overlapping live hold already exists for property "
                 f"{property.pk} on {date_from}..{date_to}"
             )
-        return OwnerBlockRequest.objects.create(
+        return OwnerBlock.objects.create(
             property=property,
-            requested_by=requested_by,
+            created_by=created_by,
             date_from=date_from,
             date_to=date_to,
             kind=kind,
             notes=notes,
-            status=OwnerBlockRequestStatus.PENDING.value,
+            status=OwnerBlockStatus.PENDING.value,
         )
 
     @staticmethod
-    def _guard_pending(request: OwnerBlockRequest, *, to: str) -> None:
-        if request.status != OwnerBlockRequestStatus.PENDING.value:
-            raise InvalidTransition(
-                request.status, to, allowed=[OwnerBlockRequestStatus.PENDING.value]
-            )
+    def _guard_pending(request: OwnerBlock, *, to: str) -> None:
+        if request.status != OwnerBlockStatus.PENDING.value:
+            raise InvalidTransition(request.status, to, allowed=[OwnerBlockStatus.PENDING.value])
 
     @classmethod
     @transaction.atomic
     def approve(
         cls,
-        request: OwnerBlockRequest,
+        request: OwnerBlock,
         *,
         actor: User | None = None,
         review_note: str = "",
-    ) -> OwnerBlockRequest:
+    ) -> OwnerBlock:
         """Approve a PENDING request: place the indefinite hold, mark APPROVED.
 
         Re-runs the full overlap guard — this is the authoritative check. A
         late-arriving *hold* conflict surfaces as `HoldUnavailable` from
         `HoldService.place`; a *booking* conflict as `OverlappingBooking` here.
         """
-        cls._guard_pending(request, to=OwnerBlockRequestStatus.APPROVED.value)
+        cls._guard_pending(request, to=OwnerBlockStatus.APPROVED.value)
         cls._assert_range_free(
             property=request.property,
             date_from=request.date_from,
@@ -130,7 +128,7 @@ class OwnerBlockRequestService:
             reason=_KIND_TO_HOLD_REASON.get(request.kind, _DEFAULT_HOLD_REASON),
             notes=request.notes,
         )
-        request.status = OwnerBlockRequestStatus.APPROVED.value
+        request.status = OwnerBlockStatus.APPROVED.value
         request.resulting_hold = hold
         request.reviewed_by = actor
         request.reviewed_at = timezone.now()
@@ -151,14 +149,14 @@ class OwnerBlockRequestService:
     @transaction.atomic
     def decline(
         cls,
-        request: OwnerBlockRequest,
+        request: OwnerBlock,
         review_note: str,
         *,
         actor: User | None = None,
-    ) -> OwnerBlockRequest:
+    ) -> OwnerBlock:
         """Decline a PENDING request. No hold is created."""
-        cls._guard_pending(request, to=OwnerBlockRequestStatus.DECLINED.value)
-        request.status = OwnerBlockRequestStatus.DECLINED.value
+        cls._guard_pending(request, to=OwnerBlockStatus.DECLINED.value)
+        request.status = OwnerBlockStatus.DECLINED.value
         request.reviewed_by = actor
         request.reviewed_at = timezone.now()
         request.review_note = review_note
@@ -171,10 +169,10 @@ class OwnerBlockRequestService:
     @transaction.atomic
     def cancel(
         cls,
-        request: OwnerBlockRequest,
+        request: OwnerBlock,
         *,
         actor: User | None = None,
-    ) -> OwnerBlockRequest:
+    ) -> OwnerBlock:
         """Owner-initiated cancel.
 
         PENDING → CANCELLED (nothing else to undo). APPROVED → release the
@@ -182,20 +180,20 @@ class OwnerBlockRequestService:
         terminal state (DECLINED/CANCELLED) is rejected.
         """
         if request.status not in (
-            OwnerBlockRequestStatus.PENDING.value,
-            OwnerBlockRequestStatus.APPROVED.value,
+            OwnerBlockStatus.PENDING.value,
+            OwnerBlockStatus.APPROVED.value,
         ):
             raise InvalidTransition(
                 request.status,
-                OwnerBlockRequestStatus.CANCELLED.value,
+                OwnerBlockStatus.CANCELLED.value,
                 allowed=[
-                    OwnerBlockRequestStatus.PENDING.value,
-                    OwnerBlockRequestStatus.APPROVED.value,
+                    OwnerBlockStatus.PENDING.value,
+                    OwnerBlockStatus.APPROVED.value,
                 ],
             )
         if request.resulting_hold_id is not None and request.resulting_hold is not None:
             HoldService.release(request.resulting_hold)
-        request.status = OwnerBlockRequestStatus.CANCELLED.value
+        request.status = OwnerBlockStatus.CANCELLED.value
         request.reviewed_by = actor
         request.reviewed_at = timezone.now()
         request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])

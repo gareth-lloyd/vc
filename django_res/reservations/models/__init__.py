@@ -12,7 +12,7 @@ from reservations.models.booking_guest import BookingGuest
 from reservations.models.concierge import BookingConciergeItem
 from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.models.guest import Guest
-from reservations.models.owner_block_request import OwnerBlockRequest
+from reservations.models.owner_block import OwnerBlock
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.service_coverage import BookingServiceCoverage
@@ -32,7 +32,7 @@ __all__ = [
     "Guest",
     "GuestPreference",
     "GuestPreferenceType",
-    "OwnerBlockRequest",
+    "OwnerBlock",
     "Quotation",
     "QuotationLine",
     "TermsVersion",

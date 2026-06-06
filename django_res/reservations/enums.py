@@ -148,7 +148,7 @@ class OwnerBlockKind(models.TextChoices):
     OTHER = "other", "Other"
 
 
-class OwnerBlockRequestStatus(models.TextChoices):
+class OwnerBlockStatus(models.TextChoices):
     """Lifecycle of an owner-submitted availability block request.
 
     A PENDING request reserves nothing — only on APPROVED does the operator

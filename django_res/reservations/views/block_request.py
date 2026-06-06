@@ -2,7 +2,7 @@
 
 Staff approve or decline the requests owners raise via `/owner/block-requests`.
 Approval is where the indefinite `BookingHold` is placed — see
-`OwnerBlockRequestService`.
+`OwnerBlockService`.
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from reservations.models import OwnerBlockRequest
+from reservations.models import OwnerBlock
 from reservations.serializers.owner import OperatorBlockRequestSerializer
-from reservations.services.owner_block_requests import OwnerBlockRequestService
+from reservations.services.owner_block import OwnerBlockService
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -36,10 +36,10 @@ class BlockRequestViewSet(viewsets.GenericViewSet):
 
     permission_classes = [IsAuthenticated, IsReservationsWriter]
 
-    def get_queryset(self) -> QuerySet[OwnerBlockRequest]:
-        return OwnerBlockRequest.objects.select_related(
-            "property", "requested_by", "reviewed_by"
-        ).order_by("-created_at")
+    def get_queryset(self) -> QuerySet[OwnerBlock]:
+        return OwnerBlock.objects.select_related("property", "created_by", "reviewed_by").order_by(
+            "-created_at"
+        )
 
     def list(self, request: Request) -> Response:
         qs = self.get_queryset()
@@ -53,8 +53,8 @@ class BlockRequestViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request: Request, pk: str | None = None) -> Response:
-        block_request = get_object_or_404(OwnerBlockRequest, pk=pk)
-        OwnerBlockRequestService.approve(
+        block_request = get_object_or_404(OwnerBlock, pk=pk)
+        OwnerBlockService.approve(
             block_request,
             actor=cast("User", request.user),
             review_note=request.data.get("review_note", ""),
@@ -63,8 +63,8 @@ class BlockRequestViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"], url_path="decline")
     def decline(self, request: Request, pk: str | None = None) -> Response:
-        block_request = get_object_or_404(OwnerBlockRequest, pk=pk)
-        OwnerBlockRequestService.decline(
+        block_request = get_object_or_404(OwnerBlock, pk=pk)
+        OwnerBlockService.decline(
             block_request,
             request.data.get("review_note", ""),
             actor=cast("User", request.user),

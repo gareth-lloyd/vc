@@ -16,8 +16,8 @@ from owners.enums import OwnerMembershipStatus
 from owners.factories import OwnerMembershipFactory, OwnerOrganisationFactory
 from owners.models import OwnerOrganisation
 from properties.models import Property
-from reservations.enums import OwnerBlockRequestStatus
-from reservations.models import OwnerBlockRequest
+from reservations.enums import OwnerBlockStatus
+from reservations.models import OwnerBlock
 from reservations.services.holds import HoldService
 
 pytestmark = pytest.mark.django_db
@@ -38,11 +38,11 @@ def _owner() -> User:
     return user
 
 
-def _pending(property_: Property) -> OwnerBlockRequest:
+def _pending(property_: Property) -> OwnerBlock:
     start = timezone.localdate() + timedelta(days=20)
-    return OwnerBlockRequest.objects.create(
+    return OwnerBlock.objects.create(
         property=property_,
-        requested_by=_owner(),
+        created_by=_owner(),
         date_from=start,
         date_to=start + timedelta(days=5),
     )
@@ -77,7 +77,7 @@ def test_reservations_role_approves_and_places_hold(
     resp = api_client.post(f"{LIST_URL}/{req.id}:approve", format="json")
     assert resp.status_code == 200, resp.content
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.APPROVED.value
+    assert req.status == OwnerBlockStatus.APPROVED.value
     assert req.resulting_hold is not None
     assert req.resulting_hold.is_live() is True
 
@@ -92,7 +92,7 @@ def test_decline(api_client: APIClient, property_: Property) -> None:
     )
     assert resp.status_code == 200, resp.content
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.DECLINED.value
+    assert req.status == OwnerBlockStatus.DECLINED.value
     assert req.review_note == "Dates clash with maintenance window"
 
 
@@ -109,4 +109,4 @@ def test_approve_conflict_returns_409(api_client: APIClient, property_: Property
     resp = api_client.post(f"{LIST_URL}/{req.id}:approve", format="json")
     assert resp.status_code == 409
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.PENDING.value
+    assert req.status == OwnerBlockStatus.PENDING.value

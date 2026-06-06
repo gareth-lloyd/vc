@@ -33,15 +33,15 @@ from owners.scoping import (
 )
 from properties.models import Property
 from reservations.enums import BookingStatus
-from reservations.models import Booking, OwnerBlockRequest
+from reservations.models import Booking, OwnerBlock
 from reservations.serializers.owner import (
-    OwnerBlockRequestSerializer,
-    OwnerBlockRequestWriteSerializer,
+    OwnerBlockSerializer,
+    OwnerBlockWriteSerializer,
     OwnerBookingDetailSerializer,
     OwnerBookingListSerializer,
 )
 from reservations.services.availability import AvailabilityService
-from reservations.services.owner_block_requests import OwnerBlockRequestService
+from reservations.services.owner_block import OwnerBlockService
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -321,7 +321,7 @@ def _resolve_writable_property(user: User, property_id: int, roles: Sequence[str
     raise Http404
 
 
-class OwnerBlockRequestViewSet(viewsets.GenericViewSet):
+class OwnerBlockViewSet(viewsets.GenericViewSet):
     """`/owner/block-requests` — owner-submitted availability block requests.
 
     List/create the caller's own requests; cancel one they raised. Property
@@ -330,10 +330,10 @@ class OwnerBlockRequestViewSet(viewsets.GenericViewSet):
 
     permission_classes = [IsOwner]
 
-    def get_queryset(self) -> QuerySet[OwnerBlockRequest]:
+    def get_queryset(self) -> QuerySet[OwnerBlock]:
         user = cast("User", self.request.user)
         return (
-            OwnerBlockRequest.objects.filter(requested_by=user)
+            OwnerBlock.objects.filter(created_by=user)
             .select_related("property")
             .order_by("-created_at")
         )
@@ -346,30 +346,30 @@ class OwnerBlockRequestViewSet(viewsets.GenericViewSet):
         status_filter = request.query_params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
-        return Response(OwnerBlockRequestSerializer(qs, many=True).data)
+        return Response(OwnerBlockSerializer(qs, many=True).data)
 
     def create(self, request: Request) -> Response:
         user = cast("User", request.user)
-        serializer = OwnerBlockRequestWriteSerializer(data=request.data)
+        serializer = OwnerBlockWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         property_obj = _resolve_writable_property(user, data["property"], BLOCK_WRITER_ROLES)
-        block_request = OwnerBlockRequestService.create(
+        block_request = OwnerBlockService.create(
             property=property_obj,
-            requested_by=user,
+            created_by=user,
             date_from=data["date_from"],
             date_to=data["date_to"],
             kind=data["kind"],
             notes=data["notes"],
         )
         return Response(
-            OwnerBlockRequestSerializer(block_request).data,
+            OwnerBlockSerializer(block_request).data,
             status=status.HTTP_201_CREATED,
         )
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request: Request, pk: str | None = None) -> Response:
         user = cast("User", request.user)
-        block_request = get_object_or_404(OwnerBlockRequest, pk=pk, requested_by=user)
-        OwnerBlockRequestService.cancel(block_request, actor=user)
-        return Response(OwnerBlockRequestSerializer(block_request).data)
+        block_request = get_object_or_404(OwnerBlock, pk=pk, created_by=user)
+        OwnerBlockService.cancel(block_request, actor=user)
+        return Response(OwnerBlockSerializer(block_request).data)

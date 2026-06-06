@@ -1,4 +1,4 @@
-"""Tests for OwnerBlockRequestService lifecycle + overlap enforcement."""
+"""Tests for OwnerBlockService lifecycle + overlap enforcement."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ from reservations.enums import (
     BookingHoldReason,
     BookingStatus,
     OwnerBlockKind,
-    OwnerBlockRequestStatus,
+    OwnerBlockStatus,
     PaymentMethod,
 )
 from reservations.models import Booking, BookingHold, Quotation, QuotationLine
 from reservations.services.holds import HoldService
-from reservations.services.owner_block_requests import OwnerBlockRequestService
+from reservations.services.owner_block import OwnerBlockService
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -78,14 +78,14 @@ def _booking(
 
 
 def test_create_makes_pending_request(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
+    req = OwnerBlockService.create(
         property=property_,
-        requested_by=_user(),
+        created_by=_user(),
         date_from=FROM,
         date_to=TO,
         kind=OwnerBlockKind.OWNER_STAY.value,
     )
-    assert req.status == OwnerBlockRequestStatus.PENDING.value
+    assert req.status == OwnerBlockStatus.PENDING.value
     assert req.resulting_hold_id is None
 
 
@@ -102,9 +102,9 @@ def test_create_rejects_overlapping_booking(
         status=BookingStatus.AWAITING_DEPOSIT.value,
     )
     with pytest.raises(OverlappingBooking):
-        OwnerBlockRequestService.create(
+        OwnerBlockService.create(
             property=property_,
-            requested_by=_user(),
+            created_by=_user(),
             date_from=date(2026, 7, 3),
             date_to=date(2026, 7, 10),
         )
@@ -119,27 +119,27 @@ def test_create_rejects_overlapping_live_hold(property_: Property) -> None:
         never_expires=True,
     )
     with pytest.raises(HoldUnavailable):
-        OwnerBlockRequestService.create(
+        OwnerBlockService.create(
             property=property_,
-            requested_by=_user(),
+            created_by=_user(),
             date_from=date(2026, 7, 3),
             date_to=date(2026, 7, 10),
         )
 
 
 def test_approve_places_indefinite_hold(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
+    req = OwnerBlockService.create(
         property=property_,
-        requested_by=_user(),
+        created_by=_user(),
         date_from=FROM,
         date_to=TO,
         kind=OwnerBlockKind.OWNER_STAY.value,
     )
     reviewer = _user()
-    OwnerBlockRequestService.approve(req, actor=reviewer)
+    OwnerBlockService.approve(req, actor=reviewer)
     req.refresh_from_db()
 
-    assert req.status == OwnerBlockRequestStatus.APPROVED.value
+    assert req.status == OwnerBlockStatus.APPROVED.value
     assert req.reviewed_by_id == reviewer.id
     assert req.reviewed_at is not None
     hold = req.resulting_hold
@@ -150,14 +150,14 @@ def test_approve_places_indefinite_hold(property_: Property) -> None:
 
 
 def test_approve_maintenance_kind_maps_to_maintenance_reason(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
+    req = OwnerBlockService.create(
         property=property_,
-        requested_by=_user(),
+        created_by=_user(),
         date_from=FROM,
         date_to=TO,
         kind=OwnerBlockKind.MAINTENANCE.value,
     )
-    OwnerBlockRequestService.approve(req, actor=_user())
+    OwnerBlockService.approve(req, actor=_user())
     req.refresh_from_db()
     assert req.resulting_hold is not None
     assert req.resulting_hold.reason == BookingHoldReason.MAINTENANCE.value
@@ -167,9 +167,9 @@ def test_approve_rejects_booking_landed_after_submit(
     property_: Property, guest: Guest, gbp: Currency, terms: TermsVersion
 ) -> None:
     """A booking that lands between submit and approve blocks approval."""
-    req = OwnerBlockRequestService.create(
+    req = OwnerBlockService.create(
         property=property_,
-        requested_by=_user(),
+        created_by=_user(),
         date_from=FROM,
         date_to=TO,
     )
@@ -183,52 +183,52 @@ def test_approve_rejects_booking_landed_after_submit(
         status=BookingStatus.AWAITING_DEPOSIT.value,
     )
     with pytest.raises(OverlappingBooking):
-        OwnerBlockRequestService.approve(req, actor=_user())
+        OwnerBlockService.approve(req, actor=_user())
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.PENDING.value
+    assert req.status == OwnerBlockStatus.PENDING.value
 
 
 def test_approve_requires_pending(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
-        property=property_, requested_by=_user(), date_from=FROM, date_to=TO
+    req = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
     )
-    OwnerBlockRequestService.decline(req, "no", actor=_user())
+    OwnerBlockService.decline(req, "no", actor=_user())
     with pytest.raises(InvalidTransition):
-        OwnerBlockRequestService.approve(req, actor=_user())
+        OwnerBlockService.approve(req, actor=_user())
 
 
 def test_decline_sets_declined(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
-        property=property_, requested_by=_user(), date_from=FROM, date_to=TO
+    req = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
     )
-    OwnerBlockRequestService.decline(req, "Owner double-booked", actor=_user())
+    OwnerBlockService.decline(req, "Owner double-booked", actor=_user())
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.DECLINED.value
+    assert req.status == OwnerBlockStatus.DECLINED.value
     assert req.review_note == "Owner double-booked"
     assert req.resulting_hold_id is None
 
 
 def test_cancel_pending(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
-        property=property_, requested_by=_user(), date_from=FROM, date_to=TO
+    req = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
     )
-    OwnerBlockRequestService.cancel(req, actor=_user())
+    OwnerBlockService.cancel(req, actor=_user())
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.CANCELLED.value
+    assert req.status == OwnerBlockStatus.CANCELLED.value
 
 
 def test_cancel_after_approve_releases_hold(property_: Property) -> None:
-    req = OwnerBlockRequestService.create(
-        property=property_, requested_by=_user(), date_from=FROM, date_to=TO
+    req = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
     )
-    OwnerBlockRequestService.approve(req, actor=_user())
+    OwnerBlockService.approve(req, actor=_user())
     req.refresh_from_db()
     hold_id = req.resulting_hold_id
     assert hold_id is not None
 
-    OwnerBlockRequestService.cancel(req, actor=_user())
+    OwnerBlockService.cancel(req, actor=_user())
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.CANCELLED.value
+    assert req.status == OwnerBlockStatus.CANCELLED.value
     hold = BookingHold.objects.get(pk=hold_id)
     assert hold.released_at is not None
     assert hold.is_live() is False

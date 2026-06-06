@@ -1,9 +1,9 @@
-"""OwnerBlockRequest — an owner's request to block their villa's availability.
+"""OwnerBlock — an owner's request to block their villa's availability.
 
 A pending request must NOT occupy the calendar: a live `BookingHold` is in the
 overlap-blocking set the moment it exists, so a *request* can't be modelled as
 one. This separate object carries the PENDING → APPROVED/DECLINED/CANCELLED
-lifecycle; only on operator approval does `OwnerBlockRequestService` place the
+lifecycle; only on operator approval does `OwnerBlockService` place the
 real (indefinite) hold and point `resulting_hold` at it.
 
 Lives in `reservations` (not `owners`) because approval creates a `BookingHold`
@@ -18,16 +18,16 @@ from django.db import models
 from django.db.models import Q
 
 from core.models.base import TimestampedModel
-from reservations.enums import OwnerBlockKind, OwnerBlockRequestStatus
+from reservations.enums import OwnerBlockKind, OwnerBlockStatus
 
 
-class OwnerBlockRequest(TimestampedModel):
+class OwnerBlock(TimestampedModel):
     property = models.ForeignKey(
         "properties.Property",
         on_delete=models.PROTECT,
         related_name="owner_block_requests",
     )
-    requested_by = models.ForeignKey(
+    created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="owner_block_requests",
@@ -42,8 +42,8 @@ class OwnerBlockRequest(TimestampedModel):
     notes = models.TextField(blank=True, default="")
     status = models.CharField(
         max_length=16,
-        choices=OwnerBlockRequestStatus.choices,
-        default=OwnerBlockRequestStatus.PENDING,
+        choices=OwnerBlockStatus.choices,
+        default=OwnerBlockStatus.PENDING,
     )
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -65,7 +65,7 @@ class OwnerBlockRequest(TimestampedModel):
     class Meta:
         indexes = [
             models.Index(fields=["property", "status"]),
-            models.Index(fields=["requested_by", "status"]),
+            models.Index(fields=["created_by", "status"]),
         ]
         constraints = [
             models.CheckConstraint(

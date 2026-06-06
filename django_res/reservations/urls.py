@@ -26,7 +26,7 @@ from reservations.views import (
     ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
-    OwnerBlockRequestViewSet,
+    OwnerBlockViewSet,
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
@@ -392,12 +392,12 @@ _owner_routes: list[URLPattern | URLResolver] = [
     ),
     path(
         "owner/block-requests",
-        OwnerBlockRequestViewSet.as_view({"get": "list", "post": "create"}),
+        OwnerBlockViewSet.as_view({"get": "list", "post": "create"}),
         name="owner-block-request-list",
     ),
     path(
         "owner/block-requests/<int:pk>:cancel",
-        OwnerBlockRequestViewSet.as_view({"post": "cancel"}),
+        OwnerBlockViewSet.as_view({"post": "cancel"}),
         name="owner-block-request-cancel",
     ),
 ]

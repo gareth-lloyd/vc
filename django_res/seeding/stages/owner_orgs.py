@@ -118,7 +118,7 @@ def _seed_view_only_member(org: OwnerOrganisation) -> int:
 
 
 def _seed_pending_block_request(org: OwnerOrganisation, requester: User) -> int:
-    """One PENDING OwnerBlockRequest so the operator review queue has an item.
+    """One PENDING OwnerBlock so the operator review queue has an item.
 
     A pending request reserves nothing (no BookingHold until an operator
     approves it), so it never perturbs the bookings count or calendar density
@@ -126,8 +126,8 @@ def _seed_pending_block_request(org: OwnerOrganisation, requester: User) -> int:
     """
     from datetime import date
 
-    from reservations.enums import OwnerBlockKind, OwnerBlockRequestStatus
-    from reservations.models import OwnerBlockRequest
+    from reservations.enums import OwnerBlockKind, OwnerBlockStatus
+    from reservations.models import OwnerBlock
 
     grant = (
         OwnerOrgProperty.objects.filter(organisation=org, end_date__isnull=True)
@@ -138,18 +138,18 @@ def _seed_pending_block_request(org: OwnerOrganisation, requester: User) -> int:
     if grant is None:
         return 0
     prop = grant.property
-    if OwnerBlockRequest.objects.filter(property=prop, requested_by=requester).exists():
+    if OwnerBlock.objects.filter(property=prop, created_by=requester).exists():
         return 0
 
     start = date.today() + timedelta(days=120)
-    OwnerBlockRequest.objects.create(
+    OwnerBlock.objects.create(
         property=prop,
-        requested_by=requester,
+        created_by=requester,
         date_from=start,
         date_to=start + timedelta(days=7),
         kind=OwnerBlockKind.OWNER_STAY.value,
         notes="Family holiday — please hold.",
-        status=OwnerBlockRequestStatus.PENDING.value,
+        status=OwnerBlockStatus.PENDING.value,
     )
     return 1
 

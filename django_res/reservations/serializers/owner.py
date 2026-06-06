@@ -21,7 +21,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from reservations.enums import OwnerBlockKind
-from reservations.models import OwnerBlockRequest
+from reservations.models import OwnerBlock
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -103,7 +103,7 @@ class OwnerBookingDetailSerializer(OwnerBookingListSerializer):
     detail = True
 
 
-class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+class OwnerBlockSerializer(serializers.ModelSerializer[OwnerBlock]):
     """Owner-facing read view of a block request.
 
     Deliberately omits `resulting_hold` (the internal BookingHold id), mirroring
@@ -111,7 +111,7 @@ class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]
     """
 
     class Meta:
-        model = OwnerBlockRequest
+        model = OwnerBlock
         fields = [
             "id",
             "property",
@@ -127,16 +127,16 @@ class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]
         read_only_fields = fields
 
 
-class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
+class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlock]):
     """Staff-facing read view — exposes the full request including the
     reviewer, requester, and the resulting hold id (operators act on these)."""
 
     class Meta:
-        model = OwnerBlockRequest
+        model = OwnerBlock
         fields = [
             "id",
             "property",
-            "requested_by",
+            "created_by",
             "date_from",
             "date_to",
             "kind",
@@ -151,7 +151,7 @@ class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockReque
         read_only_fields = fields
 
 
-class OwnerBlockRequestWriteSerializer(serializers.Serializer):
+class OwnerBlockWriteSerializer(serializers.Serializer):
     """Validate a block-request submission. The view resolves + scopes `property`."""
 
     property = serializers.IntegerField()

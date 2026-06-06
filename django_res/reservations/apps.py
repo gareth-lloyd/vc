@@ -15,7 +15,7 @@ class ReservationsConfig(AppConfig):
             BookingGuest,
             BookingServiceCoverage,
             Guest,
-            OwnerBlockRequest,
+            OwnerBlock,
             QuotationLine,
         )
 
@@ -102,14 +102,14 @@ class ReservationsConfig(AppConfig):
                 "status",
             ],
         )
-        # OwnerBlockRequest: the owner-initiated availability-block lifecycle.
+        # OwnerBlock: the owner-initiated availability-block lifecycle.
         # Who requested/approved/declined a block and the hold it produced is
         # the trail an operator review of owner actions needs.
         track(
-            OwnerBlockRequest,
+            OwnerBlock,
             fields=[
                 "property_id",
-                "requested_by_id",
+                "created_by_id",
                 "date_from",
                 "date_to",
                 "kind",

@@ -18,12 +18,12 @@ from reservations.models import (
     EnquiryEvent,
     EnquiryNote,
     Guest,
-    OwnerBlockRequest,
+    OwnerBlock,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.owner_block_requests import OwnerBlockRequestService
+from reservations.services.owner_block import OwnerBlockService
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -130,12 +130,12 @@ class TermsVersionAdmin(admin.ModelAdmin):
     list_filter = ("is_current",)
 
 
-@admin.register(OwnerBlockRequest)
-class OwnerBlockRequestAdmin(admin.ModelAdmin):
+@admin.register(OwnerBlock)
+class OwnerBlockAdmin(admin.ModelAdmin):
     list_display = (
         "pk",
         "property",
-        "requested_by",
+        "created_by",
         "date_from",
         "date_to",
         "kind",
@@ -143,21 +143,21 @@ class OwnerBlockRequestAdmin(admin.ModelAdmin):
         "reviewed_by",
     )
     list_filter = ("status", "kind")
-    search_fields = ("property__name", "requested_by__email")
+    search_fields = ("property__name", "created_by__email")
     actions = ["approve_selected", "decline_selected"]
 
     @admin.action(description="Approve selected block requests")
-    def approve_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlockRequest]) -> None:
+    def approve_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlock]) -> None:
         self._run(request, queryset, approve=True)
 
     @admin.action(description="Decline selected block requests")
-    def decline_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlockRequest]) -> None:
+    def decline_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlock]) -> None:
         self._run(request, queryset, approve=False)
 
     def _run(
         self,
         request: HttpRequest,
-        queryset: QuerySet[OwnerBlockRequest],
+        queryset: QuerySet[OwnerBlock],
         *,
         approve: bool,
     ) -> None:
@@ -166,11 +166,9 @@ class OwnerBlockRequestAdmin(admin.ModelAdmin):
         for block_request in queryset:
             try:
                 if approve:
-                    OwnerBlockRequestService.approve(block_request, actor=actor)
+                    OwnerBlockService.approve(block_request, actor=actor)
                 else:
-                    OwnerBlockRequestService.decline(
-                        block_request, "Declined via admin", actor=actor
-                    )
+                    OwnerBlockService.decline(block_request, "Declined via admin", actor=actor)
             except DomainError as exc:
                 self.message_user(request, f"#{block_request.pk}: {exc}", level=messages.ERROR)
             else:

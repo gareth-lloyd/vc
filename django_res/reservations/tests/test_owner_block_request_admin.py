@@ -1,4 +1,4 @@
-"""The admin approve/decline actions drive OwnerBlockRequestService."""
+"""The admin approve/decline actions drive OwnerBlockService."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from owners.enums import OwnerMembershipStatus
 from owners.factories import OwnerMembershipFactory, OwnerOrganisationFactory
 from owners.models import OwnerOrganisation
 from properties.models import Property
-from reservations.admin import OwnerBlockRequestAdmin
-from reservations.enums import OwnerBlockRequestStatus
-from reservations.models import OwnerBlockRequest
+from reservations.admin import OwnerBlockAdmin
+from reservations.enums import OwnerBlockStatus
+from reservations.models import OwnerBlock
 
 pytestmark = pytest.mark.django_db
 
@@ -33,14 +33,14 @@ def _request(user: User) -> HttpRequest:
     return request
 
 
-def _pending(property_: Property) -> OwnerBlockRequest:
+def _pending(property_: Property) -> OwnerBlock:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     owner = cast(User, UserFactory(is_staff=False))
     OwnerMembershipFactory(organisation=org, user=owner, status=OwnerMembershipStatus.ACTIVE)
     start = timezone.localdate() + timedelta(days=15)
-    return OwnerBlockRequest.objects.create(
+    return OwnerBlock.objects.create(
         property=property_,
-        requested_by=owner,
+        created_by=owner,
         date_from=start,
         date_to=start + timedelta(days=4),
     )
@@ -48,22 +48,22 @@ def _pending(property_: Property) -> OwnerBlockRequest:
 
 def test_admin_approve_action_places_hold(property_: Property) -> None:
     req = _pending(property_)
-    admin = OwnerBlockRequestAdmin(OwnerBlockRequest, AdminSite())
+    admin = OwnerBlockAdmin(OwnerBlock, AdminSite())
     staff = cast(User, UserFactory())
 
-    admin.approve_selected(_request(staff), OwnerBlockRequest.objects.filter(pk=req.pk))
+    admin.approve_selected(_request(staff), OwnerBlock.objects.filter(pk=req.pk))
 
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.APPROVED.value
+    assert req.status == OwnerBlockStatus.APPROVED.value
     assert req.resulting_hold is not None
 
 
 def test_admin_decline_action(property_: Property) -> None:
     req = _pending(property_)
-    admin = OwnerBlockRequestAdmin(OwnerBlockRequest, AdminSite())
+    admin = OwnerBlockAdmin(OwnerBlock, AdminSite())
     staff = cast(User, UserFactory())
 
-    admin.decline_selected(_request(staff), OwnerBlockRequest.objects.filter(pk=req.pk))
+    admin.decline_selected(_request(staff), OwnerBlock.objects.filter(pk=req.pk))
 
     req.refresh_from_db()
-    assert req.status == OwnerBlockRequestStatus.DECLINED.value
+    assert req.status == OwnerBlockStatus.DECLINED.value

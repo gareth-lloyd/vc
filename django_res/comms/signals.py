@@ -21,6 +21,7 @@ from reservations.enums import BookingStatus
 
 if TYPE_CHECKING:
     from reservations.models.booking import Booking, BookingHold
+    from reservations.models.owner_block import OwnerBlock
     from reservations.models.quotation import Quotation
 
 
@@ -261,6 +262,36 @@ def hold_expired_handler(
     )
 
 
+def owner_block_contested_handler(
+    sender: Any,
+    *,
+    block: OwnerBlock,
+    actor: Any | None = None,
+    reason: str = "",
+    **_: Any,
+) -> None:
+    """Email the property's primary owner that staff have contested a block.
+
+    The block stays APPROVED — this is a notification, not a state change. If
+    the property has no primary owner with an email on file, the send is
+    skipped (the contest itself already succeeded).
+    """
+    recipient = primary_owner_email(block.property)
+    if not recipient:
+        return
+    _safe_send(
+        template_key="owner_block.contested",
+        context={
+            "property_name": block.property.display_name or block.property.name,
+            "date_from": block.date_from.isoformat(),
+            "date_to": block.date_to.isoformat(),
+            "reason": reason,
+        },
+        to=[recipient],
+        correlation={"owner_block_id": block.pk},
+    )
+
+
 def _payment_context(payment: Any) -> dict[str, Any]:
     booking = payment.booking
     return {
@@ -383,6 +414,7 @@ def _register() -> None:
         booking_confirmation_resend_requested,
         booking_transitioned,
         hold_expired,
+        owner_block_contested,
         quotation_sent,
     )
 
@@ -401,6 +433,10 @@ def _register() -> None:
     hold_expired.connect(
         hold_expired_handler,
         dispatch_uid="comms.hold_expired",
+    )
+    owner_block_contested.connect(
+        owner_block_contested_handler,
+        dispatch_uid="comms.owner_block_contested",
     )
     payment_succeeded.connect(
         payment_succeeded_handler,

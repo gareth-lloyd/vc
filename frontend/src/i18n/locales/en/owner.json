@@ -86,13 +86,13 @@
     "decline": "Decline"
   },
   "blocks": {
-    "request_button": "Request block",
-    "list_title": "Your block requests",
-    "empty": "No block requests for this villa yet.",
-    "load_failed": "Couldn't load your block requests.",
+    "request_button": "Block dates",
+    "list_title": "Your blocked dates",
+    "empty": "No blocked dates for this villa yet.",
+    "load_failed": "Couldn't load your blocked dates.",
     "dialog": {
-      "title": "Request availability block",
-      "description": "Ask VC to hold these dates. An operator will review your request."
+      "title": "Block availability",
+      "description": "Hold these dates so they can't be booked."
     },
     "fields": {
       "date_from": "From",
@@ -106,22 +106,21 @@
       "other": "Other"
     },
     "status": {
-      "pending": "Pending",
-      "approved": "Approved",
-      "declined": "Declined",
+      "approved": "Blocked",
       "cancelled": "Cancelled"
     },
     "actions": {
-      "submit": "Submit request",
-      "cancel_request": "Cancel"
+      "submit": "Block dates",
+      "cancel_request": "Remove"
     },
     "errors": {
       "date_to_after_from": "End date must be after the start date.",
-      "required": "This field is required."
+      "required": "This field is required.",
+      "conflict": "Those dates overlap an existing booking or block. Pick a different range."
     },
     "toasts": {
-      "created": "Block request submitted.",
-      "cancelled": "Block request cancelled."
+      "created": "Dates blocked.",
+      "cancelled": "Block removed."
     }
   },
   "approval": {
@@ -137,6 +136,41 @@
     "toasts": {
       "approved": "Booking approved.",
       "declined": "Booking declined."
+    }
+  },
+  "updates": {
+    "title": "Owner blocks",
+    "breadcrumb": "Owner blocks",
+    "load_failed": "Couldn't load owner block updates.",
+    "empty_title": "No updates",
+    "empty_hint": "Owner block activity will appear here.",
+    "unknown_property": "Unknown villa",
+    "contested_badge": "Contested",
+    "unseen_badge": "New",
+    "kind": {
+      "created": "Blocked",
+      "cancelled": "Cancelled"
+    },
+    "filters": {
+      "unseen_only": "Unseen only"
+    },
+    "actions": {
+      "mark_seen": "Mark seen",
+      "mark_unseen": "Mark unseen",
+      "contest": "Contest"
+    },
+    "contest_unavailable": "Only an active block can be contested.",
+    "contest_dialog": {
+      "title": "Contest this block",
+      "description": "Tell the owner why this block is being contested.",
+      "reason_label": "Reason",
+      "submit": "Contest block"
+    },
+    "errors": {
+      "reason_required": "Please give a reason."
+    },
+    "toasts": {
+      "contested": "Block contested."
     }
   }
 }

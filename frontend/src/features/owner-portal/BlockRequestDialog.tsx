@@ -66,7 +66,11 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
       toast.success(t("blocks.toasts.created"));
       onOpenChange(false);
     } catch (error) {
-      if (error instanceof ApiError && error.isClientError()) {
+      if (error instanceof ApiError && error.status === 409) {
+        // A conflicting range now hard-fails with 409. Prefer a friendly,
+        // actionable message over the backend's terse `detail`.
+        setTopLevelError(t("blocks.errors.conflict"));
+      } else if (error instanceof ApiError && error.isClientError()) {
         const { detail } = applyApiErrorToForm(form, error);
         setTopLevelError(detail);
       } else {

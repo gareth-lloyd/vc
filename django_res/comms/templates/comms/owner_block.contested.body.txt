@@ -1,0 +1,14 @@
+Hello,
+
+Our team has flagged the dates you blocked on {{ property_name }} and would like
+to check them with you.
+
+Property: {{ property_name }}
+Dates: {{ date_from }} – {{ date_to }}
+Note from our team: {{ reason }}
+
+Your block is still in place — nothing has changed on the calendar. Please reply
+to this email or contact your Villa Collective representative so we can confirm
+the dates together.
+
+— Villa Collective

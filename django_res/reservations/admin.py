@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from django.contrib import admin
 
-from django.contrib import admin, messages
-
-from core.exceptions import DomainError
 from reservations.models import (
     Booking,
     BookingConciergeItem,
@@ -18,16 +15,11 @@ from reservations.models import (
     EnquiryEvent,
     EnquiryNote,
     Guest,
-    OwnerBlockRequest,
+    OwnerBlock,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.owner_block_requests import OwnerBlockRequestService
-
-if TYPE_CHECKING:
-    from django.db.models import QuerySet
-    from django.http import HttpRequest
 
 
 @admin.register(Guest)
@@ -130,51 +122,16 @@ class TermsVersionAdmin(admin.ModelAdmin):
     list_filter = ("is_current",)
 
 
-@admin.register(OwnerBlockRequest)
-class OwnerBlockRequestAdmin(admin.ModelAdmin):
+@admin.register(OwnerBlock)
+class OwnerBlockAdmin(admin.ModelAdmin):
     list_display = (
         "pk",
         "property",
-        "requested_by",
+        "created_by",
         "date_from",
         "date_to",
         "kind",
         "status",
-        "reviewed_by",
     )
     list_filter = ("status", "kind")
-    search_fields = ("property__name", "requested_by__email")
-    actions = ["approve_selected", "decline_selected"]
-
-    @admin.action(description="Approve selected block requests")
-    def approve_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlockRequest]) -> None:
-        self._run(request, queryset, approve=True)
-
-    @admin.action(description="Decline selected block requests")
-    def decline_selected(self, request: HttpRequest, queryset: QuerySet[OwnerBlockRequest]) -> None:
-        self._run(request, queryset, approve=False)
-
-    def _run(
-        self,
-        request: HttpRequest,
-        queryset: QuerySet[OwnerBlockRequest],
-        *,
-        approve: bool,
-    ) -> None:
-        done = 0
-        actor = request.user if request.user.is_authenticated else None
-        for block_request in queryset:
-            try:
-                if approve:
-                    OwnerBlockRequestService.approve(block_request, actor=actor)
-                else:
-                    OwnerBlockRequestService.decline(
-                        block_request, "Declined via admin", actor=actor
-                    )
-            except DomainError as exc:
-                self.message_user(request, f"#{block_request.pk}: {exc}", level=messages.ERROR)
-            else:
-                done += 1
-        if done:
-            verb = "Approved" if approve else "Declined"
-            self.message_user(request, f"{verb} {done} request(s).", level=messages.SUCCESS)
+    search_fields = ("property__name", "created_by__email")

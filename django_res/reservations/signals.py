@@ -49,6 +49,15 @@ quotation_sent = Signal()
 kwargs: sender=Quotation, quotation.
 """
 
+owner_block_contested = Signal()
+"""Fired by `OwnerBlockService.contest` when staff dispute an owner block.
+
+The block stays APPROVED (the hold is untouched) — the signal exists only to
+notify the owner. comms listens and emails the property's primary owner.
+
+kwargs: sender=OwnerBlock, block, actor, reason.
+"""
+
 booking_confirmation_resend_requested = Signal()
 """Fired by `Booking.send_confirmation_email()` when an operator triggers a resend.
 
@@ -264,5 +273,6 @@ __all__ = [
     "LeadGuestProtectedError",
     "booking_transitioned",
     "hold_expired",
+    "owner_block_contested",
     "quotation_sent",
 ]

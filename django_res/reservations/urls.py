@@ -18,7 +18,6 @@ from reservations.views import (
     AvailabilityMultiView,
     AvailabilityReleaseHoldView,
     AvailabilitySearchView,
-    BlockRequestViewSet,
     BookingArchiveViewSet,
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
@@ -26,7 +25,7 @@ from reservations.views import (
     ConciergeOverviewViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
-    OwnerBlockRequestViewSet,
+    OwnerBlockViewSet,
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
@@ -392,33 +391,38 @@ _owner_routes: list[URLPattern | URLResolver] = [
     ),
     path(
         "owner/block-requests",
-        OwnerBlockRequestViewSet.as_view({"get": "list", "post": "create"}),
+        OwnerBlockViewSet.as_view({"get": "list", "post": "create"}),
         name="owner-block-request-list",
     ),
     path(
         "owner/block-requests/<int:pk>:cancel",
-        OwnerBlockRequestViewSet.as_view({"post": "cancel"}),
+        OwnerBlockViewSet.as_view({"post": "cancel"}),
         name="owner-block-request-cancel",
     ),
 ]
 
 
-# Operator-facing review queue for owner block requests.
-_block_request_routes: list[URLPattern | URLResolver] = [
+# Staff-facing owner-block awareness feed.
+_owner_block_update_routes: list[URLPattern | URLResolver] = [
     path(
-        "block-requests",
-        BlockRequestViewSet.as_view({"get": "list"}),
-        name="block-request-list",
+        "owner-block-updates",
+        views.OwnerBlockUpdateViewSet.as_view({"get": "list"}),
+        name="owner-block-update-list",
     ),
     path(
-        "block-requests/<int:pk>:approve",
-        BlockRequestViewSet.as_view({"post": "approve"}),
-        name="block-request-approve",
+        "owner-block-updates/<int:pk>:seen",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "seen"}),
+        name="owner-block-update-seen",
     ),
     path(
-        "block-requests/<int:pk>:decline",
-        BlockRequestViewSet.as_view({"post": "decline"}),
-        name="block-request-decline",
+        "owner-block-updates/<int:pk>:unseen",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "unseen"}),
+        name="owner-block-update-unseen",
+    ),
+    path(
+        "owner-block-updates/<int:pk>:contest",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "contest"}),
+        name="owner-block-update-contest",
     ),
 ]
 
@@ -428,7 +432,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
     *_owner_routes,
-    *_block_request_routes,
+    *_owner_block_update_routes,
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,

@@ -22,8 +22,8 @@ from owners.factories import (
 from owners.models import OwnerOrganisation
 from properties.factories import PropertyFactory
 from properties.models import Property
-from reservations.enums import OwnerBlockKind, OwnerBlockRequestStatus
-from reservations.models import OwnerBlockRequest
+from reservations.enums import OwnerBlockKind, OwnerBlockStatus
+from reservations.models import OwnerBlock
 
 pytestmark = pytest.mark.django_db
 
@@ -60,7 +60,7 @@ def _payload(prop: Property) -> dict[str, object]:
     }
 
 
-def test_create_block_request(api_client: APIClient) -> None:
+def test_create_block_is_approved_immediately(api_client: APIClient) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     prop = _granted_property(org)
@@ -69,9 +69,22 @@ def test_create_block_request(api_client: APIClient) -> None:
     resp = api_client.post(LIST_URL, data=_payload(prop), format="json")
     assert resp.status_code == 201, resp.content
     body = resp.json()
-    assert body["status"] == OwnerBlockRequestStatus.PENDING.value
-    assert "resulting_hold" not in body
-    assert OwnerBlockRequest.objects.filter(requested_by=user, property=prop).count() == 1
+    assert body["status"] == OwnerBlockStatus.APPROVED.value
+    assert "resulting_hold" not in body  # internal hold id stays redacted
+    block = OwnerBlock.objects.get(created_by=user, property=prop)
+    assert block.resulting_hold_id is not None  # the hold is placed up front
+
+
+def test_create_conflicting_range_returns_409(api_client: APIClient) -> None:
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    prop = _granted_property(org)
+    api_client.force_authenticate(user)
+
+    assert api_client.post(LIST_URL, data=_payload(prop), format="json").status_code == 201
+    # The block now occupies the calendar, so an overlapping second block 409s.
+    resp = api_client.post(LIST_URL, data=_payload(prop), format="json")
+    assert resp.status_code == 409, resp.content
 
 
 def test_staff_non_owner_gets_403(api_client: APIClient) -> None:
@@ -130,9 +143,9 @@ def test_list_returns_own_requests_only(api_client: APIClient) -> None:
     api_client.force_authenticate(user)
     api_client.post(LIST_URL, data=_payload(prop), format="json")
     # Another member's request must not show in this caller's list.
-    OwnerBlockRequest.objects.create(
+    OwnerBlock.objects.create(
         property=prop,
-        requested_by=other_user,
+        created_by=other_user,
         date_from=timezone.localdate() + timedelta(days=40),
         date_to=timezone.localdate() + timedelta(days=45),
     )
@@ -151,7 +164,7 @@ def test_cancel_own_request(api_client: APIClient) -> None:
 
     resp = api_client.post(f"{LIST_URL}/{created['id']}:cancel", format="json")
     assert resp.status_code == 200
-    assert resp.json()["status"] == OwnerBlockRequestStatus.CANCELLED.value
+    assert resp.json()["status"] == OwnerBlockStatus.CANCELLED.value
 
 
 def test_cannot_cancel_other_members_request(api_client: APIClient) -> None:
@@ -159,9 +172,9 @@ def test_cannot_cancel_other_members_request(api_client: APIClient) -> None:
     user = _owner(org)
     other_user = _owner(org)
     prop = _granted_property(org)
-    req = OwnerBlockRequest.objects.create(
+    req = OwnerBlock.objects.create(
         property=prop,
-        requested_by=other_user,
+        created_by=other_user,
         date_from=timezone.localdate() + timedelta(days=40),
         date_to=timezone.localdate() + timedelta(days=45),
     )
@@ -176,9 +189,9 @@ def test_list_query_count_bounded(api_client: APIClient) -> None:
     user = _owner(org)
     prop = _granted_property(org)
     for offset in range(5):
-        OwnerBlockRequest.objects.create(
+        OwnerBlock.objects.create(
             property=prop,
-            requested_by=user,
+            created_by=user,
             date_from=timezone.localdate() + timedelta(days=50 + offset * 10),
             date_to=timezone.localdate() + timedelta(days=53 + offset * 10),
         )

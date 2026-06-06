@@ -21,7 +21,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from reservations.enums import OwnerBlockKind
-from reservations.models import OwnerBlockRequest
+from reservations.models import OwnerBlock
 from reservations.services.owner_finance import owner_money_from_snapshot
 
 if TYPE_CHECKING:
@@ -103,15 +103,15 @@ class OwnerBookingDetailSerializer(OwnerBookingListSerializer):
     detail = True
 
 
-class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
-    """Owner-facing read view of a block request.
+class OwnerBlockSerializer(serializers.ModelSerializer[OwnerBlock]):
+    """Owner-facing read view of an availability block.
 
     Deliberately omits `resulting_hold` (the internal BookingHold id), mirroring
     the calendar's hold-id redaction — an owner never acts on the hold directly.
     """
 
     class Meta:
-        model = OwnerBlockRequest
+        model = OwnerBlock
         fields = [
             "id",
             "property",
@@ -120,39 +120,13 @@ class OwnerBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]
             "kind",
             "notes",
             "status",
-            "review_note",
-            "reviewed_at",
             "created_at",
         ]
         read_only_fields = fields
 
 
-class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlockRequest]):
-    """Staff-facing read view — exposes the full request including the
-    reviewer, requester, and the resulting hold id (operators act on these)."""
-
-    class Meta:
-        model = OwnerBlockRequest
-        fields = [
-            "id",
-            "property",
-            "requested_by",
-            "date_from",
-            "date_to",
-            "kind",
-            "notes",
-            "status",
-            "reviewed_by",
-            "reviewed_at",
-            "review_note",
-            "resulting_hold",
-            "created_at",
-        ]
-        read_only_fields = fields
-
-
-class OwnerBlockRequestWriteSerializer(serializers.Serializer):
-    """Validate a block-request submission. The view resolves + scopes `property`."""
+class OwnerBlockWriteSerializer(serializers.Serializer):
+    """Validate a block submission. The view resolves + scopes `property`."""
 
     property = serializers.IntegerField()
     date_from = serializers.DateField()

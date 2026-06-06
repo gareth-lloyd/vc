@@ -24,9 +24,7 @@ function created(overrides: Record<string, unknown> = {}) {
     date_to: "2026-08-08",
     kind: "owner_stay",
     notes: "",
-    status: "pending",
-    review_note: "",
-    reviewed_at: null,
+    status: "approved",
     created_at: "2026-06-03T10:00:00Z",
     ...overrides,
   };
@@ -47,7 +45,7 @@ describe("BlockRequestDialog", () => {
 
     await userEvent.type(screen.getByLabelText(/from/i), "2026-08-08");
     await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-01");
-    await userEvent.click(screen.getByRole("button", { name: /submit request/i }));
+    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
 
     expect(await screen.findByText(/end date must be after/i)).toBeInTheDocument();
   });
@@ -65,7 +63,7 @@ describe("BlockRequestDialog", () => {
 
     await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
     await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /submit request/i }));
+    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
 
     await waitFor(() => expect(body).toMatchObject({ property: 3, kind: "owner_stay" }));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
@@ -86,9 +84,9 @@ describe("BlockRequestDialog", () => {
 
     await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
     await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /submit request/i }));
+    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
 
-    expect(await screen.findByText(/a booking already occupies/i)).toBeInTheDocument();
+    expect(await screen.findByText(/overlap an existing booking or block/i)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -103,7 +101,7 @@ describe("BlockRequestDialog", () => {
 
     await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
     await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /submit request/i }));
+    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
   });

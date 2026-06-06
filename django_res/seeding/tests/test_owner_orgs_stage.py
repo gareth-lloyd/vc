@@ -10,8 +10,8 @@ from django.core.management import call_command
 
 from owners.enums import OwnerMembershipStatus, OwnerRole
 from owners.models import OwnerMembership, OwnerOrganisation, OwnerOrgProperty
-from reservations.enums import OwnerBlockRequestStatus
-from reservations.models import OwnerBlockRequest
+from reservations.enums import OwnerBlockStatus
+from reservations.models import OwnerBlock
 
 pytestmark = pytest.mark.django_db
 
@@ -59,15 +59,17 @@ def test_seed_adds_view_only_member() -> None:
     assert view_only.user.email == "maria.kostas@example.com"
 
 
-def test_seed_builds_pending_block_request() -> None:
+def test_seed_builds_approved_owner_block() -> None:
     _seed()
     org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
     property_ids = list(
         OwnerOrgProperty.objects.filter(organisation=org).values_list("property_id", flat=True)
     )
 
-    block_requests = OwnerBlockRequest.objects.filter(property_id__in=property_ids)
-    assert block_requests.filter(status=OwnerBlockRequestStatus.PENDING.value).exists()
+    blocks = OwnerBlock.objects.filter(property_id__in=property_ids)
+    block = blocks.get()
+    assert block.status == OwnerBlockStatus.APPROVED.value
+    assert block.resulting_hold_id is not None  # created-approved places the hold
 
 
 def test_seed_is_idempotent_for_owner_fixture() -> None:
@@ -83,4 +85,4 @@ def test_seed_is_idempotent_for_owner_fixture() -> None:
     assert len(property_ids) == len(set(property_ids))
 
     # The block request is seeded once, not per run.
-    assert OwnerBlockRequest.objects.filter(property_id__in=property_ids).count() == 1
+    assert OwnerBlock.objects.filter(property_id__in=property_ids).count() == 1

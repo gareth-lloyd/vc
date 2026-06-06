@@ -310,6 +310,14 @@ export const router = createBrowserRouter([
                         },
                       },
                       {
+                        path: "/owner-blocks",
+                        lazy: async () => {
+                          const m =
+                            await import("@/features/owner-block-updates/OwnerBlockUpdatesPage");
+                          return { Component: m.OwnerBlockUpdatesPage };
+                        },
+                      },
+                      {
                         element: <RequireAdmin />,
                         children: [
                           {

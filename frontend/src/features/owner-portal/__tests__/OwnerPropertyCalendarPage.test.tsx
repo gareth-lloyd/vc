@@ -34,9 +34,7 @@ function blockRequest(overrides: Record<string, unknown> = {}) {
     date_to: "2026-08-08",
     kind: "owner_stay",
     notes: "",
-    status: "pending",
-    review_note: "",
-    reviewed_at: null,
+    status: "approved",
     created_at: "2026-06-03T10:00:00Z",
     ...overrides,
   };
@@ -69,18 +67,18 @@ function renderPage() {
 afterEach(() => server.resetHandlers());
 
 describe("OwnerPropertyCalendarPage block requests", () => {
-  it("shows the Request block button when can_request_block is true", async () => {
+  it("shows the Block dates button when can_request_block is true", async () => {
     mockEndpoints({ canRequestBlock: true });
     renderPage();
-    expect(await screen.findByRole("button", { name: /request block/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /block dates/i })).toBeInTheDocument();
   });
 
-  it("hides the Request block button when can_request_block is false", async () => {
+  it("hides the Block dates button when can_request_block is false", async () => {
     mockEndpoints({ canRequestBlock: false });
     renderPage();
     // The calendar settles (back button present) before we assert the absence.
     await screen.findByRole("button", { name: /back to properties/i });
-    expect(screen.queryByRole("button", { name: /request block/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /block dates/i })).not.toBeInTheDocument();
   });
 
   it("lists existing requests and cancels one", async () => {
@@ -94,7 +92,7 @@ describe("OwnerPropertyCalendarPage block requests", () => {
     );
     renderPage();
 
-    await userEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
     await waitFor(() => expect(cancelled).toBe(true));
   });
 });

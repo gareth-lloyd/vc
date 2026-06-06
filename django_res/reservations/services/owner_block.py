@@ -155,9 +155,23 @@ class OwnerBlockService:
         The block stays APPROVED and the hold is untouched; the only effect is
         the flag plus an `owner_block_contested` signal the comms app turns into
         an email to the property's primary owner.
+
+        Only an APPROVED block can be contested — a CANCELLED block's hold is
+        already released, so there is nothing to dispute. Contesting is also
+        idempotent: a second call (a double-click, or a second staff member)
+        is a no-op that preserves the original disputer and reason, so the owner
+        is not re-emailed.
         """
         if not reason.strip():
             raise ValueError("A contest reason is required.")
+        if block.status != OwnerBlockStatus.APPROVED.value:
+            raise InvalidTransition(
+                block.status,
+                "contested",
+                allowed=[OwnerBlockStatus.APPROVED.value],
+            )
+        if block.contested_at is not None:
+            return block
         block.contested_at = timezone.now()
         block.contested_by = actor
         block.contest_reason = reason

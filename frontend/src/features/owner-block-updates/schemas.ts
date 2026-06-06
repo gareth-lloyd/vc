@@ -45,7 +45,7 @@ export const ownerBlockUpdatesResponseSchema = paginated(ownerBlockUpdateSchema)
 
 // Contest write input — a non-blank reason is required (matches the endpoint).
 export const contestWriteInputSchema = z.object({
-  reason: z.string().min(1, "updates.errors.reason_required"),
+  reason: z.string().trim().min(1, "updates.errors.reason_required"),
 });
 export type ContestWriteInput = z.infer<typeof contestWriteInputSchema>;
 

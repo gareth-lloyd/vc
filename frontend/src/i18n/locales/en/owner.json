@@ -159,6 +159,7 @@
       "mark_unseen": "Mark unseen",
       "contest": "Contest"
     },
+    "contest_unavailable": "Only an active block can be contested.",
     "contest_dialog": {
       "title": "Contest this block",
       "description": "Tell the owner why this block is being contested.",

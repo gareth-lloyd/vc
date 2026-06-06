@@ -254,6 +254,42 @@ def test_contest_rejects_empty_reason(property_: Property) -> None:
     assert block.contested_at is None
 
 
+def test_contest_rejects_cancelled_block(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    OwnerBlockService.cancel(block, actor=_user())
+    with pytest.raises(InvalidTransition):
+        OwnerBlockService.contest(block, actor=_user(), reason="too late")
+    block.refresh_from_db()
+    assert block.contested_at is None  # a cancelled block cannot be contested
+
+
+def test_contest_is_idempotent_and_preserves_original(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    first, second = _user(), _user()
+    received: list[dict[str, object]] = []
+
+    def _receiver(sender: object, **kwargs: object) -> None:
+        received.append(kwargs)
+
+    owner_block_contested.connect(_receiver, dispatch_uid="test.contest.idem")
+    try:
+        OwnerBlockService.contest(block, actor=first, reason="original reason")
+        OwnerBlockService.contest(block, actor=second, reason="different reason")
+    finally:
+        owner_block_contested.disconnect(dispatch_uid="test.contest.idem")
+
+    block.refresh_from_db()
+    # The second contest is a no-op: the owner is emailed once and the original
+    # disputer + reason are preserved.
+    assert len(received) == 1
+    assert block.contested_by_id == first.id
+    assert block.contest_reason == "original reason"
+
+
 # --- mark_seen --------------------------------------------------------------
 
 

@@ -133,15 +133,22 @@ export function OwnerBlockUpdatesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleSeenToggle(update)}
-                    disabled={markSeen.isPending || markUnseen.isPending}
+                    disabled={
+                      (markSeen.isPending && markSeen.variables === update.id) ||
+                      (markUnseen.isPending && markUnseen.variables === update.id)
+                    }
                   >
                     {update.is_seen
                       ? t("updates.actions.mark_unseen")
                       : t("updates.actions.mark_seen")}
                   </Button>
                   <ContestButton
-                    disabled={!hasRole}
-                    disabledReason={t("common:errors.reservations_role_required")}
+                    disabled={!hasRole || update.block.status !== "approved"}
+                    disabledReason={
+                      !hasRole
+                        ? t("common:errors.reservations_role_required")
+                        : t("updates.contest_unavailable")
+                    }
                     label={t("updates.actions.contest")}
                     onClick={() => setContestId(update.id)}
                   />

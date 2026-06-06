@@ -97,6 +97,27 @@ describe("OwnerBlockUpdatesPage", () => {
     await waitFor(() => expect(seenParams).toContain("false"));
   });
 
+  it("disables Contest on a cancelled block", async () => {
+    server.use(
+      http.get("/api/v1/owner-block-updates", () =>
+        HttpResponse.json(
+          drfPage([
+            update({
+              id: 2,
+              kind: "cancelled",
+              block: { ...update().block, status: "cancelled" },
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<OwnerBlockUpdatesPage />, { route: "/owner-blocks" });
+
+    const row = (await screen.findByText("Villa Anemoi")).closest("li") as HTMLElement;
+    expect(within(row).getByRole("button", { name: /contest/i })).toBeDisabled();
+  });
+
   it("marks a row seen via the per-row action", async () => {
     let seenCalledFor: number | null = null;
     server.use(

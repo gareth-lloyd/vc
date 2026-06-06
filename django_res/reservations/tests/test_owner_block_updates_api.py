@@ -115,6 +115,29 @@ def test_contest_flags_block_keeps_it_approved_and_marks_seen(api_client: APICli
     assert BookingHold.objects.get(pk=hold_id).is_live() is True
 
 
+def test_contest_on_cancelled_block_is_rejected(api_client: APIClient) -> None:
+    block = _block()
+    OwnerBlockService.cancel(block, actor=_staff())
+    cancelled_update = block.updates.get(kind=OwnerBlockUpdateKind.CANCELLED.value)
+    api_client.force_authenticate(_staff())
+
+    resp = api_client.post(
+        f"{LIST_URL}/{cancelled_update.id}:contest",
+        data={"reason": "too late"},
+        format="json",
+    )
+    assert resp.status_code == 409, resp.content
+    block.refresh_from_db()
+    assert block.contested_at is None
+
+
+def test_property_filter_rejects_non_numeric(api_client: APIClient) -> None:
+    _block()
+    api_client.force_authenticate(_staff())
+    resp = api_client.get(LIST_URL, {"property": "abc"})
+    assert resp.status_code == 400
+
+
 def test_seen_only_affects_caller(api_client: APIClient) -> None:
     update = _block().updates.get()
     alice, bob = _staff(), _staff()

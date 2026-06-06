@@ -18,6 +18,7 @@ from django.db.models import Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter, IsStaff
@@ -74,7 +75,9 @@ class OwnerBlockUpdateViewSet(viewsets.GenericViewSet):
                 qs = qs.exclude(seen_marks__user=user)
         property_id = request.query_params.get("property")
         if property_id:
-            qs = qs.filter(block__property_id=property_id)
+            if not property_id.isdigit():
+                raise ValidationError({"property": "Must be a numeric property id."})
+            qs = qs.filter(block__property_id=int(property_id))
         page = self.paginate_queryset(cast("Any", qs))
         ser = self.get_serializer(page if page is not None else qs, many=True)
         return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)

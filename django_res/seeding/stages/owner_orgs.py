@@ -86,7 +86,7 @@ def _run(ctx: SeedContext) -> int:
             prop.save(update_fields=["display_name"])
 
     made += _seed_view_only_member(org)
-    made += _seed_pending_block_request(org, user)
+    made += _seed_owner_block(org, user)
 
     return made
 
@@ -117,17 +117,18 @@ def _seed_view_only_member(org: OwnerOrganisation) -> int:
     return made
 
 
-def _seed_pending_block_request(org: OwnerOrganisation, requester: User) -> int:
-    """One PENDING OwnerBlock so the operator review queue has an item.
+def _seed_owner_block(org: OwnerOrganisation, requester: User) -> int:
+    """One APPROVED OwnerBlock so the staff owner-block feed has an item.
 
-    A pending request reserves nothing (no BookingHold until an operator
-    approves it), so it never perturbs the bookings count or calendar density
-    the seed-graph tests pin — unlike seeding an actual booking would.
+    A block occupies the calendar from creation (it places an indefinite
+    `BookingHold`), so the range is pushed far out (120 days) to avoid
+    perturbing the calendar density the seed-graph tests pin nearer term.
     """
     from datetime import date
 
-    from reservations.enums import OwnerBlockKind, OwnerBlockStatus
+    from reservations.enums import OwnerBlockKind
     from reservations.models import OwnerBlock
+    from reservations.services.owner_block import OwnerBlockService
 
     grant = (
         OwnerOrgProperty.objects.filter(organisation=org, end_date__isnull=True)
@@ -142,14 +143,13 @@ def _seed_pending_block_request(org: OwnerOrganisation, requester: User) -> int:
         return 0
 
     start = date.today() + timedelta(days=120)
-    OwnerBlock.objects.create(
+    OwnerBlockService.create(
         property=prop,
         created_by=requester,
         date_from=start,
         date_to=start + timedelta(days=7),
         kind=OwnerBlockKind.OWNER_STAY.value,
         notes="Family holiday — please hold.",
-        status=OwnerBlockStatus.PENDING.value,
     )
     return 1
 

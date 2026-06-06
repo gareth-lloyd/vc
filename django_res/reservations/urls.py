@@ -18,7 +18,6 @@ from reservations.views import (
     AvailabilityMultiView,
     AvailabilityReleaseHoldView,
     AvailabilitySearchView,
-    BlockRequestViewSet,
     BookingArchiveViewSet,
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
@@ -403,32 +402,11 @@ _owner_routes: list[URLPattern | URLResolver] = [
 ]
 
 
-# Operator-facing review queue for owner block requests.
-_block_request_routes: list[URLPattern | URLResolver] = [
-    path(
-        "block-requests",
-        BlockRequestViewSet.as_view({"get": "list"}),
-        name="block-request-list",
-    ),
-    path(
-        "block-requests/<int:pk>:approve",
-        BlockRequestViewSet.as_view({"post": "approve"}),
-        name="block-request-approve",
-    ),
-    path(
-        "block-requests/<int:pk>:decline",
-        BlockRequestViewSet.as_view({"post": "decline"}),
-        name="block-request-decline",
-    ),
-]
-
-
 urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
     *_owner_routes,
-    *_block_request_routes,
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,

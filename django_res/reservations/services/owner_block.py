@@ -1,11 +1,11 @@
-"""OwnerBlockService — lifecycle for owner availability-block requests.
+"""OwnerBlockService — lifecycle for owner availability blocks.
 
-A request reserves nothing while PENDING. Approval is where the real
-(indefinite) `BookingHold` is placed, so the overlap check that matters runs at
-*approve* time, not submit time: a booking could land in the requested range
-between submission and review. `HoldService.place` only guards against
-overlapping *holds* — no DB constraint spans the bookings↔holds tables — so the
-service explicitly rejects when a live booking occupies the range too.
+An owner blocking their own villa is not a request to be gate-kept: the block
+is created already APPROVED and the real (indefinite) `BookingHold` is placed in
+the same transaction, so the calendar is occupied immediately. The overlap check
+is therefore authoritative at create time. `HoldService.place` only guards
+against overlapping *holds* — no DB constraint spans the bookings↔holds tables —
+so the service also rejects when a live booking occupies the range.
 """
 
 from __future__ import annotations
@@ -14,15 +14,14 @@ from datetime import date as date_type
 from typing import TYPE_CHECKING
 
 from django.db import transaction
-from django.utils import timezone
 
-from core.exceptions import HoldUnavailable, InvalidTransition, OverlappingBooking
+from core.exceptions import InvalidTransition, OverlappingBooking
 from reservations.enums import (
     BookingHoldReason,
     OwnerBlockKind,
     OwnerBlockStatus,
 )
-from reservations.models import Booking, BookingHold, OwnerBlock
+from reservations.models import Booking, OwnerBlock
 from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:
@@ -36,7 +35,7 @@ _DEFAULT_HOLD_REASON = BookingHoldReason.OWNER_BLOCK.value
 
 
 class OwnerBlockService:
-    """Create / approve / decline / cancel owner block requests."""
+    """Create and cancel owner availability blocks."""
 
     @staticmethod
     def _assert_range_free(
@@ -70,20 +69,22 @@ class OwnerBlockService:
         kind: str = OwnerBlockKind.OWNER_STAY.value,
         notes: str = "",
     ) -> OwnerBlock:
-        """Submit a PENDING block request after an immediate-feedback overlap check.
+        """Create an APPROVED block and place its indefinite hold up front.
 
-        The submit-time check is advisory feedback for the owner; the
-        authoritative check runs again at approval, since the pending request
-        reserves nothing in the meantime.
+        The overlap guard is authoritative here, since the block occupies the
+        calendar the moment it exists. A *hold* conflict surfaces as
+        `HoldUnavailable` from `HoldService.place`; a *booking* conflict as
+        `OverlappingBooking`.
         """
         cls._assert_range_free(property=property, date_from=date_from, date_to=date_to)
-        if BookingHold.live_overlapping(
-            property=property, date_from=date_from, date_to=date_to
-        ).exists():
-            raise HoldUnavailable(
-                f"An overlapping live hold already exists for property "
-                f"{property.pk} on {date_from}..{date_to}"
-            )
+        hold = HoldService.place(
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+            never_expires=True,
+            reason=_KIND_TO_HOLD_REASON.get(kind, _DEFAULT_HOLD_REASON),
+            notes=notes,
+        )
         return OwnerBlock.objects.create(
             property=property,
             created_by=created_by,
@@ -91,110 +92,30 @@ class OwnerBlockService:
             date_to=date_to,
             kind=kind,
             notes=notes,
-            status=OwnerBlockStatus.PENDING.value,
+            status=OwnerBlockStatus.APPROVED.value,
+            resulting_hold=hold,
         )
-
-    @staticmethod
-    def _guard_pending(request: OwnerBlock, *, to: str) -> None:
-        if request.status != OwnerBlockStatus.PENDING.value:
-            raise InvalidTransition(request.status, to, allowed=[OwnerBlockStatus.PENDING.value])
-
-    @classmethod
-    @transaction.atomic
-    def approve(
-        cls,
-        request: OwnerBlock,
-        *,
-        actor: User | None = None,
-        review_note: str = "",
-    ) -> OwnerBlock:
-        """Approve a PENDING request: place the indefinite hold, mark APPROVED.
-
-        Re-runs the full overlap guard — this is the authoritative check. A
-        late-arriving *hold* conflict surfaces as `HoldUnavailable` from
-        `HoldService.place`; a *booking* conflict as `OverlappingBooking` here.
-        """
-        cls._guard_pending(request, to=OwnerBlockStatus.APPROVED.value)
-        cls._assert_range_free(
-            property=request.property,
-            date_from=request.date_from,
-            date_to=request.date_to,
-        )
-        hold = HoldService.place(
-            property=request.property,
-            date_from=request.date_from,
-            date_to=request.date_to,
-            never_expires=True,
-            reason=_KIND_TO_HOLD_REASON.get(request.kind, _DEFAULT_HOLD_REASON),
-            notes=request.notes,
-        )
-        request.status = OwnerBlockStatus.APPROVED.value
-        request.resulting_hold = hold
-        request.reviewed_by = actor
-        request.reviewed_at = timezone.now()
-        request.review_note = review_note
-        request.save(
-            update_fields=[
-                "status",
-                "resulting_hold",
-                "reviewed_by",
-                "reviewed_at",
-                "review_note",
-                "updated_at",
-            ]
-        )
-        return request
-
-    @classmethod
-    @transaction.atomic
-    def decline(
-        cls,
-        request: OwnerBlock,
-        review_note: str,
-        *,
-        actor: User | None = None,
-    ) -> OwnerBlock:
-        """Decline a PENDING request. No hold is created."""
-        cls._guard_pending(request, to=OwnerBlockStatus.DECLINED.value)
-        request.status = OwnerBlockStatus.DECLINED.value
-        request.reviewed_by = actor
-        request.reviewed_at = timezone.now()
-        request.review_note = review_note
-        request.save(
-            update_fields=["status", "reviewed_by", "reviewed_at", "review_note", "updated_at"]
-        )
-        return request
 
     @classmethod
     @transaction.atomic
     def cancel(
         cls,
-        request: OwnerBlock,
+        block: OwnerBlock,
         *,
         actor: User | None = None,
     ) -> OwnerBlock:
-        """Owner-initiated cancel.
+        """Cancel an APPROVED block: release its hold, mark CANCELLED.
 
-        PENDING → CANCELLED (nothing else to undo). APPROVED → release the
-        resulting hold (freeing the calendar) then CANCELLED. A request in a
-        terminal state (DECLINED/CANCELLED) is rejected.
+        A block already in a terminal state (CANCELLED) is rejected.
         """
-        if request.status not in (
-            OwnerBlockStatus.PENDING.value,
-            OwnerBlockStatus.APPROVED.value,
-        ):
+        if block.status != OwnerBlockStatus.APPROVED.value:
             raise InvalidTransition(
-                request.status,
+                block.status,
                 OwnerBlockStatus.CANCELLED.value,
-                allowed=[
-                    OwnerBlockStatus.PENDING.value,
-                    OwnerBlockStatus.APPROVED.value,
-                ],
+                allowed=[OwnerBlockStatus.APPROVED.value],
             )
-        if request.resulting_hold_id is not None and request.resulting_hold is not None:
-            HoldService.release(request.resulting_hold)
-        request.status = OwnerBlockStatus.CANCELLED.value
-        request.reviewed_by = actor
-        request.reviewed_at = timezone.now()
-        request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
-        return request
+        if block.resulting_hold_id is not None and block.resulting_hold is not None:
+            HoldService.release(block.resulting_hold)
+        block.status = OwnerBlockStatus.CANCELLED.value
+        block.save(update_fields=["status", "updated_at"])
+        return block

@@ -59,15 +59,17 @@ def test_seed_adds_view_only_member() -> None:
     assert view_only.user.email == "maria.kostas@example.com"
 
 
-def test_seed_builds_pending_block_request() -> None:
+def test_seed_builds_approved_owner_block() -> None:
     _seed()
     org = OwnerOrganisation.objects.get(name="Kostas Hospitality Ltd")
     property_ids = list(
         OwnerOrgProperty.objects.filter(organisation=org).values_list("property_id", flat=True)
     )
 
-    block_requests = OwnerBlock.objects.filter(property_id__in=property_ids)
-    assert block_requests.filter(status=OwnerBlockStatus.PENDING.value).exists()
+    blocks = OwnerBlock.objects.filter(property_id__in=property_ids)
+    block = blocks.get()
+    assert block.status == OwnerBlockStatus.APPROVED.value
+    assert block.resulting_hold_id is not None  # created-approved places the hold
 
 
 def test_seed_is_idempotent_for_owner_fixture() -> None:

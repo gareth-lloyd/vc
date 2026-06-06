@@ -1,14 +1,13 @@
-"""OwnerBlock — an owner's request to block their villa's availability.
+"""OwnerBlock — an owner blocking their own villa's availability.
 
-A pending request must NOT occupy the calendar: a live `BookingHold` is in the
-overlap-blocking set the moment it exists, so a *request* can't be modelled as
-one. This separate object carries the PENDING → APPROVED/DECLINED/CANCELLED
-lifecycle; only on operator approval does `OwnerBlockService` place the
-real (indefinite) hold and point `resulting_hold` at it.
+A block occupies the calendar from creation: `OwnerBlockService.create` places
+the real (indefinite) `BookingHold` and points `resulting_hold` at it in the
+same transaction, so the block is APPROVED immediately — there is no review
+gate. The owner may CANCEL it, which releases the hold.
 
-Lives in `reservations` (not `owners`) because approval creates a `BookingHold`
-— it FKs *down* to properties/accounts, never up. No soft delete: the `status`
-enum is the lifecycle.
+Lives in `reservations` (not `owners`) because it creates a `BookingHold` — it
+FKs *down* to properties/accounts, never up. No soft delete: the `status` enum
+is the lifecycle.
 """
 
 from __future__ import annotations
@@ -43,17 +42,8 @@ class OwnerBlock(TimestampedModel):
     status = models.CharField(
         max_length=16,
         choices=OwnerBlockStatus.choices,
-        default=OwnerBlockStatus.PENDING,
+        default=OwnerBlockStatus.APPROVED,
     )
-    reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
-    )
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    review_note = models.TextField(blank=True, default="")
     resulting_hold = models.ForeignKey(
         "reservations.BookingHold",
         null=True,
@@ -76,4 +66,4 @@ class OwnerBlock(TimestampedModel):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"Block request #{self.pk} on property {self.property_id} ({self.status})"
+        return f"Owner block #{self.pk} on property {self.property_id} ({self.status})"

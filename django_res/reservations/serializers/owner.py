@@ -104,7 +104,7 @@ class OwnerBookingDetailSerializer(OwnerBookingListSerializer):
 
 
 class OwnerBlockSerializer(serializers.ModelSerializer[OwnerBlock]):
-    """Owner-facing read view of a block request.
+    """Owner-facing read view of an availability block.
 
     Deliberately omits `resulting_hold` (the internal BookingHold id), mirroring
     the calendar's hold-id redaction — an owner never acts on the hold directly.
@@ -120,39 +120,13 @@ class OwnerBlockSerializer(serializers.ModelSerializer[OwnerBlock]):
             "kind",
             "notes",
             "status",
-            "review_note",
-            "reviewed_at",
-            "created_at",
-        ]
-        read_only_fields = fields
-
-
-class OperatorBlockRequestSerializer(serializers.ModelSerializer[OwnerBlock]):
-    """Staff-facing read view — exposes the full request including the
-    reviewer, requester, and the resulting hold id (operators act on these)."""
-
-    class Meta:
-        model = OwnerBlock
-        fields = [
-            "id",
-            "property",
-            "created_by",
-            "date_from",
-            "date_to",
-            "kind",
-            "notes",
-            "status",
-            "reviewed_by",
-            "reviewed_at",
-            "review_note",
-            "resulting_hold",
             "created_at",
         ]
         read_only_fields = fields
 
 
 class OwnerBlockWriteSerializer(serializers.Serializer):
-    """Validate a block-request submission. The view resolves + scopes `property`."""
+    """Validate a block submission. The view resolves + scopes `property`."""
 
     property = serializers.IntegerField()
     date_from = serializers.DateField()

@@ -19,15 +19,14 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db
 
 
-def test_defaults_to_pending(property_: Property) -> None:
-    req = OwnerBlock.objects.create(
+def test_defaults_to_approved(property_: Property) -> None:
+    block = OwnerBlock.objects.create(
         property=property_,
         created_by=cast(User, UserFactory()),
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
     )
-    assert req.status == OwnerBlockStatus.PENDING
-    assert req.resulting_hold_id is None
+    assert block.status == OwnerBlockStatus.APPROVED
 
 
 def test_rejects_inverted_date_range(property_: Property) -> None:

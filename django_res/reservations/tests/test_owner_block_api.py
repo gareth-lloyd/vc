@@ -60,7 +60,7 @@ def _payload(prop: Property) -> dict[str, object]:
     }
 
 
-def test_create_block_request(api_client: APIClient) -> None:
+def test_create_block_is_approved_immediately(api_client: APIClient) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     prop = _granted_property(org)
@@ -69,9 +69,22 @@ def test_create_block_request(api_client: APIClient) -> None:
     resp = api_client.post(LIST_URL, data=_payload(prop), format="json")
     assert resp.status_code == 201, resp.content
     body = resp.json()
-    assert body["status"] == OwnerBlockStatus.PENDING.value
-    assert "resulting_hold" not in body
-    assert OwnerBlock.objects.filter(created_by=user, property=prop).count() == 1
+    assert body["status"] == OwnerBlockStatus.APPROVED.value
+    assert "resulting_hold" not in body  # internal hold id stays redacted
+    block = OwnerBlock.objects.get(created_by=user, property=prop)
+    assert block.resulting_hold_id is not None  # the hold is placed up front
+
+
+def test_create_conflicting_range_returns_409(api_client: APIClient) -> None:
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    prop = _granted_property(org)
+    api_client.force_authenticate(user)
+
+    assert api_client.post(LIST_URL, data=_payload(prop), format="json").status_code == 201
+    # The block now occupies the calendar, so an overlapping second block 409s.
+    resp = api_client.post(LIST_URL, data=_payload(prop), format="json")
+    assert resp.status_code == 409, resp.content
 
 
 def test_staff_non_owner_gets_403(api_client: APIClient) -> None:

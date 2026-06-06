@@ -149,16 +149,15 @@ class OwnerBlockKind(models.TextChoices):
 
 
 class OwnerBlockStatus(models.TextChoices):
-    """Lifecycle of an owner-submitted availability block request.
+    """Lifecycle of an owner availability block.
 
-    A PENDING request reserves nothing — only on APPROVED does the operator
-    action create the real (indefinite) `BookingHold`. No soft delete; the
-    enum is the lifecycle.
+    A block is APPROVED the moment it is created — the indefinite `BookingHold`
+    is placed up front, so the block occupies the calendar immediately. The
+    owner may CANCEL it, which releases the hold. No soft delete; the enum is
+    the lifecycle.
     """
 
-    PENDING = "pending", "Pending"
     APPROVED = "approved", "Approved"
-    DECLINED = "declined", "Declined"
     CANCELLED = "cancelled", "Cancelled"
 
 

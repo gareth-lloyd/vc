@@ -30,6 +30,7 @@ from reservations.views.owner import (
     OwnerDashboardView,
     OwnerPropertyCalendarView,
 )
+from reservations.views.owner_block_update import OwnerBlockUpdateViewSet
 from reservations.views.quotation import QuotationLineViewSet, QuotationViewSet
 from reservations.views.terms import (
     TermsVersionCurrentView,
@@ -55,6 +56,7 @@ __all__ = [
     "GuestAnonymizeView",
     "GuestMergeView",
     "GuestViewSet",
+    "OwnerBlockUpdateViewSet",
     "OwnerBlockViewSet",
     "OwnerBookingViewSet",
     "OwnerDashboardView",

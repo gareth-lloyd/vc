@@ -17,11 +17,19 @@ from reservations.enums import (
     BookingStatus,
     OwnerBlockKind,
     OwnerBlockStatus,
+    OwnerBlockUpdateKind,
     PaymentMethod,
 )
-from reservations.models import Booking, BookingHold, Quotation, QuotationLine
+from reservations.models import (
+    Booking,
+    BookingHold,
+    OwnerBlockUpdateSeen,
+    Quotation,
+    QuotationLine,
+)
 from reservations.services.holds import HoldService
 from reservations.services.owner_block import OwnerBlockService
+from reservations.signals import owner_block_contested
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -165,3 +173,99 @@ def test_cancel_rejects_already_cancelled(property_: Property) -> None:
     OwnerBlockService.cancel(block, actor=_user())
     with pytest.raises(InvalidTransition):
         OwnerBlockService.cancel(block, actor=_user())
+
+
+# --- feed updates -----------------------------------------------------------
+
+
+def test_create_appends_created_update(property_: Property) -> None:
+    creator = _user()
+    block = OwnerBlockService.create(
+        property=property_, created_by=creator, date_from=FROM, date_to=TO
+    )
+    updates = list(block.updates.all())
+    assert len(updates) == 1
+    assert updates[0].kind == OwnerBlockUpdateKind.CREATED.value
+    assert updates[0].actor_id == creator.id
+
+
+def test_cancel_appends_cancelled_update(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    canceller = _user()
+    OwnerBlockService.cancel(block, actor=canceller)
+
+    kinds = list(block.updates.order_by("created_at").values_list("kind", flat=True))
+    assert kinds == [OwnerBlockUpdateKind.CREATED.value, OwnerBlockUpdateKind.CANCELLED.value]
+    cancelled = block.updates.get(kind=OwnerBlockUpdateKind.CANCELLED.value)
+    assert cancelled.actor_id == canceller.id
+
+
+# --- contest ----------------------------------------------------------------
+
+
+def test_contest_flags_block_and_keeps_it_approved(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    hold_id = block.resulting_hold_id
+    assert hold_id is not None
+    staff = _user()
+
+    OwnerBlockService.contest(block, actor=staff, reason="Guest enquiry for these dates")
+    block.refresh_from_db()
+
+    assert block.status == OwnerBlockStatus.APPROVED.value  # stays approved
+    assert block.contested_at is not None
+    assert block.contested_by_id == staff.id
+    assert block.contest_reason == "Guest enquiry for these dates"
+    hold = BookingHold.objects.get(pk=hold_id)
+    assert hold.is_live() is True  # the hold is untouched
+
+
+def test_contest_fires_signal_once(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    received: list[dict[str, object]] = []
+
+    def _receiver(sender: object, **kwargs: object) -> None:
+        received.append(kwargs)
+
+    owner_block_contested.connect(_receiver, dispatch_uid="test.contest")
+    try:
+        OwnerBlockService.contest(block, actor=_user(), reason="please confirm")
+    finally:
+        owner_block_contested.disconnect(dispatch_uid="test.contest")
+
+    assert len(received) == 1
+    assert received[0]["block"] is block
+    assert received[0]["reason"] == "please confirm"
+
+
+def test_contest_rejects_empty_reason(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    with pytest.raises(ValueError):
+        OwnerBlockService.contest(block, actor=_user(), reason="   ")
+    block.refresh_from_db()
+    assert block.contested_at is None
+
+
+# --- mark_seen --------------------------------------------------------------
+
+
+def test_mark_seen_is_idempotent_and_per_user(property_: Property) -> None:
+    block = OwnerBlockService.create(
+        property=property_, created_by=_user(), date_from=FROM, date_to=TO
+    )
+    update = block.updates.get()
+    alice, bob = _user(), _user()
+
+    OwnerBlockService.mark_seen(update, user=alice)
+    OwnerBlockService.mark_seen(update, user=alice)  # idempotent
+    assert OwnerBlockUpdateSeen.objects.filter(update=update, user=alice).count() == 1
+    # Bob's view is independent — he has not seen it.
+    assert not OwnerBlockUpdateSeen.objects.filter(update=update, user=bob).exists()

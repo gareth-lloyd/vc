@@ -402,11 +402,37 @@ _owner_routes: list[URLPattern | URLResolver] = [
 ]
 
 
+# Staff-facing owner-block awareness feed.
+_owner_block_update_routes: list[URLPattern | URLResolver] = [
+    path(
+        "owner-block-updates",
+        views.OwnerBlockUpdateViewSet.as_view({"get": "list"}),
+        name="owner-block-update-list",
+    ),
+    path(
+        "owner-block-updates/<int:pk>:seen",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "seen"}),
+        name="owner-block-update-seen",
+    ),
+    path(
+        "owner-block-updates/<int:pk>:unseen",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "unseen"}),
+        name="owner-block-update-unseen",
+    ),
+    path(
+        "owner-block-updates/<int:pk>:contest",
+        views.OwnerBlockUpdateViewSet.as_view({"post": "contest"}),
+        name="owner-block-update-contest",
+    ),
+]
+
+
 urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
     *_owner_routes,
+    *_owner_block_update_routes,
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,

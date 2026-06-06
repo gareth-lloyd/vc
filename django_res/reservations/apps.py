@@ -103,8 +103,8 @@ class ReservationsConfig(AppConfig):
             ],
         )
         # OwnerBlock: the owner-initiated availability-block lifecycle.
-        # Who created or cancelled a block and the hold it produced is the
-        # trail an operator review of owner actions needs.
+        # Who created, cancelled, or contested a block and the hold it produced
+        # is the trail an operator review of owner actions needs.
         track(
             OwnerBlock,
             fields=[
@@ -115,5 +115,7 @@ class ReservationsConfig(AppConfig):
                 "kind",
                 "status",
                 "resulting_hold_id",
+                "contested_at",
+                "contested_by_id",
             ],
         )

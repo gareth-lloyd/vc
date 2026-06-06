@@ -51,6 +51,18 @@ class OwnerBlock(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="+",
     )
+    # Contest is a flag orthogonal to the lifecycle: staff can dispute the
+    # dates, which notifies the owner but keeps the block APPROVED (the hold
+    # stays). A null `contested_at` means "not contested".
+    contested_at = models.DateTimeField(null=True, blank=True)
+    contested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    contest_reason = models.TextField(blank=True, default="")
 
     class Meta:
         indexes = [

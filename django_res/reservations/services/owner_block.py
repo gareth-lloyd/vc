@@ -14,15 +14,23 @@ from datetime import date as date_type
 from typing import TYPE_CHECKING
 
 from django.db import transaction
+from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
 from reservations.enums import (
     BookingHoldReason,
     OwnerBlockKind,
     OwnerBlockStatus,
+    OwnerBlockUpdateKind,
 )
-from reservations.models import Booking, OwnerBlock
+from reservations.models import (
+    Booking,
+    OwnerBlock,
+    OwnerBlockUpdate,
+    OwnerBlockUpdateSeen,
+)
 from reservations.services.holds import HoldService
+from reservations.signals import owner_block_contested
 
 if TYPE_CHECKING:
     from accounts.models import User
@@ -85,7 +93,7 @@ class OwnerBlockService:
             reason=_KIND_TO_HOLD_REASON.get(kind, _DEFAULT_HOLD_REASON),
             notes=notes,
         )
-        return OwnerBlock.objects.create(
+        block = OwnerBlock.objects.create(
             property=property,
             created_by=created_by,
             date_from=date_from,
@@ -95,6 +103,12 @@ class OwnerBlockService:
             status=OwnerBlockStatus.APPROVED.value,
             resulting_hold=hold,
         )
+        OwnerBlockUpdate.objects.create(
+            block=block,
+            kind=OwnerBlockUpdateKind.CREATED.value,
+            actor=created_by,
+        )
+        return block
 
     @classmethod
     @transaction.atomic
@@ -118,4 +132,46 @@ class OwnerBlockService:
             HoldService.release(block.resulting_hold)
         block.status = OwnerBlockStatus.CANCELLED.value
         block.save(update_fields=["status", "updated_at"])
+        OwnerBlockUpdate.objects.create(
+            block=block,
+            kind=OwnerBlockUpdateKind.CANCELLED.value,
+            actor=actor,
+        )
         return block
+
+    @classmethod
+    @transaction.atomic
+    def contest(
+        cls,
+        block: OwnerBlock,
+        *,
+        actor: User,
+        reason: str,
+    ) -> OwnerBlock:
+        """Flag a block as contested and notify the owner; keep it APPROVED.
+
+        Contest disputes the *dates*, not a single feed event — the flag lives
+        on the block, so every update row for it surfaces the contested state.
+        The block stays APPROVED and the hold is untouched; the only effect is
+        the flag plus an `owner_block_contested` signal the comms app turns into
+        an email to the property's primary owner.
+        """
+        if not reason.strip():
+            raise ValueError("A contest reason is required.")
+        block.contested_at = timezone.now()
+        block.contested_by = actor
+        block.contest_reason = reason
+        block.save(update_fields=["contested_at", "contested_by", "contest_reason", "updated_at"])
+        owner_block_contested.send(
+            sender=OwnerBlock,
+            block=block,
+            actor=actor,
+            reason=reason,
+        )
+        return block
+
+    @staticmethod
+    def mark_seen(update: OwnerBlockUpdate, *, user: User) -> OwnerBlockUpdateSeen:
+        """Mark a feed update seen for one staff user (idempotent, per-user)."""
+        seen, _ = OwnerBlockUpdateSeen.objects.get_or_create(update=update, user=user)
+        return seen

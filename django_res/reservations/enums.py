@@ -161,6 +161,13 @@ class OwnerBlockStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class OwnerBlockUpdateKind(models.TextChoices):
+    """The change event surfaced in the staff owner-block feed."""
+
+    CREATED = "created", "Created"
+    CANCELLED = "cancelled", "Cancelled"
+
+
 class EventSource(models.TextChoices):
     USER = "user", "User"
     OWNER = "owner", "Owner"

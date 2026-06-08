@@ -260,6 +260,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
+      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
       http.post("/api/v1/enquiries", async ({ request }) => {
         payload = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
@@ -293,6 +294,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
+      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
       http.post("/api/v1/enquiries", async ({ request }) => {
         payload = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
@@ -320,7 +322,10 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
   });
 
   it("hydrates the picker from an already-linked guest in edit mode", async () => {
-    server.use(http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)));
+    server.use(
+      http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)),
+      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+    );
 
     const enquiry = {
       id: 12,

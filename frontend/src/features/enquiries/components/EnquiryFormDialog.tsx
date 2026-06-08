@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { GuestPicker } from "@/features/guests/components/GuestPicker";
+import { GuestEnquiryHistory } from "@/features/guests/components/GuestEnquiryHistory";
 import { useGuest } from "@/features/guests/hooks";
 import type { Guest } from "@/features/guests/schemas";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
@@ -247,6 +248,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
               ) : null}
             </div>
             <p className="text-muted-foreground text-xs">{t("form_dialog.fields.guest_hint")}</p>
+            {selectedGuest ? <GuestEnquiryHistory guestId={selectedGuest.id} /> : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

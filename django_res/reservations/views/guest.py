@@ -41,9 +41,7 @@ def _enquiry_history_prefetch() -> Prefetch:
         "id", "reference", "status", "is_archived", "created_at", "quotation_line_id"
     )
     lines = QuotationLine.objects.prefetch_related(Prefetch("bookings", queryset=bookings))
-    quotations = Quotation.objects.exclude(legacy_id__startswith="booking-").prefetch_related(
-        Prefetch("lines", queryset=lines)
-    )
+    quotations = Quotation.objects.real().prefetch_related(Prefetch("lines", queryset=lines))
     return Prefetch("quotations", queryset=quotations)
 
 

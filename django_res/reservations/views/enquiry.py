@@ -31,9 +31,9 @@ def _quotations_prefetch() -> Prefetch:
     """The quote-stack prefetch the detail serializer walks (`.quotations.lines`)."""
     return Prefetch(
         "quotations",
-        queryset=Quotation.objects.select_related(
-            "guest", "agent", "currency", "enquiry"
-        ).prefetch_related("lines"),
+        queryset=Quotation.objects.real()
+        .select_related("guest", "agent", "currency", "enquiry")
+        .prefetch_related("lines"),
     )
 
 

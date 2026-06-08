@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition
@@ -42,6 +42,45 @@ def line(quotation: Quotation, property_: Property) -> QuotationLine:
 @pytest.mark.django_db
 def test_quotation_reference_auto_generated(quotation: Quotation) -> None:
     assert quotation.reference.startswith("QVC")
+
+
+@pytest.mark.django_db
+def test_real_excludes_booking_synthesised_quotations(
+    guest: Guest, gbp: Currency, terms: TermsVersion
+) -> None:
+    """`.real()` is the shared filter every Quotation-surfacing read routes
+    through — it drops the BookingLoader's `booking-` legacy-fill rows."""
+    enquiry = guest.enquiries.create()
+    real = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+        legacy_id="booking-999",
+    )
+
+    assert list(Quotation.objects.real()) == [real]
+
+
+@pytest.mark.django_db
+def test_enquiry_fk_is_protected_and_required(quotation: Quotation) -> None:
+    """`Quotation.enquiry` is the now load-bearing spine link — NOT NULL and
+    PROTECT, so the parent enquiry can't be orphaned or deleted out from under
+    its quotes (migration 0022 back-filled and tightened this)."""
+    field = Quotation._meta.get_field("enquiry")
+    assert field.null is False
+    assert field.remote_field.on_delete is models.PROTECT
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        quotation.enquiry.delete()
 
 
 @pytest.mark.django_db

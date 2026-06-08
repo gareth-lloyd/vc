@@ -15,8 +15,25 @@ from core.refs import next_quotation_number, quotation_reference
 from reservations.enums import EnquiryStatus, QuotationStatus
 
 
+class QuotationQuerySet(models.QuerySet["Quotation"]):
+    """Quotation queryset with the shared `booking-` synthetic filter."""
+
+    def real(self) -> QuotationQuerySet:
+        """Exclude booking-synthesised quotations.
+
+        `BookingLoader` back-fills a synthetic Quotation (`legacy_id` prefixed
+        `booking-`) for every imported booking so the legacy quote-history walk
+        has a row to hang off. Those are an internal fill artefact and must
+        never surface in any operator-facing list — every viewset that reads
+        Quotations routes through here (see `django_res/CLAUDE.md`).
+        """
+        return self.exclude(legacy_id__startswith="booking-")
+
+
 class Quotation(AuditedModel):
     """Operator-issued quote — DRAFT → SENT → ACCEPTED / EXPIRED / CANCELLED."""
+
+    objects = QuotationQuerySet.as_manager()
 
     reference = models.CharField(max_length=32, unique=True)
     number = models.PositiveIntegerField(null=True, blank=True, unique=True)

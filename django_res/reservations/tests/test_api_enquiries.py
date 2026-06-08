@@ -264,6 +264,42 @@ def test_enquiry_detail_includes_nested_quotations(
 
 
 @pytest.mark.django_db
+def test_enquiry_detail_excludes_synthetic_booking_quotations(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Booking-synthesised quotations (`legacy_id` prefixed `booking-`) are an
+    internal fill artefact and must never surface in the enquiry quote-stack —
+    the same exclusion every other Quotation-surfacing viewset applies."""
+    real = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+        legacy_id="booking-12345",
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    quotation_refs = {row["reference"] for row in response.data["quotations"]}
+    assert quotation_refs == {real.reference}
+
+
+@pytest.mark.django_db
 def test_enquiry_list_does_not_include_nested_quotations(
     api_client: APIClient,
     staff: User,

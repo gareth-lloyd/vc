@@ -1,6 +1,7 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { quotationDetailSchema } from "@/features/quotations/schemas";
 
 export const enquiryStatusSchema = z.enum(["new", "contacted", "quoted", "lost", "converted"]);
 export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
@@ -70,6 +71,9 @@ export const enquiryDetailSchema = enquiryListItemSchema.extend({
   min_bedrooms: z.number().nullable().optional(),
   referral_code: z.string().optional().default(""),
   inbound_message: z.string().optional().default(""),
+  // The full quote-stack the merged workspace renders inline. The backend
+  // already excludes `booking-` synthetic rows (see `Quotation.objects.real()`).
+  quotations: z.array(quotationDetailSchema).optional().default([]),
 });
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>;
 

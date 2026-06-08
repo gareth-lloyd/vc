@@ -40,12 +40,13 @@ from reservations.views.status_counts import StatusCountsMixin
 class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     """`/quotations` CRUD + colon-verb actions."""
 
-    # Booking-synthesised quotations (`legacy_id` prefixed `booking-`) are
-    # internal fixtures created by the data-migration loader so legacy bookings
-    # can satisfy the QuotationLine PROTECT FK. They aren't real quotes and
-    # must not surface in the public API.
+    # `.real()` drops booking-synthesised quotations (`legacy_id` prefixed
+    # `booking-`) — internal fixtures the data-migration loader creates so
+    # legacy bookings can satisfy the QuotationLine PROTECT FK. They aren't
+    # real quotes and must not surface in the public API.
     queryset = (
-        Quotation.objects.select_related(
+        Quotation.objects.real()
+        .select_related(
             "currency",
             "guest",
             "enquiry",
@@ -55,7 +56,6 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         # hero_image_url from its property's images — prefetch the whole
         # walk so a quotation with N lines stays at a constant query count.
         .prefetch_related("lines__property__images")
-        .exclude(legacy_id__startswith="booking-")
     )
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter

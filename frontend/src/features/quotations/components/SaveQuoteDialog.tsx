@@ -124,11 +124,23 @@ export function SaveQuoteDialog({
           setTopLevelError(t("builder.save.errors.no_contact_channel"));
           return;
         }
+        // Carry the enquiry's preferred channel onto the guest, but only when
+        // the channel it requires was actually captured — an email preference
+        // needs an email; phone/sms need a phone. Forwarding it blind would
+        // trip the server's contactability CHECK (a confusing 400 at save).
+        const cm = enquiry.contact_method;
+        const carryContactMethod =
+          (cm === "email" && enquiry.email) ||
+          (cm === "phone" && enquiry.phone) ||
+          (cm === "sms" && enquiry.phone)
+            ? cm
+            : undefined;
         const guest = await createGuest.mutateAsync({
           first_name: enquiry.first_name || t("builder.save.placeholder_first_name"),
           last_name: enquiry.last_name || t("builder.save.placeholder_last_name"),
           ...(enquiry.email ? { email: enquiry.email } : {}),
           ...(enquiry.phone ? { phone: enquiry.phone } : {}),
+          ...(carryContactMethod ? { contact_method: carryContactMethod } : {}),
         });
         guestId = guest.id;
       }

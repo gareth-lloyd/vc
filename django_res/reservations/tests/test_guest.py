@@ -6,11 +6,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
+from core.models import AuditLog
 from pricing.models import Currency
 from properties.models import Property
-from reservations.enums import GuestStatus, PaymentMethod
+from reservations.enums import ContactMethod, GuestStatus, PaymentMethod
 from reservations.models import (
     Booking,
     Guest,
@@ -107,3 +109,19 @@ def test_merge_rewrites_fks_and_hard_deletes_source(
 def test_merge_into_self_raises(guest: Guest) -> None:
     with pytest.raises(ValueError):
         guest.merge(guest)
+
+
+@pytest.mark.django_db
+def test_changing_contact_method_writes_audit_row(guest: Guest) -> None:
+    """The preferred-channel change must be captured in the AuditLog trail,
+    not just registered in the audit registry."""
+    # The fixture guest has an email but no phone, so EMAIL is the
+    # contactability-valid preference to switch to.
+    guest.contact_method = ContactMethod.EMAIL.value
+    guest.save(update_fields=["contact_method"])
+
+    ct = ContentType.objects.get_for_model(Guest)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(guest.pk))
+    matching = [r for r in rows if "contact_method" in r.field_diffs]
+    assert matching, "expected an AuditLog row capturing the contact_method change"
+    assert matching[-1].field_diffs["contact_method"][1] == ContactMethod.EMAIL.value

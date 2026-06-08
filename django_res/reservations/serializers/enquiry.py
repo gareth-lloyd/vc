@@ -132,6 +132,7 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "last_name",
             "email",
             "phone",
+            "contact_method",
             "property",
             "region",
             "date_from",

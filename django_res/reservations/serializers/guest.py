@@ -6,7 +6,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from reservations.enums import ContactMethod, GuestStatus
+from reservations.enums import ContactMethod, GuestStatus, QuotationStatus
 from reservations.models import Booking, Enquiry, Guest, Quotation
 
 
@@ -108,17 +108,71 @@ class GuestBookingSerializer(serializers.ModelSerializer[Booking]):
 
 
 class GuestEnquirySerializer(serializers.ModelSerializer[Enquiry]):
+    """Enquiry history row for `/guests/{id}/enquiries`, enriched with the
+    real quote count and the converted booking (if any).
+
+    Both computed fields read off `obj.quotations.all()` — never a fresh
+    `.filter()` — so they reuse the 3-level prefetch the viewset installs
+    (`GuestViewSet.enquiries`) and stay query-bounded. When the cache is not
+    primed they fall back to live SELECTs and remain correct.
+
+    `quote_count` and the converted-booking walk exclude `booking-`-prefixed
+    synthetic quotations (the BookingLoader legacy-fill rows) — those leak into
+    no public API and would otherwise inflate the count / mis-attribute a
+    conversion.
+
+    `converted_booking` rule: among this enquiry's ACCEPTED quotations'
+    selected lines, the *most-recently-created non-archived* Booking; `null` if
+    none. Plural/ambiguous graphs (re-books, cancellations) collapse to the
+    live booking, never a superseded one.
+    """
+
+    quote_count = serializers.SerializerMethodField()
+    converted_booking = serializers.SerializerMethodField()
+
     class Meta:
         model = Enquiry
         fields = [
             "id",
             "reference",
             "status",
-            "source",
+            "site_source",
+            "request_type",
+            "created_at",
+            "quote_count",
+            "converted_booking",
+        ]
+        read_only_fields = [
+            "id",
+            "reference",
+            "status",
+            "site_source",
             "request_type",
             "created_at",
         ]
-        read_only_fields = fields
+
+    @staticmethod
+    def _real_quotations(obj: Enquiry) -> list[Quotation]:
+        return [q for q in obj.quotations.all() if not (q.legacy_id or "").startswith("booking-")]
+
+    def get_quote_count(self, obj: Enquiry) -> int:
+        return len(self._real_quotations(obj))
+
+    def get_converted_booking(self, obj: Enquiry) -> dict[str, Any] | None:
+        accepted = QuotationStatus.ACCEPTED.value
+        bookings = [
+            booking
+            for quotation in self._real_quotations(obj)
+            if quotation.status == accepted
+            for line in quotation.lines.all()
+            if line.is_selected
+            for booking in line.bookings.all()
+            if not booking.is_archived
+        ]
+        if not bookings:
+            return None
+        best = max(bookings, key=lambda b: b.created_at)
+        return {"reference": best.reference, "status": best.status}
 
 
 class GuestQuotationSerializer(serializers.ModelSerializer[Quotation]):

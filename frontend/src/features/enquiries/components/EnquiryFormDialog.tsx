@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
@@ -27,14 +27,23 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
+import { GuestPicker } from "@/features/guests/components/GuestPicker";
+import { GuestEnquiryHistory } from "@/features/guests/components/GuestEnquiryHistory";
+import { useGuest } from "@/features/guests/hooks";
+import type { Guest } from "@/features/guests/schemas";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
 import {
+  contactMethodOptions,
   enquirySourceOptions,
   enquiryRequestTypeOptions,
   enquiryWriteInputSchema,
   type EnquiryDetail,
   type EnquiryWriteInput,
 } from "../schemas";
+
+// shadcn/radix Select forbids an empty-string item value, so "no preference"
+// rides a sentinel that maps to `null` on the way in/out of the form.
+const CONTACT_METHOD_NONE = "none";
 
 interface CommonProps {
   open: boolean;
@@ -70,6 +79,7 @@ function shiftIsoDate(iso: string, delta: number): string {
 }
 
 const CREATE_DEFAULTS: EnquiryWriteInput = {
+  guest: null,
   first_name: "",
   last_name: "",
   email: "",
@@ -81,16 +91,18 @@ const CREATE_DEFAULTS: EnquiryWriteInput = {
   children: 0,
   min_bedrooms: null,
   request_type: "quote",
+  contact_method: null,
   site_source: "main_website",
   inbound_message: "",
 };
 
 function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
   return {
+    guest: enq.guest ?? null,
     first_name: enq.first_name ?? "",
     last_name: enq.last_name ?? "",
     email: enq.email ?? "",
-    phone: "",
+    phone: enq.phone ?? "",
     date_from: enq.date_from ?? "",
     date_to: enq.date_to ?? "",
     is_flexible: enq.is_flexible ?? false,
@@ -98,6 +110,7 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
     children: enq.children ?? 0,
     min_bedrooms: enq.min_bedrooms ?? null,
     request_type: enq.request_type,
+    contact_method: enq.contact_method ?? null,
     site_source: enq.site_source,
     inbound_message: enq.inbound_message ?? "",
   };
@@ -124,18 +137,59 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const updateMutation = useUpdateEnquiry(isCreate ? 0 : props.enquiry.id);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
+  // The resolved existing guest, if any. Drives the picker label and (in
+  // M3-F4) the history panel. Edits to the denorm fields after picking update
+  // the enquiry's columns only — never the linked Guest row.
+  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
+  const linkedGuestId = isCreate ? undefined : (props.enquiry.guest ?? undefined);
+  const linkedGuestQuery = useGuest(linkedGuestId);
+  // Edit-mode hydration runs exactly once per open: the first of {linked-guest
+  // fetch resolves, operator picks/clears} claims it. Without this latch a
+  // deliberate Unlink (selectedGuest → null) would be instantly reverted by the
+  // hydration effect, and a late-arriving fetch could clobber an in-session pick.
+  const didHydrateRef = useRef(false);
+
   useEffect(() => {
     if (open) {
       form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry));
       setTopLevelError(null);
       setSpread(MIN_SPREAD);
+      setSelectedGuest(null);
+      didHydrateRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.enquiry.id]);
 
+  useEffect(() => {
+    if (open && !didHydrateRef.current && linkedGuestQuery.data) {
+      didHydrateRef.current = true;
+      setSelectedGuest(linkedGuestQuery.data);
+    }
+  }, [open, linkedGuestQuery.data]);
+
+  const handleGuestSelect = (guest: Guest) => {
+    didHydrateRef.current = true;
+    setSelectedGuest(guest);
+    form.setValue("guest", guest.id);
+    // Prefill the denorm capture fields from the linked guest. These remain
+    // editable; editing them updates the enquiry only, not the Guest.
+    form.setValue("first_name", guest.first_name);
+    form.setValue("last_name", guest.last_name);
+    form.setValue("email", guest.email ?? "");
+    form.setValue("phone", guest.phone ?? "");
+    form.setValue("contact_method", guest.contact_method ?? null);
+  };
+
+  const handleGuestClear = () => {
+    didHydrateRef.current = true;
+    setSelectedGuest(null);
+    form.setValue("guest", null);
+  };
+
   const requestTypeCtrl = useController({ control: form.control, name: "request_type" });
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
   const flexibleCtrl = useController({ control: form.control, name: "is_flexible" });
+  const contactMethodCtrl = useController({ control: form.control, name: "contact_method" });
 
   // Watch the typed dates so the widened preview updates as the operator types.
   const requestedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
@@ -184,6 +238,26 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <Label>{t("form_dialog.fields.guest")}</Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <GuestPicker
+                  value={selectedGuest}
+                  onChange={handleGuestSelect}
+                  onCreateNew={handleGuestClear}
+                />
+              </div>
+              {selectedGuest ? (
+                <Button type="button" variant="ghost" size="sm" onClick={handleGuestClear}>
+                  {t("form_dialog.actions.unlink_guest")}
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-muted-foreground text-xs">{t("form_dialog.fields.guest_hint")}</p>
+            {selectedGuest ? <GuestEnquiryHistory guestId={selectedGuest.id} /> : null}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="enq-first-name">{t("form_dialog.fields.first_name")}</Label>
@@ -208,6 +282,39 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
                 {form.formState.errors.email.message}
               </p>
             ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="enq-phone">{t("form_dialog.fields.phone")}</Label>
+              <Input id="enq-phone" type="tel" {...form.register("phone")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="enq-contact-method">{t("form_dialog.fields.contact_method")}</Label>
+              <Select
+                value={contactMethodCtrl.field.value ?? CONTACT_METHOD_NONE}
+                onValueChange={(v) =>
+                  contactMethodCtrl.field.onChange(v === CONTACT_METHOD_NONE ? null : v)
+                }
+              >
+                <SelectTrigger
+                  id="enq-contact-method"
+                  aria-label={t("form_dialog.fields.contact_method_aria")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={CONTACT_METHOD_NONE}>
+                    {t("form_dialog.fields.contact_method_none")}
+                  </SelectItem>
+                  {contactMethodOptions().map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

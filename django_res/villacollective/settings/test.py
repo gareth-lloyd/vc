@@ -7,6 +7,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from core.logging.config import configure_structlog
+
 from .base import *  # noqa: F403
 
 # ImageField writes (e.g. PropertyFactory's hero image) are not rolled back
@@ -41,8 +43,18 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # Mirror base ordering: RequestMiddleware just outside AuditMiddleware, so
+    # request-lifecycle logging + correlation-id adoption fire under pytest too.
+    "django_structlog.middlewares.RequestMiddleware",
     "core.middleware.AuditMiddleware",
 ]
 
 # Tests exercise the seed_dev command; the guardrail must allow it here.
 SEED_DEV_ALLOWED = True
+
+ENVIRONMENT = "test"
+# Console renderer (no colour, no JSON) keeps pytest output readable, and
+# cache_logger_on_first_use=False is required for `structlog.testing.capture_logs`
+# to intercept already-imported module-level loggers.
+LOG_JSON = False
+LOGGING = configure_structlog(json_logs=False, level="WARNING", cache=False, console_colors=False)

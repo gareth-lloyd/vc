@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+import structlog
 from django.conf import settings as django_settings
 from whitenoise.middleware import WhiteNoiseMiddleware
 
@@ -53,6 +55,17 @@ class MediaWhiteNoiseMiddleware(WhiteNoiseMiddleware):
 
 
 class AuditMiddleware:
+    """Set the audit user/correlation context for the request.
+
+    Runs just inside ``django_structlog``'s ``RequestMiddleware``, which has
+    already bound a ``request_id`` into structlog's contextvars. We adopt that
+    id as the audit ``correlation_id`` so a structured log line (carrying
+    ``request_id``) joins directly to the ``AuditLog`` rows written during the
+    same request (stamped with ``correlation_id``). If no usable ``request_id``
+    is present (admin, non-HTTP, or RequestMiddleware not in the chain),
+    ``correlation()`` mints its own — the join is best-effort, never required.
+    """
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
 
@@ -63,7 +76,22 @@ class AuditMiddleware:
         else:
             set_current_user(None)
         try:
-            with correlation():
+            with correlation(self._adopted_request_id()) as cid:
+                # Alias the id under `correlation_id` too, so a log search can
+                # match either key and they are guaranteed identical.
+                structlog.contextvars.bind_contextvars(correlation_id=str(cid))
                 return self.get_response(request)
         finally:
             clear_current_user()
+
+    @staticmethod
+    def _adopted_request_id() -> uuid.UUID | None:
+        """The structlog-bound request_id as a UUID, or None to mint a fresh one."""
+        request_id = structlog.contextvars.get_contextvars().get("request_id")
+        if not isinstance(request_id, str):
+            return None
+        try:
+            return uuid.UUID(request_id)
+        except ValueError:
+            # An inbound X-Request-ID header need not be a UUID; fall back.
+            return None

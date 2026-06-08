@@ -118,26 +118,27 @@ def test_create_for_booking__is_idempotent(
 @pytest.mark.django_db
 def test_create_for_booking__no_finance_schedules_nothing(
     booking: Any,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A property with no `PropertyFinance` row produces no payments instead of
     raising — the signal fires on every booking, so a financeless property must
     degrade gracefully (matches `Property.balance_due_at`). The skip is logged:
     a missing finance row is a misconfiguration worth surfacing, not swallowing.
     """
-    import logging
+    from structlog.testing import capture_logs
 
     from reservations.models import Booking
 
     booking = Booking.objects.get(pk=booking.pk)
 
-    with caplog.at_level(logging.WARNING, logger="payments.services.payment_scheduler"):
+    with capture_logs() as logs:
         created = PaymentScheduler.create_for_booking(booking)
 
     assert created == []
     assert not Payment.objects.filter(booking=booking).exists()
     assert not SecurityDeposit.objects.filter(booking=booking).exists()
-    assert any("no PropertyFinance" in r.message for r in caplog.records)
+    skip = next(e for e in logs if e["event"] == "payment.schedule_skipped")
+    assert skip["reason"] == "no_property_finance"
+    assert skip["booking_id"] == booking.pk
 
 
 @pytest.mark.django_db

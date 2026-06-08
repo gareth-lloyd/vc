@@ -8,12 +8,12 @@ core/migrations.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+import structlog
 from django.db import models
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CIEmailField(models.EmailField):
@@ -58,7 +58,7 @@ class EncryptedTextField(models.TextField):
             # Fernet key that's been rotated out. Log loudly and return None
             # so downstream consumers can't accidentally treat ciphertext as
             # plaintext (which would be a real security hazard if leaked).
-            logger.exception("EncryptedTextField decryption failed; returning None")
+            logger.exception("encrypted_field.decrypt_failed")
             return None
 
     def get_prep_value(self, value: Any) -> Any:

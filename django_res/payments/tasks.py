@@ -6,10 +6,10 @@ Celery decorators (`@shared_task`) and `*.delay(...)` enqueuing.
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from django.utils import timezone
 
 from payments.enums import (
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from reservations.models import Booking
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # Balance-reminder thresholds, ordered most-urgent first. For each row we pick
@@ -119,10 +119,7 @@ def _send_payment_reminders(today: Any) -> int:
             # One bad row must not abort the whole batch — every remaining
             # row deserves its reminder. The exception is captured with
             # context so Sentry / log monitors can surface it.
-            logger.exception(
-                "send_payment_reminders: failed for payment %s; continuing",
-                payment.pk,
-            )
+            logger.exception("payment.reminder_failed", payment_id=payment.pk)
     return sent
 
 
@@ -178,10 +175,7 @@ def _send_security_deposit_reminders(today: Any) -> int:
         try:
             sent += _dispatch_sd_bands(sd, today)
         except Exception:
-            logger.exception(
-                "send_payment_reminders: failed for security_deposit %s; continuing",
-                sd.pk,
-            )
+            logger.exception("payment.reminder_failed", security_deposit_id=sd.pk)
     return sent
 
 
@@ -292,9 +286,10 @@ def _dispatch(
     recipient = guest_email(booking.guest)
     if recipient is None:
         logger.warning(
-            "%s skipped: no guest email on booking %s",
-            template_key,
-            booking.pk,
+            "payment.reminder_skipped",
+            template_key=template_key,
+            reason="no_guest_email",
+            booking_id=booking.pk,
         )
         return False
 
@@ -312,7 +307,7 @@ def _dispatch(
             correlation=correlation,
         )
     except (NoSmtpProfileAvailable, EmailTemplateNotFound) as exc:
-        logger.warning("Skipping %s reminder: %s", template_key, exc)
+        logger.warning("payment.reminder_skipped", template_key=template_key, reason=str(exc))
         return False
     return True
 

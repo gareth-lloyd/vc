@@ -206,6 +206,44 @@ review (e.g. `Booking.pricing_snapshot`).
 deregister, update `EXPECTED_TRACKED_MODELS` in the same commit and
 explain the call in this file.
 
+### Structured logging — `structlog`, event-style, auto-context
+
+Logging is `structlog` end to end (config in `core/logging/`, wired from
+`settings/base.py`). It ships JSON to stdout in staging/production (→ Render
+log drain → Datadog) and a pretty console line in dev/test.
+
+- **Get a logger** with `logger = structlog.get_logger(__name__)` — never
+  `logging.getLogger`. Plain stdlib `logging` still works (it's routed through
+  the same pipeline), but new code uses structlog.
+- **Events are dotted `domain.action`**, lowercase, with structured kwargs —
+  not interpolated sentences:
+  `logger.info("refund.requested", refund_id=…, amount=str(amount))`. Money as
+  `str(Decimal)`. Existing events: `refund.requested`/`refund.executed`,
+  `booking.created`, `payment.schedule_skipped`, `payment.reminder_skipped`/
+  `payment.reminder_failed`, `comms.email_skipped`, `encrypted_field.decrypt_failed`.
+- **Context is automatic.** `django_structlog.middlewares.RequestMiddleware`
+  binds `request_id` + `user_id`, and `core.middleware.AuditMiddleware` adopts
+  that `request_id` as the audit `correlation_id` — so a log line joins to the
+  `AuditLog` rows from the same request by id. Service code adds only its own
+  domain kwargs. Request start/finish are logged automatically; health-check and
+  static/media paths are dropped (`core.logging.processors.drop_noisy_requests`).
+- **Reserved keys — do not use as event kwargs:** `message`, `level`, `status`
+  (the JSON stage maps `event`→`message` and `level`→`status` for Datadog),
+  plus the auto-bound `request_id`/`user_id`/`correlation_id` and the static
+  `service`/`env`/`release`. Name domain fields around them (e.g.
+  `booking_status`, not `status`).
+- **PII never lands in logs.** `core.logging.redaction.redact_sensitive`
+  scrubs denylisted keys (passwords, tokens, secrets, card data, `body`) and
+  PAN/`Bearer` value patterns — recursively, including nested dicts — replacing
+  them with the shared `core.audit.REDACTED` sentinel. It's a backstop, not a
+  licence to log secrets.
+- **Testing:** assert with `structlog.testing.capture_logs()` on the event name
+  and key fields (not the rendered string). `capture_logs` bypasses the
+  configured processors, so test redaction/noise-drop processors *directly*
+  (see `core/tests/test_log_redaction.py`, `test_log_processors.py`). Test
+  settings set `cache_logger_on_first_use=False` so `capture_logs` intercepts
+  module-level loggers.
+
 ### Viewset querysets declare their FK reads
 
 Every `ViewSet.get_queryset()` must `select_related()` the FKs the serializer

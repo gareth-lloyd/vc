@@ -338,3 +338,38 @@ def test_from_cancellation__returns_none_when_fee_consumes_paid_total(
         requested_by=user,
     )
     assert refund is None
+
+
+@pytest.mark.django_db
+def test_refund_service_emits_structured_events(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+    approver: Any,
+) -> None:
+    """request/execute emit `refund.requested` / `refund.executed` events."""
+    from structlog.testing import capture_logs
+
+    _grant(approver, "approve_refund", "execute_refund", "self_approve_refund")
+    with capture_logs() as logs:
+        refund = RefundService.request(
+            booking=booking,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            purpose_track=RefundPurposeTrack.DEPOSIT.value,
+            reason_code=RefundReasonCode.OVERPAYMENT.value,
+            against_payment=paid_deposit,
+            requested_by=user,
+        )
+        RefundService.approve(refund, actor=approver)
+        RefundService.execute(refund, actor=approver)
+
+    requested = next(e for e in logs if e["event"] == "refund.requested")
+    assert requested["refund_id"] == refund.pk
+    assert requested["amount"] == "100.00"
+    assert requested["currency"] == gbp.code
+
+    executed = next(e for e in logs if e["event"] == "refund.executed")
+    assert executed["refund_id"] == refund.pk
+    assert executed["outbound_payment_created"] is True

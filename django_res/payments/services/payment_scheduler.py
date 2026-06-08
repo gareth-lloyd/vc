@@ -10,11 +10,11 @@ scheduler stays focused on the deposit/interim/balance track).
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.db import transaction
 from django.utils import timezone
 
@@ -22,7 +22,7 @@ from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from properties.enums import DepositCalcType
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # The schedule rows this service owns. The idempotency check is scoped to these
 # purposes so that an unrelated Payment on the booking (a SECURITY_DEPOSIT
@@ -71,10 +71,10 @@ class PaymentScheduler:
         finance = getattr(booking.property, "finance", None)
         if finance is None:
             logger.warning(
-                "PaymentScheduler: booking %s on property %s has no PropertyFinance; "
-                "no payment schedule created",
-                getattr(booking, "pk", None),
-                getattr(booking, "property_id", None),
+                "payment.schedule_skipped",
+                reason="no_property_finance",
+                booking_id=getattr(booking, "pk", None),
+                property_id=getattr(booking, "property_id", None),
             )
             return []
         schedule = finance.effective_payment_schedule()

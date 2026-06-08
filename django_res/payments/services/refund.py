@@ -18,6 +18,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
 PERM_APPROVE = "payments.approve_refund"
 PERM_EXECUTE = "payments.execute_refund"
 PERM_SELF_APPROVE = "payments.self_approve_refund"
+
+logger = structlog.get_logger(__name__)
 
 
 class RefundService:
@@ -115,6 +118,15 @@ class RefundService:
             requested_by=requested_by,
             security_deposit=security_deposit,
             meta=stamp_meta(None, idempotency_key),
+        )
+        logger.info(
+            "refund.requested",
+            refund_id=refund.pk,
+            booking_id=booking.pk,
+            amount=str(refund.amount),
+            currency=currency.code,
+            purpose_track=purpose_track,
+            reason_code=reason_code,
         )
         return refund
 
@@ -248,6 +260,14 @@ class RefundService:
                 currency=refund.currency,
                 meta={"refund_id": refund.pk},
             )
+
+        logger.info(
+            "refund.executed",
+            refund_id=refund.pk,
+            booking_id=refund.booking_id,
+            amount=str(refund.amount),
+            outbound_payment_created=not outbound_exists,
+        )
 
         # TODO: queue Celery `process_refund(refund.id)` — for now we just
         # record the EXECUTING state and rely on the webhook pipeline (or a

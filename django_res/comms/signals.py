@@ -9,9 +9,9 @@ handler returns quickly.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from django.conf import settings
 
 from comms.contexts import booking_context as _booking_context
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from reservations.models.quotation import Quotation
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _booking_correlation(booking: Booking) -> dict[str, Any]:
@@ -53,7 +53,7 @@ def _safe_send(template_key: str, **kwargs: Any) -> None:
     try:
         EmailService.send(template_key=template_key, **kwargs)
     except (NoSmtpProfileAvailable, EmailTemplateNotFound, *TEMPLATE_RENDER_ERRORS) as exc:
-        logger.warning("Skipping %s email: %s", template_key, exc)
+        logger.warning("comms.email_skipped", template_key=template_key, reason=str(exc))
 
 
 def _owner_approval_url(booking: Booking) -> str:
@@ -84,8 +84,10 @@ def booking_transitioned_handler(
         recipient = guest_email(booking.guest)
         if recipient is None:
             logger.warning(
-                "booking.confirmation skipped: no guest email for booking %s",
-                booking.pk,
+                "comms.email_skipped",
+                template_key="booking.confirmation",
+                reason="no_guest_email",
+                booking_id=booking.pk,
             )
             return
         _safe_send(
@@ -98,8 +100,10 @@ def booking_transitioned_handler(
         recipient = primary_owner_email(booking.property)
         if recipient is None:
             logger.warning(
-                "owner.approval_request skipped: no primary owner on property %s",
-                booking.property_id,
+                "comms.email_skipped",
+                template_key="owner.approval_request",
+                reason="no_primary_owner",
+                property_id=booking.property_id,
             )
             return
         _safe_send(
@@ -162,8 +166,10 @@ def quotation_sent_handler(
     recipient = guest_email(quotation.guest)
     if recipient is None:
         logger.warning(
-            "quotation.sent skipped: no guest email for quotation %s",
-            quotation.pk,
+            "comms.email_skipped",
+            template_key="quotation.sent",
+            reason="no_guest_email",
+            quotation_id=quotation.pk,
         )
         return
     agent_user = agent_user_for(quotation)
@@ -216,7 +222,12 @@ def booking_confirmation_resend_requested_handler(
         try:
             EmailService.resend(latest, actor=actor)
         except (NoSmtpProfileAvailable, EmailTemplateNotFound) as exc:
-            logger.warning("Skipping booking.confirmation resend: %s", exc)
+            logger.warning(
+                "comms.email_skipped",
+                template_key="booking.confirmation",
+                reason=str(exc),
+                resend=True,
+            )
         return
 
     # No prior confirmation log: fall back to a fresh send so an operator
@@ -226,8 +237,11 @@ def booking_confirmation_resend_requested_handler(
     recipient = guest_email(booking.guest)
     if recipient is None:
         logger.warning(
-            "booking.confirmation resend skipped: no guest email for booking %s",
-            booking.pk,
+            "comms.email_skipped",
+            template_key="booking.confirmation",
+            reason="no_guest_email",
+            booking_id=booking.pk,
+            resend=True,
         )
         return
     _safe_send(
@@ -364,8 +378,10 @@ def payment_succeeded_handler(
     recipient = guest_email(booking.guest)
     if recipient is None:
         logger.warning(
-            "payment.receipt skipped: no guest email for booking %s",
-            booking.pk,
+            "comms.email_skipped",
+            template_key="payment.receipt",
+            reason="no_guest_email",
+            booking_id=booking.pk,
         )
         return
     _safe_send(
@@ -402,8 +418,10 @@ def payment_failed_handler(
     guest_recipient = guest_email(booking.guest)
     if guest_recipient is None:
         logger.warning(
-            "payment.failed_guest skipped: no guest email for booking %s",
-            booking.pk,
+            "comms.email_skipped",
+            template_key="payment.failed_guest",
+            reason="no_guest_email",
+            booking_id=booking.pk,
         )
         return
     _safe_send(

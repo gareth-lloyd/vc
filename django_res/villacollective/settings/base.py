@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "rest_framework",
     "django_filters",
+    "django_structlog",
     "core",
     "accounts",
     "properties",
@@ -52,6 +53,10 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # Binds request_id/user_id into structlog contextvars and logs the request
+    # lifecycle. Sits just *outside* AuditMiddleware so the latter can adopt the
+    # request_id as its correlation id (see core.middleware.AuditMiddleware).
+    "django_structlog.middlewares.RequestMiddleware",
     "core.middleware.AuditMiddleware",
 ]
 
@@ -201,3 +206,27 @@ EMAIL_REAL_SENDS_ALLOWED = False
 EMAIL_RECIPIENT_ALLOWLIST: list[str] = []
 
 OPEN_AI_API_KEY = env.str("OPEN_AI_API_KEY", default="")
+
+# ---------------------------------------------------------------------------
+# Structured logging — structlog → JSON on stdout → Render log drain → Datadog.
+#
+# `configure_structlog` wires structlog *and* returns Django's LOGGING dict, so
+# structlog-native loggers and plain `logging.getLogger` calls share one
+# pipeline (contextvars, static fields, PII redaction, JSON render). JSON is the
+# default everywhere; dev/test re-call with a console renderer (see those
+# modules). Datadog gets `message`/`status` keys via the JSON render stage.
+# ---------------------------------------------------------------------------
+from core.logging.config import configure_structlog  # noqa: E402
+
+ENVIRONMENT = env.str("ENVIRONMENT", default="dev")
+RELEASE_VERSION = env.str("RELEASE_VERSION", default="dev")
+LOG_LEVEL = env.str("LOG_LEVEL", default="INFO")
+LOG_JSON = env.bool("LOG_JSON", default=True)
+
+# django-structlog: bind request_id + user_id and log the request lifecycle.
+# Client IP is PII — never logged. Celery signal wiring stays off until Celery
+# is actually deployed (tasks are synchronous placeholders today).
+DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
+DJANGO_STRUCTLOG_CELERY_ENABLED = False
+
+LOGGING = configure_structlog(json_logs=LOG_JSON, level=LOG_LEVEL)

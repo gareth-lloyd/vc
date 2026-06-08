@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.db import transaction
 from django.utils import timezone
 
@@ -13,6 +14,8 @@ from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
+
+logger = structlog.get_logger(__name__)
 
 
 class BookingService:
@@ -116,6 +119,15 @@ class BookingService:
                 meta=transition_meta,
             )
 
+        logger.info(
+            "booking.created",
+            booking_id=booking.pk,
+            reference=booking.reference,
+            property_id=property_.pk,
+            quotation_line_id=quotation_line.pk,
+            requires_pre_approval=requires_pre_approval,
+            booking_status=booking.status,
+        )
         return booking
 
     # ------------------------------------------------------------------

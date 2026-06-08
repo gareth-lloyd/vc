@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from core.logging.config import configure_structlog
+
 from .base import *  # noqa: F403
+from .base import LOG_LEVEL
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
+
+ENVIRONMENT = "dev"
+# Human-readable coloured console logs locally instead of JSON.
+LOG_JSON = False
+LOGGING = configure_structlog(json_logs=False, level=LOG_LEVEL)
 CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 # Local dev may seed fake data (see core/management/commands/seed_dev.py).

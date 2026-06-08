@@ -204,13 +204,13 @@ Open choices to settle at implementation time:
      the design must handle owner-rotated/revoked tokens (feed starts 404ing or
      returns a different calendar).
 
-3. **Scheduling substrate + cadence.** The agreed shape says "Celery beat task",
-   but **Celery is not wired in** — `reservations/tasks.py` holds synchronous
-   placeholder functions awaiting `@shared_task`. iCal ingest either waits on
-   the Celery rollout or ships first as a `manage.py` command driven by cron.
-   The cadence must own the eventual-consistency reality (poll every few hours,
-   respect rate limits; accept a sync-gap double-booking window). Decide
-   alongside the broader Celery decision.
+3. **Scheduling substrate + cadence.** ✅ Resolved. Celery is now wired
+   (broker + worker + beat — see `django_res/CLAUDE.md` §"Background tasks").
+   `reservations.tasks.ingest_ical_feeds` is a real `@shared_task` and is
+   registered in `CELERY_BEAT_SCHEDULE` (`settings/base.py`) at a 15-minute
+   cadence; the `manage.py ingest_ical` command remains as a manual escape
+   hatch. The cadence owns the eventual-consistency reality (poll lag; accept a
+   sync-gap double-booking window the conflict alert surfaces).
 
 4. **Idempotency key under unstable UIDs.** Upsert holds on a **composite key**
    — e.g. `hash(UID + DTSTART + DTEND + SUMMARY)` scoped per `(property,
@@ -278,9 +278,10 @@ Open choices to settle at implementation time:
 
 ## Dependencies
 
-- **Blocked by** the Celery-vs-cron decision (postponed §3) for the scheduling
-  half; the data half (`SyncProvider.ICAL`, `PropertyCalendarFeed`) can land
-  independently.
+- ~~**Blocked by** the Celery-vs-cron decision (postponed §3) for the
+  scheduling half~~ — unblocked: Celery is wired and `ingest_ical_feeds` is
+  beat-scheduled (§3). The data half (`SyncProvider.ICAL`, `PropertyCalendarFeed`)
+  already landed.
 - **Related:** `06-availability.md` (owner-block semantics, exclude
   constraints), `08-integrations.md` (`SyncRecord` framework), `10-comms.md` /
   `10-decisions.md` "Hold auto-expiry" (the signal→`EmailService` pattern reused

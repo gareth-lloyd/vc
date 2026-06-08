@@ -263,6 +263,9 @@ interface GuestWriteInput {
   // Email optional — a phone-only guest is valid; never fabricate a synthetic.
   email?: string;
   phone?: string;
+  // Preferred channel, carried from the enquiry. Only sent when the channel it
+  // needs is present, or the server's contactability CHECK 400s the create.
+  contact_method?: "email" | "phone" | "sms";
 }
 
 export async function createGuest(body: GuestWriteInput): Promise<GuestSummary> {

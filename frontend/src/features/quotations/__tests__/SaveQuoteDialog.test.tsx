@@ -342,4 +342,101 @@ describe("SaveQuoteDialog", () => {
     expect(await screen.findByText(/no email or phone/i)).toBeInTheDocument();
     expect(guestPosted).toBe(false);
   });
+
+  function mockGuestCreate(capture: (body: Record<string, unknown>) => void) {
+    server.use(
+      http.get("/api/v1/currencies", () =>
+        HttpResponse.json(drfPage([{ id: 1, code: "USD", name: "US Dollar", is_active: true }])),
+      ),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/guests", async ({ request }) => {
+        capture((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(
+          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { status: 201 },
+        );
+      }),
+      http.post("/api/v1/quotations", () =>
+        HttpResponse.json(
+          { id: 50, reference: "Q-50", status: "draft", currency: "USD" },
+          { status: 201 },
+        ),
+      ),
+      http.post("/api/v1/quotations/50/lines", () => HttpResponse.json({ id: 1 }, { status: 201 })),
+    );
+  }
+
+  it("carries the enquiry's contact_method when its channel is present", async () => {
+    let guestBody: Record<string, unknown> | null = null;
+    mockGuestCreate((body) => {
+      guestBody = body;
+    });
+
+    // Phone-only enquiry that prefers SMS — the phone channel backs the pref.
+    const smsEnquiry = {
+      id: 99,
+      reference: "ENQ-99",
+      guest: null,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "",
+      phone: "+447911123456",
+      contact_method: "sms",
+    } as unknown as EnquiryDetail;
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={smsEnquiry}
+        lines={[stagedLine()]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(guestBody).not.toBeNull());
+    expect(guestBody).toMatchObject({ phone: "+447911123456", contact_method: "sms" });
+  });
+
+  it("drops the contact_method when its required channel is missing", async () => {
+    let guestBody: Record<string, unknown> | null = null;
+    mockGuestCreate((body) => {
+      guestBody = body;
+    });
+
+    // Prefers email, but only a phone was captured — forwarding "email" would
+    // 400 on the server's contactability CHECK, so the guard omits it.
+    const mismatched = {
+      id: 99,
+      reference: "ENQ-99",
+      guest: null,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "",
+      phone: "+447911123456",
+      contact_method: "email",
+    } as unknown as EnquiryDetail;
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={mismatched}
+        lines={[stagedLine()]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(guestBody).not.toBeNull());
+    expect(guestBody).toMatchObject({ phone: "+447911123456" });
+    expect(guestBody).not.toHaveProperty("contact_method");
+  });
 });

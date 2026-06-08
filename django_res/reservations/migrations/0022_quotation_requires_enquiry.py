@@ -28,7 +28,12 @@ def backfill_enquiries(apps, schema_editor):
             contact_method=guest.contact_method,
             agent_id=quotation.agent_id,
             site_source="agent_portal",
-            reference=f"AE-{quotation.reference}",
+            # Enquiry.reference is max_length=32; the "AE-" prefix eats 3. Guard
+            # the bound so an unusually long quotation reference (e.g. from the
+            # prod snapshot, not the short QVC{n} dev format) can't overflow and
+            # abort the migration mid-deploy. Quotation.reference is unique, so
+            # the truncated value stays unique for any realistic length.
+            reference=f"AE-{quotation.reference}"[:32],
         )
         quotation.enquiry = enquiry
         quotation.save(update_fields=["enquiry"])

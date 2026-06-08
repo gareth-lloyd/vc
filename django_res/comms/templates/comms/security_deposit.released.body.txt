@@ -1,7 +1,0 @@
-Hi {{ guest_first_name }},
-
-Your security deposit of {{ amount }} {{ currency }} for booking {{ booking_reference }} has been released.
-
-It may take a few days to appear on your statement.
-
-— Villa Collective

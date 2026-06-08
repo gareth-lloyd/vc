@@ -25,6 +25,7 @@ dependencies = [
     # system /usr/share/zoneinfo, so ZoneInfo(...) would raise on Linux without
     # this. Unconditional (not the win32-marked transitive dep) — see FG-008.
     "tzdata>=2025.1",
+    "html2text>=2025.4.15",
 ]
 
 [dependency-groups]

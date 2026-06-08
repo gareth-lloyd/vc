@@ -44,8 +44,8 @@ def actor(db: None) -> User:
 def _publish(actor: User, **overrides: object) -> EmailTemplate:
     kwargs: dict[str, object] = {
         "key": KEY,
+        "title": "Booking Confirmation",
         "subject_template": "Booking {{ booking_reference }} confirmed",
-        "body_template": "Hi {{ guest_first_name }}",
         "body_template_mjml": VALID_MJML,
         "notes": "",
         "actor": actor,
@@ -114,11 +114,13 @@ def test_publish_invalid_subject_tag_raises_and_writes_nothing(actor: User) -> N
 
 @pytest.mark.django_db
 def test_publish_invalid_body_tag_leaves_prior_active_row_untouched(actor: User) -> None:
-    """C1 — a bad re-publish must not deactivate the working version."""
+    """C1 — a bad re-publish (broken tag in the compiled HTML) must not deactivate
+    the working version."""
     first = _publish(actor)
 
+    broken = VALID_MJML.replace("Hi {{ guest_first_name }}", "Hi {% if %}{{ guest_first_name }}")
     with pytest.raises(TemplatePublishError):
-        _publish(actor, body_template="Hi {% if %}{{ guest_first_name }}")
+        _publish(actor, body_template_mjml=broken)
 
     first.refresh_from_db()
     assert first.is_active is True
@@ -141,13 +143,13 @@ def test_render_active_template_against_context(actor: User) -> None:
 
     rendered = EmailTemplateService.render(
         subject_template=template.subject_template,
-        body_template=template.body_template,
         body_template_html=template.body_template_html,
         context={"booking_reference": "VC-100", "guest_first_name": "Ada"},
     )
 
     assert rendered["rendered_subject"] == "Booking VC-100 confirmed"
-    assert rendered["rendered_body_text"] == "Hi Ada"
+    # Plaintext is derived from the rendered HTML.
+    assert "Hi Ada" in rendered["rendered_body_text"]
     assert "Hi Ada" in rendered["rendered_body_html"]
 
 
@@ -156,13 +158,13 @@ def test_render_draft_compiles_mjml_on_the_fly() -> None:
     """C3 — preview of an unsaved draft has no compiled HTML yet."""
     rendered = EmailTemplateService.render(
         subject_template="Hi {{ guest_first_name }}",
-        body_template="Plain {{ guest_first_name }}",
         body_template_mjml=VALID_MJML,
         context={"guest_first_name": "Bo"},
     )
 
     assert rendered["rendered_subject"] == "Hi Bo"
     assert "Hi Bo" in rendered["rendered_body_html"]
+    assert "Hi Bo" in rendered["rendered_body_text"]
 
 
 @pytest.mark.django_db
@@ -170,7 +172,6 @@ def test_render_draft_invalid_mjml_raises_compile_error() -> None:
     with pytest.raises(MjmlCompileError):
         EmailTemplateService.render(
             subject_template="Hi",
-            body_template="Hi",
             body_template_mjml="<not-mjml/>",
             context={},
         )

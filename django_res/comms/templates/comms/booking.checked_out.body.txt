@@ -1,8 +1,0 @@
-Hi {{ guest_first_name }},
-
-We hope you enjoyed your time at {{ property_name }}. Your booking {{ booking_reference }} is now complete.
-
-We'd love to host you again soon.
-
-Best,
-The Villa Collective team

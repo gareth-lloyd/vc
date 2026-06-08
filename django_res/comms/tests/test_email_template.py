@@ -19,7 +19,7 @@ def test_unique_active_template_per_key() -> None:
         key="test.fixture.template",
         version=1,
         subject_template="Confirmed",
-        body_template="Hi",
+        title="Hi",
     )
 
     with pytest.raises(IntegrityError), transaction.atomic():
@@ -27,7 +27,7 @@ def test_unique_active_template_per_key() -> None:
             key="test.fixture.template",
             version=2,
             subject_template="Confirmed v2",
-            body_template="Hi v2",
+            title="Hi v2",
         )
 
 
@@ -37,7 +37,7 @@ def test_inactive_versions_coexist() -> None:
         key="test.fixture.template",
         version=1,
         subject_template="v1",
-        body_template="v1",
+        title="v1",
         is_active=False,
     )
     # New active row is allowed because no other row for this key is active.
@@ -45,7 +45,7 @@ def test_inactive_versions_coexist() -> None:
         key="test.fixture.template",
         version=2,
         subject_template="v2",
-        body_template="v2",
+        title="v2",
         is_active=True,
     )
 
@@ -56,7 +56,7 @@ def test_unique_key_version_pair() -> None:
         key="test.fixture.template",
         version=1,
         subject_template="v1",
-        body_template="v1",
+        title="v1",
         is_active=False,
     )
 
@@ -65,7 +65,7 @@ def test_unique_key_version_pair() -> None:
             key="test.fixture.template",
             version=1,
             subject_template="dup",
-            body_template="dup",
+            title="dup",
             is_active=False,
         )
 
@@ -76,7 +76,7 @@ def test_save_compiles_mjml_to_html() -> None:
         key="test.fixture.template",
         version=1,
         subject_template="Confirmed",
-        body_template="Hi",
+        title="Hi",
         body_template_mjml=VALID_MJML,
     )
     assert "<!doctype html>" in template.body_template_html.lower()
@@ -89,7 +89,7 @@ def test_save_clears_html_when_mjml_blank() -> None:
         key="test.fixture.template",
         version=1,
         subject_template="Confirmed",
-        body_template="Hi",
+        title="Hi",
         body_template_mjml=VALID_MJML,
     )
     assert template.body_template_html
@@ -107,7 +107,7 @@ def test_save_with_invalid_mjml_raises_and_does_not_persist() -> None:
             key="test.fixture.template",
             version=1,
             subject_template="Confirmed",
-            body_template="Hi",
+            title="Hi",
             body_template_mjml="<not-mjml/>",
         )
     assert not EmailTemplate.objects.filter(key="test.fixture.template").exists()

@@ -24,13 +24,23 @@ from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from comms.compilers import compile_mjml
+
 
 @dataclass(frozen=True)
 class SeedFile:
     key: str
+    title: str
     subject: str
-    body_text: str
     body_mjml: str
+
+
+def _humanize_key(key: str) -> str:
+    """Derive a human-facing title from a dotted key.
+
+    ``booking.confirmation`` -> ``Booking Confirmation``.
+    """
+    return key.replace(".", " ").replace("_", " ").title()
 
 
 def _seed_dir(base_dir: Path | None = None) -> Path:
@@ -40,30 +50,62 @@ def _seed_dir(base_dir: Path | None = None) -> Path:
 
 
 def discover_seeds(base_dir: Path | None = None) -> list[SeedFile]:
-    """Read every ``<key>.subject.txt`` file in the seed directory."""
+    """Read every ``<key>.subject.txt`` file in the seed directory.
+
+    The plaintext body is no longer authored — it's derived from the rendered
+    HTML at send time — so only the subject and MJML body are read from disk.
+    """
     directory = _seed_dir(base_dir)
     seeds: list[SeedFile] = []
     for subject_path in sorted(directory.glob("*.subject.txt")):
         key = subject_path.name.removesuffix(".subject.txt")
-        body_text_path = directory / f"{key}.body.txt"
         body_mjml_path = directory / f"{key}.body.mjml"
         seeds.append(
             SeedFile(
                 key=key,
+                title=_humanize_key(key),
                 subject=subject_path.read_text().rstrip("\n"),
-                body_text=body_text_path.read_text() if body_text_path.exists() else "",
                 body_mjml=body_mjml_path.read_text() if body_mjml_path.exists() else "",
             )
         )
     return seeds
 
 
-def _content_matches(template: Any, seed: SeedFile) -> bool:
-    return (
-        template.subject_template == seed.subject
-        and template.body_template == seed.body_text
-        and template.body_template_mjml == seed.body_mjml
-    )
+def _content_matches(template: Any, seed: SeedFile, field_names: set[str]) -> bool:
+    if template.subject_template != seed.subject:
+        return False
+    if template.body_template_mjml != seed.body_mjml:
+        return False
+    # `title` only exists from migration 0011 onward; older frozen schemas (the
+    # historical models the seed migrations run against) don't carry it.
+    if "title" in field_names and template.title != seed.title:
+        return False
+    return True
+
+
+def _seed_defaults(seed: SeedFile, field_names: set[str]) -> dict[str, Any]:
+    """Build create() kwargs for whatever schema the model is currently at.
+
+    This runs both as the live management command and from inside the seed data
+    migrations, where the frozen historical model may still have the dropped
+    ``body_template`` column and may lack ``title``. Historical models also lack
+    the ``save()`` override that compiles MJML, so the compiled HTML is set
+    explicitly here rather than relying on save().
+    """
+    defaults: dict[str, Any] = {
+        "subject_template": seed.subject,
+        "body_template_mjml": seed.body_mjml,
+        "is_active": True,
+    }
+    if "title" in field_names:
+        defaults["title"] = seed.title
+    if "body_template_html" in field_names:
+        defaults["body_template_html"] = compile_mjml(seed.body_mjml)
+    if "body_template" in field_names:
+        # Dropped from the live model in 0011 but NOT NULL in older frozen
+        # schemas; the plaintext is derived at send time, so seed it empty.
+        defaults["body_template"] = ""
+    return defaults
 
 
 def _next_version(EmailTemplate: Any, key: str) -> int:
@@ -76,9 +118,15 @@ def _next_version(EmailTemplate: Any, key: str) -> int:
     return (latest or 0) + 1
 
 
-def sync_templates(base_dir: Path | None = None) -> dict[str, int]:
-    """Apply all seeds. Returns a count of created / updated / unchanged keys."""
-    EmailTemplate = apps.get_model("comms", "EmailTemplate")
+def sync_templates(base_dir: Path | None = None, model: Any = None) -> dict[str, int]:
+    """Apply all seeds. Returns a count of created / updated / unchanged keys.
+
+    Pass ``model`` (a frozen ``apps.get_model`` class) when calling from a data
+    migration so reads/writes match the schema at that point in history; the
+    live management command leaves it ``None`` and uses the current model.
+    """
+    EmailTemplate = model or apps.get_model("comms", "EmailTemplate")
+    field_names = {f.name for f in EmailTemplate._meta.get_fields()}
     seeds = discover_seeds(base_dir)
 
     created = 0
@@ -88,31 +136,23 @@ def sync_templates(base_dir: Path | None = None) -> dict[str, int]:
     with transaction.atomic():
         for seed in seeds:
             active = EmailTemplate.objects.filter(key=seed.key, is_active=True).first()
-            if active is None:
-                EmailTemplate.objects.create(
-                    key=seed.key,
-                    version=_next_version(EmailTemplate, seed.key),
-                    subject_template=seed.subject,
-                    body_template=seed.body_text,
-                    body_template_mjml=seed.body_mjml,
-                    is_active=True,
-                )
-                created += 1
-                continue
-            if _content_matches(active, seed):
+            if active is not None and _content_matches(active, seed, field_names):
                 unchanged += 1
                 continue
-            active.is_active = False
-            active.save(update_fields=["is_active", "updated_at"])
+            # Only compile MJML once we know we're writing a row — the unchanged
+            # short-circuit above keeps a no-op resync from recompiling everything.
+            defaults = _seed_defaults(seed, field_names)
+            if active is not None:
+                active.is_active = False
+                active.save(update_fields=["is_active", "updated_at"])
+                updated += 1
+            else:
+                created += 1
             EmailTemplate.objects.create(
                 key=seed.key,
                 version=_next_version(EmailTemplate, seed.key),
-                subject_template=seed.subject,
-                body_template=seed.body_text,
-                body_template_mjml=seed.body_mjml,
-                is_active=True,
+                **defaults,
             )
-            updated += 1
 
     return {"created": created, "updated": updated, "unchanged": unchanged}
 

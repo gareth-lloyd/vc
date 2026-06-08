@@ -17,7 +17,7 @@ def template(db: None) -> EmailTemplate:
         key="test.allowlist",
         version=1,
         subject_template="Hello {{ name }}",
-        body_template="Hi {{ name }}.",
+        title="Hi {{ name }}.",
     )
 
 

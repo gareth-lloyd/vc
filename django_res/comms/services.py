@@ -19,7 +19,7 @@ from django.template import Context, Template, TemplateSyntaxError
 from django.template.exceptions import TemplateDoesNotExist
 
 from comms import tasks
-from comms.compilers import compile_mjml
+from comms.compilers import compile_mjml, html_to_plaintext
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.exceptions import (
     EmailTemplateNotFound,
@@ -194,10 +194,12 @@ class EmailService:
         log_bcc = bcc if all_blocked else filtered.bcc
 
         subject = _render(template.subject_template, context)
-        body = _render(template.body_template, context)
         body_html = (
             _render(template.body_template_html, context) if template.body_template_html else ""
         )
+        # The plaintext alternative is derived from the rendered HTML, not stored
+        # — HTML is the single authored body source.
+        body = html_to_plaintext(body_html)
 
         from_email = profile.from_email
         # Personal profiles always send "as" the user; otherwise the system
@@ -390,9 +392,9 @@ class EmailTemplateService:
         cls,
         *,
         key: str,
+        title: str,
         subject_template: str,
-        body_template: str,
-        body_template_mjml: str = "",
+        body_template_mjml: str,
         notes: str = "",
         actor: User | None = None,
     ) -> EmailTemplate:
@@ -426,8 +428,8 @@ class EmailTemplateService:
 
             if active is not None and cls._is_identical(
                 active,
+                title=title,
                 subject_template=subject_template,
-                body_template=body_template,
                 body_template_mjml=body_template_mjml,
                 notes=notes,
             ):
@@ -436,7 +438,6 @@ class EmailTemplateService:
             # C1 — refuse to write anything if the draft can't render.
             cls._validate_renderable(
                 subject_template=subject_template,
-                body_template=body_template,
                 body_template_mjml=body_template_mjml,
             )
 
@@ -462,9 +463,9 @@ class EmailTemplateService:
                 with transaction.atomic():
                     return EmailTemplate.objects.create(
                         key=key,
+                        title=title,
                         version=next_version,
                         subject_template=subject_template,
-                        body_template=body_template,
                         body_template_mjml=body_template_mjml,
                         notes=notes,
                         is_active=True,
@@ -479,14 +480,14 @@ class EmailTemplateService:
     def _is_identical(
         active: EmailTemplate,
         *,
+        title: str,
         subject_template: str,
-        body_template: str,
         body_template_mjml: str,
         notes: str,
     ) -> bool:
         return (
-            active.subject_template == subject_template
-            and active.body_template == body_template
+            active.title == title
+            and active.subject_template == subject_template
             and active.body_template_mjml == body_template_mjml
             and active.notes == notes
         )
@@ -495,7 +496,6 @@ class EmailTemplateService:
     def _validate_renderable(
         *,
         subject_template: str,
-        body_template: str,
         body_template_mjml: str,
     ) -> None:
         """Compile the MJML and render-check every authored field (C1).
@@ -516,7 +516,6 @@ class EmailTemplateService:
         field_errors: dict[str, list[str]] = {}
         for label, text in (
             ("subject_template", subject_template),
-            ("body_template", body_template),
             ("body_template_html", body_html),
         ):
             try:
@@ -533,27 +532,27 @@ class EmailTemplateService:
     def render(
         *,
         subject_template: str,
-        body_template: str,
         context: dict[str, Any],
         body_template_html: str | None = None,
         body_template_mjml: str | None = None,
     ) -> dict[str, str]:
-        """Render a template's three surfaces against ``context``.
+        """Render a template's surfaces against ``context``.
 
         Pass ``body_template_html`` to render a persisted template's stored
         (already-compiled) HTML; pass ``body_template_mjml`` instead to render
         an unsaved draft, compiling its MJML on the fly (C3). A draft with
         broken MJML raises ``MjmlCompileError`` (HTTP 400 via the handler).
 
-        Used by both ``preview`` and ``test-send`` so an operator previews
-        byte-for-byte what a test-send dispatches.
+        The ``rendered_body_text`` plaintext surface is derived from the
+        rendered HTML — HTML is the single source of truth, both here and at
+        send time. Used by both ``preview`` and ``test-send`` so an operator
+        previews byte-for-byte what a test-send dispatches.
         """
         if body_template_html is None:
             body_template_html = compile_mjml(body_template_mjml or "")
+        rendered_html = _render(body_template_html, context) if body_template_html else ""
         return {
             "rendered_subject": _render(subject_template, context),
-            "rendered_body_text": _render(body_template, context),
-            "rendered_body_html": _render(body_template_html, context)
-            if body_template_html
-            else "",
+            "rendered_body_text": html_to_plaintext(rendered_html),
+            "rendered_body_html": rendered_html,
         }

@@ -74,7 +74,7 @@ def template(db: None) -> EmailTemplate:
         key="test.booking.deposit_request",
         version=1,
         subject_template="Deposit for {{ booking_reference }}",
-        body_template="Hi {{ guest_first_name }}",
+        title="Hi {{ guest_first_name }}",
     )
 
 

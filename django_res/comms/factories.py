@@ -43,11 +43,12 @@ class EmailTemplateFactory(DjangoModelFactory):
         model = models.EmailTemplate
 
     key = factory.Sequence(lambda n: f"template-{RUN_TOKEN}-{n}")
+    title = "Seed Template"
     version = 1
     subject_template = "Seed subject"
-    body_template = "Plaintext seed body"
     # A trivially-valid MJML doc keeps `EmailTemplate.save`'s compile-on-save
     # cheap; the resulting HTML lands in `body_template_html` automatically.
+    # Plaintext is derived from that HTML at send time, not stored.
     body_template_mjml = "<mjml><mj-body><mj-text>Seed</mj-text></mj-body></mjml>"
     notes = "seeded by factory"
     is_active = False

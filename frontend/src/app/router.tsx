@@ -351,6 +351,50 @@ export const router = createBrowserRouter([
                             },
                           },
                           {
+                            path: "/admin/email-templates",
+                            lazy: async () => {
+                              const m =
+                                await import("@/features/admin/email-templates/EmailTemplatesListPage");
+                              return { Component: m.EmailTemplatesListPage };
+                            },
+                          },
+                          {
+                            // Static `new` is matched ahead of the `:key` param.
+                            path: "/admin/email-templates/new",
+                            lazy: async () => {
+                              const m =
+                                await import("@/features/admin/email-templates/EmailTemplateEditorPage");
+                              return { Component: m.EmailTemplateEditorPage };
+                            },
+                          },
+                          {
+                            path: "/admin/email-templates/:key",
+                            lazy: async () => {
+                              const m =
+                                await import("@/features/admin/email-templates/EmailTemplateDetailLayout");
+                              return { Component: m.EmailTemplateDetailLayout };
+                            },
+                            children: [
+                              { index: true, element: <Navigate to="edit" replace /> },
+                              {
+                                path: "edit",
+                                lazy: async () => {
+                                  const m =
+                                    await import("@/features/admin/email-templates/tabs/EditTab");
+                                  return { Component: m.EditTab };
+                                },
+                              },
+                              {
+                                path: "versions",
+                                lazy: async () => {
+                                  const m =
+                                    await import("@/features/admin/email-templates/tabs/VersionsTab");
+                                  return { Component: m.VersionsTab };
+                                },
+                              },
+                            ],
+                          },
+                          {
                             path: "/admin/system",
                             lazy: async () => {
                               const m = await import("@/features/admin/system/SystemAdminPage");

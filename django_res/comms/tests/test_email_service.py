@@ -47,9 +47,14 @@ def personal_profile(user: User) -> SmtpProfile:
 def booking_template(db: None) -> EmailTemplate:
     return EmailTemplate.objects.create(
         key="test.booking.confirmation",
+        title="Booking Confirmation",
         version=1,
         subject_template="Booking {{ booking_reference }} confirmed",
-        body_template="Hi {{ guest_first_name }}, your stay at {{ property_name }} is booked.",
+        body_template_mjml=(
+            "<mjml><mj-body><mj-section><mj-column><mj-text>"
+            "Hi {{ guest_first_name }}, your stay at {{ property_name }} is booked."
+            "</mj-text></mj-column></mj-section></mj-body></mjml>"
+        ),
     )
 
 
@@ -247,9 +252,9 @@ def test_send_does_not_bcc_internal_addresses_by_default(
 def html_template(db: None) -> EmailTemplate:
     return EmailTemplate.objects.create(
         key="test.html.template",
+        title="HTML Template",
         version=1,
         subject_template="Your code is {{ code }}",
-        body_template="Code: {{ code }}",
         body_template_mjml=(
             "<mjml><mj-body><mj-section><mj-column>"
             "<mj-text>Code: {{ code }}</mj-text>"
@@ -284,15 +289,27 @@ def test_send_attaches_html_alternative_when_template_has_mjml(
     assert "Code: 424242" in cast(str, html_content)
 
 
+@pytest.fixture
+def plaintext_only_template(db: None) -> EmailTemplate:
+    # No MJML body — the message has no HTML alternative and (since plaintext is
+    # derived from the HTML) no body at all.
+    return EmailTemplate.objects.create(
+        key="test.plaintext.only",
+        title="Plaintext Only",
+        version=1,
+        subject_template="Subject {{ booking_reference }}",
+    )
+
+
 @pytest.mark.django_db
 def test_send_omits_html_alternative_when_template_has_no_mjml(
     system_profile: SmtpProfile,
-    booking_template: EmailTemplate,
+    plaintext_only_template: EmailTemplate,
 ) -> None:
     mail.outbox.clear()
 
     log = EmailService.send(
-        template_key="test.booking.confirmation",
+        template_key="test.plaintext.only",
         context=_ctx("BK-007", "Gi", "Villa Sin"),
         to=["guest@example.com"],
         correlation={"booking_id": 7},

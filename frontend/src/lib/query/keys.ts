@@ -156,6 +156,15 @@ export const queryKeys = {
     list: <F>(filters: F) => ["feature-categories", "list", filters] as const,
     detail: (id: number | string) => ["feature-categories", "detail", k(id)] as const,
   },
+  emailTemplates: {
+    all: () => ["email-templates"] as const,
+    lists: () => ["email-templates", "list"] as const,
+    list: <F>(filters: F) => ["email-templates", "list", filters] as const,
+    detail: (key: string) => ["email-templates", "detail", key] as const,
+    preview: (key: string, overrides?: unknown) =>
+      ["email-templates", "detail", key, "preview", overrides ?? null] as const,
+    versions: (key: string) => ["email-templates", "detail", key, "versions"] as const,
+  },
   systemSettings: {
     all: () => ["system", "settings"] as const,
   },

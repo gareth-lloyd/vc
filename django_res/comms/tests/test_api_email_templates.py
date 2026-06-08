@@ -61,9 +61,9 @@ def viewer(db: None) -> User:
 def active_template(db: None) -> EmailTemplate:
     return EmailTemplate.objects.create(
         key=KEY,
+        title="Booking Confirmation",
         version=1,
         subject_template="Booking {{ booking_reference }} confirmed",
-        body_template="Hi {{ guest_first_name }}",
         body_template_mjml=VALID_MJML,
     )
 
@@ -82,6 +82,7 @@ def test_dotted_key_retrieves_active_version(
 
     assert response.status_code == 200
     assert response.data["key"] == KEY
+    assert response.data["title"] == "Booking Confirmation"
     assert response.data["version"] == 1
     assert response.data["subject_template"] == "Booking {{ booking_reference }} confirmed"
 
@@ -97,6 +98,8 @@ def test_list_omits_bodies(
     assert response.status_code == 200
     row = response.data["results"][0]
     assert row["key"] == KEY
+    # The human-facing title is in the catalogue row.
+    assert row["title"] == "Booking Confirmation"
     # The catalogue row carries identity + provenance only — no bodies.
     assert "subject_template" not in row
 
@@ -106,7 +109,7 @@ def test_list_is_query_bounded(
     api_client: APIClient, reservations: User, active_template: EmailTemplate
 ) -> None:
     EmailTemplate.objects.create(
-        key="test.payment.receipt", version=1, subject_template="s", body_template="b"
+        key="test.payment.receipt", title="Payment Receipt", version=1, subject_template="s"
     )
     api_client.force_login(reservations)
 
@@ -132,8 +135,8 @@ def test_reservations_can_publish_new_version(
     response = api_client.put(
         f"/api/v1/email-templates/{KEY}",
         {
+            "title": "Booking Confirmation",
             "subject_template": "Booking {{ booking_reference }} — confirmed!",
-            "body_template": "Hello {{ guest_first_name }}",
             "body_template_mjml": VALID_MJML,
         },
         format="json",
@@ -150,7 +153,11 @@ def test_publish_creates_brand_new_key(api_client: APIClient, reservations: User
 
     response = api_client.put(
         "/api/v1/email-templates/test.brand.new",
-        {"subject_template": "Approve {{ booking_reference }}", "body_template": "Please approve"},
+        {
+            "title": "Approval Request",
+            "subject_template": "Approve {{ booking_reference }}",
+            "body_template_mjml": VALID_MJML,
+        },
         format="json",
     )
 
@@ -167,7 +174,7 @@ def test_viewer_cannot_publish(
 
     response = api_client.put(
         f"/api/v1/email-templates/{KEY}",
-        {"subject_template": "x", "body_template": "y"},
+        {"title": "x", "subject_template": "x", "body_template_mjml": VALID_MJML},
         format="json",
     )
 
@@ -183,7 +190,11 @@ def test_publish_malformed_template_returns_400_with_errors(
 
     response = api_client.put(
         f"/api/v1/email-templates/{KEY}",
-        {"subject_template": "Bad {% if %}", "body_template": "Hi"},
+        {
+            "title": "Booking Confirmation",
+            "subject_template": "Bad {% if %}",
+            "body_template_mjml": VALID_MJML,
+        },
         format="json",
     )
 
@@ -193,6 +204,39 @@ def test_publish_malformed_template_returns_400_with_errors(
     # Prior active version untouched.
     assert EmailTemplate.objects.filter(key=KEY).count() == 1
     assert EmailTemplate.objects.get(key=KEY).version == 1
+
+
+@pytest.mark.django_db
+def test_publish_requires_title(
+    api_client: APIClient, reservations: User, active_template: EmailTemplate
+) -> None:
+    api_client.force_login(reservations)
+
+    response = api_client.put(
+        f"/api/v1/email-templates/{KEY}",
+        {"subject_template": "s", "body_template_mjml": VALID_MJML},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "title" in response.data["field_errors"]
+
+
+@pytest.mark.django_db
+def test_publish_requires_mjml_body(
+    api_client: APIClient, reservations: User, active_template: EmailTemplate
+) -> None:
+    """The MJML body is the only authored body source, so it's required."""
+    api_client.force_login(reservations)
+
+    response = api_client.put(
+        f"/api/v1/email-templates/{KEY}",
+        {"title": "Booking Confirmation", "subject_template": "s"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "body_template_mjml" in response.data["field_errors"]
 
 
 # --- preview --------------------------------------------------------------
@@ -315,7 +359,11 @@ def test_versions_list_and_detail(
     # Publish a v2 so there's history.
     api_client.put(
         f"/api/v1/email-templates/{KEY}",
-        {"subject_template": "v2 {{ booking_reference }}", "body_template": "v2"},
+        {
+            "title": "Booking Confirmation",
+            "subject_template": "v2 {{ booking_reference }}",
+            "body_template_mjml": VALID_MJML,
+        },
         format="json",
     )
 

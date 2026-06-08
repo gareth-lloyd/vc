@@ -320,5 +320,102 @@
       "load_failed": "Couldn't load settings.",
       "save_failed": "Couldn't save settings."
     }
+  },
+  "email_templates": {
+    "title": "Email templates",
+    "description": "Author the transactional emails sent to guests. Edits are validated and versioned before they go live.",
+    "new_button": "New template",
+    "columns": {
+      "title": "Title",
+      "version": "Version",
+      "is_active": "Active",
+      "updated_at": "Updated"
+    },
+    "filters": {
+      "search_placeholder": "Filter by key…"
+    },
+    "empty": {
+      "title": "No templates yet",
+      "description": "Publish a template to start sending."
+    },
+    "tabs": {
+      "edit": "Edit",
+      "versions": "Versions"
+    },
+    "create": {
+      "title": "New email template",
+      "breadcrumb": "Email templates"
+    },
+    "detail": {
+      "breadcrumb": "Email templates",
+      "version_label": "v{{version}}",
+      "active_label": "Active",
+      "not_found_title": "Template not found",
+      "not_found_body": "No template exists for that key.",
+      "load_failed_title": "Couldn't load template",
+      "load_failed_body": "Something went wrong loading this template."
+    },
+    "form": {
+      "fields": {
+        "key": "Key",
+        "title": "Title",
+        "subject_template": "Subject",
+        "body_template_mjml": "MJML body",
+        "notes": "Change notes"
+      },
+      "key_help": "A dotted identifier the system sends against, e.g. booking.confirmation. A typo creates a template that nothing ever sends.",
+      "mjml_help": "The HTML email is compiled from this MJML on save. The plain-text version is derived from it automatically.",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "create_submit": "Create template"
+    },
+    "preview": {
+      "heading": "Preview",
+      "subject_label": "Subject",
+      "context_source": "Render against",
+      "source_none": "No data",
+      "source_booking": "Booking",
+      "source_quotation": "Quotation",
+      "source_json": "Custom JSON",
+      "booking_id_placeholder": "Booking id",
+      "quotation_id_placeholder": "Quotation id",
+      "json_placeholder": "{ \"guest_first_name\": \"Ada\" }",
+      "json_invalid": "That isn't valid JSON.",
+      "iframe_title": "Rendered email preview",
+      "error": "Couldn't render the preview.",
+      "empty": "Start editing to see a preview."
+    },
+    "test_send": {
+      "button": "Test send",
+      "title": "Send a test email",
+      "description": "Dispatch this template to a test recipient. The send is logged but never tagged to a booking.",
+      "to_label": "Recipient",
+      "to_placeholder": "Defaults to your own email",
+      "submit": "Send test",
+      "sending": "Sending…"
+    },
+    "versions": {
+      "columns": {
+        "version": "Version",
+        "is_active": "Active",
+        "updated_at": "Updated",
+        "notes": "Notes"
+      },
+      "view": "View",
+      "active_badge": "Active",
+      "sheet_title": "Version {{version}}",
+      "empty": "No version history.",
+      "error": "Couldn't load version history."
+    },
+    "toasts": {
+      "published": "Template published",
+      "created": "Template created",
+      "test_sent": "Test email queued (log #{{id}})",
+      "test_failed": "Couldn't send the test email."
+    },
+    "errors": {
+      "load_failed": "Couldn't load templates.",
+      "invalid_key": "Use letters, numbers, dots and underscores only."
+    }
   }
 }

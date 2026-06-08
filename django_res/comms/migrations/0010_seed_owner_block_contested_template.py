@@ -18,7 +18,7 @@ OWNER_BLOCK_KEYS = ["owner_block.contested"]
 def _forwards(apps: Any, schema_editor: Any) -> None:
     from comms.management.commands.seed_email_templates import sync_templates
 
-    sync_templates()
+    sync_templates(model=apps.get_model("comms", "EmailTemplate"))
 
 
 def _backwards(apps: Any, schema_editor: Any) -> None:

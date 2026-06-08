@@ -18,9 +18,9 @@ class CommsConfig(AppConfig):
             EmailTemplate,
             fields=(
                 "key",
+                "title",
                 "version",
                 "subject_template",
-                "body_template",
                 "body_template_mjml",
                 "is_active",
                 "notes",

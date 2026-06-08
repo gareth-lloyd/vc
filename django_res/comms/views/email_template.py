@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from accounts.models import User
 
 # url_path fragments that double as serializer keys for draft overrides.
-_DRAFT_OVERRIDE_FIELDS = ("subject_template", "body_template", "body_template_mjml")
+_DRAFT_OVERRIDE_FIELDS = ("subject_template", "body_template_mjml")
 
 
 def _context_from_request(request: Request, data: dict[str, Any]) -> dict[str, Any]:
@@ -138,7 +138,6 @@ class EmailTemplateViewSet(
             active = EmailTemplate.objects.filter(key=key, is_active=True).first()
             render_kwargs: dict[str, Any] = {
                 "subject_template": active.subject_template if active else "",
-                "body_template": active.body_template if active else "",
                 "body_template_mjml": active.body_template_mjml if active else "",
             }
             render_kwargs.update(overrides)
@@ -147,7 +146,6 @@ class EmailTemplateViewSet(
             template = self.get_object()
             render_kwargs = {
                 "subject_template": template.subject_template,
-                "body_template": template.body_template,
                 "body_template_html": template.body_template_html,
             }
 
@@ -160,7 +158,7 @@ class EmailTemplateViewSet(
             # to the canonical handler on its own.)
             raise TemplateRenderError(
                 "Template contains invalid Django template syntax.",
-                field_errors={"body_template": [str(exc)]},
+                field_errors={"body_template_mjml": [str(exc)]},
             ) from exc
         return Response(
             {

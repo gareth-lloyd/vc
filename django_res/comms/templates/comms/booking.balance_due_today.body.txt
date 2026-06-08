@@ -1,7 +1,0 @@
-Hi {{ guest_first_name }},
-
-The balance of {{ amount }} {{ currency }} on booking {{ booking_reference }} ({{ property_name }}, {{ date_from }} – {{ date_to }}) is due today.
-
-Please complete the payment today so your stay can proceed as planned.
-
-— Villa Collective

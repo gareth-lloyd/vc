@@ -8,6 +8,7 @@ import {
   FileText,
   Globe,
   Home,
+  Mail,
   MessageSquare,
   Settings,
   Tags,
@@ -147,6 +148,12 @@ export function Sidebar() {
       label: t("nav.tags"),
       icon: Tags,
       prefetch: () => import("@/features/admin/tags/TagsAdminPage"),
+    },
+    {
+      to: "/admin/email-templates",
+      label: t("nav.email_templates"),
+      icon: Mail,
+      prefetch: () => import("@/features/admin/email-templates/EmailTemplatesListPage"),
     },
     {
       to: "/admin/system",

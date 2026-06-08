@@ -1,8 +1,0 @@
-Hi {{ agent_name }},
-
-The hold on {{ property_name }} for {{ date_from }} – {{ date_to }} has now lapsed.
-Quotation reference: {{ quotation_reference }}
-
-If the guest still wants the dates, you'll need to re-confirm availability and issue a fresh quote.
-
-— Villa Collective

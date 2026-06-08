@@ -23,7 +23,7 @@ def template(db: None) -> EmailTemplate:
         key="test.admin.resend",
         version=1,
         subject_template="Subject",
-        body_template="Body",
+        title="Body",
     )
 
 

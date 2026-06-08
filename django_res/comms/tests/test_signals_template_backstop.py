@@ -24,7 +24,7 @@ def test_safe_send_swallows_template_syntax_error(system_profile: SmtpProfile) -
         # the model's MJML compile-on-save doesn't catch Django template syntax,
         # so this row goes active just fine — exactly the hazard C1 guards.
         subject_template="Broken {% if %}{{ booking_reference }}",
-        body_template="Hi",
+        title="Hi",
     )
 
     # Must not raise — the transition that called this stays committed.

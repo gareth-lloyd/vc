@@ -6,7 +6,7 @@ from django.http import HttpRequest
 
 from comms import tasks
 from comms.enums import EmailLogStatus
-from comms.models import EmailLog, EmailTemplate, SmtpProfile
+from comms.models import EmailLog, SmtpProfile
 
 
 @admin.register(SmtpProfile)
@@ -21,18 +21,11 @@ class SmtpProfileAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
 
 
-@admin.register(EmailTemplate)
-class EmailTemplateAdmin(admin.ModelAdmin):
-    list_display = ("key", "version", "is_active", "updated_at")
-    list_filter = ("is_active",)
-    search_fields = ("key", "subject_template")
-    readonly_fields = (
-        "body_template_html",
-        "created_at",
-        "updated_at",
-        "created_by",
-        "updated_by",
-    )
+# `EmailTemplate` is intentionally NOT registered here. Templates are mutated
+# only through the render-validated, versioned `/email-templates/*` API (see
+# `comms/views/email_template.py`) — a raw-model admin would let an operator save
+# a malformed `{% if %}` that silently bricks every live send for that key, and
+# would overwrite the active row in place, destroying version history.
 
 
 @admin.register(EmailLog)

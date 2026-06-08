@@ -14,19 +14,21 @@ class EmailTemplate(AuditedModel):
 
     File-based seeds in ``comms/templates/comms/`` are intended as initial
     content; once a row exists in the DB it is the authoritative source.
-    Editing in the admin bumps ``version`` and atomically deactivates the
+    Publishing a new version bumps ``version`` and atomically deactivates the
     prior row.
 
-    ``body_template`` is the plaintext alternative carried in every multipart
-    message. ``body_template_mjml`` is the editable HTML source (authored as
-    MJML); ``body_template_html`` is its compiled output, derived
-    automatically on save and treated as read-only by the admin.
+    ``title`` is the human-facing label shown in the admin catalogue (the
+    dotted ``key`` is the machine identifier). ``body_template_mjml`` is the
+    single authored body source (authored as MJML); ``body_template_html`` is
+    its compiled output, derived automatically on save. The plaintext
+    alternative is *not* stored — it's derived from the rendered HTML at send
+    time (``compilers.html_to_plaintext``), so HTML is the one source of truth.
     """
 
     key = models.CharField(max_length=64)
+    title = models.CharField(max_length=255)
     version = models.PositiveIntegerField(default=1)
     subject_template = models.TextField()
-    body_template = models.TextField()
     body_template_mjml = models.TextField(blank=True)
     body_template_html = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)

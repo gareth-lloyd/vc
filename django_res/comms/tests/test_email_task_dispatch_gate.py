@@ -20,7 +20,7 @@ def template(db: None) -> EmailTemplate:
         key="test.dispatch.gate",
         version=1,
         subject_template="x",
-        body_template="x",
+        title="x",
     )
 
 

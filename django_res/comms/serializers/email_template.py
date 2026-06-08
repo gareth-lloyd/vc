@@ -21,6 +21,7 @@ class EmailTemplateListSerializer(serializers.ModelSerializer):
         model = EmailTemplate
         fields: tuple[str, ...] = (
             "key",
+            "title",
             "version",
             "is_active",
             "updated_at",
@@ -40,7 +41,6 @@ class EmailTemplateDetailSerializer(EmailTemplateListSerializer):
         fields: tuple[str, ...] = (
             *EmailTemplateListSerializer.Meta.fields,
             "subject_template",
-            "body_template",
             "body_template_mjml",
             "body_template_html",
             "notes",
@@ -51,12 +51,14 @@ class EmailTemplateDetailSerializer(EmailTemplateListSerializer):
 class EmailTemplatePublishSerializer(serializers.Serializer):
     """PUT body for publishing a new active version.
 
-    `body_template_html` is intentionally absent — it's derived from the MJML.
+    `body_template_html` is intentionally absent — it's compiled from the MJML.
+    The plaintext body is likewise absent — it's derived from the rendered HTML
+    at send time, so the MJML is the only authored body source and is required.
     """
 
+    title = serializers.CharField()
     subject_template = serializers.CharField()
-    body_template = serializers.CharField()
-    body_template_mjml = serializers.CharField(required=False, allow_blank=True, default="")
+    body_template_mjml = serializers.CharField()
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
@@ -75,9 +77,9 @@ class EmailTemplatePreviewRequestSerializer(serializers.Serializer):
 
     booking_id = serializers.IntegerField(required=False)
     quotation_id = serializers.IntegerField(required=False)
-    # Draft overrides (preview-before-publish loop).
+    # Draft overrides (preview-before-publish loop). Plaintext is derived from
+    # the HTML, so only the authored fields are overridable.
     subject_template = serializers.CharField(required=False, allow_blank=True)
-    body_template = serializers.CharField(required=False, allow_blank=True)
     body_template_mjml = serializers.CharField(required=False, allow_blank=True)
 
 

@@ -215,20 +215,16 @@ travel agent stays a separate `accounts.Contact` field via the existing
 
 ### M2 — Guest as a deduped directory (foundation for M3)
 
-- **Resolve-or-create by normalized email.** Today a Guest is materialized late
-  and blindly: `SaveQuoteDialog.tsx:117–126` `POST`s `/guests` with no dedup;
-  the enquiry-form create path stores denormalized fields with `guest=null`.
-  Replace both with a service-level resolve-or-create **keyed on normalized
-  email** — email is already case-folded by `CIEmailField`
-  (`core/fields.py:28–39`); trim on the serializer. Phone is **not** a reliable
-  key (no normalization library in the project).
-- **Collapse legacy duplicates, then enforce.** Legacy import
-  (`GuestLoader.update_or_create(legacy_id=…)`) may carry duplicate emails. Do a
-  one-time dedup pass using the **existing `Guest.merge()`**
-  (`reservations/models/guest.py:105–123` — rewrites all reverse FKs,
-  hard-deletes, AuditLog trail), **then** add `UniqueConstraint(email)`. (Hard
-  constraint deferred behind the dedup pass so the migration can't fail on
-  existing data.)
+**Data model settled in [`../people-model-cleanup.md`](../people-model-cleanup.md)**
+(decisions logged in [`../10-decisions.md`](../10-decisions.md)). M2 is the
+*implementation* of that record. In brief: `Guest.email` becomes optional and
+stays **non-unique**; `phone` normalized to E.164 (`phonenumbers`); contactability
++ actionable-preference CHECK constraints replace the fake email-required; the
+synthetic `enquiry-{id}@noemail.local` fabrication in
+`SaveQuoteDialog.tsx:117–126` is removed; **dedup is advisory** (resolve-or-create
+suggestion + operator-confirmed `Guest.merge()`), *not* a hard unique index.
+Legacy duplicate collapse is a human-confirmed `Guest.merge()` pass (no auto-merge
+by email). See the record for the full field/constraint list and migration order.
 
 ### M3 — Existing-client search + enquiry history (enhancement)
 
@@ -272,8 +268,11 @@ travel agent stays a separate `accounts.Contact` field via the existing
   existing `ActivityTab`/`NotesTab` components. This subsumes #9 above.
 
 **Acceptance (per milestone).** M1: phone + preference visible/editable on new
-and existing enquiries. M2: creating/selecting a guest never produces a
-duplicate-email row; legacy dupes collapsed; `email` unique. M3: guest search
+and existing enquiries. M2: the guest-create path resolves-or-suggests an
+existing match on normalized email/phone (advisory — operator confirms reuse),
+the `@noemail.local` fabrication is gone and no new synthetic-email rows are
+written, channel-less rows are dispositioned (`ARCHIVED`) before the
+contactability CHECK is added; `email` stays **non-unique**. M3: guest search
 returns existing guests, selection reuses the row and reveals a collapsed
 history panel with correct refs/statuses. M4: one Enquiries nav item; clicking
 an enquiry lands on the merged workspace showing existing quotes + builder +

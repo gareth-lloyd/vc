@@ -28,8 +28,8 @@ Unified entity replacing the legacy `VillaEnquire` form fields + `VillaClientDet
 
 - `first_name`, `last_name` — CharField
 - `title` — CharField(blank=True)
-- `email` — `CIEmailField(db_index=True)` (case-insensitive via `citext`; **not** unique — same person legitimately books from different addresses)
-- `phone` — CharField(blank=True)
+- `email` — `CIEmailField(db_index=True, null=True)` (case-insensitive via `citext`; **not** unique — same person legitimately books from different addresses; **optional** — a phone-only guest is valid, see contactability constraint below. No synthetic fabrication.) See `people-model-cleanup.md`.
+- `phone` — CharField(blank=True) — stored **normalized E.164** (`phonenumbers`); the advisory dedup key
 - `address_line_1`, `address_line_2` — CharField(blank=True)
 - `town`, `post_code` — CharField(blank=True)
 - `country` — FK properties.Country PROTECT, null=True
@@ -43,12 +43,25 @@ Unified entity replacing the legacy `VillaEnquire` form fields + `VillaClientDet
 
 Indexes: `(status, last_name, first_name)`, `email`.
 
+Constraints (see `people-model-cleanup.md`) — **scoped to `status=ACTIVE` rows
+only** (`ARCHIVED`/`ANONYMIZED` are exempt; a channel-less historical row is
+dispositioned, never forced to carry a channel):
+- **Contactability** — `email IS NOT NULL` **OR** `phone <> ''` (email is now
+  nullable; phone uses blank `''`, not NULL). Replaces the old fake
+  email-required + synthetic-email fabrication.
+- **Actionable preference** — `contact_method=EMAIL ⇒ email IS NOT NULL`;
+  `contact_method IN (PHONE, SMS) ⇒ phone <> ''` (legacy `ContactType` parity).
+
+Dedup is **advisory**: a resolve-or-create suggests a match on normalized
+email → normalized phone; the operator confirms reuse or proceeds as new (no
+silent auto-merge). `email` stays **non-unique** by design.
+
 #### Lifecycle (per `00-conventions.md`)
 
 - **Wrong guest captured, no relationships yet** — hard delete.
 - **Guest no longer relevant but bookings exist** — set `status=ARCHIVED`. Still queryable; hidden from default operator search only by an explicit `?status=` filter at the call site, not a hidden manager.
 - **`Guest.merge(target: Guest)`** — destructive. Atomically rewrites FKs on `Enquiry`, `Quotation`, `Booking` (and any `BookingConciergeItem` reached via `Booking`) from `self` to `target`. Writes one `AuditLog` row per rewrite. Then **hard-deletes** `self`. There is no `merged_into` self-FK and no surviving tombstone — the `AuditLog` is the only trail.
-- **`Guest.anonymize()`** — overwrites `first_name`, `last_name`, `email` (replaced with `"redacted-{id}@anonymized.local"`), `phone` (empty), `address_line_1`, `address_line_2`, `town`, `post_code`, `notes`; clears `marketing_consent`; sets `status=ANONYMIZED`, `anonymized_at=now()`. Bookings retain the FK pointing at the anonymized row. Reporting that should exclude anonymized guests filters `status` explicitly.
+- **`Guest.anonymize()`** — overwrites `first_name`, `last_name`, `email` (set to `NULL` — `status=ANONYMIZED` marks the row, so no synthetic tombstone is needed; the contactability/preference constraints are ACTIVE-only, so an anonymized row needs no channel), `phone` (empty), `address_line_1`, `address_line_2`, `town`, `post_code`, `notes`; clears `marketing_consent`; sets `status=ANONYMIZED`, `anonymized_at=now()`. Bookings retain the FK pointing at the anonymized row. Reporting that should exclude anonymized guests filters `status` explicitly.
 
 ### `GuestPreferenceType(TimestampedModel)`
 Operator-curated catalogue of guest preferences (legacy `VillaClientPrefMaster` — bed configurations, dietary, etc.).
@@ -75,7 +88,8 @@ Anonymous / unstructured inquiry from website or agent. **Kept separate from Quo
 
 - `reference` — CharField(unique=True) — short slug, e.g. `E-2026-000123`
 - `guest` — FK Guest SET_NULL, null=True (set once captured; for purely anonymous form submits, hold the form fields below)
-- `first_name`, `last_name`, `email`, `phone` — denormalised for anonymous submits
+- `first_name`, `last_name`, `email`, `phone` — denormalised for anonymous submits (the raw inbound capture snapshot; **no** contactability constraint here — the enquiry is the permissive capture surface, `Guest` is the enforced-clean entity)
+- `contact_method` — TextChoices (`EMAIL`, `PHONE`, `SMS`), null=True — captured preference that survives before a `Guest` exists; carried onto the `Guest` on resolve. See `people-model-cleanup.md`.
 - `property` — FK properties.Property SET_NULL, null=True
 - `region` — FK properties.Region SET_NULL, null=True
 - `date_from` — DateField(null=True)
@@ -126,6 +140,19 @@ Inquiry-takers routinely widen the requested date range by one or two days eithe
 
 The legacy `EnquireDateTypeString` field (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded this preset-style at the column level. The new design **drops the encoding** in favour of an open date range plus the heuristic above — the encoding never carried operator-meaningful information after capture. See `workflows/07-enquiry/enquiry-intake.md` for the operator-side detail.
 
+**Flexibility wider than ± a few days *(known rough edge)*.** The 2026-06-08
+demo surfaced cases the simple ±n-days spread does not represent well: a client
+who can travel *any week in June*, or *one week within a named three-week
+window*. The owner explicitly flagged this as an area with "problems around that
+with the current system." For v1 these still collapse to an open
+`date_from`/`date_to` range plus `is_flexible=True` — the operator records the
+widest plausible window and narrows by conversation. This is accepted for v1 but
+**recognised as a rough edge**: the dropped `Enquiry.flexibility` 5-value enum
+(`±3d` / `±7d` / `month` / `any`, see `10-decisions.md` "Drops") has a real,
+owner-confirmed use case after all, and structured multi-week flexible capture
+should be revisited if multi-week availability search becomes a quoting
+bottleneck. It is *not* re-introduced speculatively here.
+
 ### `EnquiryNote(TimestampedModel)`
 Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.
 
@@ -161,7 +188,7 @@ See reconciliation issue #27.
 ### `Quotation(AuditedModel)`
 - `number` — PositiveIntegerField(null=True, unique=True) — canonical sequence-backed integer (`quotation_number_seq`); NULL only on synthesised/interim rows
 - `reference` — CharField(unique) — `QVC123` (legacy parity), derived from `number` via `core.refs.quotation_prefix()`
-- `enquiry` — FK Enquiry SET_NULL, null=True (quotations can be created agent-direct without an enquiry)
+- `enquiry` — FK Enquiry PROTECT, **null=False** — every quotation has a parent enquiry. Agent-direct quotes **auto-create a minimal enquiry** in the quote-creation service (legacy `sp_quotationMaster` parity), tagged via `site_source`, rather than carrying a null bridge. See `people-model-cleanup.md` (migration backfills existing null rows first).
 - `guest` — FK Guest PROTECT — required (anonymous must convert to a Guest before quoting)
 - `agent` — FK accounts.Contact PROTECT, null=True
 - `currency` — FK pricing.Currency PROTECT

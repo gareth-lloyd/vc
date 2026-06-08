@@ -29,6 +29,7 @@ class ReservationsConfig(AppConfig):
                 "last_name",
                 "email",
                 "phone",
+                "contact_method",
                 "address_line_1",
                 "address_line_2",
                 "town",

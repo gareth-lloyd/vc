@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
@@ -9,6 +11,7 @@ from django.utils import timezone
 from core.fields import CIEmailField
 from core.models.base import AuditedModel
 from reservations.enums import ContactMethod, GuestStatus
+from reservations.phone import to_e164
 
 
 class Guest(AuditedModel):
@@ -68,6 +71,16 @@ class Guest(AuditedModel):
         if self.status == GuestStatus.ANONYMIZED:
             return f"[redacted guest #{self.pk}]"
         return f"{self.first_name} {self.last_name}".strip()
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Normalize `phone` to E.164 on every write so dedup can key on it.
+
+        Unanchorable national numbers (no region on the API write path) pass
+        through unchanged rather than being dropped — see `reservations.phone`.
+        """
+        if self.phone:
+            self.phone = to_e164(self.phone)
+        super().save(*args, **kwargs)
 
     @transaction.atomic
     def anonymize(self) -> None:

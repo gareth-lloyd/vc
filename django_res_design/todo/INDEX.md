@@ -81,7 +81,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-002](gap-002-integrations-empty-url-surface.md) | `integrations/urls.py` empty | ⬜ **highest-leverage gap** (Flywire webhook) |
 | [GAP-003](gap-003-endpoint-coverage-gap.md) | Endpoint coverage gap vs. designed surface | ❌ DROPPED — framing only |
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ✅ resolved — stale; all configured tabs built, placeholder mechanism dormant |
-| [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy | ⬜ (tracker) |
+| [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy + spine UX overhaul | ⬜ (tracker) |
 | [GAP-006](gap-006-legacy-reference-format-parity.md) | Customer-facing reference format must match legacy (`VC`/`QVC`) | ✅ resolved — `core/refs.py`, sequence-backed quotation numbers, `test_references.py` |
 | [GAP-007](gap-007-changeover-autoshift-parity.md) | Changeover auto-shift dropped vs legacy — reinstate | ✅ resolved |
 | [GAP-008](gap-008-no-rate-night-fallback-parity.md) | No-rate-for-night fallback dropped vs legacy — reinstate via `RatePlan.fallback_nightly` | ✅ resolved |

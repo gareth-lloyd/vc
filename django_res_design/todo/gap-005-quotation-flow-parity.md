@@ -2,12 +2,22 @@
 
 - **Severity:** Gap (frontend + backend) — tracker
 - **Source:** stakeholder-driven parity review of the enquiry→quotation
-  flow against legacy `ResSystem/` (the combined `Booking.razor` screen).
+  flow against legacy `ResSystem/` (the combined `Booking.razor` screen),
+  plus a second round of stakeholder UX feedback (2026-06-08) — the "spine
+  UX overhaul" program below.
 - **Key files:**
   - `frontend/src/features/quotations/` (builder, detail, send dialog)
-  - `django_res/reservations/models/quotation.py` (`Quotation`,
-    `QuotationLine`)
-  - Legacy reference: `ResSystem/NewResSystem/Pages/Bookings/Booking.razor`
+  - `frontend/src/features/enquiries/` (list, detail layout,
+    `EnquiryFormDialog`, `tabs/ActivityTab`, `tabs/NotesTab`)
+  - `frontend/src/components/layout/Sidebar.tsx` (nav items)
+  - `frontend/src/features/contacts/components/ContactPicker.tsx` +
+    `useSearchContacts` (template for the new `GuestPicker`)
+  - `django_res/reservations/models/{quotation,guest,enquiry}.py`
+  - `django_res/reservations/serializers/enquiry.py`,
+    `views/guest.py`, `core/fields.py` (`CIEmailField`),
+    `reservations/apps.py` (AuditLog)
+  - Legacy reference: `ResSystem/NewResSystem/Pages/Bookings/Booking.razor`,
+    `ResSystem/Database/Data/TblVillaQuotationMaster.cs`
 
 ## Context — the one-screen → three-stage split
 
@@ -131,7 +141,9 @@ Priority order below reflects operator-pain / spec-commitment.
    `../product-design/07-api-schema-reconciliation.md`; the `:pdf` endpoint
    stub is removed. Revisit post-v1 only on a concrete requirement — the
    `render_quotation_html` seam would back it cheaply.
-9. **Builder shape diverges from spec.** Design specs a two-pane,
+9. **Builder shape diverges from spec.** → **Owned by the Spine UX overhaul
+   below (M4)** — the merged enquiry+quote workspace is the builder rework.
+   Design specs a two-pane,
    always-visible **cart** with inline price-edit under each result card,
    drag-reorder, and a "From £X / To £Y" range. We built a linear wizard
    (`QuoteCriteriaForm → QuoteResultsList → QuoteLinesPanel →
@@ -164,12 +176,121 @@ Priority order below reflects operator-pain / spec-commitment.
   builder path stays deferred per #3 — holds are still only placed by
   `create_from_enquiry`.)
 
+## Spine UX overhaul (stakeholder feedback — 2026-06-08)
+
+A second round of feedback asks us to collapse the split enquiry/quote UI into
+one dense "spine" where agents live, and to enrich client capture. Item #9
+above — builder shape — is part of **M4** here.
+
+**Parity decisions (from legacy `ResSystem/`).** Guest required on a quote;
+agent optional; both may be present (`VillaQuotationMaster`: `ClientDetailsId`
+NOT NULL, `AgentId` nullable — `TblVillaQuotationMaster.cs`). No standalone
+quotes (`EnquireId` NOT NULL). The rebuild already matches on guest/agent
+(`Quotation.guest` PROTECT/required, `Quotation.agent` nullable —
+`reservations/models/quotation.py:23–41`); `Quotation.enquiry` is tightened to
+NOT NULL here (M4). ⇒ the searchable "client" is the first-class **`Guest`**
+(`GET /guests?search=`, already has `phone` + `contact_method`); the optional
+travel agent stays a separate `accounts.Contact` field via the existing
+`ContactPicker`.
+
+> **Not strict parity:** legacy captured the guest as per-enquiry free-text and
+> has no confirmed deduped guest *search* or per-client *history* view. M3
+> (search + history) is an **enhancement enabled by the rebuild's first-class
+> `Guest`**, not legacy parity.
+
+### M1 — Capture enrichment (additive; no IA change)
+
+- **Expose `phone` on enquiry reads.** `Enquiry.phone` / `Guest.phone` exist;
+  the enquiry **write** serializer exposes `phone` but the **list/detail read**
+  serializers don't (`reservations/serializers/enquiry.py`). Add `phone` to the
+  read serializers and surface it on the form and detail header for new **and**
+  existing enquiries.
+- **Contact preference.** Add a denormalized `Enquiry.contact_method` mirroring
+  the existing denormalized `phone`/`email` pattern (`enquiry.py:41–45`) so
+  anonymous inbound web enquiries (`guest=null`) can carry it; capture
+  phone-vs-email (vs SMS) in `EnquiryFormDialog` and show it on the detail
+  header. Carry it forward onto `Guest.contact_method` (already exists,
+  EMAIL/PHONE/SMS) when a Guest is resolved/created. Add `contact_method` to the
+  Guest AuditLog field set (currently untracked — `reservations/apps.py:25–40`).
+
+### M2 — Guest as a deduped directory (foundation for M3)
+
+- **Resolve-or-create by normalized email.** Today a Guest is materialized late
+  and blindly: `SaveQuoteDialog.tsx:117–126` `POST`s `/guests` with no dedup;
+  the enquiry-form create path stores denormalized fields with `guest=null`.
+  Replace both with a service-level resolve-or-create **keyed on normalized
+  email** — email is already case-folded by `CIEmailField`
+  (`core/fields.py:28–39`); trim on the serializer. Phone is **not** a reliable
+  key (no normalization library in the project).
+- **Collapse legacy duplicates, then enforce.** Legacy import
+  (`GuestLoader.update_or_create(legacy_id=…)`) may carry duplicate emails. Do a
+  one-time dedup pass using the **existing `Guest.merge()`**
+  (`reservations/models/guest.py:105–123` — rewrites all reverse FKs,
+  hard-deletes, AuditLog trail), **then** add `UniqueConstraint(email)`. (Hard
+  constraint deferred behind the dedup pass so the migration can't fail on
+  existing data.)
+
+### M3 — Existing-client search + enquiry history (enhancement)
+
+- **Guest search in the enquiry form.** Build a `GuestPicker` + `useSearchGuests`
+  mirroring `contacts/components/ContactPicker.tsx` + `useSearchContacts`. Wire
+  into `EnquiryFormDialog`: selecting an existing Guest prefills
+  name/email/phone/preference and **links `enquiry.guest`** (reuse the row — no
+  duplicate); "create new" keeps today's free-text path. The optional **agent**
+  stays a separate `ContactPicker` field.
+- **Per-guest history endpoint.** Add `GET /guests/{id}/enquiries` returning
+  enquiry summaries enriched with quote-count and the converted booking's
+  reference/status (reverse relations `Guest.enquiries` / `.quotations` exist).
+  Render a collapsible "Enquiry history" panel (collapsed by default — see mock)
+  when an existing Guest is selected.
+- **Mock-vs-real caveat (general).** The mock's reference formats
+  (`QVC-####`/`VCB-####`) and status words ("Booked"/"Completed") are
+  illustrative only. Use the real `QVC####` (quotation) / `VC####` (booking)
+  formats ([GAP-006](gap-006-legacy-reference-format-parity.md), `core/refs.py`)
+  and map to real enum values (booking status is DRAFT…CHECKED_OUT/CANCELLED,
+  not "Completed").
+
+### M4 — IA consolidation + merged workspace (highest-risk; last)
+
+- **One nav item.** Remove the standalone "Quotes" item from the sidebar
+  (`Sidebar.tsx:88–93`, route `/quotations`); keep only "Enquiries".
+  `/quotations/:id` remains a deep-link target, not a top-level destination.
+- **`Quotation.enquiry` → NOT NULL.** `null=False`; change `on_delete=SET_NULL`
+  → `PROTECT` (SET_NULL is invalid on a non-null FK; PROTECT mirrors `guest`).
+  **Backfill-audit** any existing `enquiry IS NULL` rows before the migration.
+  Low frontend risk — `SaveQuoteDialog.tsx:117–126` already always sends
+  `enquiry: enquiry.id`, so no live UI creates enquiry-less quotes; agent-direct
+  quotes create a lightweight enquiry first.
+- **Merged enquiry+quote workspace.** Clicking an enquiry lands on a combined
+  workspace (replacing the Details/Activity/Notes landing **and** the separate
+  `/quotations/new?enquiry=` builder): client/criteria header + existing
+  quotations for the enquiry inline (`EnquiryDetailSerializer` already inlines
+  `.quotations[].lines[]`) + the builder (reuse
+  `QuoteCriteriaForm`/`QuoteResultsList`/`QuoteCart`/`SaveQuoteDialog`, already
+  enquiry-seeded in `QuotationBuilderPage.tsx:70–79`). **Preserve Activity &
+  Notes** as secondary panels (side rail / collapsible sections), reusing the
+  existing `ActivityTab`/`NotesTab` components. This subsumes #9 above.
+
+**Acceptance (per milestone).** M1: phone + preference visible/editable on new
+and existing enquiries. M2: creating/selecting a guest never produces a
+duplicate-email row; legacy dupes collapsed; `email` unique. M3: guest search
+returns existing guests, selection reuses the row and reveals a collapsed
+history panel with correct refs/statuses. M4: one Enquiries nav item; clicking
+an enquiry lands on the merged workspace showing existing quotes + builder +
+activity/notes; no enquiry-less quote-creation path; `Quotation.enquiry` NOT
+NULL constraint present.
+
+**Sequencing.** M1 → M2 → M3 → M4 (cheap/additive first; M3 depends on M2's
+dedup being meaningful; the page rearchitecture + FK migration land last).
+
 ## Approach
 
-Tracker ticket — each P1/P2 item becomes its own ticket. Suggested first
-slice: **#1 + #2 together** (preview modal + copy-to-clipboard share the
-server-side HTML render), since they're the highest operator-pain and one
-render path backs both the SMTP and manual paths.
+Tracker ticket — each P1/P2 item (and each spine-overhaul milestone) becomes
+its own ticket. Suggested first slice on the **parity** track: **#1 + #2
+together** (preview modal + copy-to-clipboard share the server-side HTML
+render), since they're the highest operator-pain and one render path backs both
+the SMTP and manual paths. The **spine overhaul** track sequences separately as
+M1→M4 above.
 
 ## Dependencies
 

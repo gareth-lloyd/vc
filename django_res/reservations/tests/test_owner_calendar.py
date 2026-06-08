@@ -44,6 +44,7 @@ def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: 
     start = timezone.localdate() + timedelta(days=10)
     end = start + timedelta(days=7)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -124,5 +125,5 @@ def test_booked_cells_carry_no_guest_identity(
         # Internal hold id and any guest identity must be absent.
         assert "block_id" not in cell
     # Guest PII never appears anywhere in the calendar payload.
-    assert guest.email not in str(body)
+    assert guest.email and guest.email not in str(body)
     assert guest.last_name not in str(body)

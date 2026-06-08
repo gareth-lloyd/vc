@@ -28,6 +28,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "first_name",
             "last_name",
             "email",
+            "phone",
+            "contact_method",
             "property",
             "property_name",
             "region",

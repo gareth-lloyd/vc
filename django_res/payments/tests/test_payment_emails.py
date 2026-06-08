@@ -137,8 +137,11 @@ def test_payment_succeeded_with_no_guest_email_does_not_crash(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
+    # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
+    # row) — email="" normalizes to NULL on save.
     booking.guest.email = ""
-    booking.guest.save(update_fields=["email", "updated_at"])
+    booking.guest.phone = "+447911123456"
+    booking.guest.save(update_fields=["email", "phone", "updated_at"])
 
     payment.transition_to(PaymentStatus.SUCCEEDED.value)
 
@@ -157,8 +160,11 @@ def test_payment_failed_still_emails_ops_when_guest_has_no_email(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
+    # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
+    # row) — email="" normalizes to NULL on save.
     booking.guest.email = ""
-    booking.guest.save(update_fields=["email", "updated_at"])
+    booking.guest.phone = "+447911123456"
+    booking.guest.save(update_fields=["email", "phone", "updated_at"])
 
     payment.transition_to(PaymentStatus.FAILED.value, reason="Card declined")
 

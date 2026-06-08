@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
@@ -9,6 +11,7 @@ from django.utils import timezone
 from core.fields import CIEmailField
 from core.models.base import AuditedModel
 from reservations.enums import ContactMethod, GuestStatus
+from reservations.phone import to_e164
 
 
 class Guest(AuditedModel):
@@ -17,7 +20,7 @@ class Guest(AuditedModel):
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
     title = models.CharField(max_length=16, blank=True)
-    email = CIEmailField(db_index=True)
+    email = CIEmailField(db_index=True, null=True, blank=True)
     phone = models.CharField(max_length=32, blank=True)
 
     address_line_1 = models.CharField(max_length=255, blank=True)
@@ -62,6 +65,44 @@ class Guest(AuditedModel):
             models.Index(fields=["status", "last_name", "first_name"]),
             models.Index(fields=["email"]),
         ]
+        constraints = [
+            # Honest integrity, ACTIVE rows only — ARCHIVED/ANONYMIZED are
+            # exempt (a dispositioned channel-less row, or a redacted one,
+            # must not fail these). See django_res_design/people-model-cleanup.md.
+            #
+            # Contactable by at least one channel.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GuestStatus.ACTIVE.value)
+                    | models.Q(email__isnull=False)
+                    | ~models.Q(phone="")
+                ),
+                name="guest_active_contactable",
+            ),
+            # A stated preference must be actionable — you can only prefer a
+            # channel you've actually provided.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GuestStatus.ACTIVE.value)
+                    | (
+                        (
+                            ~models.Q(contact_method=ContactMethod.EMAIL.value)
+                            | models.Q(email__isnull=False)
+                        )
+                        & (
+                            ~models.Q(
+                                contact_method__in=[
+                                    ContactMethod.PHONE.value,
+                                    ContactMethod.SMS.value,
+                                ]
+                            )
+                            | ~models.Q(phone="")
+                        )
+                    )
+                ),
+                name="guest_active_preference_actionable",
+            ),
+        ]
         ordering = ["last_name", "first_name"]
 
     def __str__(self) -> str:
@@ -69,13 +110,31 @@ class Guest(AuditedModel):
             return f"[redacted guest #{self.pk}]"
         return f"{self.first_name} {self.last_name}".strip()
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Normalize contact channels on every write so the CHECKs see the truth.
+
+        - `phone` → E.164 (unanchorable national numbers pass through unchanged,
+          see `reservations.phone`).
+        - empty-string `email` → NULL. An empty email is the *absence* of an
+          email, but `email__isnull=False` would treat "" as present and let an
+          uncontactable ACTIVE guest past `guest_active_contactable` on any path
+          that bypasses the serializer (admin, ORM, bulk). Collapsing it here
+          converges every write path on one rule.
+        """
+        if self.phone:
+            self.phone = to_e164(self.phone)
+        if not self.email:
+            self.email = None
+        super().save(*args, **kwargs)
+
     @transaction.atomic
     def anonymize(self) -> None:
         """Overwrite PII with sentinels; preserves the row for FK integrity."""
         self.first_name = "[REDACTED]"
         self.last_name = "[REDACTED]"
-        self.email = f"redacted-{self.pk}@anonymized.local"
+        self.email = None
         self.phone = ""
+        self.contact_method = None
         self.address_line_1 = ""
         self.address_line_2 = ""
         self.town = ""
@@ -90,6 +149,7 @@ class Guest(AuditedModel):
                 "last_name",
                 "email",
                 "phone",
+                "contact_method",
                 "address_line_1",
                 "address_line_2",
                 "town",

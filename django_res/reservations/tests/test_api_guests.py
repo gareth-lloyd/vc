@@ -49,6 +49,58 @@ def test_create_guest(api_client: APIClient, staff: User) -> None:
 
 
 @pytest.mark.django_db
+def test_create_phone_only_guest(api_client: APIClient, staff: User) -> None:
+    """A phone-only guest is a first-class valid row (no fabricated email)."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/guests",
+        {"first_name": "Alan", "last_name": "Turing", "phone": "+44 7911 123456"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    guest = Guest.objects.get(last_name="Turing")
+    assert guest.email is None
+    assert guest.phone == "+447911123456"  # normalized to E.164 on save
+
+
+@pytest.mark.django_db
+def test_create_guest_with_no_channel_returns_400(api_client: APIClient, staff: User) -> None:
+    """The contactability CHECK is surfaced as a clean 400, not a 500."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/guests",
+        {"first_name": "Alan", "last_name": "Turing"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_create_email_preference_without_email_returns_400(
+    api_client: APIClient, staff: User
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/guests",
+        {
+            "first_name": "Alan",
+            "last_name": "Turing",
+            "phone": "+44 7700 900000",
+            "contact_method": "email",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "contact_method" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
 def test_list_guests(api_client: APIClient, staff: User, guest: Guest) -> None:
     api_client.force_login(staff)
 

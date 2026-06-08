@@ -74,10 +74,13 @@ def test_guest_email_returns_none_for_none_guest() -> None:
 
 @pytest.mark.django_db
 def test_guest_email_returns_none_for_empty_string() -> None:
+    # A phone-only guest is the real "no email" state: email="" normalizes to
+    # NULL on save, and the phone keeps the ACTIVE row contactable.
     guest = Guest.objects.create(
         first_name="Ada",
         last_name="Lovelace",
         email="",
+        phone="+447911123456",
     )
 
     assert guest_email(guest) is None

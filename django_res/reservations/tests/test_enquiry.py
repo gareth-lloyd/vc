@@ -35,6 +35,7 @@ def enquiry(db: None, guest: Guest) -> Enquiry:
 @pytest.fixture
 def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

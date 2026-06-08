@@ -51,6 +51,7 @@ def _make_booking(
     date_from = date_from or (timezone.localdate() - timedelta(days=1))
     date_to = date_from + timedelta(days=7)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -184,7 +185,7 @@ def test_guest_contact_hidden_by_default(
     detail = _detail(api_client, booking)
     assert "guest_contact" not in detail
     # The email/phone must not appear under any key.
-    assert guest.email not in str(detail)
+    assert guest.email and guest.email not in str(detail)
 
 
 def test_guest_contact_shown_with_grant(

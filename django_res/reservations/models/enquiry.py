@@ -13,6 +13,7 @@ from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import generate_reference
 from reservations.enums import (
+    ContactMethod,
     EnquiryEventKind,
     EnquiryNoteKind,
     EnquiryRequestType,
@@ -43,6 +44,15 @@ class Enquiry(AuditedModel):
     last_name = models.CharField(max_length=128, blank=True)
     email = CIEmailField(blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    # Stated preference survives before a Guest exists; carried onto the Guest
+    # on resolve. No contactability constraint here — the enquiry is the
+    # permissive capture surface; the Guest is the enforced-clean entity.
+    contact_method = models.CharField(
+        max_length=8,
+        choices=ContactMethod.choices,
+        null=True,
+        blank=True,
+    )
 
     property = models.ForeignKey(
         "properties.Property",

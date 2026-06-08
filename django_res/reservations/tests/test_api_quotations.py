@@ -48,6 +48,7 @@ def quotation(
     terms: TermsVersion,
 ) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -78,8 +79,36 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
     # Surface human-readable values alongside the FK ids so the FE doesn't
     # display opaque #ids (regression: STAY-style "Guest #64" / "Enquiry #66").
     assert row["guest_name"] == "Ada Lovelace"
-    assert row["enquiry_reference"] is None
+    # Every quotation now has an enquiry (auto-created for agent-direct quotes).
+    assert row["enquiry_reference"] == quotation.enquiry.reference
     assert row["agent_name"] is None
+
+
+@pytest.mark.django_db
+def test_patch_quotation_with_null_enquiry_keeps_existing(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """A PATCH that nulls `enquiry` must not violate the NOT-NULL FK.
+
+    The write serializer allows a null enquiry only so an agent-direct *create*
+    can omit it (the view mints one). On update there's always an enquiry — a
+    `{"enquiry": null}` body keeps the existing one rather than 500ing on the
+    PROTECT/NOT-NULL column.
+    """
+    api_client.force_login(staff)
+    existing_enquiry_id = quotation.enquiry_id
+
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}",
+        {"enquiry": None},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    quotation.refresh_from_db()
+    assert quotation.enquiry_id == existing_enquiry_id
 
 
 @pytest.mark.django_db
@@ -467,7 +496,7 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
     from reservations.models import Enquiry, EnquiryEvent
 
     enquiry = Enquiry.objects.create(
-        guest=guest, email=guest.email, first_name="Ada", last_name="Lovelace"
+        guest=guest, email=guest.email or "", first_name="Ada", last_name="Lovelace"
     )
     quotation = Quotation.objects.create(
         enquiry=enquiry,
@@ -551,6 +580,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     # Pre-existing AWAITING_DEPOSIT booking holds 2026-06-10..06-17 on the
     # same property, so converting the overlapping quotation must fail.
     other_quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

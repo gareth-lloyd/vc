@@ -87,6 +87,7 @@ def quotation_line(
     from reservations.models import Quotation, QuotationLine
 
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

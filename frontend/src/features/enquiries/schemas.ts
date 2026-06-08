@@ -32,6 +32,9 @@ export const enquiryRequestTypeSchema = z.enum([
 ]);
 export type EnquiryRequestType = z.infer<typeof enquiryRequestTypeSchema>;
 
+export const contactMethodSchema = z.enum(["email", "phone", "sms"]);
+export type ContactMethod = z.infer<typeof contactMethodSchema>;
+
 export const enquiryListItemSchema = z.object({
   id: z.number(),
   reference: z.string(),
@@ -41,6 +44,8 @@ export const enquiryListItemSchema = z.object({
   first_name: z.string().optional().default(""),
   last_name: z.string().optional().default(""),
   email: z.string().optional().default(""),
+  phone: z.string().optional().default(""),
+  contact_method: contactMethodSchema.nullable().optional(),
   property: z.number().nullable().optional(),
   property_name: z.string().nullable().optional(),
   region: z.number().nullable().optional(),

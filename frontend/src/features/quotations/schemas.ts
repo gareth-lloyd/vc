@@ -214,7 +214,8 @@ export const guestSchema = z.object({
   id: z.number(),
   first_name: z.string(),
   last_name: z.string(),
-  email: z.string(),
+  // Email is optional on the backend now — absence is null, never a synthetic.
+  email: z.string().nullable(),
 });
 export type GuestSummary = z.infer<typeof guestSchema>;
 

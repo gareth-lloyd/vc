@@ -22,9 +22,7 @@ class Quotation(AuditedModel):
     number = models.PositiveIntegerField(null=True, blank=True, unique=True)
     enquiry = models.ForeignKey(
         "reservations.Enquiry",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="quotations",
     )
     guest = models.ForeignKey(

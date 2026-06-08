@@ -33,6 +33,7 @@ def priced_quotation(
     property_: Property,
 ) -> Quotation:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

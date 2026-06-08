@@ -19,6 +19,7 @@ from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
 @pytest.fixture
 def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -94,6 +95,7 @@ def test_accept_rejects_foreign_line(
     quotation: Quotation, line: QuotationLine, guest: Guest, gbp: Currency, terms: TermsVersion
 ) -> None:
     other = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

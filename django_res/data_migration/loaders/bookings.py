@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import legacy_quotation_no
+from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
 from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
@@ -96,9 +96,11 @@ class BookingLoader(BaseLoader):
         # `number`/`reference` are unique. So we leave `number` NULL and pin a
         # deterministic per-booking sentinel reference instead. The legacy
         # number is carried forward on the *booking* reference below.
+        enquiry = ensure_enquiry(guest, legacy_id=booking_legacy)
         quotation, _ = Quotation.objects.update_or_create(
             legacy_id=booking_legacy,
             defaults={
+                "enquiry": enquiry,
                 "guest": guest,
                 "currency": currency,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],

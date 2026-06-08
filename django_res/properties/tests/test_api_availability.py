@@ -213,6 +213,7 @@ def _system_quotation_hold(property_: Property) -> BookingHold:
         version="2026-01", body_markdown="x", published_at=timezone.now(), is_current=True
     )
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=currency,
         expires_at=timezone.now() + timedelta(days=7),

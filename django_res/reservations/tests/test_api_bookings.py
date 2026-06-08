@@ -89,6 +89,7 @@ def booking(
     rate_rule: RateRule,
 ) -> Booking:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -185,6 +186,7 @@ def test_archived_listing_has_no_n_plus_one(
     list serializer walks; without it, each archived row triggers an extra
     SELECT and the steady-state query count grows linearly with row count."""
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

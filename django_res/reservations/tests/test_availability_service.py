@@ -62,6 +62,7 @@ def _make_booking(
     status: str,
 ) -> Booking:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=currency,
         expires_at=timezone.now() + timedelta(days=7),
@@ -300,6 +301,7 @@ def test_calendar_query_count_is_constant(
 # ----------------------------------------------------------------------
 def _quotation(guest: Guest, currency: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=currency,
         expires_at=timezone.now() + timedelta(days=7),

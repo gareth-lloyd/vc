@@ -20,9 +20,10 @@ from data_migration.base import BaseLoader, LoadReport
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.geo import Country, Region
 from properties.models.property import Property
-from reservations.enums import EnquirySource, EnquiryStatus
+from reservations.enums import EnquirySource, EnquiryStatus, GuestStatus
 from reservations.models.enquiry import Enquiry
 from reservations.models.guest import Guest
+from reservations.phone import to_e164
 
 _ROLE_MAP = {
     1: ContactRole.OWNER,
@@ -97,9 +98,18 @@ class GuestLoader(BaseLoader):
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         first = (row.get("FirstName") or "").strip()[:128]
         last = (row.get("LastName") or "").strip()[:128]
-        email = (row.get("Email") or "").strip().lower()
-        if not (first or last) or not email or "@" not in email:
+        if not (first or last):
+            # No identity at all — nothing worth importing.
             return None
+        # Email is optional now; absence is NULL, never a synthetic. A
+        # phone-only guest is first-class valid (no longer dropped).
+        email_raw = (row.get("Email") or "").strip().lower()
+        email = email_raw[:254] if "@" in email_raw else None
+        phone = to_e164((row.get("MobileNo") or "").strip())[:32]
+        # An ACTIVE guest must be contactable (CHECK). A legacy row with no
+        # channel is dispositioned ARCHIVED — the honest exemption — rather
+        # than failing the import.
+        status = GuestStatus.ACTIVE if (email or phone) else GuestStatus.ARCHIVED
         country = (
             Country.objects.filter(legacy_id=str(row["CountryId"])).first()
             if row.get("CountryId")
@@ -109,8 +119,9 @@ class GuestLoader(BaseLoader):
             "title": (row.get("Title") or "").strip()[:16],
             "first_name": first or "(unknown)",
             "last_name": last or "(unknown)",
-            "email": email[:254],
-            "phone": (row.get("MobileNo") or "").strip()[:32],
+            "email": email,
+            "phone": phone,
+            "status": status,
             "address_line_1": (row.get("AddressLine1") or "").strip()[:255],
             "address_line_2": (row.get("AddressLine2") or "").strip()[:255],
             "town": (row.get("Town") or "").strip()[:128],
@@ -176,11 +187,10 @@ class EnquiryLoader(BaseLoader):
         if date_to is not None and hasattr(date_to, "date"):
             date_to = date_to.date()
 
+        # Normalize to E.164 using the legacy numeric calling code as the
+        # region anchor (replaces the crude `+{cc} {number}` concatenation).
         cc = (row.get("CountryCode") or "").strip()
-        phone = (row.get("MobileNo") or "").strip()
-        if cc and phone:
-            phone = f"+{cc.lstrip('+')} {phone}"
-        phone = phone[:32]
+        phone = to_e164((row.get("MobileNo") or "").strip(), country_code=cc or None)[:32]
 
         email = (row.get("Email") or "").strip().lower()
         if "@" not in email:

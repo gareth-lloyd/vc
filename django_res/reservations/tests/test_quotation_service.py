@@ -10,7 +10,12 @@ from django.utils import timezone
 
 from properties.enums import PrefilledChangeOverDay
 from properties.models.settings import PropertySettings
-from reservations.enums import BookingHoldReason, EnquiryStatus
+from reservations.enums import (
+    BookingHoldReason,
+    ContactMethod,
+    EnquirySource,
+    EnquiryStatus,
+)
 from reservations.models import BookingHold, Enquiry, Quotation
 from reservations.services.quotations import QuotationService
 
@@ -28,7 +33,7 @@ def test_create_from_enquiry_happy_path(
     property_: Property,
     rate_rule: RateRule,  # ensures PricingEngine has something to quote on
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     expires = timezone.now() + timedelta(days=7)
 
     quotation = QuotationService.create_from_enquiry(
@@ -77,7 +82,7 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
     clobber it, mirroring the API `_reprice` guard."""
     from decimal import Decimal
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,
@@ -147,7 +152,7 @@ def test_create_from_enquiry_records_send_path_smtp(
     from reservations.enums import EnquiryEventKind
     from reservations.models import EnquiryEvent
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
 
     QuotationService.create_from_enquiry(
         enquiry,
@@ -172,7 +177,7 @@ def test_create_from_enquiry_records_send_path_smtp(
 def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: TermsVersion) -> None:
     """`Enquiry.quote_sent` must require `send_path` — surfacing the audit
     contract in the signature so future callers can't omit it silently."""
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
@@ -201,7 +206,7 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     # 2026-06-10 is a Wednesday — not the Saturday changeover day.
     line_input = {
         "property": property_,
@@ -229,3 +234,45 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
     hold = BookingHold.objects.get(quotation=quotation)
     assert hold.date_from == date(2026, 6, 13)
     assert hold.date_to == date(2026, 6, 20)
+
+
+@pytest.mark.django_db
+def test_create_direct_auto_creates_agent_portal_enquiry(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """Agent-direct quote with no enquiry mints exactly one AGENT_PORTAL enquiry."""
+    guest.contact_method = ContactMethod.EMAIL
+    guest.save(update_fields=["contact_method"])
+
+    quotation = QuotationService.create_direct(
+        guest=guest,
+        lines=[
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+                "adults": 2,
+                "children": 0,
+            },
+        ],
+        currency=gbp,
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    # Exactly one enquiry, linked, tagged AGENT_PORTAL, carrying the snapshot.
+    assert Enquiry.objects.count() == 1
+    enquiry = quotation.enquiry
+    assert enquiry is not None
+    assert enquiry.site_source == EnquirySource.AGENT_PORTAL.value
+    assert enquiry.guest_id == guest.pk
+    assert enquiry.email == guest.email
+    assert enquiry.contact_method == ContactMethod.EMAIL.value
+    # The service path advances the enquiry to QUOTED (audited).
+    assert enquiry.status == EnquiryStatus.QUOTED.value
+    # And conversion reporting sees it.
+    assert quotation.lines.count() == 1

@@ -130,6 +130,7 @@ def _make_active_booking(
     date_to: date,
 ) -> Booking:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=datetime(2027, 1, 1, tzinfo=UTC),

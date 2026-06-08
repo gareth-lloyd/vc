@@ -138,8 +138,10 @@ def test_quotation_send_with_no_guest_email_skips_dispatch(
     lifecycle_templates: None,
 ) -> None:
     quotation = quotation_line.quotation
+    # Phone-only guest: no email, still contactable (email="" → NULL on save).
     quotation.guest.email = ""
-    quotation.guest.save(update_fields=["email", "updated_at"])
+    quotation.guest.phone = "+447911123456"
+    quotation.guest.save(update_fields=["email", "phone", "updated_at"])
 
     quotation.send()
 

@@ -57,6 +57,7 @@ def _booking(
     status: str,
 ) -> Booking:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=currency,
         expires_at=timezone.now() + timedelta(days=7),

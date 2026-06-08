@@ -178,6 +178,10 @@ def test_retrieve_enquiry_returns_detail(
     assert response.status_code == 200
     assert response.data["id"] == enquiry.pk
     assert "inbound_message" in response.data
+    # phone + contact_method are now exposed on the read shape so the FE can
+    # pass an enquiry's phone through when creating a Guest.
+    assert "phone" in response.data
+    assert "contact_method" in response.data
 
 
 @pytest.mark.django_db

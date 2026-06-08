@@ -46,6 +46,28 @@ def test_inactive_guest_with_no_channel_allowed(status: GuestStatus) -> None:
     assert guest.pk is not None
 
 
+def test_empty_string_email_normalized_to_none() -> None:
+    """`email=""` is the absence of an email, not a present-but-blank one.
+
+    `save()` collapses it to NULL so `email__isnull` (and every contactability
+    check keyed on it) reflects the truth across all write paths.
+    """
+    guest = _guest(email="", phone="+447911123456")
+    guest.refresh_from_db()
+    assert guest.email is None
+
+
+def test_active_guest_with_empty_email_and_no_phone_rejected() -> None:
+    """An empty-string email must not slip past the contactability CHECK.
+
+    Without normalization `email=""` makes `email__isnull=False` true, so an
+    uncontactable ACTIVE guest would be legal via the admin/ORM/bulk paths that
+    bypass the serializer. `save()` normalizes "" → NULL so the DB CHECK bites.
+    """
+    with pytest.raises(IntegrityError):
+        _guest(email="", phone="")
+
+
 # --- actionable preference --------------------------------------------------
 
 

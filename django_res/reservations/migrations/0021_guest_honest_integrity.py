@@ -14,9 +14,16 @@ from django.db import migrations, models
 
 
 def scrub_synthetic_emails(apps, schema_editor):
-    """`enquiry-{id}@noemail.local` is a rebuild invention — drop it to NULL."""
+    """Collapse non-real emails to NULL before the contactability CHECK lands.
+
+    Two cases: the `enquiry-{id}@noemail.local` synthetic the rebuild fabricated,
+    and any empty-string email (the absence of an email, not a present-but-blank
+    one). Both must be NULL so `email__isnull` — which the constraint and the
+    `disposition_channelless` triage below key on — reflects the truth.
+    """
     Guest = apps.get_model("reservations", "Guest")
     Guest.objects.filter(email__endswith="@noemail.local").update(email=None)
+    Guest.objects.filter(email="").update(email=None)
 
 
 def normalize_phones(apps, schema_editor):

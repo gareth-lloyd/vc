@@ -111,13 +111,20 @@ class Guest(AuditedModel):
         return f"{self.first_name} {self.last_name}".strip()
 
     def save(self, *args: Any, **kwargs: Any) -> None:
-        """Normalize `phone` to E.164 on every write so dedup can key on it.
+        """Normalize contact channels on every write so the CHECKs see the truth.
 
-        Unanchorable national numbers (no region on the API write path) pass
-        through unchanged rather than being dropped — see `reservations.phone`.
+        - `phone` → E.164 (unanchorable national numbers pass through unchanged,
+          see `reservations.phone`).
+        - empty-string `email` → NULL. An empty email is the *absence* of an
+          email, but `email__isnull=False` would treat "" as present and let an
+          uncontactable ACTIVE guest past `guest_active_contactable` on any path
+          that bypasses the serializer (admin, ORM, bulk). Collapsing it here
+          converges every write path on one rule.
         """
         if self.phone:
             self.phone = to_e164(self.phone)
+        if not self.email:
+            self.email = None
         super().save(*args, **kwargs)
 
     @transaction.atomic

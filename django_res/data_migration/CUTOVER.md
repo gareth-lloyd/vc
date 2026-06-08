@@ -182,8 +182,12 @@ Output should report `Rewrote N rows and deleted source country.`
 `properties_propertyimage` has ~13 000 filenames pointing at the legacy
 `/uploads/` tree; the actual files live wherever ops has them (S3, a
 backup tarball, etc.). Copy the binaries into the new storage backend
-according to the separate **Image migration workstream**. The DB rows are
-already in place.
+according to the separate **Image migration workstream**, tracked in
+`django_res_design/todo/gap-012-image-binary-migration.md` (the canonical
+home — note the loader flattens `PropertyImages/<VillaId>/<file>` to a flat
+`properties/legacy/<file>` key, so the copy must reconstruct the source
+subfolder from each row's `property.legacy_id`). The DB rows are already in
+place.
 
 ## 9. Cut DNS / app config
 

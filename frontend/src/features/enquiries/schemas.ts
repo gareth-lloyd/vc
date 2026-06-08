@@ -146,6 +146,7 @@ export const enquiryWriteInputSchema = z.object({
   children: z.number().int().min(0),
   min_bedrooms: z.number().int().min(0).nullable(),
   request_type: enquiryRequestTypeSchema,
+  contact_method: contactMethodSchema.nullable(),
   site_source: enquirySourceSchema,
   inbound_message: z.string().trim().max(10_000),
 });
@@ -185,6 +186,10 @@ export function enquiryRequestTypeLabel(value: EnquiryRequestType): string {
   return i18n.t(`enquiries:labels.request_type.${value}`);
 }
 
+export function contactMethodLabel(value: ContactMethod): string {
+  return i18n.t(`enquiries:labels.contact_method.${value}`);
+}
+
 export const enquiryStatusOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
   enquiryStatusSchema.options.map((value) => ({ value, label: enquiryStatusLabel(value) }));
 
@@ -202,3 +207,6 @@ export const enquiryRequestTypeOptions = (): Array<{
     value,
     label: enquiryRequestTypeLabel(value),
   }));
+
+export const contactMethodOptions = (): Array<{ value: ContactMethod; label: string }> =>
+  contactMethodSchema.options.map((value) => ({ value, label: contactMethodLabel(value) }));

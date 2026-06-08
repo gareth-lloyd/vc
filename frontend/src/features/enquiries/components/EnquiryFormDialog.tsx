@@ -29,12 +29,17 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
 import {
+  contactMethodOptions,
   enquirySourceOptions,
   enquiryRequestTypeOptions,
   enquiryWriteInputSchema,
   type EnquiryDetail,
   type EnquiryWriteInput,
 } from "../schemas";
+
+// shadcn/radix Select forbids an empty-string item value, so "no preference"
+// rides a sentinel that maps to `null` on the way in/out of the form.
+const CONTACT_METHOD_NONE = "none";
 
 interface CommonProps {
   open: boolean;
@@ -81,6 +86,7 @@ const CREATE_DEFAULTS: EnquiryWriteInput = {
   children: 0,
   min_bedrooms: null,
   request_type: "quote",
+  contact_method: null,
   site_source: "main_website",
   inbound_message: "",
 };
@@ -90,7 +96,7 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
     first_name: enq.first_name ?? "",
     last_name: enq.last_name ?? "",
     email: enq.email ?? "",
-    phone: "",
+    phone: enq.phone ?? "",
     date_from: enq.date_from ?? "",
     date_to: enq.date_to ?? "",
     is_flexible: enq.is_flexible ?? false,
@@ -98,6 +104,7 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
     children: enq.children ?? 0,
     min_bedrooms: enq.min_bedrooms ?? null,
     request_type: enq.request_type,
+    contact_method: enq.contact_method ?? null,
     site_source: enq.site_source,
     inbound_message: enq.inbound_message ?? "",
   };
@@ -136,6 +143,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const requestTypeCtrl = useController({ control: form.control, name: "request_type" });
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
   const flexibleCtrl = useController({ control: form.control, name: "is_flexible" });
+  const contactMethodCtrl = useController({ control: form.control, name: "contact_method" });
 
   // Watch the typed dates so the widened preview updates as the operator types.
   const requestedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
@@ -208,6 +216,39 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
                 {form.formState.errors.email.message}
               </p>
             ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="enq-phone">{t("form_dialog.fields.phone")}</Label>
+              <Input id="enq-phone" type="tel" {...form.register("phone")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="enq-contact-method">{t("form_dialog.fields.contact_method")}</Label>
+              <Select
+                value={contactMethodCtrl.field.value ?? CONTACT_METHOD_NONE}
+                onValueChange={(v) =>
+                  contactMethodCtrl.field.onChange(v === CONTACT_METHOD_NONE ? null : v)
+                }
+              >
+                <SelectTrigger
+                  id="enq-contact-method"
+                  aria-label={t("form_dialog.fields.contact_method_aria")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={CONTACT_METHOD_NONE}>
+                    {t("form_dialog.fields.contact_method_none")}
+                  </SelectItem>
+                  {contactMethodOptions().map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

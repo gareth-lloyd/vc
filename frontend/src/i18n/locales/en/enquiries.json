@@ -30,6 +30,11 @@
       "quote": "Quote",
       "brochure": "Brochure",
       "other": "Other"
+    },
+    "contact_method": {
+      "email": "Email",
+      "phone": "Phone",
+      "sms": "SMS"
     }
   },
   "list": {
@@ -131,7 +136,9 @@
       "property": "Property",
       "region": "Region",
       "agent": "Agent",
-      "referral_code": "Referral code"
+      "referral_code": "Referral code",
+      "phone": "Phone",
+      "contact_method": "Preferred contact"
     },
     "values": {
       "yes": "Yes",
@@ -193,7 +200,11 @@
       "source": "Source",
       "inbound_message": "Inbound message",
       "request_type_aria": "Request type",
-      "source_aria": "Source"
+      "source_aria": "Source",
+      "phone": "Phone",
+      "contact_method": "Preferred contact",
+      "contact_method_aria": "Preferred contact method",
+      "contact_method_none": "No preference"
     },
     "date_spread": {
       "label": "Widen range",

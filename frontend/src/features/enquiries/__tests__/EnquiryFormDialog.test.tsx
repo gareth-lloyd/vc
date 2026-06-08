@@ -161,3 +161,85 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     expect(screen.getByText(/±\s*3\s*days/i)).toBeInTheDocument();
   });
 });
+
+describe("EnquiryFormDialog phone + contact_method capture", () => {
+  it("persists the typed phone and chosen contact method on create", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 3, reference: "E-003", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/first name/i), "Ada");
+    await userEvent.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.type(screen.getByLabelText(/^phone$/i), "+447911123456");
+
+    await userEvent.click(screen.getByRole("combobox", { name: /preferred contact method/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Phone" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({ phone: "+447911123456", contact_method: "phone" });
+  });
+
+  it("defaults contact_method to null when no preference is chosen", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 4, reference: "E-004", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+    await userEvent.type(screen.getByLabelText(/first name/i), "Ada");
+    await userEvent.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({ contact_method: null });
+  });
+
+  it("hydrates phone + contact_method from an existing enquiry in edit mode", async () => {
+    const enquiry = {
+      id: 9,
+      reference: "E-009",
+      status: "new" as const,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.com",
+      phone: "+447911123456",
+      contact_method: "sms" as const,
+      adults: 2,
+      children: 0,
+      request_type: "quote" as const,
+      site_source: "main_website" as const,
+      is_flexible: false,
+      min_bedrooms: null,
+      referral_code: "",
+      inbound_message: "",
+    };
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={enquiry} open onOpenChange={() => {}} />,
+    );
+
+    expect(screen.getByLabelText(/^phone$/i)).toHaveValue("+447911123456");
+    expect(screen.getByRole("combobox", { name: /preferred contact method/i })).toHaveTextContent(
+      /sms/i,
+    );
+  });
+});

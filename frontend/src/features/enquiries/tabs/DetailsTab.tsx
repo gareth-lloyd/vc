@@ -9,7 +9,12 @@ import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
-import { enquiryRequestTypeLabel, enquirySourceLabel, enquiryStatusLabel } from "../schemas";
+import {
+  contactMethodLabel,
+  enquiryRequestTypeLabel,
+  enquirySourceLabel,
+  enquiryStatusLabel,
+} from "../schemas";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -88,6 +93,11 @@ export function DetailsTab() {
         <FactList>
           <FactRow label={t("details_tab.fields.name")} value={fullName} />
           <FactRow label={t("details_tab.fields.email")} value={enquiry.email || "—"} />
+          <FactRow label={t("details_tab.fields.phone")} value={enquiry.phone || "—"} />
+          <FactRow
+            label={t("details_tab.fields.contact_method")}
+            value={enquiry.contact_method ? contactMethodLabel(enquiry.contact_method) : "—"}
+          />
           <FactRow label={t("details_tab.fields.party")} value={partyText} />
           <FactRow
             label={t("details_tab.fields.min_bedrooms")}

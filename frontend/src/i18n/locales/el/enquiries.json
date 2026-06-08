@@ -30,6 +30,11 @@
       "quote": "Προσφορά",
       "brochure": "Φυλλάδιο",
       "other": "Άλλο"
+    },
+    "contact_method": {
+      "email": "Email",
+      "phone": "Τηλέφωνο",
+      "sms": "SMS"
     }
   },
   "list": {
@@ -131,7 +136,9 @@
       "property": "Ακίνητο",
       "region": "Περιοχή",
       "agent": "Πράκτορας",
-      "referral_code": "Κωδικός παραπομπής"
+      "referral_code": "Κωδικός παραπομπής",
+      "phone": "Τηλέφωνο",
+      "contact_method": "Προτιμώμενη επικοινωνία"
     },
     "values": {
       "yes": "Ναι",
@@ -193,7 +200,11 @@
       "source": "Πηγή",
       "inbound_message": "Εισερχόμενο μήνυμα",
       "request_type_aria": "Τύπος αιτήματος",
-      "source_aria": "Πηγή"
+      "source_aria": "Πηγή",
+      "phone": "Τηλέφωνο",
+      "contact_method": "Προτιμώμενη επικοινωνία",
+      "contact_method_aria": "Προτιμώμενος τρόπος επικοινωνίας",
+      "contact_method_none": "Καμία προτίμηση"
     },
     "date_spread": {
       "label": "Διεύρυνση εύρους",

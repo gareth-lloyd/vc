@@ -67,6 +67,7 @@ describe("enquiryWriteInputSchema", () => {
     children: 0,
     min_bedrooms: null,
     request_type: "quote",
+    contact_method: null,
     site_source: "main_website",
     inbound_message: "",
   } as const;

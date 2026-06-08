@@ -74,7 +74,7 @@ Fully designed already; scheduled after M1. Each keeps its spec and decision row
 | **Deeper / Zoho-primary lead management** | Lead-management primacy (Res vs Zoho) is an open strategic decision (`10-decisions.md` row 93). M1 stays Res-primary, one-way push. | `08-integrations.md` |
 | **Owner portal** | No legacy analog; read-only minimum is itself deferred, and owner-edit/onboarding/messaging is greenfield. Permissions layer (owners see only their own villa) is the critical prerequisite. | `product-design/02-frontend-design.md §7.3`, `10-decisions.md` row 69 |
 | **Advanced finance permissioning** | M1 uses flat staff roles gating the whole finance form; per-concern permissions are a post-v1 refactor (`10-decisions.md` row 30). | `03-finance-config.md` |
-| **Channel / iCal ingest** | High-value force-multiplier (~30 villas publish iCal) but explicitly out of MVP (`10-decisions.md` deferred). | `06-availability.md` "Out of scope", `08-integrations.md` |
+| **Channel / iCal ingest** | High-value force-multiplier (~30 villas — or ~30% of the catalogue; figure unreconciled, see `todo/gap-011-ical-feed-ingest.md`) but explicitly out of MVP (`10-decisions.md` deferred). | `06-availability.md` "Out of scope", `08-integrations.md` |
 | **Full comms catalogue + template-admin UX** | The 23-template library + versioned editable admin (`10-decisions.md` rows 18, 36) lands incrementally after the M1-critical transactional emails. | `10-comms.md` |
 
 ## Out of scope entirely (v-later)

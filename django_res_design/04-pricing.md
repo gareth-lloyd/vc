@@ -56,7 +56,7 @@ Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. 
 - `property` — FK properties.Property PROTECT
 - `name` — CharField (e.g. "Summer 2026", "2026 Agent Net")
 - `currency` — FK Currency PROTECT
-- `price_basis` — TextChoices (`GROSS`, `NET`) — gross is customer-facing, net is agent
+- `price_basis` — TextChoices (`GROSS`, `NET`) — gross is customer-facing, net is agent. **Owner-facing views must show net.** The legacy build leaked **gross** figures onto the owner booking-confirmation (a "big low moment a couple of weeks in", 2026-06-08 demo) — a genuine logic bug, not a config gap. The rebuild closes it: `PricingEngine` computes `net_to_owner` explicitly (step 10) and owner-facing serializers read that field directly rather than recomputing. Treat "owner confirmation shows net" as an acceptance criterion, not an implementation detail.
 - `effective_from` — DateField
 - `effective_to` — DateField(null=True, blank=True) — open-ended
 - `is_active` — bool
@@ -75,6 +75,18 @@ The operator-facing rate-card unit; the level at which length-of-stay rules and 
 - `notes` — TextField(blank=True)
 
 Index: `(plan, sort_order)`.
+
+> **Seasonal minimum-stay drops need no extra field.** Villas commonly require 7
+> nights in high season but drop to 3 (occasionally lower) outside it
+> (2026-06-08 demo). This is expressed as different `min_nights` on the relevant
+> season's cards — the per-card LOS rule already varies by season because cards
+> are season-scoped. The same demo flagged changeover-day + length-of-stay +
+> rate interplay as the genuinely hard corner of pricing ("quite a lot of
+> complexity… we've run into all those problems and limitations and know how to
+> solve them"); the three-level RatePlan→RateCard→RateRule split plus
+> property-level changeover (GAP-007) is the answer, but treat the rates/products
+> walkthrough with the person who loads rates (Ashley) as a required validation
+> pass before locking the pricing UI.
 
 ### `RateRule(AuditedModel)`
 The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` × `VillaSeasonDate`.
@@ -108,6 +120,33 @@ Index: `(card, date_from, date_to)`, `(card, priority DESC)`.
 
 #### Occupancy bands
 A card with multiple party-size bands is represented as **multiple `RateRule` rows** sharing a `card_id` and date range, with disjoint `(min_party, max_party)` intervals. The `EXCLUDE` constraint permits this because party range is part of the exclusion tuple. No separate band table.
+
+> **Confirmed high-priority requirement (2026-06-08 demo).** Occupancy-bracket
+> pricing — different nightly/weekly rates for, e.g., 1–8 / 9–12 / 13–16 guests,
+> *also varying by season* — was singled out as an important element **missing
+> from the legacy build**, where the quote generator "defaults to the higher
+> price" (legacy in fact fell back to base-weekly ÷ 7 on a bracket miss — see
+> `09-departures.md` "Legacy correctness bugs explicitly fixed" #2). The
+> sibling-`RateRule` shape above **is** this feature and it is first-class here,
+> not an edge case. Caveat the production-data finding accordingly: the "only 3%
+> of legacy rate rows had occupancy bands" number (above) measures legacy
+> *under-support*, **not** future demand — the owner explicitly wants occupancy
+> brackets used far more widely. The separate-band-table decision still stands
+> (sibling rules are sufficient); just don't read the 3% as "occupancy pricing is
+> rare / unimportant."
+>
+> **The engine resolves one bracket; the *builder* may present several.**
+> `PricingEngine.quote()` resolves the single `RateRule` whose `(min_party,
+> max_party)` contains the inquiry's party size (and raises `PartyOutOfRange`
+> otherwise) — it does **not** auto-emit a price line per bracket. Showing a
+> client multiple occupancy options is a deliberate **quote-builder** action by
+> the agent, not an automatic fan-out: per the demo, agents are *selective* about
+> what they send and set the filters from their own knowledge rather than dumping
+> every bracket (Gareth asked whether the UI should present all options for all
+> party sizes; the owner said no — the salesperson curates). So the
+> matched-not-fallen-back engine behaviour is correct as designed; multi-bracket
+> display, where wanted, is composed by the builder calling the engine once per
+> party size.
 
 #### Disjoint date ranges within a card
 A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.

@@ -198,7 +198,7 @@ Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `e
 
 ## Out of scope (future)
 
-- **iCal feed ingest from owners.** Roughly 30 villas in the catalogue already publish public iCal feeds (per scoping-session 2026-05-26 with the site owner); the legacy team mirrors them manually through shared Outlook calendars. Pulling these directly into the availability surface is one of the highest-value force-multipliers identified, but it is **not in MVP**. When it lands, the natural shape is per-`Property` iCal URL config (probably on `PropertyContactAssignment` for the owner, or `PropertySettings`), a Celery beat task that pulls each feed, and `BookingHold(reason=OWNER_BLOCK, …)` rows for each event in the feed (idempotent on the iCal `UID`). The availability model above does not need to change. See `10-decisions.md` "Deferred" and `08-integrations.md`.
+- **iCal feed ingest from owners.** ~30 villas already publish public iCal feeds that the legacy team mirrors manually through Outlook; pulling them in writes `BookingHold(reason=OWNER_BLOCK, …)` rows directly onto the availability surface with no change to the model above. High-value v2 force-multiplier, **not in MVP**. Full spec, verified assumptions, and postponed decisions: **`todo/gap-011-ical-feed-ingest.md`**.
 
 ## Dropped from legacy
 

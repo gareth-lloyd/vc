@@ -48,6 +48,7 @@ def quotation(
     terms: TermsVersion,
 ) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
@@ -78,7 +79,8 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
     # Surface human-readable values alongside the FK ids so the FE doesn't
     # display opaque #ids (regression: STAY-style "Guest #64" / "Enquiry #66").
     assert row["guest_name"] == "Ada Lovelace"
-    assert row["enquiry_reference"] is None
+    # Every quotation now has an enquiry (auto-created for agent-direct quotes).
+    assert row["enquiry_reference"] == quotation.enquiry.reference
     assert row["agent_name"] is None
 
 
@@ -551,6 +553,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     # Pre-existing AWAITING_DEPOSIT booking holds 2026-06-10..06-17 on the
     # same property, so converting the overlapping quotation must fail.
     other_quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

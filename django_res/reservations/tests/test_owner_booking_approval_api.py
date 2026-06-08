@@ -47,6 +47,7 @@ def _pending_booking(
     start = timezone.localdate() + timedelta(days=30)
     end = start + timedelta(days=7)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

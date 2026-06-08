@@ -236,3 +236,7 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
             "expires_at",
             "terms_version",
         ]
+        # `enquiry` is non-null on the model, but agent-direct quotes arrive
+        # without one — the view auto-creates a minimal enquiry in that case
+        # (see QuotationViewSet.perform_create). Keep it optional on the wire.
+        extra_kwargs = {"enquiry": {"required": False, "allow_null": True}}

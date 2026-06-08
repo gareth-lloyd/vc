@@ -87,6 +87,23 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             headers=self.get_success_headers(write.data),
         )
 
+    def perform_create(self, serializer: Any) -> None:
+        """Auto-create a minimal enquiry for agent-direct quotes (no enquiry).
+
+        `Quotation.enquiry` is non-null; the write serializer keeps it optional
+        so an agent-direct quote can be saved without one. Here we mint the
+        minimal `AGENT_PORTAL` enquiry via the service so "every quote has an
+        enquiry" holds without a forced separate capture step.
+        """
+        if serializer.validated_data.get("enquiry") is None:
+            enquiry = QuotationService.minimal_enquiry_for(
+                serializer.validated_data["guest"],
+                agent=serializer.validated_data.get("agent"),
+            )
+            serializer.save(enquiry=enquiry)
+        else:
+            serializer.save()
+
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request: Request, pk: str | None = None) -> Response:
         """Render the quote HTML + the copy an operator can edit.

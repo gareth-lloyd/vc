@@ -80,6 +80,7 @@ def _make_booking(
     date_from = date.today() + timedelta(days=days_from)
     date_to = date.today() + timedelta(days=days_to)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

@@ -37,6 +37,7 @@ def test_sync_quotation_sequence_advances_past_imported_max() -> None:
     Quotation.objects.create(
         number=5000,
         reference="QVC5000",
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=currency,
         expires_at=timezone.now() + timedelta(days=7),

@@ -29,6 +29,7 @@ from reservations.models import (
 
 def _make_quotation(guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

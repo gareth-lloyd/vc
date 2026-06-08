@@ -28,6 +28,7 @@ def _make_booking(
     terms: TermsVersion,
 ) -> Booking:
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

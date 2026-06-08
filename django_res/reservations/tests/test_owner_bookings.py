@@ -51,6 +51,7 @@ def _make_booking(
     date_from = date_from or (timezone.localdate() - timedelta(days=1))
     date_to = date_from + timedelta(days=7)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

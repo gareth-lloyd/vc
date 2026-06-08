@@ -44,6 +44,7 @@ def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: 
     start = timezone.localdate() + timedelta(days=10)
     end = start + timedelta(days=7)
     quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
         guest=guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

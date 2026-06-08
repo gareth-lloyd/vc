@@ -23,7 +23,7 @@ from accounts.models import Contact
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
-from data_migration.loaders._util import legacy_quotation_no
+from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
 from pricing.models.currency import Currency
 from properties.enums import (
     CommissionCalcType,
@@ -36,6 +36,7 @@ from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import GroupFinance, PropertyFinance
 from properties.models.property import Property, PropertyGroup
 from reservations.enums import QuotationStatus
+from reservations.models.enquiry import Enquiry
 from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
@@ -338,6 +339,14 @@ class QuotationLoader(BaseLoader):
             if row.get("AgentId")
             else None
         )
+        # `Quotation.enquiry` is mandatory. Resolve the legacy EnquireId to its
+        # imported Enquiry; for agent-direct quotes (EnquireId 0/NULL/unresolved)
+        # back-create a minimal one, mirroring legacy `sp_quotationMaster`.
+        enquiry = None
+        if row.get("EnquireId"):
+            enquiry = Enquiry.objects.filter(legacy_id=str(row["EnquireId"])).first()
+        if enquiry is None:
+            enquiry = ensure_enquiry(guest, legacy_id=f"q{row['Id']}-autoenquiry", agent=agent)
         terms = _ensure_default_terms()
         # Carry the legacy QuotationNo forward as the canonical `number` so the
         # booking can derive `VC{number}` from `QVC{number}`. Setting both
@@ -353,6 +362,7 @@ class QuotationLoader(BaseLoader):
         display = qn if qn is not None else int(row["Id"])
         defaults: dict[str, Any] = {
             "reference": quotation_reference(display)[:32],
+            "enquiry": enquiry,
             "guest": guest,
             "agent": agent,
             "currency": currency,

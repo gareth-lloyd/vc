@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from django.db import transaction
 
 from pricing.services import PricingEngine
-from reservations.enums import BookingHoldReason, EnquiryStatus
+from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
 
@@ -144,3 +144,52 @@ class QuotationService:
             enquiry.quote_sent(quotation, send_path=SEND_PATH_SMTP, actor=actor)
 
         return quotation
+
+    @classmethod
+    def minimal_enquiry_for(cls, guest: Any, *, agent: Any | None = None) -> Enquiry:
+        """Auto-create a minimal Enquiry from a Guest snapshot.
+
+        The single mechanism behind "every quote has an enquiry" for
+        agent-direct quotes that arrive with no enquiry (legacy
+        `sp_quotationMaster @EnquireId=0` parity). Tagged via the existing
+        `site_source=AGENT_PORTAL` so conversion reporting (per-Enquiry) can
+        segment these. No sentinel, no nullable bridge, no forced capture step.
+        """
+        from reservations.models.enquiry import Enquiry
+
+        return Enquiry.objects.create(
+            guest=guest,
+            first_name=guest.first_name,
+            last_name=guest.last_name,
+            email=guest.email or "",
+            phone=guest.phone,
+            contact_method=guest.contact_method,
+            agent=agent,
+            site_source=EnquirySource.AGENT_PORTAL.value,
+        )
+
+    @classmethod
+    @transaction.atomic
+    def create_direct(
+        cls,
+        *,
+        guest: Any,
+        lines: list[dict[str, Any]],
+        currency: Any,
+        terms_version: Any,
+        expires_at: Any,
+        agent: Any | None = None,
+        actor: Any = None,
+    ) -> Quotation:
+        """Agent-direct quote with no enquiry — auto-create one, then delegate."""
+        enquiry = cls.minimal_enquiry_for(guest, agent=agent)
+        return cls.create_from_enquiry(
+            enquiry,
+            lines,
+            currency=currency,
+            terms_version=terms_version,
+            expires_at=expires_at,
+            guest=guest,
+            agent=agent,
+            actor=actor,
+        )

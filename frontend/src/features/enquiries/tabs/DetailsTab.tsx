@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
+import { EnquiryQuoteStack } from "../components/EnquiryQuoteStack";
 import {
   contactMethodLabel,
   enquiryRequestTypeLabel,
@@ -87,6 +88,10 @@ export function DetailsTab() {
             value={formatDate(enquiry.created_at ?? null)}
           />
         </FactList>
+      </Section>
+
+      <Section title={t("quotes_section.heading")}>
+        <EnquiryQuoteStack quotations={enquiry.quotations} />
       </Section>
 
       <Section title={t("details_tab.sections.guest")}>

@@ -56,6 +56,7 @@ describe("enquiryListItemSchema", () => {
 
 describe("enquiryWriteInputSchema", () => {
   const valid = {
+    guest: null,
     first_name: "Ada",
     last_name: "Lovelace",
     email: "ada@example.com",

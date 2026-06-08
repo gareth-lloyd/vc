@@ -4,7 +4,18 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { drfPage } from "@/test/drf";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
+
+const EXISTING_GUEST = {
+  id: 55,
+  first_name: "Ada",
+  last_name: "Lovelace",
+  email: "ada@guest.example.com",
+  phone: "+447900000000",
+  contact_method: "email",
+  status: "active",
+};
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -241,5 +252,103 @@ describe("EnquiryFormDialog phone + contact_method capture", () => {
     expect(screen.getByRole("combobox", { name: /preferred contact method/i })).toHaveTextContent(
       /sms/i,
     );
+  });
+});
+
+describe("EnquiryFormDialog guest resolve-or-create", () => {
+  it("links an existing guest, prefills the fields, and submits the guest id", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 7, reference: "E-007", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    // The picker trigger has role=combobox, whose accessible name is not
+    // derived from its text content — so target it by its visible label.
+    await userEvent.click(
+      await screen.findByText(/link an existing guest/i, { selector: "button" }),
+    );
+    await userEvent.type(screen.getByLabelText(/search guests/i), "ada");
+    await userEvent.click(await screen.findByText("Ada Lovelace"));
+
+    // Picking prefills the denorm capture fields.
+    expect(screen.getByLabelText(/first name/i)).toHaveValue("Ada");
+    expect(screen.getByLabelText(/email/i)).toHaveValue("ada@guest.example.com");
+
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({ guest: 55, email: "ada@guest.example.com" });
+  });
+
+  it("unlinking a picked guest submits guest as null (create-new path)", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 8, reference: "E-008", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.click(
+      await screen.findByText(/link an existing guest/i, { selector: "button" }),
+    );
+    await userEvent.type(screen.getByLabelText(/search guests/i), "ada");
+    await userEvent.click(await screen.findByText("Ada Lovelace"));
+
+    await userEvent.click(screen.getByRole("button", { name: /unlink/i }));
+    // Re-fill the required fields (still editable) and submit.
+    await userEvent.type(screen.getByLabelText(/last name/i), "Byron");
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({ guest: null });
+  });
+
+  it("hydrates the picker from an already-linked guest in edit mode", async () => {
+    server.use(http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)));
+
+    const enquiry = {
+      id: 12,
+      reference: "E-012",
+      status: "new" as const,
+      guest: 55,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@guest.example.com",
+      phone: "+447900000000",
+      contact_method: "email" as const,
+      adults: 2,
+      children: 0,
+      request_type: "quote" as const,
+      site_source: "main_website" as const,
+      is_flexible: false,
+      min_bedrooms: null,
+      referral_code: "",
+      inbound_message: "",
+    };
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={enquiry} open onOpenChange={() => {}} />,
+    );
+
+    // After hydration the picker trigger shows the linked guest's name (the
+    // only place "Ada Lovelace" appears as a single text node — the denorm
+    // first/last names are separate input values, not text).
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
   });
 });

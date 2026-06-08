@@ -27,6 +27,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
+import { GuestPicker } from "@/features/guests/components/GuestPicker";
+import { useGuest } from "@/features/guests/hooks";
+import type { Guest } from "@/features/guests/schemas";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
 import {
   contactMethodOptions,
@@ -75,6 +78,7 @@ function shiftIsoDate(iso: string, delta: number): string {
 }
 
 const CREATE_DEFAULTS: EnquiryWriteInput = {
+  guest: null,
   first_name: "",
   last_name: "",
   email: "",
@@ -93,6 +97,7 @@ const CREATE_DEFAULTS: EnquiryWriteInput = {
 
 function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
   return {
+    guest: enq.guest ?? null,
     first_name: enq.first_name ?? "",
     last_name: enq.last_name ?? "",
     email: enq.email ?? "",
@@ -131,14 +136,47 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const updateMutation = useUpdateEnquiry(isCreate ? 0 : props.enquiry.id);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
+  // The resolved existing guest, if any. Drives the picker label and (in
+  // M3-F4) the history panel. Edits to the denorm fields after picking update
+  // the enquiry's columns only — never the linked Guest row.
+  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
+  const linkedGuestId = isCreate ? undefined : (props.enquiry.guest ?? undefined);
+  // Edit mode hydration: fetch the already-linked guest so the picker shows it
+  // and re-linking is explicit. Disabled once the operator picks in-session.
+  const linkedGuestQuery = useGuest(selectedGuest ? undefined : linkedGuestId);
+
   useEffect(() => {
     if (open) {
       form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry));
       setTopLevelError(null);
       setSpread(MIN_SPREAD);
+      setSelectedGuest(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.enquiry.id]);
+
+  useEffect(() => {
+    if (open && !selectedGuest && linkedGuestQuery.data) {
+      setSelectedGuest(linkedGuestQuery.data);
+    }
+  }, [open, selectedGuest, linkedGuestQuery.data]);
+
+  const handleGuestSelect = (guest: Guest) => {
+    setSelectedGuest(guest);
+    form.setValue("guest", guest.id);
+    // Prefill the denorm capture fields from the linked guest. These remain
+    // editable; editing them updates the enquiry only, not the Guest.
+    form.setValue("first_name", guest.first_name);
+    form.setValue("last_name", guest.last_name);
+    form.setValue("email", guest.email ?? "");
+    form.setValue("phone", guest.phone ?? "");
+    form.setValue("contact_method", guest.contact_method ?? null);
+  };
+
+  const handleGuestClear = () => {
+    setSelectedGuest(null);
+    form.setValue("guest", null);
+  };
 
   const requestTypeCtrl = useController({ control: form.control, name: "request_type" });
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
@@ -192,6 +230,25 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <Label>{t("form_dialog.fields.guest")}</Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <GuestPicker
+                  value={selectedGuest}
+                  onChange={handleGuestSelect}
+                  onCreateNew={handleGuestClear}
+                />
+              </div>
+              {selectedGuest ? (
+                <Button type="button" variant="ghost" size="sm" onClick={handleGuestClear}>
+                  {t("form_dialog.actions.unlink_guest")}
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-muted-foreground text-xs">{t("form_dialog.fields.guest_hint")}</p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="enq-first-name">{t("form_dialog.fields.first_name")}</Label>

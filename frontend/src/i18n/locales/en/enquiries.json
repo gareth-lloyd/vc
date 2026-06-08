@@ -204,7 +204,9 @@
       "phone": "Phone",
       "contact_method": "Preferred contact",
       "contact_method_aria": "Preferred contact method",
-      "contact_method_none": "No preference"
+      "contact_method_none": "No preference",
+      "guest": "Existing guest",
+      "guest_hint": "Link an existing guest to reuse their details, or leave blank to capture a new one below."
     },
     "date_spread": {
       "label": "Widen range",
@@ -219,6 +221,9 @@
     "toasts": {
       "created": "Enquiry created",
       "updated": "Enquiry updated"
+    },
+    "actions": {
+      "unlink_guest": "Unlink"
     }
   },
   "assign": {

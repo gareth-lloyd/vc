@@ -130,6 +130,9 @@ export const enquiryNoteWriteInputSchema = z.object({
 export type EnquiryNoteWriteInput = z.infer<typeof enquiryNoteWriteInputSchema>;
 
 export const enquiryWriteInputSchema = z.object({
+  // Resolved guest link (existing-client picker). Null = free-text capture /
+  // create-new; the backend mints or reuses the Guest from the denorm fields.
+  guest: z.number().nullable(),
   first_name: z.string().trim().max(128),
   last_name: z.string().trim().max(128),
   email: z

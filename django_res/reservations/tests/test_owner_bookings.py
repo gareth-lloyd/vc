@@ -184,7 +184,7 @@ def test_guest_contact_hidden_by_default(
     detail = _detail(api_client, booking)
     assert "guest_contact" not in detail
     # The email/phone must not appear under any key.
-    assert guest.email not in str(detail)
+    assert guest.email and guest.email not in str(detail)
 
 
 def test_guest_contact_shown_with_grant(

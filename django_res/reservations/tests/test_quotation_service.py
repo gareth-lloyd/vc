@@ -28,7 +28,7 @@ def test_create_from_enquiry_happy_path(
     property_: Property,
     rate_rule: RateRule,  # ensures PricingEngine has something to quote on
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     expires = timezone.now() + timedelta(days=7)
 
     quotation = QuotationService.create_from_enquiry(
@@ -77,7 +77,7 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
     clobber it, mirroring the API `_reprice` guard."""
     from decimal import Decimal
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,
@@ -147,7 +147,7 @@ def test_create_from_enquiry_records_send_path_smtp(
     from reservations.enums import EnquiryEventKind
     from reservations.models import EnquiryEvent
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
 
     QuotationService.create_from_enquiry(
         enquiry,
@@ -172,7 +172,7 @@ def test_create_from_enquiry_records_send_path_smtp(
 def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: TermsVersion) -> None:
     """`Enquiry.quote_sent` must require `send_path` — surfacing the audit
     contract in the signature so future callers can't omit it silently."""
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
@@ -201,7 +201,7 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email)
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
     # 2026-06-10 is a Wednesday — not the Saturday changeover day.
     line_input = {
         "property": property_,

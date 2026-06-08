@@ -75,8 +75,10 @@ def test_anonymize_redacts_pii_and_preserves_fks(
     assert guest.status == GuestStatus.ANONYMIZED.value
     assert guest.first_name == "[REDACTED]"
     assert guest.last_name == "[REDACTED]"
-    assert guest.email == f"redacted-{guest.pk}@anonymized.local"
+    # No synthetic email — absence is NULL (the row is marked by status).
+    assert guest.email is None
     assert guest.phone == ""
+    assert guest.contact_method is None
     assert guest.marketing_consent is False
     assert guest.anonymized_at is not None
     # FK survives — booking still points at the anonymized guest.

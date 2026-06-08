@@ -467,7 +467,7 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
     from reservations.models import Enquiry, EnquiryEvent
 
     enquiry = Enquiry.objects.create(
-        guest=guest, email=guest.email, first_name="Ada", last_name="Lovelace"
+        guest=guest, email=guest.email or "", first_name="Ada", last_name="Lovelace"
     )
     quotation = Quotation.objects.create(
         enquiry=enquiry,

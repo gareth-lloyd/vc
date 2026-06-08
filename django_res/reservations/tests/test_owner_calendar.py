@@ -124,5 +124,5 @@ def test_booked_cells_carry_no_guest_identity(
         # Internal hold id and any guest identity must be absent.
         assert "block_id" not in cell
     # Guest PII never appears anywhere in the calendar payload.
-    assert guest.email not in str(body)
+    assert guest.email and guest.email not in str(body)
     assert guest.last_name not in str(body)

@@ -20,7 +20,7 @@ class Guest(AuditedModel):
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
     title = models.CharField(max_length=16, blank=True)
-    email = CIEmailField(db_index=True)
+    email = CIEmailField(db_index=True, null=True, blank=True)
     phone = models.CharField(max_length=32, blank=True)
 
     address_line_1 = models.CharField(max_length=255, blank=True)
@@ -65,6 +65,44 @@ class Guest(AuditedModel):
             models.Index(fields=["status", "last_name", "first_name"]),
             models.Index(fields=["email"]),
         ]
+        constraints = [
+            # Honest integrity, ACTIVE rows only — ARCHIVED/ANONYMIZED are
+            # exempt (a dispositioned channel-less row, or a redacted one,
+            # must not fail these). See django_res_design/people-model-cleanup.md.
+            #
+            # Contactable by at least one channel.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GuestStatus.ACTIVE.value)
+                    | models.Q(email__isnull=False)
+                    | ~models.Q(phone="")
+                ),
+                name="guest_active_contactable",
+            ),
+            # A stated preference must be actionable — you can only prefer a
+            # channel you've actually provided.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GuestStatus.ACTIVE.value)
+                    | (
+                        (
+                            ~models.Q(contact_method=ContactMethod.EMAIL.value)
+                            | models.Q(email__isnull=False)
+                        )
+                        & (
+                            ~models.Q(
+                                contact_method__in=[
+                                    ContactMethod.PHONE.value,
+                                    ContactMethod.SMS.value,
+                                ]
+                            )
+                            | ~models.Q(phone="")
+                        )
+                    )
+                ),
+                name="guest_active_preference_actionable",
+            ),
+        ]
         ordering = ["last_name", "first_name"]
 
     def __str__(self) -> str:
@@ -87,8 +125,9 @@ class Guest(AuditedModel):
         """Overwrite PII with sentinels; preserves the row for FK integrity."""
         self.first_name = "[REDACTED]"
         self.last_name = "[REDACTED]"
-        self.email = f"redacted-{self.pk}@anonymized.local"
+        self.email = None
         self.phone = ""
+        self.contact_method = None
         self.address_line_1 = ""
         self.address_line_2 = ""
         self.town = ""
@@ -103,6 +142,7 @@ class Guest(AuditedModel):
                 "last_name",
                 "email",
                 "phone",
+                "contact_method",
                 "address_line_1",
                 "address_line_2",
                 "town",

@@ -19,6 +19,12 @@ The design assumes templates can be per-site (white-labelled). Confirm:
 
 ## Follow-up once answered
 
-- Wire the resolver in `comms/services.py` to walk the chain.
-- Tests covering each layer of override.
-- Document in `10-comms.md`.
+- ~~Wire the resolver in `comms/services.py` to walk the chain.~~ ✅ Done — v1
+  has a single layer (one active template per key, globally), which
+  `EmailService._resolve_template` already implements. There is no `site` FK
+  yet; the multi-layer walk lands with per-site white-labelling.
+- ~~Tests covering each layer of override.~~ N/A for v1 — there is only one
+  layer. The single-layer resolution is covered by
+  `comms/tests/test_email_service.py` and `test_api_email_templates.py`.
+- ~~Document in `10-comms.md`.~~ ✅ Done — see "Implementation status (v1)"
+  under §Template admin UX requirements.

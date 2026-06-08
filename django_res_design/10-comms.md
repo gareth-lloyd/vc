@@ -185,6 +185,31 @@ The `EmailTemplate` admin is operator-editable (per `10-decisions.md` "Editable 
 
 The API surface for this lives under `/email-templates/*` in `product-design/04-rest-api-surface.md §2.19`.
 
+**Implementation status (v1):** the backend `/email-templates/*` API is built
+(`comms/views/email_template.py`, `comms/services.py::EmailTemplateService`,
+`comms/serializers/email_template.py`). It covers list / detail, publish (PUT),
+preview, test-send, and version history. The React admin screen and the
+Comms-tab `compose-email` composer are tracked separately.
+
+- **Inheritance (q-011 resolved).** v1 is single-site, so there is **one active
+  template per key, globally** — no `site` FK. `EmailService._resolve_template`
+  already implements exactly this (active row for the key). Per-site
+  white-labelling and a `locale` field are the documented future extension: add
+  the column, widen the partial-unique constraint to `(key, site, locale)`, and
+  have the resolver walk *system default → site* (no property layer, per
+  `10-decisions.md` Deferred).
+- **Publish is render-validated.** `publish_version` refuses to activate a
+  version whose MJML fails to compile or whose `subject_template` /
+  `body_template` / compiled HTML contains a malformed Django tag — a bad row
+  would otherwise throw on every live send and abort the triggering domain
+  transition. `signals._safe_send` also swallows template render errors as a
+  belt-and-braces backstop for rows created out-of-band.
+- **Plaintext and HTML are authored independently.** `body_template` (the
+  plaintext multipart alternate) and `body_template_mjml` (the HTML source) are
+  separate fields with no auto-derivation between them, so they *can* desync if
+  an operator edits one and not the other. The future editor UI should surface
+  both side-by-side; auto-generating plaintext from MJML is deferred.
+
 ## Operator UX — per-booking Communications tab
 
 Operators need first-class visibility into what has been sent against each booking. The legacy app dumps outbound mail to per-day plaintext under `wwwroot/ResLogs/<ddMMyyyy>/` only (`mock_up_analysis/04a-ressystem-email-inventory.md §2.4, §8`), so there is no per-booking history surface at all today.

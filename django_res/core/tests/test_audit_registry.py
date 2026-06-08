@@ -21,6 +21,7 @@ EXPECTED_TRACKED_MODELS = {
     "accounts.Contact",
     "accounts.User",
     "comms.EmailLog",
+    "comms.EmailTemplate",
     "comms.SmtpProfile",
     "integrations.OAuthCredential",
     "owners.OwnerMembership",

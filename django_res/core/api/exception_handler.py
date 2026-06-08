@@ -37,7 +37,10 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
             {
                 "code": getattr(exc, "code", "domain_error"),
                 "detail": str(exc) or "Domain error",
-                "field_errors": {},
+                # A domain error may carry per-field messages (e.g. a malformed
+                # template names the offending field); surface them in the
+                # canonical slot rather than a bespoke top-level key.
+                "field_errors": getattr(exc, "field_errors", None) or {},
             },
             status=getattr(exc, "status_code", status.HTTP_409_CONFLICT),
         )

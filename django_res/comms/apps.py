@@ -9,11 +9,23 @@ class CommsConfig(AppConfig):
 
     def ready(self) -> None:
         from comms import signals
-        from comms.models import EmailLog, SmtpProfile
+        from comms.models import EmailLog, EmailTemplate, SmtpProfile
         from core import audit
 
         signals._register()
 
+        audit.track(
+            EmailTemplate,
+            fields=(
+                "key",
+                "version",
+                "subject_template",
+                "body_template",
+                "body_template_mjml",
+                "is_active",
+                "notes",
+            ),
+        )
         audit.track(
             SmtpProfile,
             fields=(

@@ -15,16 +15,32 @@ from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.template import Context, Template
+from django.template import Context, Template, TemplateSyntaxError
+from django.template.exceptions import TemplateDoesNotExist
 
 from comms import tasks
+from comms.compilers import compile_mjml
 from comms.enums import EmailLogStatus, SmtpScope
-from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
+from comms.exceptions import (
+    EmailTemplateNotFound,
+    MjmlCompileError,
+    NoSmtpProfileAvailable,
+    TemplatePublishError,
+)
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from comms.recipient_allowlist import filter_recipients
+from core.threadlocal import current_user_as
 
 if TYPE_CHECKING:
     from accounts.models import User
+
+# Render-time failures that mean an operator-authored template is malformed.
+# Django has no single base class for these — `TemplateSyntaxError` covers
+# parse/tag/filter errors, `TemplateDoesNotExist` covers a broken
+# `{% include %}`/`{% extends %}`. `VariableDoesNotExist` is deliberately NOT
+# here: Django silences unknown variables to `string_if_invalid` (""), which is
+# the desired "blank skeleton" behaviour for a preview against partial data.
+TEMPLATE_RENDER_ERRORS = (TemplateSyntaxError, TemplateDoesNotExist)
 
 
 RESEND_TOKEN_KEY = "resend_token"
@@ -358,3 +374,186 @@ class EmailService:
         if system is None:
             raise NoSmtpProfileAvailable("No active SYSTEM SmtpProfile configured.")
         return system
+
+
+class EmailTemplateService:
+    """Operator-facing template authoring: publish a new version, render a draft.
+
+    Distinct from `EmailService`, which *dispatches* mail using whatever
+    template is currently active. This service is the write surface behind the
+    `/email-templates/*` admin API — it owns versioning, render-validation, and
+    the preview render seam.
+    """
+
+    @classmethod
+    def publish_version(
+        cls,
+        *,
+        key: str,
+        subject_template: str,
+        body_template: str,
+        body_template_mjml: str = "",
+        notes: str = "",
+        actor: User | None = None,
+    ) -> EmailTemplate:
+        """Validate and publish a new active version of ``key``.
+
+        Returns the now-active ``EmailTemplate``. The active row for a key is
+        the single source of truth for every live send, so this method is
+        deliberately strict:
+
+        - **C4 idempotent:** a byte-identical re-publish (operator double-click)
+          returns the current active row unchanged — no duplicate version.
+        - **C4 race-safe:** the existing rows for the key are locked with
+          ``select_for_update`` so two concurrent publishes serialise; the
+          second sees the first's new version and bumps cleanly. A brand-new
+          key has no rows to lock, so a (rare) double-create race is caught on
+          the ``unique_template_version`` constraint and re-resolved.
+        - **C1 render-validated:** the MJML must compile *and* the subject,
+          plaintext body, and compiled HTML must all parse as Django templates
+          before anything is written. A malformed template that went active
+          would throw on every live send and abort the triggering domain
+          transition (see ``signals._safe_send``).
+
+        `actor` is recorded on the AuditLog trail (via the thread-local current
+        user) so the version history shows who published.
+        """
+        with current_user_as(actor), transaction.atomic():
+            rows = list(
+                EmailTemplate.objects.select_for_update().filter(key=key).order_by("-version")
+            )
+            active = next((row for row in rows if row.is_active), None)
+
+            if active is not None and cls._is_identical(
+                active,
+                subject_template=subject_template,
+                body_template=body_template,
+                body_template_mjml=body_template_mjml,
+                notes=notes,
+            ):
+                return active
+
+            # C1 — refuse to write anything if the draft can't render.
+            cls._validate_renderable(
+                subject_template=subject_template,
+                body_template=body_template,
+                body_template_mjml=body_template_mjml,
+            )
+
+            next_version = (rows[0].version if rows else 0) + 1
+
+            # Deactivate the prior active row first so the new INSERT doesn't
+            # collide with `one_active_template_per_key`. This only runs for an
+            # existing key, which `select_for_update` has fully serialised — so
+            # the IntegrityError path below is unreachable here and only fires
+            # for a brand-new-key create race (where `active` is None and no
+            # deactivation happened, keeping the rollback clean).
+            #
+            # Use a targeted UPDATE rather than `active.save()`: save()
+            # recompiles the row's MJML, which wastes a compile and — if an
+            # older row's stored MJML no longer compiles (e.g. after an mjml
+            # upgrade) — would raise and block an otherwise-valid new publish.
+            # It would also clobber the prior row's `updated_by` with the new
+            # publisher; the targeted UPDATE preserves its original provenance.
+            if active is not None:
+                EmailTemplate.objects.filter(pk=active.pk).update(is_active=False)
+
+            try:
+                with transaction.atomic():
+                    return EmailTemplate.objects.create(
+                        key=key,
+                        version=next_version,
+                        subject_template=subject_template,
+                        body_template=body_template,
+                        body_template_mjml=body_template_mjml,
+                        notes=notes,
+                        is_active=True,
+                    )
+            except IntegrityError:
+                winner = EmailTemplate.objects.filter(key=key, is_active=True).first()
+                if winner is None:
+                    raise
+                return winner
+
+    @staticmethod
+    def _is_identical(
+        active: EmailTemplate,
+        *,
+        subject_template: str,
+        body_template: str,
+        body_template_mjml: str,
+        notes: str,
+    ) -> bool:
+        return (
+            active.subject_template == subject_template
+            and active.body_template == body_template
+            and active.body_template_mjml == body_template_mjml
+            and active.notes == notes
+        )
+
+    @staticmethod
+    def _validate_renderable(
+        *,
+        subject_template: str,
+        body_template: str,
+        body_template_mjml: str,
+    ) -> None:
+        """Compile the MJML and render-check every authored field (C1).
+
+        Raises ``TemplatePublishError`` carrying the per-field errors on the
+        first failure class encountered (MJML compile, then template syntax).
+        Validation renders against an empty context — it's checking *syntax*,
+        not field coverage; unknown variables render to "".
+        """
+        try:
+            body_html = compile_mjml(body_template_mjml or "")
+        except MjmlCompileError as exc:
+            raise TemplatePublishError(
+                "MJML failed to compile.",
+                field_errors={"body_template_mjml": exc.errors or [str(exc)]},
+            ) from exc
+
+        field_errors: dict[str, list[str]] = {}
+        for label, text in (
+            ("subject_template", subject_template),
+            ("body_template", body_template),
+            ("body_template_html", body_html),
+        ):
+            try:
+                _render(text, {})
+            except TEMPLATE_RENDER_ERRORS as exc:
+                field_errors[label] = [str(exc)]
+        if field_errors:
+            raise TemplatePublishError(
+                "Template contains invalid Django template syntax.",
+                field_errors=field_errors,
+            )
+
+    @staticmethod
+    def render(
+        *,
+        subject_template: str,
+        body_template: str,
+        context: dict[str, Any],
+        body_template_html: str | None = None,
+        body_template_mjml: str | None = None,
+    ) -> dict[str, str]:
+        """Render a template's three surfaces against ``context``.
+
+        Pass ``body_template_html`` to render a persisted template's stored
+        (already-compiled) HTML; pass ``body_template_mjml`` instead to render
+        an unsaved draft, compiling its MJML on the fly (C3). A draft with
+        broken MJML raises ``MjmlCompileError`` (HTTP 400 via the handler).
+
+        Used by both ``preview`` and ``test-send`` so an operator previews
+        byte-for-byte what a test-send dispatches.
+        """
+        if body_template_html is None:
+            body_template_html = compile_mjml(body_template_mjml or "")
+        return {
+            "rendered_subject": _render(subject_template, context),
+            "rendered_body_text": _render(body_template, context),
+            "rendered_body_html": _render(body_template_html, context)
+            if body_template_html
+            else "",
+        }

@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 
+from comms.contexts import booking_context as _booking_context
+from comms.contexts import payment_context as _payment_context
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.recipients import agent_user_for, guest_email, primary_owner_email
-from comms.services import EmailService
+from comms.services import TEMPLATE_RENDER_ERRORS, EmailService
 from reservations.enums import BookingStatus
 
 if TYPE_CHECKING:
@@ -38,13 +40,19 @@ def _safe_send(template_key: str, **kwargs: Any) -> None:
     A domain transition must not break because the SMTP/template
     infrastructure isn't ready. Real send failures still surface via
     the `EmailLog.status` audit trail (Celery dispatch records FAILED
-    rows); the only errors this catches are setup-time misconfigurations
+    rows); the errors this catches are setup-time misconfigurations
     that would otherwise propagate out of the signal handler and abort
     the transition.
+
+    Template render errors are caught too (belt-and-braces for C1): the
+    publish API render-validates a template before it can go active, but a
+    row created out-of-band — a fixture, a shell, a future bulk import —
+    could still carry a malformed tag. A booking confirmation must not roll
+    back because someone fat-fingered the template; degrade to a logged skip.
     """
     try:
         EmailService.send(template_key=template_key, **kwargs)
-    except (NoSmtpProfileAvailable, EmailTemplateNotFound) as exc:
+    except (NoSmtpProfileAvailable, EmailTemplateNotFound, *TEMPLATE_RENDER_ERRORS) as exc:
         logger.warning("Skipping %s email: %s", template_key, exc)
 
 
@@ -292,18 +300,6 @@ def owner_block_contested_handler(
     )
 
 
-def _payment_context(payment: Any) -> dict[str, Any]:
-    booking = payment.booking
-    return {
-        "booking_reference": booking.reference,
-        "payment_reference": payment.reference,
-        "amount": f"{payment.amount:.2f}",
-        "currency": payment.currency.code,
-        "guest_first_name": booking.guest.first_name,
-        "failure_reason": payment.failure_reason or "",
-    }
-
-
 def payment_succeeded_handler(
     sender: Any,
     *,
@@ -391,16 +387,6 @@ def security_deposit_released_handler(
         to=[recipient],
         correlation={"booking_id": booking.pk, "deposit_id": sd.pk},
     )
-
-
-def _booking_context(booking: Booking) -> dict[str, Any]:
-    return {
-        "booking_reference": booking.reference,
-        "guest_first_name": booking.guest.first_name,
-        "property_name": booking.property.display_name or booking.property.name,
-        "date_from": booking.date_from.isoformat(),
-        "date_to": booking.date_to.isoformat(),
-    }
 
 
 def _register() -> None:

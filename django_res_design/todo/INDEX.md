@@ -37,6 +37,7 @@ Status icons:
 | [FG-006](fg-006-modify-without-select-for-update.md) | `modify_dates` / `modify_guests` re-run pricing without row locks | ✅ resolved (row lock + reload) |
 | [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |
 | [FG-008](fg-008-property-timezone.md) | Property has no timezone | ⬜ (**upgrade to 🔴 bug** — breaks every wall-clock reminder) |
+| [FG-009](fg-009-csrf-prime-coupled-to-shell-server.md) | CSRF priming coupled to HTML-shell server — recurring dev double-login | ⬜ (low priority — not vital) |
 
 ## 🟡 Smells
 

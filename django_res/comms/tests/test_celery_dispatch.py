@@ -71,6 +71,25 @@ def test_task_is_directly_callable_and_has_delay() -> None:
     assert hasattr(tasks.requeue_stuck_emails, "delay")
 
 
+# --- structlog task-context propagation -----------------------------------
+
+
+def test_structlog_init_step_registered_on_worker() -> None:
+    """The django-structlog bootstep is wired into the worker, so task_prerun
+    binds task_id / parent request_id into structlog contextvars on every run."""
+    from django_structlog.celery.steps import DjangoStructLogInitStep
+
+    assert DjangoStructLogInitStep in celery_app.steps["worker"]
+
+
+def test_celery_request_id_propagation_enabled() -> None:
+    """Publisher-side signals are on so request_id rides the task message across
+    the publish→consume boundary (django-structlog CELERY_ENABLED)."""
+    from django.conf import settings
+
+    assert settings.DJANGO_STRUCTLOG_CELERY_ENABLED is True
+
+
 # --- on_commit deferral ---------------------------------------------------
 
 

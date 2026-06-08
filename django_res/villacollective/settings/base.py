@@ -226,12 +226,13 @@ LOG_LEVEL = env.str("LOG_LEVEL", default="INFO")
 LOG_JSON = env.bool("LOG_JSON", default=True)
 
 # django-structlog: bind request_id + user_id and log the request lifecycle.
-# Client IP is PII — never logged. Celery task-lifecycle log binding stays off
-# until the django-structlog `DjangoStructLogInitStep` bootstep is wired into
-# the Celery app (a follow-up); the worker/beat now run but don't yet propagate
-# request_id across the publish→consume boundary.
+# Client IP is PII — never logged. CELERY_ENABLED stamps request_id onto task
+# message headers at publish time; the matching worker-side bootstep
+# (`DjangoStructLogInitStep`, wired in `villacollective/celery.py`) reads those
+# headers back, so request_id survives the publish→consume boundary and worker
+# logs carry both request_id and task_id.
 DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
-DJANGO_STRUCTLOG_CELERY_ENABLED = False
+DJANGO_STRUCTLOG_CELERY_ENABLED = True
 
 LOGGING = configure_structlog(json_logs=LOG_JSON, level=LOG_LEVEL)
 

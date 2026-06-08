@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 
 from celery import Celery
+from django_structlog.celery.steps import DjangoStructLogInitStep
 
 # A sensible default for ad-hoc invocations (`celery -A villacollective ...`)
 # without DJANGO_SETTINGS_MODULE exported. Real environments set it explicitly
@@ -21,6 +22,15 @@ app = Celery("villacollective")
 
 # Pull every CELERY_-prefixed setting (e.g. CELERY_BROKER_URL -> broker_url).
 app.config_from_object("django.conf:settings", namespace="CELERY")
+
+# Worker-side half of django-structlog's Celery integration: this bootstep
+# connects the task-lifecycle signal receivers so each task run binds
+# `task_id` (and the publisher's `request_id`, carried on the message headers)
+# into structlog's contextvars. The publisher-side half — stamping those
+# headers when a task is enqueued — is switched on by
+# DJANGO_STRUCTLOG_CELERY_ENABLED in settings. Both are needed for request_id
+# to survive the publish→consume boundary.
+app.steps["worker"].add(DjangoStructLogInitStep)
 
 # Import <app>/tasks.py for every app in INSTALLED_APPS so @shared_task
 # functions register at worker startup.

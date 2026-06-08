@@ -104,6 +104,18 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         else:
             serializer.save()
 
+    def perform_update(self, serializer: Any) -> None:
+        """Never null an existing quotation's enquiry.
+
+        The write serializer allows a null `enquiry` only so an agent-direct
+        *create* can omit it (perform_create mints one). On update the row
+        always has an enquiry, so an explicit `{"enquiry": null}` body must keep
+        the current one rather than 500 on the PROTECT/NOT-NULL column.
+        """
+        if serializer.validated_data.get("enquiry") is None:
+            serializer.validated_data.pop("enquiry", None)
+        serializer.save()
+
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request: Request, pk: str | None = None) -> Response:
         """Render the quote HTML + the copy an operator can edit.

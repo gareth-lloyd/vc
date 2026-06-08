@@ -85,6 +85,33 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
 
 
 @pytest.mark.django_db
+def test_patch_quotation_with_null_enquiry_keeps_existing(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """A PATCH that nulls `enquiry` must not violate the NOT-NULL FK.
+
+    The write serializer allows a null enquiry only so an agent-direct *create*
+    can omit it (the view mints one). On update there's always an enquiry — a
+    `{"enquiry": null}` body keeps the existing one rather than 500ing on the
+    PROTECT/NOT-NULL column.
+    """
+    api_client.force_login(staff)
+    existing_enquiry_id = quotation.enquiry_id
+
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}",
+        {"enquiry": None},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    quotation.refresh_from_db()
+    assert quotation.enquiry_id == existing_enquiry_id
+
+
+@pytest.mark.django_db
 def test_retrieve_quotation_exposes_readable_names(
     api_client: APIClient,
     staff: User,

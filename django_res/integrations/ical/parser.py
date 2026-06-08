@@ -1,8 +1,10 @@
 """Generic iCal parser → busy date-ranges on the half-open ``[date_from, date_to)``.
 
-Off-the-shelf parsing via the ``icalendar`` library; this module only normalizes
-the output (scheme, all-day vs timed, DTEND convention) and coalesces overlaps.
-It holds no domain knowledge — the caller decides what a busy range *means*.
+Off-the-shelf parsing via the ``icalendar`` library, with recurrence expansion via
+``recurring-ical-events``; this module only normalizes the output (scheme, all-day
+vs timed, DTEND convention) and coalesces overlaps. It holds no domain knowledge —
+the caller decides what a busy range *means*, and supplies the window to expand
+recurrences over (recurrences are otherwise unbounded).
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+import recurring_ical_events
 from icalendar import Calendar
 
 from integrations.ical.profiles import IcalSourceProfile
@@ -39,15 +42,37 @@ def _as_date(value: date | datetime) -> date:
     return value
 
 
-def parse_busy_intervals(ics_text: str, profile: IcalSourceProfile) -> list[BusyInterval]:
-    """Parse ``.ics`` text into busy intervals, dropping CANCELLED events.
+def parse_busy_intervals(
+    ics_text: str,
+    profile: IcalSourceProfile,
+    *,
+    window_start: date,
+    window_end: date,
+) -> list[BusyInterval]:
+    """Parse ``.ics`` text into busy intervals over ``[window_start, window_end]``.
 
-    Raises ``ValueError`` on malformed input (the poller catches it per feed so
-    one bad feed never aborts the run).
+    Recurring events (``RRULE``/``RDATE``, minus ``EXDATE``) are expanded into
+    their individual occurrences across the window; one-off events overlapping the
+    window are returned too. Each occurrence is normalized to a half-open
+    ``[date_from, date_to)`` range, and CANCELLED (and, per profile, TENTATIVE)
+    events are dropped. The window is required because recurrences are otherwise
+    unbounded — the caller picks a horizon and re-polls to roll it forward.
+
+    Raises ``ValueError`` on malformed input — a non-calendar body or a malformed
+    recurrence rule — so the poller catches it per feed and one bad feed never
+    aborts the run. Any other parse/expansion failure is normalized to
+    ``ValueError`` to keep that single documented contract.
     """
-    calendar = Calendar.from_ical(ics_text)
+    try:
+        calendar = Calendar.from_ical(ics_text)
+        occurrences = recurring_ical_events.of(calendar).between(window_start, window_end)
+    except ValueError:
+        raise
+    except Exception as exc:  # honor the documented ValueError contract
+        raise ValueError(f"Unparseable iCal feed: {exc}") from exc
+
     intervals: list[BusyInterval] = []
-    for component in calendar.walk("VEVENT"):
+    for component in occurrences:
         status = str(component.get("status", "")).upper()
         if status == "CANCELLED":
             continue

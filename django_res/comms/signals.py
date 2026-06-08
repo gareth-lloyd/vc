@@ -321,8 +321,10 @@ def ical_conflict_detected_handler(
     commitment; for the booking kind the reference falls back to `booking` for
     older senders. Ops-only; skipped when no ops recipients are configured.
 
-    The date range is part of the dedupe correlation, so two materially-different
-    clashes on the same property are not collapsed into one send.
+    The date range *and the clashing reference* are part of the dedupe
+    correlation, so two materially-different clashes on the same property — a
+    different range, or a fresh commitment on the same range — are not collapsed
+    into one send. A persistent clash (same reference) still dedupes to one email.
     """
     ops_recipients = list(getattr(settings, "OPS_EMAIL_RECIPIENTS", []) or [])
     if not ops_recipients:
@@ -345,6 +347,7 @@ def ical_conflict_detected_handler(
             "date_from": date_from.isoformat(),
             "date_to": date_to.isoformat(),
             "conflict_kind": kind,
+            "conflict_reference": reference,
             "audience": "ops",
         },
     )

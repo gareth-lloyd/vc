@@ -119,6 +119,31 @@ def test_distinct_ranges_are_not_deduped(system_profile: SmtpProfile) -> None:
 
 
 @pytest.mark.django_db
+@override_settings(OPS_EMAIL_RECIPIENTS=["ops@villacollective.test"])
+def test_distinct_references_on_one_range_are_not_deduped(system_profile: SmtpProfile) -> None:
+    """A *different* commitment clashing on the same range earns its own email.
+
+    The clashing reference is part of the dedupe correlation, so a fresh clash
+    (e.g. the first booking was cancelled and a new one made on the same dates)
+    is not permanently suppressed as a re-emission of the first.
+    """
+    property_ = _property()
+
+    for reference in ("VC-1001", "VC-2002"):
+        ical_conflict_detected_handler(
+            sender=None,
+            property=property_,
+            date_from=date(2026, 9, 1),
+            date_to=date(2026, 9, 8),
+            conflict_kind="booking",
+            conflict_reference=reference,
+            feed_labels="Airbnb",
+        )
+
+    assert EmailLog.objects.filter(template_key="ical.conflict").count() == 2
+
+
+@pytest.mark.django_db
 @override_settings(OPS_EMAIL_RECIPIENTS=[])
 def test_conflict_without_ops_recipients_sends_nothing(system_profile: SmtpProfile) -> None:
     property_ = _property()

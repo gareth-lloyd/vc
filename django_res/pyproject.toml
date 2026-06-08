@@ -21,10 +21,12 @@ dependencies = [
     "openai>=2.38.0",
     "pyyaml>=6.0.3",
     "markdown>=3.10.2",
-    # iCal feed ingest (GAP-011): fetch per-villa .ics calendars (httpx) and
-    # parse them (icalendar) into owner-availability blocks.
+    # iCal feed ingest (GAP-011): fetch per-villa .ics calendars (httpx), parse
+    # them (icalendar) and expand recurrences (recurring-ical-events) into
+    # owner-availability blocks.
     "httpx>=0.28",
     "icalendar>=6.0",
+    "recurring-ical-events>=3.0",
     # zoneinfo's IANA database. The deploy image (python:3.13-slim) ships no
     # system /usr/share/zoneinfo, so ZoneInfo(...) would raise on Linux without
     # this. Unconditional (not the win32-marked transitive dep) — see FG-008.

@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 import httpx
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import HoldUnavailable, OverlappingBooking
@@ -56,6 +57,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _HTTP_TIMEOUT = 20.0
+# How far ahead to expand recurring busy events. OTA feeds publish ~12-24mo out;
+# each poll rolls this window forward, so a recurrence beyond it is picked up by a
+# later run rather than missed.
+_RECURRENCE_HORIZON = timedelta(days=365 * 2)
 
 
 @dataclass
@@ -129,10 +134,14 @@ class ICalIngestService:
     def _fetch_and_parse(cls, feed: PropertyCalendarFeed) -> tuple[FeedResult, list[BusyInterval]]:
         url = normalize_feed_url(feed.url)
         profile = resolve_profile(feed.platform, url=url)
+        window_start = timezone.now().date()
+        window_end = window_start + _RECURRENCE_HORIZON
         try:
             response = httpx.get(url, timeout=_HTTP_TIMEOUT, follow_redirects=True)
             response.raise_for_status()
-            intervals = parse_busy_intervals(response.text, profile)
+            intervals = parse_busy_intervals(
+                response.text, profile, window_start=window_start, window_end=window_end
+            )
         except (httpx.HTTPError, ValueError) as exc:  # record + continue, never crash the run
             error = str(exc)[:500]
             # Log the feed id, never the URL (it carries the secret token).
@@ -144,6 +153,7 @@ class ICalIngestService:
         return FeedResult(feed_id=feed.pk, ok=True, interval_count=len(intervals)), intervals
 
     @classmethod
+    @transaction.atomic
     def _reconcile(
         cls,
         prop: Property,
@@ -151,6 +161,12 @@ class ICalIngestService:
         feeds: list[PropertyCalendarFeed],
         result: PropertyResult,
     ) -> None:
+        # Atomic per property: the cancel-before-create loop must commit as a
+        # unit. An unexpected error mid-loop (a caught conflict is *not* an error)
+        # rolls the preceding cancels back, so a failed run leaves the prior
+        # consistent state rather than released holds with no replacement block.
+        # The nested @transaction.atomic on cancel/create_imported become
+        # savepoints under this outer transaction.
         existing = {
             block.idempotency_key: block
             for block in OwnerBlock.objects.filter(

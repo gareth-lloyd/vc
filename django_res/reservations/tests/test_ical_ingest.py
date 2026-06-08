@@ -126,6 +126,39 @@ def test_import_creates_owner_block(property_: Property) -> None:
 
 
 @respx.mock
+def test_recurring_feed_creates_a_block_per_occurrence(property_: Property) -> None:
+    """A single weekly RRULE event imports a block for *each* occurrence in-window,
+    not just the first — proving the service passes a real expansion window to the
+    parser. Anchored to now() so it's independent of the wall clock."""
+    url = "https://example.test/rrule.ics"
+    _feed(property_, url)
+    first = timezone.now().date() + timedelta(days=7)
+    dtstart = first.strftime("%Y%m%d")
+    dtend = (first + timedelta(days=1)).strftime("%Y%m%d")
+    ics = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\n"
+        f"BEGIN:VEVENT\r\nUID:weekly\r\nSUMMARY:Owner block\r\n"
+        f"DTSTART;VALUE=DATE:{dtstart}\r\nDTEND;VALUE=DATE:{dtend}\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    respx.get(url).mock(return_value=httpx.Response(200, text=ics))
+
+    [result] = ICalIngestService.run()
+
+    assert result.created == 3
+    blocks = OwnerBlock.objects.filter(
+        property=property_,
+        source=OwnerBlockSource.ICAL.value,
+        status=OwnerBlockStatus.APPROVED.value,
+    )
+    assert sorted(b.date_from for b in blocks) == [
+        first,
+        first + timedelta(days=7),
+        first + timedelta(days=14),
+    ]
+
+
+@respx.mock
 def test_repoll_is_idempotent(property_: Property) -> None:
     url = "https://example.test/a.ics"
     _feed(property_, url)
@@ -164,6 +197,41 @@ def test_vanished_event_cancels_block(property_: Property) -> None:
     assert block.resulting_hold.is_live() is False
     kinds = list(block.updates.order_by("created_at").values_list("kind", flat=True))
     assert kinds == [OwnerBlockUpdateKind.CREATED.value, OwnerBlockUpdateKind.CANCELLED.value]
+
+
+@respx.mock
+def test_reconcile_failure_rolls_back_cancel(
+    property_: Property, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mid-reconcile create error rolls the preceding cancel back — no gap.
+
+    Reconcile is atomic per property: if creating the new (re-keyed) block raises
+    an unexpected error, the cancel of the old block that ran first must not be
+    left committed, or the dates would be silently bookable until the next poll.
+    """
+    from reservations.services.owner_block import OwnerBlockService
+
+    url = "https://example.test/a.ics"
+    _feed(property_, url)
+    route = respx.get(url)
+
+    route.mock(return_value=httpx.Response(200, text=_ics(("20260701", "20260705"))))
+    ICalIngestService.run()
+
+    # Re-keyed range (old vanishes, new appears) → reconcile cancels then creates.
+    # Make the create blow up with an unexpected error after the cancel committed.
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("simulated create failure")
+
+    monkeypatch.setattr(OwnerBlockService, "create_imported", _boom)
+    route.mock(return_value=httpx.Response(200, text=_ics(("20260710", "20260715"))))
+    ICalIngestService.run()  # run() swallows the per-property error and continues
+
+    # The original block must survive — cancel rolled back with the failed create.
+    block = OwnerBlock.objects.get(property=property_, source=OwnerBlockSource.ICAL.value)
+    assert block.status == OwnerBlockStatus.APPROVED.value
+    assert block.resulting_hold is not None
+    assert block.resulting_hold.is_live() is True
 
 
 @respx.mock

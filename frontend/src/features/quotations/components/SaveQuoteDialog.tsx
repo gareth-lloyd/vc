@@ -117,10 +117,18 @@ export function SaveQuoteDialog({
     try {
       let guestId = enquiry.guest;
       if (guestId == null) {
+        // An active guest must be reachable by at least one channel (mirrors
+        // the server CHECK). No synthetic email — pass through whatever the
+        // enquiry actually captured; a phone-only guest is first-class valid.
+        if (!enquiry.email && !enquiry.phone) {
+          setTopLevelError(t("builder.save.errors.no_contact_channel"));
+          return;
+        }
         const guest = await createGuest.mutateAsync({
           first_name: enquiry.first_name || t("builder.save.placeholder_first_name"),
           last_name: enquiry.last_name || t("builder.save.placeholder_last_name"),
-          email: enquiry.email || `enquiry-${enquiry.id}@noemail.local`,
+          ...(enquiry.email ? { email: enquiry.email } : {}),
+          ...(enquiry.phone ? { phone: enquiry.phone } : {}),
         });
         guestId = guest.id;
       }

@@ -238,4 +238,108 @@ describe("SaveQuoteDialog", () => {
     expect(await screen.findByText(/missing its total or reason/i)).toBeInTheDocument();
     expect(lineBody).toBeNull();
   });
+
+  it("passes the enquiry's phone through and never fabricates a synthetic email", async () => {
+    let guestBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/currencies", () =>
+        HttpResponse.json(drfPage([{ id: 1, code: "USD", name: "US Dollar", is_active: true }])),
+      ),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/guests", async ({ request }) => {
+        guestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { status: 201 },
+        );
+      }),
+      http.post("/api/v1/quotations", () =>
+        HttpResponse.json(
+          { id: 50, reference: "Q-50", status: "draft", currency: "USD" },
+          { status: 201 },
+        ),
+      ),
+      http.post("/api/v1/quotations/50/lines", () => HttpResponse.json({ id: 1 }, { status: 201 })),
+    );
+
+    // Unattached, phone-only enquiry (no email captured at lead time).
+    const phoneOnly = {
+      id: 99,
+      reference: "ENQ-99",
+      guest: null,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "",
+      phone: "+447911123456",
+    } as unknown as EnquiryDetail;
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={phoneOnly}
+        lines={[stagedLine()]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(guestBody).not.toBeNull());
+    expect(guestBody).toMatchObject({
+      first_name: "Ada",
+      last_name: "Lovelace",
+      phone: "+447911123456",
+    });
+    // No synthetic `enquiry-{id}@noemail.local` — email omitted entirely.
+    expect(guestBody).not.toHaveProperty("email");
+  });
+
+  it("blocks the save when an unattached enquiry has neither email nor phone", async () => {
+    let guestPosted = false;
+    server.use(
+      http.get("/api/v1/currencies", () =>
+        HttpResponse.json(drfPage([{ id: 1, code: "USD", name: "US Dollar", is_active: true }])),
+      ),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/guests", () => {
+        guestPosted = true;
+        return HttpResponse.json(
+          { id: 77, first_name: "X", last_name: "Y", email: null },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const noChannel = {
+      id: 99,
+      reference: "ENQ-99",
+      guest: null,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "",
+      phone: "",
+    } as unknown as EnquiryDetail;
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={noChannel}
+        lines={[stagedLine()]}
+        currencyCode="USD"
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    expect(await screen.findByText(/no email or phone/i)).toBeInTheDocument();
+    expect(guestPosted).toBe(false);
+  });
 });

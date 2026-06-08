@@ -260,7 +260,8 @@ export async function fetchCurrentTermsVersion(): Promise<TermsVersion> {
 interface GuestWriteInput {
   first_name: string;
   last_name: string;
-  email: string;
+  // Email optional — a phone-only guest is valid; never fabricate a synthetic.
+  email?: string;
   phone?: string;
 }
 

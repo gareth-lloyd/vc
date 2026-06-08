@@ -12,7 +12,7 @@ from accounts.models import User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
-from reservations.enums import EnquiryStatus
+from reservations.enums import ContactMethod, EnquiryStatus
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
@@ -125,6 +125,49 @@ def test_create_enquiry(api_client: APIClient, staff: User, guest: Guest) -> Non
     assert response.data["status"] == EnquiryStatus.NEW.value
     assert response.data["guest_name"] == "Ada Lovelace"
     assert response.data["quotations"] == []
+
+
+@pytest.mark.django_db
+def test_create_enquiry_persists_contact_method(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The write serializer accepts contact_method so the capture form can
+    record the lead's preferred channel."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@pref.example.com",
+            "adults": 2,
+            "contact_method": ContactMethod.PHONE.value,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    created = Enquiry.objects.get(email="ada@pref.example.com")
+    assert created.contact_method == ContactMethod.PHONE.value
+    assert response.data["contact_method"] == ContactMethod.PHONE.value
+
+
+@pytest.mark.django_db
+def test_update_enquiry_contact_method(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"contact_method": ContactMethod.SMS.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.contact_method == ContactMethod.SMS.value
+    assert response.data["contact_method"] == ContactMethod.SMS.value
 
 
 @pytest.mark.django_db

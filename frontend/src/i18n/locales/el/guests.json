@@ -1,0 +1,23 @@
+{
+  "placeholders": {
+    "picker_trigger": "Σύνδεση υπάρχοντος πελάτη…",
+    "picker_search": "Αναζήτηση πελατών…"
+  },
+  "empty": {
+    "picker_min_chars": "Πληκτρολογήστε τουλάχιστον 2 χαρακτήρες για αναζήτηση",
+    "picker_no_results": "Δεν βρέθηκαν πελάτες"
+  },
+  "errors": {
+    "picker_search_failed": "Η αναζήτηση απέτυχε"
+  },
+  "actions": {
+    "create_new_inline": "+ Νέος πελάτης (καταχώριση παρακάτω)"
+  },
+  "aria": {
+    "picker_search": "Αναζήτηση πελατών",
+    "picker_results": "Αποτελέσματα αναζήτησης"
+  },
+  "fallback": {
+    "name_with_id": "Πελάτης #{{id}}"
+  }
+}

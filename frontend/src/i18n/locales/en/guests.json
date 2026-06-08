@@ -1,0 +1,23 @@
+{
+  "placeholders": {
+    "picker_trigger": "Link an existing guest…",
+    "picker_search": "Search guests…"
+  },
+  "empty": {
+    "picker_min_chars": "Type at least 2 characters to search",
+    "picker_no_results": "No guests found"
+  },
+  "errors": {
+    "picker_search_failed": "Search failed"
+  },
+  "actions": {
+    "create_new_inline": "+ New guest (capture below)"
+  },
+  "aria": {
+    "picker_search": "Search guests",
+    "picker_results": "Search results"
+  },
+  "fallback": {
+    "name_with_id": "Guest #{{id}}"
+  }
+}

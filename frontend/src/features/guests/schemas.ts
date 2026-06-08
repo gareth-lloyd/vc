@@ -15,7 +15,7 @@ export const guestSchema = z.object({
   id: z.number(),
   first_name: z.string(),
   last_name: z.string(),
-  title: z.string().nullable().optional().default(""),
+  title: z.string().nullable().optional(),
   // Email is optional on the backend now — absence is null, never a synthetic.
   email: z.string().nullable(),
   phone: z.string().optional().default(""),

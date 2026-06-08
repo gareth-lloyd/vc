@@ -7,6 +7,7 @@ import { zodErrorMap } from "./zodErrorMap";
 import commonEn from "./locales/en/common.json";
 import authEn from "./locales/en/auth.json";
 import contactsEn from "./locales/en/contacts.json";
+import guestsEn from "./locales/en/guests.json";
 import propertiesEn from "./locales/en/properties.json";
 import bookingsEn from "./locales/en/bookings.json";
 import enquiriesEn from "./locales/en/enquiries.json";
@@ -21,6 +22,7 @@ import ownerEn from "./locales/en/owner.json";
 import commonEl from "./locales/el/common.json";
 import authEl from "./locales/el/auth.json";
 import contactsEl from "./locales/el/contacts.json";
+import guestsEl from "./locales/el/guests.json";
 import propertiesEl from "./locales/el/properties.json";
 import bookingsEl from "./locales/el/bookings.json";
 import enquiriesEl from "./locales/el/enquiries.json";
@@ -46,6 +48,7 @@ export const I18N_NAMESPACES = [
   "common",
   "auth",
   "contacts",
+  "guests",
   "properties",
   "bookings",
   "enquiries",
@@ -70,6 +73,7 @@ void i18n
         common: commonEn,
         auth: authEn,
         contacts: contactsEn,
+        guests: guestsEn,
         properties: propertiesEn,
         bookings: bookingsEn,
         enquiries: enquiriesEn,
@@ -85,6 +89,7 @@ void i18n
         common: commonEl,
         auth: authEl,
         contacts: contactsEl,
+        guests: guestsEl,
         properties: propertiesEl,
         bookings: bookingsEl,
         enquiries: enquiriesEl,

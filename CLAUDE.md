@@ -77,6 +77,14 @@ the loop. If a hook fails, fix the underlying problem.
 - **MCP servers wired for this project** (see `.claude/settings.json`):
   `context7` (library docs), `postgres` (schema introspection),
   `playwright` (browser-driven FE checks).
+- **Git worktrees** live in a **sibling** directory, never nested inside the
+  repo: `../villacollective-worktrees/<slug>/`, where `<slug>` is the branch
+  name minus any `feat/`-style prefix. Create with
+  `git worktree add -b feat/<slug> ../villacollective-worktrees/<slug> HEAD`.
+  Sibling (not in-repo) keeps the second checkout out of the file tree that
+  `ruff`/`mypy`/`pytest`/`tsc`/`eslint` walk and out of the parent's
+  `git status`. **Always edit through the worktree path** — editing the same
+  file via the main-repo path lands the change on the wrong branch.
 
 ## Working principles for agents
 

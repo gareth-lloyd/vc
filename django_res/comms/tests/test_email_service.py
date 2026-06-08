@@ -12,6 +12,10 @@ from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.models import EmailTemplate, SmtpProfile
 from comms.services import EmailService
 
+# EmailService.send defers SMTP dispatch to transaction.on_commit; run those
+# hooks immediately so these synchronous send-then-assert tests observe it.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 def _ctx(reference: str, first_name: str, property_name: str) -> dict[str, str]:
     """Render context for the `test.booking.confirmation` template."""

@@ -58,3 +58,10 @@ ENVIRONMENT = "test"
 # to intercept already-imported module-level loggers.
 LOG_JSON = False
 LOGGING = configure_structlog(json_logs=False, level="WARNING", cache=False, console_colors=False)
+
+# Celery: run tasks inline (no broker, no worker) and re-raise task exceptions
+# so `.delay(...)` behaves synchronously in tests. The in-memory broker URL
+# means nothing tries to reach Redis even when a task is invoked directly.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_BROKER_URL = "memory://"

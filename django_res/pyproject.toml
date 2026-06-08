@@ -34,6 +34,10 @@ dependencies = [
     "html2text>=2025.4.15",
     "phonenumbers>=9.0.32",
     "django-structlog>=8.0",
+    # Async task queue + periodic (beat) scheduler. Redis is the broker (see
+    # docker-compose `redis` locally; Render Key Value in prod). No result
+    # backend — tasks are fire-and-forget (CELERY_TASK_IGNORE_RESULT=True).
+    "celery[redis]>=5.4",
 ]
 
 [dependency-groups]

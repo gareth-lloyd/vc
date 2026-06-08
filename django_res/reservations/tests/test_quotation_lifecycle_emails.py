@@ -24,6 +24,10 @@ from reservations.models import Quotation
 if TYPE_CHECKING:
     from reservations.models import QuotationLine
 
+# quotation.sent dispatch is deferred to transaction.on_commit; run those hooks
+# immediately so these round-trip tests observe the dispatched EmailLog.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 def _logs_for_quotation(quotation: Quotation) -> list[EmailLog]:
     return list(

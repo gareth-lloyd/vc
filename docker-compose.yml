@@ -26,5 +26,21 @@ services:
       timeout: 3s
       retries: 30
 
+  # Celery broker. Matches the default CELERY_BROKER_URL
+  # (redis://localhost:6379/0) so `celery -A villacollective worker/beat` works
+  # with no extra config. Disposable — no volume; a restart just drops queued
+  # jobs, which the `requeue_stuck_emails` sweep recovers from in prod anyway.
+  redis:
+    image: redis:7
+    container_name: villacollective-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   villa_pgdata:

@@ -225,6 +225,9 @@ def system_smtp_profile(db: None) -> SmtpProfile:
     )
 
 
+# Password-reset dispatch is deferred to transaction.on_commit; run the hook
+# immediately so the email/log assertions observe the send.
+@pytest.mark.usefixtures("run_on_commit_immediately")
 @pytest.mark.django_db
 def test_password_reset_request_sends_email_and_persists_log(
     api_client: APIClient,
@@ -274,6 +277,7 @@ def test_password_reset_request_is_silent_for_unknown_email(
     assert mail.outbox == []
 
 
+@pytest.mark.usefixtures("run_on_commit_immediately")
 @pytest.mark.django_db
 def test_password_reset_request_is_idempotent_on_repeat(
     api_client: APIClient,

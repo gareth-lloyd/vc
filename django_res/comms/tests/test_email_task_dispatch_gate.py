@@ -13,6 +13,10 @@ from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from comms.services import EmailService
 from comms.tasks import _send
 
+# EmailService dispatch is deferred to transaction.on_commit; run those hooks
+# immediately so the send-then-assert flow observes the dispatch.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 @pytest.fixture
 def template(db: None) -> EmailTemplate:

@@ -10,6 +10,10 @@ from comms.enums import EmailLogStatus
 from comms.models import EmailTemplate, SmtpProfile
 from comms.services import BLOCKED_RECIPIENTS_KEY, EmailService
 
+# EmailService dispatch is deferred to transaction.on_commit; run those hooks
+# immediately so these synchronous-flow tests observe the SMTP send.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 @pytest.fixture
 def template(db: None) -> EmailTemplate:

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -224,9 +226,60 @@ LOG_LEVEL = env.str("LOG_LEVEL", default="INFO")
 LOG_JSON = env.bool("LOG_JSON", default=True)
 
 # django-structlog: bind request_id + user_id and log the request lifecycle.
-# Client IP is PII — never logged. Celery signal wiring stays off until Celery
-# is actually deployed (tasks are synchronous placeholders today).
+# Client IP is PII — never logged. Celery task-lifecycle log binding stays off
+# until the django-structlog `DjangoStructLogInitStep` bootstep is wired into
+# the Celery app (a follow-up); the worker/beat now run but don't yet propagate
+# request_id across the publish→consume boundary.
 DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
 DJANGO_STRUCTLOG_CELERY_ENABLED = False
 
 LOGGING = configure_structlog(json_logs=LOG_JSON, level=LOG_LEVEL)
+
+# --- Celery ---------------------------------------------------------------
+# Broker only; no result backend (tasks are fire-and-forget). The worker and
+# beat services run the same image as the web app (see render.yaml). Local dev
+# brokers on the docker-compose `redis` service.
+CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+# Nothing reads task results; skip the backend entirely (less infra, no TTLs).
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
+# Ack a task only after it returns, and prefetch one at a time, so a worker
+# crash re-queues the in-flight job instead of silently dropping it. Matters
+# for send_email_log / webhook processing.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TIMEZONE = "UTC"
+CELERY_ENABLE_UTC = True
+# Don't crash the worker/beat boot if Redis isn't up yet (deploy ordering).
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Periodic schedule (UTC). Only *implemented* tasks are scheduled here — the
+# integrations.tasks.* stubs raise NotImplementedError and payments
+# process_sd_refunds is an empty TODO, so beat must not fire them (it would
+# error every tick). They are decorated for manual `.delay` use only.
+CELERY_BEAT_SCHEDULE = {
+    "expire-holds": {
+        "task": "reservations.tasks.expire_holds",
+        "schedule": timedelta(minutes=1),
+    },
+    "ingest-ical-feeds": {
+        "task": "reservations.tasks.ingest_ical_feeds",
+        "schedule": timedelta(minutes=15),
+    },
+    "escalate-pending-owner-approvals": {
+        "task": "reservations.tasks.escalate_pending_owner_approvals",
+        "schedule": crontab(minute=0),  # hourly
+    },
+    "auto-check-out": {
+        "task": "reservations.tasks.auto_check_out",
+        "schedule": crontab(hour=10, minute=0),  # daily 10:00 UTC
+    },
+    "send-payment-reminders": {
+        "task": "payments.tasks.send_payment_reminders",
+        "schedule": crontab(hour=7, minute=0),  # daily 07:00 UTC
+    },
+    "requeue-stuck-emails": {
+        "task": "comms.tasks.requeue_stuck_emails",
+        "schedule": timedelta(minutes=10),
+    },
+}

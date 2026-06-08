@@ -356,4 +356,49 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
     // first/last names are separate input values, not text).
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
   });
+
+  it("keeps a guest unlinked in edit mode (hydration does not revert the clear)", async () => {
+    server.use(
+      http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)),
+      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+    );
+
+    const enquiry = {
+      id: 13,
+      reference: "E-013",
+      status: "new" as const,
+      guest: 55,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@guest.example.com",
+      phone: "+447900000000",
+      contact_method: "email" as const,
+      adults: 2,
+      children: 0,
+      request_type: "quote" as const,
+      site_source: "main_website" as const,
+      is_flexible: false,
+      min_bedrooms: null,
+      referral_code: "",
+      inbound_message: "",
+    };
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={enquiry} open onOpenChange={() => {}} />,
+    );
+
+    // Wait for hydration, then unlink.
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: /unlink/i }));
+
+    // The clear must stick — the hydration effect must NOT re-link the guest.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/link an existing guest/i, { selector: "button" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    // The unlink affordance is gone once nothing is linked.
+    expect(screen.queryByRole("button", { name: /unlink/i })).not.toBeInTheDocument();
+  });
 });

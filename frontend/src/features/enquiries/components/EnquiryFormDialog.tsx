@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
@@ -142,9 +142,12 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   // the enquiry's columns only — never the linked Guest row.
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const linkedGuestId = isCreate ? undefined : (props.enquiry.guest ?? undefined);
-  // Edit mode hydration: fetch the already-linked guest so the picker shows it
-  // and re-linking is explicit. Disabled once the operator picks in-session.
-  const linkedGuestQuery = useGuest(selectedGuest ? undefined : linkedGuestId);
+  const linkedGuestQuery = useGuest(linkedGuestId);
+  // Edit-mode hydration runs exactly once per open: the first of {linked-guest
+  // fetch resolves, operator picks/clears} claims it. Without this latch a
+  // deliberate Unlink (selectedGuest → null) would be instantly reverted by the
+  // hydration effect, and a late-arriving fetch could clobber an in-session pick.
+  const didHydrateRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -152,17 +155,20 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
       setTopLevelError(null);
       setSpread(MIN_SPREAD);
       setSelectedGuest(null);
+      didHydrateRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.enquiry.id]);
 
   useEffect(() => {
-    if (open && !selectedGuest && linkedGuestQuery.data) {
+    if (open && !didHydrateRef.current && linkedGuestQuery.data) {
+      didHydrateRef.current = true;
       setSelectedGuest(linkedGuestQuery.data);
     }
-  }, [open, selectedGuest, linkedGuestQuery.data]);
+  }, [open, linkedGuestQuery.data]);
 
   const handleGuestSelect = (guest: Guest) => {
+    didHydrateRef.current = true;
     setSelectedGuest(guest);
     form.setValue("guest", guest.id);
     // Prefill the denorm capture fields from the linked guest. These remain
@@ -175,6 +181,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   };
 
   const handleGuestClear = () => {
+    didHydrateRef.current = true;
     setSelectedGuest(null);
     form.setValue("guest", null);
   };

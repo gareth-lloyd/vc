@@ -198,7 +198,25 @@ travel agent stays a separate `accounts.Contact` field via the existing
 > (search + history) is an **enhancement enabled by the rebuild's first-class
 > `Guest`**, not legacy parity.
 
-### M1 — Capture enrichment (additive; no IA change)
+**Status (2026-06-09).** ✅ **M1, M2, M3 landed; M4 is the only remaining
+milestone.** M2 shipped with the `people-model-cleanup` merge; M1 (phone +
+`contact_method` capture/display/audit/carry) and M3 (`GuestPicker` +
+`useSearchGuests`, ACTIVE-only; `GET /guests/{id}/enquiries` enriched with
+`quote_count` + `converted_booking`; collapsible history panel) landed in
+`feat/gap-005-m1-m3` (merged to `main`). Notes for M4 and future work:
+> - `converted_booking` = the **most-recently-created non-archived** booking off
+>   the enquiry's ACCEPTED quotations' selected lines (`null` otherwise); ties on
+>   `created_at` currently resolve arbitrarily (no secondary sort — minor).
+> - Synthetic `booking-` quotation exclusion is now hardcoded at 5 sites
+>   (`views/guest.py`, `serializers/guest.py`, `views/quotation.py` ×2,
+>   `services/quotation_render.py`); a shared `Quotation` queryset method is the
+>   right home if a 6th consumer appears.
+> - The converted-booking chip passes a status **label** to `StatusBadge`, which
+>   colour-codes off the raw enum → the chip renders neutral (cosmetic).
+> - `GuestEnquiryHistory` fetches on mount even while collapsed (the header shows
+>   the count); gate the rows fetch on expand if it shows up in profiling.
+
+### M1 — Capture enrichment (additive; no IA change) ✅ done
 
 - **Expose `phone` on enquiry reads.** `Enquiry.phone` / `Guest.phone` exist;
   the enquiry **write** serializer exposes `phone` but the **list/detail read**
@@ -213,7 +231,7 @@ travel agent stays a separate `accounts.Contact` field via the existing
   EMAIL/PHONE/SMS) when a Guest is resolved/created. Add `contact_method` to the
   Guest AuditLog field set (currently untracked — `reservations/apps.py:25–40`).
 
-### M2 — Guest as a deduped directory (foundation for M3)
+### M2 — Guest as a deduped directory (foundation for M3) ✅ done
 
 **Data model settled in [`../people-model-cleanup.md`](../people-model-cleanup.md)**
 (decisions logged in [`../10-decisions.md`](../10-decisions.md)). M2 is the
@@ -226,7 +244,7 @@ suggestion + operator-confirmed `Guest.merge()`), *not* a hard unique index.
 Legacy duplicate collapse is a human-confirmed `Guest.merge()` pass (no auto-merge
 by email). See the record for the full field/constraint list and migration order.
 
-### M3 — Existing-client search + enquiry history (enhancement)
+### M3 — Existing-client search + enquiry history (enhancement) ✅ done
 
 - **Guest search in the enquiry form.** Build a `GuestPicker` + `useSearchGuests`
   mirroring `contacts/components/ContactPicker.tsx` + `useSearchContacts`. Wire
@@ -246,7 +264,7 @@ by email). See the record for the full field/constraint list and migration order
   and map to real enum values (booking status is DRAFT…CHECKED_OUT/CANCELLED,
   not "Completed").
 
-### M4 — IA consolidation + merged workspace (highest-risk; last)
+### M4 — IA consolidation + merged workspace (highest-risk; last) ⬅ next
 
 - **One nav item.** Remove the standalone "Quotes" item from the sidebar
   (`Sidebar.tsx:88–93`, route `/quotations`); keep only "Enquiries".

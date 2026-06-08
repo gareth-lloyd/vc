@@ -2,6 +2,7 @@ export type PropertyId = string | number;
 export type BookingId = string | number;
 export type SeasonId = string | number;
 export type ContactId = string | number;
+export type GuestId = string | number;
 export type EnquiryId = string | number;
 export type UserId = string | number;
 export type QuotationId = string | number;
@@ -69,6 +70,12 @@ export const queryKeys = {
     detail: (id: ContactId) => ["contacts", "detail", k(id)] as const,
     properties: (id: ContactId) => ["contacts", "detail", k(id), "properties"] as const,
     search: (q: string) => ["contacts", "search", q] as const,
+  },
+  guests: {
+    all: () => ["guests"] as const,
+    detail: (id: GuestId) => ["guests", "detail", k(id)] as const,
+    enquiries: (id: GuestId) => ["guests", "detail", k(id), "enquiries"] as const,
+    search: (q: string) => ["guests", "search", q] as const,
   },
   bookings: {
     all: () => ["bookings"] as const,

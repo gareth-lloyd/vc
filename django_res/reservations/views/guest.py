@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from rest_framework import filters, status, viewsets
@@ -16,7 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api import IsStaff, IsStaffRoleAdmin
-from reservations.models import Guest
+from reservations.models import Booking, Guest, Quotation, QuotationLine
 from reservations.serializers import (
     GuestBookingSerializer,
     GuestEnquirySerializer,
@@ -24,6 +25,26 @@ from reservations.serializers import (
     GuestQuotationSerializer,
     GuestSerializer,
 )
+
+
+def _enquiry_history_prefetch() -> Prefetch:
+    """The 3-level quote-stack the history serializer walks (quotations →
+    selected lines → live bookings), applied to a guest's enquiry queryset so
+    `/guests/{id}/enquiries` stays query-bounded regardless of row count.
+
+    `booking-`-prefixed synthetic quotations (BookingLoader legacy-fill rows)
+    are excluded at the source, so the prefetch cache `GuestEnquirySerializer`
+    reads is already clean — they must not inflate `quote_count` or
+    mis-attribute the converted booking.
+    """
+    bookings = Booking.objects.only(
+        "id", "reference", "status", "is_archived", "created_at", "quotation_line_id"
+    )
+    lines = QuotationLine.objects.prefetch_related(Prefetch("bookings", queryset=bookings))
+    quotations = Quotation.objects.exclude(legacy_id__startswith="booking-").prefetch_related(
+        Prefetch("lines", queryset=lines)
+    )
+    return Prefetch("quotations", queryset=quotations)
 
 
 class GuestFilterSet(FilterSet):
@@ -58,7 +79,11 @@ class GuestViewSet(viewsets.ModelViewSet[Guest]):
     @action(detail=True, methods=["get"], url_path="enquiries")
     def enquiries(self, request: Request, pk: str | None = None) -> Response:
         guest = self.get_object()
-        qs = guest.enquiries.all().order_by("-created_at")
+        qs = (
+            guest.enquiries.all()
+            .order_by("-created_at")
+            .prefetch_related(_enquiry_history_prefetch())
+        )
         page = self.paginate_queryset(cast(Any, qs))
         ser = GuestEnquirySerializer(page or qs, many=True)
         return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)

@@ -1,21 +1,21 @@
 """Reservations Celery beat tasks.
 
-These are synchronous function shapes for now; once Celery is wired into
-the project they will be wrapped with `@shared_task`. The synchronous
-shape keeps them testable today and lets the management commands /
-ad-hoc shell calls drive them.
+Each task is a plain synchronous function under ``@shared_task``, so it stays
+directly callable from management commands / the shell and from tests (which
+run eager) while beat drives it on a schedule in production.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
 
+from celery import shared_task
 from django.utils import timezone
 
 from reservations.enums import BookingStatus
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def ingest_ical_feeds() -> list:
     """Poll every active per-villa iCal feed and reconcile owner blocks (GAP-011).
 
@@ -28,7 +28,7 @@ def ingest_ical_feeds() -> list:
     return ICalIngestService.run()
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def expire_holds() -> list[int]:
     """Release `BookingHold` rows past `expires_at`.
 
@@ -59,7 +59,7 @@ def expire_holds() -> list[int]:
     return ids
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def escalate_pending_owner_approvals(threshold_hours: int = 24) -> int:
     """Mark stale pending-owner-approval bookings for ops follow-up.
 
@@ -75,7 +75,7 @@ def escalate_pending_owner_approvals(threshold_hours: int = 24) -> int:
     ).count()
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def auto_check_out() -> int:
     """Transition CHECKED_IN bookings whose `date_to` has passed.
 

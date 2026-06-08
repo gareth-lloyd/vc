@@ -1,13 +1,18 @@
 """Celery task skeletons for the integrations app.
 
-These are synchronous functions today — Celery wiring lands alongside the
-broker config in v1.1.
+These are decorated as Celery tasks but their bodies are not yet implemented
+(they raise ``NotImplementedError``). They are deliberately **not** registered
+in ``CELERY_BEAT_SCHEDULE`` until implemented — otherwise beat would raise on
+every tick. Wire each into the schedule as part of its own implementation
+ticket.
 """
 
 from __future__ import annotations
 
+from celery import shared_task
 
-# TODO: wrap with @shared_task once Celery is configured.
+
+@shared_task
 def push_pending() -> None:
     """Batch-push `SyncRecord`s in `PENDING` state to their providers.
 
@@ -17,7 +22,7 @@ def push_pending() -> None:
     raise NotImplementedError("push_pending is wired in v1.1")
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def reconcile_provider(provider: str) -> None:
     """Nightly drift reconciliation for `provider`.
 
@@ -29,7 +34,7 @@ def reconcile_provider(provider: str) -> None:
     raise NotImplementedError("reconcile_provider is wired in v1.1")
 
 
-# TODO: wrap with @shared_task once Celery is configured.
+@shared_task
 def refresh_oauth_tokens() -> None:
     """Hourly pre-emptive refresh of `OAuthCredential` rows near expiry.
 

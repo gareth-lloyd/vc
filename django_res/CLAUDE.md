@@ -12,6 +12,34 @@
 From the repo root, `make test-backend` runs the backend suite and `make test`
 runs backend + frontend together.
 
+## Background tasks (Celery)
+
+Async work runs on Celery with a Redis broker (the `redis` service in
+`docker-compose.yml`; Render Key Value in prod). No result backend — tasks are
+fire-and-forget (`CELERY_TASK_IGNORE_RESULT = True`). The app object lives in
+`villacollective/celery.py` and auto-discovers each app's `tasks.py`.
+
+Run the worker and the beat scheduler in separate processes (after
+`docker compose up -d` so Redis is up):
+
+```
+uv run celery -A villacollective worker -l info
+uv run celery -A villacollective beat -l info     # periodic scheduler
+```
+
+- **Tasks live in `<app>/tasks.py`** under `@shared_task` so autodiscovery
+  finds them; they stay plain callables (directly invokable from the shell /
+  management commands / tests).
+- **Periodic schedule** is static in `settings/base.py` (`CELERY_BEAT_SCHEDULE`,
+  UTC). Only *implemented* tasks are scheduled; the `integrations.tasks` stubs
+  and `payments.tasks.process_sd_refunds` are decorated but deliberately left
+  out until implemented (beat would otherwise error every tick).
+- **Tests run eager** (`CELERY_TASK_ALWAYS_EAGER` in `settings/test.py`), so
+  `.delay(...)` executes inline. Service-layer dispatch is enqueued via
+  `transaction.on_commit`, so a test asserting on a synchronous send must opt
+  into `pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")`
+  (fixture in `django_res/conftest.py`) to run the commit hooks immediately.
+
 ### Parallel by default
 
 The suite runs in parallel via `pytest-xdist` (`-n auto` in `addopts`), so

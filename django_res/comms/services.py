@@ -234,7 +234,16 @@ class EmailService:
             return existing
 
         if not all_blocked:
-            tasks.send_email_log.delay(log.pk)  # type: ignore[attr-defined]
+            # Defer dispatch until commit so the Celery worker can always read
+            # back the row — a bare .delay() races the commit when the caller
+            # wraps send() in an outer transaction (e.g. a signal firing inside
+            # a booking-transition atomic block). Mirrors resend() below.
+            log_pk = log.pk
+
+            def _dispatch() -> None:
+                tasks.send_email_log.delay(log_pk)
+
+            transaction.on_commit(_dispatch)
         log.refresh_from_db()
         return log
 
@@ -339,7 +348,7 @@ class EmailService:
             if not all_blocked:
 
                 def _dispatch() -> None:
-                    tasks.send_email_log.delay(new_log_pk)  # type: ignore[attr-defined]
+                    tasks.send_email_log.delay(new_log_pk)
 
                 transaction.on_commit(_dispatch)
 

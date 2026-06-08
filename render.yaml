@@ -41,3 +41,83 @@ services:
       # guard against accidentally sending guest mail from the demo box.
       - key: EMAIL_RECIPIENT_ALLOWLIST
         sync: false
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: villacollective-redis
+          type: keyvalue
+          property: connectionString
+
+  # Celery broker. noeviction so Redis never silently drops queued jobs under
+  # memory pressure (the `requeue_stuck_emails` sweep is the durability
+  # backstop for an outright restart, not for eviction).
+  - type: keyvalue
+    name: villacollective-redis
+    region: frankfurt
+    plan: starter
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+  # Celery worker — same image as the web service, different command. Sends
+  # real guest email (decrypts SMTP creds, fires SMTP), so it needs the SAME
+  # settings module + secrets + recipient allowlist as web.
+  - type: worker
+    name: villacollective-worker
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    branch: main
+    dockerCommand: celery -A villacollective worker -l info --concurrency 2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: villacollective-db
+          property: connectionString
+      # Share the web service's generated key so signing/sessions match.
+      - key: DJANGO_SECRET_KEY
+        fromService:
+          name: villacollective-api
+          type: web
+          envVarKey: DJANGO_SECRET_KEY
+      - key: DJANGO_SETTINGS_MODULE
+        value: villacollective.settings.staging
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: villacollective-redis
+          type: keyvalue
+          property: connectionString
+      - key: EMAIL_RECIPIENT_ALLOWLIST
+        sync: false
+
+  # Celery beat — the periodic scheduler. MUST stay at a single instance:
+  # multiple beat replicas would double-fire every scheduled job. Does not
+  # serve traffic and does not need the email allowlist (it only enqueues).
+  - type: worker
+    name: villacollective-beat
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    branch: main
+    dockerCommand: celery -A villacollective beat -l info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: villacollective-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        fromService:
+          name: villacollective-api
+          type: web
+          envVarKey: DJANGO_SECRET_KEY
+      - key: DJANGO_SETTINGS_MODULE
+        value: villacollective.settings.staging
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: villacollective-redis
+          type: keyvalue
+          property: connectionString

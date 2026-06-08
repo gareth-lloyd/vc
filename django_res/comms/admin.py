@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
@@ -74,8 +75,13 @@ class EmailLogAdmin(admin.ModelAdmin):
 
         if log_ids:
             eligible.update(status=EmailLogStatus.QUEUED, failure_reason="")
-            for log_id in log_ids:
-                tasks.send_email_log.delay(log_id)  # type: ignore[attr-defined]
+
+            # Defer dispatch until commit so the worker sees the QUEUED rows.
+            def _dispatch() -> None:
+                for log_id in log_ids:
+                    tasks.send_email_log.delay(log_id)
+
+            transaction.on_commit(_dispatch)
             self.message_user(
                 request,
                 f"Re-queued {len(log_ids)} log(s) for delivery.",

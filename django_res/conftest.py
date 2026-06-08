@@ -75,6 +75,27 @@ def _restore_seeded_reference_data(request: pytest.FixtureRequest) -> None:
 
 
 @pytest.fixture
+def run_on_commit_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run ``transaction.on_commit`` callbacks immediately instead of deferring.
+
+    Email/webhook dispatch is enqueued via ``transaction.on_commit`` so the
+    Celery worker never reads a row before its creating transaction commits.
+    Under pytest-django each test runs in a rolled-back transaction that never
+    commits, so those callbacks would otherwise never fire. Modules exercising
+    a synchronous send-then-assert flow opt in with::
+
+        pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
+    Tests that specifically assert the *deferral* must NOT use this fixture;
+    they use ``django_capture_on_commit_callbacks`` directly.
+    """
+    monkeypatch.setattr(
+        "django.db.transaction.on_commit",
+        lambda func, using=None, robust=False: func(),
+    )
+
+
+@pytest.fixture
 def system_profile(db: None) -> SmtpProfile:
     """Default system SmtpProfile used by tests that fire transactional email."""
     return SmtpProfile.objects.create(

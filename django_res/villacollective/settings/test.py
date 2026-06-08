@@ -46,3 +46,10 @@ MIDDLEWARE = [
 
 # Tests exercise the seed_dev command; the guardrail must allow it here.
 SEED_DEV_ALLOWED = True
+
+# Celery: run tasks inline (no broker, no worker) and re-raise task exceptions
+# so `.delay(...)` behaves synchronously in tests. The in-memory broker URL
+# means nothing tries to reach Redis even when a task is invoked directly.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_BROKER_URL = "memory://"

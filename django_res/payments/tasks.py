@@ -1,7 +1,8 @@
 """Background-task entry points for the payments app.
 
-All tasks are written synchronously today; production deployment swaps in
-Celery decorators (`@shared_task`) and `*.delay(...)` enqueuing.
+Each task is a plain synchronous function under ``@shared_task`` — directly
+callable from the shell/tests (which run eager), enqueued via ``.delay(...)``
+in production, or driven by beat (``send_payment_reminders``).
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from celery import shared_task
 from django.utils import timezone
 
 from payments.enums import (
@@ -51,16 +53,19 @@ SECURITY_DEPOSIT_OPEN_STATUSES: frozenset[str] = frozenset(
 )
 
 
+@shared_task
 def process_webhook_delivery(delivery_id: int) -> None:
     """Load a persisted delivery and apply its event.
 
-    TODO: convert to a Celery `@shared_task` with autoretry on transient
-    exceptions and a Sentry alert after retry exhaustion.
+    TODO: add autoretry on transient exceptions + a Sentry alert after retry
+    exhaustion once the dispatcher's transient/permanent error taxonomy is
+    pinned down. `acks_late` already re-queues on a worker crash.
     """
     delivery = WebhookDelivery.objects.get(pk=delivery_id)
     WebhookDispatcher.process(delivery)
 
 
+@shared_task
 def send_payment_reminders(*, now: datetime | None = None) -> int:
     """Dispatch deposit / balance / security-deposit reminder emails.
 
@@ -338,6 +343,7 @@ def _reminder_context(
     }
 
 
+@shared_task
 def process_sd_refunds() -> None:
     """Walk `SecurityDeposit` rows due for release / refund.
 

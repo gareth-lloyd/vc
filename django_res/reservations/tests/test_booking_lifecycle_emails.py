@@ -29,6 +29,10 @@ if TYPE_CHECKING:
     from properties.models import Property
     from reservations.models import QuotationLine, TermsVersion
 
+# Lifecycle email dispatch is deferred to transaction.on_commit; run those hooks
+# immediately so these round-trip tests observe the dispatched EmailLog.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 def _assign_owner(property_: Property, email: str) -> Contact:
     contact = Contact.objects.create(first_name="Olive", last_name="Owner")

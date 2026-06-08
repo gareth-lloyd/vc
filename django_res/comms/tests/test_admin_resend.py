@@ -11,6 +11,10 @@ from comms.enums import EmailLogStatus
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from comms.services import EmailService
 
+# The admin resend action defers dispatch to transaction.on_commit; run those
+# hooks immediately so these tests observe the re-dispatch.
+pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
+
 
 @pytest.fixture
 def superuser(db: None) -> User:

@@ -70,7 +70,17 @@ class _Check:
 
 
 _CHECKS: list[_Check] = [
-    _Check("SELECT COUNT(*) FROM VillaCountry", Country, "Country (legacy)"),
+    _Check(
+        "SELECT COUNT(*) FROM VillaCountry",
+        Country,
+        "Country (legacy)",
+        # Negative gap: loaded > legacy. Migration properties.0009 pre-seeds
+        # 249 canonical ISO-3166 countries (legacy_id NULL); the 23 legacy
+        # VillaCountry rows are matched onto that seed by iso2 rather than
+        # adding to it. Plus the unknown_country sentinel. The seeded table
+        # dwarfs the 23 legacy rows, so the gap is structurally negative.
+        expected_gap=-228,
+    ),
     _Check("SELECT COUNT(*) FROM VillaRegion", Region, "Region"),
     _Check(
         "SELECT COUNT(*) FROM VillaCurrency",
@@ -94,6 +104,7 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaGroup WHERE DeletedAt IS NULL",
         PropertyGroup,
         "PropertyGroup",
+        expected_gap=-1,  # unknown_group sentinel row (no legacy origin).
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaMaster WHERE DeletedAt IS NULL",
@@ -112,13 +123,35 @@ _CHECKS: list[_Check] = [
         "CollectionMembership",
         expected_gap=308,  # legacy duplicates (multiple rows per same pair).
     ),
-    _Check("SELECT COUNT(*) FROM VillaRooms", Room, "Room"),
-    _Check("SELECT COUNT(*) FROM VillaPropertyImages", PropertyImage, "PropertyImage"),
-    _Check("SELECT COUNT(*) FROM VillaNearBy", PropertyNearbyPlace, "PropertyNearbyPlace"),
+    _Check(
+        "SELECT COUNT(*) FROM VillaRooms",
+        Room,
+        "Room",
+        # Rooms whose VillaId points at a property that wasn't loaded
+        # (soft-deleted or empty-Name VillaMaster) have no parent to attach to.
+        expected_gap=307,
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaPropertyImages",
+        PropertyImage,
+        "PropertyImage",
+        # Images for an unloaded parent property, or rows with an empty filename.
+        expected_gap=806,
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaNearBy",
+        PropertyNearbyPlace,
+        "PropertyNearbyPlace",
+        # Parent property unresolved, place type unresolved, or empty name.
+        expected_gap=77,
+    ),
     _Check(
         "SELECT COUNT(*) FROM VillaSeason WHERE DeletedAt IS NULL",
         RatePlan,
         "RatePlan",
+        # Seasons whose VillaId doesn't resolve, or with no resolvable currency
+        # (none on the season's rates and none configured on the property/group).
+        expected_gap=67,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra <> 1",
@@ -132,8 +165,22 @@ _CHECKS: list[_Check] = [
         "PropertyContactAssignment",
         expected_gap=1,  # composite legacy_id collapse.
     ),
-    _Check("SELECT COUNT(*) FROM VillaClientDetails", Guest, "Guest"),
-    _Check("SELECT COUNT(*) FROM VillaEnquire", Enquiry, "Enquiry"),
+    _Check(
+        "SELECT COUNT(*) FROM VillaClientDetails",
+        Guest,
+        "Guest",
+        expected_gap=1,  # one legacy row with neither FirstName nor LastName.
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaEnquire",
+        Enquiry,
+        "Enquiry",
+        # Negative gap: loaded > legacy. Synthesised enquiries created to
+        # satisfy the now-mandatory Quotation.enquiry FK — for booking-synth
+        # quotations (BookingLoader.ensure_enquiry) and legacy quotations that
+        # carried no enquiry of their own.
+        expected_gap=-8,
+    ),
     _Check(
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
@@ -146,11 +193,15 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",
         Quotation,
         "Quotation (legacy + booking-synth)",
+        # Negative gap: BookingLoader synthesises a hidden DRAFT quotation per
+        # legacy booking that has no real quotation to satisfy the PROTECT FK.
+        expected_gap=-3,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationDetails",
         QuotationLine,
         "QuotationLine (legacy + booking-synth)",
+        expected_gap=-2,  # lines on the booking-synth quotations above.
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaBooking WHERE DeletedAt IS NULL",

@@ -30,6 +30,7 @@ EXPECTED_TRACKED_MODELS = {
     "payments.Payment",
     "payments.Refund",
     "properties.GroupFinance",
+    "properties.PropertyCalendarFeed",
     "properties.PropertyFinance",
     "reservations.Booking",
     "reservations.BookingGuest",

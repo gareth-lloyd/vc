@@ -10,7 +10,14 @@ class PropertiesConfig(AppConfig):
     def ready(self) -> None:
         from core import audit
         from properties import signals  # noqa: F401
+        from properties.models.calendar_feed import PropertyCalendarFeed
         from properties.models.finance import GroupFinance, PropertyFinance
+
+        audit.track(
+            PropertyCalendarFeed,
+            fields=("property_id", "url", "platform", "label", "is_active"),
+            sensitive=("url",),
+        )
 
         _SENSITIVE_BANK_FIELDS = (
             "bank_account_number",

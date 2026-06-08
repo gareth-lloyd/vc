@@ -16,6 +16,19 @@ from reservations.enums import BookingStatus
 
 
 # TODO: wrap with @shared_task once Celery is configured.
+def ingest_ical_feeds() -> list:
+    """Poll every active per-villa iCal feed and reconcile owner blocks (GAP-011).
+
+    Synchronous for now (driven by the `ingest_ical` management command / cron);
+    wraps with `@shared_task` once Celery + beat land, sized for OTA poll lag.
+    Returns the list of per-property results from `ICalIngestService.run`.
+    """
+    from reservations.services.ical_ingest import ICalIngestService
+
+    return ICalIngestService.run()
+
+
+# TODO: wrap with @shared_task once Celery is configured.
 def expire_holds() -> list[int]:
     """Release `BookingHold` rows past `expires_at`.
 

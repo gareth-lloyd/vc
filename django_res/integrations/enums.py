@@ -16,6 +16,7 @@ class SyncProvider(models.TextChoices):
     FLYWIRE = "FLYWIRE", "Flywire"
     WORDPRESS_SITE = "WORDPRESS_SITE", "WordPress site"
     LEGACY_DOTNET = "LEGACY_DOTNET", "Legacy .NET"
+    ICAL = "ICAL", "iCal feed"
 
 
 class SyncDirection(models.TextChoices):

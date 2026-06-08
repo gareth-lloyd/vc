@@ -17,7 +17,7 @@ from django.db import models
 from django.db.models import Q
 
 from core.models.base import TimestampedModel
-from reservations.enums import OwnerBlockKind, OwnerBlockStatus
+from reservations.enums import OwnerBlockKind, OwnerBlockSource, OwnerBlockStatus
 
 
 class OwnerBlock(TimestampedModel):
@@ -26,11 +26,26 @@ class OwnerBlock(TimestampedModel):
         on_delete=models.PROTECT,
         related_name="owner_block_requests",
     )
+    # NULL for ICAL-imported blocks: an automated feed poll has no human actor
+    # (the `actor=None` system-caller sentinel). MANUAL blocks always carry a
+    # creator — enforced by the `ownerblock_manual_requires_creator` constraint.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="owner_block_requests",
     )
+    source = models.CharField(
+        max_length=16,
+        choices=OwnerBlockSource.choices,
+        default=OwnerBlockSource.MANUAL,
+    )
+    # Reconciliation key for ICAL blocks — the half-open date range the block
+    # represents (`<date_from>_<date_to>`). The poller diffs the feed's coalesced
+    # ranges against existing ICAL blocks by this key, so block identity is the
+    # merged range, not the (unstable) iCal UID. Blank for MANUAL blocks.
+    idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
     date_from = models.DateField()
     date_to = models.DateField()
     kind = models.CharField(
@@ -73,6 +88,20 @@ class OwnerBlock(TimestampedModel):
             models.CheckConstraint(
                 condition=Q(date_from__lt=models.F("date_to")),
                 name="ownerblockrequest_date_from_lt_date_to",
+            ),
+            # A manual block must record who made it; only ICAL imports may have
+            # a null creator.
+            models.CheckConstraint(
+                condition=Q(source=OwnerBlockSource.ICAL.value) | Q(created_by__isnull=False),
+                name="ownerblock_manual_requires_creator",
+            ),
+            # One live ICAL block per (property, range). Belt-and-braces behind
+            # the poller's reconcile diff; scoped to APPROVED so a cancelled
+            # block doesn't prevent re-importing the same range later.
+            models.UniqueConstraint(
+                fields=["property", "idempotency_key"],
+                condition=Q(status=OwnerBlockStatus.APPROVED.value) & ~Q(idempotency_key=""),
+                name="unique_active_ical_block_per_property_key",
             ),
         ]
         ordering = ["-created_at"]

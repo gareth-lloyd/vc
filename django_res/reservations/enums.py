@@ -161,6 +161,18 @@ class OwnerBlockStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class OwnerBlockSource(models.TextChoices):
+    """How an owner block came to exist.
+
+    MANUAL blocks are created by a staff/owner action and carry a `created_by`.
+    ICAL blocks are imported by the calendar-feed poller (GAP-011); they have no
+    human creator (`created_by` is null) and are reconciled against the feed.
+    """
+
+    MANUAL = "manual", "Manual"
+    ICAL = "ical", "iCal feed"
+
+
 class OwnerBlockUpdateKind(models.TextChoices):
     """The change event surfaced in the staff owner-block feed."""
 

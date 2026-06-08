@@ -65,6 +65,15 @@ class ReadOnlyHold(DomainError):
 class OverlappingBooking(DomainError):
     code = "overlapping_booking"
 
+    def __init__(self, message: str = "", *, booking: object | None = None) -> None:
+        """Optionally carry the booking that occupies the range.
+
+        Stored untyped (``object``) so `core` keeps importing no domain app —
+        callers in `reservations` narrow it back to a `Booking`.
+        """
+        super().__init__(message)
+        self.booking = booking
+
 
 class OAuthNotConnectedError(DomainError):
     code = "oauth_not_connected"

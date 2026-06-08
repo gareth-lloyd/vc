@@ -379,3 +379,17 @@ class ChangeOverRuleFactory(DjangoModelFactory):
     starts_on = factory.LazyFunction(date.today)
     ends_on = factory.LazyAttribute(lambda o: o.starts_on + timedelta(days=60))
     notes = "Peak-season Saturday changeovers (seeded)."
+
+
+class PropertyCalendarFeedFactory(DjangoModelFactory):
+    """A per-villa iCal feed. `url` is `RUN_TOKEN`-unique so additive runs don't
+    collide on the `(property, url)` constraint. `platform` defaults to OTHER via
+    the model default."""
+
+    class Meta:
+        model = models.PropertyCalendarFeed
+
+    property = factory.SubFactory(PropertyFactory)
+    url = factory.Sequence(lambda n: f"https://example.test/ical/{RUN_TOKEN}-{n}.ics")
+    label = factory.Sequence(lambda n: f"Feed {RUN_TOKEN}-{n}")
+    is_active = True

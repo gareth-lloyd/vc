@@ -6,6 +6,7 @@ from reservations.services.availability import AvailabilityService, CellStatus, 
 from reservations.services.bookings import BookingService
 from reservations.services.concierge import ConciergeService
 from reservations.services.holds import HoldService
+from reservations.services.ical_ingest import ICalIngestService
 from reservations.services.quotations import QuotationService
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "ConciergeService",
     "Conflict",
     "HoldService",
+    "ICalIngestService",
     "QuotationService",
 ]

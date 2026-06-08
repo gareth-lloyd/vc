@@ -20,6 +20,7 @@ from core.exceptions import InvalidTransition, OverlappingBooking
 from reservations.enums import (
     BookingHoldReason,
     OwnerBlockKind,
+    OwnerBlockSource,
     OwnerBlockStatus,
     OwnerBlockUpdateKind,
 )
@@ -58,11 +59,13 @@ class OwnerBlockService:
         bookings — so this is the only place the booking-occupancy half of the
         guard runs.
         """
-        if Booking.objects.occupying(
+        booking = Booking.objects.occupying(
             property=property, date_from=date_from, date_to=date_to
-        ).exists():
+        ).first()
+        if booking is not None:
             raise OverlappingBooking(
-                f"A booking already occupies {date_from}..{date_to} on property {property.pk}"
+                f"A booking already occupies {date_from}..{date_to} on property {property.pk}",
+                booking=booking,
             )
 
     @classmethod
@@ -107,6 +110,54 @@ class OwnerBlockService:
             block=block,
             kind=OwnerBlockUpdateKind.CREATED.value,
             actor=created_by,
+        )
+        return block
+
+    @classmethod
+    @transaction.atomic
+    def create_imported(
+        cls,
+        *,
+        property: Property,
+        date_from: date_type,
+        date_to: date_type,
+        idempotency_key: str,
+        notes: str = "",
+    ) -> OwnerBlock:
+        """Create an APPROVED block imported from an iCal feed (GAP-011).
+
+        Mirrors `create` but carries no human creator — an automated feed poll
+        is the `actor=None` system caller — and records `source=ICAL` plus the
+        reconciliation `idempotency_key` (the coalesced date range). The overlap
+        guard is identical: a live booking raises `OverlappingBooking` (the
+        poller turns this into a staff conflict alert and skips the write); an
+        overlapping live hold raises `HoldUnavailable`.
+        """
+        cls._assert_range_free(property=property, date_from=date_from, date_to=date_to)
+        hold = HoldService.place(
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+            never_expires=True,
+            reason=_DEFAULT_HOLD_REASON,
+            notes=notes,
+        )
+        block = OwnerBlock.objects.create(
+            property=property,
+            created_by=None,
+            date_from=date_from,
+            date_to=date_to,
+            kind=OwnerBlockKind.OTHER.value,
+            notes=notes,
+            status=OwnerBlockStatus.APPROVED.value,
+            source=OwnerBlockSource.ICAL.value,
+            idempotency_key=idempotency_key,
+            resulting_hold=hold,
+        )
+        OwnerBlockUpdate.objects.create(
+            block=block,
+            kind=OwnerBlockUpdateKind.CREATED.value,
+            actor=None,
         )
         return block
 

@@ -12,6 +12,7 @@ from properties.models import (
     GroupSettings,
     NearbyPlaceType,
     Property,
+    PropertyCalendarFeed,
     PropertyCapacity,
     PropertyCategory,
     PropertyContactAssignment,
@@ -47,3 +48,21 @@ admin.site.register(Collection)
 admin.site.register(CollectionMembership)
 admin.site.register(PropertyContactAssignment)
 admin.site.register(ChangeOverRule)
+
+
+@admin.register(PropertyCalendarFeed)
+class PropertyCalendarFeedAdmin(admin.ModelAdmin):
+    # `url` is a capability URL (secret token) — keep it off list/search views.
+    # It stays editable on the detail form so ops can paste / rotate it.
+    list_display = (
+        "id",
+        "property",
+        "platform",
+        "label",
+        "is_active",
+        "last_status",
+        "last_polled_at",
+    )
+    list_filter = ("platform", "is_active", "last_status")
+    list_select_related = ("property",)
+    readonly_fields = ("last_polled_at", "last_status", "last_error")

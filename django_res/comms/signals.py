@@ -300,6 +300,56 @@ def owner_block_contested_handler(
     )
 
 
+def ical_conflict_detected_handler(
+    sender: Any,
+    *,
+    property: Any,
+    date_from: Any,
+    date_to: Any,
+    conflict_kind: str = "",
+    conflict_reference: str = "",
+    booking: Any | None = None,
+    feed_labels: str = "",
+    **_: Any,
+) -> None:
+    """Alert ops that an imported iCal block clashed with a live VC commitment.
+
+    Routine imports are silent (they hit the OwnerBlockUpdate awareness feed);
+    this fires only on the dangerous case — a date VC already committed (a
+    confirmed booking or an open quotation) has just been booked on the owner's
+    other channel. `conflict_kind`/`conflict_reference` name the clashing
+    commitment; for the booking kind the reference falls back to `booking` for
+    older senders. Ops-only; skipped when no ops recipients are configured.
+
+    The date range is part of the dedupe correlation, so two materially-different
+    clashes on the same property are not collapsed into one send.
+    """
+    ops_recipients = list(getattr(settings, "OPS_EMAIL_RECIPIENTS", []) or [])
+    if not ops_recipients:
+        return
+    kind = conflict_kind or ("booking" if booking is not None else "")
+    reference = conflict_reference or (getattr(booking, "reference", "") if booking else "")
+    _safe_send(
+        template_key="ical.conflict",
+        context={
+            "property_name": property.display_name or property.name,
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "feed_labels": feed_labels,
+            "conflict_kind": kind,
+            "conflict_reference": reference,
+        },
+        to=ops_recipients,
+        correlation={
+            "property_id": property.pk,
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "conflict_kind": kind,
+            "audience": "ops",
+        },
+    )
+
+
 def payment_succeeded_handler(
     sender: Any,
     *,
@@ -400,6 +450,7 @@ def _register() -> None:
         booking_confirmation_resend_requested,
         booking_transitioned,
         hold_expired,
+        ical_conflict_detected,
         owner_block_contested,
         quotation_sent,
     )
@@ -423,6 +474,10 @@ def _register() -> None:
     owner_block_contested.connect(
         owner_block_contested_handler,
         dispatch_uid="comms.owner_block_contested",
+    )
+    ical_conflict_detected.connect(
+        ical_conflict_detected_handler,
+        dispatch_uid="comms.ical_conflict_detected",
     )
     payment_succeeded.connect(
         payment_succeeded_handler,

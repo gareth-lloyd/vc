@@ -58,6 +58,21 @@ notify the owner. comms listens and emails the property's primary owner.
 kwargs: sender=OwnerBlock, block, actor, reason.
 """
 
+ical_conflict_detected = Signal()
+"""Fired by the iCal poller when an imported busy range clashes with a live VC commitment.
+
+The poller skips writing the conflicting block (the VC commitment stands) and
+fires this so comms can alert ops. Two clash kinds escalate: an imported range
+overlapping a confirmed booking, or one overlapping an open-quotation hold (VC is
+quoting dates the owner just booked on their other channel). Benign owner-side
+holds (manual block / maintenance) and routine non-conflicting imports do not fire
+it; the latter go to the OwnerBlockUpdate awareness feed only.
+
+kwargs: sender=None, property, date_from, date_to, conflict_kind ("booking" /
+"quotation"), conflict_reference (booking/quotation ref), booking (the clashing
+Booking for the booking kind, else None), feed_labels (provenance).
+"""
+
 booking_confirmation_resend_requested = Signal()
 """Fired by `Booking.send_confirmation_email()` when an operator triggers a resend.
 
@@ -273,6 +288,7 @@ __all__ = [
     "LeadGuestProtectedError",
     "booking_transitioned",
     "hold_expired",
+    "ical_conflict_detected",
     "owner_block_contested",
     "quotation_sent",
 ]

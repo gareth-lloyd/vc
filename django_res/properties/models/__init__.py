@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from properties.models.calendar_feed import PropertyCalendarFeed
 from properties.models.capacity import PropertyCapacity
 from properties.models.changeover import ChangeOverRule
 from properties.models.contacts import PropertyContactAssignment
@@ -34,6 +35,7 @@ __all__ = [
     "GroupSettings",
     "NearbyPlaceType",
     "Property",
+    "PropertyCalendarFeed",
     "PropertyCapacity",
     "PropertyCategory",
     "PropertyContactAssignment",

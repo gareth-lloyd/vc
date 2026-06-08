@@ -61,8 +61,10 @@ def test_release_with_no_guest_email_does_not_crash(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
+    # Phone-only guest: no email, still contactable (email="" → NULL on save).
     booking.guest.email = ""
-    booking.guest.save(update_fields=["email", "updated_at"])
+    booking.guest.phone = "+447911123456"
+    booking.guest.save(update_fields=["email", "phone", "updated_at"])
 
     sd = SecurityDeposit.objects.create(
         booking=booking,

@@ -299,8 +299,9 @@ by email). See the record for the full field/constraint list and migration order
   `/quotations/new?enquiry=` builder): client/criteria header + existing
   quotations for the enquiry inline (`EnquiryDetailSerializer` already inlines
   `.quotations[].lines[]`) + the builder (reuse
-  `QuoteCriteriaForm`/`QuoteResultsList`/`QuoteCart`/`SaveQuoteDialog`, already
-  enquiry-seeded in `QuotationBuilderPage.tsx:70–79`). **Preserve Activity &
+  `QuoteCriteriaForm`/`QuoteResultsList`/`QuoteCart`/`SaveQuoteDialog`, enquiry-
+  seeded inline by `QuoteBuilder.tsx` — the old `QuotationBuilderPage` was
+  deleted). **Preserve Activity &
   Notes** as secondary panels (side rail / collapsible sections), reusing the
   existing `ActivityTab`/`NotesTab` components. This subsumes #9 above.
 

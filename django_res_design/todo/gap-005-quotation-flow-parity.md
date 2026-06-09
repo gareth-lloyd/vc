@@ -198,8 +198,7 @@ travel agent stays a separate `accounts.Contact` field via the existing
 > (search + history) is an **enhancement enabled by the rebuild's first-class
 > `Guest`**, not legacy parity.
 
-**Status (2026-06-09).** ✅ **M1, M2, M3 landed; M4 is the only remaining
-milestone.** M2 shipped with the `people-model-cleanup` merge; M1 (phone +
+**Status (2026-06-09).** ✅ **M1–M4 landed.** M2 shipped with the `people-model-cleanup` merge; M1 (phone +
 `contact_method` capture/display/audit/carry) and M3 (`GuestPicker` +
 `useSearchGuests`, ACTIVE-only; `GET /guests/{id}/enquiries` enriched with
 `quote_count` + `converted_booking`; collapsible history panel) landed in
@@ -207,10 +206,9 @@ milestone.** M2 shipped with the `people-model-cleanup` merge; M1 (phone +
 > - `converted_booking` = the **most-recently-created non-archived** booking off
 >   the enquiry's ACCEPTED quotations' selected lines (`null` otherwise); ties on
 >   `created_at` currently resolve arbitrarily (no secondary sort — minor).
-> - Synthetic `booking-` quotation exclusion is now hardcoded at 5 sites
->   (`views/guest.py`, `serializers/guest.py`, `views/quotation.py` ×2,
->   `services/quotation_render.py`); a shared `Quotation` queryset method is the
->   right home if a 6th consumer appears.
+> - Synthetic `booking-` quotation exclusion now routes through the shared
+>   `Quotation.objects.real()` / `QuotationLine` queryset method (landed in M4);
+>   the enquiry quote-stack prefetch and the `/enquiries/quotes` list both use it.
 > - The converted-booking chip passes a status **label** to `StatusBadge`, which
 >   colour-codes off the raw enum → the chip renders neutral (cosmetic).
 > - `GuestEnquiryHistory` fetches on mount even while collapsed (the header shows
@@ -264,17 +262,38 @@ by email). See the record for the full field/constraint list and migration order
   and map to real enum values (booking status is DRAFT…CHECKED_OUT/CANCELLED,
   not "Completed").
 
-### M4 — IA consolidation + merged workspace (highest-risk; last) ⬅ next
+### M4 — IA consolidation + merged workspace (highest-risk; last) ✅ done
 
-- **One nav item.** Remove the standalone "Quotes" item from the sidebar
-  (`Sidebar.tsx:88–93`, route `/quotations`); keep only "Enquiries".
-  `/quotations/:id` remains a deep-link target, not a top-level destination.
-- **`Quotation.enquiry` → NOT NULL.** `null=False`; change `on_delete=SET_NULL`
-  → `PROTECT` (SET_NULL is invalid on a non-null FK; PROTECT mirrors `guest`).
-  **Backfill-audit** any existing `enquiry IS NULL` rows before the migration.
-  Low frontend risk — `SaveQuoteDialog.tsx:117–126` already always sends
-  `enquiry: enquiry.id`, so no live UI creates enquiry-less quotes; agent-direct
-  quotes create a lightweight enquiry first.
+> **Done (2026-06-09).** Shipped across `feat/gap-005-m4` (single-spine enquiry
+> workspace + inline `<QuoteBuilder>`, slices 1–4, merged to `main`) and
+> `feat/gap-005-m4-final` — **5a:** the cross-enquiry quotes pipeline is preserved
+> as a "Quotes" tab under Enquiries (`/enquiries/quotes`, reusing the quotes
+> table); **5b:** the standalone Quotes nav item + `/quotations` list/builder
+> routes are removed (redirecting to the tab), `QuotationBuilderPage` deleted.
+> The `Quotation.enquiry` FK was **already** `NOT NULL` + `PROTECT` (migration
+> `0022`) — the "`SET_NULL` → `PROTECT`" note below was stale; **no migration this
+> phase**.
+>
+> **Post-review follow-ups (also on `feat/gap-005-m4-final`).** A high-effort
+> code review found no runtime bugs; the actionable items landed as: restored
+> `<QuoteBuilder>` orchestration tests (lost with the deleted `QuotationBuilderPage`);
+> the Enquiries↔Quotes tab strip moved into an `EnquiriesSectionLayout`
+> route + `<Outlet>` (mounted once, not per page); a shared `useListParams`
+> hook deduping the two list pages; and **quote detail re-homed under the
+> Enquiries IA at `/enquiries/quotes/:id`** (sidebar Enquiries stays highlighted,
+> URL matches the breadcrumb) — `/quotations/:id` now redirects there preserving
+> the id, and `/quotations/new` honours `?enquiry=` into the workspace.
+
+- **One nav item.** ✅ Standalone "Quotes" sidebar item + `/quotations`
+  list/builder routes removed; the pipeline survives as the `/enquiries/quotes`
+  tab, and `/quotations` + `/quotations/new` redirect there. Quote **detail**
+  now lives under the Enquiries IA at `/enquiries/quotes/:id` (post-review
+  follow-up); legacy `/quotations/:id` bookmarks redirect to it, id preserved.
+- **`Quotation.enquiry` → NOT NULL.** ✅ Already `null=False` +
+  `on_delete=PROTECT` (migration `0022`, pre-dating this phase; the earlier
+  "`SET_NULL` → `PROTECT`" framing was stale — it was already `PROTECT`).
+  `SaveQuoteDialog` always sends `enquiry: enquiry.id` and agent-direct quotes
+  create a lightweight enquiry first, so no live UI creates enquiry-less quotes.
 - **Merged enquiry+quote workspace.** Clicking an enquiry lands on a combined
   workspace (replacing the Details/Activity/Notes landing **and** the separate
   `/quotations/new?enquiry=` builder): client/criteria header + existing

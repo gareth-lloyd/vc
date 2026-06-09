@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { useListParams } from "@/lib/list/useListParams";
 import { ApiError } from "@/lib/api/errors";
 import { useEnquiryColumns } from "./columns";
 import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts, useMoveEnquiry } from "./hooks";
@@ -29,8 +30,6 @@ import {
   type EnquiryListItem,
   type EnquiryStatus,
 } from "./schemas";
-
-const ALL_VALUE = "__all__";
 
 type ViewMode = "kanban" | "list";
 
@@ -82,46 +81,10 @@ export function EnquiriesListPage() {
   const { t } = useTranslation("enquiries");
   const navigate = useNavigate();
   const hasRole = useHasReservationsRole();
-  const [params, setParams] = useSearchParams();
+  const { params, setParams, search, setSearch, updateParam, goToPage } = useListParams();
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const view: ViewMode = parseView(params.get("view"), filters.status !== undefined);
-  const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
-
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    const current = filters.q ?? "";
-    if (search === current) return;
-    const handle = setTimeout(() => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (search) next.set("q", search);
-          else next.delete("q");
-          next.delete("page");
-          return next;
-        },
-        { replace: true },
-      );
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [search, filters.q, setParams]);
-
-  const updateParam = (key: string, value: string | undefined) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value && value !== ALL_VALUE) next.set(key, value);
-        else next.delete(key);
-        next.delete("page");
-        return next;
-      },
-      { replace: true },
-    );
-  };
 
   const setView = (next: ViewMode) => {
     setParams(
@@ -132,18 +95,6 @@ export function EnquiriesListPage() {
         // otherwise be a no-op if we only stored the non-default branch.
         out.set("view", next);
         return out;
-      },
-      { replace: true },
-    );
-  };
-
-  const goToPage = (zeroBased: number) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (zeroBased <= 0) next.delete("page");
-        else next.set("page", String(zeroBased + 1));
-        return next;
       },
       { replace: true },
     );
@@ -168,7 +119,7 @@ export function EnquiriesListPage() {
   const statusOptions = useMemo(() => enquiryStatusOptions(), []);
 
   const handleRowClick = (row: EnquiryListItem) => {
-    navigate(`/enquiries/${row.id}/details`);
+    navigate(`/enquiries/${row.id}`);
   };
 
   const handleMove = (itemId: string, _fromColId: string, toColId: string) => {
@@ -299,10 +250,7 @@ export function EnquiriesListPage() {
               columns={groupIntoColumns(query.data?.results ?? [], enquiryStatusLabel)}
               getItemId={(item) => String(item.id)}
               renderCard={(item) => (
-                <EnquiryCard
-                  enquiry={item}
-                  onClick={() => navigate(`/enquiries/${item.id}/details`)}
-                />
+                <EnquiryCard enquiry={item} onClick={() => navigate(`/enquiries/${item.id}`)} />
               )}
               onMoveItem={handleMove}
             />

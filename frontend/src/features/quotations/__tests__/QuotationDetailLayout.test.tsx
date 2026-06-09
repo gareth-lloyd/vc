@@ -50,9 +50,9 @@ function asReservationsUser() {
 function setup() {
   return renderWithProviders(
     <Routes>
-      <Route path="/quotations/:id" element={<QuotationDetailLayout />} />
+      <Route path="/enquiries/quotes/:id" element={<QuotationDetailLayout />} />
     </Routes>,
-    { route: "/quotations/7" },
+    { route: "/enquiries/quotes/7" },
   );
 }
 
@@ -67,6 +67,15 @@ describe("QuotationDetailLayout", () => {
   it("renders the empty lines state when there are no lines", async () => {
     setup();
     expect(await screen.findByText(/no lines yet/i)).toBeInTheDocument();
+  });
+
+  it("breadcrumb links back to the Quotes tab under Enquiries", async () => {
+    setup();
+    await waitFor(() => expect(screen.getAllByText("Q-2026-007").length).toBeGreaterThan(0));
+    expect(screen.getByRole("link", { name: "Quotes" })).toHaveAttribute(
+      "href",
+      "/enquiries/quotes",
+    );
   });
 
   it("renders line rows when the lines endpoint returns data", async () => {

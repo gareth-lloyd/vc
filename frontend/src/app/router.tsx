@@ -9,6 +9,10 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
+import {
+  QuotationDetailRedirect,
+  QuotationNewRedirect,
+} from "@/features/quotations/routeRedirects";
 import { NotFoundPage } from "./NotFoundPage";
 import { PROPERTY_TABS } from "@/features/properties/tabConfig";
 import { BOOKING_TABS } from "@/features/bookings/tabConfig";
@@ -237,17 +241,51 @@ export const router = createBrowserRouter([
                         ],
                       },
                       {
+                        // Section layout mounts the Enquiries↔Quotes tab strip
+                        // once above the active child (list/board or quotes).
                         path: "/enquiries",
                         lazy: async () => {
-                          const m = await import("@/features/enquiries/EnquiriesListPage");
-                          return { Component: m.EnquiriesListPage };
+                          const m = await import("@/features/enquiries/EnquiriesSectionLayout");
+                          return { Component: m.EnquiriesSectionLayout };
                         },
+                        children: [
+                          {
+                            index: true,
+                            lazy: async () => {
+                              const m = await import("@/features/enquiries/EnquiriesListPage");
+                              return { Component: m.EnquiriesListPage };
+                            },
+                          },
+                          {
+                            // Static segment ranks ahead of `/enquiries/:id`; the
+                            // cross-enquiry quotes pipeline lives here as a tab.
+                            path: "quotes",
+                            lazy: async () => {
+                              const m = await import("@/features/quotations/QuotationsTab");
+                              return { Component: m.QuotationsTab };
+                            },
+                          },
+                        ],
                       },
                       {
+                        // Sibling of the section layout — the enquiry workspace
+                        // carries no section tab strip.
                         path: "/enquiries/:id",
                         lazy: async () => {
                           const m = await import("@/features/enquiries/EnquiryDetailLayout");
                           return { Component: m.EnquiryDetailLayout };
+                        },
+                      },
+                      {
+                        // Quote detail nested under the Enquiries IA so the
+                        // sidebar's Enquiries item stays highlighted and the URL
+                        // matches the breadcrumb. Sibling of the section layout —
+                        // a detail page, so no section tab strip. Static "quotes"
+                        // ranks ahead of `/enquiries/:id`.
+                        path: "/enquiries/quotes/:id",
+                        lazy: async () => {
+                          const m = await import("@/features/quotations/QuotationDetailLayout");
+                          return { Component: m.QuotationDetailLayout };
                         },
                       },
                       // The Details/Activity/Notes tabs collapsed into the single
@@ -265,26 +303,21 @@ export const router = createBrowserRouter([
                         path: "/enquiries/:id/notes",
                         element: <Navigate to=".." relative="path" replace />,
                       },
+                      // Standalone Quotes IA removed — the pipeline + detail now
+                      // live under the Enquiries section and quote creation is
+                      // inline in the enquiry workspace. Redirect old bookmarks
+                      // to their IA-nested homes (ids/intent preserved).
                       {
                         path: "/quotations",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationsListPage");
-                          return { Component: m.QuotationsListPage };
-                        },
+                        element: <Navigate to="/enquiries/quotes" replace />,
                       },
                       {
                         path: "/quotations/new",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationBuilderPage");
-                          return { Component: m.QuotationBuilderPage };
-                        },
+                        element: <QuotationNewRedirect />,
                       },
                       {
                         path: "/quotations/:id",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationDetailLayout");
-                          return { Component: m.QuotationDetailLayout };
-                        },
+                        element: <QuotationDetailRedirect />,
                       },
                       {
                         path: "/bookings",

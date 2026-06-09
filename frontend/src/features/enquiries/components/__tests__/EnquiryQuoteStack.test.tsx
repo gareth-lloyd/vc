@@ -33,8 +33,11 @@ describe("EnquiryQuoteStack", () => {
     );
 
     const first = screen.getByRole("link", { name: /QVC10/ });
-    expect(first).toHaveAttribute("href", "/quotations/10");
-    expect(screen.getByRole("link", { name: /QVC11/ })).toHaveAttribute("href", "/quotations/11");
+    expect(first).toHaveAttribute("href", "/enquiries/quotes/10");
+    expect(screen.getByRole("link", { name: /QVC11/ })).toHaveAttribute(
+      "href",
+      "/enquiries/quotes/11",
+    );
     // Raw enum surfaced (capitalisation is CSS) — matches the quotes list.
     expect(screen.getByText("sent")).toBeInTheDocument();
     expect(screen.getByText("draft")).toBeInTheDocument();

@@ -20,9 +20,6 @@
     "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day"
   },
   "list": {
-    "title": "Quotations",
-    "breadcrumb_root": "Operations",
-    "breadcrumb_self": "Quotations",
     "search_placeholder": "Search by reference or guest…",
     "filters": {
       "status_any": "Any status",
@@ -34,15 +31,10 @@
     },
     "errors": {
       "load_failed": "Couldn't load quotations."
-    },
-    "coming_soon": {
-      "new_button": "New quote",
-      "tooltip": "Start a new quote from an enquiry."
     }
   },
   "detail": {
     "breadcrumb_root": "Operations",
-    "breadcrumb_list": "Quotations",
     "summary": {
       "title": "Summary",
       "reference": "Reference",
@@ -220,16 +212,7 @@
     }
   },
   "builder": {
-    "title": "New quotation",
-    "subtitle": "From enquiry {{reference}}",
-    "breadcrumb_self": "New",
     "errors": {
-      "no_enquiry_title": "An enquiry is required",
-      "no_enquiry_description": "Start the quote builder from an enquiry's \"Convert to quote\" action.",
-      "enquiry_not_found": "Enquiry not found",
-      "enquiry_not_found_description": "It may have been deleted or you may not have access.",
-      "enquiry_load_failed": "Couldn't load this enquiry",
-      "enquiry_load_failed_description": "Try again or head back to the list.",
       "search_failed": "Couldn't search options. Try again."
     },
     "criteria": {

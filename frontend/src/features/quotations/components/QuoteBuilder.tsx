@@ -28,9 +28,9 @@ interface QuoteBuilderProps {
   enquiry: EnquiryDetail;
   // Fired once a quotation is committed — after a draft saves, or after the
   // send-preview dialog is dismissed (the draft is persisted either way). The
-  // standalone `/quotations/new` page navigates to the new quotation; the
-  // inline workspace passes nothing and stays put (the quote-stack refreshes
-  // in place via the enquiry-detail cache invalidation SaveQuoteDialog fires).
+  // inline workspace passes a handler that closes the builder and stays put
+  // (the quote-stack refreshes in place via the enquiry-detail cache
+  // invalidation SaveQuoteDialog fires).
   onComplete?: (quotation: QuotationDetail) => void;
 }
 
@@ -173,65 +173,62 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   };
 
   return (
-    <div>
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <div className="min-w-0 space-y-6">
-          <section className="space-y-3">
-            <h3 className="text-foreground text-base font-semibold">
-              {t("builder.criteria.title")}
-            </h3>
-            <div className="space-y-2">
-              <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
-              <Select
-                value={currency}
-                onValueChange={(code) => void handleCurrencyChange(code)}
-                disabled={search.isPending}
-              >
-                <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCurrencies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.code} — {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
-            </div>
-            <QuoteCriteriaForm
-              initial={initial}
-              isSubmitting={search.isPending}
-              disabled={!currency}
-              onSubmit={handleSearch}
-            />
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-foreground text-base font-semibold">
-              {t("builder.results.title")}
-            </h3>
-            <QuoteResultsList
-              options={search.data}
-              isLoading={search.isPending}
-              currency={currency}
-              stagedPropertyIds={stagedPropertyIds}
-              onAdd={handleAdd}
-            />
-          </section>
-        </div>
-
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          <QuoteCart
-            lines={staged}
-            currency={currency}
-            onUpdateLine={handleUpdateLine}
-            onRemove={handleRemove}
-            onSaveDraft={() => openSave("draft")}
-            onSendToGuest={() => openSave("send")}
+    <>
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
+          <div className="space-y-2">
+            <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
+            <Select
+              value={currency}
+              onValueChange={(code) => void handleCurrencyChange(code)}
+              disabled={search.isPending}
+            >
+              <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {activeCurrencies.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
+          </div>
+          <QuoteCriteriaForm
+            initial={initial}
+            isSubmitting={search.isPending}
+            disabled={!currency}
+            onSubmit={handleSearch}
           />
-        </aside>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-foreground text-base font-semibold">{t("builder.results.title")}</h3>
+          <QuoteResultsList
+            options={search.data}
+            isLoading={search.isPending}
+            currency={currency}
+            stagedPropertyIds={stagedPropertyIds}
+            onAdd={handleAdd}
+          />
+        </section>
+
+        {/* Cart sits at the foot as a full-width block in normal flow. The
+            builder is plain vertical flow (criteria → results → cart) and lets
+            its host own the column layout, so it reads the same scrolled
+            top-to-bottom whatever pane it's mounted in — ending on Save draft /
+            Send to guest. */}
+        <QuoteCart
+          lines={staged}
+          currency={currency}
+          onUpdateLine={handleUpdateLine}
+          onRemove={handleRemove}
+          onSaveDraft={() => openSave("draft")}
+          onSendToGuest={() => openSave("send")}
+        />
       </div>
 
       {/* Mount only while open so the dialog's currencies + current-terms
@@ -263,6 +260,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
           quotation={sentQuotation}
         />
       ) : null}
-    </div>
+    </>
   );
 }

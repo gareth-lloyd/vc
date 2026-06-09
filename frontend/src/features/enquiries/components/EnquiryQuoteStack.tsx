@@ -24,7 +24,7 @@ function QuoteCard({ quote }: { quote: QuotationDetail }) {
     <li className="border-border flex items-center justify-between gap-4 rounded-md border p-3">
       <div className="space-y-1">
         <Link
-          to={`/quotations/${quote.id}`}
+          to={`/enquiries/quotes/${quote.id}`}
           className="text-foreground font-mono text-sm font-medium hover:underline"
           aria-label={t("quotes_section.view_aria", { reference: quote.reference })}
         >

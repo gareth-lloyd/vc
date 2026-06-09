@@ -329,7 +329,7 @@ export function QuotationDetailLayout() {
     try {
       const clone = await duplicate.mutateAsync();
       toast.success(t("detail.dialogs.duplicate.toasts.success"));
-      navigate(`/quotations/${clone.id}`);
+      navigate(`/enquiries/quotes/${clone.id}`);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -391,7 +391,7 @@ export function QuotationDetailLayout() {
         title={quotation.reference}
         breadcrumbs={[
           { label: t("detail.breadcrumb_root") },
-          { label: t("detail.breadcrumb_list"), to: "/quotations" },
+          { label: t("common:nav.quotes"), to: "/enquiries/quotes" },
           { label: quotation.reference },
         ]}
       />

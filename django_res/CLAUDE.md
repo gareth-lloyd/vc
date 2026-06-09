@@ -245,7 +245,11 @@ and create the new LEAD row inside one atomic block.
 
 Reference implementations: `BookingService.create_from_quotation_line`,
 `data_migration/loaders/bookings.py` `BookingLoader._process_row` (uses
-idempotent `get_or_create` so re-runs don't double up).
+idempotent `get_or_create` so re-runs don't double up), and
+`reservations.factories.make_occupying_booking` (the shared fabricator for an
+*occupying* booking — bypasses the service lifecycle for conflict/ingest
+scenarios but still stamps the LEAD row; used by the iCal demo command and the
+ingest tests).
 
 ### AuditLog registration is part of model definition
 

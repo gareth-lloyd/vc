@@ -158,6 +158,36 @@ chain. Any viewset surfacing Quotation/QuotationLine must
 `.exclude(legacy_id__startswith="booking-")` in `get_queryset()` — see
 `QuotationViewSet` in `reservations/views/quotation.py`.
 
+### Reference numbers — `db_default` sequence, not a `save()` override
+
+Customer-facing reference fields (`reference` on Enquiry / Payment / Refund /
+SecurityDeposit) are allocated by the **database**, not Python. The field
+carries `db_default=reference_db_default("P", sequence="payment_reference_seq")`
+(`core/refs.py`), and the backing Postgres sequence is created in the app's
+migration (inline `CREATE SEQUENCE … OWNED BY` — migrations must not import
+runtime code). The DB stamps `{prefix}-{year}-{nextval}` on *every* insert path
+— `save()`, `bulk_create`, raw SQL — which is the whole point: a `save()`
+override (the old pattern) is silently skipped by `bulk_create`, leaving a
+blank `reference` that collides on the unique constraint (BUG-007).
+
+Consequences to mirror on any new reference-bearing model:
+
+- **Don't** re-add a `save()`/`pre_save` allocator — signals are skipped by
+  `bulk_create` too. Add the `db_default` + a sequence migration instead.
+- An explicit value still wins (legacy loaders preserve old refs); the default
+  only fills an *unset* field — an explicit `""` is inserted verbatim.
+- On Postgres the generated value comes back via `INSERT … RETURNING`, so a
+  freshly created/`bulk_create`d instance has `.reference` populated in memory
+  with no `refresh_from_db`.
+- A high-water `setval` sync after a legacy import is only needed when the
+  imported format collides with the organic `{prefix}-{year}-{n}` shape — see
+  `sync_quotation_sequence` (Quotation's `QVC{n}` shares the legacy format).
+  The `db_default` series stay disjoint, so they need no sync.
+
+Quotation/Booking use a related but distinct mechanism (a shared `number` from
+`quotation_number_seq` for `QVC`/`VC` legacy parity); `generate_reference`
+survives only as Booking's interim fallback for a numberless quotation.
+
 ### State-mutating services accept `idempotency_key`
 
 Any service that *creates* a row in response to an external trigger

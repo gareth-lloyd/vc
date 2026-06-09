@@ -1,6 +1,7 @@
 # BUG-007 — Reference generation races and is bypassed by `bulk_create`
 
 - **Severity:** 🔴 Bug
+- **Status:** ✅ resolved — `feat/reference-sequence`, merged `e62a087`.
 - **Source:** the 2026-05-26 data-model deep audit §B7
 - **Files:** `core/refs.py:28–40`, `payments/models/payment.py:119–122`
   (and any other anchor that calls `generate_reference`)

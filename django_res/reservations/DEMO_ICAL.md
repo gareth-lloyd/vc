@@ -51,8 +51,12 @@ manage.py demo_ical --poll
 ```
 
 `--poll` prints each feed's fetch status, the `created/cancelled/conflicts`
-counts, the imported blocks, and an availability calendar (blocked days are
-`BLOCKED (owner_block)`; the half-open end date stays `OPEN`).
+counts, the imported blocks, and an availability calendar. Each imported block
+is summarised inclusively — e.g. `2026-07-21 - 2026-07-30  (10 nights, free
+from 2026-07-31)` — so the exclusive half-open `date_to` is never shown as a
+blocked night. In the calendar, blocked days are `BLOCKED (owner_block)` and the
+checkout day (the half-open end date) reads `OPEN — checkout / available`
+rather than a bare `OPEN`.
 
 ### 2. Idempotent re-poll
 

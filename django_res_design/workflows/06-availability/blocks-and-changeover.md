@@ -1,6 +1,11 @@
 # Manual Blocks and Changeover
 
-Both are partially or entirely missing from the committed code; documented here so the Django redesign can fill the gap deliberately.
+Both are partially or entirely missing from the committed *legacy* code; documented here so the Django redesign can fill the gap deliberately.
+
+> **Status — implemented in the Django rebuild.** The `[STUB]` markers below describe the **legacy .NET** app and remain accurate about it. The rebuild has since shipped the gap:
+> - **Block create / edit / remove.** Staff use `AvailabilityBlockFormDialog` (on the property Availability tab); owners use `BlockRequestDialog` (owner portal). Both write a `BookingHold` with an operator-editable reason (`owner_block` / `maintenance` / `manual`) through the reservations service + API. Both pickers (react-day-picker) let the user select the **inclusive nights** they want blocked and store the canonical half-open range (`date_to` = last night + 1 = checkout morning); the UI labels read inclusively, e.g. "1–7 Aug 2026 · 7 nights", never the exclusive `date_to`.
+> - **Changeover *display*.** Same-day turnover renders as an AM/PM half-cell, but **only for native VC bookings** (a lone booking checkout, or a true booking-meets-stay changeover). All blocks stay whole-day. See `06-availability.md` "Half-day turnover — `CellStatus.segments`".
+> - **Changeover *enforcement*** (rejecting a non-changeover arrival weekday) is handled by `AvailabilityService.is_available` via the property's `ChangeOverRule`; the open questions in "Enforce changeover rules" below are resolved there.
 
 ## Create manual block (owner stay / maintenance)
 

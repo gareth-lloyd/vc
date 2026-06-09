@@ -70,6 +70,17 @@ Derivation precedence: an active `Booking` wins (→ `BOOKED` / `BOOKED_VC`); ot
 
 `BOOKED_VC` is a presentation distinction drawn from a Booking's origin (`site_source` / VC-internal), **not** a separate model — there is no `Booking.status` value for it. `STOP_SALE` is likewise a presentation reconciliation over the persistent block reasons rather than a new hold mechanism; the only model-level addition is the optional `STOP_SALE` `reason` value (above), used when a Stop Sale must be distinguished from an internal owner-block/maintenance in reporting.
 
+> **Implementation note.** The shipped `CellStatus` (`reservations/services/availability.py`) is a `@dataclass`, not a `TextChoices` — it carries `available: bool`, a `reason` string (`booked` / `owner_block` / `maintenance` / `manual` / `quotation`), an optional `block_id` (the originating editable `BookingHold` pk), and the optional `segments` split described next. The five-word vocabulary above is the operator-facing *labelling* that the frontend derives from these fields; treat the dataclass as the wire shape.
+
+#### Half-day turnover — `CellStatus.segments`
+
+A cell can split into an **AM** (departing) and **PM** (arriving) half via an optional `segments={"am": CellStatus, "pm": CellStatus}` mapping. The split is presentation-only and is gated on the property allowing same-day changeover (effective `check_out_time` earlier than `check_in_time`, resolved once per calendar via `PropertySettings`). `_apply_changeover_segments` populates it on two kinds of day:
+
+1. **True changeover** — one interval's exclusive checkout (`date_to`) coincides with another's check-in (`date_from`). Both halves are occupied; the day stays `available=False`. Works for any reason mix (booking-meets-booking, booking-meets-block, etc.).
+2. **Lone booking checkout** — a **native VC booking's** `date_to` with no arriving stay that day. The departing guest holds the morning (`am = booked`) but the afternoon is sellable as a new arrival (`pm` available), so the cell stays **`available=True`**. Catalogue search and `is_available` ignore `segments`, so the day remains genuinely bookable.
+
+**Only native bookings turn over.** An owner/maintenance/manual block — and every iCal-imported block — has no sellable checkout to split, so all blocks render **whole-day** regardless of changeover settings. (Distinguishing iCal "bookings" from "closures" to give the former turnover is a separate future feature; imported blocks deliberately collapse the distinction today — see `integrations/ical/profiles.py`.)
+
 #### Search & filter UX
 
 When the quote-builder or operator search runs a query over properties for a given date range, the result list:

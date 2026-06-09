@@ -488,7 +488,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 4. **Setting state.** Right rail "Set state" dropdown: pick state, fill in details (notes, expiry for holds, owner-stay party detail for owner blocks). Confirm. Awaited.
 
-5. **Half-day changeovers.** Cells have a "split" toggle (morning/afternoon). Operator can mark "Morning available, afternoon booked" for changeover days. Bookings created via flows 3/4 default to half-day arrival/departure per villa setting.
+5. **Half-day changeovers.** As implemented, the AM/PM split is **derived, not an operator toggle**: a cell renders morning/afternoon halves only for native VC bookings — a same-day changeover (one stay departs the morning, another arrives the afternoon) or a lone booking checkout (morning held by the departing guest, afternoon sellable as a new arrival), and only when the villa's effective check-out time precedes its check-in time. **Manual blocks (owner stay / maintenance / manual) and iCal imports never split — they are always whole-day.** See `06-availability.md` "Half-day turnover — `CellStatus.segments`".
 
 6. **Hold auto-expiry.** Holds set in this UI default to 48h. Right-rail allows custom expiry. A background job releases expired holds → `Available`, with a log entry. Operators get a daily digest of expirations.
 

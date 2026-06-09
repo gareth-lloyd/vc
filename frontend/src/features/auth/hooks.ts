@@ -30,7 +30,10 @@ export function useLogin() {
         });
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me() });
+      // Wipe any cache left by a previous session before the new user's data is
+      // fetched, so one user is never served another's cached queries. The
+      // subsequent `useMe` mount repopulates auth.me.
+      queryClient.clear();
     },
   });
 }
@@ -39,9 +42,9 @@ export function useVerifyTfa() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: TfaVerifyInput) => verifyTfa(input),
-    onSuccess: async () => {
+    onSuccess: () => {
       useAuthStore.getState().setPendingTfa(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me() });
+      queryClient.clear();
     },
   });
 }
@@ -63,10 +66,10 @@ export function useLogout() {
     onSuccess: () => {
       useAuthStore.getState().clear();
       useOwnerStore.getState().clear();
-      queryClient.removeQueries({ queryKey: queryKeys.auth.me() });
-      queryClient.removeQueries({ queryKey: queryKeys.properties.all() });
-      queryClient.removeQueries({ queryKey: queryKeys.bookings.all() });
-      queryClient.removeQueries({ queryKey: queryKeys.owner.all() });
+      // Reset the entire cache, not a hand-picked allowlist of prefixes — any
+      // omitted feature (enquiries, contacts, …) would otherwise leak into the
+      // next session.
+      queryClient.clear();
     },
   });
 }

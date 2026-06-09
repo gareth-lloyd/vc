@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
 import { useMe } from "@/features/auth/hooks";
 import { useAuthStore } from "@/features/auth/store";
@@ -24,6 +25,7 @@ function AuthenticatedBoot() {
   const setUnauthenticated = useAuthStore((s) => s.setUnauthenticated);
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   // Probe owner status once authenticated. Non-staff users are the common
   // owner case, but staff can also be owners — probe regardless and let the
@@ -52,12 +54,19 @@ function AuthenticatedBoot() {
   useEffect(() => {
     return authChannel.onUnauthorized(() => {
       const current = window.location.pathname + window.location.search;
+      // Flip auth state and navigate away from the protected tree FIRST, then
+      // reset the cache. Resetting while the staff shell is still mounted would
+      // make every active query refetch against the dead session (another 401 →
+      // storm); removeQueries (not clear) drops the cached data without
+      // triggering refetches on any observers that linger for a tick.
       setUnauthenticated();
+      useOwnerStore.getState().clear();
       if (!current.startsWith("/login")) {
         navigate("/login", { replace: true, state: { next: current } });
       }
+      queryClient.removeQueries();
     });
-  }, [navigate, setUnauthenticated]);
+  }, [navigate, setUnauthenticated, queryClient]);
 
   if (me.isPending && status === "idle") {
     return (

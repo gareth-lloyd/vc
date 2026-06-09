@@ -5,7 +5,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
-import { QuotationsListPage } from "../QuotationsListPage";
+import { QuotationsTab } from "../QuotationsTab";
 
 const fixture = {
   count: 2,
@@ -31,15 +31,20 @@ const fixture = {
   ],
 };
 
-describe("QuotationsListPage", () => {
-  it("renders rows from /quotations", async () => {
+function setup(extra?: React.ReactNode) {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/enquiries/quotes" element={<QuotationsTab />} />
+      {extra}
+    </Routes>,
+    { route: "/enquiries/quotes" },
+  );
+}
+
+describe("QuotationsTab (/enquiries/quotes)", () => {
+  it("renders quote rows from /quotations", async () => {
     server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
-    renderWithProviders(
-      <Routes>
-        <Route path="/quotations" element={<QuotationsListPage />} />
-      </Routes>,
-      { route: "/quotations" },
-    );
+    setup();
     expect(await screen.findByText("Q-2026-001")).toBeInTheDocument();
     expect(screen.getByText("Q-2026-002")).toBeInTheDocument();
   });
@@ -50,37 +55,29 @@ describe("QuotationsListPage", () => {
         HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
       ),
     );
-    renderWithProviders(
-      <Routes>
-        <Route path="/quotations" element={<QuotationsListPage />} />
-      </Routes>,
-      { route: "/quotations" },
-    );
+    setup();
     expect(await screen.findByText(/no quotations match/i)).toBeInTheDocument();
   });
 
-  it("disables the 'new quote' button with a coming-soon tooltip", async () => {
+  it("navigates to the quote detail on row click", async () => {
     server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
-    renderWithProviders(
-      <Routes>
-        <Route path="/quotations" element={<QuotationsListPage />} />
-      </Routes>,
-      { route: "/quotations" },
-    );
-    const btn = await screen.findByRole("button", { name: /new quote/i });
-    expect(btn).toBeDisabled();
-  });
-
-  it("navigates to the detail page on row click", async () => {
-    server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
-    renderWithProviders(
-      <Routes>
-        <Route path="/quotations" element={<QuotationsListPage />} />
-        <Route path="/quotations/:id" element={<div>Detail page</div>} />
-      </Routes>,
-      { route: "/quotations" },
-    );
+    setup(<Route path="/quotations/:id" element={<div>Detail page</div>} />);
     await userEvent.click(await screen.findByText("Q-2026-001"));
     expect(await screen.findByText("Detail page")).toBeInTheDocument();
+  });
+
+  it("does not render a 'new quote' button — creation now lives in the enquiry workspace", async () => {
+    server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
+    setup();
+    await screen.findByText("Q-2026-001");
+    expect(screen.queryByRole("button", { name: /new quote/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the Enquiries↔Quotes tab strip with Quotes active", async () => {
+    server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
+    setup();
+    await screen.findByText("Q-2026-001");
+    expect(screen.getByRole("link", { name: "Quotes" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Enquiries" })).toHaveAttribute("href", "/enquiries");
   });
 });

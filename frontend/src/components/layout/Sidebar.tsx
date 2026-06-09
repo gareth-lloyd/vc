@@ -89,7 +89,7 @@ export function Sidebar() {
       to: "/quotations",
       label: t("nav.quotes"),
       icon: FileText,
-      prefetch: () => import("@/features/quotations/QuotationsListPage"),
+      prefetch: () => import("@/features/quotations/QuotationsTab"),
     },
     {
       to: "/bookings",

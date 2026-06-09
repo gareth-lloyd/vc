@@ -8,8 +8,7 @@ import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { EnquiriesTabs } from "@/features/enquiries/components/EnquiriesTabs";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { buildQuotationColumns } from "./columns";
 import { useQuotations, useQuotationStatusCounts, QUOTATIONS_PAGE_SIZE } from "./hooks";
@@ -29,7 +28,12 @@ function paramsToFilters(params: URLSearchParams): QuotationFilters {
   };
 }
 
-export function QuotationsListPage() {
+/**
+ * Cross-enquiry quotes pipeline, mounted as the "Quotes" tab under Enquiries
+ * (`/enquiries/quotes`). Quote *creation* lives inline in the enquiry workspace,
+ * so this is a read/triage surface — no standalone "new quote" affordance.
+ */
+export function QuotationsTab() {
   const { t } = useTranslation("quotations");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -101,26 +105,19 @@ export function QuotationsListPage() {
     navigate(`/quotations/${row.id}`);
   };
 
-  const newButton = (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span>
-          <Button size="sm" disabled>
-            {t("list.coming_soon.new_button")}
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{t("list.coming_soon.tooltip")}</TooltipContent>
-    </Tooltip>
-  );
-
   return (
     <div>
       <PageHeader
-        title={t("list.title")}
-        breadcrumbs={[{ label: t("list.breadcrumb_root") }, { label: t("list.breadcrumb_self") }]}
-        actions={newButton}
+        title={t("common:nav.quotes")}
+        breadcrumbs={[
+          // The tab strip below provides Enquiries↔Quotes navigation, so the
+          // crumb trail stays flat (Operations / Quotes) rather than repeating
+          // an "Enquiries" link.
+          { label: t("common:nav.groups.operations") },
+          { label: t("common:nav.quotes") },
+        ]}
       />
+      <EnquiriesTabs />
       <div className="space-y-4 p-6">
         <StatusFilterBar
           options={quotationStatusOptions()}

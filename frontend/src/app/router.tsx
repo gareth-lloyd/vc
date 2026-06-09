@@ -244,6 +244,15 @@ export const router = createBrowserRouter([
                         },
                       },
                       {
+                        // Static segment ranks ahead of `/enquiries/:id`; the
+                        // cross-enquiry quotes pipeline lives here as a tab.
+                        path: "/enquiries/quotes",
+                        lazy: async () => {
+                          const m = await import("@/features/quotations/QuotationsTab");
+                          return { Component: m.QuotationsTab };
+                        },
+                      },
+                      {
                         path: "/enquiries/:id",
                         lazy: async () => {
                           const m = await import("@/features/enquiries/EnquiryDetailLayout");
@@ -266,10 +275,12 @@ export const router = createBrowserRouter([
                         element: <Navigate to=".." relative="path" replace />,
                       },
                       {
+                        // Legacy top-level path — same table as the Enquiries
+                        // "Quotes" tab; becomes a redirect in the IA cut (5b).
                         path: "/quotations",
                         lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationsListPage");
-                          return { Component: m.QuotationsListPage };
+                          const m = await import("@/features/quotations/QuotationsTab");
+                          return { Component: m.QuotationsTab };
                         },
                       },
                       {

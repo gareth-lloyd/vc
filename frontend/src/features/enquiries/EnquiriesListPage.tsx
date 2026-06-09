@@ -18,6 +18,7 @@ import { ApiError } from "@/lib/api/errors";
 import { useEnquiryColumns } from "./columns";
 import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts, useMoveEnquiry } from "./hooks";
 import { EnquiryCard } from "./components/EnquiryCard";
+import { EnquiriesTabs } from "./components/EnquiriesTabs";
 import { KanbanBoard, type KanbanColumn } from "./components/KanbanBoard";
 import { EnquiryFormDialog } from "./components/EnquiryFormDialog";
 import {
@@ -217,6 +218,7 @@ export function EnquiriesListPage() {
           { label: t("list.breadcrumb_enquiries") },
         ]}
       />
+      <EnquiriesTabs />
       <div className="space-y-4 p-6">
         {view === "list" ? (
           <StatusFilterBar

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -243,6 +243,54 @@ describe("EnquiryDetailLayout", () => {
     await userEvent.click(screen.getByRole("button", { name: /^activity$/i }));
     expect(await screen.findByText("new → contacted")).toBeInTheDocument();
     expect(activityCalls).toBe(1);
+  });
+
+  it("suppresses the inline builder and disables the toggle on a lost enquiry", async () => {
+    asReservationsUser();
+    server.use(
+      http.get("/api/v1/enquiries/7", () =>
+        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+      ),
+    );
+    setup("/enquiries/7");
+    // Builder must not auto-open for a final enquiry (no search button), and the
+    // build toggle is disabled — quoting a lost enquiry is blocked.
+    await screen.findByRole("button", { name: /assign/i });
+    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /build a quote/i })).toBeDisabled();
+  });
+
+  it("re-evaluates the builder open-state when navigating between enquiries", async () => {
+    asReservationsUser();
+    const quotedEnquiry8 = { ...quotedEnquiry, id: 8 };
+    server.use(
+      http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)),
+      http.get("/api/v1/enquiries/8", () => HttpResponse.json(quotedEnquiry8)),
+    );
+
+    function NavTo({ id }: { id: number }) {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(`/enquiries/${id}`)}>go-{id}</button>;
+    }
+
+    renderWithProviders(
+      <>
+        <NavTo id={8} />
+        <Routes>
+          <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+        </Routes>
+      </>,
+      { route: "/enquiries/7" },
+    );
+
+    // Enquiry 7 has no quotes → builder auto-opens.
+    expect(await screen.findByRole("button", { name: /search options/i })).toBeInTheDocument();
+
+    // Navigate to enquiry 8 (already quoted): the section remounts on the new
+    // id, so the builder must be collapsed — not carried open from enquiry 7.
+    await userEvent.click(screen.getByRole("button", { name: /go-8/i }));
+    await screen.findByRole("link", { name: /QVC50/ });
+    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
   });
 
   it("redirects the legacy /details deep link to the unified workspace", async () => {

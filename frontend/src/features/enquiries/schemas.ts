@@ -177,6 +177,12 @@ export interface EnquiryFilters {
   page?: number;
 }
 
+// A "final" enquiry (lost or converted) is closed to new quotes: the workspace
+// suppresses the inline builder and the close action is disabled for these.
+export function isFinalStatus(status: EnquiryStatus): boolean {
+  return status === "converted" || status === "lost";
+}
+
 export function enquiryStatusLabel(status: EnquiryStatus): string {
   return i18n.t(`enquiries:labels.status.${status}`);
 }

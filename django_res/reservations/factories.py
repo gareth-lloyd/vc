@@ -9,8 +9,12 @@ pricing snapshots stay production-faithful.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import factory
+from django.db import transaction
+from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from core.factories import RUN_TOKEN
@@ -20,12 +24,19 @@ from reservations.enums import (
     BookingGuestRole,
     BookingNoteKind,
     BookingNoteVisibility,
+    BookingStatus,
     ConciergeService,
     EnquiryNoteKind,
     EnquiryRequestType,
     EnquiryStatus,
+    PaymentMethod,
     ServiceStatus,
 )
+
+if TYPE_CHECKING:
+    from pricing.models import Currency
+    from properties.models import Property
+    from reservations.models import Booking, Guest, TermsVersion
 
 
 class GuestFactory(DjangoModelFactory):
@@ -124,3 +135,62 @@ class BookingServiceCoverageFactory(DjangoModelFactory):
     service = ConciergeService.CHEF
     status = ServiceStatus.NOT_STARTED
     notes = ""
+
+
+def make_occupying_booking(
+    *,
+    property: Property,
+    guest: Guest,
+    currency: Currency,
+    terms: TermsVersion,
+    date_from: date,
+    date_to: date,
+    adults: int = 2,
+) -> Booking:
+    """Fabricate an *occupying* Booking (Quotation → line → Booking → LEAD
+    BookingGuest) without the full `BookingService` lifecycle.
+
+    Conflict/ingest scenarios — the iCal demo command and `ICalIngestService`
+    tests — only need a booking that occupies a date range to trip the overlap
+    guards, not the submit / auto-accept / payment-schedule flow. This is the
+    one place that shape is built, so the load-bearing LEAD `BookingGuest`
+    invariant (`django_res/CLAUDE.md`) is encoded once instead of by hand in
+    each caller. Everything links back to `guest`, so a relationship-driven
+    teardown (the demo `--reset`) unwinds it cleanly.
+    """
+    quotation = models.Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
+        guest=guest,
+        currency=currency,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    line = models.QuotationLine.objects.create(
+        quotation=quotation,
+        property=property,
+        date_from=date_from,
+        date_to=date_to,
+        adults=adults,
+        total=Decimal("1400.00"),
+    )
+    with transaction.atomic():
+        booking = models.Booking.objects.create(
+            quotation_line=line,
+            guest=guest,
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+            adults=adults,
+            currency=currency,
+            terms_version=terms,
+            terms_accepted_at=timezone.now(),
+            payment_method=PaymentMethod.CARD.value,
+            status=BookingStatus.AWAITING_DEPOSIT.value,
+        )
+        # The LEAD BookingGuest invariant — a Booking is incomplete without it.
+        models.BookingGuest.objects.get_or_create(
+            booking=booking,
+            guest=guest,
+            defaults={"role": BookingGuestRole.LEAD.value},
+        )
+    return booking

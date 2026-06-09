@@ -11,6 +11,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from core.tests import assert_max_queries
 from properties.models import Country, Property, PropertyLocation
 
 
@@ -62,6 +63,27 @@ def test_patch_settings_updates_timezone(
     assert response.status_code == 200, response.content
     location.refresh_from_db()
     assert location.timezone == "Europe/Rome"
+
+
+@pytest.mark.django_db
+def test_get_settings_query_count_pins_location_join(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    location: PropertyLocation,
+) -> None:
+    """The settings GET joins `property.location` up front, so reading the
+    timezone adds no per-request SELECT. Pin the count so a dropped
+    `select_related` (the N+1 regression) is caught."""
+    api_client.force_login(staff)
+    # Warm the request once so the `get_or_create` of PropertySettings is an
+    # existing-row SELECT (not an INSERT) on the measured call.
+    api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+
+    with assert_max_queries(6):
+        response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["timezone"] == "Europe/London"
 
 
 @pytest.mark.django_db

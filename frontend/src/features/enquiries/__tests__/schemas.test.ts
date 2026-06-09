@@ -129,4 +129,32 @@ describe("enquiryWriteInputSchema", () => {
   it("rejects a malformed email", () => {
     expect(enquiryWriteInputSchema.safeParse({ ...valid, email: "nope" }).success).toBe(false);
   });
+
+  it("rejects an end date before the start date", () => {
+    const result = enquiryWriteInputSchema.safeParse({
+      ...valid,
+      date_from: "2026-07-10",
+      date_to: "2026-07-05",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(["date_to"]);
+    }
+  });
+
+  it("accepts an end date equal to the start date", () => {
+    expect(
+      enquiryWriteInputSchema.safeParse({
+        ...valid,
+        date_from: "2026-07-10",
+        date_to: "2026-07-10",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts a start date with no end date (dates are optional and independent)", () => {
+    expect(
+      enquiryWriteInputSchema.safeParse({ ...valid, date_from: "2026-07-10", date_to: "" }).success,
+    ).toBe(true);
+  });
 });

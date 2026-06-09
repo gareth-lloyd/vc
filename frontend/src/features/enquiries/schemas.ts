@@ -133,30 +133,45 @@ export const enquiryNoteWriteInputSchema = z.object({
 });
 export type EnquiryNoteWriteInput = z.infer<typeof enquiryNoteWriteInputSchema>;
 
-export const enquiryWriteInputSchema = z.object({
-  // Resolved guest link (existing-client picker). Null = free-text capture /
-  // create-new; the backend mints or reuses the Guest from the denorm fields.
-  guest: z.number().nullable(),
-  first_name: z.string().trim().max(128),
-  last_name: z.string().trim().max(128),
-  email: z
-    .string()
-    .trim()
-    .refine((v) => v === "" || /.+@.+\..+/.test(v), {
-      message: i18n.t("common:zod.invalid_email"),
-    }),
-  phone: z.string().trim().max(32),
-  date_from: z.string().nullable(),
-  date_to: z.string().nullable(),
-  is_flexible: z.boolean(),
-  adults: z.number().int().min(1, i18n.t("enquiries:schema_errors.at_least_one_adult")),
-  children: z.number().int().min(0),
-  min_bedrooms: z.number().int().min(0).nullable(),
-  request_type: enquiryRequestTypeSchema,
-  contact_method: contactMethodSchema.nullable(),
-  site_source: enquirySourceSchema,
-  inbound_message: z.string().trim().max(10_000),
-});
+export const enquiryWriteInputSchema = z
+  .object({
+    // Resolved guest link (existing-client picker). Null = free-text capture /
+    // create-new; the backend mints or reuses the Guest from the denorm fields.
+    guest: z.number().nullable(),
+    first_name: z.string().trim().max(128),
+    last_name: z.string().trim().max(128),
+    email: z
+      .string()
+      .trim()
+      .refine((v) => v === "" || /.+@.+\..+/.test(v), {
+        message: i18n.t("common:zod.invalid_email"),
+      }),
+    phone: z.string().trim().max(32),
+    date_from: z.string().nullable(),
+    date_to: z.string().nullable(),
+    is_flexible: z.boolean(),
+    adults: z.number().int().min(1, i18n.t("enquiries:schema_errors.at_least_one_adult")),
+    children: z.number().int().min(0),
+    min_bedrooms: z.number().int().min(0).nullable(),
+    request_type: enquiryRequestTypeSchema,
+    contact_method: contactMethodSchema.nullable(),
+    site_source: enquirySourceSchema,
+    inbound_message: z.string().trim().max(10_000),
+  })
+  // Dates are an optional, independent capture surface (a lead may have a
+  // start, an end, both, or neither), so the only cross-field rule is: when
+  // both ends are set, the end must not precede the start. ISO YYYY-MM-DD
+  // strings compare chronologically as plain strings. The issue is pinned to
+  // `date_to` so it renders beside the end-date input.
+  .superRefine((val, ctx) => {
+    if (val.date_from && val.date_to && val.date_to < val.date_from) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["date_to"],
+        message: i18n.t("enquiries:schema_errors.date_to_before_from"),
+      });
+    }
+  });
 export type EnquiryWriteInput = z.infer<typeof enquiryWriteInputSchema>;
 
 export const assignEnquiryInputSchema = z.object({

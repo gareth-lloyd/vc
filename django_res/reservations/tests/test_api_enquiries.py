@@ -176,6 +176,104 @@ def test_update_enquiry_contact_method(
 
 
 @pytest.mark.django_db
+def test_create_enquiry__rejects_end_date_before_start_date(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """When both dates are supplied, an inverted range is rejected with a
+    field error on `date_to` (the SPA renders it beside the end-date input)."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@order.example.com",
+            "adults": 2,
+            "date_from": "2026-07-10",
+            "date_to": "2026-07-05",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "date_to" in response.data["field_errors"]
+    assert not Enquiry.objects.filter(email="ada@order.example.com").exists()
+
+
+@pytest.mark.django_db
+def test_create_enquiry__allows_start_date_without_end_date(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """Enquiry dates are an optional, independent capture surface — a start with
+    no end is a valid lead. Only an inverted range is rejected."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@openend.example.com",
+            "adults": 2,
+            "date_from": "2026-07-10",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    created = Enquiry.objects.get(email="ada@openend.example.com")
+    assert created.date_from == date(2026, 7, 10)
+    assert created.date_to is None
+
+
+@pytest.mark.django_db
+def test_update_enquiry__rejects_end_before_existing_start(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """A PATCH that sets only `date_to` is judged against the stored
+    `date_from`, so a partial edit can't sneak in an inverted range."""
+    enquiry.date_from = date(2026, 7, 10)
+    enquiry.date_to = date(2026, 7, 17)
+    enquiry.save(update_fields=["date_from", "date_to"])
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"date_to": "2026-07-05"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "date_to" in response.data["field_errors"]
+    enquiry.refresh_from_db()
+    assert enquiry.date_to == date(2026, 7, 17)
+
+
+@pytest.mark.django_db
+def test_update_enquiry__unrelated_patch_ignores_stored_inverted_dates(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """The range check must judge only dates the caller is writing — a PATCH
+    that touches neither date must not be rejected because of a pre-existing
+    (e.g. legacy) inverted pair already stored on the row."""
+    Enquiry.objects.filter(pk=enquiry.pk).update(
+        date_from=date(2026, 7, 17), date_to=date(2026, 7, 10)
+    )
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"contact_method": ContactMethod.SMS.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.contact_method == ContactMethod.SMS.value
+
+
+@pytest.mark.django_db
 def test_create_enquiry__stays_query_bounded(
     api_client: APIClient, staff: User, guest: Guest
 ) -> None:

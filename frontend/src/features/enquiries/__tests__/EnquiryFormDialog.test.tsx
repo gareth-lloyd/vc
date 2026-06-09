@@ -87,6 +87,58 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     expect(payload).toMatchObject({ date_from: "2026-06-10", date_to: "2026-06-17" });
   });
 
+  it("submits null for unset dates rather than an empty string", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 5, reference: "E-005", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/first name/i), "Ada");
+    await userEvent.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    // Leave both dates untouched — an unset <input type="date"> reads "".
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(payload).not.toBeNull());
+    // "" would make DRF's DateField 400 with a "wrong format" error; null is
+    // the correct "no date supplied" representation.
+    expect(payload).toMatchObject({ date_from: null, date_to: null });
+  });
+
+  it("blocks submit and shows an inline error when the end date precedes the start", async () => {
+    let posted = false;
+    server.use(
+      http.post("/api/v1/enquiries", () => {
+        posted = true;
+        return HttpResponse.json({ id: 6, reference: "E-006", status: "new" }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/first name/i), "Ada");
+    await userEvent.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.clear(screen.getByLabelText(/^from$/i));
+    await userEvent.type(screen.getByLabelText(/^from$/i), "2026-07-10");
+    await userEvent.clear(screen.getByLabelText(/^to$/i));
+    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-07-05");
+
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    // Client-side guard renders inline and never hits the network.
+    expect(await screen.findByText(/end date can't be before the start date/i)).toBeInTheDocument();
+    expect(posted).toBe(false);
+  });
+
   it("widens date_from / date_to by the configured spread", async () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
@@ -253,6 +305,75 @@ describe("EnquiryFormDialog phone + contact_method capture", () => {
     expect(screen.getByRole("combobox", { name: /preferred contact method/i })).toHaveTextContent(
       /sms/i,
     );
+  });
+});
+
+describe("EnquiryFormDialog server-side field errors", () => {
+  const ENQUIRY = {
+    id: 21,
+    reference: "E-021",
+    status: "new" as const,
+    first_name: "Ada",
+    last_name: "Lovelace",
+    email: "ada@example.com",
+    phone: "",
+    contact_method: null,
+    date_from: "2026-07-10",
+    date_to: "2026-07-17",
+    adults: 2,
+    children: 0,
+    request_type: "quote" as const,
+    site_source: "main_website" as const,
+    is_flexible: false,
+    min_bedrooms: null,
+    referral_code: "",
+    inbound_message: "",
+    quotations: [],
+  };
+
+  it("renders a 400 field error on date_to inline beside the date field", async () => {
+    server.use(
+      http.patch("/api/v1/enquiries/21", () =>
+        HttpResponse.json(
+          { field_errors: { date_to: ["That property is already held for these dates"] } },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={ENQUIRY} open onOpenChange={() => {}} />,
+    );
+
+    // A well-ordered range that passes the client guard but the server rejects
+    // for its own reason — the field error must surface, not vanish silently.
+    await userEvent.clear(screen.getByLabelText(/^to$/i));
+    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-07-20");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(
+      await screen.findByText("That property is already held for these dates"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a 400 field error on phone inline beside the phone field", async () => {
+    server.use(
+      http.patch("/api/v1/enquiries/21", () =>
+        HttpResponse.json(
+          { field_errors: { phone: ["Enter a valid phone number"] } },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={ENQUIRY} open onOpenChange={() => {}} />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/^phone$/i), "12");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Enter a valid phone number")).toBeInTheDocument();
   });
 });
 

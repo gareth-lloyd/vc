@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from rest_framework import serializers
 
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
@@ -148,6 +150,24 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "site_source",
             "inbound_message",
         ]
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        # Enquiry dates are an optional, independent capture surface (the model
+        # and spec leave them unconstrained), but an inverted range is never
+        # meaningful: when both ends are known, the end must not precede the
+        # start. Only judge the pair when the caller is actually writing a date
+        # — otherwise a PATCH touching neither date would re-validate (and could
+        # reject on) a pre-existing inverted pair the caller never sent. When
+        # one date is written, fall back to the instance's stored other half.
+        if "date_from" not in attrs and "date_to" not in attrs:
+            return attrs
+        date_from = attrs.get("date_from", getattr(self.instance, "date_from", None))
+        date_to = attrs.get("date_to", getattr(self.instance, "date_to", None))
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError(
+                {"date_to": "The end date can't be before the start date."}
+            )
+        return attrs
 
 
 class EnquiryNoteSerializer(serializers.ModelSerializer[EnquiryNote]):

@@ -206,8 +206,10 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     setTopLevelError(null);
     const submitted: EnquiryWriteInput = {
       ...values,
-      date_from: values.date_from ? shiftIsoDate(values.date_from, -spread) : values.date_from,
-      date_to: values.date_to ? shiftIsoDate(values.date_to, spread) : values.date_to,
+      // An unset <input type="date"> reads "", which DRF's DateField rejects as
+      // a malformed date. Dates are optional, so send null for "no date".
+      date_from: values.date_from ? shiftIsoDate(values.date_from, -spread) : null,
+      date_to: values.date_to ? shiftIsoDate(values.date_to, spread) : null,
     };
     try {
       if (isCreate) {
@@ -287,7 +289,17 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="enq-phone">{t("form_dialog.fields.phone")}</Label>
-              <Input id="enq-phone" type="tel" {...form.register("phone")} />
+              <Input
+                id="enq-phone"
+                type="tel"
+                {...form.register("phone")}
+                aria-invalid={!!form.formState.errors.phone}
+              />
+              {form.formState.errors.phone ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {form.formState.errors.phone.message}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="enq-contact-method">{t("form_dialog.fields.contact_method")}</Label>
@@ -320,11 +332,31 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="enq-date-from">{t("form_dialog.fields.from")}</Label>
-              <Input id="enq-date-from" type="date" {...form.register("date_from")} />
+              <Input
+                id="enq-date-from"
+                type="date"
+                {...form.register("date_from")}
+                aria-invalid={!!form.formState.errors.date_from}
+              />
+              {form.formState.errors.date_from ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {form.formState.errors.date_from.message}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="enq-date-to">{t("form_dialog.fields.to")}</Label>
-              <Input id="enq-date-to" type="date" {...form.register("date_to")} />
+              <Input
+                id="enq-date-to"
+                type="date"
+                {...form.register("date_to")}
+                aria-invalid={!!form.formState.errors.date_to}
+              />
+              {form.formState.errors.date_to ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {form.formState.errors.date_to.message}
+                </p>
+              ) : null}
             </div>
           </div>
 

@@ -176,6 +176,28 @@ describe("AvailabilityTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders a lone booking checkout as an am-booked / pm-available half-cell", async () => {
+    installBaseHandlers();
+    installCalendar([
+      {
+        date: "2026-05-18",
+        available: true,
+        reason: "",
+        block_id: null,
+        segments: {
+          am: { available: false, reason: "booked", block_id: null },
+          pm: { available: true, reason: "", block_id: null },
+        },
+      },
+    ]);
+
+    setup();
+
+    expect(
+      await screen.findByLabelText(/18 May: morning Booked, afternoon Available/i),
+    ).toBeInTheDocument();
+  });
+
   it("disables Add block without the reservations role", async () => {
     installBaseHandlers();
     installCalendar([]);

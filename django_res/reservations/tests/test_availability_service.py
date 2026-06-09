@@ -289,7 +289,11 @@ def test_calendar_query_count_is_constant(
         date_to=date(2026, 6, 15),
         status=BookingStatus.DEPOSIT_PAID.value,
     )
-    with assert_max_queries(2):
+    # Two availability queries (holds + bookings); the booking's lone checkout
+    # day makes the service resolve the property's changeover times once more to
+    # decide turnover (here: no PropertySettings row → one extra lookup). Still
+    # flat in the number of holds/bookings/days.
+    with assert_max_queries(3):
         cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 7, 30))
     assert cal[date(2026, 6, 6)].reason == "owner_block"
     assert cal[date(2026, 6, 13)].reason == "booked"
@@ -515,6 +519,116 @@ def test_calendar_query_count_with_split(
         date_from=date(2026, 6, 8),
         date_to=date(2026, 6, 12),
         reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    with assert_max_queries(4):
+        cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 30))
+    assert cal[date(2026, 6, 8)].segments is not None
+
+
+# ----------------------------------------------------------------------
+# 11. Lone booking checkout turnover (PR2) — bookings only, blocks stay whole
+# ----------------------------------------------------------------------
+def test_lone_booking_checkout_is_split_and_stays_available(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    """A booking's lone checkout day is sellable as a new arrival: AM booked,
+    PM available, and the cell itself stays available."""
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),  # departs morning of the 8th, nobody arrives
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+
+    checkout = cal[date(2026, 6, 8)]
+    assert checkout.available is True
+    assert checkout.segments is not None
+    assert checkout.segments["am"].reason == "booked"
+    assert checkout.segments["am"].available is False
+    assert checkout.segments["pm"].available is True
+    # The last full night is still wholly booked.
+    assert cal[date(2026, 6, 7)].segments is None
+    assert cal[date(2026, 6, 7)].available is False
+
+
+def test_lone_booking_checkin_day_stays_whole(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    """The morning of a check-in is not sellable as a night, so no half-bar."""
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 14),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 20))
+    assert cal[date(2026, 6, 10)].segments is None
+    assert cal[date(2026, 6, 10)].available is False
+    assert cal[date(2026, 6, 10)].reason == "booked"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        BookingHoldReason.OWNER_BLOCK.value,
+        BookingHoldReason.MAINTENANCE.value,
+        BookingHoldReason.MANUAL.value,
+    ],
+)
+def test_block_checkout_day_stays_whole_no_turnover(property_: Property, reason: str) -> None:
+    """Blocks have no checkout to turn over: the exclusive `date_to` is simply
+    available, whole-day, never a half-bar — for every block reason."""
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        reason=reason,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+    assert cal[date(2026, 6, 8)].available is True
+    assert cal[date(2026, 6, 8)].segments is None
+
+
+def test_lone_checkout_not_split_without_changeover_times(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    """No property changeover times → the checkout day is whole-day available."""
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 15))
+    assert cal[date(2026, 6, 8)].available is True
+    assert cal[date(2026, 6, 8)].segments is None
+
+
+def test_calendar_query_count_with_lone_checkout(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        status=BookingStatus.DEPOSIT_PAID.value,
     )
     with assert_max_queries(4):
         cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 30))

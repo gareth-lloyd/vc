@@ -232,11 +232,24 @@ class AvailabilityService:
         range_start: date,
         range_end: date,
     ) -> None:
-        """Split a true changeover day (one stay departs AM, another arrives PM).
+        """Split changeover / turnover days into AM (departing) + PM (arriving) halves.
 
-        A date is a changeover iff some interval's exclusive checkout (`date_to`)
-        coincides with another interval's check-in (`date_from`). Reuses the
-        already-fetched holds/bookings — no extra availability queries.
+        Two cases, both gated on the property allowing same-day changeover
+        (effective check-out earlier than check-in):
+
+        1. **True changeover** — some interval's exclusive checkout (`date_to`)
+           coincides with another interval's check-in (`date_from`). Both halves
+           are occupied; the day stays unavailable. Works for any reason mix.
+        2. **Lone booking checkout** — a *booking's* `date_to` with no arriving
+           stay that day. The departing guest holds the morning, but the
+           afternoon is sellable as a new arrival, so the day stays
+           **available** with an AM `booked` / PM available split. Bookings only:
+           an owner/maintenance/manual block has no checkout to turn over, so all
+           blocks remain whole-day.
+
+        Reuses the already-fetched holds/bookings — the only extra query is the
+        one-off changeover-time resolution, and only when there is a boundary to
+        split.
         """
         starts: dict[date, list[CellStatus]] = {}
         ends: dict[date, list[CellStatus]] = {}
@@ -264,7 +277,19 @@ class AvailabilityService:
             )
 
         candidates = [d for d in starts if d in ends and range_start <= d <= range_end]
-        if not candidates:
+        # Lone booking checkouts: a booking departs but nothing arrives, and the
+        # checkout day isn't otherwise occupied. (`date_to` is exclusive, so the
+        # cell is normally available unless another interval covers it.)
+        lone_checkouts: dict[date, CellStatus] = {}
+        for booking in bookings:
+            day = booking.date_to
+            if day in candidates or not (range_start <= day <= range_end):
+                continue
+            if not result[day].available:
+                continue
+            lone_checkouts[day] = CellStatus(available=False, reason="booked")
+
+        if not candidates and not lone_checkouts:
             return
 
         check_out, check_in = _resolve_changeover_times(property)
@@ -283,4 +308,12 @@ class AvailabilityService:
                 reason=rollup.reason,
                 block_id=rollup.block_id,
                 segments={"am": am, "pm": pm},
+            )
+
+        for day, am in lone_checkouts.items():
+            # Sellable as a new arrival: available, AM booked / PM free.
+            result[day] = CellStatus(
+                available=True,
+                reason="",
+                segments={"am": am, "pm": CellStatus(available=True)},
             )

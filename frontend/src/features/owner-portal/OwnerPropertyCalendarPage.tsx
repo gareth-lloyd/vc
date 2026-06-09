@@ -48,6 +48,13 @@ function cellKind(cell: OwnerCalendarCell | undefined): CellKind {
   return "hold";
 }
 
+// A half-day turnover segment (lone booking checkout: AM booked, PM available).
+function segmentKind(segment: { available: boolean; reason: string | null }): CellKind {
+  if (segment.available) return "available";
+  if (segment.reason === "booked") return "booked";
+  return "hold";
+}
+
 function kindClasses(kind: CellKind): string {
   switch (kind) {
     case "booked":
@@ -194,8 +201,27 @@ export function OwnerPropertyCalendarPage() {
                 );
               }
               const cell = cellByIso.get(iso);
-              const kind = cellKind(cell);
               const dateLabel = format(day, "d MMMM");
+              if (cell?.segments) {
+                const am = segmentKind(cell.segments.am);
+                const pm = segmentKind(cell.segments.pm);
+                return (
+                  <div
+                    key={iso}
+                    className={`${CELL_BASE} relative overflow-hidden p-0`}
+                    aria-label={t("calendar.cell_aria_split", {
+                      date: dateLabel,
+                      am: t(`calendar.legend.${am}`),
+                      pm: t(`calendar.legend.${pm}`),
+                    })}
+                  >
+                    <span className={`absolute inset-x-0 top-0 h-1/2 ${kindClasses(am)}`} />
+                    <span className={`absolute inset-x-0 bottom-0 h-1/2 ${kindClasses(pm)}`} />
+                    <span className="relative z-10 font-medium">{dayNum}</span>
+                  </div>
+                );
+              }
+              const kind = cellKind(cell);
               return (
                 <div
                   key={iso}

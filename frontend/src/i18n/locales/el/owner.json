@@ -36,6 +36,7 @@
     "today": "Σήμερα",
     "load_failed": "Δεν ήταν δυνατή η φόρτωση της διαθεσιμότητας.",
     "cell_aria": "{{date}}: {{status}}",
+    "cell_aria_split": "{{date}}: πρωί {{am}}, απόγευμα {{pm}}",
     "night_range_one": "{{range}} · {{count}} νύχτα",
     "night_range_other": "{{range}} · {{count}} νύχτες",
     "legend": {

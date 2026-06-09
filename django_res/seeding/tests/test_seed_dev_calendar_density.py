@@ -86,10 +86,15 @@ def test_seed_dev_mixed_calendar_is_dense_varied_and_current() -> None:
     # ---- Changeover: ≥1 AM/PM segment cell, all today-or-later ----
     # Needs both adjacent stays non-terminal and check-in/out times set; forced
     # changeover pairs never pay a deposit, so a past changeover day would be an
-    # AWAITING_DEPOSIT stay production never reaches.
+    # AWAITING_DEPOSIT stay production never reaches. Filter to *true* changeovers
+    # (both halves occupied) — a lone booking checkout also carries segments
+    # (AM booked / PM available) and legitimately occurs on past stays.
     calendars = _calendars(today)
     changeover_days = [
-        day for cal in calendars.values() for day, cell in cal.items() if cell.segments
+        day
+        for cal in calendars.values()
+        for day, cell in cal.items()
+        if cell.segments and not cell.segments["am"].available and not cell.segments["pm"].available
     ]
     assert changeover_days, "expected at least one AM/PM changeover cell"
     assert min(changeover_days) >= today, (

@@ -100,6 +100,36 @@ describe("OwnerPropertyCalendarPage block requests", () => {
     await waitFor(() => expect(cancelled).toBe(true));
   });
 
+  it("renders a lone booking checkout as an AM/PM half-day turnover cell", async () => {
+    // A current-month day so it lands inside the visible (in-month) grid.
+    const now = new Date();
+    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-15`;
+    mockEndpoints();
+    server.use(
+      http.get("/api/v1/owner/properties/3/calendar", () =>
+        HttpResponse.json({
+          property_id: 3,
+          can_request_block: true,
+          cells: [
+            {
+              date: iso,
+              available: true,
+              reason: null,
+              segments: {
+                am: { available: false, reason: "booked" },
+                pm: { available: true, reason: null },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    renderPage();
+    expect(
+      await screen.findByLabelText(/morning Booked, afternoon Available/i),
+    ).toBeInTheDocument();
+  });
+
   it("renders a single-night block without a date range", async () => {
     mockEndpoints({
       requests: [blockRequest({ date_from: "2026-08-01", date_to: "2026-08-02" })],

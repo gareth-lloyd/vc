@@ -1,4 +1,7 @@
-export type FieldErrors = Record<string, string[]>;
+// DRF field errors are usually `string[]`, but nested serializers yield nested
+// objects and arrays-of-objects. Typed as `unknown` so consumers flatten
+// honestly rather than trusting a `string[]` shape that can be a lie.
+export type FieldErrors = Record<string, unknown>;
 
 export interface ApiErrorBody {
   code?: string;

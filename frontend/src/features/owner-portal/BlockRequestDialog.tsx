@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
+import { addMonths, format, parseISO, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -11,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -21,12 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DateRangeField } from "@/components/form/DateRangeField";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { formatNightRange } from "@/lib/format/date";
 import { nightRangeParts } from "@/lib/nights";
-import { useCreateBlockRequest } from "./hooks";
+import { useCreateBlockRequest, useOwnerPropertyCalendar } from "./hooks";
 import {
   blockRequestWriteInputSchema,
   ownerBlockKindSchema,
@@ -83,6 +84,22 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
 
   const errors = form.formState.errors;
 
+  // Grey out already-occupied days in the picker over a generous forward window.
+  // The server still validates conflicts; this is a courtesy, not the guard.
+  const windowStart = useMemo(() => startOfMonth(new Date()), []);
+  const calendar = useOwnerPropertyCalendar(
+    propertyId,
+    format(windowStart, "yyyy-MM-dd"),
+    format(addMonths(windowStart, 18), "yyyy-MM-dd"),
+  );
+  const disabledDays = useMemo(
+    () =>
+      (calendar.data?.cells ?? [])
+        .filter((cell) => !cell.available)
+        .map((cell) => parseISO(cell.date)),
+    [calendar.data],
+  );
+
   const dateFrom = form.watch("date_from");
   const dateTo = form.watch("date_to");
   const nightsSummary =
@@ -104,36 +121,19 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
           <DialogDescription>{t("blocks.dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="block-date-from">{t("blocks.fields.date_from")}</Label>
-              <Input
-                id="block-date-from"
-                type="date"
-                {...form.register("date_from")}
-                aria-invalid={!!errors.date_from}
-              />
-              {errors.date_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {t(errors.date_from.message ?? "")}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="block-date-to">{t("blocks.fields.date_to")}</Label>
-              <Input
-                id="block-date-to"
-                type="date"
-                {...form.register("date_to")}
-                aria-invalid={!!errors.date_to}
-              />
-              {errors.date_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {t(errors.date_to.message ?? "")}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          <DateRangeField
+            control={form.control}
+            fromName="date_from"
+            toName="date_to"
+            fromId="block-date-from"
+            toId="block-date-to"
+            fromLabel={t("blocks.fields.date_from")}
+            toLabel={t("blocks.fields.date_to")}
+            pickLabel={t("blocks.fields.pick_dates")}
+            disabledDays={disabledDays}
+            fromError={errors.date_from ? t(errors.date_from.message ?? "") : undefined}
+            toError={errors.date_to ? t(errors.date_to.message ?? "") : undefined}
+          />
 
           {nightsSummary ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">

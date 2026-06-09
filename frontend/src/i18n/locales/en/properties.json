@@ -128,7 +128,8 @@
         "reason": "Reason",
         "date_from": "From",
         "date_to": "To",
-        "notes": "Notes"
+        "notes": "Notes",
+        "pick_dates": "Pick on calendar"
       },
       "actions": {
         "cancel": "Cancel",

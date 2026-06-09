@@ -82,6 +82,46 @@ describe("BlockRequestDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("stores a half-open range from an inclusive calendar selection", async () => {
+    let body: unknown = null;
+    server.use(
+      http.post("/api/v1/owner/block-requests", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(created(), { status: 201 });
+      }),
+    );
+    renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
+
+    // Anchor July 2026 via the typed first night, then pick the last night on
+    // the calendar — the user never enters the exclusive checkout date.
+    await userEvent.type(screen.getByLabelText(/from/i), "2026-07-21");
+    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /21 july 2026/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /25 july 2026/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^block dates$/i }));
+
+    await waitFor(() => expect(body).not.toBeNull());
+    // Inclusive nights 21–25 → stored half-open with checkout the 26th.
+    expect(body).toMatchObject({ date_from: "2026-07-21", date_to: "2026-07-26" });
+  });
+
+  it("greys out an occupied day in the calendar picker", async () => {
+    server.use(
+      http.get("/api/v1/owner/properties/3/calendar", () =>
+        HttpResponse.json({
+          property_id: 3,
+          can_request_block: true,
+          cells: [{ date: "2026-07-23", available: false, reason: "booked" }],
+        }),
+      ),
+    );
+    renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/from/i), "2026-07-21");
+    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
+    expect(await screen.findByRole("button", { name: /23 july 2026/i })).toBeDisabled();
+  });
+
   it("maps a 409 conflict to a top-level alert and stays open", async () => {
     server.use(
       http.post("/api/v1/owner/block-requests", () =>

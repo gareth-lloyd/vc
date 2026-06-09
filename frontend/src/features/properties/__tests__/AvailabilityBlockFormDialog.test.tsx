@@ -73,6 +73,81 @@ describe("AvailabilityBlockFormDialog", () => {
     useAuthStore.getState().clear();
   });
 
+  it("stores a half-open range from an inclusive calendar selection", async () => {
+    setReservationsUser();
+    let body: unknown = null;
+    server.use(
+      http.post("/api/v1/properties/7/availability", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { id: 1, property: 7, date_from: "2026-07-21", date_to: "2026-07-26", reason: "manual" },
+          { status: 201 },
+        );
+      }),
+    );
+    renderWithProviders(
+      <AvailabilityBlockFormDialog propertyId={7} open mode="create" onOpenChange={() => {}} />,
+    );
+    await userEvent.type(await screen.findByLabelText(/^From$/i), "2026-07-21");
+    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /21 july 2026/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /25 july 2026/i }));
+    await userEvent.click(screen.getByRole("button", { name: /save block/i }));
+    await waitFor(() => expect(body).not.toBeNull());
+    // Inclusive nights 21–25 → stored half-open with checkout the 26th.
+    expect(body).toMatchObject({ date_from: "2026-07-21", date_to: "2026-07-26" });
+    useAuthStore.getState().clear();
+  });
+
+  it("greys out an occupied day in the calendar picker", async () => {
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/availability", () =>
+        HttpResponse.json({
+          property_id: 7,
+          cells: [{ date: "2026-07-23", available: false, reason: "booked" }],
+        }),
+      ),
+    );
+    renderWithProviders(
+      <AvailabilityBlockFormDialog propertyId={7} open mode="create" onOpenChange={() => {}} />,
+    );
+    await userEvent.type(await screen.findByLabelText(/^From$/i), "2026-07-21");
+    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
+    expect(await screen.findByRole("button", { name: /23 july 2026/i })).toBeDisabled();
+    useAuthStore.getState().clear();
+  });
+
+  it("keeps the edited block's own days selectable", async () => {
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/availability", () =>
+        HttpResponse.json({
+          property_id: 7,
+          cells: [
+            // The block being edited (id 42) covers these days; they must stay
+            // selectable. An unrelated occupied day must still be disabled.
+            { date: "2026-06-12", available: false, reason: "owner_block", block_id: 42 },
+            { date: "2026-06-20", available: false, reason: "booked", block_id: null },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(
+      <AvailabilityBlockFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        block={existingBlock}
+        onOpenChange={() => {}}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /pick on calendar/i }));
+    expect(await screen.findByRole("button", { name: /12 June 2026/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /20 June 2026/i })).toBeDisabled();
+    useAuthStore.getState().clear();
+  });
+
   it("shows an inline error when date_to is not after date_from", async () => {
     setReservationsUser();
     renderWithProviders(

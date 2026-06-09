@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
+import { addMonths, format, parseISO, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,11 +16,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DateRangeField } from "@/components/form/DateRangeField";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { formatNightRange } from "@/lib/format/date";
 import { nightRangeParts } from "@/lib/nights";
-import { useCreatePropertyBlock, useUpdatePropertyBlock } from "../hooks";
+import {
+  useCreatePropertyBlock,
+  usePropertyAvailabilityCalendar,
+  useUpdatePropertyBlock,
+} from "../hooks";
 import {
   AVAILABILITY_BLOCK_REASONS,
   availabilityBlockWriteInputSchema,
@@ -118,6 +123,23 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
 
   const reason = form.watch("reason");
 
+  // Grey out already-occupied days over a forward window. In edit mode the block
+  // being edited must stay selectable, so exclude its own cells (by block_id).
+  const editingBlockId = isCreate ? null : props.block.id;
+  const windowStart = useMemo(() => startOfMonth(new Date()), []);
+  const calendar = usePropertyAvailabilityCalendar(
+    propertyId,
+    format(windowStart, "yyyy-MM-dd"),
+    format(addMonths(windowStart, 18), "yyyy-MM-dd"),
+  );
+  const disabledDays = useMemo(
+    () =>
+      (calendar.data?.cells ?? [])
+        .filter((cell) => !cell.available && cell.block_id !== editingBlockId)
+        .map((cell) => parseISO(cell.date)),
+    [calendar.data, editingBlockId],
+  );
+
   const dateFrom = form.watch("date_from");
   const dateTo = form.watch("date_to");
   const nightsSummary =
@@ -163,26 +185,27 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="block-from">{t("availability.block_dialog.fields.date_from")}</Label>
-              <Input id="block-from" type="date" {...form.register("date_from")} />
-              {form.formState.errors.date_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.date_from.message)}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="block-to">{t("availability.block_dialog.fields.date_to")}</Label>
-              <Input id="block-to" type="date" {...form.register("date_to")} />
-              {form.formState.errors.date_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.date_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          <DateRangeField
+            control={form.control}
+            fromName="date_from"
+            toName="date_to"
+            fromId="block-from"
+            toId="block-to"
+            fromLabel={t("availability.block_dialog.fields.date_from")}
+            toLabel={t("availability.block_dialog.fields.date_to")}
+            pickLabel={t("availability.block_dialog.fields.pick_dates")}
+            disabledDays={disabledDays}
+            fromError={
+              form.formState.errors.date_from
+                ? String(form.formState.errors.date_from.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.date_to
+                ? String(form.formState.errors.date_to.message)
+                : undefined
+            }
+          />
 
           {nightsSummary ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">

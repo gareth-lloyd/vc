@@ -5,6 +5,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { EnquiriesSectionLayout } from "@/features/enquiries/EnquiriesSectionLayout";
 import { QuotationsTab } from "../QuotationsTab";
 
 const fixture = {
@@ -34,7 +35,10 @@ const fixture = {
 function setup(extra?: React.ReactNode) {
   return renderWithProviders(
     <Routes>
-      <Route path="/enquiries/quotes" element={<QuotationsTab />} />
+      {/* Mount under the section layout so the tab strip renders, as in prod. */}
+      <Route path="/enquiries" element={<EnquiriesSectionLayout />}>
+        <Route path="quotes" element={<QuotationsTab />} />
+      </Route>
       {extra}
     </Routes>,
     { route: "/enquiries/quotes" },

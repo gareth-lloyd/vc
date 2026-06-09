@@ -8,7 +8,6 @@ import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { EnquiriesTabs } from "@/features/enquiries/components/EnquiriesTabs";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { buildQuotationColumns } from "./columns";
 import { useQuotations, useQuotationStatusCounts, QUOTATIONS_PAGE_SIZE } from "./hooks";
@@ -117,7 +116,6 @@ export function QuotationsTab() {
           { label: t("common:nav.quotes") },
         ]}
       />
-      <EnquiriesTabs />
       <div className="space-y-4 p-6">
         <StatusFilterBar
           options={quotationStatusOptions()}

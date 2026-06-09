@@ -237,22 +237,35 @@ export const router = createBrowserRouter([
                         ],
                       },
                       {
+                        // Section layout mounts the Enquiries↔Quotes tab strip
+                        // once above the active child (list/board or quotes).
                         path: "/enquiries",
                         lazy: async () => {
-                          const m = await import("@/features/enquiries/EnquiriesListPage");
-                          return { Component: m.EnquiriesListPage };
+                          const m = await import("@/features/enquiries/EnquiriesSectionLayout");
+                          return { Component: m.EnquiriesSectionLayout };
                         },
+                        children: [
+                          {
+                            index: true,
+                            lazy: async () => {
+                              const m = await import("@/features/enquiries/EnquiriesListPage");
+                              return { Component: m.EnquiriesListPage };
+                            },
+                          },
+                          {
+                            // Static segment ranks ahead of `/enquiries/:id`; the
+                            // cross-enquiry quotes pipeline lives here as a tab.
+                            path: "quotes",
+                            lazy: async () => {
+                              const m = await import("@/features/quotations/QuotationsTab");
+                              return { Component: m.QuotationsTab };
+                            },
+                          },
+                        ],
                       },
                       {
-                        // Static segment ranks ahead of `/enquiries/:id`; the
-                        // cross-enquiry quotes pipeline lives here as a tab.
-                        path: "/enquiries/quotes",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationsTab");
-                          return { Component: m.QuotationsTab };
-                        },
-                      },
-                      {
+                        // Sibling of the section layout — the enquiry workspace
+                        // carries no section tab strip.
                         path: "/enquiries/:id",
                         lazy: async () => {
                           const m = await import("@/features/enquiries/EnquiryDetailLayout");

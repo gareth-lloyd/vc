@@ -140,6 +140,8 @@ Inquiry-takers routinely widen the requested date range by one or two days eithe
 
 The legacy `EnquireDateTypeString` field (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded this preset-style at the column level. The new design **drops the encoding** in favour of an open date range plus the heuristic above — the encoding never carried operator-meaningful information after capture. See `workflows/07-enquiry/enquiry-intake.md` for the operator-side detail.
 
+The single rule on these otherwise-free dates: when **both** are set, `date_to` must not precede `date_from` — enforced in `EnquiryWriteSerializer.validate` (a 400 keyed on `date_to`, mirrored client-side as a Zod refinement on the intake form). This is deliberately weaker than `Booking`/`QuotationLine`'s `CheckConstraint(date_from < date_to)`: there is **no DB constraint** (legacy rows may violate it, and a partial update that touches neither date is never re-judged), equal dates are allowed, and either date may still be set alone. Sending no date is `null`, not `""` — the intake form coerces an empty picker to `null` so it reads as "no date" rather than a malformed `DateField`.
+
 **Flexibility wider than ± a few days *(known rough edge)*.** The 2026-06-08
 demo surfaced cases the simple ±n-days spread does not represent well: a client
 who can travel *any week in June*, or *one week within a named three-week

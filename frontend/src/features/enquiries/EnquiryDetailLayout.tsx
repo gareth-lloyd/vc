@@ -23,7 +23,12 @@ import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
 import { DetailsTab } from "./tabs/DetailsTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { NotesTab } from "./tabs/NotesTab";
-import { enquirySourceLabel, enquiryStatusLabel, type EnquiryDetail } from "./schemas";
+import {
+  enquirySourceLabel,
+  enquiryStatusLabel,
+  isFinalStatus,
+  type EnquiryDetail,
+} from "./schemas";
 
 type DialogKind = "assign" | "close" | "reopen" | null;
 
@@ -43,7 +48,7 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   const hasRole = useHasReservationsRole();
 
   const isClosed = enquiry.status === "lost";
-  const isFinal = enquiry.status === "converted" || enquiry.status === "lost";
+  const isFinal = isFinalStatus(enquiry.status);
   const roleRequired = t("common:errors.reservations_role_required");
 
   return (
@@ -150,9 +155,14 @@ function RailPanel({ title, children }: { title: string; children: React.ReactNo
 // The quotes spine block: the existing quote-stack plus a disclosure that
 // expands the inline builder. Defaults open only when there are no quotes yet
 // — an enquiry that already has quotes opens compact (one click to add more).
+// A lost/converted enquiry is closed to new quotes: the builder never auto-opens
+// and the toggle is disabled (the backend rejects the POST too). Keyed on the
+// enquiry id by the caller so navigating between enquiries re-runs the
+// open-state initializer instead of carrying the previous one's value.
 function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
   const { t } = useTranslation("enquiries");
-  const [building, setBuilding] = useState(enquiry.quotations.length === 0);
+  const isFinal = isFinalStatus(enquiry.status);
+  const [building, setBuilding] = useState(!isFinal && enquiry.quotations.length === 0);
   const hasRole = useHasReservationsRole();
 
   const toggleLabel = building
@@ -167,10 +177,16 @@ function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
       <EnquiryQuoteStack quotations={enquiry.quotations} />
       {hasRole ? (
         <div className="space-y-4">
-          <Button variant="outline" size="sm" onClick={() => setBuilding((v) => !v)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBuilding((v) => !v)}
+            disabled={isFinal}
+            title={isFinal ? t("quotes_section.build_disabled_state") : undefined}
+          >
             {toggleLabel}
           </Button>
-          {building ? (
+          {building && !isFinal ? (
             // Collapse back to the stack once a quote is committed — the new
             // quote appears in the list above via the enquiry-detail refetch.
             <QuoteBuilder enquiry={enquiry} onComplete={() => setBuilding(false)} />
@@ -250,7 +266,7 @@ export function EnquiryDetailLayout() {
         }
       >
         <div className="space-y-10">
-          <QuotesSection enquiry={enquiry} />
+          <QuotesSection key={enquiry.id} enquiry={enquiry} />
           <DetailsTab enquiry={enquiry} />
         </div>
       </TwoColumn>

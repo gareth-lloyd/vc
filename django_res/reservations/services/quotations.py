@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
 
 from pricing.services import PricingEngine
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
@@ -85,6 +86,12 @@ class QuotationService:
         actor: Any = None,
     ) -> Quotation:
         """Build Quotation + lines, run PricingEngine per line, place holds."""
+        # A lost/converted enquiry is closed to new quotes — the workspace
+        # suppresses the builder for these, but guard the service too so the
+        # API rejects a direct POST (the old UI disabled the action via `isFinal`).
+        if enquiry.status in (EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value):
+            raise ValidationError("Cannot quote a lost or converted enquiry.")
+
         resolved_guest = guest if guest is not None else enquiry.guest
         if resolved_guest is None:
             raise ValueError(

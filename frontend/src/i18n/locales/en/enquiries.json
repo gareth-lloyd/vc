@@ -159,7 +159,8 @@
     "view_aria": "View quote {{reference}}",
     "build_cta": "Build a quote",
     "build_another_cta": "Build another quote",
-    "hide_builder": "Hide builder"
+    "hide_builder": "Hide builder",
+    "build_disabled_state": "Not available for lost or converted enquiries."
   },
   "activity": {
     "load_failed_title": "Couldn't load activity",

@@ -8,7 +8,6 @@ awareness-feed rows, conflict signal, and availability surface.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -21,13 +20,12 @@ from integrations.models import SyncRecord
 from properties.factories import PropertyCalendarFeedFactory
 from reservations.enums import (
     BookingHoldReason,
-    BookingStatus,
     OwnerBlockSource,
     OwnerBlockStatus,
     OwnerBlockUpdateKind,
-    PaymentMethod,
 )
-from reservations.models import Booking, OwnerBlock, Quotation, QuotationLine
+from reservations.factories import make_occupying_booking
+from reservations.models import Booking, OwnerBlock, Quotation
 from reservations.services.availability import AvailabilityService
 from reservations.services.holds import HoldService
 from reservations.services.ical_ingest import ICalIngestService
@@ -73,33 +71,15 @@ def _booking(
     date_from: date,
     date_to: date,
 ) -> Booking:
-    quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+    # The shared fabricator builds an occupying booking (with its LEAD
+    # BookingGuest) — the established shape for conflict/ingest scenarios.
+    return make_occupying_booking(
+        property=property,
         guest=guest,
         currency=currency,
-        expires_at=timezone.now() + timedelta(days=7),
-        terms_version=terms,
-    )
-    line = QuotationLine.objects.create(
-        quotation=quotation,
-        property=property,
+        terms=terms,
         date_from=date_from,
         date_to=date_to,
-        adults=2,
-        total=Decimal("1400.00"),
-    )
-    return Booking.objects.create(
-        quotation_line=line,
-        guest=guest,
-        property=property,
-        date_from=date_from,
-        date_to=date_to,
-        adults=2,
-        currency=currency,
-        terms_version=terms,
-        terms_accepted_at=timezone.now(),
-        payment_method=PaymentMethod.CARD.value,
-        status=BookingStatus.AWAITING_DEPOSIT.value,
     )
 
 

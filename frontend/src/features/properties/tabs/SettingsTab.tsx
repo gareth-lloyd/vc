@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useOutletContext } from "react-router-dom";
@@ -153,11 +153,16 @@ function OperationalForm({
   const availability = form.watch("availability_default") ?? null;
   const changeoverDay = form.watch("changeover_day") ?? null;
   const timezone = form.watch("timezone") ?? "";
-  // Keep an admin-set zone outside the runtime list selectable/visible.
-  const timezoneOptions =
-    timezone && !TIMEZONE_OPTIONS.includes(timezone)
-      ? [timezone, ...TIMEZONE_OPTIONS]
-      : TIMEZONE_OPTIONS;
+  // Keep an admin-set zone outside the runtime list selectable/visible. Memoised
+  // so the ~400-entry list isn't rebuilt (and the whole SelectContent
+  // re-rendered) on every keystroke — only when the selected zone changes.
+  const timezoneOptions = useMemo(
+    () =>
+      timezone && !TIMEZONE_OPTIONS.includes(timezone)
+        ? [timezone, ...TIMEZONE_OPTIONS]
+        : TIMEZONE_OPTIONS,
+    [timezone],
+  );
   const pricesAs = form.watch("prices_entered_as") ?? null;
   const preApproval = form.watch("bookings_require_pre_approval");
   const enquiryFirst = form.watch("requires_enquiry_first");

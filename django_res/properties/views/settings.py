@@ -18,7 +18,12 @@ class PropertySettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsReservationsWriter]
 
     def get_object(self) -> PropertySettings:
-        property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
+        # Join the reverse-OneToOne `location` up front: the serializer reads
+        # `property.location.timezone` on every GET/PATCH, which would otherwise
+        # fire one extra uncached SELECT per request.
+        property_obj = get_object_or_404(
+            Property.objects.select_related("location"), pk=self.kwargs["property_id"]
+        )
         instance, _ = PropertySettings.objects.get_or_create(property=property_obj)
         return instance
 

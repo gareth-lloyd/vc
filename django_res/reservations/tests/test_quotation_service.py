@@ -135,6 +135,41 @@ def test_create_from_enquiry_requires_guest(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("final_status", [EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value])
+def test_create_from_enquiry_rejects_final_enquiry(
+    final_status: str,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """A lost/converted enquiry is closed to new quotes — the service rejects
+    it with a 400-mapping ValidationError and writes nothing."""
+    from rest_framework.exceptions import ValidationError
+
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "", status=final_status)
+
+    with pytest.raises(ValidationError):
+        QuotationService.create_from_enquiry(
+            enquiry,
+            [
+                {
+                    "property": property_,
+                    "date_from": date(2026, 6, 10),
+                    "date_to": date(2026, 6, 17),
+                    "adults": 2,
+                },
+            ],
+            currency=gbp,
+            terms_version=terms,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+    assert Quotation.objects.filter(enquiry=enquiry).count() == 0
+
+
+@pytest.mark.django_db
 def test_create_from_enquiry_records_send_path_smtp(
     guest: Guest,
     gbp: Currency,

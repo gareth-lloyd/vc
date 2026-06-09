@@ -402,47 +402,24 @@ def _place_quotation_clash(prop: Property, date_from: date, date_to: date) -> st
 
 
 def _place_booking_clash(prop: Property, date_from: date, date_to: date) -> str:
-    """Place a confirmed booking over the range; returns the booking ref."""
-    from decimal import Decimal
+    """Place a confirmed booking over the range; returns the booking ref.
 
-    from reservations.enums import BookingGuestRole, BookingStatus, PaymentMethod
-    from reservations.models import Booking, BookingGuest, QuotationLine
+    Built directly (not via BookingService) on purpose: the demo only needs an
+    *occupying* booking to trip the conflict guard, not the full
+    submit/auto-accept/payment-schedule lifecycle. The shared fabricator keeps
+    that shape (and the LEAD BookingGuest invariant) in one place; --reset tears
+    it down by relationship to the demo guest.
+    """
+    from reservations.factories import make_occupying_booking
 
-    # Built directly (not via BookingService) on purpose: the demo only needs an
-    # *occupying* booking to trip the conflict guard, not the full
-    # submit/auto-accept/payment-schedule lifecycle. This mirrors the `_booking`
-    # helper in test_ical_ingest.py — the established way the suite fabricates an
-    # occupying booking — and --reset tears it down by relationship.
-    quotation = _new_quotation()
-    guest = _demo_guest()
-    line = QuotationLine.objects.create(
-        quotation=quotation,
+    booking = make_occupying_booking(
         property=prop,
+        guest=_demo_guest(),
+        currency=_demo_currency(),
+        terms=_demo_terms(),
         date_from=date_from,
         date_to=date_to,
-        adults=2,
-        total=Decimal("1400.00"),
     )
-    with transaction.atomic():
-        booking = Booking.objects.create(
-            quotation_line=line,
-            guest=guest,
-            property=prop,
-            date_from=date_from,
-            date_to=date_to,
-            adults=2,
-            currency=_demo_currency(),
-            terms_version=_demo_terms(),
-            terms_accepted_at=timezone.now(),
-            payment_method=PaymentMethod.CARD.value,
-            status=BookingStatus.AWAITING_DEPOSIT.value,
-        )
-        # The LEAD BookingGuest invariant — a Booking is incomplete without it.
-        BookingGuest.objects.get_or_create(
-            booking=booking,
-            guest=guest,
-            defaults={"role": BookingGuestRole.LEAD.value},
-        )
     return booking.reference
 
 

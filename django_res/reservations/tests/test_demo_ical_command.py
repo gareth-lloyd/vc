@@ -62,6 +62,10 @@ def test_setup_add_feed_and_poll_imports_a_block() -> None:
     assert block.date_to == date(2026, 7, 5)
     assert "created=1" in output
     assert "BLOCKED (owner_block)" in output
+    # Inclusive nights, not the raw half-open [from, to): [07-01, 07-05) is 4
+    # nights ending the 4th, with the 5th free as a checkout/arrival day.
+    assert "2026-07-01 - 2026-07-04  (4 nights, free from 2026-07-05)" in output
+    assert "2026-07-05" in output and "OPEN — checkout / available" in output
 
 
 @respx.mock

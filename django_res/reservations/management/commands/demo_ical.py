@@ -264,26 +264,49 @@ class Command(BaseCommand):
         active = [b for b in blocks if b.status == OwnerBlockStatus.APPROVED.value]
         self.stdout.write(f"  imported blocks (APPROVED): {len(active)}")
         for b in active:
+            nights = _nights_between(b.date_from, b.date_to)
+            last_night = b.date_to - timedelta(days=1)
+            noun = "night" if nights == 1 else "nights"
+            # Inclusive nights, not the raw half-open [from, to): a block to the
+            # 5th sleeps through the 4th and frees the 5th for a new arrival.
             self.stdout.write(
-                f"    [{b.date_from} … {b.date_to})  key={b.idempotency_key}  «{b.notes}»"
+                f"    {b.date_from} - {last_night}  ({nights} {noun}, free from {b.date_to})  "
+                f"key={b.idempotency_key}  «{b.notes}»"
             )
 
         if active:
             window_from = min(b.date_from for b in active)
             window_to = max(b.date_to for b in active)
-            self._print_calendar(prop, window_from, window_to)
+            checkout_days = {b.date_to for b in active}
+            self._print_calendar(prop, window_from, window_to, checkout_days)
 
-    def _print_calendar(self, prop: Property, range_start: date, range_end: date) -> None:
+    def _print_calendar(
+        self,
+        prop: Property,
+        range_start: date,
+        range_end: date,
+        checkout_days: set[date],
+    ) -> None:
         from reservations.services.availability import AvailabilityService
 
         cells = AvailabilityService.calendar(prop, range_start, range_end)
         self.stdout.write(f"  availability {range_start} … {range_end}:")
         for day, cell in sorted(cells.items()):
-            mark = "OPEN" if cell.available else f"BLOCKED ({cell.reason})"
+            if cell.available:
+                # A block's exclusive date_to is its checkout morning: open and
+                # bookable as a new arrival, even though it bounds a block.
+                mark = "OPEN — checkout / available" if day in checkout_days else "OPEN"
+            else:
+                mark = f"BLOCKED ({cell.reason})"
             self.stdout.write(f"    {day:%Y-%m-%d} {day:%a}  {mark}")
 
 
 # --- module-level helpers (shared by actions, easy to unit-test) -----------
+
+
+def _nights_between(date_from: date, date_to: date) -> int:
+    """Nights in the half-open range [date_from, date_to) — date_to is checkout."""
+    return (date_to - date_from).days
 
 
 def _demo_property() -> Property:

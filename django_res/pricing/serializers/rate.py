@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from rest_framework import serializers
 
 from pricing.models import RateCard, RatePlan, RateRule
@@ -32,6 +34,43 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
             "notes",
         ]
         read_only_fields = ["id"]
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Mirror the RateRule DB check constraints as 400s instead of 500s.
+
+        On partial update a missing key falls back to the stored instance
+        value, so a PATCH can't combine with stored state into a row the
+        constraints would reject.
+        """
+
+        def effective(field: str) -> Any:
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field) if self.instance is not None else None
+
+        date_from, date_to = effective("date_from"), effective("date_to")
+        if date_from is not None and date_to is not None and date_from >= date_to:
+            raise serializers.ValidationError(
+                {"date_to": "date_to must be after date_from."},
+            )
+
+        min_party, max_party = effective("min_party"), effective("max_party")
+        if min_party is not None and max_party is not None and min_party > max_party:
+            raise serializers.ValidationError(
+                {"max_party": "max_party must be greater than or equal to min_party."},
+            )
+
+        nightly, weekly, is_poa = effective("nightly"), effective("weekly"), effective("is_poa")
+        has_price = nightly is not None or weekly is not None
+        if is_poa and has_price:
+            raise serializers.ValidationError(
+                {"is_poa": "A POA rule cannot also carry a nightly or weekly price."},
+            )
+        if not is_poa and not has_price:
+            raise serializers.ValidationError(
+                {"nightly": "Set a nightly or weekly price, or mark the rule POA."},
+            )
+        return attrs
 
 
 class RateCardSerializer(serializers.ModelSerializer[RateCard]):

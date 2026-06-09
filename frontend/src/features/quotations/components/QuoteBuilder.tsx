@@ -174,64 +174,61 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
 
   return (
     <div>
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <div className="min-w-0 space-y-6">
-          <section className="space-y-3">
-            <h3 className="text-foreground text-base font-semibold">
-              {t("builder.criteria.title")}
-            </h3>
-            <div className="space-y-2">
-              <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
-              <Select
-                value={currency}
-                onValueChange={(code) => void handleCurrencyChange(code)}
-                disabled={search.isPending}
-              >
-                <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeCurrencies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.code} — {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
-            </div>
-            <QuoteCriteriaForm
-              initial={initial}
-              isSubmitting={search.isPending}
-              disabled={!currency}
-              onSubmit={handleSearch}
-            />
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-foreground text-base font-semibold">
-              {t("builder.results.title")}
-            </h3>
-            <QuoteResultsList
-              options={search.data}
-              isLoading={search.isPending}
-              currency={currency}
-              stagedPropertyIds={stagedPropertyIds}
-              onAdd={handleAdd}
-            />
-          </section>
-        </div>
-
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          <QuoteCart
-            lines={staged}
-            currency={currency}
-            onUpdateLine={handleUpdateLine}
-            onRemove={handleRemove}
-            onSaveDraft={() => openSave("draft")}
-            onSendToGuest={() => openSave("send")}
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
+          <div className="space-y-2">
+            <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
+            <Select
+              value={currency}
+              onValueChange={(code) => void handleCurrencyChange(code)}
+              disabled={search.isPending}
+            >
+              <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {activeCurrencies.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
+          </div>
+          <QuoteCriteriaForm
+            initial={initial}
+            isSubmitting={search.isPending}
+            disabled={!currency}
+            onSubmit={handleSearch}
           />
-        </aside>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-foreground text-base font-semibold">{t("builder.results.title")}</h3>
+          <QuoteResultsList
+            options={search.data}
+            isLoading={search.isPending}
+            currency={currency}
+            stagedPropertyIds={stagedPropertyIds}
+            onAdd={handleAdd}
+          />
+        </section>
+
+        {/* Cart at the foot, full-width. The builder renders inside the enquiry
+            workspace's (already two-column) main pane, so a side-by-side cart
+            column gets squashed — a full-width final row keeps the operator's
+            scroll criteria → results → cart, ending on Save draft / Send to
+            guest. */}
+        <QuoteCart
+          lines={staged}
+          currency={currency}
+          onUpdateLine={handleUpdateLine}
+          onRemove={handleRemove}
+          onSaveDraft={() => openSave("draft")}
+          onSendToGuest={() => openSave("send")}
+        />
       </div>
 
       {/* Mount only while open so the dialog's currencies + current-terms

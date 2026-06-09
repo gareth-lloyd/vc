@@ -105,9 +105,18 @@ function propertyDisplayName(row: { display_name?: string | null; name: string }
   return row.display_name?.trim() ? row.display_name : row.name;
 }
 
+interface CandidatePage {
+  candidates: PropertyCandidate[];
+  // `next != null` on the DRF envelope — there are more candidates to price.
+  hasMore: boolean;
+  // Total candidates matching the criteria across all pages (DRF `count`).
+  totalMatched: number;
+}
+
 async function fetchCandidateProperties(
   filters: PropertySearchFilters,
-): Promise<PropertyCandidate[]> {
+  page: number,
+): Promise<CandidatePage> {
   // Active properties only — pricing engine will reject archived/draft anyway.
   const query: QueryParams = {
     status: "active",
@@ -117,14 +126,20 @@ async function fetchCandidateProperties(
     max_bedrooms: filters.max_bedrooms,
     min_guests: filters.min_guests,
     q: filters.q || undefined,
+    // Omit page=1 so the first request stays clean (mirrors `toQuery`).
+    page: page > 1 ? page : undefined,
   };
   const data = await apiGet<unknown>("/properties", { query });
-  const page = propertyListResponseSchema.parse(data);
-  return page.results.map((row) => ({
-    id: row.id,
-    name: propertyDisplayName(row),
-    slug: row.slug ?? null,
-  }));
+  const result = propertyListResponseSchema.parse(data);
+  return {
+    candidates: result.results.map((row) => ({
+      id: row.id,
+      name: propertyDisplayName(row),
+      slug: row.slug ?? null,
+    })),
+    hasMore: result.next != null,
+    totalMatched: result.count,
+  };
 }
 
 async function fetchCapacityUnsetCandidates(
@@ -154,31 +169,39 @@ async function fetchCapacityUnsetCandidates(
 export async function searchQuoteOptions(
   criteria: QuoteCriteriaInput,
   currency: string,
+  page = 1,
 ): Promise<QuoteSearchResult> {
   const searchFilters: PropertySearchFilters = {
     country: criteria.country || undefined,
     region: criteria.region || undefined,
     q: criteria.q || undefined,
   };
-  // The strict candidate query and the lenient capacity-hint query are
+  // The strict (paged) candidate query and the lenient capacity-hint query are
   // independent requests, so run them concurrently. The hint is best-effort:
   // its failure must never sink the priced-results path, so swallow its error.
-  // The hint only makes sense for a name search, so skip it when there's no `q`.
-  const [candidates, capacityUnset] = await Promise.all([
-    fetchCandidateProperties({
-      ...searchFilters,
-      min_bedrooms: criteria.min_bedrooms ?? undefined,
-      max_bedrooms: criteria.max_bedrooms ?? undefined,
-      min_guests: criteria.adults + criteria.children,
-    }),
-    criteria.q ? fetchCapacityUnsetCandidates(searchFilters).catch(() => []) : Promise.resolve([]),
+  // It describes the whole search (not a page) and is unpaged, so only compute
+  // it for the first page — and only for a name search.
+  const [candidatePage, capacityUnset] = await Promise.all([
+    fetchCandidateProperties(
+      {
+        ...searchFilters,
+        min_bedrooms: criteria.min_bedrooms ?? undefined,
+        max_bedrooms: criteria.max_bedrooms ?? undefined,
+        min_guests: criteria.adults + criteria.children,
+      },
+      page,
+    ),
+    page === 1 && criteria.q
+      ? fetchCapacityUnsetCandidates(searchFilters).catch(() => [])
+      : Promise.resolve([]),
   ]);
+  const { candidates, hasMore, totalMatched } = candidatePage;
 
   // A property that priced (so it's a strict candidate) isn't "hidden".
   const candidateIds = new Set(candidates.map((c) => c.id));
   const hiddenForCapacity = capacityUnset.filter((p) => !candidateIds.has(p.id));
 
-  if (candidates.length === 0) return { options: [], hiddenForCapacity };
+  if (candidates.length === 0) return { options: [], hiddenForCapacity, hasMore, totalMatched };
 
   const body = {
     currency,
@@ -211,8 +234,7 @@ export async function searchQuoteOptions(
       breakdown: q,
     });
   });
-
-  return { options, hiddenForCapacity };
+  return { options, hiddenForCapacity, hasMore, totalMatched };
 }
 
 export async function createQuotation(body: QuotationWriteInput): Promise<QuotationDetail> {

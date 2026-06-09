@@ -18,11 +18,25 @@ import { QuoteCart } from "./QuoteCart";
 import { SaveQuoteDialog } from "./SaveQuoteDialog";
 import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
-import type { QuotationDetail, QuoteCriteriaInput, QuoteOption, StagedLine } from "../schemas";
+import type {
+  HiddenCapacityProperty,
+  QuotationDetail,
+  QuoteCriteriaInput,
+  QuoteOption,
+  StagedLine,
+} from "../schemas";
 
 // Which commit the operator triggered — Save draft persists and completes;
 // Send to guest persists first, then opens the send-preview dialog.
 type SaveIntent = "draft" | "send";
+
+// Keep the first occurrence per property when appending a loaded page — a
+// belt-and-braces guard against the backend ever returning an overlapping row
+// across page boundaries.
+function dedupeById(options: QuoteOption[]): QuoteOption[] {
+  const seen = new Set<number>();
+  return options.filter((o) => (seen.has(o.property_id) ? false : seen.add(o.property_id)));
+}
 
 interface QuoteBuilderProps {
   enquiry: EnquiryDetail;
@@ -47,6 +61,21 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   const [saveIntent, setSaveIntent] = useState<SaveIntent>("draft");
   const [sentQuotation, setSentQuotation] = useState<QuotationDetail | null>(null);
   const [lastCriteria, setLastCriteria] = useState<QuoteCriteriaInput | null>(null);
+
+  // Accumulated priced options across loaded candidate pages. `undefined` is the
+  // idle state (no search run yet); `[]` means searched-but-empty. The results
+  // come from the search mutation but live here so Load-more can append rather
+  // than replace (the mutation's own `data` is replaced on every call).
+  const [results, setResults] = useState<QuoteOption[] | undefined>(undefined);
+  // Capacity-unset properties that matched the name search but couldn't be
+  // priced — a hint, computed once per fresh search (not per page).
+  const [hiddenForCapacity, setHiddenForCapacity] = useState<HiddenCapacityProperty[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalMatched, setTotalMatched] = useState(0);
+  const [searchPage, setSearchPage] = useState(1);
+  // Distinguishes the Load-more spinner from the full-results skeleton — both
+  // ride the same mutation's `isPending`.
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const search = useQuoteOptionsSearch();
   const currenciesQuery = useCurrencies({});
@@ -82,11 +111,30 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     [staged],
   );
 
-  // Returns whether the search succeeded so callers (currency change) can
-  // decide whether to act on stale state. Errors are caught + toasted here.
-  const runSearch = async (values: QuoteCriteriaInput, curr: string): Promise<boolean> => {
+  // Runs one page of the search. Page 1 replaces the results; page 2+ (Load
+  // more) concatenates. Returns whether it succeeded so callers (currency
+  // change) can decide whether to act on stale state. Errors are caught +
+  // toasted here; on failure existing results are left untouched so the
+  // Load-more button stays. `lastCriteria` is recorded only on success, so a
+  // failed re-search can't pair stale prices with the new form criteria.
+  const runSearch = async (
+    values: QuoteCriteriaInput,
+    curr: string,
+    page: number,
+  ): Promise<boolean> => {
+    const append = page > 1;
     try {
-      await search.mutateAsync({ criteria: values, currency: curr });
+      const result = await search.mutateAsync({ criteria: values, currency: curr, page });
+      setResults((prev) =>
+        append && prev ? dedupeById([...prev, ...result.options]) : result.options,
+      );
+      setHasMore(result.hasMore);
+      setTotalMatched(result.totalMatched);
+      setSearchPage(page);
+      setLastCriteria(values);
+      // The capacity hint describes the whole search; the API only computes it
+      // on page 1, so refresh it on a fresh search and keep it across Load-more.
+      if (!append) setHiddenForCapacity(result.hiddenForCapacity);
       return true;
     } catch (error) {
       const message =
@@ -99,8 +147,19 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   };
 
   const handleSearch = (values: QuoteCriteriaInput) => {
-    setLastCriteria(values);
-    void runSearch(values, currency);
+    void runSearch(values, currency, 1);
+  };
+
+  const handleLoadMore = async () => {
+    // Guard re-entrancy: the button disables on `isLoadingMore`, but only after
+    // a re-render — a fast double-click would otherwise fire the same page twice.
+    if (!lastCriteria || isLoadingMore || search.isPending) return;
+    setIsLoadingMore(true);
+    try {
+      await runSearch(lastCriteria, currency, searchPage + 1);
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   // Currency is a pricing input: the staged lines were priced in the old one,
@@ -113,7 +172,7 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     const prev = currency;
     setCurrency(code);
     if (!lastCriteria) return; // nothing searched yet → nothing to lose
-    const ok = await runSearch(lastCriteria, code);
+    const ok = await runSearch(lastCriteria, code, 1);
     if (ok) setStaged([]);
     else setCurrency(prev);
   };
@@ -208,12 +267,16 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.results.title")}</h3>
           <QuoteResultsList
-            options={search.data?.options}
-            hiddenForCapacity={search.data?.hiddenForCapacity}
-            isLoading={search.isPending}
+            options={results}
+            hiddenForCapacity={hiddenForCapacity}
+            isLoading={search.isPending && !isLoadingMore}
             currency={currency}
             stagedPropertyIds={stagedPropertyIds}
             onAdd={handleAdd}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            totalMatched={totalMatched}
+            onLoadMore={() => void handleLoadMore()}
           />
         </section>
 

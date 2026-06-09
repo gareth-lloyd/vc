@@ -16,6 +16,13 @@ interface Props {
   stagedPropertyIds: Set<number>;
   onAdd: (option: QuoteOption) => void;
   hiddenForCapacity?: HiddenCapacityProperty[];
+  // There are more candidate pages to price (DRF `next`).
+  hasMore: boolean;
+  // A Load-more page is being priced — disables the button, leaves results up.
+  isLoadingMore: boolean;
+  // Total candidates matching the criteria across all pages (DRF `count`).
+  totalMatched: number;
+  onLoadMore: () => void;
 }
 
 function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) {
@@ -50,6 +57,10 @@ export function QuoteResultsList({
   stagedPropertyIds,
   onAdd,
   hiddenForCapacity = [],
+  hasMore,
+  isLoadingMore,
+  totalMatched,
+  onLoadMore,
 }: Props) {
   const { t } = useTranslation("quotations");
 
@@ -166,6 +177,32 @@ export function QuoteResultsList({
           </div>
         </Collapsible>
       ) : null}
+
+      {/* Pagination is over name-sorted candidates, not available results — a
+          Load-more click prices the next page and may surface few (or no) new
+          available villas. The count line makes that legible rather than
+          looking like a no-op. */}
+      <div className="flex flex-col items-center gap-2 pt-1">
+        <p className="text-muted-foreground text-xs">
+          {t("builder.results.priced_count", {
+            available: available.length,
+            priced: options.length,
+            total: totalMatched,
+          })}
+        </p>
+        {hasMore ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={isLoadingMore}
+            onClick={onLoadMore}
+          >
+            {isLoadingMore ? t("builder.results.loading_more") : t("builder.results.load_more")}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
@@ -18,15 +18,27 @@ function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
 
 const noop = () => undefined;
 
-function renderList(options: QuoteOption[], hiddenForCapacity: HiddenCapacityProperty[] = []) {
+interface RenderOpts {
+  hiddenForCapacity?: HiddenCapacityProperty[];
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  totalMatched?: number;
+  onLoadMore?: () => void;
+}
+
+function renderList(options: QuoteOption[], opts: RenderOpts = {}) {
   return renderWithProviders(
     <QuoteResultsList
       options={options}
-      hiddenForCapacity={hiddenForCapacity}
+      hiddenForCapacity={opts.hiddenForCapacity ?? []}
       isLoading={false}
       currency="USD"
       stagedPropertyIds={new Set()}
       onAdd={noop}
+      hasMore={opts.hasMore ?? false}
+      isLoadingMore={opts.isLoadingMore ?? false}
+      totalMatched={opts.totalMatched ?? options.length}
+      onLoadMore={opts.onLoadMore ?? noop}
     />,
   );
 }
@@ -65,14 +77,16 @@ describe("QuoteResultsList", () => {
   });
 
   it("surfaces a capacity-hidden property as a hint with a link to its details", () => {
-    renderList([option()], [{ id: 307, name: "iCal Demo Villa", slug: "ical-demo" }]);
+    renderList([option()], {
+      hiddenForCapacity: [{ id: 307, name: "iCal Demo Villa", slug: "ical-demo" }],
+    });
     const link = screen.getByRole("link", { name: "iCal Demo Villa" });
     expect(link).toHaveAttribute("href", "/properties/ical-demo/details");
     expect(screen.getByText(/capacity isn't set/i)).toBeInTheDocument();
   });
 
   it("shows the capacity hint even when there are no priced options", () => {
-    renderList([], [{ id: 307, name: "iCal Demo Villa", slug: null }]);
+    renderList([], { hiddenForCapacity: [{ id: 307, name: "iCal Demo Villa", slug: null }] });
     // Falls back to the id in the link when the property has no slug.
     expect(screen.getByRole("link", { name: "iCal Demo Villa" })).toHaveAttribute(
       "href",
@@ -83,5 +97,41 @@ describe("QuoteResultsList", () => {
   it("renders no hint when nothing is hidden for capacity", () => {
     renderList([option()]);
     expect(screen.queryByText(/capacity isn't set/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the priced count so a no-new-available load isn't mysterious", () => {
+    renderList(
+      [option(), option({ property_id: 2, property_name: "Villa Azul", available: false })],
+      { totalMatched: 120 },
+    );
+    // 1 available, 2 priced this far, of 120 matching candidates.
+    expect(screen.getByText(/1 available · priced 2 of 120 matching villas/i)).toBeInTheDocument();
+  });
+
+  it("renders Load more only when there are more pages, and calls onLoadMore", async () => {
+    const onLoadMore = vi.fn();
+    const { rerender } = renderList([option()], { hasMore: false });
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+
+    rerender(
+      <QuoteResultsList
+        options={[option()]}
+        isLoading={false}
+        currency="USD"
+        stagedPropertyIds={new Set()}
+        onAdd={noop}
+        hasMore
+        isLoadingMore={false}
+        totalMatched={120}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /load more/i }));
+    expect(onLoadMore).toHaveBeenCalledOnce();
+  });
+
+  it("disables Load more while a page is being priced", () => {
+    renderList([option()], { hasMore: true, isLoadingMore: true });
+    expect(screen.getByRole("button", { name: /loading/i })).toBeDisabled();
   });
 });

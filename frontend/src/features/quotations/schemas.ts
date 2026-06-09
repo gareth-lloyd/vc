@@ -129,6 +129,11 @@ export interface HiddenCapacityProperty {
 export interface QuoteSearchResult {
   options: QuoteOption[];
   hiddenForCapacity: HiddenCapacityProperty[];
+  // Pagination over the strict candidate set (DRF `next`/`count`). The builder
+  // pages through candidates via "Load more"; `hiddenForCapacity` is computed
+  // once for the whole search (first page only).
+  hasMore: boolean;
+  totalMatched: number;
 }
 
 // One row in the operator-staged "lines so far" panel. Pre-save shape.

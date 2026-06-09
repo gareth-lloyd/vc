@@ -256,7 +256,10 @@
       "capacity_hint": {
         "intro": "Matched your search but hidden because capacity isn't set:",
         "suffix": "— set its capacity to quote it."
-      }
+      },
+      "priced_count": "{{available}} available · priced {{priced}} of {{total}} matching villas",
+      "load_more": "Load more",
+      "loading_more": "Loading…"
     },
     "cart": {
       "heading": "Quote cart ({{count}})",

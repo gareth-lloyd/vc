@@ -3,7 +3,6 @@ import { ActivityList } from "@/components/data/ActivityList";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FactList, FactRow } from "@/components/data/FactList";
 import { Section } from "@/components/data/Section";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -22,27 +20,18 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { SeasonFormDialog } from "../components/SeasonFormDialog";
+import { ActiveBadge, SeasonDetailPanel } from "../components/SeasonDetailPanel";
 import {
   useDeleteSeason,
   useDuplicateSeason,
   usePropertyDiscounts,
   usePropertyExtras,
   usePropertySeasons,
-  useSeasonDetail,
 } from "../hooks";
-import type { Discount, Extra, PropertyDetail, RateCard, RatePlan } from "../schemas";
+import type { Discount, Extra, PropertyDetail, RatePlan } from "../schemas";
 
 interface PricingContext {
   property: PropertyDetail;
-}
-
-function ActiveBadge({ isActive }: { isActive: boolean | undefined }) {
-  const { t } = useTranslation("properties");
-  return isActive ? (
-    <Badge variant="secondary">{t("pricing.active_badge")}</Badge>
-  ) : (
-    <Badge variant="outline">{t("pricing.inactive_badge")}</Badge>
-  );
 }
 
 function SeasonsList({
@@ -110,119 +99,6 @@ function SeasonsList({
         </li>
       ))}
     </ActivityList>
-  );
-}
-
-function RateCardBlock({ card }: { card: RateCard }) {
-  const { t } = useTranslation("properties");
-  const poa = t("pricing.rate_card.poa");
-  const dash = t("common.unset");
-  const placeholder = t("pricing.rate_card.nights_min_placeholder");
-  return (
-    <div className="border-border bg-card space-y-3 rounded-lg border p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h4 className="text-foreground text-sm font-semibold">{card.name}</h4>
-          {card.description ? (
-            <p className="text-muted-foreground text-xs">{card.description}</p>
-          ) : null}
-          <p className="text-muted-foreground mt-1 text-xs">
-            {card.min_nights != null || card.max_nights != null
-              ? t("pricing.rate_card.nights_range", {
-                  min: card.min_nights ?? placeholder,
-                  max: card.max_nights ?? placeholder,
-                })
-              : t("pricing.rate_card.any_length")}
-            {card.changeover_weekday != null
-              ? t("pricing.rate_card.changeover_weekday", { weekday: card.changeover_weekday })
-              : ""}
-          </p>
-        </div>
-        <ActiveBadge isActive={card.is_active} />
-      </div>
-      {card.rules.length === 0 ? (
-        <p className="text-muted-foreground text-xs italic">{t("pricing.rate_card.no_rules")}</p>
-      ) : (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-left">
-            <tr>
-              <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.dates")}</th>
-              <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.party")}</th>
-              <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.nightly")}</th>
-              <th className="py-1 font-medium">{t("pricing.rules_table.weekly")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {card.rules.map((rule) => (
-              <tr key={rule.id} className="border-border border-t">
-                <td className="py-1 pr-2">
-                  {formatDate(rule.date_from)} – {formatDate(rule.date_to)}
-                </td>
-                <td className="py-1 pr-2">
-                  {rule.min_party ?? placeholder}–{rule.max_party ?? placeholder}
-                </td>
-                <td className="py-1 pr-2">{rule.is_poa ? poa : (rule.nightly ?? dash)}</td>
-                <td className="py-1">{rule.is_poa ? poa : (rule.weekly ?? dash)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-function SeasonDetailPanel({ seasonId, onBack }: { seasonId: number; onBack: () => void }) {
-  const { t } = useTranslation("properties");
-  const detail = useSeasonDetail(seasonId);
-  const dash = t("common.unset");
-  return (
-    <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={onBack}>
-        {t("pricing.season_detail.back")}
-      </Button>
-      {detail.isLoading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : detail.isError || !detail.data ? (
-        <ErrorState
-          title={t("pricing.season_detail.error_title")}
-          description={t("pricing.season_detail.error_body")}
-          onRetry={() => detail.refetch()}
-        />
-      ) : (
-        <>
-          <FactList>
-            <FactRow label={t("pricing.season_detail.fields.name")} value={detail.data.name} />
-            <FactRow
-              label={t("pricing.season_detail.fields.currency")}
-              value={detail.data.currency_code ?? dash}
-            />
-            <FactRow
-              label={t("pricing.season_detail.fields.price_basis")}
-              value={detail.data.price_basis ?? dash}
-            />
-            <FactRow
-              label={t("pricing.season_detail.fields.effective")}
-              value={`${formatDate(detail.data.effective_from)} – ${formatDate(detail.data.effective_to)}`}
-            />
-            <FactRow
-              label={t("pricing.season_detail.fields.status")}
-              value={<ActiveBadge isActive={detail.data.is_active} />}
-            />
-          </FactList>
-          <div className="space-y-3">
-            <h3 className="text-foreground text-sm font-semibold">
-              {t("pricing.season_detail.rate_cards_heading")}
-            </h3>
-            {detail.data.cards.length === 0 ? (
-              <EmptyState title={t("pricing.season_detail.empty_rate_cards")} />
-            ) : (
-              detail.data.cards.map((card) => <RateCardBlock key={card.id} card={card} />)
-            )}
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
@@ -363,7 +239,11 @@ export function PricingTab() {
             onRetry={() => seasons.refetch()}
           />
         ) : selectedSeasonId != null ? (
-          <SeasonDetailPanel seasonId={selectedSeasonId} onBack={() => setSelectedSeasonId(null)} />
+          <SeasonDetailPanel
+            seasonId={selectedSeasonId}
+            onBack={() => setSelectedSeasonId(null)}
+            canWrite={canWrite}
+          />
         ) : (
           <SeasonsList
             seasons={seasons.data?.results ?? []}

@@ -10,6 +10,8 @@ import {
   createPropertyImage,
   createPropertyNearbyPlace,
   createPropertyRoom,
+  createRateCard,
+  createRateRule,
   createSeason,
   deleteChangeOverRule,
   deletePropertyBlock,
@@ -18,7 +20,10 @@ import {
   deletePropertyImage,
   deletePropertyNearbyPlace,
   deletePropertyRoom,
+  deleteRateCard,
+  deleteRateRule,
   deleteSeason,
+  duplicateRateCard,
   duplicateSeason,
   fetchChangeOverRules,
   fetchNearbyPlaceTypes,
@@ -55,6 +60,8 @@ import {
   updatePropertyNearbyPlace,
   updatePropertyRoom,
   updatePropertySettings,
+  updateRateCard,
+  updateRateRule,
   updateSeason,
   upsertPropertyDescription,
 } from "./api";
@@ -71,7 +78,9 @@ import type {
   PropertyNearbyPlaceWriteInput,
   PropertyRoomWriteInput,
   PropertySettingsWriteInput,
+  RateCardWriteInput,
   RatePlanWriteInput,
+  RateRuleWritePayload,
 } from "./schemas";
 
 export const PROPERTIES_PAGE_SIZE = 50;
@@ -245,6 +254,74 @@ export function useDuplicateSeason(propertyId: PropertyId) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
     },
+  });
+}
+
+function useSeasonDetailInvalidation(seasonId: SeasonId) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.properties.seasonDetail(seasonId),
+    });
+  };
+}
+
+export function useCreateRateCard(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: (input: RateCardWriteInput) => createRateCard(seasonId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateRateCard(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ cardId, input }: { cardId: number; input: Partial<RateCardWriteInput> }) =>
+      updateRateCard(cardId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteRateCard(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ cardId }: { cardId: number }) => deleteRateCard(cardId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDuplicateRateCard(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ cardId }: { cardId: number }) => duplicateRateCard(cardId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateRateRule(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ cardId, input }: { cardId: number; input: RateRuleWritePayload }) =>
+      createRateRule(cardId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateRateRule(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ ruleId, input }: { ruleId: number; input: Partial<RateRuleWritePayload> }) =>
+      updateRateRule(ruleId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteRateRule(seasonId: SeasonId) {
+  const invalidate = useSeasonDetailInvalidation(seasonId);
+  return useMutation({
+    mutationFn: ({ ruleId }: { ruleId: number }) => deleteRateRule(ruleId),
+    onSuccess: invalidate,
   });
 }
 

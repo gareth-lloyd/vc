@@ -311,9 +311,9 @@ Backed by `pricing.RatePlan` (= Season), `pricing.RateCard`, and `pricing.RateRu
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/seasons/{id}/rate-cards` | List rate cards in season |
-| POST | `/seasons/{id}/rate-cards` | Create (may include initial rules in body) |
+| POST | `/seasons/{id}/rate-cards` | Create (rules are read-only nested — add them via `/rate-cards/{id}/rules`) |
 | GET | `/rate-cards/{id}` | Detail (flat alias) — rules inlined by default |
-| PATCH | `/rate-cards/{id}` | Update card metadata; rules can be replaced via nested array if `?replace_rules=true` |
+| PATCH | `/rate-cards/{id}` | Update card metadata (rules are managed via the rule endpoints, not a nested array) |
 | DELETE | `/rate-cards/{id}` | Delete |
 | POST | `/rate-cards/{id}:duplicate` | Clone within or across seasons |
 
@@ -326,6 +326,11 @@ Granular CRUD for individual rules. Use these when adding a single occupancy ban
 | GET | `/rules/{id}` | Detail (flat alias) |
 | PATCH | `/rules/{id}` | Update |
 | DELETE | `/rules/{id}` | Delete |
+
+Rule writes are validated serializer-side against the `RateRule` DB
+constraints (date order, party band, price-or-POA, POA-excludes-price, and
+the same-priority overlap EXCLUDE — date and party ranges are inclusive), so
+violations return `400 field_errors` instead of a 500.
 
 #### Extras (cleaning fee, pet fee, heating, linen, extra-bed, etc.)
 Property-scoped catalogue of named charges added at quote time. Backed by `pricing.Extra` (see `04-pricing.md`). Each extra has a kind (`CLEANING`, `PET_FEE`, `HEATING`, `LINEN`, `EXTRA_BED`, `SERVICE_FEE`, `RESORT_FEE`, `OTHER`), a calc method, an amount, optional date and party-size windows, and an `is_mandatory` flag.

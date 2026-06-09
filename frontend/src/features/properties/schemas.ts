@@ -250,13 +250,92 @@ export const rateCardSchema = z.object({
   description: z.string().nullable().optional(),
   min_nights: z.number().nullable().optional(),
   max_nights: z.number().nullable().optional(),
-  changeover_weekday: z.number().nullable().optional(),
   sort_order: z.number().nullable().optional(),
   is_active: z.boolean().optional(),
   notes: z.string().nullable().optional(),
   rules: z.array(rateRuleSchema).optional().default([]),
 });
 export type RateCard = z.infer<typeof rateCardSchema>;
+
+export const rateCardWriteInputSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:errors.rate_card_name_required" })
+      .max(128),
+    description: z.string().trim().optional(),
+    min_nights: z
+      .number({ message: "properties:errors.rate_card_min_nights_required" })
+      .int()
+      .min(1, { message: "properties:errors.rate_card_min_nights_required" }),
+    max_nights: z.number().int().min(1).nullable().optional(),
+    is_active: z.boolean().optional(),
+    notes: z.string().trim().optional(),
+  })
+  .refine((v) => v.max_nights == null || v.max_nights >= v.min_nights, {
+    path: ["max_nights"],
+    message: "properties:errors.rate_card_max_nights_lt_min",
+  });
+export type RateCardWriteInput = z.infer<typeof rateCardWriteInputSchema>;
+
+const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+
+export const rateRuleWriteInputSchema = z
+  .object({
+    date_from: z.string().min(1, { message: "properties:errors.rule_date_from_required" }),
+    date_to: z.string().min(1, { message: "properties:errors.rule_date_to_required" }),
+    min_party: z
+      .number({ message: "properties:errors.rule_min_party_required" })
+      .int()
+      .min(1, { message: "properties:errors.rule_min_party_required" }),
+    max_party: z
+      .number({ message: "properties:errors.rule_max_party_required" })
+      .int()
+      .min(1, { message: "properties:errors.rule_max_party_required" }),
+    nightly: z.string().trim().optional(),
+    weekly: z.string().trim().optional(),
+    is_poa: z.boolean(),
+    notes: z.string().trim().optional(),
+  })
+  // DB constraint is strict (`date_from < date_to`), unlike seasons' `>=`.
+  .refine((v) => !v.date_from || !v.date_to || v.date_to > v.date_from, {
+    path: ["date_to"],
+    message: "properties:errors.rule_date_to_not_after_from",
+  })
+  .refine((v) => v.max_party >= v.min_party, {
+    path: ["max_party"],
+    message: "properties:errors.rule_max_party_lt_min",
+  })
+  // Prices only matter when the rule isn't POA — the submit payload nulls
+  // them under POA, so leftovers in the disabled inputs must not block a save.
+  .superRefine((v, ctx) => {
+    if (v.is_poa) return;
+    for (const key of ["nightly", "weekly"] as const) {
+      const value = v[key];
+      if (value && !MONEY_PATTERN.test(value)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: "properties:errors.rule_price_invalid",
+        });
+      }
+    }
+    if (!v.nightly && !v.weekly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["nightly"],
+        message: "properties:errors.rule_price_required",
+      });
+    }
+  });
+export type RateRuleWriteInput = z.infer<typeof rateRuleWriteInputSchema>;
+
+/** Wire shape: empty/POA-masked money fields are sent as explicit nulls. */
+export type RateRuleWritePayload = Omit<RateRuleWriteInput, "nightly" | "weekly"> & {
+  nightly: string | null;
+  weekly: string | null;
+};
 
 export const ratePlanSchema = z.object({
   id: z.number(),

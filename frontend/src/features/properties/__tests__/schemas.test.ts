@@ -7,6 +7,8 @@ import {
   propertyDetailSchema,
   propertyListItemSchema,
   propertyListResponseSchema,
+  rateCardWriteInputSchema,
+  rateRuleWriteInputSchema,
 } from "../schemas";
 
 describe("availabilityCellSchema", () => {
@@ -135,5 +137,85 @@ describe("propertyContactAssignmentWriteInputSchema", () => {
     expect(() =>
       propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role: "" }),
     ).toThrow();
+  });
+});
+
+describe("rateCardWriteInputSchema", () => {
+  const valid = { name: "Standard", min_nights: 3 };
+
+  it("accepts a minimal card", () => {
+    const result = rateCardWriteInputSchema.parse(valid);
+    expect(result.name).toBe("Standard");
+  });
+
+  it("requires a name", () => {
+    expect(() => rateCardWriteInputSchema.parse({ ...valid, name: "  " })).toThrow();
+  });
+
+  it("rejects max_nights below min_nights but allows null", () => {
+    expect(() => rateCardWriteInputSchema.parse({ ...valid, max_nights: 2 })).toThrow();
+    expect(rateCardWriteInputSchema.parse({ ...valid, max_nights: null }).max_nights).toBeNull();
+    expect(rateCardWriteInputSchema.parse({ ...valid, max_nights: 3 }).max_nights).toBe(3);
+  });
+});
+
+describe("rateRuleWriteInputSchema", () => {
+  const valid = {
+    date_from: "2026-06-01",
+    date_to: "2026-06-08",
+    min_party: 1,
+    max_party: 8,
+    nightly: "150.00",
+    weekly: "",
+    is_poa: false,
+  };
+
+  it("accepts a priced rule", () => {
+    expect(rateRuleWriteInputSchema.parse(valid).nightly).toBe("150.00");
+  });
+
+  it("requires date_from strictly before date_to", () => {
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, date_to: "2026-06-01" })).toThrow();
+    expect(rateRuleWriteInputSchema.parse({ ...valid, date_to: "2026-06-02" }).date_to).toBe(
+      "2026-06-02",
+    );
+  });
+
+  it("requires min_party <= max_party", () => {
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, min_party: 9 })).toThrow();
+    expect(rateRuleWriteInputSchema.parse({ ...valid, min_party: 8 }).min_party).toBe(8);
+  });
+
+  it("requires a price unless POA", () => {
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "" })).toThrow();
+    expect(
+      rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "", is_poa: true }).is_poa,
+    ).toBe(true);
+    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "900" }).weekly).toBe(
+      "900",
+    );
+  });
+
+  it("accepts a POA rule with lingering price text (payload nulls it at submit)", () => {
+    expect(rateRuleWriteInputSchema.parse({ ...valid, is_poa: true }).is_poa).toBe(true);
+    // Even malformed leftovers in the disabled inputs must not block a POA save.
+    expect(
+      rateRuleWriteInputSchema.parse({ ...valid, is_poa: true, nightly: "12.345" }).is_poa,
+    ).toBe(true);
+  });
+
+  it("treats whitespace-only prices as empty", () => {
+    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "900" }).nightly).toBe(
+      "",
+    );
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "" })).toThrow();
+  });
+
+  it("validates money strings", () => {
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "12,50" })).toThrow();
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "12.345" })).toThrow();
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "-5" })).toThrow();
+    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "1250" }).nightly).toBe("1250");
+    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "12.5" }).nightly).toBe("12.5");
   });
 });

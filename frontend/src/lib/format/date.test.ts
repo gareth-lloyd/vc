@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatNightRange } from "./date";
+import { addDaysIso, formatDate, formatNightRange } from "./date";
 
 describe("formatDate", () => {
   it("formats an ISO string", () => {
@@ -35,5 +35,16 @@ describe("formatNightRange", () => {
     expect(formatNightRange(new Date(2026, 11, 30), new Date(2027, 0, 1))).toBe(
       "30 Dec 2026 – 1 Jan 2027",
     );
+  });
+});
+
+describe("addDaysIso", () => {
+  it("adds a day within a month", () => {
+    expect(addDaysIso("2026-06-08", 1)).toBe("2026-06-09");
+  });
+
+  it("rolls over month and year boundaries", () => {
+    expect(addDaysIso("2026-07-31", 1)).toBe("2026-08-01");
+    expect(addDaysIso("2026-12-31", 1)).toBe("2027-01-01");
   });
 });

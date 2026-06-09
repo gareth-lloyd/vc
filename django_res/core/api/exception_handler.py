@@ -11,11 +11,36 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 from django.db.models.deletion import ProtectedError, RestrictedError
 from rest_framework import exceptions, status
 from rest_framework.response import Response
 
 from core.exceptions import DomainError
+
+logger = structlog.get_logger("api")
+
+
+def _log_handled_error(exc: Exception, context: dict[str, Any]) -> None:
+    """Log a 4xx we mapped from an otherwise-unhandled exception.
+
+    Only for errors we *convert to a Response* (domain conflicts, PROTECT/
+    RESTRICT) — DRF's own 4xx (ValidationError etc.) are routine client errors
+    not worth a line, and genuinely *unhandled* exceptions (→500) are already
+    logged as `request_failed` by django-structlog's RequestMiddleware via
+    `got_request_exception`; logging them here too would double every 500.
+    `request_id`/`user_id` are bound by that middleware, so they ride along.
+    """
+    request = context.get("request")
+    view = context.get("view")
+    logger.warning(
+        "api.request_failed",
+        exc_type=type(exc).__name__,
+        error=str(exc),
+        view=type(view).__name__ if view is not None else None,
+        method=getattr(request, "method", None),
+        path=getattr(request, "path", None),
+    )
 
 
 def _code_for(exc: Exception) -> str:
@@ -33,6 +58,7 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
     machine-readable identifier.
     """
     if isinstance(exc, DomainError):
+        _log_handled_error(exc, context)
         return Response(
             {
                 "code": getattr(exc, "code", "domain_error"),
@@ -49,6 +75,7 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
     # "state refused this operation" conflict, not a server fault. DRF leaves
     # these DB-layer exceptions unhandled (→ 500), so map them to 409 here.
     if isinstance(exc, (ProtectedError, RestrictedError)):
+        _log_handled_error(exc, context)
         return Response(
             {
                 "code": "protected",
@@ -65,6 +92,9 @@ def canonical_exception_handler(exc: Exception, context: dict[str, Any]) -> Resp
 
     response = drf_default_handler(exc, context)
     if response is None:
+        # DRF couldn't map it → this becomes a 500. Don't log here: Django fires
+        # `got_request_exception` on the re-raise and django-structlog's
+        # RequestMiddleware already logs it as `request_failed` (with traceback).
         return None
 
     data = response.data

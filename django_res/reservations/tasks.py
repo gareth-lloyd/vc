@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import structlog
 from celery import shared_task
 from django.utils import timezone
 
 from reservations.enums import BookingStatus
+
+logger = structlog.get_logger(__name__)
 
 
 @shared_task
@@ -25,7 +28,13 @@ def ingest_ical_feeds() -> list:
     """
     from reservations.services.ical_ingest import ICalIngestService
 
-    return ICalIngestService.run()
+    results = ICalIngestService.run()
+    logger.info(
+        "ical.ingest_completed",
+        properties=len(results),
+        skipped=sum(1 for r in results if getattr(r, "skipped", False)),
+    )
+    return results
 
 
 @shared_task
@@ -56,6 +65,7 @@ def expire_holds() -> list[int]:
         # the post-update state without an extra DB round-trip.
         hold.released_at = now
         hold_expired.send(sender=BookingHold, hold=hold)
+    logger.info("hold.expired_batch", released=len(ids))
     return ids
 
 
@@ -94,4 +104,6 @@ def auto_check_out() -> int:
     for booking in qs:
         booking.check_out()
         count += 1
+    if count:
+        logger.info("booking.auto_checked_out_batch", count=count)
     return count

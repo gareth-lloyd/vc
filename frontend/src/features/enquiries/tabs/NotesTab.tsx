@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { useTranslation } from "react-i18next";
-import { useOutletContext } from "react-router-dom";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -42,7 +41,6 @@ import {
   type EnquiryNoteKind,
   type EnquiryNoteWriteInput,
 } from "../schemas";
-import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 const ALL_VALUE = "__all__";
@@ -175,10 +173,9 @@ function NoteFormDialog({ enquiryId, open, onOpenChange }: NoteFormDialogProps) 
   );
 }
 
-export function NotesTab() {
+export function NotesTab({ enquiryId }: { enquiryId: number }) {
   const { t } = useTranslation("enquiries");
-  const { enquiry } = useOutletContext<EnquiryOutletContext>();
-  const notes = useEnquiryNotes(enquiry.id);
+  const notes = useEnquiryNotes(enquiryId);
   const hasRole = useHasReservationsRole();
 
   const [kindFilter, setKindFilter] = useState<EnquiryNoteKind | typeof ALL_VALUE>(ALL_VALUE);
@@ -275,7 +272,7 @@ export function NotesTab() {
       )}
 
       {createOpen && (
-        <NoteFormDialog enquiryId={enquiry.id} open={createOpen} onOpenChange={setCreateOpen} />
+        <NoteFormDialog enquiryId={enquiryId} open={createOpen} onOpenChange={setCreateOpen} />
       )}
     </div>
   );

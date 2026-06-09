@@ -1,20 +1,18 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useOutletContext } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
-import { EnquiryQuoteStack } from "../components/EnquiryQuoteStack";
 import {
   contactMethodLabel,
   enquiryRequestTypeLabel,
   enquirySourceLabel,
   enquiryStatusLabel,
+  type EnquiryDetail,
 } from "../schemas";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -26,9 +24,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function DetailsTab() {
+export function DetailsTab({ enquiry }: { enquiry: EnquiryDetail }) {
   const { t } = useTranslation("enquiries");
-  const { enquiry } = useOutletContext<EnquiryOutletContext>();
   const hasRole = useHasReservationsRole();
   const [editOpen, setEditOpen] = useState(false);
 
@@ -88,10 +85,6 @@ export function DetailsTab() {
             value={formatDate(enquiry.created_at ?? null)}
           />
         </FactList>
-      </Section>
-
-      <Section title={t("quotes_section.heading")}>
-        <EnquiryQuoteStack quotations={enquiry.quotations} />
       </Section>
 
       <Section title={t("details_tab.sections.guest")}>

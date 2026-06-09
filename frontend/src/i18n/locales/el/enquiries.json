@@ -156,7 +156,10 @@
     "options_one": "{{count}} επιλογή",
     "options_other": "{{count}} επιλογές",
     "no_price": "Χωρίς τιμή",
-    "view_aria": "Προβολή προσφοράς {{reference}}"
+    "view_aria": "Προβολή προσφοράς {{reference}}",
+    "build_cta": "Δημιουργία προσφοράς",
+    "build_another_cta": "Δημιουργία νέας προσφοράς",
+    "hide_builder": "Απόκρυψη σύνθεσης"
   },
   "activity": {
     "load_failed_title": "Δεν ήταν δυνατή η φόρτωση δραστηριότητας",

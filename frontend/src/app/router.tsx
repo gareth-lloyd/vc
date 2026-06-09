@@ -249,30 +249,21 @@ export const router = createBrowserRouter([
                           const m = await import("@/features/enquiries/EnquiryDetailLayout");
                           return { Component: m.EnquiryDetailLayout };
                         },
-                        children: [
-                          { index: true, element: <Navigate to="details" replace /> },
-                          {
-                            path: "details",
-                            lazy: async () => {
-                              const m = await import("@/features/enquiries/tabs/DetailsTab");
-                              return { Component: m.DetailsTab };
-                            },
-                          },
-                          {
-                            path: "activity",
-                            lazy: async () => {
-                              const m = await import("@/features/enquiries/tabs/ActivityTab");
-                              return { Component: m.ActivityTab };
-                            },
-                          },
-                          {
-                            path: "notes",
-                            lazy: async () => {
-                              const m = await import("@/features/enquiries/tabs/NotesTab");
-                              return { Component: m.NotesTab };
-                            },
-                          },
-                        ],
+                      },
+                      // The Details/Activity/Notes tabs collapsed into the single
+                      // enquiry workspace; redirect the old deep links (bookmarks,
+                      // activity-timeline references) to the unified page.
+                      {
+                        path: "/enquiries/:id/details",
+                        element: <Navigate to=".." relative="path" replace />,
+                      },
+                      {
+                        path: "/enquiries/:id/activity",
+                        element: <Navigate to=".." relative="path" replace />,
+                      },
+                      {
+                        path: "/enquiries/:id/notes",
+                        element: <Navigate to=".." relative="path" replace />,
                       },
                       {
                         path: "/quotations",

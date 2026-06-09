@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -9,25 +10,20 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/feedback/ActionButton";
-import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useEnquiry, useReopenEnquiry } from "./hooks";
 import { AssignDialog } from "./components/AssignDialog";
 import { CloseDialog } from "./components/CloseDialog";
+import { EnquiryQuoteStack } from "./components/EnquiryQuoteStack";
+import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
+import { DetailsTab } from "./tabs/DetailsTab";
+import { ActivityTab } from "./tabs/ActivityTab";
+import { NotesTab } from "./tabs/NotesTab";
 import { enquirySourceLabel, enquiryStatusLabel, type EnquiryDetail } from "./schemas";
-
-export const ENQUIRY_TABS = [
-  { slug: "details", labelKey: "tabs.details" },
-  { slug: "activity", labelKey: "tabs.activity" },
-  { slug: "notes", labelKey: "tabs.notes" },
-] as const;
-
-export interface EnquiryOutletContext {
-  enquiry: EnquiryDetail;
-}
 
 type DialogKind = "assign" | "close" | "reopen" | null;
 
@@ -44,16 +40,11 @@ interface EnquiryActionsProps {
 
 function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   const { t } = useTranslation("enquiries");
-  const navigate = useNavigate();
   const hasRole = useHasReservationsRole();
 
   const isClosed = enquiry.status === "lost";
   const isFinal = enquiry.status === "converted" || enquiry.status === "lost";
   const roleRequired = t("common:errors.reservations_role_required");
-
-  const handleConvertClick = () => {
-    navigate(`/quotations/new?enquiry=${enquiry.id}`);
-  };
 
   return (
     <div className="space-y-2">
@@ -64,13 +55,6 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
         label={t("detail.actions.assign")}
         onClick={() => onOpen("assign")}
         disableReason={hasRole ? null : roleRequired}
-      />
-      <ActionButton
-        label={t("detail.actions.convert")}
-        onClick={handleConvertClick}
-        disableReason={
-          !hasRole ? roleRequired : isFinal ? t("detail.actions.convert_disabled_state") : null
-        }
       />
       <ActionButton
         label={t("detail.actions.close")}
@@ -90,12 +74,13 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   );
 }
 
-interface RailProps {
+function RailSummary({
+  enquiry,
+  onOpenDialog,
+}: {
   enquiry: EnquiryDetail;
   onOpenDialog: (dialog: DialogKind) => void;
-}
-
-function RailSummary({ enquiry, onOpenDialog }: RailProps) {
+}) {
   const { t } = useTranslation("enquiries");
   const partyText =
     enquiry.children > 0
@@ -144,6 +129,61 @@ function RailSummary({ enquiry, onOpenDialog }: RailProps) {
       </FactList>
       <EnquiryActions enquiry={enquiry} onOpen={onOpenDialog} />
     </div>
+  );
+}
+
+// Collapsible rail panel. Children mount only while open, so the activity /
+// notes queries inside them stay dormant until the operator expands the panel
+// (no eager fetch of timelines the operator may never look at).
+function RailPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-border border-t pt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="text-foreground flex w-full items-center justify-between text-sm font-semibold"
+      >
+        <span>{title}</span>
+        {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+      </button>
+      {open ? <div className="mt-2">{children}</div> : null}
+    </div>
+  );
+}
+
+// The quotes spine block: the existing quote-stack plus a disclosure that
+// expands the inline builder. Defaults open only when there are no quotes yet
+// — an enquiry that already has quotes opens compact (one click to add more).
+function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
+  const { t } = useTranslation("enquiries");
+  const [building, setBuilding] = useState(enquiry.quotations.length === 0);
+  const hasRole = useHasReservationsRole();
+
+  const toggleLabel = building
+    ? t("quotes_section.hide_builder")
+    : enquiry.quotations.length > 0
+      ? t("quotes_section.build_another_cta")
+      : t("quotes_section.build_cta");
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-foreground text-lg font-semibold">{t("quotes_section.heading")}</h2>
+      <EnquiryQuoteStack quotations={enquiry.quotations} />
+      {hasRole ? (
+        <div className="space-y-4">
+          <Button variant="outline" size="sm" onClick={() => setBuilding((v) => !v)}>
+            {toggleLabel}
+          </Button>
+          {building ? (
+            // Collapse back to the stack once a quote is committed — the new
+            // quote appears in the list above via the enquiry-detail refetch.
+            <QuoteBuilder enquiry={enquiry} onComplete={() => setBuilding(false)} />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -202,29 +242,23 @@ export function EnquiryDetailLayout() {
         ]}
       />
 
-      <div className="border-border border-b px-6">
-        <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
-          {ENQUIRY_TABS.map((tab) => (
-            <NavLink
-              key={tab.slug}
-              to={tab.slug}
-              className={({ isActive }) =>
-                cn(
-                  "border-b-2 px-3 py-2 text-sm font-medium",
-                  isActive
-                    ? "border-foreground text-foreground"
-                    : "text-muted-foreground hover:text-foreground border-transparent",
-                )
-              }
-            >
-              {t(tab.labelKey)}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
-
-      <TwoColumn rightRail={<RailSummary enquiry={enquiry} onOpenDialog={setDialog} />}>
-        <Outlet context={{ enquiry } satisfies EnquiryOutletContext} />
+      <TwoColumn
+        rightRail={
+          <div className="space-y-4">
+            <RailSummary enquiry={enquiry} onOpenDialog={setDialog} />
+            <RailPanel title={t("tabs.activity")}>
+              <ActivityTab enquiryId={enquiry.id} />
+            </RailPanel>
+            <RailPanel title={t("tabs.notes")}>
+              <NotesTab enquiryId={enquiry.id} />
+            </RailPanel>
+          </div>
+        }
+      >
+        <div className="space-y-10">
+          <QuotesSection enquiry={enquiry} />
+          <DetailsTab enquiry={enquiry} />
+        </div>
       </TwoColumn>
 
       {dialog === "assign" && (

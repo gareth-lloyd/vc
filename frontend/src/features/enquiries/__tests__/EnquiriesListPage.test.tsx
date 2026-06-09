@@ -60,7 +60,7 @@ function setup(route = "/enquiries") {
   return renderWithProviders(
     <Routes>
       <Route path="/enquiries" element={<EnquiriesListPage />} />
-      <Route path="/enquiries/:id/details" element={<div>Detail page</div>} />
+      <Route path="/enquiries/:id" element={<div>Detail page</div>} />
     </Routes>,
     { route },
   );
@@ -155,5 +155,19 @@ describe("EnquiriesListPage", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: /kanban/i }));
     expect(await screen.findByTestId("kanban-column-new")).toBeInTheDocument();
+  });
+
+  it("opens the unified workspace (/enquiries/:id) on a Kanban card click", async () => {
+    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    setup();
+    await userEvent.click(await screen.findByText("Ada Lovelace"));
+    expect(await screen.findByText("Detail page")).toBeInTheDocument();
+  });
+
+  it("opens the unified workspace (/enquiries/:id) on a list-view row click", async () => {
+    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    setup("/enquiries?view=list");
+    await userEvent.click(await screen.findByText("E-AAA-001"));
+    expect(await screen.findByText("Detail page")).toBeInTheDocument();
   });
 });

@@ -69,6 +69,15 @@ describe("QuotationDetailLayout", () => {
     expect(await screen.findByText(/no lines yet/i)).toBeInTheDocument();
   });
 
+  it("breadcrumb links back to the Quotes tab under Enquiries", async () => {
+    setup();
+    await waitFor(() => expect(screen.getAllByText("Q-2026-007").length).toBeGreaterThan(0));
+    expect(screen.getByRole("link", { name: "Quotes" })).toHaveAttribute(
+      "href",
+      "/enquiries/quotes",
+    );
+  });
+
   it("renders line rows when the lines endpoint returns data", async () => {
     server.resetHandlers();
     server.use(

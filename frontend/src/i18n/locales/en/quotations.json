@@ -220,16 +220,7 @@
     }
   },
   "builder": {
-    "title": "New quotation",
-    "subtitle": "From enquiry {{reference}}",
-    "breadcrumb_self": "New",
     "errors": {
-      "no_enquiry_title": "An enquiry is required",
-      "no_enquiry_description": "Start the quote builder from an enquiry's \"Convert to quote\" action.",
-      "enquiry_not_found": "Enquiry not found",
-      "enquiry_not_found_description": "It may have been deleted or you may not have access.",
-      "enquiry_load_failed": "Couldn't load this enquiry",
-      "enquiry_load_failed_description": "Try again or head back to the list.",
       "search_failed": "Couldn't search options. Try again."
     },
     "criteria": {

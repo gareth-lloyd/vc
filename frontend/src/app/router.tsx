@@ -274,21 +274,17 @@ export const router = createBrowserRouter([
                         path: "/enquiries/:id/notes",
                         element: <Navigate to=".." relative="path" replace />,
                       },
+                      // Standalone Quotes IA removed — the pipeline now lives
+                      // under the Enquiries "Quotes" tab and quote creation is
+                      // inline in the enquiry workspace. Redirect old bookmarks;
+                      // `/quotations/:id` stays a live deep-link target.
                       {
-                        // Legacy top-level path — same table as the Enquiries
-                        // "Quotes" tab; becomes a redirect in the IA cut (5b).
                         path: "/quotations",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationsTab");
-                          return { Component: m.QuotationsTab };
-                        },
+                        element: <Navigate to="/enquiries/quotes" replace />,
                       },
                       {
                         path: "/quotations/new",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationBuilderPage");
-                          return { Component: m.QuotationBuilderPage };
-                        },
+                        element: <Navigate to="/enquiries/quotes" replace />,
                       },
                       {
                         path: "/quotations/:id",

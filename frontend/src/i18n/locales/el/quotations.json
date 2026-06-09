@@ -181,16 +181,7 @@
     }
   },
   "builder": {
-    "title": "Νέα προσφορά",
-    "subtitle": "Από το αίτημα {{reference}}",
-    "breadcrumb_self": "Νέα",
     "errors": {
-      "no_enquiry_title": "Απαιτείται αίτημα",
-      "no_enquiry_description": "Ξεκινήστε τον δημιουργό προσφορών από την ενέργεια «Μετατροπή σε προσφορά» ενός αιτήματος.",
-      "enquiry_not_found": "Το αίτημα δεν βρέθηκε",
-      "enquiry_not_found_description": "Μπορεί να έχει διαγραφεί ή να μην έχετε πρόσβαση.",
-      "enquiry_load_failed": "Δεν ήταν δυνατή η φόρτωση αυτού του αιτήματος",
-      "enquiry_load_failed_description": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
       "search_failed": "Δεν ήταν δυνατή η αναζήτηση επιλογών. Δοκιμάστε ξανά."
     },
     "criteria": {

@@ -391,7 +391,7 @@ export function QuotationDetailLayout() {
         title={quotation.reference}
         breadcrumbs={[
           { label: t("detail.breadcrumb_root") },
-          { label: t("detail.breadcrumb_list"), to: "/quotations" },
+          { label: t("common:nav.quotes"), to: "/enquiries/quotes" },
           { label: quotation.reference },
         ]}
       />

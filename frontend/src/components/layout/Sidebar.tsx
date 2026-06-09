@@ -5,7 +5,6 @@ import {
   CalendarCheck,
   CalendarOff,
   ConciergeBell,
-  FileText,
   Globe,
   Home,
   Mail,
@@ -84,12 +83,6 @@ export function Sidebar() {
       label: t("nav.enquiries"),
       icon: MessageSquare,
       prefetch: () => import("@/features/enquiries/EnquiriesListPage"),
-    },
-    {
-      to: "/quotations",
-      label: t("nav.quotes"),
-      icon: FileText,
-      prefetch: () => import("@/features/quotations/QuotationsTab"),
     },
     {
       to: "/bookings",

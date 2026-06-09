@@ -169,7 +169,7 @@ export function EnquiriesListPage() {
   const statusOptions = useMemo(() => enquiryStatusOptions(), []);
 
   const handleRowClick = (row: EnquiryListItem) => {
-    navigate(`/enquiries/${row.id}/details`);
+    navigate(`/enquiries/${row.id}`);
   };
 
   const handleMove = (itemId: string, _fromColId: string, toColId: string) => {
@@ -301,10 +301,7 @@ export function EnquiriesListPage() {
               columns={groupIntoColumns(query.data?.results ?? [], enquiryStatusLabel)}
               getItemId={(item) => String(item.id)}
               renderCard={(item) => (
-                <EnquiryCard
-                  enquiry={item}
-                  onClick={() => navigate(`/enquiries/${item.id}/details`)}
-                />
+                <EnquiryCard enquiry={item} onClick={() => navigate(`/enquiries/${item.id}`)} />
               )}
               onMoveItem={handleMove}
             />

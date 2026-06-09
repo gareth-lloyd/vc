@@ -35,7 +35,7 @@ export function RecentEnquiriesList() {
             {data.results.slice(0, MAX_ROWS).map((row) => (
               <li key={row.id}>
                 <Link
-                  to={`/enquiries/${row.id}/details`}
+                  to={`/enquiries/${row.id}`}
                   className="hover:bg-muted/40 flex items-center justify-between gap-3 px-5 py-3"
                 >
                   <div className="min-w-0">

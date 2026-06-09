@@ -20,6 +20,7 @@ from properties.models import (
     PropertyDescription,
     PropertyImage,
 )
+from properties.services.location import ensure_property_location
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -101,6 +102,10 @@ class PropertyLifecycleService:
                 sort_order=image.sort_order,
                 is_active=image.is_active,
             )
+        # Provision a default location so the clone matches API-created
+        # properties (which provision on create) rather than relying on a later
+        # lazy heal.
+        ensure_property_location(clone)
         return clone
 
     # ------------------------------------------------------------------

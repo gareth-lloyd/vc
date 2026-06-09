@@ -476,9 +476,8 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental: z.number().int().min(0).nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
-  // Omitted from the PATCH when blank (a property with no location can't take
-  // a timezone); a concrete value writes through to the location.
-  timezone: z.string().optional(),
+  // `timezone` is read-only on settings (surfaced for context in the response);
+  // it is written via the property location endpoint, not here.
 });
 export type PropertySettingsWriteInput = z.infer<typeof propertySettingsWriteInputSchema>;
 
@@ -541,6 +540,39 @@ export const propertyFinanceWriteInputSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 export type PropertyFinanceWriteInput = z.infer<typeof propertyFinanceWriteInputSchema>;
+
+export const propertyLocationSchema = z.object({
+  property: z.number(),
+  address_line_1: z.string().nullable().optional(),
+  address_line_2: z.string().nullable().optional(),
+  address_line_3: z.string().nullable().optional(),
+  post_code: z.string().nullable().optional(),
+  locality_town: z.string().nullable().optional(),
+  locality_region: z.string().nullable().optional(),
+  // Non-nullable FK on the model; always present on read.
+  country: z.number(),
+  // Decimals are serialized as strings by DRF; null when unset.
+  latitude: z.string().nullable().optional(),
+  longitude: z.string().nullable().optional(),
+  timezone: z.string(),
+});
+export type PropertyLocation = z.infer<typeof propertyLocationSchema>;
+
+export const propertyLocationWriteInputSchema = z.object({
+  address_line_1: z.string().nullable().optional(),
+  address_line_2: z.string().nullable().optional(),
+  address_line_3: z.string().nullable().optional(),
+  post_code: z.string().nullable().optional(),
+  locality_town: z.string().nullable().optional(),
+  locality_region: z.string().nullable().optional(),
+  country: z.number().int(),
+  // Coordinate ranges are enforced by the backend (surfaced as inline field
+  // errors); blank inputs are sent as null to clear the value.
+  latitude: z.string().nullable().optional(),
+  longitude: z.string().nullable().optional(),
+  timezone: z.string(),
+});
+export type PropertyLocationWriteInput = z.infer<typeof propertyLocationWriteInputSchema>;
 
 export const propertyContactAssignmentWriteInputSchema = z.object({
   contact: z.number().int(),

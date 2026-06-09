@@ -35,7 +35,7 @@ from properties.models.geo import Region
 from properties.models.location import PropertyLocation
 from properties.models.property import Property, PropertyCategory, PropertyGroup
 from properties.models.settings import GroupSettings, PropertySettings
-from properties.timezones import representative_timezone
+from properties.services.location import location_defaults
 
 
 class PropertyGroupLoader(BaseLoader):
@@ -205,18 +205,16 @@ class PropertyLoader(BaseLoader):
         return self._sentinel_group_cache
 
     def _write_location(self, prop: Property, row: dict[str, Any]) -> None:
-        country = prop.region.country
         PropertyLocation.objects.update_or_create(
             property=prop,
             defaults={
+                **location_defaults(prop),
                 "address_line_1": (row.get("AddressLine1") or "")[:255],
                 "address_line_2": (row.get("AddressLine2") or "")[:255],
                 "address_line_3": (row.get("AddressLine3") or "")[:255],
                 "post_code": (row.get("PostCode") or "")[:32],
                 "locality_town": (row.get("LocalityTown") or "")[:128],
                 "locality_region": (row.get("LocalityRegion") or "")[:128],
-                "country": country,
-                "timezone": representative_timezone(country.iso2),
                 "latitude": _decimal_or_none(row.get("Latitude")),
                 "longitude": _decimal_or_none(row.get("Longitude")),
             },

@@ -27,6 +27,7 @@ from properties.views import (
     PropertyImageListCreateView,
     PropertyImageReorderView,
     PropertyImageSetHeroView,
+    PropertyLocationView,
     PropertyNearbyPlaceDetailView,
     PropertyNearbyPlaceListCreateView,
     PropertyPriceDisplayView,
@@ -168,6 +169,11 @@ _property_subresources: list[URLPattern] = [
         "properties/<int:property_id>/finance",
         PropertyFinanceView.as_view(),
         name="property-finance",
+    ),
+    path(
+        "properties/<int:property_id>/location",
+        PropertyLocationView.as_view(),
+        name="property-location",
     ),
     path(
         "properties/<int:property_id>/price-display",

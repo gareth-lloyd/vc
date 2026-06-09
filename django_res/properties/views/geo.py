@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Any
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, viewsets
 
-from core.api import AllowAnyReadStaffWrite, IsReservationsWriter
+from core.api import (
+    AllowAnyReadStaffWrite,
+    ConfigurablePageSizePagination,
+    IsReservationsWriter,
+)
 from properties.models import (
     Country,
     NearbyPlaceType,
@@ -30,6 +34,9 @@ class CountryViewSet(viewsets.ModelViewSet):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
     permission_classes = [AllowAnyReadStaffWrite]
+    # The full ~250-row list is needed in one request to populate country
+    # `<Select>`s (e.g. the property location form); allow a client page size.
+    pagination_class = ConfigurablePageSizePagination
     lookup_field = "iso2"
 
 

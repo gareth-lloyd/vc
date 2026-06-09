@@ -48,12 +48,14 @@ def test_get_settings_timezone_null_when_no_location(
 
 
 @pytest.mark.django_db
-def test_patch_settings_updates_timezone(
+def test_patch_settings_ignores_timezone_write(
     api_client: APIClient,
     staff: User,
     property_: Property,
     location: PropertyLocation,
 ) -> None:
+    # `timezone` is read-only on settings — the location endpoint is the sole
+    # writer. A timezone in the settings PATCH is silently ignored, not applied.
     api_client.force_login(staff)
     response = api_client.patch(
         f"/api/v1/properties/{property_.pk}/settings",
@@ -62,7 +64,8 @@ def test_patch_settings_updates_timezone(
     )
     assert response.status_code == 200, response.content
     location.refresh_from_db()
-    assert location.timezone == "Europe/Rome"
+    assert location.timezone == "Europe/London"
+    assert response.json()["timezone"] == "Europe/London"
 
 
 @pytest.mark.django_db
@@ -87,24 +90,6 @@ def test_get_settings_query_count_pins_location_join(
 
 
 @pytest.mark.django_db
-def test_patch_settings_rejects_invalid_timezone(
-    api_client: APIClient,
-    staff: User,
-    property_: Property,
-    location: PropertyLocation,
-) -> None:
-    api_client.force_login(staff)
-    response = api_client.patch(
-        f"/api/v1/properties/{property_.pk}/settings",
-        data={"timezone": "Mars/Phobos"},
-        format="json",
-    )
-    assert response.status_code == 400, response.content
-    location.refresh_from_db()
-    assert location.timezone == "Europe/London"
-
-
-@pytest.mark.django_db
 def test_patch_settings_other_field_leaves_timezone(
     api_client: APIClient,
     staff: User,
@@ -120,16 +105,3 @@ def test_patch_settings_other_field_leaves_timezone(
     assert response.status_code == 200, response.content
     location.refresh_from_db()
     assert location.timezone == "Europe/London"
-
-
-@pytest.mark.django_db
-def test_patch_timezone_without_location_is_rejected(
-    api_client: APIClient, staff: User, property_: Property
-) -> None:
-    api_client.force_login(staff)
-    response = api_client.patch(
-        f"/api/v1/properties/{property_.pk}/settings",
-        data={"timezone": "Europe/Rome"},
-        format="json",
-    )
-    assert response.status_code == 400, response.content

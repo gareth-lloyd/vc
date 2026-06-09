@@ -11,6 +11,7 @@ from properties.models import (
     Property,
     PropertyCategory,
     PropertyGroup,
+    PropertyLocation,
     Region,
 )
 
@@ -61,6 +62,11 @@ def test_create_property_as_staff(
     payload = response.json()
     assert payload["slug"] == "fresh-villa"
     assert payload["status"] == PropertyStatus.DRAFT.value
+    # A default location is provisioned on create so its timezone/address are
+    # immediately editable (consistent with the loader/factory).
+    location = PropertyLocation.objects.get(property_id=payload["id"])
+    assert location.country == region.country
+    assert location.timezone == "Europe/London"
 
 
 @pytest.mark.django_db
@@ -158,6 +164,8 @@ def test_duplicate_creates_new_property(
     payload = response.json()
     assert payload["id"] != property_.pk
     assert payload["slug"] != property_.slug
+    # The clone is provisioned with a location, like API-created properties.
+    assert PropertyLocation.objects.filter(property_id=payload["id"]).exists()
 
 
 @pytest.mark.django_db

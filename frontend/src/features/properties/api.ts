@@ -18,6 +18,7 @@ import {
   propertyImageSchema,
   propertyImagesResponseSchema,
   propertyListResponseSchema,
+  propertyLocationSchema,
   propertyNearbyPlaceSchema,
   propertyNearbyPlacesResponseSchema,
   propertyRoomSchema,
@@ -48,6 +49,8 @@ import {
   type PropertyImage,
   type PropertyImageWriteInput,
   type PropertyListItem,
+  type PropertyLocation,
+  type PropertyLocationWriteInput,
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
   type PropertyRoom,
@@ -411,6 +414,19 @@ export async function updatePropertyFinance(
 ): Promise<PropertyFinance> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/finance`, body);
   return propertyFinanceSchema.parse(data);
+}
+
+export async function fetchPropertyLocation(propertyId: number): Promise<PropertyLocation> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/location`);
+  return propertyLocationSchema.parse(data);
+}
+
+export async function updatePropertyLocation(
+  propertyId: number,
+  body: PropertyLocationWriteInput,
+): Promise<PropertyLocation> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/location`, body);
+  return propertyLocationSchema.parse(data);
 }
 
 export async function updatePropertyFeatures(

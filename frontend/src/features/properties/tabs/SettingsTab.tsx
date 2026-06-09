@@ -31,20 +31,26 @@ import {
   useActivateProperty,
   useArchiveProperty,
   usePropertyFinance,
+  usePropertyLocation,
   usePropertySettings,
   useRestoreProperty,
   useUpdatePropertyFinance,
+  useUpdatePropertyLocation,
   useUpdatePropertySettings,
 } from "../hooks";
+import { CountryPicker } from "../components/CountryPicker";
 import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
   PROPERTY_PRICE_BASES,
   propertyFinanceWriteInputSchema,
+  propertyLocationWriteInputSchema,
   propertySettingsWriteInputSchema,
   type PropertyDetail,
   type PropertyFinance,
   type PropertyFinanceWriteInput,
+  type PropertyLocation,
+  type PropertyLocationWriteInput,
   type PropertySettings,
   type PropertySettingsWriteInput,
 } from "../schemas";
@@ -71,7 +77,6 @@ function settingsDefaults(s: PropertySettings): PropertySettingsWriteInput {
     min_nights_rental: s.min_nights_rental ?? null,
     min_nights_rental_note: s.min_nights_rental_note ?? "",
     prices_entered_as: s.prices_entered_as ?? null,
-    timezone: s.timezone ?? "",
   };
 }
 
@@ -93,6 +98,21 @@ function financeDefaults(f: PropertyFinance): PropertyFinanceWriteInput {
     cancellation_fee_percent: f.cancellation_fee_percent ?? "",
     cancellation_window_days: f.cancellation_window_days ?? null,
     notes: f.notes ?? "",
+  };
+}
+
+function locationDefaults(l: PropertyLocation): PropertyLocationWriteInput {
+  return {
+    address_line_1: l.address_line_1 ?? "",
+    address_line_2: l.address_line_2 ?? "",
+    address_line_3: l.address_line_3 ?? "",
+    post_code: l.post_code ?? "",
+    locality_town: l.locality_town ?? "",
+    locality_region: l.locality_region ?? "",
+    country: l.country,
+    latitude: l.latitude ?? "",
+    longitude: l.longitude ?? "",
+    timezone: l.timezone,
   };
 }
 
@@ -128,16 +148,7 @@ function OperationalForm({
   const onSubmit = async (values: PropertySettingsWriteInput) => {
     setTopLevelError(null);
     try {
-      const payload = blankToNull(values);
-      // Timezone lives on the location and is also editable in admin. Only send
-      // it when the operator actually changed it here — otherwise an unrelated
-      // settings save would write back the stale loaded value and silently
-      // revert a concurrent change. Never send a null (a property with no
-      // location can't take a timezone).
-      if (!form.formState.dirtyFields.timezone || payload.timezone == null) {
-        delete payload.timezone;
-      }
-      await mutation.mutateAsync(payload);
+      await mutation.mutateAsync(blankToNull(values));
       toast.success(t("settings.operational.saved"));
       form.reset(values);
     } catch (error) {
@@ -152,17 +163,6 @@ function OperationalForm({
 
   const availability = form.watch("availability_default") ?? null;
   const changeoverDay = form.watch("changeover_day") ?? null;
-  const timezone = form.watch("timezone") ?? "";
-  // Keep an admin-set zone outside the runtime list selectable/visible. Memoised
-  // so the ~400-entry list isn't rebuilt (and the whole SelectContent
-  // re-rendered) on every keystroke — only when the selected zone changes.
-  const timezoneOptions = useMemo(
-    () =>
-      timezone && !TIMEZONE_OPTIONS.includes(timezone)
-        ? [timezone, ...TIMEZONE_OPTIONS]
-        : TIMEZONE_OPTIONS,
-    [timezone],
-  );
   const pricesAs = form.watch("prices_entered_as") ?? null;
   const preApproval = form.watch("bookings_require_pre_approval");
   const enquiryFirst = form.watch("requires_enquiry_first");
@@ -248,28 +248,6 @@ function OperationalForm({
             disabled={!canWrite}
             {...form.register("check_out_time")}
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="prop-settings-timezone">
-            {t("settings.operational.fields.timezone")}
-          </Label>
-          <Select
-            value={timezone}
-            onValueChange={(v) => form.setValue("timezone", v, { shouldDirty: true })}
-            disabled={!canWrite}
-          >
-            <SelectTrigger id="prop-settings-timezone">
-              <SelectValue placeholder={t("settings.operational.timezone_placeholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {timezoneOptions.map((z) => (
-                <SelectItem key={z} value={z}>
-                  {z}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <div className="space-y-2">
@@ -637,6 +615,181 @@ function FinanceForm({
   );
 }
 
+function LocationForm({
+  propertyId,
+  initial,
+  canWrite,
+}: {
+  propertyId: number;
+  initial: PropertyLocation;
+  canWrite: boolean;
+}) {
+  const { t } = useTranslation("properties");
+  const form = useForm<PropertyLocationWriteInput>({
+    resolver: zodResolver(propertyLocationWriteInputSchema),
+    defaultValues: locationDefaults(initial),
+  });
+  const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  const mutation = useUpdatePropertyLocation(propertyId);
+
+  useEffect(() => {
+    form.reset(locationDefaults(initial));
+  }, [initial, form]);
+
+  const onSubmit = async (values: PropertyLocationWriteInput) => {
+    setTopLevelError(null);
+    try {
+      // Address/locality are non-null CharFields (blank ""), but lat/lng are
+      // nullable — clear them with null rather than an empty string.
+      await mutation.mutateAsync({
+        ...values,
+        latitude: values.latitude ? values.latitude : null,
+        longitude: values.longitude ? values.longitude : null,
+      });
+      toast.success(t("settings.location.saved"));
+      form.reset(values);
+    } catch (error) {
+      if (error instanceof ApiError && error.isClientError()) {
+        const { detail } = applyApiErrorToForm(form, error);
+        setTopLevelError(detail);
+      } else {
+        toast.error(t("settings.location.save_failed"));
+      }
+    }
+  };
+
+  const country = form.watch("country");
+  const timezone = form.watch("timezone") ?? "";
+  // Keep an admin-set zone outside the runtime list selectable/visible. Memoised
+  // so the ~400-entry list isn't rebuilt on every keystroke.
+  const timezoneOptions = useMemo(
+    () =>
+      timezone && !TIMEZONE_OPTIONS.includes(timezone)
+        ? [timezone, ...TIMEZONE_OPTIONS]
+        : TIMEZONE_OPTIONS,
+    [timezone],
+  );
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+      <p className="text-muted-foreground text-sm">{t("settings.location.description")}</p>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-address-1">
+            {t("settings.location.fields.address_line_1")}
+          </Label>
+          <Input
+            id="prop-location-address-1"
+            disabled={!canWrite}
+            {...form.register("address_line_1")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-address-2">
+            {t("settings.location.fields.address_line_2")}
+          </Label>
+          <Input
+            id="prop-location-address-2"
+            disabled={!canWrite}
+            {...form.register("address_line_2")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-address-3">
+            {t("settings.location.fields.address_line_3")}
+          </Label>
+          <Input
+            id="prop-location-address-3"
+            disabled={!canWrite}
+            {...form.register("address_line_3")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-post-code">{t("settings.location.fields.post_code")}</Label>
+          <Input
+            id="prop-location-post-code"
+            disabled={!canWrite}
+            {...form.register("post_code")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-town">{t("settings.location.fields.locality_town")}</Label>
+          <Input id="prop-location-town" disabled={!canWrite} {...form.register("locality_town")} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-region">
+            {t("settings.location.fields.locality_region")}
+          </Label>
+          <Input
+            id="prop-location-region"
+            disabled={!canWrite}
+            {...form.register("locality_region")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-country">{t("settings.location.fields.country")}</Label>
+          <CountryPicker
+            id="prop-location-country"
+            value={country}
+            onChange={(v) => form.setValue("country", v, { shouldDirty: true })}
+            placeholder={t("settings.location.country_placeholder")}
+            disabled={!canWrite}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-timezone">{t("settings.location.fields.timezone")}</Label>
+          <Select
+            value={timezone}
+            onValueChange={(v) => form.setValue("timezone", v, { shouldDirty: true })}
+            disabled={!canWrite}
+          >
+            <SelectTrigger id="prop-location-timezone">
+              <SelectValue placeholder={t("settings.location.timezone_placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {timezoneOptions.map((z) => (
+                <SelectItem key={z} value={z}>
+                  {z}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-latitude">{t("settings.location.fields.latitude")}</Label>
+          <Input id="prop-location-latitude" disabled={!canWrite} {...form.register("latitude")} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-location-longitude">{t("settings.location.fields.longitude")}</Label>
+          <Input
+            id="prop-location-longitude"
+            disabled={!canWrite}
+            {...form.register("longitude")}
+          />
+        </div>
+      </div>
+
+      <FormErrorAlert message={topLevelError} />
+
+      <div className="flex justify-end">
+        <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>
+          {mutation.isPending ? t("settings.location.saving") : t("settings.location.save")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 type LifecycleAction = "activate" | "archive" | "restore";
 
 function LifecycleActions({ property, canWrite }: { property: PropertyDetail; canWrite: boolean }) {
@@ -734,8 +887,9 @@ export function SettingsTab() {
   const canWrite = useHasReservationsRole();
   const settings = usePropertySettings(property.id);
   const finance = usePropertyFinance(property.id);
+  const location = usePropertyLocation(property.id);
 
-  if (settings.isLoading || finance.isLoading) {
+  if (settings.isLoading || finance.isLoading || location.isLoading) {
     return (
       <div className="space-y-6 p-6">
         <Skeleton className="h-6 w-40" />
@@ -745,7 +899,14 @@ export function SettingsTab() {
     );
   }
 
-  if (settings.isError || finance.isError || !settings.data || !finance.data) {
+  if (
+    settings.isError ||
+    finance.isError ||
+    location.isError ||
+    !settings.data ||
+    !finance.data ||
+    !location.data
+  ) {
     return (
       <div className="p-6">
         <ErrorState
@@ -753,8 +914,9 @@ export function SettingsTab() {
           onRetry={() => {
             settings.refetch();
             finance.refetch();
+            location.refetch();
           }}
-          retrying={settings.isFetching || finance.isFetching}
+          retrying={settings.isFetching || finance.isFetching || location.isFetching}
         />
       </div>
     );
@@ -766,6 +928,10 @@ export function SettingsTab() {
 
       <Section title={t("settings.operational.title")}>
         <OperationalForm propertyId={property.id} initial={settings.data} canWrite={canWrite} />
+      </Section>
+
+      <Section title={t("settings.location.title")}>
+        <LocationForm propertyId={property.id} initial={location.data} canWrite={canWrite} />
       </Section>
 
       <Section title={t("settings.finance.title")}>

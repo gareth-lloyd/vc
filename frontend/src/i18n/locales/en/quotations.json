@@ -20,9 +20,6 @@
     "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day"
   },
   "list": {
-    "title": "Quotations",
-    "breadcrumb_root": "Operations",
-    "breadcrumb_self": "Quotations",
     "search_placeholder": "Search by reference or guest…",
     "filters": {
       "status_any": "Any status",
@@ -34,15 +31,10 @@
     },
     "errors": {
       "load_failed": "Couldn't load quotations."
-    },
-    "coming_soon": {
-      "new_button": "New quote",
-      "tooltip": "Start a new quote from an enquiry."
     }
   },
   "detail": {
     "breadcrumb_root": "Operations",
-    "breadcrumb_list": "Quotations",
     "summary": {
       "title": "Summary",
       "reference": "Reference",

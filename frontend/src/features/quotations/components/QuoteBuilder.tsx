@@ -28,9 +28,9 @@ interface QuoteBuilderProps {
   enquiry: EnquiryDetail;
   // Fired once a quotation is committed — after a draft saves, or after the
   // send-preview dialog is dismissed (the draft is persisted either way). The
-  // standalone `/quotations/new` page navigates to the new quotation; the
-  // inline workspace passes nothing and stays put (the quote-stack refreshes
-  // in place via the enquiry-detail cache invalidation SaveQuoteDialog fires).
+  // inline workspace passes a handler that closes the builder and stays put
+  // (the quote-stack refreshes in place via the enquiry-detail cache
+  // invalidation SaveQuoteDialog fires).
   onComplete?: (quotation: QuotationDetail) => void;
 }
 
@@ -173,7 +173,7 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   };
 
   return (
-    <div>
+    <>
       <div className="space-y-6">
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
@@ -216,11 +216,11 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
           />
         </section>
 
-        {/* Cart at the foot, full-width. The builder renders inside the enquiry
-            workspace's (already two-column) main pane, so a side-by-side cart
-            column gets squashed — a full-width final row keeps the operator's
-            scroll criteria → results → cart, ending on Save draft / Send to
-            guest. */}
+        {/* Cart sits at the foot as a full-width block in normal flow. The
+            builder is plain vertical flow (criteria → results → cart) and lets
+            its host own the column layout, so it reads the same scrolled
+            top-to-bottom whatever pane it's mounted in — ending on Save draft /
+            Send to guest. */}
         <QuoteCart
           lines={staged}
           currency={currency}
@@ -260,6 +260,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
           quotation={sentQuotation}
         />
       ) : null}
-    </div>
+    </>
   );
 }

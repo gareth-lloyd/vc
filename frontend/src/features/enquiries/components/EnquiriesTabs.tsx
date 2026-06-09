@@ -22,7 +22,7 @@ export function EnquiriesTabs() {
     { to: "/enquiries/quotes", label: t("nav.quotes") },
   ];
   return (
-    <nav className="border-border flex gap-1 border-b px-6" aria-label={t("nav.groups.operations")}>
+    <nav className="border-border flex gap-1 border-b px-6" aria-label={t("nav.enquiries_views")}>
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}

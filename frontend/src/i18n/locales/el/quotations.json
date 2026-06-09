@@ -20,9 +20,6 @@
     "changeover_shifted": "Η άφιξη μετακινήθηκε από {{from}} στην ημέρα αλλαγής του ακινήτου"
   },
   "list": {
-    "title": "Προσφορές",
-    "breadcrumb_root": "Λειτουργίες",
-    "breadcrumb_self": "Προσφορές",
     "search_placeholder": "Αναζήτηση κατά αναφορά ή επισκέπτη…",
     "filters": {
       "status_any": "Οποιαδήποτε κατάσταση",
@@ -34,15 +31,10 @@
     },
     "errors": {
       "load_failed": "Δεν ήταν δυνατή η φόρτωση προσφορών."
-    },
-    "coming_soon": {
-      "new_button": "Νέα προσφορά",
-      "tooltip": "Ξεκινήστε μια νέα προσφορά από ένα αίτημα."
     }
   },
   "detail": {
     "breadcrumb_root": "Λειτουργίες",
-    "breadcrumb_list": "Προσφορές",
     "summary": {
       "title": "Σύνοψη",
       "reference": "Αναφορά",

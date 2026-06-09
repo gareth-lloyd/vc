@@ -48,6 +48,67 @@ function installBaseHandlers() {
   server.use(http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)));
 }
 
+const seasonDetailCard = {
+  id: 100,
+  plan: 11,
+  name: "Standard",
+  description: "Default card",
+  min_nights: 7,
+  max_nights: 30,
+  is_active: true,
+  rules: [
+    {
+      id: 200,
+      card: 100,
+      date_from: "2026-06-01",
+      date_to: "2026-07-31",
+      min_party: 2,
+      max_party: 8,
+      nightly: "350.00",
+      weekly: "2100.00",
+      is_poa: false,
+    },
+  ],
+};
+
+// Seasons list + drill-down detail with one card and one rule. `cards` lets a
+// test vary the detail response across refetches (e.g. after a delete).
+function installSeasonDetailHandlers(cards?: () => unknown[] | undefined) {
+  server.use(
+    http.get("/api/v1/properties/5/seasons", () =>
+      HttpResponse.json(
+        drfPage([
+          {
+            id: 11,
+            property: 5,
+            name: "Summer 2026",
+            currency: 42,
+            price_basis: "gross",
+            effective_from: "2026-06-01",
+            effective_to: "2026-09-30",
+            is_active: true,
+          },
+        ]),
+      ),
+    ),
+    http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
+    http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
+    http.get("/api/v1/seasons/11", () =>
+      HttpResponse.json({
+        id: 11,
+        property: 5,
+        name: "Summer 2026",
+        currency: 42,
+        price_basis: "gross",
+        effective_from: "2026-06-01",
+        effective_to: "2026-09-30",
+        is_active: true,
+        cards: cards?.() ?? [seasonDetailCard],
+      }),
+    ),
+  );
+}
+
 function setup() {
   return renderWithProviders(
     <Routes>
@@ -316,6 +377,135 @@ describe("PricingTab", () => {
     await userEvent.click(await screen.findByText(/^Duplicate$/i));
     await userEvent.click(await screen.findByRole("button", { name: /^Duplicate$/i }));
     await waitFor(() => expect(duplicateCalled).toBe(true));
+    useAuthStore.getState().clear();
+  });
+
+  it("hides card and rule write controls without the RESERVATIONS role", async () => {
+    installBaseHandlers();
+    installSeasonDetailHandlers();
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    expect(screen.getByRole("button", { name: /add rate card/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /card actions/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rule actions/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add rule/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the card dialogs from the Add button and row menu", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    installSeasonDetailHandlers();
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    await user.click(screen.getByRole("button", { name: /add rate card/i }));
+    expect(await screen.findByRole("heading", { name: /add rate card/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    await user.click(screen.getByRole("button", { name: /card actions/i }));
+    await user.click(await screen.findByText(/^Edit$/i));
+    expect(await screen.findByRole("heading", { name: /edit rate card/i })).toBeInTheDocument();
+    expect((screen.getByLabelText(/^Name$/i) as HTMLInputElement).value).toBe("Standard");
+    useAuthStore.getState().clear();
+  });
+
+  it("seeds the Add rule dialog from the card's last rule", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    installSeasonDetailHandlers();
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    await user.click(screen.getByRole("button", { name: /add rule/i }));
+    expect(await screen.findByRole("heading", { name: /add rule/i })).toBeInTheDocument();
+    expect((screen.getByLabelText(/^From$/i) as HTMLInputElement).value).toBe("2026-07-31");
+    expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("8");
+    useAuthStore.getState().clear();
+  });
+
+  it("deletes a rate card via the row menu and re-renders the season", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    let cardDeleted = false;
+    installSeasonDetailHandlers(() => (cardDeleted ? [] : undefined));
+    server.use(
+      http.delete("/api/v1/rate-cards/100", () => {
+        cardDeleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    await user.click(screen.getByRole("button", { name: /card actions/i }));
+    await user.click(await screen.findByText(/^Delete$/i));
+    await user.click(await screen.findByRole("button", { name: /^Remove$/i }));
+    expect(await screen.findByText(/No rate cards/i)).toBeInTheDocument();
+    expect(cardDeleted).toBe(true);
+    useAuthStore.getState().clear();
+  });
+
+  it("duplicates a rate card via the row menu", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    installSeasonDetailHandlers();
+    let duplicateCalled = false;
+    server.use(
+      http.post("/api/v1/rate-cards/100:duplicate", () => {
+        duplicateCalled = true;
+        return HttpResponse.json(
+          { ...seasonDetailCard, id: 101, name: "Standard (copy)" },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    await user.click(screen.getByRole("button", { name: /card actions/i }));
+    await user.click(await screen.findByText(/^Duplicate$/i));
+    await user.click(await screen.findByRole("button", { name: /^Duplicate$/i }));
+    await waitFor(() => expect(duplicateCalled).toBe(true));
+    useAuthStore.getState().clear();
+  });
+
+  it("deletes a rule via the rule row menu", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    installSeasonDetailHandlers();
+    let ruleDeleted = false;
+    server.use(
+      http.delete("/api/v1/rules/200", () => {
+        ruleDeleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
+    await screen.findByText("Standard");
+
+    await user.click(screen.getByRole("button", { name: /rule actions/i }));
+    await user.click(await screen.findByText(/^Delete$/i));
+    await user.click(await screen.findByRole("button", { name: /^Remove$/i }));
+    await waitFor(() => expect(ruleDeleted).toBe(true));
     useAuthStore.getState().clear();
   });
 

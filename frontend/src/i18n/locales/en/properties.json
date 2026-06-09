@@ -256,15 +256,61 @@
       "any_length": "Any length",
       "nights_range": "Nights {{min}}–{{max}}",
       "nights_min_placeholder": "?",
-      "changeover_weekday": " · Changeover: weekday {{weekday}}",
       "no_rules": "No rules",
-      "poa": "POA"
+      "poa": "POA",
+      "add_button": "Add rate card",
+      "add_button_disabled_tooltip": "You need the Reservations role to edit rate cards.",
+      "row": {
+        "menu_label": "Card actions",
+        "edit": "Edit",
+        "duplicate": "Duplicate",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create_title": "Add rate card",
+        "edit_title": "Edit rate card",
+        "fields": {
+          "name": "Name",
+          "name_placeholder": "Standard",
+          "description": "Description",
+          "min_nights": "Minimum nights",
+          "max_nights": "Maximum nights",
+          "is_active": "Active",
+          "notes": "Internal notes"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      },
+      "toasts": {
+        "created": "Rate card added",
+        "updated": "Rate card updated",
+        "deleted": "Rate card removed",
+        "duplicated": "Rate card duplicated",
+        "create_failed": "Couldn't add rate card",
+        "update_failed": "Couldn't update rate card",
+        "delete_failed": "Couldn't remove rate card",
+        "duplicate_failed": "Couldn't duplicate rate card"
+      },
+      "delete_confirm": {
+        "title": "Remove rate card?",
+        "description": "This rate card and all of its rules will be permanently removed.",
+        "confirm": "Remove"
+      },
+      "duplicate_confirm": {
+        "title": "Duplicate rate card?",
+        "description": "A copy of this rate card — including its rules — will be created with \" (copy)\" appended to the name.",
+        "confirm": "Duplicate"
+      }
     },
     "rules_table": {
       "dates": "Dates",
       "party": "Party",
       "nightly": "Nightly",
-      "weekly": "Weekly"
+      "weekly": "Weekly",
+      "actions": "Actions"
     },
     "extras": {
       "empty": "No extras",
@@ -290,6 +336,47 @@
       "kind": "Kind",
       "amount": "Amount",
       "valid": "Valid"
+    },
+    "rule": {
+      "add_button": "Add rule",
+      "row": {
+        "menu_label": "Rule actions",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create_title": "Add rule",
+        "edit_title": "Edit rule",
+        "fields": {
+          "date_from": "From",
+          "date_to": "To",
+          "min_party": "Minimum party",
+          "max_party": "Maximum party",
+          "nightly": "Nightly price",
+          "weekly": "Weekly price",
+          "is_poa": "Price on application (POA)",
+          "notes": "Internal notes"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "save_and_add": "Save & add another",
+          "saving": "Saving…"
+        }
+      },
+      "toasts": {
+        "created": "Rule added",
+        "updated": "Rule updated",
+        "deleted": "Rule removed",
+        "create_failed": "Couldn't add rule",
+        "update_failed": "Couldn't update rule",
+        "delete_failed": "Couldn't remove rule"
+      },
+      "delete_confirm": {
+        "title": "Remove rule?",
+        "description": "This rate rule will be permanently removed.",
+        "confirm": "Remove"
+      }
     }
   },
   "people": {
@@ -809,7 +896,18 @@
     "load_failed": "Couldn't load.",
     "block_from_required": "From date is required",
     "block_to_required": "To date is required",
-    "block_to_before_from": "To date must be after From date"
+    "block_to_before_from": "To date must be after From date",
+    "rate_card_name_required": "Name is required",
+    "rate_card_min_nights_required": "Minimum nights must be at least 1",
+    "rate_card_max_nights_lt_min": "Maximum nights can't be below minimum nights",
+    "rule_date_from_required": "Start date is required",
+    "rule_date_to_required": "End date is required",
+    "rule_date_to_not_after_from": "End date must be after the start date",
+    "rule_min_party_required": "Minimum party must be at least 1",
+    "rule_max_party_required": "Maximum party must be at least 1",
+    "rule_max_party_lt_min": "Maximum party can't be below minimum party",
+    "rule_price_invalid": "Enter a price like 1250 or 1250.00",
+    "rule_price_required": "Set a nightly or weekly price, or mark the rule POA"
   },
   "common": {
     "inherit": "Inherit",

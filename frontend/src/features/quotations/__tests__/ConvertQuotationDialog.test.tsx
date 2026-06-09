@@ -67,14 +67,14 @@ function setup() {
   return renderWithProviders(
     <Routes>
       <Route
-        path="/quotations/:id"
+        path="/enquiries/quotes/:id"
         element={
           <ConvertQuotationDialog open onOpenChange={() => undefined} quotation={quotation} />
         }
       />
       <Route path="/bookings/:id" element={<div data-testid="booking-page">landed</div>} />
     </Routes>,
-    { route: "/quotations/7" },
+    { route: "/enquiries/quotes/7" },
   );
 }
 

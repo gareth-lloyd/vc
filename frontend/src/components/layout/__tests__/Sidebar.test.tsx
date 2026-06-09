@@ -9,4 +9,11 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Enquiries" })).toHaveAttribute("href", "/enquiries");
     expect(screen.queryByRole("link", { name: "Quotes" })).not.toBeInTheDocument();
   });
+
+  it("keeps Enquiries highlighted on a nested quote-detail route", () => {
+    // Quote detail lives at /enquiries/quotes/:id, so the prefix-matching
+    // Enquiries nav item stays active — no orphaned, unhighlighted page.
+    renderWithProviders(<Sidebar />, { route: "/enquiries/quotes/50" });
+    expect(screen.getByRole("link", { name: "Enquiries" })).toHaveAttribute("aria-current", "page");
+  });
 });

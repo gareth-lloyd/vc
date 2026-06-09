@@ -9,6 +9,10 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
+import {
+  QuotationDetailRedirect,
+  QuotationNewRedirect,
+} from "@/features/quotations/routeRedirects";
 import { NotFoundPage } from "./NotFoundPage";
 import { PROPERTY_TABS } from "@/features/properties/tabConfig";
 import { BOOKING_TABS } from "@/features/bookings/tabConfig";
@@ -272,6 +276,18 @@ export const router = createBrowserRouter([
                           return { Component: m.EnquiryDetailLayout };
                         },
                       },
+                      {
+                        // Quote detail nested under the Enquiries IA so the
+                        // sidebar's Enquiries item stays highlighted and the URL
+                        // matches the breadcrumb. Sibling of the section layout —
+                        // a detail page, so no section tab strip. Static "quotes"
+                        // ranks ahead of `/enquiries/:id`.
+                        path: "/enquiries/quotes/:id",
+                        lazy: async () => {
+                          const m = await import("@/features/quotations/QuotationDetailLayout");
+                          return { Component: m.QuotationDetailLayout };
+                        },
+                      },
                       // The Details/Activity/Notes tabs collapsed into the single
                       // enquiry workspace; redirect the old deep links (bookmarks,
                       // activity-timeline references) to the unified page.
@@ -287,24 +303,21 @@ export const router = createBrowserRouter([
                         path: "/enquiries/:id/notes",
                         element: <Navigate to=".." relative="path" replace />,
                       },
-                      // Standalone Quotes IA removed — the pipeline now lives
-                      // under the Enquiries "Quotes" tab and quote creation is
-                      // inline in the enquiry workspace. Redirect old bookmarks;
-                      // `/quotations/:id` stays a live deep-link target.
+                      // Standalone Quotes IA removed — the pipeline + detail now
+                      // live under the Enquiries section and quote creation is
+                      // inline in the enquiry workspace. Redirect old bookmarks
+                      // to their IA-nested homes (ids/intent preserved).
                       {
                         path: "/quotations",
                         element: <Navigate to="/enquiries/quotes" replace />,
                       },
                       {
                         path: "/quotations/new",
-                        element: <Navigate to="/enquiries/quotes" replace />,
+                        element: <QuotationNewRedirect />,
                       },
                       {
                         path: "/quotations/:id",
-                        lazy: async () => {
-                          const m = await import("@/features/quotations/QuotationDetailLayout");
-                          return { Component: m.QuotationDetailLayout };
-                        },
+                        element: <QuotationDetailRedirect />,
                       },
                       {
                         path: "/bookings",

@@ -273,11 +273,22 @@ by email). See the record for the full field/constraint list and migration order
 > The `Quotation.enquiry` FK was **already** `NOT NULL` + `PROTECT` (migration
 > `0022`) — the "`SET_NULL` → `PROTECT`" note below was stale; **no migration this
 > phase**.
+>
+> **Post-review follow-ups (also on `feat/gap-005-m4-final`).** A high-effort
+> code review found no runtime bugs; the actionable items landed as: restored
+> `<QuoteBuilder>` orchestration tests (lost with the deleted `QuotationBuilderPage`);
+> the Enquiries↔Quotes tab strip moved into an `EnquiriesSectionLayout`
+> route + `<Outlet>` (mounted once, not per page); a shared `useListParams`
+> hook deduping the two list pages; and **quote detail re-homed under the
+> Enquiries IA at `/enquiries/quotes/:id`** (sidebar Enquiries stays highlighted,
+> URL matches the breadcrumb) — `/quotations/:id` now redirects there preserving
+> the id, and `/quotations/new` honours `?enquiry=` into the workspace.
 
 - **One nav item.** ✅ Standalone "Quotes" sidebar item + `/quotations`
   list/builder routes removed; the pipeline survives as the `/enquiries/quotes`
-  tab, and `/quotations` + `/quotations/new` redirect there. `/quotations/:id`
-  remains a deep-link target, not a top-level destination.
+  tab, and `/quotations` + `/quotations/new` redirect there. Quote **detail**
+  now lives under the Enquiries IA at `/enquiries/quotes/:id` (post-review
+  follow-up); legacy `/quotations/:id` bookmarks redirect to it, id preserved.
 - **`Quotation.enquiry` → NOT NULL.** ✅ Already `null=False` +
   `on_delete=PROTECT` (migration `0022`, pre-dating this phase; the earlier
   "`SET_NULL` → `PROTECT`" framing was stale — it was already `PROTECT`).

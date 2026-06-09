@@ -202,7 +202,7 @@ describe("EnquiryDetailLayout", () => {
 
     expect(await screen.findByRole("link", { name: /QVC50/ })).toHaveAttribute(
       "href",
-      "/quotations/50",
+      "/enquiries/quotes/50",
     );
     // Builder collapsed → no search button yet.
     expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();

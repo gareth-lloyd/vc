@@ -52,7 +52,7 @@ export function QuotationsTab() {
   const columns = useMemo(() => buildQuotationColumns(t), [t]);
 
   const handleRowClick = (row: QuotationListItem) => {
-    navigate(`/quotations/${row.id}`);
+    navigate(`/enquiries/quotes/${row.id}`);
   };
 
   return (

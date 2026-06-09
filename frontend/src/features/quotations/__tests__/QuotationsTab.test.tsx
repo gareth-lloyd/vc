@@ -65,7 +65,7 @@ describe("QuotationsTab (/enquiries/quotes)", () => {
 
   it("navigates to the quote detail on row click", async () => {
     server.use(http.get("/api/v1/quotations", () => HttpResponse.json(fixture)));
-    setup(<Route path="/quotations/:id" element={<div>Detail page</div>} />);
+    setup(<Route path="/enquiries/quotes/:id" element={<div>Detail page</div>} />);
     await userEvent.click(await screen.findByText("Q-2026-001"));
     expect(await screen.findByText("Detail page")).toBeInTheDocument();
   });

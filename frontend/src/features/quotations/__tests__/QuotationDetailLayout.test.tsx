@@ -50,9 +50,9 @@ function asReservationsUser() {
 function setup() {
   return renderWithProviders(
     <Routes>
-      <Route path="/quotations/:id" element={<QuotationDetailLayout />} />
+      <Route path="/enquiries/quotes/:id" element={<QuotationDetailLayout />} />
     </Routes>,
-    { route: "/quotations/7" },
+    { route: "/enquiries/quotes/7" },
   );
 }
 

@@ -329,7 +329,7 @@ export function QuotationDetailLayout() {
     try {
       const clone = await duplicate.mutateAsync();
       toast.success(t("detail.dialogs.duplicate.toasts.success"));
-      navigate(`/quotations/${clone.id}`);
+      navigate(`/enquiries/quotes/${clone.id}`);
     } catch (error) {
       const message =
         error instanceof ApiError

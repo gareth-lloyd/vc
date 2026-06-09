@@ -198,6 +198,17 @@ describe("rateRuleWriteInputSchema", () => {
 
   it("accepts a POA rule with lingering price text (payload nulls it at submit)", () => {
     expect(rateRuleWriteInputSchema.parse({ ...valid, is_poa: true }).is_poa).toBe(true);
+    // Even malformed leftovers in the disabled inputs must not block a POA save.
+    expect(
+      rateRuleWriteInputSchema.parse({ ...valid, is_poa: true, nightly: "12.345" }).is_poa,
+    ).toBe(true);
+  });
+
+  it("treats whitespace-only prices as empty", () => {
+    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "900" }).nightly).toBe(
+      "",
+    );
+    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "" })).toThrow();
   });
 
   it("validates money strings", () => {

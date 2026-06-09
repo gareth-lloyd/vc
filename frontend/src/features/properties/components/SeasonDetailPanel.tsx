@@ -15,7 +15,7 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { formatDate } from "@/lib/format/date";
+import { addDaysIso, formatDate } from "@/lib/format/date";
 import {
   useDeleteRateCard,
   useDeleteRateRule,
@@ -43,7 +43,8 @@ function nextRuleDefaults(card: RateCard): Partial<RateRuleWriteInput> | undefin
   );
   if (!last) return undefined;
   return {
-    date_from: last.date_to,
+    // Rule date ranges are inclusive — the next band starts the day after.
+    date_from: addDaysIso(last.date_to, 1),
     min_party: last.min_party ?? 1,
     max_party: last.max_party ?? 1,
   };

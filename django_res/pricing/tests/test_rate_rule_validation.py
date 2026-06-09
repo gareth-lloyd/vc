@@ -167,3 +167,62 @@ def test_patch_priced_rule_price_change_succeeds(api_client: APIClient, rule: Ra
     assert response.status_code == 200, response.content
     rule.refresh_from_db()
     assert rule.nightly == Decimal("275.00")
+
+
+@pytest.mark.django_db
+def test_create_rule_omitting_defaulted_min_party_still_validates_band(
+    api_client: APIClient, card: RateCard
+) -> None:
+    """Omitted min_party falls back to the model default (1), so max_party=0 clashes."""
+    payload = _valid_payload(max_party=0)
+    del payload["min_party"]
+    response = api_client.post(
+        f"/api/v1/rate-cards/{card.pk}/rules",
+        data=payload,
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "max_party" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_create_overlapping_rule_returns_400(api_client: APIClient, rule: RateRule) -> None:
+    """Sharing the stored rule's date_to (ranges are inclusive) is an overlap → 400, not 500."""
+    response = api_client.post(
+        f"/api/v1/rate-cards/{rule.card_id}/rules",
+        data=_valid_payload(
+            date_from=rule.date_to.isoformat(),
+            date_to="2026-10-31",
+            min_party=rule.min_party,
+            max_party=rule.max_party,
+        ),
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "date_from" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_create_adjacent_rule_succeeds(api_client: APIClient, rule: RateRule) -> None:
+    """date_from = stored date_to + 1 day does not overlap an inclusive range."""
+    response = api_client.post(
+        f"/api/v1/rate-cards/{rule.card_id}/rules",
+        data=_valid_payload(
+            date_from="2026-09-01",  # rule fixture ends 2026-08-31
+            date_to="2026-10-31",
+            min_party=rule.min_party,
+            max_party=rule.max_party,
+        ),
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+
+
+@pytest.mark.django_db
+def test_patch_rule_does_not_overlap_against_itself(api_client: APIClient, rule: RateRule) -> None:
+    response = api_client.patch(
+        f"/api/v1/rules/{rule.pk}",
+        data={"nightly": "300.00"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content

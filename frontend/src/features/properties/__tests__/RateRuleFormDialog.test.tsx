@@ -138,6 +138,11 @@ describe("RateRuleFormDialog — create", () => {
     await userEvent.clear(screen.getByLabelText(/Nightly price/i));
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByText(/nightly or weekly price/i)).toBeInTheDocument();
+    // Resolving the error by switching to POA clears it without another submit.
+    await userEvent.click(screen.getByLabelText(/price on application/i));
+    await waitFor(() =>
+      expect(screen.queryByText(/nightly or weekly price/i)).not.toBeInTheDocument(),
+    );
     useAuthStore.getState().clear();
   });
 
@@ -160,7 +165,7 @@ describe("RateRuleFormDialog — create", () => {
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     const fromInput = screen.getByLabelText(/^From$/i) as HTMLInputElement;
-    await waitFor(() => expect(fromInput.value).toBe("2026-06-08"));
+    await waitFor(() => expect(fromInput.value).toBe("2026-06-09"));
     expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("8");
     expect((screen.getByLabelText(/Nightly price/i) as HTMLInputElement).value).toBe("");
 
@@ -169,7 +174,7 @@ describe("RateRuleFormDialog — create", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({
-      date_from: "2026-06-08",
+      date_from: "2026-06-09",
       date_to: "2026-06-15",
       nightly: "175.00",
     });

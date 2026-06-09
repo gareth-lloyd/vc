@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
+import { addDaysIso } from "@/lib/format/date";
 import { useCreateRateRule, useUpdateRateRule } from "../hooks";
 import {
   rateRuleWriteInputSchema,
@@ -113,7 +114,8 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
       if (andAddAnother) {
         form.reset(
           createDefaults({
-            date_from: values.date_to,
+            // Rule date ranges are inclusive — the next band starts the day after.
+            date_from: addDaysIso(values.date_to, 1),
             min_party: values.min_party,
             max_party: values.max_party,
           }),
@@ -219,7 +221,11 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
             <Checkbox
               id="rate-rule-is-poa"
               checked={isPoa}
-              onCheckedChange={(v) => form.setValue("is_poa", v === true)}
+              onCheckedChange={(v) => {
+                form.setValue("is_poa", v === true);
+                // Price errors no longer apply once POA masks the inputs.
+                form.clearErrors(["nightly", "weekly"]);
+              }}
             />
             <Label htmlFor="rate-rule-is-poa">{t("pricing.rule.dialog.fields.is_poa")}</Label>
           </div>

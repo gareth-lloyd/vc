@@ -279,11 +279,7 @@ export const rateCardWriteInputSchema = z
   });
 export type RateCardWriteInput = z.infer<typeof rateCardWriteInputSchema>;
 
-const moneyString = z
-  .string()
-  .trim()
-  .regex(/^\d{1,10}(\.\d{1,2})?$/, { message: "properties:errors.rule_price_invalid" })
-  .or(z.literal(""));
+const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
 
 export const rateRuleWriteInputSchema = z
   .object({
@@ -297,8 +293,8 @@ export const rateRuleWriteInputSchema = z
       .number({ message: "properties:errors.rule_max_party_required" })
       .int()
       .min(1, { message: "properties:errors.rule_max_party_required" }),
-    nightly: moneyString.optional(),
-    weekly: moneyString.optional(),
+    nightly: z.string().trim().optional(),
+    weekly: z.string().trim().optional(),
     is_poa: z.boolean(),
     notes: z.string().trim().optional(),
   })
@@ -311,10 +307,27 @@ export const rateRuleWriteInputSchema = z
     path: ["max_party"],
     message: "properties:errors.rule_max_party_lt_min",
   })
-  // POA-excludes-price has no refine: the submit payload nulls prices when POA.
-  .refine((v) => v.is_poa || !!v.nightly || !!v.weekly, {
-    path: ["nightly"],
-    message: "properties:errors.rule_price_required",
+  // Prices only matter when the rule isn't POA — the submit payload nulls
+  // them under POA, so leftovers in the disabled inputs must not block a save.
+  .superRefine((v, ctx) => {
+    if (v.is_poa) return;
+    for (const key of ["nightly", "weekly"] as const) {
+      const value = v[key];
+      if (value && !MONEY_PATTERN.test(value)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: "properties:errors.rule_price_invalid",
+        });
+      }
+    }
+    if (!v.nightly && !v.weekly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["nightly"],
+        message: "properties:errors.rule_price_required",
+      });
+    }
   });
 export type RateRuleWriteInput = z.infer<typeof rateRuleWriteInputSchema>;
 

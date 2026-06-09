@@ -428,7 +428,7 @@ describe("PricingTab", () => {
 
     await user.click(screen.getByRole("button", { name: /add rule/i }));
     expect(await screen.findByRole("heading", { name: /add rule/i })).toBeInTheDocument();
-    expect((screen.getByLabelText(/^From$/i) as HTMLInputElement).value).toBe("2026-07-31");
+    expect((screen.getByLabelText(/^From$/i) as HTMLInputElement).value).toBe("2026-08-01");
     expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("8");
     useAuthStore.getState().clear();
   });

@@ -37,11 +37,12 @@ class PropertyViewSet(viewsets.ModelViewSet):
     `get_object`.
     """
 
-    queryset = Property.objects.all().select_related("category", "group", "region")
+    queryset = Property.objects.all().select_related("category", "group", "region", "capacity")
     filterset_class = PropertyFilter
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering_fields = ["name", "display_name", "created_at", "updated_at"]
-    ordering = ["name"]
+    # Default ordering (incl. the `id` pagination tiebreaker) comes from
+    # Property.Meta.ordering, so every paginated listing stays stable.
     permission_classes = [IsReservationsWriter]
 
     def get_permissions(self) -> list[Any]:

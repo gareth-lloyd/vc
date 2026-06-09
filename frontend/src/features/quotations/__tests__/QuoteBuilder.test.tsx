@@ -47,6 +47,30 @@ const villaProperty = {
   status: "active",
 };
 
+const villaTwo = {
+  id: 8,
+  name: "Villa Luna",
+  display_name: "Villa Luna",
+  slug: "villa-luna",
+  status: "active",
+};
+
+// Prices whatever property_ids the bulk request carries — lets a paged
+// /properties mock drive which villas come back available.
+function priceRequested() {
+  return http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+    const body = (await request.json()) as { requests: Array<{ property_id: number }> };
+    return HttpResponse.json({
+      quotes: body.requests.map((r) => ({
+        property_id: r.property_id,
+        available: true,
+        total: "4500.00",
+        currency_code: "USD",
+      })),
+    });
+  });
+}
+
 function mockSaveFlow() {
   return [
     http.get("/api/v1/currencies", () =>
@@ -145,6 +169,68 @@ describe("QuoteBuilder", () => {
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
     expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/7 nights/i)).toBeInTheDocument();
+  });
+
+  it("loads and appends the next page of priced options on Load more", async () => {
+    server.use(
+      mockCurrencies([USD]),
+      http.get("/api/v1/properties", ({ request }) => {
+        const page = new URL(request.url).searchParams.get("page");
+        // DRF reports the same total `count` on every page; page 1 advertises a
+        // `next`, page 2 is the last page.
+        if (page === "2") return HttpResponse.json(drfPage([villaTwo], { count: 2 }));
+        return HttpResponse.json(
+          drfPage([villaProperty], { next: "http://api/v1/properties?page=2", count: 2 }),
+        );
+      }),
+      priceRequested(),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
+    // One of two matching villas priced so far.
+    expect(screen.getByText(/priced 1 of 2 matching villas/i)).toBeInTheDocument();
+
+    // Page 1 advertised more → Load more appends page 2 without dropping page 1.
+    await userEvent.click(screen.getByRole("button", { name: /load more/i }));
+    expect(await screen.findByText("Villa Luna")).toBeInTheDocument();
+    expect(screen.getByText("Villa Sol")).toBeInTheDocument();
+    // Last page reached → the button is gone.
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it("does not advance the priced criteria when a re-search fails", async () => {
+    // First search (Jul 1–8) succeeds; a re-search with an extended stay 500s.
+    server.use(
+      mockCurrencies([USD]),
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+        const body = (await request.json()) as { requests: Array<{ date_to: string }> };
+        if (body.requests[0]?.date_to !== "2026-07-08") {
+          return new HttpResponse(null, { status: 500 });
+        }
+        return HttpResponse.json({
+          quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
+
+    // Extend the stay and re-search → the re-price 500s, leaving the original
+    // results on screen.
+    const to = screen.getByLabelText(/^to$/i);
+    await userEvent.clear(to);
+    await userEvent.type(to, "2026-07-22");
+    await userEvent.click(screen.getByRole("button", { name: /search options/i }));
+
+    // Adding the stale option must record the ORIGINAL Jul 1–8 stay (7 nights),
+    // not the failed 21-night criteria — the price was computed for July.
+    await userEvent.click(await screen.findByRole("button", { name: /add to quote/i }));
+    expect(await screen.findByText(/7 nights/i)).toBeInTheDocument();
   });
 
   it("keeps the cart and reverts the picker when a currency re-search fails", async () => {

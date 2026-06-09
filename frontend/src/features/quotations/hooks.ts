@@ -88,13 +88,20 @@ export function useCurrentTermsVersion() {
   });
 }
 
-// One-shot pricing search. Held as a mutation so the operator triggers
-// it explicitly (and we don't refire on every re-render). Returns the
-// priced options list.
+// One-page pricing search. Held as a mutation so the operator triggers
+// it explicitly (and we don't refire on every re-render). Returns one page
+// of priced options; the builder accumulates pages as the operator loads more.
 export function useQuoteOptionsSearch() {
   return useMutation({
-    mutationFn: ({ criteria, currency }: { criteria: QuoteCriteriaInput; currency: string }) =>
-      searchQuoteOptions(criteria, currency),
+    mutationFn: ({
+      criteria,
+      currency,
+      page,
+    }: {
+      criteria: QuoteCriteriaInput;
+      currency: string;
+      page: number;
+    }) => searchQuoteOptions(criteria, currency, page),
   });
 }
 

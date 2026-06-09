@@ -96,7 +96,10 @@ class Property(AuditedModel):
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
-        ordering = ["name"]
+        # `id` tiebreaker keeps page boundaries stable when names collide — a
+        # total ordering is required for page-number pagination not to duplicate
+        # or skip rows (e.g. the quote builder pages through these candidates).
+        ordering = ["name", "id"]
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["region", "status"]),

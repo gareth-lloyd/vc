@@ -2,7 +2,7 @@ import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { QuotationId } from "@/lib/query/keys";
-import { propertyListResponseSchema } from "@/features/properties/schemas";
+import { isCapacityUnset, propertyListResponseSchema } from "@/features/properties/schemas";
 import { bookingDetailSchema, type BookingDetail } from "@/features/bookings/schemas";
 import {
   guestSchema,
@@ -23,7 +23,8 @@ import {
   type QuotationSendOverrides,
   type QuotationWriteInput,
   type QuoteCriteriaInput,
-  type QuoteOption,
+  type QuoteSearchResult,
+  type HiddenCapacityProperty,
   type TermsVersion,
 } from "./schemas";
 
@@ -99,9 +100,23 @@ interface PropertySearchFilters {
   q?: string;
 }
 
+// Customer-facing name: prefer the display name, fall back to the slug-ish name.
+function propertyDisplayName(row: { display_name?: string | null; name: string }): string {
+  return row.display_name?.trim() ? row.display_name : row.name;
+}
+
+interface CandidatePage {
+  candidates: PropertyCandidate[];
+  // `next != null` on the DRF envelope — there are more candidates to price.
+  hasMore: boolean;
+  // Total candidates matching the criteria across all pages (DRF `count`).
+  totalMatched: number;
+}
+
 async function fetchCandidateProperties(
   filters: PropertySearchFilters,
-): Promise<PropertyCandidate[]> {
+  page: number,
+): Promise<CandidatePage> {
   // Active properties only — pricing engine will reject archived/draft anyway.
   const query: QueryParams = {
     status: "active",
@@ -111,29 +126,82 @@ async function fetchCandidateProperties(
     max_bedrooms: filters.max_bedrooms,
     min_guests: filters.min_guests,
     q: filters.q || undefined,
+    // Omit page=1 so the first request stays clean (mirrors `toQuery`).
+    page: page > 1 ? page : undefined,
+  };
+  const data = await apiGet<unknown>("/properties", { query });
+  const result = propertyListResponseSchema.parse(data);
+  return {
+    candidates: result.results.map((row) => ({
+      id: row.id,
+      name: propertyDisplayName(row),
+      slug: row.slug ?? null,
+    })),
+    hasMore: result.next != null,
+    totalMatched: result.count,
+  };
+}
+
+async function fetchCapacityUnsetCandidates(
+  filters: PropertySearchFilters,
+): Promise<HiddenCapacityProperty[]> {
+  // Lenient name search: same scope as the strict candidate query but WITHOUT
+  // the capacity-derived guards (`min_guests` / `min_bedrooms`). A property that
+  // matches by name yet is absent from the strict set *because its capacity
+  // isn't set* is the hint we want to surface (see `isCapacityUnset`).
+  const query: QueryParams = {
+    status: "active",
+    country: filters.country || undefined,
+    region: filters.region || undefined,
+    q: filters.q || undefined,
   };
   const data = await apiGet<unknown>("/properties", { query });
   const page = propertyListResponseSchema.parse(data);
-  return page.results.map((row) => ({
-    id: row.id,
-    name: row.display_name?.trim() ? row.display_name : row.name,
-    slug: row.slug ?? null,
-  }));
+  return page.results
+    .filter((row) => isCapacityUnset(row.capacity))
+    .map((row) => ({
+      id: row.id,
+      name: propertyDisplayName(row),
+      slug: row.slug ?? null,
+    }));
 }
 
 export async function searchQuoteOptions(
   criteria: QuoteCriteriaInput,
   currency: string,
-): Promise<QuoteOption[]> {
-  const candidates = await fetchCandidateProperties({
+  page = 1,
+): Promise<QuoteSearchResult> {
+  const searchFilters: PropertySearchFilters = {
     country: criteria.country || undefined,
     region: criteria.region || undefined,
-    min_bedrooms: criteria.min_bedrooms ?? undefined,
-    max_bedrooms: criteria.max_bedrooms ?? undefined,
-    min_guests: criteria.adults + criteria.children,
     q: criteria.q || undefined,
-  });
-  if (candidates.length === 0) return [];
+  };
+  // The strict (paged) candidate query and the lenient capacity-hint query are
+  // independent requests, so run them concurrently. The hint is best-effort:
+  // its failure must never sink the priced-results path, so swallow its error.
+  // It describes the whole search (not a page) and is unpaged, so only compute
+  // it for the first page — and only for a name search.
+  const [candidatePage, capacityUnset] = await Promise.all([
+    fetchCandidateProperties(
+      {
+        ...searchFilters,
+        min_bedrooms: criteria.min_bedrooms ?? undefined,
+        max_bedrooms: criteria.max_bedrooms ?? undefined,
+        min_guests: criteria.adults + criteria.children,
+      },
+      page,
+    ),
+    page === 1 && criteria.q
+      ? fetchCapacityUnsetCandidates(searchFilters).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const { candidates, hasMore, totalMatched } = candidatePage;
+
+  // A property that priced (so it's a strict candidate) isn't "hidden".
+  const candidateIds = new Set(candidates.map((c) => c.id));
+  const hiddenForCapacity = capacityUnset.filter((p) => !candidateIds.has(p.id));
+
+  if (candidates.length === 0) return { options: [], hiddenForCapacity, hasMore, totalMatched };
 
   const body = {
     currency,
@@ -148,7 +216,7 @@ export async function searchQuoteOptions(
   const bulk = await apiSend<PricingBulkResponse>("POST", "/pricing:quote-bulk", body);
   const byId = new Map(candidates.map((p) => [p.id, p]));
 
-  return bulk.quotes.map((q) => {
+  const options = bulk.quotes.map((q) => {
     const property = byId.get(q.property_id);
     return quoteOptionSchema.parse({
       property_id: q.property_id,
@@ -166,6 +234,7 @@ export async function searchQuoteOptions(
       breakdown: q,
     });
   });
+  return { options, hiddenForCapacity, hasMore, totalMatched };
 }
 
 export async function createQuotation(body: QuotationWriteInput): Promise<QuotationDetail> {

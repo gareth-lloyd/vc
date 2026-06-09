@@ -127,7 +127,8 @@ manage.py demo_ical --reset     # hard-deletes all demo rows (no soft delete)
 
 `--reset` wipes everything tied to the demo property — including every row
 that `PROTECT`s it: a booking's payments / refunds / security deposits /
-booking events, the property's rate plans, and *any* quotation with a line on
-it (not just the demo guest's). Nothing on this property is precious, so the
-reset clears those first and then deletes the property; running it on a
-property carrying real data would destroy real data.
+booking events, the property's rate plans, *any* quotation with a line on it
+(not just the demo guest's), and the enquiry events on the orphaned enquiries
+that leaves behind. Nothing on this property is precious, so the reset clears
+those first and then deletes the property; running it on a property carrying
+real data would destroy real data.

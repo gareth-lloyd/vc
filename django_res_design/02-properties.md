@@ -83,6 +83,8 @@ Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft d
 
 Indexes: `slug` (unique), `status`, `(region, status)`, `group`.
 
+Default ordering: `["name", "id"]`. The `id` tiebreaker gives a **total** order so page-number pagination over `GET /properties` never duplicates or skips rows when two properties share a `name` — the quote builder pages through this listing (see `workflows/08-quotation/construction.md`).
+
 ## Decomposition models (OneToOne)
 
 Each holds a distinct concern. OneToOne keeps the joins narrow and lets each form/admin inline target one concern.
@@ -112,6 +114,10 @@ Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent.
 - `additional_guests` — PositiveSmallInteger (default 0)
 - `bedrooms`, `ensuites`, `bathrooms` — PositiveSmallInteger
 - `size_sqm` — DecimalField(8, 2, null=True, blank=True)
+
+Headline customer-facing counts, kept **independent** of the `Room` list (`PropertyCapacity.bedrooms` is the published total, not derived from individual `Room` rows). Operator-exposed at `GET/PATCH /properties/{id}/capacity` (singleton sub-resource, like settings/finance — no `POST`/`DELETE`); the row is auto-provisioned via `get_or_create` on first GET, so a property is never capacity-less. `GET /properties` also carries a read-only `capacity` block (null when no row — distinct from a zero-`guests` row; `size_sqm` serialised as a string to match this endpoint).
+
+`min_guests` on `/properties` maps to `capacity__guests__gte`, so a property with **no capacity row or `guests = 0` is excluded from quote search**. The exclusion is intentional but no longer silent: the quote builder runs a lenient name search and surfaces a "capacity not set" hint linking to the property, and the capacity editor warns when `guests` is 0. The single source of that rule on the frontend is `isCapacityUnset()` in `features/properties/schemas.ts`.
 
 ### `PropertySettings(AuditedModel)`
 Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null means inherit from group.** Replaces the legacy `IsDefaultSetting*` boolean salad.

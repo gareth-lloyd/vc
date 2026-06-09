@@ -38,6 +38,37 @@ def test_list_properties_returns_results(
 
 
 @pytest.mark.django_db
+def test_list_orders_collisions_deterministically(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    """Equal names must fall back to ascending id so page boundaries are stable.
+
+    Without a total ordering, page-number pagination over name-only sorting can
+    duplicate or skip rows — the quote builder pages through these candidates.
+    """
+    created = [
+        Property.objects.create(
+            name="Shared Name",
+            display_name="Shared Name",
+            slug=f"shared-{i}",
+            category=category,
+            group=group,
+            region=region,
+        )
+        for i in range(3)
+    ]
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/properties", {"q": "Shared Name"})
+    assert response.status_code == 200
+    ids = [row["id"] for row in response.json()["results"]]
+    assert ids == sorted(c.id for c in created)
+
+
+@pytest.mark.django_db
 def test_create_property_as_staff(
     api_client: APIClient,
     staff: User,

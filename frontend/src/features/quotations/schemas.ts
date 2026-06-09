@@ -116,6 +116,26 @@ export const quoteOptionSchema = z.object({
 });
 export type QuoteOption = z.infer<typeof quoteOptionSchema>;
 
+// A property that matched the operator's name search but is excluded from the
+// priced options because its capacity isn't set (no row, or guests === 0).
+// Surfaced as a hint so the operator learns why a known property is missing,
+// rather than seeing a bare empty state.
+export interface HiddenCapacityProperty {
+  id: number;
+  name: string;
+  slug: string | null;
+}
+
+export interface QuoteSearchResult {
+  options: QuoteOption[];
+  hiddenForCapacity: HiddenCapacityProperty[];
+  // Pagination over the strict candidate set (DRF `next`/`count`). The builder
+  // pages through candidates via "Load more"; `hiddenForCapacity` is computed
+  // once for the whole search (first page only).
+  hasMore: boolean;
+  totalMatched: number;
+}
+
 // One row in the operator-staged "lines so far" panel. Pre-save shape.
 // `is_selected` is intentionally absent — the backend sets it during the
 // `accept()` transition (convert-to-booking), not at create time.

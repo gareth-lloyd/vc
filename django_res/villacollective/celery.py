@@ -32,6 +32,11 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 # to survive the publish→consume boundary.
 app.steps["worker"].add(DjangoStructLogInitStep)
 
+# Side-effect import: connects the `bind_extra_task_metadata` receiver that
+# adds `task_name` to every task's auto-bound structlog context. Must follow
+# the bootstep registration above (it builds on django-structlog's signals).
+import core.logging.celery  # noqa: E402,F401
+
 # Import <app>/tasks.py for every app in INSTALLED_APPS so @shared_task
 # functions register at worker startup.
 app.autodiscover_tasks()

@@ -67,6 +67,7 @@ select = [
     "UP",           # pyupgrade
     "DJ",           # django
     "RUF",          # ruff-specific
+    "TID251",       # flake8-tidy-imports: banned-api (see banned-api below)
 ]
 ignore = [
     # RUF012 fires on Django Meta-class attributes (constraints/indexes/ordering)
@@ -81,8 +82,17 @@ ignore = [
     "DJ001",
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# Logging is structlog end to end (see django_res/CLAUDE.md §"Structured
+# logging"). stdlib `logging.getLogger` still renders through the pipeline but
+# bypasses the event-style convention, so ban it: use `structlog.get_logger`.
+"logging.getLogger".msg = "Use structlog.get_logger(__name__), not logging.getLogger — see django_res/CLAUDE.md §Structured logging."
+
 [tool.ruff.lint.per-file-ignores]
 "**/migrations/*.py" = ["E501", "I001"]
+# core/logging/config.py legitimately wires stdlib logging (the LOGGING dict);
+# it references logging internals by design.
+"core/logging/config.py" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

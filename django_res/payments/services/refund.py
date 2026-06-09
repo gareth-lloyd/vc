@@ -25,6 +25,7 @@ from django.utils import timezone
 
 from core.api.permissions import actor_has_perm
 from core.idempotency import find_by_meta_key, stamp_meta
+from core.logging.operations import log_operation
 from payments.enums import (
     PaymentPurpose,
     PaymentStatus,
@@ -85,8 +86,12 @@ class RefundService:
             idempotency_key,
         )
         if existing is not None:
+            # Idempotent cache hit — a no-op return, not an operation run.
             return existing
 
+        # Input validation is not an operation failure — keep it above the
+        # log_operation block so a bad amount logs as a rejected request, not a
+        # `refund.request.failed` error with a traceback.
         if amount is None or Decimal(str(amount)) <= 0:
             raise ValueError("Refund amount must be positive")
 
@@ -105,30 +110,31 @@ class RefundService:
                     "Cumulative refund amount exceeds the original Payment amount",
                 )
 
-        refund = Refund.objects.create(
-            booking=booking,
-            against_payment=against_payment,
-            purpose_track=purpose_track,
-            amount=Decimal(str(amount)),
-            currency=currency,
-            status=RefundStatus.PENDING.value,
-            reason_code=reason_code,
-            reason_notes=reason_notes,
-            method=method,
-            requested_by=requested_by,
-            security_deposit=security_deposit,
-            meta=stamp_meta(None, idempotency_key),
-        )
-        logger.info(
-            "refund.requested",
-            refund_id=refund.pk,
+        with log_operation(
+            "refund.request",
+            logger=logger,
             booking_id=booking.pk,
-            amount=str(refund.amount),
-            currency=currency.code,
             purpose_track=purpose_track,
             reason_code=reason_code,
-        )
-        return refund
+        ) as ctx:
+            refund = Refund.objects.create(
+                booking=booking,
+                against_payment=against_payment,
+                purpose_track=purpose_track,
+                amount=Decimal(str(amount)),
+                currency=currency,
+                status=RefundStatus.PENDING.value,
+                reason_code=reason_code,
+                reason_notes=reason_notes,
+                method=method,
+                requested_by=requested_by,
+                security_deposit=security_deposit,
+                meta=stamp_meta(None, idempotency_key),
+            )
+            ctx["refund_id"] = refund.pk
+            ctx["amount"] = str(refund.amount)
+            ctx["currency"] = currency.code
+            return refund
 
     # ------------------------------------------------------------------
     # Transitions
@@ -220,6 +226,10 @@ class RefundService:
             # Already executed — likely a webhook retry. Return the
             # current row without re-firing the outbound Payment.
             return refund
+
+        # State + permission guards are expected rejections, not operation
+        # failures — keep them above the log_operation block so they don't log
+        # as `refund.execute.failed` with a traceback.
         if refund.status != RefundStatus.APPROVED.value:
             raise ValueError(f"Refund {refund.reference}: cannot :execute from {refund.status!r}")
         if not actor_has_perm(actor, PERM_EXECUTE):
@@ -237,42 +247,39 @@ class RefundService:
                 f"Approver cannot also execute a refund without {PERM_SELF_APPROVE!r}",
             )
 
-        refund.executed_by = actor
-        refund.executed_at = timezone.now()
-        refund.save(update_fields=["executed_by", "executed_at", "updated_at"])
+        with log_operation(
+            "refund.execute", logger=logger, refund_id=refund.pk, booking_id=refund.booking_id
+        ) as ctx:
+            refund.executed_by = actor
+            refund.executed_at = timezone.now()
+            refund.save(update_fields=["executed_by", "executed_at", "updated_at"])
 
-        # Mint the gateway-bound Payment row. The Refund FK lives on
-        # `Payment.meta`; the reverse direction is `Refund.against_payment`
-        # which points to the original *inbound* payment, not the outbound
-        # refund payment. Guard against duplicates from concurrent
-        # execute attempts that raced past the status check above.
-        outbound_exists = Payment.objects.filter(
-            booking=refund.booking,
-            purpose=PaymentPurpose.REFUND.value,
-            meta__refund_id=refund.pk,
-        ).exists()
-        if not outbound_exists:
-            Payment.objects.create(
+            # Mint the gateway-bound Payment row. The Refund FK lives on
+            # `Payment.meta`; the reverse direction is `Refund.against_payment`
+            # which points to the original *inbound* payment, not the outbound
+            # refund payment. Guard against duplicates from concurrent
+            # execute attempts that raced past the status check above.
+            outbound_exists = Payment.objects.filter(
                 booking=refund.booking,
                 purpose=PaymentPurpose.REFUND.value,
-                status=PaymentStatus.PROCESSING.value,
-                amount=refund.amount,
-                currency=refund.currency,
-                meta={"refund_id": refund.pk},
-            )
+                meta__refund_id=refund.pk,
+            ).exists()
+            if not outbound_exists:
+                Payment.objects.create(
+                    booking=refund.booking,
+                    purpose=PaymentPurpose.REFUND.value,
+                    status=PaymentStatus.PROCESSING.value,
+                    amount=refund.amount,
+                    currency=refund.currency,
+                    meta={"refund_id": refund.pk},
+                )
+            ctx["amount"] = str(refund.amount)
+            ctx["outbound_payment_created"] = not outbound_exists
 
-        logger.info(
-            "refund.executed",
-            refund_id=refund.pk,
-            booking_id=refund.booking_id,
-            amount=str(refund.amount),
-            outbound_payment_created=not outbound_exists,
-        )
-
-        # TODO: queue Celery `process_refund(refund.id)` — for now we just
-        # record the EXECUTING state and rely on the webhook pipeline (or a
-        # manual transition) to advance it to SUCCEEDED / FAILED.
-        return refund._transition(RefundStatus.EXECUTING.value, actor=actor)
+            # TODO: queue Celery `process_refund(refund.id)` — for now we just
+            # record the EXECUTING state and rely on the webhook pipeline (or a
+            # manual transition) to advance it to SUCCEEDED / FAILED.
+            return refund._transition(RefundStatus.EXECUTING.value, actor=actor)
 
     # ------------------------------------------------------------------
     # Convenience constructor: cancellation → refund

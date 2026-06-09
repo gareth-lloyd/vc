@@ -24,12 +24,12 @@ cancel the failed feed's blocks.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 import httpx
+import structlog
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
     from properties.models import Property, PropertyCalendarFeed
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _HTTP_TIMEOUT = 20.0
 # How far ahead to expand recurring busy events. OTA feeds publish ~12-24mo out;
@@ -104,7 +104,7 @@ class ICalIngestService:
             try:
                 results.append(cls._sync_property(prop, feeds))
             except Exception:  # one villa must not abort the batch
-                logger.exception("iCal: unexpected error syncing property %s", prop.pk)
+                logger.exception("ical.sync_error", property_id=prop.pk)
         return results
 
     @classmethod
@@ -120,10 +120,7 @@ class ICalIngestService:
             # Partial view: cancelling from it would drop the failed feed's
             # blocks. Skip the whole property; a later run reconciles cleanly.
             result.skipped = True
-            logger.warning(
-                "iCal: a feed failed for property %s; skipping reconcile this run",
-                prop.pk,
-            )
+            logger.warning("ical.property_skipped", property_id=prop.pk, reason="feed_failed")
             return result
 
         merged = coalesce_intervals(intervals)
@@ -145,7 +142,7 @@ class ICalIngestService:
         except (httpx.HTTPError, ValueError) as exc:  # record + continue, never crash the run
             error = str(exc)[:500]
             # Log the feed id, never the URL (it carries the secret token).
-            logger.warning("iCal: feed %s failed: %s", feed.pk, error)
+            logger.warning("ical.feed_failed", feed_id=feed.pk, error=error)
             cls._mark_feed(feed, ok=False, error=error)
             return FeedResult(feed_id=feed.pk, ok=False, error=error), []
 
@@ -240,10 +237,11 @@ class ICalIngestService:
             if quotation_hold is None:
                 result.skipped_holds += 1
                 logger.info(
-                    "iCal: range %s..%s on property %s overlaps an existing hold; skipped",
-                    start,
-                    end,
-                    prop.pk,
+                    "ical.range_skipped",
+                    property_id=prop.pk,
+                    start=str(start),
+                    end=str(end),
+                    reason="overlaps_existing_hold",
                 )
                 return
             quotation = quotation_hold.quotation

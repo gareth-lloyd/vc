@@ -24,11 +24,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from payments.models.webhook_delivery import WebhookDelivery
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -121,10 +124,29 @@ class WebhookDispatcher:
             payment = cls._find_payment(event)
             if payment is None:
                 delivery.processing_error = f"No Payment matched event {delivery.event_id!r}"
+                logger.warning(
+                    "webhook.no_payment_match",
+                    provider=delivery.provider,
+                    event_id=delivery.event_id,
+                )
             else:
                 cls._apply(payment, event, delivery)
+                logger.info(
+                    "webhook.processed",
+                    provider=delivery.provider,
+                    event_id=delivery.event_id,
+                    payment_id=payment.pk,
+                )
         except Exception as exc:
             delivery.processing_error = str(exc)
+            # The contract is fail-soft (store the error, set processed_at, never
+            # raise) — but a swallowed webhook error was previously invisible.
+            logger.exception(
+                "webhook.process_failed",
+                provider=delivery.provider,
+                event_id=delivery.event_id,
+                error=str(exc),
+            )
         delivery.processed_at = timezone.now()
         delivery.save(update_fields=["processed_at", "processing_error", "updated_at"])
 

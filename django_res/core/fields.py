@@ -58,7 +58,14 @@ class EncryptedTextField(models.TextField):
             # Fernet key that's been rotated out. Log loudly and return None
             # so downstream consumers can't accidentally treat ciphertext as
             # plaintext (which would be a real security hazard if leaked).
-            logger.exception("encrypted_field.decrypt_failed")
+            # Identify the column, never the value — the ciphertext/plaintext
+            # must not reach the log.
+            model = getattr(self, "model", None)
+            logger.exception(
+                "encrypted_field.decrypt_failed",
+                model=model._meta.label if model is not None else None,
+                field=self.name,
+            )
             return None
 
     def get_prep_value(self, value: Any) -> Any:

@@ -348,7 +348,12 @@ def test_refund_service_emits_structured_events(
     user: Any,
     approver: Any,
 ) -> None:
-    """request/execute emit `refund.requested` / `refund.executed` events."""
+    """request/execute emit the `refund.request`/`refund.execute` op triples.
+
+    Refund is money movement — losing its structured observability would be a
+    silent regression worth catching, so we pin the success lines and the key
+    fields (refund_id / amount / outbound_payment_created) that ride on them.
+    """
     from structlog.testing import capture_logs
 
     _grant(approver, "approve_refund", "execute_refund", "self_approve_refund")
@@ -365,11 +370,11 @@ def test_refund_service_emits_structured_events(
         RefundService.approve(refund, actor=approver)
         RefundService.execute(refund, actor=approver)
 
-    requested = next(e for e in logs if e["event"] == "refund.requested")
+    requested = next(e for e in logs if e["event"] == "refund.request.succeeded")
     assert requested["refund_id"] == refund.pk
     assert requested["amount"] == "100.00"
     assert requested["currency"] == gbp.code
 
-    executed = next(e for e in logs if e["event"] == "refund.executed")
+    executed = next(e for e in logs if e["event"] == "refund.execute.succeeded")
     assert executed["refund_id"] == refund.pk
     assert executed["outbound_payment_created"] is True

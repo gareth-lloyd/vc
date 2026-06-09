@@ -57,6 +57,11 @@ Custom actions use colon-verb syntax: `POST /bookings/{id}:confirm`,
   Use `queryClient.invalidateQueries` — don't manually update cache
   unless optimistic UI is needed (see `useToggleNotePin` for the one
   optimistic example).
+- **Auth boundaries wipe the whole cache.** Login, 2FA verify, logout, and
+  the boot-level 401 handler all funnel through `resetAuthQueryCache`
+  (`features/auth/resetAuthQueryCache.ts`) — never a hand-picked prefix
+  allowlist, which would leak one user's cached data into the next session.
+  Any new auth transition (password reset, account switch) must call it too.
 
 ### Form dialog pattern (create / edit)
 
@@ -65,9 +70,12 @@ Each dialog is a self-contained component — no shared form dialog
 abstraction. The template is `NoteFormDialog.tsx`.
 
 - Reset form state in a `useEffect` gated on `open`.
-- **4xx field errors**: `applyApiErrorToForm(form, error)` maps
-  `field_errors` to RHF inline errors. Remaining `detail` goes to a
-  `topLevelError` state shown as an alert banner.
+- **4xx field errors**: `applyApiErrorToForm(form, error)` maps matched
+  `field_errors` to RHF inline errors, and folds everything without an
+  inline home — `non_field_errors`, nested serializer errors, and fields
+  absent from the form — into the returned `detail`, which goes to a
+  `topLevelError` state shown as an alert banner. Don't re-implement that
+  fan-out at the call site.
 - **5xx / network errors**: `toast.error("Something went wrong")`.
 - Dialog stays open on error so the user can fix and retry.
 

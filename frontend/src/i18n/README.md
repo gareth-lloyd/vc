@@ -36,7 +36,11 @@ detailed reference; the short rule lives in `frontend/CLAUDE.md`.
    genuinely reused across features.
 2. Add the key to `src/i18n/locales/en/<namespace>.json` under a nested path
    (`actions.*`, `fields.*`, `errors.*`, `empty.*`, `toasts.*`,
-   `placeholders.*`, etc.).
+   `placeholders.*`, etc.). **Add the same key to every other locale
+   (`el/…`) in the same step** — `localeParity.test.ts` fails the build on any
+   key present in one locale but missing in another, and on any
+   `{{interpolation}}` token that differs between locales. See "Locale parity"
+   below.
 3. Use it: `t("actions.save")` (same-namespace) or `t("common:actions.save")`
    (cross-namespace).
 4. Never construct a key from interpolated input (``t(`status.${value}`)``)
@@ -67,6 +71,17 @@ suffixes: `t("columns.nights", { count: n })`.
   For explicit messages on `.min`, `.email`, `.refine` etc., pass a
   fully-qualified i18n key:
   `z.string().min(1, { message: "auth:errors.password_required" })`.
+- **Locale parity** is test-enforced. `src/i18n/__tests__/localeParity.test.ts`
+  asserts, per namespace, that `en` and `el` have identical key sets **and**
+  identical `{{interpolation}}` tokens per key. A missing key renders the raw
+  key string to the user, so this fails CI rather than shipping silently. When
+  you add/rename/remove a key, update all locales together.
+- **Machine-translated `el` keys** are tracked in
+  `src/i18n/locales/el/_machine_translated.json` — a manifest of Greek keys
+  backfilled by machine and **not yet reviewed by a native speaker**. It is not
+  a namespace (i18next and the parity test ignore it). When a human verifies a
+  key, remove it from the manifest. Prefer reviewing existing entries over
+  adding new unreviewed machine translations.
 - **Date/number formatting** goes through `src/lib/format/*.ts`. Never call
   `toLocaleString` or `format(...)` directly in components; the helpers pick up
   the active locale.
@@ -76,3 +91,6 @@ contact")`) — they exercise the real translation layer, not a stub.
 - **Adding a language**: drop new JSON files under `src/i18n/locales/<lang>/`,
   extend `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`, register a `date-fns`
   locale in `src/lib/format/date.ts`, and add the option to the language picker.
+  The parity test runs per `I18N_NAMESPACES` namespace against `en` and `el`; if
+  you add a third locale, extend the test to cover it (and every namespace file
+  must exist, or it throws).

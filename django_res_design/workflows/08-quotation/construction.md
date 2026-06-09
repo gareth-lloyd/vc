@@ -31,6 +31,28 @@ Invokes `PRICING.ENGINE.COMPUTE_QUOTATION`. Summary:
 ### Failure modes
 - See pricing-engine doc.
 
+### Redesign note — paginated candidate fetch + "Load more"
+
+The SPA builder splits the legacy single-pass into two calls and **pages** the
+candidate set rather than fetching every match at once:
+
+1. `GET /properties?status=active&…filters…&page=N` — one page (50) of candidate
+   villas, name-ordered (stable via the `["name", "id"]` tiebreaker above). The
+   DRF envelope's `next`/`count` drive the builder.
+2. `POST /pricing:quote-bulk` — prices **only that page's** candidates.
+
+The builder accumulates priced options across pages and exposes a **"Load more"**
+button while `next != null`. Because availability is decided at pricing time,
+*candidate* pagination ≠ *available-result* pagination: a page may add few or no
+available villas (the rest fall into the "unavailable" collapsible). A count line
+("N available · priced M of T matching villas") makes that legible. `lastCriteria`
+(the criteria the visible results were priced under) is recorded only on a
+successful search, so a failed re-search never pairs a stale price with newly
+entered criteria.
+
+The lenient "capacity not set" hint (see `02-properties.md` `PropertyCapacity`)
+is computed once per fresh search (page 1 only), not per page.
+
 ---
 
 ## Recalculate on field change

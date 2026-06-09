@@ -83,6 +83,8 @@ Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft d
 
 Indexes: `slug` (unique), `status`, `(region, status)`, `group`.
 
+Default ordering: `["name", "id"]`. The `id` tiebreaker gives a **total** order so page-number pagination over `GET /properties` never duplicates or skips rows when two properties share a `name` — the quote builder pages through this listing (see `workflows/08-quotation/construction.md`).
+
 ## Decomposition models (OneToOne)
 
 Each holds a distinct concern. OneToOne keeps the joins narrow and lets each form/admin inline target one concern.

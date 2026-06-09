@@ -30,6 +30,9 @@ interface DateRangeFieldProps<T extends FieldValues> {
   pickLabel: string;
   /** Days the calendar greys out (already-occupied dates). */
   disabledDays?: Matcher | Matcher[];
+  /** Fires when the calendar popover opens/closes. Lets the host defer the
+   * (only popover-consumed) availability fetch until the picker is first opened. */
+  onPickerOpenChange?: (open: boolean) => void;
   /** Pre-resolved (translated) field errors. */
   fromError?: string;
   toError?: string;
@@ -53,6 +56,7 @@ export function DateRangeField<T extends FieldValues>({
   toId,
   pickLabel,
   disabledDays,
+  onPickerOpenChange,
   fromError,
   toError,
 }: DateRangeFieldProps<T>) {
@@ -118,7 +122,13 @@ export function DateRangeField<T extends FieldValues>({
           ) : null}
         </div>
       </div>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          onPickerOpenChange?.(next);
+        }}
+      >
         <PopoverTrigger asChild>
           <Button type="button" variant="outline" size="sm" className="w-full justify-start">
             <CalendarDays className="mr-2 size-4" />

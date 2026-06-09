@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { blockCalendarHandlers } from "@/test/msw/handlers";
 import { renderWithProviders } from "@/test/render";
 import { BlockRequestDialog } from "../BlockRequestDialog";
 
@@ -33,6 +34,7 @@ function created(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   toastSuccess.mockClear();
   toastError.mockClear();
+  server.use(...blockCalendarHandlers);
 });
 
 afterEach(() => {

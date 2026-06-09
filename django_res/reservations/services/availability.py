@@ -53,8 +53,11 @@ class CellStatus:
     ``None`` for bookings and for system holds (quotation / booking deposit)
     so the UI never offers an edit affordance on read-only state.
 
-    ``segments`` is present only on a true changeover day (one stay departs
-    the morning, another arrives the afternoon) — see ``_changeover_segments``.
+    ``segments`` carries an AM/PM split, set by ``_apply_changeover_segments``
+    on two kinds of day: a *true changeover* (one stay departs the morning,
+    another arrives the afternoon — both halves occupied, ``available=False``)
+    and a *lone booking checkout* (AM booked, PM free — the cell stays
+    ``available=True`` because the afternoon is sellable as a new arrival).
     """
 
     available: bool

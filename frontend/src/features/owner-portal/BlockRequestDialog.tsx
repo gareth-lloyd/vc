@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { addMonths, format, parseISO, startOfMonth } from "date-fns";
+import { addMonths, format, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -22,11 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DateRangeField } from "@/components/form/DateRangeField";
+import { disabledDaysFromCells } from "@/components/form/disabledDays";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
-import { formatNightRange } from "@/lib/format/date";
-import { nightRangeParts } from "@/lib/nights";
+import { nightsSummaryArgs } from "@/lib/format/date";
 import { useCreateBlockRequest, useOwnerPropertyCalendar } from "./hooks";
 import {
   blockRequestWriteInputSchema,
@@ -85,33 +85,22 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
   const errors = form.formState.errors;
 
   // Grey out already-occupied days in the picker over a generous forward window.
-  // The server still validates conflicts; this is a courtesy, not the guard.
+  // The list is only consumed by the calendar popover, so defer the fetch until
+  // the picker is first opened. The server still validates conflicts regardless;
+  // this is a courtesy, not the guard.
+  const [pickerOpened, setPickerOpened] = useState(false);
   const windowStart = useMemo(() => startOfMonth(new Date()), []);
   const calendar = useOwnerPropertyCalendar(
-    propertyId,
+    pickerOpened ? propertyId : undefined,
     format(windowStart, "yyyy-MM-dd"),
     format(addMonths(windowStart, 18), "yyyy-MM-dd"),
   );
   const disabledDays = useMemo(
-    () =>
-      (calendar.data?.cells ?? [])
-        .filter((cell) => !cell.available)
-        .map((cell) => parseISO(cell.date)),
+    () => disabledDaysFromCells(calendar.data?.cells ?? []),
     [calendar.data],
   );
 
-  const dateFrom = form.watch("date_from");
-  const dateTo = form.watch("date_to");
-  const nightsSummary =
-    dateFrom && dateTo && dateTo > dateFrom
-      ? (() => {
-          const parts = nightRangeParts(dateFrom, dateTo);
-          return t("blocks.dialog.nights_summary", {
-            range: formatNightRange(parts.firstNight, parts.lastNight),
-            count: parts.nights,
-          });
-        })()
-      : null;
+  const summaryArgs = nightsSummaryArgs(form.watch("date_from"), form.watch("date_to"));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,13 +120,14 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
             toLabel={t("blocks.fields.date_to")}
             pickLabel={t("blocks.fields.pick_dates")}
             disabledDays={disabledDays}
+            onPickerOpenChange={(open) => open && setPickerOpened(true)}
             fromError={errors.date_from ? t(errors.date_from.message ?? "") : undefined}
             toError={errors.date_to ? t(errors.date_to.message ?? "") : undefined}
           />
 
-          {nightsSummary ? (
+          {summaryArgs ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
-              {nightsSummary}
+              {t("blocks.dialog.nights_summary", summaryArgs)}
             </p>
           ) : null}
 

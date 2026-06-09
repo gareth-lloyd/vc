@@ -1,8 +1,9 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { blockCalendarHandlers } from "@/test/msw/handlers";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import {
@@ -34,6 +35,10 @@ const existingBlock: EditableBlock = {
   date_to: "2026-06-17",
   notes: "Owner stay",
 };
+
+beforeEach(() => {
+  server.use(...blockCalendarHandlers);
+});
 
 describe("AvailabilityBlockFormDialog", () => {
   it("creates a block on save", async () => {

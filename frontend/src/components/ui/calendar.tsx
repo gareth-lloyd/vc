@@ -1,10 +1,8 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DayPicker } from "react-day-picker";
-import { el, enGB } from "date-fns/locale";
 import "react-day-picker/style.css";
-import i18n, { DEFAULT_LANGUAGE } from "@/i18n";
-import { baseLanguageTag } from "@/i18n/normalize";
+import { activeLocale } from "@/lib/format/date";
 import { cn } from "@/lib/cn";
 
 // react-day-picker ships its own layout/interaction CSS; we only re-skin it to
@@ -23,15 +21,12 @@ const RDP_THEME = cn(
   "[--rdp-day_button-height:2.25rem]",
 );
 
-const DATE_FNS_LOCALES = { [DEFAULT_LANGUAGE]: enGB, el } as const;
-
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 export function Calendar({ className, ...props }: CalendarProps) {
-  const locale = DATE_FNS_LOCALES[baseLanguageTag(i18n.language) as "el"] ?? enGB;
   return (
     <DayPicker
-      locale={locale}
+      locale={activeLocale()}
       weekStartsOn={1}
       className={cn(RDP_THEME, "text-foreground", className)}
       components={{

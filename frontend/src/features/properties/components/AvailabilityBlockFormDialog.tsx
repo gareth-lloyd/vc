@@ -3,7 +3,7 @@ import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { addMonths, format, parseISO, startOfMonth } from "date-fns";
+import { addMonths, format, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DateRangeField } from "@/components/form/DateRangeField";
+import { disabledDaysFromCells } from "@/components/form/disabledDays";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
-import { formatNightRange } from "@/lib/format/date";
-import { nightRangeParts } from "@/lib/nights";
+import { nightsSummaryArgs } from "@/lib/format/date";
 import {
   useCreatePropertyBlock,
   usePropertyAvailabilityCalendar,
@@ -125,33 +125,21 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
 
   // Grey out already-occupied days over a forward window. In edit mode the block
   // being edited must stay selectable, so exclude its own cells (by block_id).
+  // The list only feeds the calendar popover, so defer the fetch until it opens.
   const editingBlockId = isCreate ? null : props.block.id;
+  const [pickerOpened, setPickerOpened] = useState(false);
   const windowStart = useMemo(() => startOfMonth(new Date()), []);
   const calendar = usePropertyAvailabilityCalendar(
-    propertyId,
+    pickerOpened ? propertyId : undefined,
     format(windowStart, "yyyy-MM-dd"),
     format(addMonths(windowStart, 18), "yyyy-MM-dd"),
   );
   const disabledDays = useMemo(
-    () =>
-      (calendar.data?.cells ?? [])
-        .filter((cell) => !cell.available && cell.block_id !== editingBlockId)
-        .map((cell) => parseISO(cell.date)),
+    () => disabledDaysFromCells(calendar.data?.cells ?? [], editingBlockId),
     [calendar.data, editingBlockId],
   );
 
-  const dateFrom = form.watch("date_from");
-  const dateTo = form.watch("date_to");
-  const nightsSummary =
-    dateFrom && dateTo && dateTo > dateFrom
-      ? (() => {
-          const parts = nightRangeParts(dateFrom, dateTo);
-          return t("availability.block_dialog.nights_summary", {
-            range: formatNightRange(parts.firstNight, parts.lastNight),
-            count: parts.nights,
-          });
-        })()
-      : null;
+  const summaryArgs = nightsSummaryArgs(form.watch("date_from"), form.watch("date_to"));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -195,6 +183,7 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
             toLabel={t("availability.block_dialog.fields.date_to")}
             pickLabel={t("availability.block_dialog.fields.pick_dates")}
             disabledDays={disabledDays}
+            onPickerOpenChange={(open) => open && setPickerOpened(true)}
             fromError={
               form.formState.errors.date_from
                 ? String(form.formState.errors.date_from.message)
@@ -207,9 +196,9 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
             }
           />
 
-          {nightsSummary ? (
+          {summaryArgs ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
-              {nightsSummary}
+              {t("availability.block_dialog.nights_summary", summaryArgs)}
             </p>
           ) : null}
 

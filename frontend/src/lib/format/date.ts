@@ -2,6 +2,7 @@ import { format, formatDistanceToNow, isValid, parseISO, type Locale } from "dat
 import { el, enGB } from "date-fns/locale";
 import i18n, { DEFAULT_LANGUAGE } from "@/i18n";
 import { baseLanguageTag } from "@/i18n/normalize";
+import { nightRangeParts } from "@/lib/nights";
 
 // Register additional date-fns locales here when adding a new translated language.
 const LOCALES: Record<string, Locale> = {
@@ -9,7 +10,9 @@ const LOCALES: Record<string, Locale> = {
   el,
 };
 
-function activeLocale(): Locale {
+/** The date-fns locale for the active UI language (the single source of truth —
+ * `ui/calendar.tsx` reuses this so the picker can't drift from the formatters). */
+export function activeLocale(): Locale {
   return LOCALES[baseLanguageTag(i18n.language)] ?? enGB;
 }
 
@@ -44,6 +47,21 @@ export function formatNightRange(firstNight: Date, lastNight: Date): string {
   }
   const firstFormat = sameYear ? "d MMM" : "d MMM yyyy";
   return `${format(firstNight, firstFormat, { locale })} – ${format(lastNight, "d MMM yyyy", { locale })}`;
+}
+
+/**
+ * i18n interpolation args for a "N nights (21–30 Jul 2026)" summary of a
+ * half-open `[date_from, date_to)` range, or `null` when it isn't a valid forward
+ * span. The caller owns the translation key — the block dialogs live in different
+ * namespaces but share this shape.
+ */
+export function nightsSummaryArgs(
+  dateFrom: string,
+  dateTo: string,
+): { range: string; count: number } | null {
+  if (!dateFrom || !dateTo || dateTo <= dateFrom) return null;
+  const parts = nightRangeParts(dateFrom, dateTo);
+  return { range: formatNightRange(parts.firstNight, parts.lastNight), count: parts.nights };
 }
 
 export function formatRelative(value: string | Date | null | undefined): string {

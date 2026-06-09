@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -13,6 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
+from core.exceptions import HoldUnavailable
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
@@ -25,6 +27,7 @@ from reservations.serializers import (
     QuotationWriteSerializer,
 )
 from reservations.services.bookings import BookingService
+from reservations.services.holds import HoldService
 from reservations.services.quotation_render import (
     build_quotation_context,
     render_quotation_html,
@@ -35,6 +38,8 @@ from reservations.services.quotation_transmission import (
 )
 from reservations.services.quotations import QuotationService
 from reservations.views.status_counts import StatusCountsMixin
+
+logger = structlog.get_logger(__name__)
 
 
 class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
@@ -186,7 +191,7 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                 terms_version=quotation.terms_version,
             )
             for line in quotation.lines.all():
-                QuotationLine.objects.create(
+                clone_line = QuotationLine.objects.create(
                     quotation=clone,
                     property=line.property,
                     date_from=line.date_from,
@@ -202,6 +207,22 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                     price_override_reason=line.price_override_reason,
                     notes=line.notes,
                 )
+                # Protect the clone's dates like any other quotation line. If
+                # the *source* quote still holds them, the global one-hold-per-
+                # villa-range rule means we can't place a second hold — but the
+                # dates are already protected by that live hold, so skip rather
+                # than fail the duplicate. (If the source is later withdrawn,
+                # the clone's line should be re-touched to claim its own hold.)
+                try:
+                    QuotationService.sync_line_hold(clone_line)
+                except HoldUnavailable:
+                    logger.info(
+                        "quotation.duplicate_hold_skipped",
+                        quotation_id=clone.pk,
+                        quotation_line_id=clone_line.pk,
+                        property_id=clone_line.property_id,
+                        reason="dates_already_held",
+                    )
         return Response(
             QuotationDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,
@@ -245,10 +266,16 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="withdraw")
     def withdraw(self, request: Request, pk: str | None = None) -> Response:
-        """Transition the quotation to CANCELLED (alias for cancel)."""
+        """Transition the quotation to CANCELLED (alias for cancel).
+
+        Releasing the quote's holds is part of the cancel — otherwise the
+        villa stays blocked on the calendar until the holds expire naturally.
+        """
         quotation = self.get_object()
         reason = request.data.get("reason", "")
-        quotation.cancel(reason=reason)
+        with transaction.atomic():
+            quotation.cancel(reason=reason)
+            HoldService.release_for_quotation(quotation)
         return Response(QuotationDetailSerializer(quotation).data)
 
 
@@ -293,17 +320,28 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         return Response(read.data)
 
     def perform_create(self, serializer: Any) -> None:
-        quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
-        line = serializer.save(quotation=quotation)
-        self._reprice(line)
+        # Line + reprice + hold share one transaction: a `HoldUnavailable`
+        # (dates already held by another live quote) rolls the line back too,
+        # so we never persist a line without its protecting hold.
+        with transaction.atomic():
+            quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
+            line = serializer.save(quotation=quotation)
+            self._reprice(line)
+            QuotationService.sync_line_hold(line)
 
     def perform_update(self, serializer: Any) -> None:
         # Persist the edited fields (adults, discount, …) BEFORE repricing so
         # `_reprice` re-reads them off the row. Without the save the patched
         # values would never reach the DB and the engine would price the stale
-        # row.
-        line = serializer.save()
-        self._reprice(line)
+        # row. Then re-sync the hold so an edited date range relocates the
+        # line's existing hold instead of leaving it on the old dates.
+        with transaction.atomic():
+            line = serializer.save()
+            self._reprice(line)
+            QuotationService.sync_line_hold(line)
+
+    # No perform_destroy override: the `QuotationLine` pre_delete signal
+    # releases the line's live holds on every delete path (API, ORM, cascade).
 
     def _reprice(self, line: QuotationLine) -> None:
         """Recompute a non-manual line's total + pricing_snapshot.

@@ -59,6 +59,32 @@ class HoldService:
         ).exists()
 
     @classmethod
+    def _assert_no_overlap(
+        cls,
+        *,
+        property: Any,
+        date_from: date_type,
+        date_to: date_type,
+        exclude_hold_ids: list[int] | None = None,
+    ) -> None:
+        """Raise `HoldUnavailable` if a live hold overlaps the range.
+
+        The shared conflict guard for `place` (new hold) and `move`/
+        `update_block` (relocate, excluding the hold itself) — one predicate so
+        the overlap rule can't drift between create and edit.
+        """
+        if cls._has_overlapping_live_hold(
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=exclude_hold_ids,
+        ):
+            raise HoldUnavailable(
+                f"An overlapping live hold already exists for property "
+                f"{property.pk} on {date_from}..{date_to}"
+            )
+
+    @classmethod
     @transaction.atomic
     def place(
         cls,
@@ -70,6 +96,7 @@ class HoldService:
         never_expires: bool = False,
         reason: str = BookingHoldReason.MANUAL.value,
         quotation: Any = None,
+        quotation_line: Any = None,
         booking: Any = None,
         notes: str = "",
     ) -> BookingHold:
@@ -84,15 +111,7 @@ class HoldService:
         never reaps it. `never_expires` and an explicit `expires_at` are
         mutually exclusive.
         """
-        if cls._has_overlapping_live_hold(
-            property=property,
-            date_from=date_from,
-            date_to=date_to,
-        ):
-            raise HoldUnavailable(
-                f"An overlapping live hold already exists for property {property.pk} "
-                f"on {date_from}..{date_to}"
-            )
+        cls._assert_no_overlap(property=property, date_from=date_from, date_to=date_to)
         if never_expires:
             if expires_at is not None:
                 raise ValueError("`never_expires=True` cannot be combined with `expires_at`")
@@ -101,6 +120,7 @@ class HoldService:
         return BookingHold.objects.create(
             property=property,
             quotation=quotation,
+            quotation_line=quotation_line,
             booking=booking,
             date_from=date_from,
             date_to=date_to,
@@ -125,21 +145,50 @@ class HoldService:
         Raises `HoldUnavailable` if the new range collides with another live
         hold (the editing hold is excluded so a no-op save is allowed).
         """
-        if cls._has_overlapping_live_hold(
+        cls._assert_no_overlap(
             property=hold.property,
             date_from=date_from,
             date_to=date_to,
             exclude_hold_ids=[hold.pk],
-        ):
-            raise HoldUnavailable(
-                f"An overlapping live hold already exists for property "
-                f"{hold.property_id} on {date_from}..{date_to}"
-            )
+        )
         hold.date_from = date_from
         hold.date_to = date_to
         hold.reason = reason
         hold.notes = notes
         hold.save(update_fields=["date_from", "date_to", "reason", "notes", "updated_at"])
+        return hold
+
+    @classmethod
+    @transaction.atomic
+    def move(
+        cls,
+        hold: BookingHold,
+        *,
+        date_from: date_type,
+        date_to: date_type,
+        expires_at: datetime | None = None,
+    ) -> BookingHold:
+        """Relocate a live hold's date range (and optionally its expiry) in place.
+
+        Re-checks overlap excluding the hold itself, so a date change that
+        collides with *another* live hold raises `HoldUnavailable`. Used to keep
+        a quotation line's hold aligned when the line is repriced or edited
+        (e.g. a changeover-shifted arrival). Distinct from `update_block`, which
+        is the operator-block editor and rewrites reason/notes instead.
+        """
+        cls._assert_no_overlap(
+            property=hold.property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=[hold.pk],
+        )
+        hold.date_from = date_from
+        hold.date_to = date_to
+        update_fields = ["date_from", "date_to", "updated_at"]
+        if expires_at is not None:
+            hold.expires_at = expires_at
+            update_fields.append("expires_at")
+        hold.save(update_fields=update_fields)
         return hold
 
     @classmethod
@@ -151,6 +200,20 @@ class HoldService:
         hold.released_at = timezone.now()
         hold.save(update_fields=["released_at", "updated_at"])
         return hold
+
+    @classmethod
+    @transaction.atomic
+    def release_for_line(cls, line: Any) -> int:
+        """Release every live hold tied to a given quotation line. Returns count.
+
+        Fired from the `QuotationLine` pre_delete signal so a deleted line frees
+        its dates whatever the delete path (API, ORM, cascade) — and used as the
+        bulk counterpart to `release_for_quotation` / `release_for_booking`.
+        """
+        return BookingHold.objects.filter(
+            quotation_line=line,
+            released_at__isnull=True,
+        ).update(released_at=timezone.now())
 
     @classmethod
     @transaction.atomic

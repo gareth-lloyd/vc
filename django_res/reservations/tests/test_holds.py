@@ -16,6 +16,7 @@ from reservations.tasks import expire_holds
 
 if TYPE_CHECKING:
     from properties.models import Property
+    from reservations.models import QuotationLine
 
 
 @pytest.mark.django_db
@@ -68,6 +69,49 @@ def test_place_allows_overlap_when_prior_hold_released(property_: Property) -> N
         expires_at=expires,
     )
     assert second.pk != first.pk
+
+
+@pytest.mark.django_db
+def test_release_for_line_bulk_releases_live_holds(
+    property_: Property, quotation_line: QuotationLine
+) -> None:
+    """`release_for_line` releases every live hold tied to a line in one pass."""
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+        quotation=quotation_line.quotation,
+        quotation_line=quotation_line,
+    )
+    released = HoldService.release_for_line(quotation_line)
+    assert released == 1
+    hold.refresh_from_db()
+    assert hold.released_at is not None
+    assert hold.is_live() is False
+
+
+@pytest.mark.django_db
+def test_deleting_line_releases_its_holds_via_signal(
+    property_: Property, quotation_line: QuotationLine
+) -> None:
+    """Deleting a QuotationLine through the ORM (no viewset) still releases its
+    live holds — the invariant lives at the model layer, not just the API."""
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+        quotation=quotation_line.quotation,
+        quotation_line=quotation_line,
+    )
+    quotation_line.delete()
+
+    hold.refresh_from_db()
+    assert hold.released_at is not None
+    assert hold.is_live() is False
 
 
 @pytest.mark.django_db

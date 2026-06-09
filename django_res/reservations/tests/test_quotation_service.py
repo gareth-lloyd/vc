@@ -272,6 +272,53 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
 
 
 @pytest.mark.django_db
+def test_backfill_links_orphaned_holds_to_their_line(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """The 0026 backfill links a pre-FK hold (quotation set, quotation_line NULL)
+    to its line by the (quotation, property, dates) key it was placed on."""
+    import importlib
+
+    from django.apps import apps as global_apps
+
+    migration = importlib.import_module(
+        "reservations.migrations.0026_backfill_bookinghold_quotation_line"
+    )
+
+    quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    line = quotation.lines.create(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+    )
+    # A hold as the pre-FK code left it: quotation set, quotation_line NULL.
+    hold = BookingHold.objects.create(
+        property=property_,
+        quotation=quotation,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=quotation.expires_at,
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+    )
+    assert hold.quotation_line_id is None
+
+    migration._link_holds_to_lines(global_apps, None)
+
+    hold.refresh_from_db()
+    assert hold.quotation_line_id == line.pk
+
+
+@pytest.mark.django_db
 def test_create_direct_auto_creates_agent_portal_enquiry(
     guest: Guest,
     gbp: Currency,

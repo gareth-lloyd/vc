@@ -15,9 +15,10 @@ from pricing.models import Currency
 from properties.enums import PrefilledChangeOverDay
 from properties.models import Property
 from properties.models.settings import PropertySettings
-from reservations.enums import QuotationStatus
+from reservations.enums import BookingHoldReason, QuotationStatus
 from reservations.models import (
     Booking,
+    BookingHold,
     Guest,
     Quotation,
     QuotationLine,
@@ -196,6 +197,66 @@ def test_duplicate_quotation_clones_lines(
     clone_id = response.data["id"]
     assert clone_id != quotation.pk
     assert QuotationLine.objects.filter(quotation_id=clone_id).count() == 1
+
+
+@pytest.mark.django_db
+def test_duplicate_quotation_places_holds_on_cloned_lines(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """A duplicated quote's cloned lines must protect their dates too — without
+    this, a duplicate is invisible on the availability calendar (same bug class
+    as the direct-API line path). The source `line` fixture carries no hold, so
+    the clone's dates are free and a fresh QUOTATION_OPEN hold is placed."""
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}:duplicate")
+    assert response.status_code == 201
+
+    clone_line = QuotationLine.objects.get(quotation_id=response.data["id"])
+    hold = BookingHold.objects.get(quotation_line=clone_line)
+    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
+    assert hold.date_from == line.date_from
+    assert hold.date_to == line.date_to
+    assert hold.is_live() is True
+
+
+@pytest.mark.django_db
+def test_withdraw_releases_holds(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Withdrawing (cancelling) a quote frees its held dates immediately rather
+    than leaving the villa blocked until the hold's natural expiry."""
+    api_client.force_login(staff)
+    api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert BookingHold.objects.filter(quotation=quotation, released_at__isnull=True).count() == 1
+
+    withdraw = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:withdraw",
+        {"reason": "guest cancelled"},
+        format="json",
+    )
+    assert withdraw.status_code == 200
+
+    assert not BookingHold.objects.filter(quotation=quotation, released_at__isnull=True).exists()
+    assert not BookingHold.live_overlapping(
+        property=property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -422,6 +483,122 @@ def test_manual_line_is_not_repriced(
     assert line.is_manual is True
     assert line.total == Decimal("750.00")
     assert line.pricing_snapshot == {}
+
+
+@pytest.mark.django_db
+def test_create_line_places_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A line built through the UI (POST /lines) must place a QUOTATION_OPEN
+    hold protecting its dates — the enquiry-driven path already did this; the
+    direct-API path used to leak (no hold, nothing on the availability calendar).
+    """
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line = QuotationLine.objects.get()
+    hold = BookingHold.objects.get(quotation=quotation)
+    assert hold.quotation_line_id == line.pk
+    assert hold.property_id == property_.pk
+    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
+    assert hold.date_from == date(2026, 6, 10)
+    assert hold.date_to == date(2026, 6, 17)
+    assert hold.expires_at == quotation.expires_at
+    assert hold.is_live() is True
+
+
+@pytest.mark.django_db
+def test_update_line_moves_its_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """PATCHing a line's dates moves its single hold rather than orphaning the
+    old one or creating a second."""
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_pk = QuotationLine.objects.get().pk
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line_pk}",
+        {"date_from": "2026-06-12", "date_to": "2026-06-19"},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+
+    # Exactly one hold, relocated to the new range.
+    hold = BookingHold.objects.get(quotation=quotation)
+    assert hold.quotation_line_id == line_pk
+    assert hold.date_from == date(2026, 6, 12)
+    assert hold.date_to == date(2026, 6, 19)
+    assert hold.is_live() is True
+
+
+@pytest.mark.django_db
+def test_delete_line_releases_its_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """DELETEing a line releases its hold so the dates free up on the calendar."""
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_pk = QuotationLine.objects.get().pk
+
+    delete = api_client.delete(f"/api/v1/quotations/{quotation.pk}/lines/{line_pk}")
+    assert delete.status_code == 204
+
+    # The hold survives (history) but is released — no longer live, frees dates.
+    hold = BookingHold.objects.get(quotation=quotation)
+    assert hold.released_at is not None
+    assert hold.is_live() is False
+    assert not BookingHold.live_overlapping(
+        property=property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    ).exists()
 
 
 @pytest.mark.django_db

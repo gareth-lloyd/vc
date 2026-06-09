@@ -244,6 +244,20 @@ def _booking_guest_pre_delete(
     )
 
 
+def _quotation_line_pre_delete(sender: type, instance: Any, **_: Any) -> None:
+    """Release a deleted quotation line's live holds so its dates free up.
+
+    Lives at the model layer (not just the API viewset) so the invariant
+    holds for *every* delete path — the line-CRUD endpoint, a direct ORM
+    `delete()`, seeding, or a cascade from deleting the parent Quotation.
+    Without this, a line removed outside the viewset would leave a live
+    `QUOTATION_OPEN` hold blocking the calendar indefinitely.
+    """
+    from reservations.services.holds import HoldService
+
+    HoldService.release_for_line(instance)
+
+
 # ---------------------------------------------------------------------------
 # Registration — bound on import (apps.py ready() imports this module)
 # ---------------------------------------------------------------------------
@@ -253,6 +267,7 @@ def _connect() -> None:
     from reservations.models.booking_guest import BookingGuest
     from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
+    from reservations.models.quotation import QuotationLine
 
     post_save.connect(
         _enquiry_note_post_save,
@@ -278,6 +293,11 @@ def _connect() -> None:
         _booking_guest_pre_delete,
         sender=BookingGuest,
         dispatch_uid="reservations.booking_guest_pre_delete",
+    )
+    pre_delete.connect(
+        _quotation_line_pre_delete,
+        sender=QuotationLine,
+        dispatch_uid="reservations.quotation_line_pre_delete",
     )
 
 

@@ -15,6 +15,7 @@ from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:
+    from reservations.models.booking import BookingHold
     from reservations.models.enquiry import Enquiry
 
 
@@ -70,6 +71,38 @@ class QuotationService:
         line.date_to = quote.date_to
         line.save(update_fields=["pricing_snapshot", "total", "date_from", "date_to", "updated_at"])
         return line
+
+    @classmethod
+    def sync_line_hold(cls, line: QuotationLine) -> BookingHold:
+        """Place or move the QUOTATION_OPEN hold backing a quotation line.
+
+        The single source of truth for the line→hold link, shared by the
+        enquiry-driven `create_from_enquiry` and the API `QuotationLineViewSet`
+        so a line always holds the dates it was priced on, however it was
+        created — and so an edit relocates that one hold rather than leaking a
+        stale one. Holds the line's *persisted* dates: pricing may have nudged a
+        non-conforming arrival forward to the changeover day (GAP-007), so we
+        hold what we priced, not the raw request. Expiry tracks the quotation's
+        `expires_at`. Raises `HoldUnavailable` if the dates collide with another
+        live hold.
+        """
+        existing = line.holds.filter(released_at__isnull=True).first()
+        if existing is not None:
+            return HoldService.move(
+                existing,
+                date_from=line.date_from,
+                date_to=line.date_to,
+                expires_at=line.quotation.expires_at,
+            )
+        return HoldService.place(
+            property=line.property,
+            date_from=line.date_from,
+            date_to=line.date_to,
+            expires_at=line.quotation.expires_at,
+            reason=BookingHoldReason.QUOTATION_OPEN.value,
+            quotation=line.quotation,
+            quotation_line=line,
+        )
 
     @classmethod
     @transaction.atomic
@@ -130,17 +163,7 @@ class QuotationService:
             # guard so a manual line keeps its operator total either way.
             if not is_manual:
                 cls.price_line(quotation, line)
-            # Hold the line's *persisted* dates: pricing may have nudged a
-            # non-conforming arrival forward to the changeover day, so we must
-            # hold what we priced, not the raw requested dates.
-            HoldService.place(
-                property=line.property,
-                date_from=line.date_from,
-                date_to=line.date_to,
-                expires_at=expires_at,
-                reason=BookingHoldReason.QUOTATION_OPEN.value,
-                quotation=quotation,
-            )
+            cls.sync_line_hold(line)
 
         # Move the enquiry forward. The service-layer path is the in-app
         # SMTP flow — manual-mark goes via the dedicated endpoint, never

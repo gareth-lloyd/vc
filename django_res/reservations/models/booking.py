@@ -702,6 +702,16 @@ class BookingHold(AuditedModel):
         on_delete=models.CASCADE,
         related_name="holds",
     )
+    # Precise line→hold link so a repriced/edited/deleted line can find and move
+    # or release *its* hold. SET_NULL (not CASCADE): a deleted line's hold is
+    # released explicitly first, and the released row is kept for history.
+    quotation_line = models.ForeignKey(
+        "reservations.QuotationLine",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="holds",
+    )
     booking = models.ForeignKey(
         Booking,
         null=True,

@@ -298,6 +298,32 @@ describe("SettingsTab", () => {
     useAuthStore.getState().clear();
   });
 
+  it("keeps an inactive saved country selectable in the picker", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/location", () =>
+        HttpResponse.json(makeLocation({ country: 3 })),
+      ),
+      http.get("/api/v1/countries", () =>
+        HttpResponse.json(
+          drfPage([
+            ...COUNTRIES,
+            { id: 3, iso2: "ZZ", iso3: "ZZZ", name: "Retired Land", is_active: false },
+          ]),
+        ),
+      ),
+    );
+
+    setup();
+    const trigger = await screen.findByLabelText("Country");
+    await userEvent.click(trigger);
+    // The deactivated country the property is in is still offered, so the
+    // operator can see and re-confirm it rather than facing a blank picker.
+    expect(await screen.findByRole("option", { name: "Retired Land" })).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
   it("shows a toast when the location PATCH returns a 500", async () => {
     setReservationsUser();
     installBaseHandlers();

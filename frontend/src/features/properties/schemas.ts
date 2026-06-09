@@ -476,9 +476,8 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental: z.number().int().min(0).nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
-  // Omitted from the PATCH when blank (a property with no location can't take
-  // a timezone); a concrete value writes through to the location.
-  timezone: z.string().optional(),
+  // `timezone` is read-only on settings (surfaced for context in the response);
+  // it is written via the property location endpoint, not here.
 });
 export type PropertySettingsWriteInput = z.infer<typeof propertySettingsWriteInputSchema>;
 

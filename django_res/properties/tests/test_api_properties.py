@@ -164,6 +164,8 @@ def test_duplicate_creates_new_property(
     payload = response.json()
     assert payload["id"] != property_.pk
     assert payload["slug"] != property_.slug
+    # The clone is provisioned with a location, like API-created properties.
+    assert PropertyLocation.objects.filter(property_id=payload["id"]).exists()
 
 
 @pytest.mark.django_db

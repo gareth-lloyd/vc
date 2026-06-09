@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
@@ -66,10 +67,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         write_serializer = PropertyWriteSerializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
-        instance = write_serializer.save()
-        # Provision a default location so the new property's address/timezone
-        # are immediately editable (consistent with the loader/factory).
-        ensure_property_location(instance)
+        # Atomic so a failure provisioning the location never leaves a
+        # committed-but-location-less property (the state this feature removes).
+        with transaction.atomic():
+            instance = write_serializer.save()
+            # Provision a default location so the new property's address/timezone
+            # are immediately editable (consistent with the loader/factory).
+            ensure_property_location(instance)
         read_serializer = PropertyDetailSerializer(instance)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 

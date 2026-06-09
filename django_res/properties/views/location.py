@@ -17,11 +17,9 @@ class PropertyLocationView(generics.RetrieveUpdateAPIView):
 
     def get_object(self) -> PropertyLocation:
         # A GET lazily provisions a default location for properties that have
-        # none (the same heal as the settings endpoint), so location-less rows
-        # need no separate backfill. `select_related("country")` keeps the
-        # serializer's FK read on the join.
-        property_obj = get_object_or_404(
-            Property.objects.select_related("region__country"),
-            pk=self.kwargs["property_id"],
-        )
+        # none, so location-less rows need no separate backfill. The serializer
+        # reads `location.country_id` (a plain PK), so no join is needed on the
+        # common existing-row path; `region.country` is only walked by
+        # `ensure_property_location` when it actually creates the default row.
+        property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
         return ensure_property_location(property_obj)

@@ -38,7 +38,7 @@ import {
   useUpdatePropertyLocation,
   useUpdatePropertySettings,
 } from "../hooks";
-import { useCountries } from "@/features/admin/countries/hooks";
+import { CountryPicker } from "../components/CountryPicker";
 import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
@@ -54,10 +54,6 @@ import {
   type PropertySettings,
   type PropertySettingsWriteInput,
 } from "../schemas";
-
-// Comfortably above the country count so the picker loads the full list in one
-// request (the default page size would truncate it). Capped server-side.
-const COUNTRY_PAGE_SIZE = 500;
 
 interface SettingsContext {
   property: PropertyDetail;
@@ -635,7 +631,6 @@ function LocationForm({
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const mutation = useUpdatePropertyLocation(propertyId);
-  const countriesQuery = useCountries({ pageSize: COUNTRY_PAGE_SIZE, ordering: "name" });
 
   useEffect(() => {
     form.reset(locationDefaults(initial));
@@ -673,10 +668,6 @@ function LocationForm({
         ? [timezone, ...TIMEZONE_OPTIONS]
         : TIMEZONE_OPTIONS,
     [timezone],
-  );
-  const countries = useMemo(
-    () => (countriesQuery.data?.results ?? []).filter((c) => c.is_active),
-    [countriesQuery.data],
   );
 
   return (
@@ -744,22 +735,13 @@ function LocationForm({
 
         <div className="space-y-2">
           <Label htmlFor="prop-location-country">{t("settings.location.fields.country")}</Label>
-          <Select
-            value={country != null ? String(country) : ""}
-            onValueChange={(v) => form.setValue("country", Number(v), { shouldDirty: true })}
-            disabled={!canWrite || countriesQuery.isLoading}
-          >
-            <SelectTrigger id="prop-location-country">
-              <SelectValue placeholder={t("settings.location.country_placeholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {countries.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CountryPicker
+            id="prop-location-country"
+            value={country}
+            onChange={(v) => form.setValue("country", v, { shouldDirty: true })}
+            placeholder={t("settings.location.country_placeholder")}
+            disabled={!canWrite}
+          />
         </div>
 
         <div className="space-y-2">

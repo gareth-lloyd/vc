@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models.base import AuditedModel
@@ -26,17 +27,23 @@ class PropertyLocation(AuditedModel):
         on_delete=models.PROTECT,
         related_name="property_locations",
     )
+    # Range validators mirror the serializer's bounds at the model layer (like
+    # `timezone` below), so admin edits and other non-API writers can't store a
+    # coordinate outside the valid geographic range. `max_digits=9` alone only
+    # caps magnitude at ±999.999999.
     latitude = models.DecimalField(
         max_digits=9,
         decimal_places=6,
         null=True,
         blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
     )
     longitude = models.DecimalField(
         max_digits=9,
         decimal_places=6,
         null=True,
         blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
     )
     # IANA timezone name, a geographic fact of the place (follows `country`).
     # Default UTC is the safe fallback before the country-derived value is set

@@ -73,6 +73,9 @@ export function useCreateEnquiry() {
     mutationFn: (input: EnquiryWriteInput) => createEnquiry(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
+      // A new enquiry is always `new` status — restain the status tab-bar
+      // badges, matching onDetailUpdated and the useCreateQuotation precedent.
+      queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
     },
   });

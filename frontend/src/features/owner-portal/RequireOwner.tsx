@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerStore } from "./ownerStore";
+import { OwnerProbeError } from "./OwnerProbeError";
 
 // Gates the /owner/* tree. Owners pass through. Staff are bounced to the staff
 // app at /dashboard; everyone else lands on /login. Waits on both the auth and
@@ -18,6 +19,11 @@ export function RequireOwner() {
   }
   if (ownerStatus === "owner") {
     return <Outlet />;
+  }
+  // The probe failed indeterminately (5xx/network): offer a retry rather than
+  // bouncing a possible owner to /login on a transient blip.
+  if (ownerStatus === "error") {
+    return <OwnerProbeError />;
   }
   // Authenticated but not an owner: staff go back to their app, others sign in.
   return <Navigate to={isStaff ? "/dashboard" : "/login"} replace />;

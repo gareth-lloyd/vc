@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerStore } from "@/features/owner-portal/ownerStore";
+import { OwnerProbeError } from "@/features/owner-portal/OwnerProbeError";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 
 export function RequireAuth() {
@@ -41,6 +42,11 @@ export function RequireStaff() {
   // Non-staff: wait for the owner probe, then route owners to their portal.
   if (ownerStatus === "idle") {
     return null;
+  }
+  // An indeterminate probe failure (5xx/network) must not bounce a possible
+  // owner to /login — offer a retry instead.
+  if (ownerStatus === "error") {
+    return <OwnerProbeError />;
   }
   return <Navigate to={ownerStatus === "owner" ? "/owner/dashboard" : "/login"} replace />;
 }

@@ -36,7 +36,7 @@ Status icons:
 | [FG-005](fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✏️ revise: resolve dead-vs-live status first |
 | [FG-006](fg-006-modify-without-select-for-update.md) | `modify_dates` / `modify_guests` re-run pricing without row locks | ✅ resolved (row lock + reload) |
 | [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |
-| [FG-008](fg-008-property-timezone.md) | Property has no timezone | ⬜ (**upgrade to 🔴 bug** — breaks every wall-clock reminder) |
+| [FG-008](fg-008-property-timezone.md) | Property has no timezone | ✅ resolved — `PropertyLocation.timezone` + `services/timing.py` seam + REST/FE surface |
 | [FG-009](fg-009-csrf-prime-coupled-to-shell-server.md) | CSRF priming coupled to HTML-shell server — recurring dev double-login | ⬜ (low priority — not vital) |
 
 ## 🟡 Smells
@@ -111,7 +111,6 @@ After those three, the next-highest-value moves are:
 
 - **FG-006** (promote to bug): `select_for_update` on every booking
   status-transition path
-- **FG-008** (promote to bug): add `Property.timezone`
 - **BUG-007** (revise first): pick a `bulk_create`-safe approach before
   any code lands
 

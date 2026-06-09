@@ -42,6 +42,7 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     min_nights_rental: 3,
     min_nights_rental_note: "",
     prices_entered_as: "gross",
+    timezone: "Europe/London",
     ...overrides,
   };
 }
@@ -188,6 +189,62 @@ describe("SettingsTab", () => {
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
     expect((lastPatchBody as unknown as Record<string, unknown>).min_nights_rental).toBe(5);
+    useAuthStore.getState().clear();
+  });
+
+  it("omits timezone from the PATCH when only another field changed", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings());
+      }),
+    );
+
+    setup();
+    // The Timezone field is present, seeded from the location's value.
+    expect(await screen.findByText("Timezone")).toBeInTheDocument();
+
+    const minNights = await screen.findByLabelText("Minimum nights");
+    await userEvent.clear(minNights);
+    await userEvent.type(minNights, "4");
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    // Timezone wasn't touched, so it must not ride along and clobber a value
+    // changed elsewhere (e.g. Django admin).
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect(lastPatchBody as unknown as Record<string, unknown>).not.toHaveProperty("timezone");
+    useAuthStore.getState().clear();
+  });
+
+  it("sends timezone in the PATCH only when the timezone field is changed", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ timezone: "Europe/Rome" }));
+      }),
+    );
+
+    setup();
+    const tzTrigger = await screen.findByRole("combobox", { name: "Timezone" });
+    await userEvent.click(tzTrigger);
+    await userEvent.click(await screen.findByRole("option", { name: "Europe/Rome" }));
+
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).timezone).toBe("Europe/Rome");
     useAuthStore.getState().clear();
   });
 });

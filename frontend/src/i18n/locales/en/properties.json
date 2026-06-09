@@ -658,8 +658,10 @@
         "changeover_day": "Changeover day",
         "min_nights_rental": "Minimum nights",
         "min_nights_rental_note": "Minimum nights note",
-        "prices_entered_as": "Prices entered as"
+        "prices_entered_as": "Prices entered as",
+        "timezone": "Timezone"
       },
+      "timezone_placeholder": "Select a timezone",
       "save": "Save settings",
       "saving": "Saving…",
       "saved": "Settings saved",

@@ -56,6 +56,10 @@ interface SettingsContext {
 const INHERIT_VALUE = "__inherit__";
 const CALC_TYPES = ["percent", "fixed"] as const;
 
+// IANA zones straight from the runtime; the backend validates against zoneinfo.
+const TIMEZONE_OPTIONS: readonly string[] =
+  typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+
 function settingsDefaults(s: PropertySettings): PropertySettingsWriteInput {
   return {
     availability_default: s.availability_default ?? null,
@@ -67,6 +71,7 @@ function settingsDefaults(s: PropertySettings): PropertySettingsWriteInput {
     min_nights_rental: s.min_nights_rental ?? null,
     min_nights_rental_note: s.min_nights_rental_note ?? "",
     prices_entered_as: s.prices_entered_as ?? null,
+    timezone: s.timezone ?? "",
   };
 }
 
@@ -123,7 +128,16 @@ function OperationalForm({
   const onSubmit = async (values: PropertySettingsWriteInput) => {
     setTopLevelError(null);
     try {
-      await mutation.mutateAsync(blankToNull(values));
+      const payload = blankToNull(values);
+      // Timezone lives on the location and is also editable in admin. Only send
+      // it when the operator actually changed it here — otherwise an unrelated
+      // settings save would write back the stale loaded value and silently
+      // revert a concurrent change. Never send a null (a property with no
+      // location can't take a timezone).
+      if (!form.formState.dirtyFields.timezone || payload.timezone == null) {
+        delete payload.timezone;
+      }
+      await mutation.mutateAsync(payload);
       toast.success(t("settings.operational.saved"));
       form.reset(values);
     } catch (error) {
@@ -138,6 +152,12 @@ function OperationalForm({
 
   const availability = form.watch("availability_default") ?? null;
   const changeoverDay = form.watch("changeover_day") ?? null;
+  const timezone = form.watch("timezone") ?? "";
+  // Keep an admin-set zone outside the runtime list selectable/visible.
+  const timezoneOptions =
+    timezone && !TIMEZONE_OPTIONS.includes(timezone)
+      ? [timezone, ...TIMEZONE_OPTIONS]
+      : TIMEZONE_OPTIONS;
   const pricesAs = form.watch("prices_entered_as") ?? null;
   const preApproval = form.watch("bookings_require_pre_approval");
   const enquiryFirst = form.watch("requires_enquiry_first");
@@ -223,6 +243,28 @@ function OperationalForm({
             disabled={!canWrite}
             {...form.register("check_out_time")}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-settings-timezone">
+            {t("settings.operational.fields.timezone")}
+          </Label>
+          <Select
+            value={timezone}
+            onValueChange={(v) => form.setValue("timezone", v, { shouldDirty: true })}
+            disabled={!canWrite}
+          >
+            <SelectTrigger id="prop-settings-timezone">
+              <SelectValue placeholder={t("settings.operational.timezone_placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {timezoneOptions.map((z) => (
+                <SelectItem key={z} value={z}>
+                  {z}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">

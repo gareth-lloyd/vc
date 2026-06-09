@@ -459,6 +459,9 @@ export const propertySettingsSchema = z.object({
   min_nights_rental: z.number().nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
+  // IANA timezone, sourced from the property's location; null when the
+  // property has no location row yet. Not inheritable from the group.
+  timezone: z.string().nullable().optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 
@@ -473,6 +476,9 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental: z.number().int().min(0).nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
+  // Omitted from the PATCH when blank (a property with no location can't take
+  // a timezone); a concrete value writes through to the location.
+  timezone: z.string().optional(),
 });
 export type PropertySettingsWriteInput = z.infer<typeof propertySettingsWriteInputSchema>;
 

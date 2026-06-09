@@ -150,6 +150,17 @@
       "children_other": ", {{count}} παιδιά"
     }
   },
+  "quotes_section": {
+    "heading": "Προσφορές",
+    "empty": "Δεν υπάρχουν προσφορές για αυτό το αίτημα ακόμη.",
+    "options_one": "{{count}} επιλογή",
+    "options_other": "{{count}} επιλογές",
+    "no_price": "Χωρίς τιμή",
+    "view_aria": "Προβολή προσφοράς {{reference}}",
+    "build_cta": "Δημιουργία προσφοράς",
+    "build_another_cta": "Δημιουργία νέας προσφοράς",
+    "hide_builder": "Απόκρυψη σύνθεσης"
+  },
   "activity": {
     "load_failed_title": "Δεν ήταν δυνατή η φόρτωση δραστηριότητας",
     "load_failed_body": "Δοκιμάστε ξανά.",

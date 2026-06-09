@@ -350,6 +350,30 @@ def test_guest_enquiries_excludes_legacy_synthetic_quotations(
 
 
 @pytest.mark.django_db
+def test_guest_quotations_excludes_legacy_synthetic_quotations(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """`GET /guests/{id}/quotations` is a Quotation-surfacing read, so it must
+    route through `.real()` like every other one — the BookingLoader's
+    `booking-` synthetic fill rows are an internal artefact and must never reach
+    the operator's guest-quotations list."""
+    enquiry = Enquiry.objects.create(guest=guest, first_name="Ada", last_name="L", adults=2)
+    real = _quote(enquiry=enquiry, guest=guest, gbp=gbp, terms=terms)
+    _quote(enquiry=enquiry, guest=guest, gbp=gbp, terms=terms, legacy_id="booking-9999")
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/guests/{guest.pk}/quotations")
+
+    assert response.status_code == 200
+    refs = {row["reference"] for row in response.json()["results"]}
+    assert refs == {real.reference}
+
+
+@pytest.mark.django_db
 def test_guest_enquiries_converted_booking_skips_archived(
     api_client: APIClient,
     staff: User,

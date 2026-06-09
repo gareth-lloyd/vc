@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { enquiryListItemSchema, enquiryStatusSchema, enquiryWriteInputSchema } from "../schemas";
+import {
+  enquiryDetailSchema,
+  enquiryListItemSchema,
+  enquiryStatusSchema,
+  enquiryWriteInputSchema,
+} from "../schemas";
 
 describe("enquiryStatusSchema", () => {
   it("parses each known status", () => {
@@ -51,6 +56,40 @@ describe("enquiryListItemSchema", () => {
 
   it("rejects bad status enum values", () => {
     expect(enquiryListItemSchema.safeParse({ ...valid, status: "unknown" }).success).toBe(false);
+  });
+});
+
+describe("enquiryDetailSchema", () => {
+  const base = {
+    id: 1,
+    reference: "E-AAA-001",
+    status: "quoted",
+    adults: 2,
+    request_type: "quote",
+    site_source: "main_website",
+  };
+
+  it("parses the nested quote-stack with lines", () => {
+    const parsed = enquiryDetailSchema.parse({
+      ...base,
+      quotations: [
+        {
+          id: 10,
+          reference: "QVC10",
+          status: "draft",
+          lines: [{ id: 100, total: "1400.00" }],
+        },
+      ],
+    });
+
+    expect(parsed.quotations).toHaveLength(1);
+    expect(parsed.quotations[0].reference).toBe("QVC10");
+    expect(parsed.quotations[0].lines).toHaveLength(1);
+  });
+
+  it("defaults quotations to an empty array when the field is absent", () => {
+    const parsed = enquiryDetailSchema.parse(base);
+    expect(parsed.quotations).toEqual([]);
   });
 });
 

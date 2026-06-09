@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { drfPage } from "@/test/drf";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
 import { EnquiryDetailLayout } from "../EnquiryDetailLayout";
-import { DetailsTab } from "../tabs/DetailsTab";
-import { ActivityTab } from "../tabs/ActivityTab";
-import { NotesTab } from "../tabs/NotesTab";
+import type { QuotationDetail } from "@/features/quotations/schemas";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -24,6 +23,8 @@ const baseEnquiry = {
   first_name: "Ada",
   last_name: "Lovelace",
   email: "ada@example.com",
+  phone: "",
+  contact_method: null,
   property: 12,
   region: null,
   date_from: "2026-07-01",
@@ -40,6 +41,23 @@ const baseEnquiry = {
   min_bedrooms: null,
   referral_code: "",
   inbound_message: "Hello, we'd like to enquire about Casa Norte.",
+  quotations: [] as QuotationDetail[],
+};
+
+const quotedEnquiry = {
+  ...baseEnquiry,
+  status: "quoted" as const,
+  quotations: [
+    {
+      id: 50,
+      reference: "QVC50",
+      status: "draft",
+      currency: "GBP",
+      is_unbranded: false,
+      cancel_reason: "",
+      lines: [],
+    },
+  ] satisfies QuotationDetail[],
 };
 
 function makeUser(overrides: Partial<UserMe> = {}): UserMe {
@@ -57,30 +75,37 @@ function makeUser(overrides: Partial<UserMe> = {}): UserMe {
 }
 
 function asReservationsUser() {
-  useAuthStore.getState().setMe(makeUser(), {
-    role: "RESERVATIONS",
-    is_superuser: false,
-    permissions: [],
-  });
+  useAuthStore
+    .getState()
+    .setMe(makeUser(), { role: "RESERVATIONS", is_superuser: false, permissions: [] });
 }
 
 function asViewerUser() {
-  useAuthStore.getState().setMe(makeUser(), {
-    role: "VIEWER",
-    is_superuser: false,
-    permissions: [],
-  });
+  useAuthStore
+    .getState()
+    .setMe(makeUser(), { role: "VIEWER", is_superuser: false, permissions: [] });
 }
 
+// The inline builder mounts (expanded) whenever an enquiry has no quotes and
+// its currency selector loads the active currencies — stub that so a
+// reservations-role render makes no unhandled requests. (The current-terms
+// fetch now only fires once the save dialog opens, which these tests never do.)
+function mockBuilderDeps() {
+  return [http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([])))];
+}
+
+// Routes mirror the app: the workspace plus the three legacy sub-route
+// redirects (Details/Activity/Notes collapsed into the single page).
 function setup(initial: string) {
   return renderWithProviders(
     <Routes>
-      <Route path="/enquiries/:id" element={<EnquiryDetailLayout />}>
-        <Route index element={<Navigate to="details" replace />} />
-        <Route path="details" element={<DetailsTab />} />
-        <Route path="activity" element={<ActivityTab />} />
-        <Route path="notes" element={<NotesTab />} />
-      </Route>
+      <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+      <Route path="/enquiries/:id/details" element={<Navigate to=".." relative="path" replace />} />
+      <Route
+        path="/enquiries/:id/activity"
+        element={<Navigate to=".." relative="path" replace />}
+      />
+      <Route path="/enquiries/:id/notes" element={<Navigate to=".." relative="path" replace />} />
     </Routes>,
     { route: initial },
   );
@@ -88,6 +113,7 @@ function setup(initial: string) {
 
 beforeEach(() => {
   useAuthStore.getState().clear();
+  server.use(...mockBuilderDeps());
 });
 afterEach(() => {
   server.resetHandlers();
@@ -97,40 +123,40 @@ describe("EnquiryDetailLayout", () => {
   it("renders the reference, status and guest name", async () => {
     asReservationsUser();
     server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     await waitFor(() => expect(screen.getAllByText("E-XYZ-007").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Ada Lovelace").length).toBeGreaterThan(0);
   });
 
-  it("enables Close + Convert + Assign on a new enquiry, disables Reopen", async () => {
+  it("enables Close + Assign on a new enquiry, disables Reopen", async () => {
     asReservationsUser();
     server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     await screen.findByRole("button", { name: /assign/i });
 
     expect(screen.getByRole("button", { name: /assign/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /convert to quote/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /close as lost/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /reopen/i })).toBeDisabled();
   });
 
-  it("enables Reopen + disables Close/Convert when status is lost", async () => {
+  it("enables Reopen + disables Close when status is lost", async () => {
     asReservationsUser();
     server.use(
-      http.get("/api/v1/enquiries/7", () => HttpResponse.json({ ...baseEnquiry, status: "lost" })),
+      http.get("/api/v1/enquiries/7", () =>
+        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+      ),
     );
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     await screen.findByRole("button", { name: /reopen/i });
 
     expect(screen.getByRole("button", { name: /reopen/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /close as lost/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /convert to quote/i })).toBeDisabled();
   });
 
   it("disables every action when the user lacks the reservations role", async () => {
     asViewerUser();
     server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     await screen.findByRole("button", { name: /assign/i });
     expect(screen.getByRole("button", { name: /assign/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /close as lost/i })).toBeDisabled();
@@ -139,7 +165,7 @@ describe("EnquiryDetailLayout", () => {
   it("renders 'not found' (no retry) on 404", async () => {
     asReservationsUser();
     server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json({}, { status: 404 })));
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     expect(await screen.findByText(/enquiry not found/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
@@ -154,18 +180,45 @@ describe("EnquiryDetailLayout", () => {
         return HttpResponse.json(baseEnquiry);
       }),
     );
-    setup("/enquiries/7/details");
+    setup("/enquiries/7");
     const retry = await screen.findByRole("button", { name: /retry/i });
     await userEvent.click(retry);
     await waitFor(() => expect(screen.getAllByText("E-XYZ-007").length).toBeGreaterThan(0));
   });
 
-  it("renders the Activity tab from the array endpoint", async () => {
+  it("renders the inline quote-stack and defaults the builder open when there are no quotes", async () => {
     asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
+    setup("/enquiries/7");
+    // No quotes → empty state + builder expanded (the search button is visible).
+    expect(await screen.findByText(/no quotes for this enquiry/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /search options/i })).toBeInTheDocument();
+  });
+
+  it("renders existing quotes and keeps the builder collapsed until invoked", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)));
+    setup("/enquiries/7");
+
+    expect(await screen.findByRole("link", { name: /QVC50/ })).toHaveAttribute(
+      "href",
+      "/quotations/50",
+    );
+    // Builder collapsed → no search button yet.
+    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /build another quote/i }));
+    expect(await screen.findByRole("button", { name: /search options/i })).toBeInTheDocument();
+  });
+
+  it("does not fetch the activity timeline until the rail panel is expanded", async () => {
+    asReservationsUser();
+    let activityCalls = 0;
     server.use(
-      http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)),
-      http.get("/api/v1/enquiries/7/activity", () =>
-        HttpResponse.json([
+      http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)),
+      http.get("/api/v1/enquiries/7/activity", () => {
+        activityCalls += 1;
+        return HttpResponse.json([
           {
             id: 1,
             enquiry: 7,
@@ -178,11 +231,25 @@ describe("EnquiryDetailLayout", () => {
             meta: {},
             created_at: "2026-05-03T00:00:00Z",
           },
-        ]),
-      ),
+        ]);
+      }),
     );
-    setup("/enquiries/7/activity");
+    setup("/enquiries/7");
+    await screen.findByRole("button", { name: /assign/i });
+
+    // Collapsed by default — the timeline must not have been requested.
+    expect(activityCalls).toBe(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /^activity$/i }));
     expect(await screen.findByText("new → contacted")).toBeInTheDocument();
-    expect(screen.getByText(/Reached out by email/i)).toBeInTheDocument();
+    expect(activityCalls).toBe(1);
+  });
+
+  it("redirects the legacy /details deep link to the unified workspace", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)));
+    setup("/enquiries/7/details");
+    // Landed on the workspace (quote-stack visible), not a 404.
+    expect(await screen.findByRole("link", { name: /QVC50/ })).toBeInTheDocument();
   });
 });

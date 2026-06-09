@@ -41,9 +41,7 @@ def _enquiry_history_prefetch() -> Prefetch:
         "id", "reference", "status", "is_archived", "created_at", "quotation_line_id"
     )
     lines = QuotationLine.objects.prefetch_related(Prefetch("bookings", queryset=bookings))
-    quotations = Quotation.objects.exclude(legacy_id__startswith="booking-").prefetch_related(
-        Prefetch("lines", queryset=lines)
-    )
+    quotations = Quotation.objects.real().prefetch_related(Prefetch("lines", queryset=lines))
     return Prefetch("quotations", queryset=quotations)
 
 
@@ -91,7 +89,10 @@ class GuestViewSet(viewsets.ModelViewSet[Guest]):
     @action(detail=True, methods=["get"], url_path="quotations")
     def quotations(self, request: Request, pk: str | None = None) -> Response:
         guest = self.get_object()
-        qs = guest.quotations.all().order_by("-created_at")
+        # `.real()` drops the BookingLoader's `booking-` synthetic fill rows —
+        # the shared exclusion every Quotation-surfacing read routes through
+        # (the reverse manager inherits it from `Quotation.objects`).
+        qs = guest.quotations.real().order_by("-created_at")
         page = self.paginate_queryset(cast(Any, qs))
         ser = GuestQuotationSerializer(page or qs, many=True)
         return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)

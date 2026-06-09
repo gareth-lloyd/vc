@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -12,6 +14,8 @@ from accounts.models import User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
+from properties.enums import ImageKind
+from properties.models import Property, PropertyImage
 from reservations.enums import ContactMethod, EnquiryStatus
 from reservations.models import (
     Enquiry,
@@ -19,6 +23,7 @@ from reservations.models import (
     EnquiryNote,
     Guest,
     Quotation,
+    QuotationLine,
     TermsVersion,
 )
 
@@ -261,6 +266,92 @@ def test_enquiry_detail_includes_nested_quotations(
     assert quotation_refs == {q1.reference, q2.reference}
     # Conversion rollup also exposed.
     assert response.data["is_converted"] is False
+
+
+@pytest.mark.django_db
+def test_enquiry_detail_excludes_synthetic_booking_quotations(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Booking-synthesised quotations (`legacy_id` prefixed `booking-`) are an
+    internal fill artefact and must never surface in the enquiry quote-stack —
+    the same exclusion every other Quotation-surfacing viewset applies."""
+    real = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+        legacy_id="booking-12345",
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    quotation_refs = {row["reference"] for row in response.data["quotations"]}
+    assert quotation_refs == {real.reference}
+
+
+@pytest.mark.django_db
+def test_enquiry_detail_quote_stack_constant_query_count(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """The merged workspace inlines the quote-stack, and each line serialises
+    its property name + hero image. The detail prefetch must reach
+    `lines__property__images` so the payload stays constant-query no matter how
+    many quotes/lines hang off the enquiry — without it every line fires a
+    property lookup plus a hero-image walk (the dedicated quotation endpoint
+    already guards this; the enquiry workspace must too)."""
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+    for q_offset in range(2):
+        quotation = Quotation.objects.create(
+            enquiry=enquiry,
+            guest=guest,
+            currency=gbp,
+            expires_at=timezone.now() + timedelta(days=7 + q_offset),
+            terms_version=terms,
+        )
+        for line_offset in range(2):
+            QuotationLine.objects.create(
+                quotation=quotation,
+                property=property_,
+                date_from=date(2026, 6, 10 + line_offset),
+                date_to=date(2026, 6, 17 + line_offset),
+                adults=2,
+                total=Decimal("1400.00"),
+            )
+    api_client.force_login(staff)
+
+    with assert_max_queries(12):
+        response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert len(response.data["quotations"]) == 2
+    assert all(len(row["lines"]) == 2 for row in response.data["quotations"])
+    # Hero image resolved from the prefetch cache, not a per-line query.
+    assert response.data["quotations"][0]["lines"][0]["hero_image_url"] is not None
 
 
 @pytest.mark.django_db

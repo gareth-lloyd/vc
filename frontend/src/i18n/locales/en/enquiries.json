@@ -150,6 +150,17 @@
       "children_other": ", {{count}} children"
     }
   },
+  "quotes_section": {
+    "heading": "Quotes",
+    "empty": "No quotes for this enquiry yet.",
+    "options_one": "{{count}} option",
+    "options_other": "{{count}} options",
+    "no_price": "Not priced",
+    "view_aria": "View quote {{reference}}",
+    "build_cta": "Build a quote",
+    "build_another_cta": "Build another quote",
+    "hide_builder": "Hide builder"
+  },
   "activity": {
     "load_failed_title": "Couldn't load activity",
     "load_failed_body": "Try again.",

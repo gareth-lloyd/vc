@@ -195,6 +195,12 @@ export function SaveQuoteDialog({
       }
       qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(quotation.id) });
       qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(quotation.id) });
+      // The enquiry detail carries the inline quote-stack, so a freshly-created
+      // draft must refresh it (the workspace renders the new quote in place
+      // without a reload). `useCreateQuotation` only invalidates the quotations
+      // list/badges; the enquiry view is invalidated here, once the lines exist,
+      // so the refetch sees the quote with its priced lines.
+      qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(enquiry.id) });
 
       toast.success(t("builder.save.toasts.success"));
       onSaved(quotation);

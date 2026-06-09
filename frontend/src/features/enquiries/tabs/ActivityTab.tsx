@@ -1,22 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { ActivityList } from "@/components/data/ActivityList";
-import { useOutletContext } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import { useEnquiryActivity } from "../hooks";
-import type { EnquiryOutletContext } from "../EnquiryDetailLayout";
 
 function formatTransition(from: string | null, to: string, kind: string) {
   if (!from || from === to) return kind.replace(/_/g, " ");
   return `${from} → ${to}`;
 }
 
-export function ActivityTab() {
+export function ActivityTab({ enquiryId }: { enquiryId: number }) {
   const { t } = useTranslation("enquiries");
-  const { enquiry } = useOutletContext<EnquiryOutletContext>();
-  const activity = useEnquiryActivity(enquiry.id);
+  const activity = useEnquiryActivity(enquiryId);
 
   if (activity.isLoading) {
     return (

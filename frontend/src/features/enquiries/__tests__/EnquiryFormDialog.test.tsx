@@ -242,6 +242,7 @@ describe("EnquiryFormDialog phone + contact_method capture", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      quotations: [],
     };
 
     renderWithProviders(
@@ -345,6 +346,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      quotations: [],
     };
 
     renderWithProviders(
@@ -381,6 +383,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      quotations: [],
     };
 
     renderWithProviders(

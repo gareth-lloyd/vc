@@ -92,9 +92,7 @@ def build_quotation_context(
     semantics: `""` is a legitimate "no paragraph" and is respected.
     """
     lines_qs = (
-        quotation.lines.exclude(legacy_id__startswith="booking-")
-        .select_related("property")
-        .prefetch_related("property__images")
+        quotation.lines.real().select_related("property").prefetch_related("property__images")
     )
 
     line_dicts: list[dict[str, Any]] = []

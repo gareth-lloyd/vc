@@ -9,6 +9,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from properties.models import GroupSettings, PropertySettings
+from properties.services.location import ensure_property_location
 from properties.timezones import validate_iana_timezone
 
 
@@ -56,12 +57,9 @@ class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
         with transaction.atomic():
             settings = super().update(instance, validated_data)
             if timezone is not None:
-                try:
-                    location = instance.property.location
-                except ObjectDoesNotExist:
-                    raise serializers.ValidationError(
-                        {"timezone": "Property has no location to set a timezone on."}
-                    ) from None
+                # A property created outside migration/seed has no location yet;
+                # provision a default one so its timezone is always editable.
+                location = ensure_property_location(instance.property)
                 if timezone != location.timezone:
                     location.timezone = timezone
                     location.save(update_fields=["timezone"])

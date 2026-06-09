@@ -123,13 +123,20 @@ def test_patch_settings_other_field_leaves_timezone(
 
 
 @pytest.mark.django_db
-def test_patch_timezone_without_location_is_rejected(
+def test_patch_timezone_without_location_provisions_default(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
+    # The property has no location row; saving a timezone should lazily create
+    # a default location (country from region) and set the timezone on it.
+    assert not PropertyLocation.objects.filter(property=property_).exists()
     api_client.force_login(staff)
     response = api_client.patch(
         f"/api/v1/properties/{property_.pk}/settings",
         data={"timezone": "Europe/Rome"},
         format="json",
     )
-    assert response.status_code == 400, response.content
+    assert response.status_code == 200, response.content
+    assert response.json()["timezone"] == "Europe/Rome"
+    location = PropertyLocation.objects.get(property=property_)
+    assert location.timezone == "Europe/Rome"
+    assert location.country == property_.region.country

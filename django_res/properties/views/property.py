@@ -23,6 +23,7 @@ from properties.serializers import (
     PropertyWriteSerializer,
 )
 from properties.services import PropertyLifecycleService
+from properties.services.location import ensure_property_location
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
@@ -66,6 +67,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
         write_serializer = PropertyWriteSerializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
         instance = write_serializer.save()
+        # Provision a default location so the new property's address/timezone
+        # are immediately editable (consistent with the loader/factory).
+        ensure_property_location(instance)
         read_serializer = PropertyDetailSerializer(instance)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 

@@ -658,14 +658,34 @@
         "changeover_day": "Changeover day",
         "min_nights_rental": "Minimum nights",
         "min_nights_rental_note": "Minimum nights note",
-        "prices_entered_as": "Prices entered as",
-        "timezone": "Timezone"
+        "prices_entered_as": "Prices entered as"
       },
-      "timezone_placeholder": "Select a timezone",
       "save": "Save settings",
       "saving": "Saving…",
       "saved": "Settings saved",
       "save_failed": "Couldn't save settings"
+    },
+    "location": {
+      "title": "Location",
+      "description": "Postal address, country, timezone, and map coordinates.",
+      "fields": {
+        "address_line_1": "Address line 1",
+        "address_line_2": "Address line 2",
+        "address_line_3": "Address line 3",
+        "post_code": "Post code",
+        "locality_town": "Town",
+        "locality_region": "Region",
+        "country": "Country",
+        "timezone": "Timezone",
+        "latitude": "Latitude",
+        "longitude": "Longitude"
+      },
+      "country_placeholder": "Select a country",
+      "timezone_placeholder": "Select a timezone",
+      "save": "Save location",
+      "saving": "Saving…",
+      "saved": "Location saved",
+      "save_failed": "Couldn't save location"
     },
     "finance": {
       "title": "Finance configuration",

@@ -34,4 +34,7 @@ export interface CountryFilters {
   search?: string;
   page?: number;
   ordering?: string;
+  // Override the default page size — e.g. to load the full list into a
+  // `<Select>` in one request. Capped server-side.
+  pageSize?: number;
 }

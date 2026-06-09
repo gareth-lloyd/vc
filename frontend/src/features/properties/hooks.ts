@@ -33,6 +33,7 @@ import {
   fetchPropertyFinance,
   fetchPropertyHolds,
   fetchPropertyImages,
+  fetchPropertyLocation,
   fetchPropertyNearbyPlaces,
   fetchPropertyRooms,
   fetchPropertySeasons,
@@ -48,6 +49,7 @@ import {
   updatePropertyFeatures,
   updatePropertyFinance,
   updatePropertyImage,
+  updatePropertyLocation,
   updatePropertyNearbyPlace,
   updatePropertyRoom,
   updatePropertySettings,
@@ -62,6 +64,7 @@ import type {
   PropertyFilters,
   PropertyFinanceWriteInput,
   PropertyImageWriteInput,
+  PropertyLocationWriteInput,
   PropertyNearbyPlaceWriteInput,
   PropertyRoomWriteInput,
   PropertySettingsWriteInput,
@@ -467,6 +470,24 @@ export function useUpdatePropertyFinance(propertyId: number) {
     mutationFn: (input: PropertyFinanceWriteInput) => updatePropertyFinance(propertyId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.finance(propertyId) });
+    },
+  });
+}
+
+export function usePropertyLocation(propertyId: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.properties.location(propertyId!),
+    queryFn: () => fetchPropertyLocation(propertyId!),
+    enabled: propertyId != null,
+  });
+}
+
+export function useUpdatePropertyLocation(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyLocationWriteInput) => updatePropertyLocation(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.location(propertyId) });
     },
   });
 }

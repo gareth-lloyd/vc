@@ -1,9 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { server } from "@/test/msw/server";
+import { drfPage } from "@/test/drf";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
@@ -83,6 +85,28 @@ function makeFinance(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeLocation(overrides: Record<string, unknown> = {}) {
+  return {
+    property: 9,
+    address_line_1: "1 Harbour View",
+    address_line_2: "",
+    address_line_3: "",
+    post_code: "TR26 1AA",
+    locality_town: "St Ives",
+    locality_region: "",
+    country: 1,
+    latitude: "50.211800",
+    longitude: "-5.480700",
+    timezone: "Europe/London",
+    ...overrides,
+  };
+}
+
+const COUNTRIES = [
+  { id: 1, iso2: "GB", iso3: "GBR", name: "United Kingdom", is_active: true, sort_order: 0 },
+  { id: 2, iso2: "IT", iso3: "ITA", name: "Italy", is_active: true, sort_order: 0 },
+];
+
 function setReservationsUser() {
   useAuthStore.getState().setMe(
     {
@@ -134,6 +158,8 @@ function installBaseHandlers(property = makeProperty()) {
     http.get("/api/v1/properties/casa-este", () => HttpResponse.json(property)),
     http.get("/api/v1/properties/9/settings", () => HttpResponse.json(makeSettings())),
     http.get("/api/v1/properties/9/finance", () => HttpResponse.json(makeFinance())),
+    http.get("/api/v1/properties/9/location", () => HttpResponse.json(makeLocation())),
+    http.get("/api/v1/countries", () => HttpResponse.json(drfPage(COUNTRIES))),
   );
 }
 
@@ -143,6 +169,7 @@ describe("SettingsTab", () => {
     installBaseHandlers();
     setup();
     expect(await screen.findByText(/Operational settings/i)).toBeInTheDocument();
+    expect(await screen.findByText("Location")).toBeInTheDocument();
     expect(await screen.findByText(/Finance configuration/i)).toBeInTheDocument();
     expect(await screen.findByText(/Lifecycle/i)).toBeInTheDocument();
     useAuthStore.getState().clear();
@@ -162,8 +189,10 @@ describe("SettingsTab", () => {
     setup();
     const saveSettings = await screen.findByRole("button", { name: /save settings/i });
     const saveFinance = await screen.findByRole("button", { name: /save finance/i });
+    const saveLocation = await screen.findByRole("button", { name: /save location/i });
     expect(saveSettings).toBeDisabled();
     expect(saveFinance).toBeDisabled();
+    expect(saveLocation).toBeDisabled();
     useAuthStore.getState().clear();
   });
 
@@ -192,59 +221,101 @@ describe("SettingsTab", () => {
     useAuthStore.getState().clear();
   });
 
-  it("omits timezone from the PATCH when only another field changed", async () => {
+  it("PATCHes the location endpoint when the location form is edited", async () => {
     setReservationsUser();
     installBaseHandlers();
 
     let lastPatchBody: Record<string, unknown> | null = null;
     server.use(
-      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+      http.patch("/api/v1/properties/9/location", async ({ request }) => {
         lastPatchBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(makeSettings());
+        return HttpResponse.json(makeLocation({ locality_town: "Penzance" }));
       }),
     );
 
     setup();
-    // The Timezone field is present, seeded from the location's value.
-    expect(await screen.findByText("Timezone")).toBeInTheDocument();
-
-    const minNights = await screen.findByLabelText("Minimum nights");
-    await userEvent.clear(minNights);
-    await userEvent.type(minNights, "4");
-    const save = screen.getByRole("button", { name: /save settings/i });
+    const town = await screen.findByLabelText("Town");
+    await userEvent.clear(town);
+    await userEvent.type(town, "Penzance");
+    const save = screen.getByRole("button", { name: /save location/i });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
 
-    // Timezone wasn't touched, so it must not ride along and clobber a value
-    // changed elsewhere (e.g. Django admin).
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
-    expect(lastPatchBody as unknown as Record<string, unknown>).not.toHaveProperty("timezone");
+    expect((lastPatchBody as unknown as Record<string, unknown>).locality_town).toBe("Penzance");
     useAuthStore.getState().clear();
   });
 
-  it("sends timezone in the PATCH only when the timezone field is changed", async () => {
+  it("sends null for a cleared coordinate rather than an empty string", async () => {
     setReservationsUser();
     installBaseHandlers();
 
     let lastPatchBody: Record<string, unknown> | null = null;
     server.use(
-      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+      http.patch("/api/v1/properties/9/location", async ({ request }) => {
         lastPatchBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(makeSettings({ timezone: "Europe/Rome" }));
+        return HttpResponse.json(makeLocation({ latitude: null }));
       }),
     );
 
     setup();
-    const tzTrigger = await screen.findByRole("combobox", { name: "Timezone" });
-    await userEvent.click(tzTrigger);
-    await userEvent.click(await screen.findByRole("option", { name: "Europe/Rome" }));
-
-    const save = screen.getByRole("button", { name: /save settings/i });
+    const latitude = await screen.findByLabelText("Latitude");
+    await userEvent.clear(latitude);
+    const save = screen.getByRole("button", { name: /save location/i });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
-    expect((lastPatchBody as unknown as Record<string, unknown>).timezone).toBe("Europe/Rome");
+    expect((lastPatchBody as unknown as Record<string, unknown>).latitude).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("surfaces a 400 validation error in the alert banner", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.patch("/api/v1/properties/9/location", () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: { non_field_errors: ["Coordinates are out of range."] },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    setup();
+    const latitude = await screen.findByLabelText("Latitude");
+    await userEvent.clear(latitude);
+    await userEvent.type(latitude, "95");
+    const save = screen.getByRole("button", { name: /save location/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    expect(await screen.findByText(/Coordinates are out of range\./)).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("shows a toast when the location PATCH returns a 500", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    const errorSpy = vi.spyOn(toast, "error");
+    server.use(
+      http.patch("/api/v1/properties/9/location", () => new HttpResponse(null, { status: 500 })),
+    );
+
+    setup();
+    const town = await screen.findByLabelText("Town");
+    await userEvent.clear(town);
+    await userEvent.type(town, "Penzance");
+    const save = screen.getByRole("button", { name: /save location/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    errorSpy.mockRestore();
     useAuthStore.getState().clear();
   });
 });

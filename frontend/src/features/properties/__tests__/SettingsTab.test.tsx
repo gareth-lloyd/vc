@@ -247,4 +247,33 @@ describe("SettingsTab", () => {
     expect((lastPatchBody as unknown as Record<string, unknown>).timezone).toBe("Europe/Rome");
     useAuthStore.getState().clear();
   });
+
+  it("surfaces a server field validation error instead of a bare 'Validation failed'", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+
+    server.use(
+      http.patch("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: { min_nights_rental_note: ["This field may not be null."] },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    setup();
+    const minNights = await screen.findByLabelText("Minimum nights");
+    await userEvent.clear(minNights);
+    await userEvent.type(minNights, "7");
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    expect(await screen.findByText("This field may not be null.")).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
 });

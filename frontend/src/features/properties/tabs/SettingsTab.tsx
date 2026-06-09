@@ -350,7 +350,7 @@ function OperationalForm({
         </CheckboxLabel>
       </div>
 
-      <FormErrorAlert message={topLevelError} />
+      <FormErrorAlert message={topLevelError} fieldErrors={form.formState.errors} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>
@@ -626,7 +626,7 @@ function FinanceForm({
         />
       </div>
 
-      <FormErrorAlert message={topLevelError} />
+      <FormErrorAlert message={topLevelError} fieldErrors={form.formState.errors} />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>

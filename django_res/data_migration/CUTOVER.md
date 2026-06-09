@@ -128,6 +128,12 @@ uv run python manage.py dbshell -c \
   "SELECT setval('quotation_number_seq', (SELECT COALESCE(MAX(number), 1) FROM reservations_quotation));"
 ```
 
+The Enquiry/Payment/Refund/SecurityDeposit reference sequences (BUG-007) need
+**no** equivalent sync. Payment/Refund/SecurityDeposit loaders set no
+`reference` (all organic), and the imported Enquiry format (`E-{Id:06d}` /
+numeric `EnquiryNo`) is disjoint from the organic `E-{year}-{n}` shape, so an
+organic reference can never collide with an imported one.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash

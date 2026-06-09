@@ -131,10 +131,22 @@ def effective(self, attr):
   *system / tests*.
 
 ### References
-Anchor models (`Booking`, `Payment`, `Quotation`, `SecurityDeposit`) carry a
-human-readable `reference` `CharField` generated in `save()` via
-`generate_reference()`. Note `bulk_create` bypasses `save()` — loaders and
-schedulers assign references explicitly.
+Anchor models carry a human-readable, `unique` `reference` `CharField`, allocated
+by the **database** (BUG-007), not Python:
+
+- **Enquiry / Payment / Refund / SecurityDeposit** — the column's `db_default`
+  (`core.refs.reference_db_default`) draws from a per-series Postgres sequence
+  and stamps `{prefix}-{year}-{nextval}` on *every* insert path (`save()`,
+  `bulk_create`, raw SQL). No `save()` override; an explicit value (legacy
+  loaders) still wins.
+- **Quotation / Booking** — a shared sequence-backed `number` (`QVC{n}` /
+  carried-forward `VC{n}`, legacy parity). `generate_reference` survives only as
+  Booking's interim fallback for a numberless quotation.
+
+The earlier `save()`-via-`generate_reference()` scheme was replaced because
+`bulk_create` bypasses `save()` (and signals), leaving a blank `reference` that
+collided on the unique constraint. See `django_res/CLAUDE.md` §"Reference
+numbers".
 
 ### Soft delete
 None. Lifecycle is expressed via `status` + `is_active` + `archived_at`, or a

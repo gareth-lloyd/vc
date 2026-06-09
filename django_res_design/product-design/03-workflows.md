@@ -14,7 +14,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 **Email previews.** Every outbound email step in every workflow surfaces an in-app preview before send, with an "Edit & send" button that pops a rich-text editor pre-filled from template. No silent email send. (Original Blazor app fires-and-forgets too many emails; we are deliberately gating these.)
 
-**Deep links.** Every entity and every step within a multi-step flow has a stable URL: `/enquiries/:id`, `/quotations/:id/edit`, `/bookings/:id/payments/deposit`, `/properties/:id/calendar?from=2026-06-01&to=2026-06-30`. Stepwise flows (property onboarding, rate-card setup) put the step in the URL too: `/properties/new/step/3-features`.
+**Deep links.** Every entity and every step within a multi-step flow has a stable URL: `/enquiries/:id`, `/enquiries/quotes/:id`, `/bookings/:id/payments/deposit`, `/properties/:id/calendar?from=2026-06-01&to=2026-06-30`. Stepwise flows (property onboarding, rate-card setup) put the step in the URL too: `/properties/new/step/3-features`.
 
 **Permissions vocabulary.** Roles are: `Operator` (default ops user), `Senior Operator` (price overrides, refunds up to threshold), `Admin` (anything), `Accountant` (read-only on most + refund execution), `Owner` (portal only), `Manager` (portal — owner-adjacent), `Viewer` (read-only). Permission is enforced server-side; the SPA hides actions the user can't perform and replaces them with a "Request from admin" affordance where useful.
 
@@ -74,9 +74,9 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 ## 2. Convert Enquiry to Quotation
 
 **Entry points:**
-- From enquiry detail page, primary CTA "Build quotation" (`/enquiries/:id/quote/new`)
+- From the enquiry workspace (`/enquiries/:id`): the quote builder is inline — expanded by default on a quote-less enquiry, otherwise behind a "Build another quote" action
 - From enquiry list bulk action "Quote selected" (creates one quote with all enquiry constraints merged — rare)
-- Direct deep link `/quotations/new?enquiry=:id`
+- Legacy deep link `/quotations/new?enquiry=:id` (redirects to the enquiry workspace `/enquiries/:id`)
 
 **Steps:**
 

@@ -37,7 +37,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
     `get_object`.
     """
 
-    queryset = Property.objects.all().select_related("category", "group", "region")
+    queryset = Property.objects.all().select_related("category", "group", "region", "capacity")
     filterset_class = PropertyFilter
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering_fields = ["name", "display_name", "created_at", "updated_at"]

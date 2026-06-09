@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Collapsible } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -6,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatMoney } from "@/lib/format/money";
 import { PropertyThumbnail } from "./PropertyThumbnail";
-import type { QuoteOption } from "../schemas";
+import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
@@ -14,6 +15,32 @@ interface Props {
   currency: string;
   stagedPropertyIds: Set<number>;
   onAdd: (option: QuoteOption) => void;
+  hiddenForCapacity?: HiddenCapacityProperty[];
+}
+
+function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) {
+  const { t } = useTranslation("quotations");
+  if (properties.length === 0) return null;
+  return (
+    <div
+      className="border-border bg-muted/40 space-y-2 rounded-md border border-dashed p-3"
+      role="status"
+    >
+      <p className="text-muted-foreground text-xs">{t("builder.results.capacity_hint.intro")}</p>
+      <ul className="space-y-1">
+        {properties.map((p) => (
+          <li key={p.id} className="text-sm">
+            <Link to={`/properties/${p.slug ?? p.id}/details`} className="font-medium underline">
+              {p.name}
+            </Link>{" "}
+            <span className="text-muted-foreground">
+              {t("builder.results.capacity_hint.suffix")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function QuoteResultsList({
@@ -22,6 +49,7 @@ export function QuoteResultsList({
   currency,
   stagedPropertyIds,
   onAdd,
+  hiddenForCapacity = [],
 }: Props) {
   const { t } = useTranslation("quotations");
 
@@ -46,10 +74,13 @@ export function QuoteResultsList({
 
   if (options.length === 0) {
     return (
-      <EmptyState
-        title={t("builder.results.empty.title")}
-        description={t("builder.results.empty.description")}
-      />
+      <div className="space-y-3">
+        <EmptyState
+          title={t("builder.results.empty.title")}
+          description={t("builder.results.empty.description")}
+        />
+        <CapacityHint properties={hiddenForCapacity} />
+      </div>
     );
   }
 
@@ -58,6 +89,7 @@ export function QuoteResultsList({
 
   return (
     <div className="space-y-3">
+      <CapacityHint properties={hiddenForCapacity} />
       {available.map((option) => (
         <article
           key={option.property_id}

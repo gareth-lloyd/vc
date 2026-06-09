@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from properties.views.capacity import PropertyCapacityView
 from properties.views.changeover import (
     ChangeOverRuleDetailView,
     PropertyChangeOverRuleListCreateView,
@@ -64,6 +65,7 @@ __all__ = [
     "GroupFinanceView",
     "GroupSettingsView",
     "NearbyPlaceTypeViewSet",
+    "PropertyCapacityView",
     "PropertyCategoryViewSet",
     "PropertyChangeOverRuleListCreateView",
     "PropertyCollectionsView",

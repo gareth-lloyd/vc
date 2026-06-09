@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from properties.serializers.capacity import PropertyCapacitySerializer
 from properties.serializers.changeover import ChangeOverRuleSerializer
 from properties.serializers.collection import (
     CollectionMembershipSerializer,
@@ -60,6 +61,7 @@ __all__ = [
     "GroupFinanceSerializer",
     "GroupSettingsSerializer",
     "NearbyPlaceTypeSerializer",
+    "PropertyCapacitySerializer",
     "PropertyCategorySerializer",
     "PropertyContactAssignmentSerializer",
     "PropertyDescriptionSerializer",

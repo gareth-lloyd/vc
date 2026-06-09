@@ -53,7 +53,8 @@
       "overview": "Overview",
       "description": "Description",
       "features": "Features",
-      "rooms": "Rooms"
+      "rooms": "Rooms",
+      "capacity": "Capacity"
     },
     "fields": {
       "name": "Name",
@@ -64,6 +65,24 @@
       "legacy_id": "Legacy id",
       "created": "Created",
       "updated": "Updated"
+    },
+    "capacity": {
+      "description": "Headline guest and room counts shown to customers. These are the property's published totals, kept independent of the individual room list above.",
+      "fields": {
+        "guests": "Sleeps (guests)",
+        "additional_guests": "Additional guests",
+        "bedrooms": "Bedrooms",
+        "ensuites": "Ensuites",
+        "bathrooms": "Bathrooms",
+        "size_sqm": "Size (m²)"
+      },
+      "warning_not_set": "Capacity not set — this property won't appear in quote searches until you set the number of guests.",
+      "save": "Save capacity",
+      "saving": "Saving…",
+      "saved": "Capacity saved",
+      "save_failed": "Couldn't save capacity",
+      "error_title": "Couldn't load capacity",
+      "error_body": "Try again."
     },
     "descriptions": {
       "error_title": "Couldn't load descriptions",

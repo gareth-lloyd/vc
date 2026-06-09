@@ -442,6 +442,7 @@ def _delete_demo_data() -> int:
     from reservations.models import (
         Booking,
         Enquiry,
+        EnquiryEvent,
         Guest,
         OwnerBlock,
         OwnerBlockUpdate,
@@ -506,6 +507,9 @@ def _delete_demo_data() -> int:
             orphan_enquiry_ids = [
                 eid for eid in enquiry_ids if not Quotation.objects.filter(enquiry_id=eid).exists()
             ]
+            # EnquiryEvent PROTECTs its enquiry; EnquiryNote CASCADEs. Clear the
+            # events first so the orphaned enquiries can go.
+            EnquiryEvent.objects.filter(enquiry_id__in=orphan_enquiry_ids).delete()
             total += Enquiry.objects.filter(pk__in=orphan_enquiry_ids).delete()[0]
             OwnerOrgProperty.objects.filter(property=prop).delete()
             # Property CASCADEs its holds and calendar feeds.

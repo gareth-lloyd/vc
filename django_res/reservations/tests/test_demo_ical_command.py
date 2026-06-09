@@ -184,10 +184,12 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     from payments.enums import PaymentPurpose
     from payments.models import Payment
     from pricing.models import Currency, RatePlan
-    from reservations.enums import BookingStatus
+    from reservations.enums import BookingStatus, EnquiryEventKind, EnquiryStatus
     from reservations.models import (
         Booking,
         BookingEvent,
+        Enquiry,
+        EnquiryEvent,
         Guest,
         Quotation,
         QuotationLine,
@@ -221,11 +223,20 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     # A QuotationLine on the property from an unrelated guest (not the demo
     # guest) — the case that broke the original guest-scoped teardown.
     other_guest = Guest.objects.create(email="someone.else@demo.test")
+    # An EnquiryEvent PROTECTs its enquiry — the orphaned-enquiry teardown must
+    # clear it.
+    other_enquiry = Enquiry.objects.create(guest=other_guest, email=other_guest.email or "")
+    EnquiryEvent.objects.create(
+        enquiry=other_enquiry,
+        from_status=EnquiryStatus.NEW,
+        to_status=EnquiryStatus.QUOTED,
+        kind=EnquiryEventKind.QUOTE_SENT,
+    )
     terms = TermsVersion.objects.create(
         version="2026-test", body_markdown="x", published_at=timezone.now()
     )
     quotation = Quotation.objects.create(
-        enquiry=other_guest.enquiries.create(),
+        enquiry=other_enquiry,
         guest=other_guest,
         currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),

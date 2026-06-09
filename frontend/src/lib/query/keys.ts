@@ -51,6 +51,7 @@ export const queryKeys = {
       ["properties", "detail", k(idOrSlug), "discounts"] as const,
     contacts: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "contacts"] as const,
     images: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "images"] as const,
+    capacity: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "capacity"] as const,
     settings: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "settings"] as const,
     finance: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "finance"] as const,
     holdsRoot: (propertyId: number) => ["properties", "detail", k(propertyId), "holds"] as const,

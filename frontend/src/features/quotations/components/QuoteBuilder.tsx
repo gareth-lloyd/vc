@@ -208,7 +208,8 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.results.title")}</h3>
           <QuoteResultsList
-            options={search.data}
+            options={search.data?.options}
+            hiddenForCapacity={search.data?.hiddenForCapacity}
             isLoading={search.isPending}
             currency={currency}
             stagedPropertyIds={stagedPropertyIds}

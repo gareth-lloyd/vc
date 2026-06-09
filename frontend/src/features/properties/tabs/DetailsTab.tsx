@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/format/date";
 import { useFeatures } from "@/features/admin/tags/hooks";
 import { usePropertyRooms } from "../hooks";
 import { DescriptionsSection } from "../components/DescriptionsSection";
+import { CapacitySection } from "../components/CapacitySection";
 import type { PropertyDetail } from "../schemas";
 
 interface DetailsContext {
@@ -82,6 +83,10 @@ export function DetailsTab() {
         ) : (
           <EmptyState title={t("details.features.empty_title")} />
         )}
+      </Section>
+
+      <Section title={t("details.sections.capacity")}>
+        <CapacitySection propertyId={property.id} />
       </Section>
 
       <Section title={t("details.sections.rooms")}>

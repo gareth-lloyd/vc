@@ -14,6 +14,7 @@ from properties.views import (
     GroupFinanceView,
     GroupSettingsView,
     NearbyPlaceTypeViewSet,
+    PropertyCapacityView,
     PropertyCategoryViewSet,
     PropertyChangeOverRuleListCreateView,
     PropertyCollectionsView,
@@ -168,6 +169,11 @@ _property_subresources: list[URLPattern] = [
         "properties/<int:property_id>/finance",
         PropertyFinanceView.as_view(),
         name="property-finance",
+    ),
+    path(
+        "properties/<int:property_id>/capacity",
+        PropertyCapacityView.as_view(),
+        name="property-capacity",
     ),
     path(
         "properties/<int:property_id>/price-display",

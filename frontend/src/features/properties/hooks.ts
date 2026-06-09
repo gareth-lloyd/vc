@@ -26,6 +26,7 @@ import {
   fetchProperty,
   fetchPropertyAvailabilityCells,
   fetchPropertyBookingsForRange,
+  fetchPropertyCapacity,
   fetchPropertyContacts,
   fetchPropertyDescriptions,
   fetchPropertyDiscounts,
@@ -44,6 +45,7 @@ import {
   setPropertyImageHero,
   updateChangeOverRule,
   updatePropertyBlock,
+  updatePropertyCapacity,
   updatePropertyContact,
   updatePropertyFeatures,
   updatePropertyFinance,
@@ -58,6 +60,7 @@ import type {
   AvailabilityBlockWriteInput,
   ChangeOverRuleWriteInput,
   DescriptionSection,
+  PropertyCapacityWriteInput,
   PropertyContactAssignmentWriteInput,
   PropertyFilters,
   PropertyFinanceWriteInput,
@@ -467,6 +470,28 @@ export function useUpdatePropertyFinance(propertyId: number) {
     mutationFn: (input: PropertyFinanceWriteInput) => updatePropertyFinance(propertyId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.finance(propertyId) });
+    },
+  });
+}
+
+export function usePropertyCapacity(propertyId: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.properties.capacity(propertyId!),
+    queryFn: () => fetchPropertyCapacity(propertyId!),
+    enabled: propertyId != null,
+  });
+}
+
+export function useUpdatePropertyCapacity(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyCapacityWriteInput) => updatePropertyCapacity(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.capacity(propertyId) });
+      // The list rows carry a derived `capacity` block (read by the quote
+      // builder), so refresh every list cache. `detail` doesn't expose
+      // capacity, so it's intentionally left alone.
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.properties.all(), "list"] });
     },
   });
 }

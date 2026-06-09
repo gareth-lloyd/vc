@@ -20,6 +20,31 @@ export const propertyContactRoleSchema = z.enum(PROPERTY_CONTACT_ROLES, {
 });
 export type PropertyContactRole = z.infer<typeof propertyContactRoleSchema>;
 
+// Read-only capacity block carried on list rows. `null` when the property has
+// no `PropertyCapacity` row — distinct from a row whose `guests` is 0. The
+// quote builder uses this to explain why a name-matched property is hidden.
+export const propertyListCapacitySchema = z.object({
+  guests: z.number(),
+  additional_guests: z.number(),
+  bedrooms: z.number(),
+  ensuites: z.number(),
+  bathrooms: z.number(),
+  // String to match the dedicated capacity endpoint (DRF DecimalField); null
+  // when unset.
+  size_sqm: z.string().nullable().optional(),
+});
+export type PropertyListCapacity = z.infer<typeof propertyListCapacitySchema>;
+
+/**
+ * A property is hidden from quote searches when it has no capacity row or its
+ * guest count is zero. This mirrors the backend `min_guests` filter
+ * (`capacity__guests__gte`) and is the single source of that rule on the
+ * frontend — used both for the quote-builder hint and the editor warning.
+ */
+export function isCapacityUnset(capacity: { guests: number } | null | undefined): boolean {
+  return capacity == null || capacity.guests === 0;
+}
+
 export const propertyListItemSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -31,6 +56,7 @@ export const propertyListItemSchema = z.object({
   category: z.number().nullable().optional(),
   group: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
+  capacity: propertyListCapacitySchema.nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -541,6 +567,29 @@ export const propertyFinanceWriteInputSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 export type PropertyFinanceWriteInput = z.infer<typeof propertyFinanceWriteInputSchema>;
+
+export const propertyCapacitySchema = z.object({
+  property: z.number(),
+  guests: z.number(),
+  additional_guests: z.number(),
+  bedrooms: z.number(),
+  ensuites: z.number(),
+  bathrooms: z.number(),
+  // DRF serialises the DecimalField as a string; null when unset.
+  size_sqm: z.string().nullable().optional(),
+});
+export type PropertyCapacity = z.infer<typeof propertyCapacitySchema>;
+
+export const propertyCapacityWriteInputSchema = z.object({
+  guests: z.number().int().min(0),
+  additional_guests: z.number().int().min(0),
+  bedrooms: z.number().int().min(0),
+  ensuites: z.number().int().min(0),
+  bathrooms: z.number().int().min(0),
+  // Free-floor area in m²; blank normalises to null in the api layer.
+  size_sqm: z.string().nullable().optional(),
+});
+export type PropertyCapacityWriteInput = z.infer<typeof propertyCapacityWriteInputSchema>;
 
 export const propertyContactAssignmentWriteInputSchema = z.object({
   contact: z.number().int(),

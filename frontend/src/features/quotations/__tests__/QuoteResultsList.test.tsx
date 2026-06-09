@@ -3,7 +3,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { QuoteResultsList } from "../components/QuoteResultsList";
-import type { QuoteOption } from "../schemas";
+import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
 
 function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
   return {
@@ -18,10 +18,11 @@ function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
 
 const noop = () => undefined;
 
-function renderList(options: QuoteOption[]) {
+function renderList(options: QuoteOption[], hiddenForCapacity: HiddenCapacityProperty[] = []) {
   return renderWithProviders(
     <QuoteResultsList
       options={options}
+      hiddenForCapacity={hiddenForCapacity}
       isLoading={false}
       currency="USD"
       stagedPropertyIds={new Set()}
@@ -61,5 +62,26 @@ describe("QuoteResultsList", () => {
   it("shows no unavailable toggle when every option is available", () => {
     renderList([option()]);
     expect(screen.queryByRole("button", { name: /unavailable/i })).not.toBeInTheDocument();
+  });
+
+  it("surfaces a capacity-hidden property as a hint with a link to its details", () => {
+    renderList([option()], [{ id: 307, name: "iCal Demo Villa", slug: "ical-demo" }]);
+    const link = screen.getByRole("link", { name: "iCal Demo Villa" });
+    expect(link).toHaveAttribute("href", "/properties/ical-demo/details");
+    expect(screen.getByText(/capacity isn't set/i)).toBeInTheDocument();
+  });
+
+  it("shows the capacity hint even when there are no priced options", () => {
+    renderList([], [{ id: 307, name: "iCal Demo Villa", slug: null }]);
+    // Falls back to the id in the link when the property has no slug.
+    expect(screen.getByRole("link", { name: "iCal Demo Villa" })).toHaveAttribute(
+      "href",
+      "/properties/307/details",
+    );
+  });
+
+  it("renders no hint when nothing is hidden for capacity", () => {
+    renderList([option()]);
+    expect(screen.queryByText(/capacity isn't set/i)).not.toBeInTheDocument();
   });
 });

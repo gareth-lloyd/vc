@@ -9,6 +9,7 @@ import {
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
+  propertyCapacitySchema,
   propertyContactsResponseSchema,
   propertyDescriptionSchema,
   propertyDescriptionsResponseSchema,
@@ -37,6 +38,8 @@ import {
   type Extra,
   type NearbyPlaceType,
   type PropertyBookingItem,
+  type PropertyCapacity,
+  type PropertyCapacityWriteInput,
   type PropertyContactAssignment,
   propertyContactAssignmentSchema,
   type PropertyContactAssignmentWriteInput,
@@ -398,6 +401,19 @@ export async function updatePropertySettings(
 ): Promise<PropertySettings> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/settings`, body);
   return propertySettingsSchema.parse(data);
+}
+
+export async function fetchPropertyCapacity(propertyId: number): Promise<PropertyCapacity> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/capacity`);
+  return propertyCapacitySchema.parse(data);
+}
+
+export async function updatePropertyCapacity(
+  propertyId: number,
+  body: PropertyCapacityWriteInput,
+): Promise<PropertyCapacity> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/capacity`, body);
+  return propertyCapacitySchema.parse(data);
 }
 
 export async function fetchPropertyFinance(propertyId: number): Promise<PropertyFinance> {

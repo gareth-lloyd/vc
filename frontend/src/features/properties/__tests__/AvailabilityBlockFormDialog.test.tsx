@@ -59,6 +59,20 @@ describe("AvailabilityBlockFormDialog", () => {
     useAuthStore.getState().clear();
   });
 
+  it("shows an inclusive nights summary as dates are entered", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <AvailabilityBlockFormDialog propertyId={7} open mode="create" onOpenChange={() => {}} />,
+    );
+    await userEvent.type(await screen.findByLabelText(/^From$/i), "2026-06-10");
+    await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-17");
+    // [10 Jun, 17 Jun) is 7 nights ending the 16th — never "17 Jun".
+    expect(await screen.findByTestId("block-nights-summary")).toHaveTextContent(
+      "7 nights (10–16 Jun 2026)",
+    );
+    useAuthStore.getState().clear();
+  });
+
   it("shows an inline error when date_to is not after date_from", async () => {
     setReservationsUser();
     renderWithProviders(

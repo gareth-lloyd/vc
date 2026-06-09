@@ -36,6 +36,8 @@
     "today": "Σήμερα",
     "load_failed": "Δεν ήταν δυνατή η φόρτωση της διαθεσιμότητας.",
     "cell_aria": "{{date}}: {{status}}",
+    "night_range_one": "{{range}} · {{count}} νύχτα",
+    "night_range_other": "{{range}} · {{count}} νύχτες",
     "legend": {
       "booked": "Κρατημένο",
       "hold": "Δέσμευση VC",
@@ -92,7 +94,9 @@
     "load_failed": "Δεν ήταν δυνατή η φόρτωση των δεσμευμένων ημερομηνιών.",
     "dialog": {
       "title": "Δέσμευση διαθεσιμότητας",
-      "description": "Δεσμεύστε αυτές τις ημερομηνίες ώστε να μην μπορούν να κρατηθούν."
+      "description": "Δεσμεύστε αυτές τις ημερομηνίες ώστε να μην μπορούν να κρατηθούν.",
+      "nights_summary_one": "{{count}} νύχτα ({{range}})",
+      "nights_summary_other": "{{count}} νύχτες ({{range}})"
     },
     "fields": {
       "date_from": "Από",

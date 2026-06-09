@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { formatNightRange } from "@/lib/format/date";
+import { nightRangeParts } from "@/lib/nights";
 import { useCreatePropertyBlock, useUpdatePropertyBlock } from "../hooks";
 import {
   AVAILABILITY_BLOCK_REASONS,
@@ -116,6 +118,19 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
 
   const reason = form.watch("reason");
 
+  const dateFrom = form.watch("date_from");
+  const dateTo = form.watch("date_to");
+  const nightsSummary =
+    dateFrom && dateTo && dateTo > dateFrom
+      ? (() => {
+          const parts = nightRangeParts(dateFrom, dateTo);
+          return t("availability.block_dialog.nights_summary", {
+            range: formatNightRange(parts.firstNight, parts.lastNight),
+            count: parts.nights,
+          });
+        })()
+      : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -168,6 +183,12 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
               ) : null}
             </div>
           </div>
+
+          {nightsSummary ? (
+            <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
+              {nightsSummary}
+            </p>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="block-notes">{t("availability.block_dialog.fields.notes")}</Label>

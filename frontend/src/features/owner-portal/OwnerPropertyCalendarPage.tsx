@@ -20,7 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ApiError } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format/date";
+import { formatNightRange } from "@/lib/format/date";
+import { nightRangeParts } from "@/lib/nights";
 import { BlockRequestDialog } from "./BlockRequestDialog";
 import {
   useCancelBlockRequest,
@@ -226,7 +227,13 @@ export function OwnerPropertyCalendarPage() {
                 <li key={request.id} className="flex items-center justify-between gap-3 px-4 py-3">
                   <div className="space-y-0.5">
                     <div className="text-sm font-medium">
-                      {formatDate(request.date_from)} – {formatDate(request.date_to)}
+                      {(() => {
+                        const parts = nightRangeParts(request.date_from, request.date_to);
+                        return t("calendar.night_range", {
+                          range: formatNightRange(parts.firstNight, parts.lastNight),
+                          count: parts.nights,
+                        });
+                      })()}
                     </div>
                     <div className="text-muted-foreground text-xs">
                       {t(`blocks.kind.${request.kind}`)}

@@ -50,6 +50,18 @@ describe("BlockRequestDialog", () => {
     expect(await screen.findByText(/end date must be after/i)).toBeInTheDocument();
   });
 
+  it("shows an inclusive nights summary as dates are entered", async () => {
+    renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
+    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
+
+    // [1 Aug, 8 Aug) is 7 nights — the summary must not surface the exclusive 8th.
+    expect(await screen.findByTestId("block-nights-summary")).toHaveTextContent(
+      "7 nights (1–7 Aug 2026)",
+    );
+  });
+
   it("posts the request and toasts on success", async () => {
     let body: unknown = null;
     server.use(

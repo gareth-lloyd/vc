@@ -92,7 +92,19 @@ describe("OwnerPropertyCalendarPage block requests", () => {
     );
     renderPage();
 
+    // Inclusive nights: [1 Aug, 8 Aug) is 7 nights ending the 7th — never "8 Aug".
+    expect(await screen.findByText("1–7 Aug 2026 · 7 nights")).toBeInTheDocument();
+    expect(screen.queryByText(/8 Aug/)).not.toBeInTheDocument();
+
     await userEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
     await waitFor(() => expect(cancelled).toBe(true));
+  });
+
+  it("renders a single-night block without a date range", async () => {
+    mockEndpoints({
+      requests: [blockRequest({ date_from: "2026-08-01", date_to: "2026-08-02" })],
+    });
+    renderPage();
+    expect(await screen.findByText("1 Aug 2026 · 1 night")).toBeInTheDocument();
   });
 });

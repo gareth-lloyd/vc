@@ -122,6 +122,8 @@
     "block_dialog": {
       "create_title": "Προσθήκη αποκλεισμού διαθεσιμότητας",
       "edit_title": "Επεξεργασία αποκλεισμού διαθεσιμότητας",
+      "nights_summary_one": "{{count}} νύχτα ({{range}})",
+      "nights_summary_other": "{{count}} νύχτες ({{range}})",
       "fields": {
         "reason": "Λόγος",
         "date_from": "Από",

@@ -36,6 +36,8 @@
     "today": "Today",
     "load_failed": "Couldn't load availability.",
     "cell_aria": "{{date}}: {{status}}",
+    "night_range_one": "{{range}} · {{count}} night",
+    "night_range_other": "{{range}} · {{count}} nights",
     "legend": {
       "booked": "Booked",
       "hold": "VC hold",
@@ -92,7 +94,9 @@
     "load_failed": "Couldn't load your blocked dates.",
     "dialog": {
       "title": "Block availability",
-      "description": "Hold these dates so they can't be booked."
+      "description": "Hold these dates so they can't be booked.",
+      "nights_summary_one": "{{count}} night ({{range}})",
+      "nights_summary_other": "{{count}} nights ({{range}})"
     },
     "fields": {
       "date_from": "From",

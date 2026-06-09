@@ -122,6 +122,8 @@
     "block_dialog": {
       "create_title": "Add availability block",
       "edit_title": "Edit availability block",
+      "nights_summary_one": "{{count}} night ({{range}})",
+      "nights_summary_other": "{{count}} nights ({{range}})",
       "fields": {
         "reason": "Reason",
         "date_from": "From",

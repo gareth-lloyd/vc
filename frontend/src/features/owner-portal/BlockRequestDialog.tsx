@@ -24,6 +24,8 @@ import {
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
+import { formatNightRange } from "@/lib/format/date";
+import { nightRangeParts } from "@/lib/nights";
 import { useCreateBlockRequest } from "./hooks";
 import {
   blockRequestWriteInputSchema,
@@ -81,6 +83,19 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
 
   const errors = form.formState.errors;
 
+  const dateFrom = form.watch("date_from");
+  const dateTo = form.watch("date_to");
+  const nightsSummary =
+    dateFrom && dateTo && dateTo > dateFrom
+      ? (() => {
+          const parts = nightRangeParts(dateFrom, dateTo);
+          return t("blocks.dialog.nights_summary", {
+            range: formatNightRange(parts.firstNight, parts.lastNight),
+            count: parts.nights,
+          });
+        })()
+      : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -119,6 +134,12 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
               ) : null}
             </div>
           </div>
+
+          {nightsSummary ? (
+            <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
+              {nightsSummary}
+            </p>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="block-kind">{t("blocks.fields.kind")}</Label>

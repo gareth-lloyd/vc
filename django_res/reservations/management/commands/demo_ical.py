@@ -432,6 +432,7 @@ def _delete_demo_data() -> int:
     """
     from accounts.models import User
     from owners.models import OwnerMembership, OwnerOrganisation, OwnerOrgProperty
+    from pricing.models import RatePlan
     from properties.models import (
         Property,
         PropertyCategory,
@@ -446,6 +447,7 @@ def _delete_demo_data() -> int:
         OwnerBlockUpdate,
         OwnerBlockUpdateSeen,
         Quotation,
+        QuotationLine,
     )
 
     total = 0
@@ -473,11 +475,38 @@ def _delete_demo_data() -> int:
             # guest, so it must go after; deleting the Booking CASCADEs its
             # BookingGuest rows (the LEAD guard permits the cascade path).
             total += Booking.objects.filter(property=prop).delete()[0]
-            # Demo quotations CASCADE their holds + lines; then the now-unreferenced
-            # demo enquiries (Quotation.enquiry PROTECTs them until the quotation
-            # is gone). Both keyed on the demo guest.
-            total += Quotation.objects.filter(guest__email=GUEST_EMAIL).delete()[0]
-            total += Enquiry.objects.filter(guest__email=GUEST_EMAIL).delete()[0]
+            # RatePlan PROTECTs the property (and CASCADEs its RateCards).
+            total += RatePlan.objects.filter(property=prop).delete()[0]
+            # QuotationLine PROTECTs the property too. Delete every quotation
+            # with a line on this property — not just the demo guest's — since we
+            # don't care about any data on this property; deleting the quotation
+            # CASCADEs its lines + holds. Demo-guest quotations may have no line
+            # on the property yet, so union them in.
+            quotation_ids = set(
+                QuotationLine.objects.filter(property=prop).values_list("quotation_id", flat=True)
+            )
+            quotation_ids.update(
+                Quotation.objects.filter(guest__email=GUEST_EMAIL).values_list("pk", flat=True)
+            )
+            # Quotation.enquiry PROTECTs the enquiry until the quotation is gone,
+            # so collect the candidate enquiries before deleting the quotations.
+            enquiry_ids = {
+                eid
+                for eid in Quotation.objects.filter(pk__in=quotation_ids).values_list(
+                    "enquiry_id", flat=True
+                )
+                if eid is not None
+            }
+            enquiry_ids.update(
+                Enquiry.objects.filter(guest__email=GUEST_EMAIL).values_list("pk", flat=True)
+            )
+            total += Quotation.objects.filter(pk__in=quotation_ids).delete()[0]
+            # Only drop enquiries with no surviving quotation (another quotation
+            # on a different property could still PROTECT one).
+            orphan_enquiry_ids = [
+                eid for eid in enquiry_ids if not Quotation.objects.filter(enquiry_id=eid).exists()
+            ]
+            total += Enquiry.objects.filter(pk__in=orphan_enquiry_ids).delete()[0]
             OwnerOrgProperty.objects.filter(property=prop).delete()
             # Property CASCADEs its holds and calendar feeds.
             total += prop.delete()[0]

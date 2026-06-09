@@ -167,23 +167,35 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
 @respx.mock
 @override_settings(OPS_EMAIL_RECIPIENTS=["ops@villacollective.test"])
 @pytest.mark.usefixtures("system_profile")
-def test_reset_clears_payments_and_events_on_property_bookings() -> None:
-    """A booking carrying PROTECT-ing Payment/BookingEvent rows must still reset."""
+def test_reset_clears_protecting_rows_on_property() -> None:
+    """Reset must unwind every PROTECT-ing row on the demo property: a booking's
+    Payment/BookingEvent, a RatePlan, and a *non-demo-guest* QuotationLine."""
     respx.get(_FEED_URL).mock(return_value=httpx.Response(200, text=_ics("20260701", "20260705")))
     _run("--setup")
     _run("--add-feed", "--feed-url", _FEED_URL)
     _run("--poll")
     _run("--inject-conflict", "booking")
 
+    from datetime import date, timedelta
     from decimal import Decimal
+
+    from django.utils import timezone
 
     from payments.enums import PaymentPurpose
     from payments.models import Payment
-    from pricing.models import Currency
+    from pricing.models import Currency, RatePlan
     from reservations.enums import BookingStatus
-    from reservations.models import Booking, BookingEvent, Guest
+    from reservations.models import (
+        Booking,
+        BookingEvent,
+        Guest,
+        Quotation,
+        QuotationLine,
+        TermsVersion,
+    )
 
-    booking = Booking.objects.get(property__slug=PROPERTY_SLUG)
+    prop = Property.objects.get(slug=PROPERTY_SLUG)
+    booking = Booking.objects.get(property=prop)
     gbp, _ = Currency.objects.get_or_create(
         code="GBP", defaults={"name": "Pound sterling", "symbol": "£"}
     )
@@ -198,8 +210,37 @@ def test_reset_clears_payments_and_events_on_property_bookings() -> None:
         from_status=BookingStatus.DRAFT,
         to_status=BookingStatus.AWAITING_DEPOSIT,
     )
+    # A RatePlan PROTECTs the property.
+    RatePlan.objects.create(
+        property=prop,
+        currency=gbp,
+        name="summer",
+        effective_from=date(2026, 6, 1),
+        effective_to=date(2026, 9, 1),
+    )
+    # A QuotationLine on the property from an unrelated guest (not the demo
+    # guest) — the case that broke the original guest-scoped teardown.
+    other_guest = Guest.objects.create(email="someone.else@demo.test")
+    terms = TermsVersion.objects.create(
+        version="2026-test", body_markdown="x", published_at=timezone.now()
+    )
+    quotation = Quotation.objects.create(
+        enquiry=other_guest.enquiries.create(),
+        guest=other_guest,
+        currency=gbp,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    QuotationLine.objects.create(
+        quotation=quotation,
+        property=prop,
+        date_from=date(2026, 8, 1),
+        date_to=date(2026, 8, 8),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
 
-    _run("--reset")  # would raise ProtectedError if the money/event rows survived
+    _run("--reset")  # would raise ProtectedError if any PROTECT-ing row survived
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()

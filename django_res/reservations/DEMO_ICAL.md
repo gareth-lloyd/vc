@@ -125,8 +125,9 @@ EmailLog.objects.filter(template_key="ical.conflict").values("to", "subject")
 manage.py demo_ical --reset     # hard-deletes all demo rows (no soft delete)
 ```
 
-`--reset` wipes everything tied to the demo property — including any
-payments, refunds, security deposits, and booking events that `PROTECT` its
-bookings. Nothing on this property is precious, so the reset clears those
-first and then deletes the bookings; running it on a property carrying real
-bookings would destroy real data.
+`--reset` wipes everything tied to the demo property — including every row
+that `PROTECT`s it: a booking's payments / refunds / security deposits /
+booking events, the property's rate plans, and *any* quotation with a line on
+it (not just the demo guest's). Nothing on this property is precious, so the
+reset clears those first and then deletes the property; running it on a
+property carrying real data would destroy real data.

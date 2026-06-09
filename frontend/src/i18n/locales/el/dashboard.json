@@ -14,6 +14,11 @@
     "recent_enquiries": "Πρόσφατα αιτήματα",
     "view_all": "Όλα →"
   },
+  "greeting": "Καλημέρα",
+  "hero": {
+    "arrivals_label": "Επισκέπτες που κάνουν check-in σήμερα",
+    "view_schedule": "Προβολή σημερινού προγράμματος"
+  },
   "rows": {
     "guest_party_one": "{{count}} ενήλικος",
     "guest_party_other": "{{count}} ενήλικες",

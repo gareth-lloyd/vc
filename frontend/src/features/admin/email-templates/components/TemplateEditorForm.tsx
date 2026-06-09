@@ -45,8 +45,6 @@ function editDefaults(template: EmailTemplateDetail): EmailTemplateCreateInput {
   };
 }
 
-const FORM_FIELDS = ["key", "title", "subject_template", "body_template_mjml", "notes"] as const;
-
 export function TemplateEditorForm(props: Props) {
   const { t } = useTranslation("admin");
   const navigate = useNavigate();
@@ -122,14 +120,10 @@ export function TemplateEditorForm(props: Props) {
       }
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
+        // applyApiErrorToForm already routes unmapped field errors (e.g. the
+        // server-derived `body_template_html` compile errors) into `detail`.
         const { detail } = applyApiErrorToForm(form, error);
-        // `body_template_html` is a server-derived field with no form input, so
-        // its compile errors have nowhere inline to land — surface them (and any
-        // other unmapped field error) in the top-level alert.
-        const extra = Object.entries(error.fieldErrors)
-          .filter(([f]) => !FORM_FIELDS.includes(f as (typeof FORM_FIELDS)[number]))
-          .flatMap(([, messages]) => messages);
-        setTopLevelError([detail, ...extra].filter(Boolean).join(" ") || null);
+        setTopLevelError(detail || null);
       } else {
         toast.error(t("common:errors.generic"));
       }

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys, type ContactId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
@@ -48,9 +48,21 @@ export function useSearchContacts(query: string) {
   });
 }
 
+// A contact's emails/phones/primary_* and name all appear on list rows
+// (contactListItemSchema), so any contact write must refresh the list, not just
+// the detail — otherwise the list and contact pickers go stale.
+function invalidateContact(queryClient: QueryClient, contactId: ContactId) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.contacts.lists() });
+}
+
 export function useCreateContact() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ContactWriteInput) => createContact(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.lists() });
+    },
   });
 }
 
@@ -58,9 +70,7 @@ export function useUpdateContact(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: Partial<ContactWriteInput>) => updateContact(contactId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -78,9 +88,7 @@ export function useCreateContactEmail(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ContactEmailWriteInput) => createContactEmail(contactId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -94,9 +102,7 @@ export function useUpdateContactEmail(contactId: ContactId) {
   return useMutation({
     mutationFn: ({ emailId, input }: UpdateContactEmailVars) =>
       updateContactEmail(contactId, emailId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -104,9 +110,7 @@ export function useDeleteContactEmail(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ emailId }: { emailId: number }) => deleteContactEmail(contactId, emailId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -114,9 +118,7 @@ export function useSetPrimaryContactEmail(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ emailId }: { emailId: number }) => setPrimaryContactEmail(contactId, emailId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -124,9 +126,7 @@ export function useCreateContactPhone(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ContactPhoneWriteInput) => createContactPhone(contactId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -140,9 +140,7 @@ export function useUpdateContactPhone(contactId: ContactId) {
   return useMutation({
     mutationFn: ({ phoneId, input }: UpdateContactPhoneVars) =>
       updateContactPhone(contactId, phoneId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -150,9 +148,7 @@ export function useDeleteContactPhone(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ phoneId }: { phoneId: number }) => deleteContactPhone(contactId, phoneId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }
 
@@ -160,8 +156,6 @@ export function useSetPrimaryContactPhone(contactId: ContactId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ phoneId }: { phoneId: number }) => setPrimaryContactPhone(contactId, phoneId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.detail(contactId) });
-    },
+    onSuccess: () => invalidateContact(queryClient, contactId),
   });
 }

@@ -68,15 +68,16 @@ describe("useOwnerMe", () => {
     expect(result.current.isError).toBe(false);
   });
 
-  it("still reaches a terminal store state on a 5xx so the guards never hang", async () => {
+  it("records a retryable error (not not_owner) on a 5xx so the guards never hang", async () => {
     server.use(
       http.get("/api/v1/owner/me", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
     );
     const client = createClient();
     const { result } = renderHook(() => useOwnerMe(true), { wrapper: wrapper(client) });
-    // Store leaves "idle" (otherwise RequireStaff/RequireOwner wait forever);
-    // the query itself still surfaces the error for observability.
-    await waitFor(() => expect(useOwnerStore.getState().status).toBe("not_owner"));
+    // Store leaves "idle" (otherwise RequireStaff/RequireOwner wait forever) but
+    // lands on "error", NOT "not_owner": a 5xx is indeterminate and must stay
+    // retryable rather than locking a genuine owner out for staleTime.
+    await waitFor(() => expect(useOwnerStore.getState().status).toBe("error"));
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
 });

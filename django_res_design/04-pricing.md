@@ -118,6 +118,14 @@ Constraints (Postgres):
 
 Index: `(card, date_from, date_to)`, `(card, priority DESC)`.
 
+`RateRuleSerializer.validate()` mirrors all of the above (including the
+EXCLUDE overlap, with inclusive-range semantics) so API writes that would
+violate a constraint return `400 field_errors` rather than a 500
+`IntegrityError`. On partial update it merges incoming attrs with the stored
+row; on create, omitted fields fall back to model defaults. Adjacent rules
+must therefore start the day **after** the previous rule's `date_to` — the
+admin UI's "Add rule" / "Save & add another" seeding does this automatically.
+
 #### Occupancy bands
 A card with multiple party-size bands is represented as **multiple `RateRule` rows** sharing a `card_id` and date range, with disjoint `(min_party, max_party)` intervals. The `EXCLUDE` constraint permits this because party range is part of the exclusion tuple. No separate band table.
 

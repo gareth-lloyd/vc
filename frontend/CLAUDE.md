@@ -78,6 +78,11 @@ abstraction. The template is `NoteFormDialog.tsx`.
   fan-out at the call site.
 - **5xx / network errors**: `toast.error("Something went wrong")`.
 - Dialog stays open on error so the user can fix and retry.
+- **Inline zod errors render through `fieldErrorText(t, message)`**
+  (`src/lib/forms/fieldError.ts`) — schema messages are i18n keys and need
+  translating at render; server text passes through verbatim. Reference:
+  `RateCardFormDialog.tsx` / `RateRuleFormDialog.tsx`. Older dialogs still
+  render `String(message)` and show raw keys — retrofit when touched.
 
 ### Role gating
 

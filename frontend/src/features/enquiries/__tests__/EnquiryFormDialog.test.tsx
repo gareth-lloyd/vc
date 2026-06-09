@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
@@ -85,6 +86,37 @@ describe("EnquiryFormDialog date-spread stepper", () => {
 
     await waitFor(() => expect(payload).not.toBeNull());
     expect(payload).toMatchObject({ date_from: "2026-06-10", date_to: "2026-06-17" });
+  });
+
+  it("navigates to the new enquiry's detail page after creating it", async () => {
+    server.use(
+      http.post("/api/v1/enquiries", async ({ request }) => {
+        const payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          { id: 42, reference: "E-042", status: "new", ...VALID_GUEST, ...payload },
+          { status: 201 },
+        );
+      }),
+    );
+
+    const LocationProbe = () => {
+      const location = useLocation();
+      return <div data-testid="location">{location.pathname}</div>;
+    };
+
+    renderWithProviders(
+      <>
+        <EnquiryFormDialog mode="create" open onOpenChange={() => {}} />
+        <LocationProbe />
+      </>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/first name/i), "Ada");
+    await userEvent.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/enquiries/42"));
   });
 
   it("submits null for unset dates rather than an empty string", async () => {

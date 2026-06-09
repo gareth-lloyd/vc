@@ -3,6 +3,7 @@ import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useTranslation } from "react-i18next";
 import { useController, useForm, useWatch } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -118,6 +119,7 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
 
 export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const { t } = useTranslation("enquiries");
+  const navigate = useNavigate();
   const { open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
@@ -213,11 +215,14 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     };
     try {
       if (isCreate) {
-        await createMutation.mutateAsync(submitted);
-      } else {
-        await updateMutation.mutateAsync(submitted);
+        const created = await createMutation.mutateAsync(submitted);
+        toast.success(t("form_dialog.toasts.created"));
+        onOpenChange(false);
+        navigate(`/enquiries/${created.id}`);
+        return;
       }
-      toast.success(isCreate ? t("form_dialog.toasts.created") : t("form_dialog.toasts.updated"));
+      await updateMutation.mutateAsync(submitted);
+      toast.success(t("form_dialog.toasts.updated"));
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {

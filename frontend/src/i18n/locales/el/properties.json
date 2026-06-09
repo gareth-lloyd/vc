@@ -597,8 +597,10 @@
         "changeover_day": "Ημέρα αλλαγής",
         "min_nights_rental": "Ελάχιστα βράδια",
         "min_nights_rental_note": "Σημείωση ελάχιστων βραδιών",
-        "prices_entered_as": "Οι τιμές εισάγονται ως"
+        "prices_entered_as": "Οι τιμές εισάγονται ως",
+        "timezone": "Ζώνη ώρας"
       },
+      "timezone_placeholder": "Επιλέξτε ζώνη ώρας",
       "save": "Αποθήκευση ρυθμίσεων",
       "saving": "Αποθήκευση…",
       "saved": "Οι ρυθμίσεις αποθηκεύτηκαν",

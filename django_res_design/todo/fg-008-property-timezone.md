@@ -1,9 +1,44 @@
 # FG-008 — `PropertySettings.check_in_time` / `check_out_time` have no timezone
 
 - **Severity:** 🟠 Footgun
+- **Status:** ✅ **resolved**
 - **Source:** the 2026-05-26 data-model deep audit §F8
 - **Files:** `properties/models/settings.py:59–60`,
   `properties/models/property.py` (add `timezone`)
+
+## Resolution (what actually shipped)
+
+The footgun is closed. Implementation **deviated from the proposed fix** — for
+the better — so it's worth recording the shape:
+
+- The field landed on **`PropertyLocation.timezone`**, not `Property.timezone`.
+  Timezone is a geographic fact of the *place* (it follows `country`), not a
+  policy of the property abstract — so it lives beside `country` on the
+  location row. See the rationale in `properties/timezones.py`.
+- `properties/timezones.py` — `validate_iana_timezone` (zoneinfo-backed),
+  `COUNTRY_TIMEZONES` map + `representative_timezone()`. `tzdata` is an
+  unconditional dependency so `ZoneInfo` resolves on the slim deploy image.
+- Migration `0013_propertylocation_timezone` adds the field and backfills from
+  country; unmapped countries keep the honest `UTC` default.
+- **Service seam** `properties/services/timing.py` —
+  `local_check_in_datetime` / `local_check_out_datetime` combine a booking
+  date + effective check-in/out time + location timezone into a tz-aware
+  datetime, tolerant by design. Tested in `tests/test_timing.py` (includes the
+  "same wall-clock, two zones" footgun case).
+- Factory + legacy loader set the zone from the country; fixtures exercise a
+  non-default zone.
+- **REST + frontend surface** (this branch): `timezone` is exposed and editable
+  through `/properties/{id}/settings` (`PropertySettingsSerializer` bridges to
+  `property.location.timezone`) and the property Settings tab, beside the
+  check-in/out times it contextualises. Previously it was editable only via
+  Django admin.
+
+Two audit-implied "consumer gaps" turned out to be non-issues: the changeover
+comparison in `reservations/services/availability.py` is **intra-property**
+(both times share one zone), and no comms context yet computes
+"hours until check-in" — the seam is ready for when reminder templates need it.
+
+## Original ticket (for the record)
 
 ## Problem
 

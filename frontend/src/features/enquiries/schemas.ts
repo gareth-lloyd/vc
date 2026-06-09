@@ -6,14 +6,13 @@ import { quotationDetailSchema } from "@/features/quotations/schemas";
 export const enquiryStatusSchema = z.enum(["new", "contacted", "quoted", "lost", "converted"]);
 export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
 
-// Columns shown on the Kanban board (Lost is excluded — operators can filter to
-// it via the list view if needed).
-export const KANBAN_STATUSES: readonly EnquiryStatus[] = [
-  "new",
-  "contacted",
-  "quoted",
-  "converted",
-] as const;
+// Columns shown on the Kanban board. Both `lost` and `contacted` are excluded:
+// `lost` is reachable via Close, but `contacted` has no forward affordance in the
+// app (nothing calls Enquiry.contact(); it only arrives via the legacy data
+// migration). The board therefore shows the funnel operators can actually drive —
+// new → quoted → converted. Either excluded status is still filterable in the
+// list view.
+export const KANBAN_STATUSES: readonly EnquiryStatus[] = ["new", "quoted", "converted"] as const;
 
 export const enquirySourceSchema = z.enum([
   "main_website",

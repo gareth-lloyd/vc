@@ -13,7 +13,6 @@ import {
   fetchEnquiry,
   fetchEnquiryActivity,
   fetchEnquiryNotes,
-  patchEnquiryStatus,
   reopenEnquiry,
   updateEnquiry,
 } from "./api";
@@ -22,9 +21,7 @@ import type {
   CloseEnquiryInput,
   EnquiryDetail,
   EnquiryFilters,
-  EnquiryListItem,
   EnquiryNoteWriteInput,
-  EnquiryStatus,
   EnquiryWriteInput,
 } from "./schemas";
 
@@ -61,8 +58,7 @@ function onDetailUpdated(queryClient: QueryClient, enquiryId: EnquiryId, updated
   queryClient.setQueryData(queryKeys.enquiries.detail(enquiryId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.activity(enquiryId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
-  // The status tab-bar badges count by status, so any transition (incl. a
-  // Kanban move) restains them.
+  // The status tab-bar badges count by status, so any transition restains them.
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
 }
@@ -127,24 +123,6 @@ export function useCreateEnquiryNote(enquiryId: EnquiryId) {
     mutationFn: (input: EnquiryNoteWriteInput) => createEnquiryNote(enquiryId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.notes(enquiryId) });
-    },
-  });
-}
-
-// Kanban drag-drop: drop card on a column → call the matching verb endpoint.
-// Routes through patchEnquiryStatus which knows which verb to call.
-interface MoveEnquiryVars {
-  enquiry: EnquiryListItem;
-  toStatus: EnquiryStatus;
-}
-
-export function useMoveEnquiry() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ enquiry, toStatus }: MoveEnquiryVars) =>
-      patchEnquiryStatus(enquiry.id, toStatus),
-    onSuccess: (updated) => {
-      onDetailUpdated(queryClient, updated.id, updated);
     },
   });
 }

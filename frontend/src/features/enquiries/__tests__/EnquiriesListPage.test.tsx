@@ -73,12 +73,14 @@ describe("EnquiriesListPage", () => {
 
     await screen.findByTestId("kanban-column-new");
     const newCol = screen.getByTestId("kanban-column-new");
-    const contactedCol = screen.getByTestId("kanban-column-contacted");
     const quotedCol = screen.getByTestId("kanban-column-quoted");
 
     expect(within(newCol).getByText("Ada Lovelace")).toBeInTheDocument();
-    expect(within(contactedCol).getByText("Grace Hopper")).toBeInTheDocument();
     expect(within(quotedCol).getByText("Linus Torvalds")).toBeInTheDocument();
+    // `contacted` has no forward affordance in the app, so the board omits that
+    // column — a contacted (migrated) enquiry doesn't appear on the board.
+    expect(screen.queryByTestId("kanban-column-contacted")).not.toBeInTheDocument();
+    expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
   });
 
   it("toggles to the list view and renders a table", async () => {
@@ -136,9 +138,6 @@ describe("EnquiriesListPage", () => {
     // The board query dropped the status filter…
     await waitFor(() => expect(seenStatus).toBeNull());
     // …so cards from other statuses still populate their columns.
-    expect(
-      within(screen.getByTestId("kanban-column-contacted")).getByText("Grace Hopper"),
-    ).toBeInTheDocument();
     expect(
       within(screen.getByTestId("kanban-column-quoted")).getByText("Linus Torvalds"),
     ).toBeInTheDocument();

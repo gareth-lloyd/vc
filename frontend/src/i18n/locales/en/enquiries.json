@@ -51,15 +51,10 @@
     "load_failed": "Couldn't load enquiries.",
     "load_failed_status": "Couldn't load enquiries ({{status}}).",
     "empty_title": "No enquiries match these filters",
-    "empty_body": "Try clearing the search or changing filters.",
-    "toasts": {
-      "move_blocked": "Use the detail page to move to this stage.",
-      "move_failed": "Couldn't move {{reference}}",
-      "move_success": "{{reference}} moved to {{status}}"
-    }
+    "empty_body": "Try clearing the search or changing filters."
   },
   "kanban": {
-    "drop_here": "Drop here"
+    "empty_column": "No enquiries"
   },
   "card": {
     "no_property": "No property",

@@ -40,7 +40,7 @@ describe("KanbanBoard", () => {
     expect(within(contacted).getByText("Gamma")).toBeInTheDocument();
 
     const quoted = screen.getByTestId("kanban-column-quoted");
-    expect(within(quoted).getByText(/drop here/i)).toBeInTheDocument();
+    expect(within(quoted).getByText(/no enquiries/i)).toBeInTheDocument();
   });
 
   it("shows column item counts", () => {

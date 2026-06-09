@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { SortingState } from "@tanstack/react-table";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
 import { StatusFilterBar } from "@/components/data/StatusFilterBar";
@@ -17,7 +16,7 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useListParams } from "@/lib/list/useListParams";
 import { ApiError } from "@/lib/api/errors";
 import { useEnquiryColumns } from "./columns";
-import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts, useMoveEnquiry } from "./hooks";
+import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts } from "./hooks";
 import { EnquiryCard } from "./components/EnquiryCard";
 import { KanbanBoard, type KanbanColumn } from "./components/KanbanBoard";
 import { EnquiryFormDialog } from "./components/EnquiryFormDialog";
@@ -111,7 +110,6 @@ export function EnquiriesListPage() {
   const effectiveFilters = view === "kanban" ? { ...filters, status: undefined } : filters;
   const query = useEnquiries(effectiveFilters);
   const statusCounts = useEnquiryStatusCounts(filters);
-  const moveMutation = useMoveEnquiry();
   const enquiryColumns = useEnquiryColumns();
   const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / ENQUIRIES_PAGE_SIZE)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
@@ -120,37 +118,6 @@ export function EnquiriesListPage() {
 
   const handleRowClick = (row: EnquiryListItem) => {
     navigate(`/enquiries/${row.id}`);
-  };
-
-  const handleMove = (itemId: string, _fromColId: string, toColId: string) => {
-    const enquiry = query.data?.results.find((e) => String(e.id) === itemId);
-    if (!enquiry) return;
-    const target = enquiryStatusSchema.safeParse(toColId);
-    if (!target.success) return;
-    // Only `lost` and `new` (reopen) are directly drag-targetable; the other
-    // transitions need extra data (assigned operator, quotation id) so we
-    // surface them via the detail page actions.
-    if (target.data !== "lost" && target.data !== "new") {
-      toast.info(t("list.toasts.move_blocked"));
-      return;
-    }
-    moveMutation.mutate(
-      { enquiry, toStatus: target.data },
-      {
-        onError: () => {
-          toast.error(t("list.toasts.move_failed", { reference: enquiry.reference }));
-          void query.refetch();
-        },
-        onSuccess: () => {
-          toast.success(
-            t("list.toasts.move_success", {
-              reference: enquiry.reference,
-              status: enquiryStatusLabel(target.data),
-            }),
-          );
-        },
-      },
-    );
   };
 
   const newButton = (
@@ -252,7 +219,6 @@ export function EnquiriesListPage() {
               renderCard={(item) => (
                 <EnquiryCard enquiry={item} onClick={() => navigate(`/enquiries/${item.id}`)} />
               )}
-              onMoveItem={handleMove}
             />
           )
         ) : (

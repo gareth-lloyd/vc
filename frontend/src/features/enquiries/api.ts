@@ -84,21 +84,6 @@ export async function updateEnquiry(
   return enquiryDetailSchema.parse(data);
 }
 
-export async function patchEnquiryStatus(
-  id: EnquiryId,
-  status: EnquiryListItem["status"],
-): Promise<EnquiryDetail> {
-  // Status is read-only on the write serializer — Kanban moves are sugar
-  // over the verb endpoints. Route based on the target status.
-  if (status === "lost") {
-    return closeEnquiry(id, { reason: "" });
-  }
-  if (status === "new") {
-    return reopenEnquiry(id, "");
-  }
-  throw new Error(`No direct transition available for status "${status}".`);
-}
-
 export async function assignEnquiry(
   id: EnquiryId,
   body: AssignEnquiryInput,
@@ -119,8 +104,9 @@ export async function reopenEnquiry(id: EnquiryId, reason: string): Promise<Enqu
   return enquiryDetailSchema.parse(data);
 }
 
-// Convert returns 404/400 unless a quotation already exists. Quotes aren't
-// implemented in the frontend yet so this is wired but not exposed for now.
+// Convert returns 404/400 unless a quotation already exists. The convert
+// affordance lives on the quotation detail page (ConvertQuotationDialog), which
+// accepts a quotation and flips the parent enquiry to `converted`.
 export async function convertEnquiry(id: EnquiryId, quotation: number): Promise<EnquiryDetail> {
   const data = await apiSend<unknown>("POST", `/enquiries/${id}:convert`, { quotation });
   return enquiryDetailSchema.parse(data);

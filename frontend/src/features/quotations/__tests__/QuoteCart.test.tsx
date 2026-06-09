@@ -54,7 +54,7 @@ afterEach(() => {
 });
 
 describe("QuoteCart", () => {
-  it("lists the staged lines and sums their effective totals into the subtotal", () => {
+  it("lists the staged lines with their own totals and never sums a cart-level total", () => {
     renderWithProviders(
       <Harness
         initial={[
@@ -65,11 +65,14 @@ describe("QuoteCart", () => {
     );
     expect(screen.getByText("Villa Sol")).toBeInTheDocument();
     expect(screen.getByText("Villa Azul")).toBeInTheDocument();
-    // 4500 + 7200.
-    expect(screen.getByText("$11,700.00")).toBeInTheDocument();
+    // Each line carries its own price; the cart never sums them, because the
+    // guest picks one villa from the shortlist — not all of them.
+    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+    expect(screen.getByText("$7,200.00")).toBeInTheDocument();
+    expect(screen.queryByText("$11,700.00")).not.toBeInTheDocument();
   });
 
-  it("applies a discount to the line total and the subtotal", async () => {
+  it("applies a discount to the line total", async () => {
     renderWithProviders(
       <Harness
         initial={[
@@ -85,9 +88,9 @@ describe("QuoteCart", () => {
     await userEvent.clear(discount);
     await userEvent.type(discount, "500");
 
-    // 4500 − 500 = 4000 on the line; subtotal 4000 + 7200 = 11200.
+    // 4500 − 500 = 4000 on the line; the other line is untouched.
     expect(screen.getByText("$4,000.00")).toBeInTheDocument();
-    expect(screen.getByText("$11,200.00")).toBeInTheDocument();
+    expect(screen.getByText("$7,200.00")).toBeInTheDocument();
   });
 
   it("blocks the commit actions until a manual override has a total and reason", async () => {

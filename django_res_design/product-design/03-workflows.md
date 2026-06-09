@@ -95,7 +95,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 5. **Add to quote.** Clicking "Add" opens a small inline editor under the card: dates (pre-filled), price (pre-filled, overridable with "Override" toggle that forces a reason field), currency (per-site default, switchable), notes shown to guest (optional, e.g. "Owner offering 10% off for direct booking"), internal notes (not shown to guest). Saving adds the line to the quote draft in the cart-style summary at the bottom of the page.
 
-6. **Quote cart (bottom drawer, always visible, collapses).** Lists added villas with thumbnail, dates, price, remove (×), reorder handle. Counter chip: "3 villas in quote". A "Reorder to put recommended first" action. Subtotals not summed across villas because the guest will pick one — instead shown as "From £4,200 / Up to £7,800" range.
+6. **Quote cart (bottom drawer, always visible, collapses).** Lists added villas with thumbnail, dates, price, remove (×), reorder handle. Counter chip: "3 villas in quote". A "Reorder to put recommended first" action. Subtotals not summed across villas because the guest will pick one — each line shows its own price and the cart shows no combined total.
 
 7. **Decision point — empty quote guard.** Operator cannot proceed to preview with 0 villas.
 

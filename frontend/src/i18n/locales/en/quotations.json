@@ -250,12 +250,13 @@
         "description": "Widen the date range, drop a filter, or check region/country."
       },
       "unavailable": "Unavailable for these dates",
-      "unavailable_aria": "{{name}} — unavailable for these dates"
+      "unavailable_aria": "{{name}} — unavailable for these dates",
+      "unavailable_count_one": "{{count}} villa unavailable for these dates",
+      "unavailable_count_other": "{{count}} villas unavailable for these dates"
     },
     "cart": {
       "heading": "Quote cart ({{count}})",
       "thumbnail_alt": "{{name}} thumbnail",
-      "subtotal": "Subtotal",
       "save_draft": "Save draft",
       "send_to_guest": "Send to guest",
       "edit": "Edit line",

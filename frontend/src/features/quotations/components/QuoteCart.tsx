@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { formatMoney } from "@/lib/format/money";
-import { isStagedLineValid, lineEffectiveTotal } from "../lineTotals";
+import { isStagedLineValid } from "../lineTotals";
 import type { StagedLine } from "../schemas";
 import { QuoteCartLine } from "./QuoteCartLine";
 
@@ -30,10 +29,6 @@ export function QuoteCart({
   const hasRole = useHasReservationsRole();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const subtotal = lines.reduce((sum, line) => {
-    const value = lineEffectiveTotal(line);
-    return value == null ? sum : sum + value;
-  }, 0);
   const anyInvalid = lines.some((line) => !isStagedLineValid(line));
 
   // Why the actions are blocked, most-blocking first. `null` ⇒ enabled.
@@ -74,13 +69,6 @@ export function QuoteCart({
           ))}
         </div>
       )}
-
-      <div className="border-border flex items-center justify-between border-t pt-3">
-        <span className="text-muted-foreground text-sm">{t("builder.cart.subtotal")}</span>
-        <span className="text-foreground text-lg font-semibold">
-          {formatMoney(subtotal, currency)}
-        </span>
-      </div>
 
       <CartActions
         reason={reason}

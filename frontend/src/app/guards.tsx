@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerStore } from "@/features/owner-portal/ownerStore";
-import { OwnerProbeError } from "@/features/owner-portal/OwnerProbeError";
+import { useOwnerProbeFallback } from "@/features/owner-portal/useOwnerProbeFallback";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 
 export function RequireAuth() {
@@ -29,6 +29,9 @@ export function RequireStaff() {
   const authStatus = useAuthStore((s) => s.status);
   const isStaff = useAuthStore((s) => s.user?.is_staff ?? false);
   const ownerStatus = useOwnerStore((s) => s.status);
+  // Shared with RequireOwner: an indeterminate probe failure offers a retry
+  // rather than bouncing a possible owner to /login on a transient blip.
+  const probeFallback = useOwnerProbeFallback();
 
   if (authStatus === "unauthenticated") {
     return <Navigate to="/login" replace />;
@@ -43,10 +46,8 @@ export function RequireStaff() {
   if (ownerStatus === "idle") {
     return null;
   }
-  // An indeterminate probe failure (5xx/network) must not bounce a possible
-  // owner to /login — offer a retry instead.
-  if (ownerStatus === "error") {
-    return <OwnerProbeError />;
+  if (probeFallback) {
+    return probeFallback;
   }
   return <Navigate to={ownerStatus === "owner" ? "/owner/dashboard" : "/login"} replace />;
 }

@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
+import { resetAuthQueryCache } from "@/features/auth/resetAuthQueryCache";
 import { useMe } from "@/features/auth/hooks";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerMe } from "@/features/owner-portal/hooks";
@@ -57,14 +58,14 @@ function AuthenticatedBoot() {
       // Flip auth state and navigate away from the protected tree FIRST, then
       // reset the cache. Resetting while the staff shell is still mounted would
       // make every active query refetch against the dead session (another 401 →
-      // storm); removeQueries (not clear) drops the cached data without
-      // triggering refetches on any observers that linger for a tick.
+      // storm), which is why resetAuthQueryCache uses removeQueries rather than
+      // clear — it drops cached data without kicking a refetch.
       setUnauthenticated();
       useOwnerStore.getState().clear();
       if (!current.startsWith("/login")) {
         navigate("/login", { replace: true, state: { next: current } });
       }
-      queryClient.removeQueries();
+      resetAuthQueryCache(queryClient);
     });
   }, [navigate, setUnauthenticated, queryClient]);
 

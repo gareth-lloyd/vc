@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
@@ -8,12 +8,11 @@ import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { useListParams } from "@/lib/list/useListParams";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { buildQuotationColumns } from "./columns";
 import { useQuotations, useQuotationStatusCounts, QUOTATIONS_PAGE_SIZE } from "./hooks";
 import { quotationStatusOptions, type QuotationFilters, type QuotationListItem } from "./schemas";
-
-const ALL_VALUE = "__all__";
 
 function paramsToFilters(params: URLSearchParams): QuotationFilters {
   const page = Number(params.get("page") ?? "1");
@@ -35,58 +34,10 @@ function paramsToFilters(params: URLSearchParams): QuotationFilters {
 export function QuotationsTab() {
   const { t } = useTranslation("quotations");
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
+  const { params, search, setSearch, updateParam, goToPage } = useListParams();
   // useSearchParams' URLSearchParams identity changes every render — key the
   // memo on the serialized value, not the reference.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [search, setSearch] = useState(filters.q ?? "");
-
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    const current = filters.q ?? "";
-    if (search === current) return;
-    const handle = setTimeout(() => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (search) next.set("q", search);
-          else next.delete("q");
-          next.delete("page");
-          return next;
-        },
-        { replace: true },
-      );
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [search, filters.q, setParams]);
-
-  const updateParam = (key: string, value: string | undefined) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value && value !== ALL_VALUE) next.set(key, value);
-        else next.delete(key);
-        next.delete("page");
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
-  const goToPage = (zeroBased: number) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (zeroBased <= 0) next.delete("page");
-        else next.set("page", String(zeroBased + 1));
-        return next;
-      },
-      { replace: true },
-    );
-  };
 
   const onSortingChange = (sorting: SortingState) => {
     updateParam("ordering", sortingToOrdering(sorting));

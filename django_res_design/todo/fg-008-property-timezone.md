@@ -27,11 +27,19 @@ the better — so it's worth recording the shape:
   "same wall-clock, two zones" footgun case).
 - Factory + legacy loader set the zone from the country; fixtures exercise a
   non-default zone.
-- **REST + frontend surface** (this branch): `timezone` is exposed and editable
-  through `/properties/{id}/settings` (`PropertySettingsSerializer` bridges to
-  `property.location.timezone`) and the property Settings tab, beside the
-  check-in/out times it contextualises. Previously it was editable only via
-  Django admin.
+- **REST + frontend surface:** `timezone` is edited through
+  `GET/PATCH /properties/{id}/location` (`PropertyLocationSerializer`) and the
+  Location section of the property Settings tab, alongside address/country/
+  coordinates. `/properties/{id}/settings` still **surfaces it read-only** for
+  context beside the check-in/out times (`PropertySettingsSerializer.to_representation`),
+  but the location endpoint is the sole writer — one field, one write path.
+  Previously it was editable only via Django admin.
+  - The location row is auto-provisioned (default country/timezone from
+    `region.country`) on create, duplicate, and lazily on first GET via
+    `properties/services/location.py::ensure_property_location`, so a property
+    never lacks a location to hang the timezone on. (An earlier iteration wrote
+    timezone through `/settings`, which provisioned the row; that write path was
+    consolidated onto `/location` to avoid two writers for one field.)
 
 Two audit-implied "consumer gaps" turned out to be non-issues: the changeover
 comparison in `reservations/services/availability.py` is **intra-property**

@@ -190,8 +190,10 @@ Per-property bounded set of weekdays on which a booking may start. Many rows per
 #### Finance / settings on the villa
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval. Null fields inherit from `/property-groups/{id}/settings`. |
-| PATCH | `/properties/{id}/settings` | Update settings |
+| GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval. Null fields inherit from `/property-groups/{id}/settings`. Also surfaces `timezone` **read-only** (sourced from the location). |
+| PATCH | `/properties/{id}/settings` | Update settings. `timezone` is read-only here — write it via `/location`. |
+| GET | `/properties/{id}/location` | Postal address, country, lat/lng, and `timezone`. Singleton sub-resource (no `POST`/`DELETE`); auto-provisioned with country/timezone derived from `region.country` on create/duplicate and lazily on first GET, so a property is never location-less. |
+| PATCH | `/properties/{id}/location` | Update location. Sole writer of `timezone` (a geographic fact of the place — see [FG-008](../todo/fg-008-property-timezone.md)). |
 | GET | `/properties/{id}/finance` | Flat finance config: commission, tax, bank account, payment schedule, security-deposit policy. Null fields inherit from `/property-groups/{id}/finance`. See reconciliation issue #36 (5-OneToOne-children split collapsed to one flat model). |
 | PATCH | `/properties/{id}/finance` | Update |
 

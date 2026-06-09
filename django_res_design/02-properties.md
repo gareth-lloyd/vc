@@ -96,10 +96,13 @@ Owned by `Property` (CASCADE OneToOne) — no independent lifecycle. Hard-delete
 - `locality_town` — CharField(blank=True)
 - `locality_region` — CharField(blank=True)
 - `country` — FK Country PROTECT
-- `latitude` — DecimalField(9, 6, null=True, blank=True)
-- `longitude` — DecimalField(9, 6, null=True, blank=True)
+- `latitude` — DecimalField(9, 6, null=True, blank=True), validated to ±90
+- `longitude` — DecimalField(9, 6, null=True, blank=True), validated to ±180
+- `timezone` — CharField(max_length=64, default `"UTC"`), IANA name validated by `validate_iana_timezone`. A geographic fact of the *place* (follows `country`), not a property/group policy — hence it lives here, not on `PropertySettings`. See [FG-008](todo/fg-008-property-timezone.md).
 
 Replaces lat/lng as `nvarchar(500)` in legacy.
+
+Operator-exposed at `GET/PATCH /properties/{id}/location` (singleton sub-resource, like settings/finance — no `POST`/`DELETE`). The row is **auto-provisioned** with a default `country`/`timezone` derived from `Property.region.country` (via `properties.services.location.ensure_property_location`): on property create, on duplicate, and lazily on first GET, so a property is never location-less. `timezone` is the canonical write here; `/properties/{id}/settings` surfaces it **read-only** for context beside the check-in/out times.
 
 ### `PropertyCapacity(AuditedModel)`
 Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent.

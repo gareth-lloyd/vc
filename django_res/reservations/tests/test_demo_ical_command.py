@@ -164,6 +164,48 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
 
 
+@respx.mock
+@override_settings(OPS_EMAIL_RECIPIENTS=["ops@villacollective.test"])
+@pytest.mark.usefixtures("system_profile")
+def test_reset_clears_payments_and_events_on_property_bookings() -> None:
+    """A booking carrying PROTECT-ing Payment/BookingEvent rows must still reset."""
+    respx.get(_FEED_URL).mock(return_value=httpx.Response(200, text=_ics("20260701", "20260705")))
+    _run("--setup")
+    _run("--add-feed", "--feed-url", _FEED_URL)
+    _run("--poll")
+    _run("--inject-conflict", "booking")
+
+    from decimal import Decimal
+
+    from payments.enums import PaymentPurpose
+    from payments.models import Payment
+    from pricing.models import Currency
+    from reservations.enums import BookingStatus
+    from reservations.models import Booking, BookingEvent, Guest
+
+    booking = Booking.objects.get(property__slug=PROPERTY_SLUG)
+    gbp, _ = Currency.objects.get_or_create(
+        code="GBP", defaults={"name": "Pound sterling", "symbol": "£"}
+    )
+    Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.DEPOSIT,
+        amount=Decimal("100.00"),
+        currency=gbp,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        from_status=BookingStatus.DRAFT,
+        to_status=BookingStatus.AWAITING_DEPOSIT,
+    )
+
+    _run("--reset")  # would raise ProtectedError if the money/event rows survived
+
+    assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
+    assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()
+    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
+
+
 def test_reset_cleans_up_custom_owner_email() -> None:
     _run("--setup", "--owner-email", "custom.owner@demo.test", "--owner-password", "pw12345678")
     _run("--reset")

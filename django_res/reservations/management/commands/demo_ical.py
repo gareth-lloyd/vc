@@ -458,8 +458,19 @@ def _delete_demo_data() -> int:
             OwnerBlockUpdateSeen.objects.filter(update__block_id__in=block_ids).delete()
             OwnerBlockUpdate.objects.filter(block_id__in=block_ids).delete()
             total += OwnerBlock.objects.filter(pk__in=block_ids).delete()[0]
+            # Payment / Refund / SecurityDeposit / BookingEvent all PROTECT the
+            # Booking, so clear them first — we don't care about any data on this
+            # demo property. Reach them via Booking's reverse relations rather
+            # than importing payments (reservations sits below payments in the
+            # layering contract). Refund/SecurityDeposit SET_NULL each other and
+            # against_payment, so deletion order among the money rows is free.
+            for booking in Booking.objects.filter(property=prop):
+                booking.refunds.all().delete()
+                booking.security_deposits.all().delete()
+                booking.payments.all().delete()
+                booking.events.all().delete()
             # A booking-clash booking PROTECTs its quotation_line, property and
-            # guest, so it must go first; deleting the Booking CASCADEs its
+            # guest, so it must go after; deleting the Booking CASCADEs its
             # BookingGuest rows (the LEAD guard permits the cascade path).
             total += Booking.objects.filter(property=prop).delete()[0]
             # Demo quotations CASCADE their holds + lines; then the now-unreferenced

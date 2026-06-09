@@ -28,12 +28,17 @@ from reservations.views.status_counts import StatusCountsMixin
 
 
 def _quotations_prefetch() -> Prefetch:
-    """The quote-stack prefetch the detail serializer walks (`.quotations.lines`)."""
+    """The quote-stack prefetch the detail serializer walks (`.quotations.lines`).
+
+    Reach `lines__property__images` so each line's `property_name` /
+    `hero_image_url` resolves from the prefetch cache — `hero_image_url()` walks
+    `property.images` in Python, so without it every line fires a property +
+    images lookup (the same N+1 guard `QuotationViewSet` keeps)."""
     return Prefetch(
         "quotations",
         queryset=Quotation.objects.real()
         .select_related("guest", "agent", "currency", "enquiry")
-        .prefetch_related("lines"),
+        .prefetch_related("lines__property__images"),
     )
 
 

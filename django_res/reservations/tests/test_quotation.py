@@ -71,6 +71,33 @@ def test_real_excludes_booking_synthesised_quotations(
 
 
 @pytest.mark.django_db
+def test_line_real_excludes_booking_synthesised_lines(
+    quotation: Quotation, property_: Property
+) -> None:
+    """`QuotationLine.objects.real()` mirrors `Quotation.objects.real()` so the
+    nested lines endpoint and the quote render both drop BookingLoader's
+    `booking-` synthetic fill lines through one shared method, not a duplicated
+    `.exclude(...)` string."""
+    real = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+    )
+    QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        legacy_id="booking-555",
+    )
+
+    assert list(QuotationLine.objects.real()) == [real]
+
+
+@pytest.mark.django_db
 def test_enquiry_fk_is_protected_and_required(quotation: Quotation) -> None:
     """`Quotation.enquiry` is the now load-bearing spine link — NOT NULL and
     PROTECT, so the parent enquiry can't be orphaned or deleted out from under

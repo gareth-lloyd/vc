@@ -260,7 +260,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> Any:
         return (
             QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"])
-            .exclude(legacy_id__startswith="booking-")
+            .real()
             .select_related("property")
             # The read serializer derives hero_image_url per line — prefetch
             # the property's images so a list of N lines stays constant-query.

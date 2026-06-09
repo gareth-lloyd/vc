@@ -9,6 +9,7 @@ import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
 import { EnquiryDetailLayout } from "../EnquiryDetailLayout";
+import type { QuotationDetail } from "@/features/quotations/schemas";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -40,13 +41,23 @@ const baseEnquiry = {
   min_bedrooms: null,
   referral_code: "",
   inbound_message: "Hello, we'd like to enquire about Casa Norte.",
-  quotations: [] as unknown[],
+  quotations: [] as QuotationDetail[],
 };
 
 const quotedEnquiry = {
   ...baseEnquiry,
   status: "quoted" as const,
-  quotations: [{ id: 50, reference: "QVC50", status: "draft", currency: "GBP", lines: [] }],
+  quotations: [
+    {
+      id: 50,
+      reference: "QVC50",
+      status: "draft",
+      currency: "GBP",
+      is_unbranded: false,
+      cancel_reason: "",
+      lines: [],
+    },
+  ] satisfies QuotationDetail[],
 };
 
 function makeUser(overrides: Partial<UserMe> = {}): UserMe {
@@ -75,16 +86,12 @@ function asViewerUser() {
     .setMe(makeUser(), { role: "VIEWER", is_superuser: false, permissions: [] });
 }
 
-// The inline builder mounts (expanded) whenever an enquiry has no quotes, and
-// its SaveQuoteDialog prefetches the current terms even while closed — stub both
-// so a reservations-role render makes no unhandled requests.
+// The inline builder mounts (expanded) whenever an enquiry has no quotes and
+// its currency selector loads the active currencies — stub that so a
+// reservations-role render makes no unhandled requests. (The current-terms
+// fetch now only fires once the save dialog opens, which these tests never do.)
 function mockBuilderDeps() {
-  return [
-    http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([]))),
-    http.get("/api/v1/terms-versions/current", () =>
-      HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
-    ),
-  ];
+  return [http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([])))];
 }
 
 // Routes mirror the app: the workspace plus the three legacy sub-route

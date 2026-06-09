@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -11,6 +10,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Collapsible } from "@/components/ui/collapsible";
 import { ActionButton } from "@/components/feedback/ActionButton";
 import { formatDate } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
@@ -132,24 +132,18 @@ function RailSummary({
   );
 }
 
-// Collapsible rail panel. Children mount only while open, so the activity /
-// notes queries inside them stay dormant until the operator expands the panel
-// (no eager fetch of timelines the operator may never look at).
+// Collapsible rail panel. The shared `Collapsible` mounts children only while
+// open, so the activity / notes queries inside them stay dormant until the
+// operator expands the panel (no eager fetch of timelines they may never read).
 function RailPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="border-border border-t pt-4">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="text-foreground flex w-full items-center justify-between text-sm font-semibold"
-      >
-        <span>{title}</span>
-        {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-      </button>
-      {open ? <div className="mt-2">{children}</div> : null}
-    </div>
+    <Collapsible
+      title={<span>{title}</span>}
+      className="border-border border-t pt-4"
+      headerClassName="text-foreground text-sm font-semibold"
+    >
+      <div className="mt-2">{children}</div>
+    </Collapsible>
   );
 }
 

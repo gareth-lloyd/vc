@@ -14,20 +14,28 @@ from core.models.base import AuditedModel
 from core.refs import next_quotation_number, quotation_reference
 from reservations.enums import EnquiryStatus, QuotationStatus
 
+# `BookingLoader` back-fills a synthetic Quotation *and* line (`legacy_id`
+# prefixed `booking-`) for every imported booking so the legacy quote-history
+# walk has a row to hang off. Those are an internal fill artefact and must never
+# surface in any operator-facing read — every Quotation/QuotationLine-surfacing
+# viewset routes through a `.real()` that drops them (see `django_res/CLAUDE.md`).
+SYNTHETIC_LEGACY_PREFIX = "booking-"
+
 
 class QuotationQuerySet(models.QuerySet["Quotation"]):
     """Quotation queryset with the shared `booking-` synthetic filter."""
 
     def real(self) -> QuotationQuerySet:
-        """Exclude booking-synthesised quotations.
+        """Exclude booking-synthesised quotations (see `SYNTHETIC_LEGACY_PREFIX`)."""
+        return self.exclude(legacy_id__startswith=SYNTHETIC_LEGACY_PREFIX)
 
-        `BookingLoader` back-fills a synthetic Quotation (`legacy_id` prefixed
-        `booking-`) for every imported booking so the legacy quote-history walk
-        has a row to hang off. Those are an internal fill artefact and must
-        never surface in any operator-facing list — every viewset that reads
-        Quotations routes through here (see `django_res/CLAUDE.md`).
-        """
-        return self.exclude(legacy_id__startswith="booking-")
+
+class QuotationLineQuerySet(models.QuerySet["QuotationLine"]):
+    """QuotationLine queryset with the shared `booking-` synthetic filter."""
+
+    def real(self) -> QuotationLineQuerySet:
+        """Exclude booking-synthesised lines (see `SYNTHETIC_LEGACY_PREFIX`)."""
+        return self.exclude(legacy_id__startswith=SYNTHETIC_LEGACY_PREFIX)
 
 
 class Quotation(AuditedModel):
@@ -204,6 +212,8 @@ class Quotation(AuditedModel):
 
 class QuotationLine(AuditedModel):
     """One option (property + dates) inside a quotation."""
+
+    objects = QuotationLineQuerySet.as_manager()
 
     quotation = models.ForeignKey(
         Quotation,

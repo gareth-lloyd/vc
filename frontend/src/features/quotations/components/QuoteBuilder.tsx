@@ -234,14 +234,19 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         </aside>
       </div>
 
-      <SaveQuoteDialog
-        open={saveOpen}
-        onOpenChange={setSaveOpen}
-        enquiry={enquiry}
-        lines={staged}
-        currencyCode={currency}
-        onSaved={handleSaved}
-      />
+      {/* Mount only while open so the dialog's currencies + current-terms
+          queries fire on the save action, not on every builder render — the
+          inline builder is expanded by default on a quote-less enquiry. */}
+      {saveOpen ? (
+        <SaveQuoteDialog
+          open
+          onOpenChange={setSaveOpen}
+          enquiry={enquiry}
+          lines={staged}
+          currencyCode={currency}
+          onSaved={handleSaved}
+        />
+      ) : null}
 
       {sentQuotation ? (
         <SendPreviewDialog

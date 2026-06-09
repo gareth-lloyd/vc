@@ -130,18 +130,11 @@ class PaymentScheduler:
             )
         )
 
-        # `bulk_create` skips `save()` — assign each reference up-front.
-        # We need distinct references across rows in the same call, which
-        # the millisecond suffix can't guarantee; mix in a UUID-derived tail
-        # so collisions inside a single batch are impossible.
-        import uuid
-
-        from django.utils import timezone as dj_tz
-
-        year = dj_tz.now().year
-        for row in to_create:
-            row.reference = f"P-{year}-{uuid.uuid4().hex[:10].upper()}"
-
+        # `bulk_create` skips `save()`, but `Payment.reference` is stamped by a
+        # Postgres sequence wired as the column's `db_default` (BUG-007), so the
+        # database assigns a distinct reference on every insert path. Postgres
+        # returns the generated value via `INSERT ... RETURNING`, so the rows
+        # come back with `reference` already populated — no re-fetch needed.
         created = Payment.objects.bulk_create(to_create)
 
         # The SD workflow is independent of the deposit/balance ledger rows

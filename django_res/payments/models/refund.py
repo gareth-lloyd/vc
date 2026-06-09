@@ -15,7 +15,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from core.models.base import AuditedModel
-from core.refs import generate_reference
+from core.refs import reference_db_default
 from payments.enums import (
     EventSource,
     RefundMethod,
@@ -31,7 +31,11 @@ if TYPE_CHECKING:
 class Refund(AuditedModel):
     """One refund-request workflow row."""
 
-    reference = models.CharField(max_length=32, unique=True)
+    reference = models.CharField(
+        max_length=32,
+        unique=True,
+        db_default=reference_db_default("R", sequence="refund_reference_seq"),
+    )
     booking = models.ForeignKey(
         "reservations.Booking",
         on_delete=models.PROTECT,
@@ -143,11 +147,6 @@ class Refund(AuditedModel):
 
     def __str__(self) -> str:
         return f"{self.reference} ({self.status})"
-
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.reference:
-            self.reference = generate_reference("R", model=type(self))
-        super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Transitions

@@ -21,7 +21,7 @@ Status icons:
 | [BUG-004](bug-004-owner-approval-race.md) | Owner-approval race | ✅ resolved (promote "Watch" item) |
 | [BUG-005](bug-005-stale-bookinghold-blocks-bookings.md) | Stale `BookingHold` rows block valid bookings | ✏️ revise: prefer sweeper + opportunistic expire |
 | [BUG-006](bug-006-payment-active-purpose-uniqueness.md) | `Payment.unique_active_payment_per_purpose` covers only DEPOSIT/BALANCE | ✅ resolved (three per-purpose constraints; SD hold superseded by capture) |
-| [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✏️ **fix is wrong** — `pre_save` doesn't fire on `bulk_create` |
+| [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✅ resolved (sequence + `db_default` on E/P/R/SD; race + retry + bulk_create bypass gone) |
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ (decision-blocked) |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |
 
@@ -112,8 +112,8 @@ After those three, the next-highest-value moves are:
 - **FG-006** (promote to bug): `select_for_update` on every booking
   status-transition path
 - **FG-008** (promote to bug): add `Property.timezone`
-- **BUG-007** (revise first): pick a `bulk_create`-safe approach before
-  any code lands
+- ~~**BUG-007** (revise first): pick a `bulk_create`-safe approach~~ —
+  resolved via sequence + `db_default` (feat/reference-sequence)
 
 ## Decisions still blocking implementation
 

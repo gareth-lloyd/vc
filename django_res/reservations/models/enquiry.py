@@ -11,7 +11,7 @@ from django.db import models, transaction
 from core.exceptions import InvalidTransition
 from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
-from core.refs import generate_reference
+from core.refs import reference_db_default
 from reservations.enums import (
     ContactMethod,
     EnquiryEventKind,
@@ -30,7 +30,11 @@ if TYPE_CHECKING:
 class Enquiry(AuditedModel):
     """Inbound lead — anonymous form, agent, phone, email."""
 
-    reference = models.CharField(max_length=32, unique=True)
+    reference = models.CharField(
+        max_length=32,
+        unique=True,
+        db_default=reference_db_default("E", sequence="enquiry_reference_seq"),
+    )
     guest = models.ForeignKey(
         "reservations.Guest",
         null=True,
@@ -123,11 +127,6 @@ class Enquiry(AuditedModel):
 
     def __str__(self) -> str:
         return self.reference
-
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.reference:
-            self.reference = generate_reference("E", model=type(self))
-        super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Derived properties

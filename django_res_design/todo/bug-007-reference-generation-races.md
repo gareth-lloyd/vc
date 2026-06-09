@@ -22,23 +22,38 @@ Three stacked issues in `generate_reference`:
 
 ## Proposed fix
 
-Move reference generation to a `pre_save` signal so it fires on every
-insert path, including `bulk_create`:
+> **Superseded — the original `pre_save` idea below was wrong.** `bulk_create`
+> skips signals just as it skips `save()`, so a signal would not fire on the
+> exact path the bug is about. The only place a fix can live that *nothing*
+> bypasses is the database itself.
 
-```python
-@receiver(pre_save, sender=Payment)
-def _set_payment_reference(sender, instance, **kwargs):
-    if not instance.reference:
-        instance.reference = generate_reference("PAY", model=sender)
-```
+**Implemented (feat/reference-sequence):** move allocation into the column's
+`db_default`, backed by a per-series Postgres `SEQUENCE`. The DB stamps
+`{prefix}-{year}-{nextval}` on every insert path — `save()`, `bulk_create`,
+raw SQL. The sequence guarantees uniqueness, so the TOCTOU race and the
+single-shot retry both vanish (no retry loop needed). An explicit `reference`
+(legacy loaders) still wins; the default only fills a blank.
 
-Replace the single-shot UUID fallback with a small bounded retry loop
-(N=5 attempts, each regenerating a candidate). After N collisions, raise
-a typed error rather than a generic `IntegrityError`.
+- `core/refs.py`: `reference_db_default(prefix, sequence)` (the Concat/nextval
+  expression) and `create_sequence_sql(seq, table, column)` (the DDL helper).
+- Field gains `db_default=reference_db_default("P", sequence="payment_reference_seq")`
+  on Payment / Refund / SecurityDeposit / Enquiry; the `save()` ref-stamping
+  overrides are deleted.
+- One migration per app creates the sequence (`OWNED BY` the column) *before*
+  the `AlterField` that wires the default.
+- `PaymentScheduler` loses its hand-rolled pre-`bulk_create` UUID stamping
+  (now redundant); it re-fetches the DB-assigned references onto the returned
+  rows.
 
-Long-term consider a Postgres `SEQUENCE` with a Python-side suffix to
-sidestep collisions entirely; the signal approach is the minimum viable
-fix.
+Quotation/Booking already use the `quotation_number_seq` pattern (legacy
+`QVC`/`VC` parity) and are unchanged. `generate_reference` survives only as
+Booking's interim fallback for a numberless quotation.
+
+**Format change:** the `P`/`R`/`SD`/`E` suffix moves from a random-ish
+ms/UUID tail to the sequence value (`P-2026-1`, `P-2026-2`…) — consistent with
+the already-sequential `QVC`/`VC` refs, mildly enumerable (reveals volume).
+These prefixes are new-build (no legacy format to match); `payment_reference`
+is customer-facing (payment receipt email).
 
 ## Acceptance
 

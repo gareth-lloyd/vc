@@ -20,7 +20,7 @@ from django.db import models, transaction
 from django.db.models import Q
 
 from core.models.base import AuditedModel
-from core.refs import generate_reference
+from core.refs import reference_db_default
 from payments import signals as payment_signals
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
@@ -39,7 +39,11 @@ if TYPE_CHECKING:
 class Payment(AuditedModel):
     """A single ledger row tracking one money-movement attempt."""
 
-    reference = models.CharField(max_length=32, unique=True)
+    reference = models.CharField(
+        max_length=32,
+        unique=True,
+        db_default=reference_db_default("P", sequence="payment_reference_seq"),
+    )
     booking = models.ForeignKey(
         "reservations.Booking",
         on_delete=models.PROTECT,
@@ -154,14 +158,6 @@ class Payment(AuditedModel):
 
     def __str__(self) -> str:
         return f"{self.reference} ({self.purpose}/{self.status})"
-
-    # ------------------------------------------------------------------
-    # Lifecycle hooks
-    # ------------------------------------------------------------------
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.reference:
-            self.reference = generate_reference("P", model=type(self))
-        super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Transitions

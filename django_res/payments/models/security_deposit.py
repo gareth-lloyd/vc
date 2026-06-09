@@ -15,7 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.models.base import AuditedModel
-from core.refs import generate_reference
+from core.refs import reference_db_default
 from payments import signals as payment_signals
 from payments.enums import (
     TERMINAL_SD_STATUSES,
@@ -31,7 +31,11 @@ if TYPE_CHECKING:
 class SecurityDeposit(AuditedModel):
     """One security-deposit workflow per booking-attempt."""
 
-    reference = models.CharField(max_length=32, unique=True)
+    reference = models.CharField(
+        max_length=32,
+        unique=True,
+        db_default=reference_db_default("SD", sequence="security_deposit_reference_seq"),
+    )
     booking = models.ForeignKey(
         "reservations.Booking",
         on_delete=models.PROTECT,
@@ -105,11 +109,6 @@ class SecurityDeposit(AuditedModel):
 
     def __str__(self) -> str:
         return f"{self.reference} ({self.kind}/{self.status})"
-
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.reference:
-            self.reference = generate_reference("SD", model=type(self))
-        super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Transitions

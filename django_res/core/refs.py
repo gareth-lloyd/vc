@@ -1,8 +1,18 @@
-"""Short, year-prefixed, unique-per-model reference-number generator.
+"""Reference-number allocation for the customer-facing entities.
 
-Used by Enquiry / Quotation / Booking / Payment / Refund / SecurityDeposit.
-Collision retry uses a UUID4-derived suffix; a millisecond-resolution
-timestamp on the happy path keeps refs short.
+Two mechanisms, both Postgres-sequence-backed so allocation is concurrency-safe
+and fires on *every* insert path (BUG-007):
+
+- **`db_default` series** (`reference_db_default`): Enquiry / Payment / Refund /
+  SecurityDeposit. The column default stamps `{prefix}-{year}-{nextval}`, so
+  `save()`, `bulk_create`, and raw SQL all get a unique reference with no Python
+  in the loop (the sequence itself is created in each app's migration, which
+  must not import runtime code — the names are mirrored there).
+- **Quotation / Booking** carry a shared `number` (legacy `QVC{n}` / `VC{n}`
+  parity) drawn from `quotation_number_seq` via `next_quotation_number`.
+
+`generate_reference` (timestamp + UUID retry) survives only as Booking's
+interim fallback for a numberless quotation.
 """
 
 from __future__ import annotations
@@ -12,10 +22,13 @@ import uuid
 from typing import TYPE_CHECKING
 
 from django.db import connection
+from django.db.models import BigIntegerField, CharField, Func, Value
+from django.db.models.functions import Cast, Concat, ExtractYear, Now
 from django.utils import timezone
 
 if TYPE_CHECKING:
     from django.db.models import Model
+    from django.db.models.expressions import Combinable
 
 # Name of the Postgres sequence backing `Quotation.number` (created in
 # reservations migration 0012). Kept here so the runtime allocator and the
@@ -110,6 +123,39 @@ def sync_quotation_sequence() -> int:
         )
         row = cursor.fetchone()
     return int(row[0])
+
+
+def reference_db_default(prefix: str, *, sequence: str) -> Combinable:
+    """A `db_default` expression stamping `{prefix}-{year}-{nextval(sequence)}`.
+
+    Wiring reference allocation into the column default — rather than a `save()`
+    override — means the *database* assigns the reference on every insert path:
+    `save()`, `bulk_create`, raw SQL. That closes the `bulk_create` bypass and
+    the generate-then-check TOCTOU race in one move (BUG-007); the sequence
+    guarantees uniqueness with no retry loop. A caller that sets `reference`
+    explicitly (legacy loaders) still wins — the default only fills an *unset*
+    field (an explicit `""` is inserted verbatim, not auto-allocated).
+
+    The backing sequence is created in each app's migration (which inlines the
+    `CREATE SEQUENCE … OWNED BY` DDL, since migrations must not import runtime
+    code) with the same `sequence` name passed here.
+
+    These series stay disjoint from any legacy-imported reference: the `-{year}-`
+    middle segment never appears in the legacy formats (`E-{Id:06d}`, numeric
+    `EnquiryNo`), and the Payment/Refund/SecurityDeposit loaders set no reference
+    at all. So — unlike `quotation_number_seq`, whose `QVC{n}`/`VC{n}` shares the
+    exact legacy format — no high-water `setval` sync is needed after an import.
+    """
+    return Concat(
+        Value(f"{prefix}-"),
+        Cast(ExtractYear(Now()), output_field=CharField()),
+        Value("-"),
+        Cast(
+            Func(Value(sequence), function="nextval", output_field=BigIntegerField()),
+            output_field=CharField(),
+        ),
+        output_field=CharField(),
+    )
 
 
 def generate_reference(prefix: str, *, model: type[Model] | None = None) -> str:

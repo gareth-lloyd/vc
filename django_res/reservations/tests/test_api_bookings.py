@@ -975,3 +975,57 @@ def test_status_counts__constant_query_count(
     api_client.force_login(staff)
     with assert_max_queries(6):
         api_client.get("/api/v1/bookings/status-counts")
+
+
+@pytest.mark.django_db
+def test_owner_approve_rolls_back_status_if_payment_scheduling_fails(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The status change and payment scheduling are an indivisible pair
+    (see payments.signals._schedule_payments_on_booking_confirmed): a
+    scheduler failure must roll the transition back, not commit a booking
+    in AWAITING_DEPOSIT with no payment rows."""
+    from payments.services.payment_scheduler import PaymentScheduler
+
+    booking.status = BookingStatus.PENDING_OWNER_APPROVAL.value
+    booking.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("scheduler down")
+
+    monkeypatch.setattr(PaymentScheduler, "create_for_booking", _boom)
+
+    with pytest.raises(RuntimeError):
+        api_client.post(f"/api/v1/bookings/{booking.pk}:owner-approve")
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value
+
+
+@pytest.mark.django_db
+def test_confirm_rolls_back_status_if_payment_scheduling_fails(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from payments.services.payment_scheduler import PaymentScheduler
+
+    booking.status = BookingStatus.PENDING_OWNER_APPROVAL.value
+    booking.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("scheduler down")
+
+    monkeypatch.setattr(PaymentScheduler, "create_for_booking", _boom)
+
+    with pytest.raises(RuntimeError):
+        api_client.post(f"/api/v1/bookings/{booking.pk}:confirm")
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value

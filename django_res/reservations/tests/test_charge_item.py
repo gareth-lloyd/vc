@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -20,6 +21,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.signals import booking_total_changed
 
 
 @pytest.fixture
@@ -114,3 +116,60 @@ def test_cascade_delete_with_booking(booking: Booking, gbp: Currency) -> None:
     )
     booking.delete()
     assert BookingChargeItem.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# booking_total_changed signal
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def total_changed_calls(booking: Booking) -> Iterator[list[Booking]]:
+    """Capture `booking_total_changed` firings for `booking`."""
+    calls: list[Booking] = []
+
+    def _receiver(sender: type, booking: Booking, **_: object) -> None:
+        calls.append(booking)
+
+    booking_total_changed.connect(_receiver, dispatch_uid="test.total_changed_capture")
+    try:
+        yield calls
+    finally:
+        booking_total_changed.disconnect(dispatch_uid="test.total_changed_capture")
+
+
+@pytest.mark.django_db
+def test_create_fires_booking_total_changed_once(
+    booking: Booking, gbp: Currency, total_changed_calls: list[Booking]
+) -> None:
+    BookingChargeItem.objects.create(
+        booking=booking, label="Late checkout", amount=Decimal("150.00"), currency=gbp
+    )
+    assert total_changed_calls == [booking]
+
+
+@pytest.mark.django_db
+def test_update_fires_booking_total_changed_once(
+    booking: Booking, gbp: Currency, total_changed_calls: list[Booking]
+) -> None:
+    item = BookingChargeItem.objects.create(
+        booking=booking, label="Late checkout", amount=Decimal("150.00"), currency=gbp
+    )
+    total_changed_calls.clear()
+
+    item.amount = Decimal("175.00")
+    item.save()
+    assert total_changed_calls == [booking]
+
+
+@pytest.mark.django_db
+def test_delete_fires_booking_total_changed_once(
+    booking: Booking, gbp: Currency, total_changed_calls: list[Booking]
+) -> None:
+    item = BookingChargeItem.objects.create(
+        booking=booking, label="Late checkout", amount=Decimal("150.00"), currency=gbp
+    )
+    total_changed_calls.clear()
+
+    item.delete()
+    assert total_changed_calls == [booking]

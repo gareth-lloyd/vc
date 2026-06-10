@@ -73,6 +73,20 @@ kwargs: sender=None, property, date_from, date_to, conflict_kind ("booking" /
 Booking for the booking kind, else None), feed_labels (provenance).
 """
 
+booking_total_changed = Signal()
+"""Fired when staff-entered money changes what the guest owes on a booking.
+
+Today that means a `BookingChargeItem` create/update/delete. payments
+listens and resizes the unsettled DEPOSIT/BALANCE schedule rows
+(`PaymentScheduler.resync_for_booking`) — the signal exists because the
+import spine forbids reservations importing payments.
+
+Sent from model signal handlers (not just the service layer) so direct
+ORM writes — loaders, shell fixes — still trigger the resync.
+
+kwargs: sender=Booking, booking.
+"""
+
 booking_confirmation_resend_requested = Signal()
 """Fired by `Booking.send_confirmation_email()` when an operator triggers a resend.
 
@@ -139,6 +153,17 @@ def _recompute_booking_adjustment(booking_id: int) -> None:
 
 def _concierge_item_changed(sender: type, instance: Any, **_: Any) -> None:
     _recompute_booking_adjustment(instance.booking_id)
+
+
+# ---------------------------------------------------------------------------
+# BookingChargeItem → booking_total_changed
+# ---------------------------------------------------------------------------
+
+
+def _charge_item_changed(sender: type, instance: Any, **_: Any) -> None:
+    from reservations.models.booking import Booking
+
+    booking_total_changed.send(sender=Booking, booking=instance.booking)
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +290,7 @@ def _quotation_line_pre_delete(sender: type, instance: Any, **_: Any) -> None:
 
 def _connect() -> None:
     from reservations.models.booking_guest import BookingGuest
+    from reservations.models.charge_item import BookingChargeItem
     from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
     from reservations.models.quotation import QuotationLine
@@ -273,6 +299,16 @@ def _connect() -> None:
         _enquiry_note_post_save,
         sender=EnquiryNote,
         dispatch_uid="reservations.enquiry_note_post_save",
+    )
+    post_save.connect(
+        _charge_item_changed,
+        sender=BookingChargeItem,
+        dispatch_uid="reservations.charge_item_post_save",
+    )
+    post_delete.connect(
+        _charge_item_changed,
+        sender=BookingChargeItem,
+        dispatch_uid="reservations.charge_item_post_delete",
     )
     post_save.connect(
         _concierge_item_changed,
@@ -306,6 +342,7 @@ _connect()
 
 __all__ = [
     "LeadGuestProtectedError",
+    "booking_total_changed",
     "booking_transitioned",
     "hold_expired",
     "ical_conflict_detected",

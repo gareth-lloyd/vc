@@ -64,6 +64,7 @@ export type PropertyListItem = z.infer<typeof propertyListItemSchema>;
 
 export const propertyDetailSchema = propertyListItemSchema.extend({
   feature_ids: z.array(z.number()).optional().default([]),
+  hero_image_url: z.string().nullable().optional(),
   legacy_id: z.union([z.string(), z.number()]).nullable().optional(),
 });
 export type PropertyDetail = z.infer<typeof propertyDetailSchema>;

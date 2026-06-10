@@ -90,10 +90,21 @@ export function PropertyDetailLayout() {
       <TwoColumn
         rightRail={
           <div className="space-y-4">
-            <div
-              className="bg-muted aspect-[4/3] w-full rounded-md"
-              aria-label={t("detail.image_placeholder_aria")}
-            />
+            {property.hero_image_url ? (
+              <div className="bg-muted aspect-[4/3] w-full overflow-hidden rounded-md">
+                <img
+                  src={property.hero_image_url}
+                  alt={t("detail.hero_image_alt", { name: property.name })}
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                />
+              </div>
+            ) : (
+              <div
+                className="bg-muted aspect-[4/3] w-full rounded-md"
+                aria-label={t("detail.image_placeholder_aria")}
+              />
+            )}
             <div>
               <h2 className="text-foreground font-serif text-lg font-semibold">{property.name}</h2>
               <p className="text-muted-foreground text-sm">

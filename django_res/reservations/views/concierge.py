@@ -35,6 +35,26 @@ class BookingConciergeItemViewSet(viewsets.ModelViewSet):
             return BookingConciergeItemWriteSerializer
         return BookingConciergeItemSerializer
 
+    # Writes accept the write serializer but respond with the read
+    # representation (id, status, timestamps) so the FE can parse the
+    # result without a follow-up fetch.
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            BookingConciergeItemSerializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(BookingConciergeItemSerializer(serializer.instance).data)
+
     def perform_create(self, serializer: Any) -> None:
         booking = get_object_or_404(Booking, pk=self.kwargs["booking_pk"])
         serializer.save(booking=booking)

@@ -99,6 +99,11 @@ def test_concierge_crud(
     )
     assert create.status_code == 201, create.data
     item_id = BookingConciergeItem.objects.get().pk
+    # Writes must respond with the read representation (id, status, timestamps) —
+    # the FE parses the response directly, and the write serializer's echo
+    # lacks the fields its schema requires.
+    assert create.data["id"] == item_id
+    assert create.data["status"] == ConciergeStatus.REQUESTED.value
 
     listing = api_client.get(f"/api/v1/bookings/{booking.pk}/concierge-items")
     assert listing.data["count"] == 1
@@ -109,6 +114,9 @@ def test_concierge_crud(
         format="json",
     )
     assert patch.status_code == 200
+    assert patch.data["id"] == item_id
+    assert patch.data["status"] == ConciergeStatus.REQUESTED.value
+    assert patch.data["quantity"] == 2
 
     delete = api_client.delete(
         f"/api/v1/bookings/{booking.pk}/concierge-items/{item_id}",

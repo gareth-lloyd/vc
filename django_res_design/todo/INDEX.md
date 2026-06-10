@@ -87,7 +87,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-008](gap-008-no-rate-night-fallback-parity.md) | No-rate-for-night fallback dropped vs legacy — reinstate via `RatePlan.fallback_nightly` | ✅ resolved |
 | [GAP-009](gap-009-discount-loose-ends.md) | Discount loose ends: REPEAT_GUEST dead, `uses_count` inert, `DiscountApply` dropped | ✅ resolved (now-slice; `uses_count`/`max_uses` deferred) |
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners — consolidated spec + verified assumptions | ⬜ deferred (v2 tracker) |
-| [GAP-012](gap-012-cloudflare-images-hosting.md) | Object-storage image hosting (Cloudflare Images) for staging & prod — incl. legacy binary import (nested→flat `legacy_id` reconstruction) | ⬜ open — specced, building on `feat/s3-image-hosting` |
+| [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (simple v1: no resizing, uploads via Django) — incl. legacy binary import (nested→flat `legacy_id` reconstruction) | ⬜ open — specced, bucket created, building on `feat/s3-image-hosting` |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, currency-change confirm, unpriceable-result note, a11y) | ⬜ open — FE polish, sibling of GAP-005 |
 
 ## Investigations

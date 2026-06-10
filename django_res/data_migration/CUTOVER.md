@@ -189,8 +189,8 @@ Output should report `Rewrote N rows and deleted source country.`
 `/uploads/` tree; the actual files live wherever ops has them (S3, a
 backup tarball, etc.). Copy the binaries into the new storage backend
 according to the separate **Image migration workstream**, tracked as the
-legacy-import slice (§11) of
-`django_res_design/todo/gap-012-cloudflare-images-hosting.md` (the canonical
+legacy-import slice (§8 of "Proposed shape") in
+`django_res_design/todo/gap-012-s3-image-hosting.md` (the canonical
 home — note the loader flattens `PropertyImages/<VillaId>/<file>` to a flat
 `properties/legacy/<file>` key, so the copy must reconstruct the source
 subfolder from each row's `property.legacy_id`). The DB rows are already in

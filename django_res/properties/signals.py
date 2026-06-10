@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
+from django.db.models.fields.files import FieldFile
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
@@ -42,6 +44,25 @@ def create_group_finance(
     GroupFinance.objects.get_or_create(group=instance)
 
 
+def _delete_stored_file_after_commit(field_file: FieldFile) -> None:
+    """Queue the stored file's deletion for when the transaction commits.
+
+    `post_delete` fires *inside* the deleting transaction; deleting from
+    storage there would (a) run S3 HTTP calls while holding the DB connection
+    and (b) destroy the object even if the transaction later rolls back,
+    leaving a surviving row with a dangling key. Deferring to `on_commit`
+    means storage only changes once the row deletion is durable. Storage
+    `delete` is a no-op for a missing file (e.g. a legacy key whose binary
+    was never imported), so the callback never raises for file-less rows.
+    """
+    if not field_file:
+        return
+    storage, name = field_file.storage, field_file.name
+    if name is None:
+        return
+    transaction.on_commit(lambda: storage.delete(name))
+
+
 @receiver(post_delete, sender=PropertyImage, dispatch_uid="properties.delete_image_file")
 def delete_property_image_file(
     sender: type[PropertyImage],
@@ -51,12 +72,9 @@ def delete_property_image_file(
     """Release the stored file when a `PropertyImage` row is hard-deleted.
 
     Rows are hard-deleted (no soft delete), so without this the object would
-    leak in storage forever — and S3 bills per stored byte. Storage `delete`
-    is a no-op for a missing file (e.g. a legacy key whose binary was never
-    imported), so this never raises for file-less rows.
+    leak in storage forever — and S3 bills per stored byte.
     """
-    if instance.image:
-        instance.image.delete(save=False)
+    _delete_stored_file_after_commit(instance.image)
 
 
 @receiver(post_delete, sender=Collection, dispatch_uid="properties.delete_collection_cover")
@@ -66,5 +84,4 @@ def delete_collection_cover_file(
     **kwargs: Any,
 ) -> None:
     """Release the stored cover file when a `Collection` row is hard-deleted."""
-    if instance.cover_image:
-        instance.cover_image.delete(save=False)
+    _delete_stored_file_after_commit(instance.cover_image)

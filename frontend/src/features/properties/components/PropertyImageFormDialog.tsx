@@ -49,7 +49,7 @@ type PropertyImageFormDialogProps = CreateProps | EditProps;
 // Create-mode values; `image` stays unset until the user picks a file (the
 // create schema then requires it). Edit mode reuses the same shape minus the
 // file, validated against the metadata-only schema.
-type FormValues = Partial<Pick<PropertyImageCreateInput, "image">> & PropertyImageMetadataInput;
+type FormValues = PropertyImageMetadataInput & { image?: File };
 
 const CREATE_DEFAULTS: FormValues = {
   kind: "gallery",

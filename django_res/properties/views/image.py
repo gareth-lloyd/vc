@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,7 +32,7 @@ class PropertyImageListCreateView(generics.ListAPIView):
     serializer_class = PropertyImageSerializer
     permission_classes = [IsReservationsWriter]
     # The default parser set is JSON-only; the upload arrives as multipart.
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self) -> QuerySet[PropertyImage]:
         return PropertyImage.objects.filter(property_id=self.kwargs["property_id"])

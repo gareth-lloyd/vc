@@ -113,10 +113,14 @@ set its keys as Render env vars per service. Do not ship the
    (`obj.image.url` — storage-generated; `/media/…` locally, S3 URL on
    staging/prod). No variant dict.
 
-6. **Delete cleanup.** `post_delete` signal on `PropertyImage` (and the
-   `Collection.cover_image` replace path) calls
-   `instance.image.delete(save=False)` — works identically for local and S3
-   backends, so a hard-deleted row doesn't leak a stored object.
+6. **Delete cleanup.** `post_delete` signals on `PropertyImage` and
+   `Collection` queue the stored file's deletion via `transaction.on_commit`
+   (works identically for local and S3 backends), so a hard-deleted row
+   doesn't leak a stored object. Deferring to commit matters twice over:
+   `post_delete` fires *inside* the deleting transaction, so an immediate
+   delete would run S3 HTTP calls while holding the DB connection, and a
+   rollback after the receiver ran would leave a surviving row whose object
+   is gone (dangling key).
 
 7. **Frontend.** `PropertyImageFormDialog.tsx`: replace the manual `key`
    `<Input>` with `<input type="file" accept="image/*">`; submit multipart to

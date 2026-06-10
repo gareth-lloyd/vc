@@ -202,6 +202,13 @@ class Booking(AuditedModel):
                 condition=Q(archived_at__isnull=True) | Q(status__in=TERMINAL_BOOKING_STATUSES),
                 name="booking_archived_at_requires_terminal_status",
             ),
+            # A QuotationLine is a single guest commitment — exactly one
+            # Booking. Backstops the service's `filter(...).first()`
+            # idempotency pre-check, which is not race-proof on its own.
+            models.UniqueConstraint(
+                fields=["quotation_line"],
+                name="booking_one_per_quotation_line",
+            ),
         ]
         ordering = ["-created_at"]
 

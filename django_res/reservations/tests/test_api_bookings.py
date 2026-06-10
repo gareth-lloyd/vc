@@ -1208,3 +1208,17 @@ def test_confirm_rolls_back_status_if_payment_scheduling_fails(
 
     booking.refresh_from_db()
     assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL.value
+
+
+@pytest.mark.django_db
+def test_bookings_have_no_direct_create(api_client: APIClient, staff: User) -> None:
+    """POST /bookings is closed until GAP-020's `create_direct` lands.
+
+    The accidental CreateModelMixin surface let a staff writer mint a DRAFT
+    booking with arbitrary self-priced money, no LEAD guest, no payment
+    schedule — silently occupying the calendar while bypassing the lifecycle.
+    Bookings are created via `POST /quotations/{id}:convert` only.
+    """
+    api_client.force_login(staff)
+    response = api_client.post("/api/v1/bookings", {}, format="json")
+    assert response.status_code == 405

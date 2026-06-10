@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -20,6 +21,39 @@ def default_currency() -> Currency | None:
     return Currency.objects.filter(code="EUR").first()
 
 
+def settings_currency(property: Any) -> Currency | None:
+    """The `PropertySettings.effective("currency")` chain, tolerant of a
+    property with no settings row (falls to the group's settings)."""
+    try:
+        return property.settings.effective("currency")
+    except ObjectDoesNotExist:
+        try:
+            return property.group.settings.currency
+        except ObjectDoesNotExist:
+            return None
+
+
+def pick_preferred_plan(plans: Sequence[RatePlan], property: Any) -> RatePlan | None:
+    """Canonical multi-currency plan pick (GAP-014).
+
+    `plans` must already be ordered by `-effective_from, -pk`. The most recent
+    `effective_from` wins; when same-day plans disagree on currency (18
+    overlapping pairs in the whole legacy table), the settings-chain currency
+    is preferred, else the newest row.
+    """
+    if not plans:
+        return None
+    top = plans[0]
+    tied = [p for p in plans if p.effective_from == top.effective_from]
+    if len({p.currency_id for p in tied}) > 1:
+        preferred = settings_currency(property)
+        if preferred is not None:
+            for plan in tied:
+                if plan.currency_id == preferred.pk:
+                    return plan
+    return top
+
+
 def resolve_property_currency(property: Any) -> Currency | None:
     """Canonical currency resolution for a property (GAP-014).
 
@@ -32,24 +66,17 @@ def resolve_property_currency(property: Any) -> Currency | None:
     Shared by the pricing engine's projection seam, the data-migration
     loaders, and manual quotation lines so the fallback can never drift.
     """
-    plan = (
+    plans = list(
         RatePlan.objects.filter(property=property, is_active=True)
         .order_by("-effective_from", "-pk")
         .select_related("currency")
-        .first()
     )
+    plan = pick_preferred_plan(plans, property)
     if plan is not None:
         return plan.currency
-    try:
-        settings_currency = property.settings.effective("currency")
-    except ObjectDoesNotExist:
-        # No PropertySettings row — consult the group chain directly.
-        try:
-            settings_currency = property.group.settings.currency
-        except ObjectDoesNotExist:
-            settings_currency = None
-    if settings_currency is not None:
-        return settings_currency
+    configured = settings_currency(property)
+    if configured is not None:
+        return configured
     return default_currency()
 
 

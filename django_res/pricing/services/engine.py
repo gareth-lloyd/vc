@@ -26,6 +26,7 @@ from pricing.models import (
     RatePlan,
     RateRule,
 )
+from pricing.services.currency import pick_preferred_plan, resolve_property_currency
 from pricing.services.discounts import apply_discount
 from pricing.services.extras import calc_extra, date_ranges_overlap
 from pricing.services.projection import PricingContext, RateProjectionService
@@ -42,7 +43,12 @@ from properties.services.changeover import ChangeoverService
 
 
 class PricingEngine:
-    """Stateless engine that turns (property, dates, party, currency) into a Quote."""
+    """Stateless engine that turns (property, dates, party) into a Quote.
+
+    `currency` is optional (GAP-014): when omitted, the engine prices in the
+    covering rate plan's own currency — legacy behaviour — and the quote
+    reports which one it used.
+    """
 
     @classmethod
     def quote(
@@ -52,7 +58,7 @@ class PricingEngine:
         date_from: date,
         date_to: date,
         party: int,
-        currency: Currency,
+        currency: Currency | None = None,
         discount_code: str | None = None,
         opt_in_extras: list[int] | None = None,
         as_of: date | None = None,
@@ -73,19 +79,29 @@ class PricingEngine:
         # years".
         context = cls._load_real_context(property, currency, date_from, date_to)
         if context is None and allow_projection:
-            context = RateProjectionService.project(
-                property=property,
-                date_from=date_from,
-                currency=currency,
-            )
+            # `find_anchor_plan` is currency-keyed, so a currency-less quote
+            # resolves one first via the canonical chain — the most recent
+            # plan's currency, i.e. the villa's *current* currency after a
+            # switch, never a stale pre-switch one (GAP-014).
+            projection_currency = currency or resolve_property_currency(property)
+            if projection_currency is not None:
+                context = RateProjectionService.project(
+                    property=property,
+                    date_from=date_from,
+                    currency=projection_currency,
+                )
         if context is None:
             raise NoRateAvailable(
                 f"No active RatePlan for property {getattr(property, 'pk', '?')} "
-                f"currency {currency.code} covering {date_from}..{date_to}"
+                f"currency {currency.code if currency else 'any'} "
+                f"covering {date_from}..{date_to}"
             )
         plan = context.plan
         cards = context.cards
         rules_by_card = context.rules_by_card
+        if currency is None:
+            # Price in the rate card's own currency (legacy parity, GAP-014).
+            currency = plan.currency
 
         # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
         # arrival forward to the next valid changeover day rather than
@@ -283,28 +299,33 @@ class PricingEngine:
     @staticmethod
     def _load_real_context(
         property: Any,
-        currency: Currency,
+        currency: Currency | None,
         date_from: date,
         date_to: date,
     ) -> PricingContext | None:
         """Load the (plan, cards, rules) triple from a real plan covering the stay.
+
+        With `currency=None`, plans in **any** currency are eligible and the
+        canonical `pick_preferred_plan` tie-break chooses among them (GAP-014).
 
         Returns `None` when no active plan covers the whole `[date_from, date_to)`
         range — the signal for the caller to try a projection. A plan that *does*
         cover the dates but has no active cards is a misconfiguration, not a
         projection trigger, so it still raises `NoRateAvailable`.
         """
-        plan = (
+        covering = (
             RatePlan.objects.filter(
                 property=property,
-                currency=currency,
                 is_active=True,
                 effective_from__lte=date_from,
             )
             .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=date_to))
             .order_by("-effective_from", "-pk")
-            .first()
         )
+        if currency is not None:
+            plan = covering.filter(currency=currency).first()
+        else:
+            plan = pick_preferred_plan(list(covering.select_related("currency")), property)
         if plan is None:
             return None
         cards = list(

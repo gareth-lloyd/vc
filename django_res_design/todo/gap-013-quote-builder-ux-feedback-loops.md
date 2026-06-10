@@ -92,6 +92,8 @@ Independent, individually shippable. Recommended order:
 
 - Sibling of **GAP-005** (flow tracker) — coordinate if that overhaul reshapes
   the builder layout.
-- **Q-013** (rate-card incomplete-pricing behaviour) informs item (4): if the
-  engine's null-total contract changes, the unpriceable note should follow it.
+- **Q-013** (rate-card incomplete-pricing behaviour) — resolved: no-rate
+  results now surface as flagged manual-quote cards in the main list, staged
+  `is_manual` with required total + reason. The engine's null-total contract
+  is unchanged; the unpriceable note for *available* options stays relevant.
 - No backend dependency; all changes are frontend.

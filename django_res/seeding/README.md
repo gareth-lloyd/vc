@@ -7,7 +7,8 @@ that agents must not violate live in `django_res/CLAUDE.md`.
 ## `seed_dev` command
 
     ./manage.py seed_dev [--scale small|medium|large] [--properties N]
-                         [--bookings N] [--seed S] [--i-understand]
+                         [--bookings N] [--seed S] [--no-dashboard-activity]
+                         [--i-understand]
 
 It is **additive** — every run appends a fresh batch and never truncates. The
 transactional graph (Enquiry → Quotation → Booking → Payment) is built through
@@ -43,6 +44,53 @@ dense path and the legacy path share one per-stay builder, `create_one_booking`.
 Note: nothing seeds a `BOOKING_DEPOSIT_PENDING` hold — that calendar state has
 no backend producer (the frontend renders a legend entry for it, but it is
 currently dead).
+
+## Dashboard activity (all profiles)
+
+The dense calendar almost never lands a stay exactly on today, never *rests* a
+booking at `AWAITING_BALANCE`, and never leaves an enquiry `NEW` — exactly the
+slices the staff dashboard reads. The `dashboard_activity` stage therefore
+guarantees five cohorts after every run, in **every profile** including
+`happy` (base counts, × `dashboard` scale multiplier — 1/2/3 for
+small/medium/large):
+
+| Cohort | Count | Resting status | Feeds |
+|---|---|---|---|
+| Arrivals today | 5 | `BALANCE_PAID` | staff "Arrivals today" hero |
+| Departures today | 3 | `BALANCE_PAID` | staff "Check-outs today" |
+| Awaiting balance | 4 | `AWAITING_BALANCE` | staff "Awaiting balance" |
+| NEW enquiries | 5 | `NEW` | staff "New enquiries" |
+| Owner upcoming | ≤4 | `DEPOSIT_PAID`, next 30 days | owner portal "Upcoming arrivals" |
+
+Placement rules worth knowing:
+
+- "Today" is the **UTC calendar date** (`seeding.context.utc_today`), matching
+  how both dashboards compute it — never the server-local date.
+- Departures rest `BALANCE_PAID`, not `CHECKED_IN`: the daily `auto_check_out`
+  beat task sweeps `CHECKED_IN` stays with `date_to <= today` into terminal
+  `CHECKED_OUT`, which the dashboard hides — the tile would die at the next
+  beat tick on staging.
+- Candidates are searched **busy-first** (villas with existing stays before
+  empty ones), so the deliberately-empty density tier is consumed last. When
+  no existing villa is free for a window, a **showcase villa** is minted —
+  manifest-styled (real name/region/hero) with changeover times, registered
+  on the run's property list, and reused for later windows — so
+  `--properties N` is a *floor*, not an exact bound, and additive reruns can
+  accrete a few extra villas (the stage logs `seed.dashboard_showcase_minted`
+  with the count).
+- The stage runs after `refunds`, whose goodwill cohort queries `BALANCE_PAID`
+  bookings DB-wide — ordering keeps the curated arrivals refund-free.
+- Today-anchored stays are 3 nights and the departure/arrival windows abut at
+  today, so a reused villa renders a same-day AM/PM changeover where
+  changeover times are set (mixed/chaos).
+- The owner-upcoming cohort is opportunistic and stays on the villas granted to
+  the seeded owner org — a minted showcase villa has no grant and would not
+  show on the owner dashboard.
+- **Today-anchored data is stale tomorrow.** A demo/staging DB should be
+  reseeded (additively) on the day it's shown.
+
+`--no-dashboard-activity` skips the stage entirely — use it where the exact
+legacy output matters (e.g. exact booking-count tests).
 
 ## Factory conventions (mirror these in new factories)
 

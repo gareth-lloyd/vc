@@ -71,6 +71,16 @@ class Command(BaseCommand):
             help="Faker/factory random seed for reproducible batches.",
         )
         parser.add_argument(
+            "--no-dashboard-activity",
+            action="store_false",
+            dest="dashboard_activity",
+            help=(
+                "Skip the guaranteed dashboard cohorts (arrivals/departures "
+                "today, NEW enquiries, awaiting-balance stays). For consumers "
+                "that need the exact legacy output, e.g. exact-count tests."
+            ),
+        )
+        parser.add_argument(
             "--i-understand",
             action="store_true",
             help="Acknowledge this writes fake data. Does NOT bypass the production block.",
@@ -103,6 +113,7 @@ class Command(BaseCommand):
                 options["bookings"] if options["bookings"] is not None else scale["bookings"]
             ),
             n_users=scale["users"],
+            dashboard_factor=scale["dashboard"] if options["dashboard_activity"] else 0,
         )
 
         reports = run_stages(ctx, STAGES)

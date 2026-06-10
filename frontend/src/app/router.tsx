@@ -121,6 +121,14 @@ export const router = createBrowserRouter([
                     children: [
                       { path: "/dashboard", element: <DashboardPage /> },
                       {
+                        path: "/availability",
+                        lazy: async () => {
+                          const m =
+                            await import("@/features/availability/AvailabilityTimelinePage");
+                          return { Component: m.AvailabilityTimelinePage };
+                        },
+                      },
+                      {
                         path: "/properties",
                         lazy: async () => {
                           const m = await import("@/features/properties/PropertiesListPage");

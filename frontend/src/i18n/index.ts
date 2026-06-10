@@ -6,6 +6,7 @@ import { zodErrorMap } from "./zodErrorMap";
 
 import commonEn from "./locales/en/common.json";
 import authEn from "./locales/en/auth.json";
+import availabilityEn from "./locales/en/availability.json";
 import contactsEn from "./locales/en/contacts.json";
 import guestsEn from "./locales/en/guests.json";
 import propertiesEn from "./locales/en/properties.json";
@@ -21,6 +22,7 @@ import ownerEn from "./locales/en/owner.json";
 
 import commonEl from "./locales/el/common.json";
 import authEl from "./locales/el/auth.json";
+import availabilityEl from "./locales/el/availability.json";
 import contactsEl from "./locales/el/contacts.json";
 import guestsEl from "./locales/el/guests.json";
 import propertiesEl from "./locales/el/properties.json";
@@ -47,6 +49,7 @@ export const LANGUAGE_AUTONYMS: Record<(typeof SUPPORTED_LANGUAGES)[number], str
 export const I18N_NAMESPACES = [
   "common",
   "auth",
+  "availability",
   "contacts",
   "guests",
   "properties",
@@ -72,6 +75,7 @@ void i18n
       en: {
         common: commonEn,
         auth: authEn,
+        availability: availabilityEn,
         contacts: contactsEn,
         guests: guestsEn,
         properties: propertiesEn,
@@ -88,6 +92,7 @@ void i18n
       el: {
         common: commonEl,
         auth: authEl,
+        availability: availabilityEl,
         contacts: contactsEl,
         guests: guestsEl,
         properties: propertiesEl,

@@ -142,6 +142,19 @@ export const queryKeys = {
     all: () => ["owner-block-updates"] as const,
     list: <F>(filters: F) => ["owner-block-updates", "list", filters] as const,
   },
+  availability: {
+    all: () => ["availability"] as const,
+    timeline: (ids: number[], from: string, to: string) =>
+      ["availability", "timeline", ids.map(k), from, to] as const,
+  },
+  regions: {
+    all: () => ["regions"] as const,
+    list: () => ["regions", "list"] as const,
+  },
+  collections: {
+    all: () => ["collections"] as const,
+    list: () => ["collections", "list"] as const,
+  },
   countries: {
     all: () => ["countries"] as const,
     lists: () => ["countries", "list"] as const,

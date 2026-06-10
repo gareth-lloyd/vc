@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarCheck,
   CalendarOff,
+  CalendarRange,
   ConciergeBell,
   Globe,
   Home,
@@ -89,6 +90,12 @@ export function Sidebar() {
       label: t("nav.bookings"),
       icon: CalendarCheck,
       prefetch: () => import("@/features/bookings/BookingsListPage"),
+    },
+    {
+      to: "/availability",
+      label: t("nav.availability"),
+      icon: CalendarRange,
+      prefetch: () => import("@/features/availability/AvailabilityTimelinePage"),
     },
     {
       to: "/concierge",

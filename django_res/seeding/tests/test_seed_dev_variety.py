@@ -95,6 +95,9 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     assert PropertyImage.objects.exclude(kind=ImageKind.HERO).exists(), (
         "gallery stage should add non-HERO images"
     )
+    assert not PropertyImage.objects.filter(kind=ImageKind.FLOOR_PLAN).exists(), (
+        "no stock floor-plan photo exists, so seeding must not create FLOOR_PLAN images"
+    )
     assert NearbyPlaceType.objects.exists()
     assert PropertyNearbyPlace.objects.exists()
     assert Collection.objects.exists()

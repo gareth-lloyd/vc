@@ -1,8 +1,8 @@
 """Extra non-HERO PropertyImage rows per property.
 
 `PropertyFactory` already creates one HERO row per property. This stage adds
-`images_per_property` rows spread across the gallery / interior / exterior /
-floor-plan kinds so dev/staging galleries are realistic.
+`images_per_property` rows spread across the gallery / interior / exterior
+kinds so dev/staging galleries are realistic.
 """
 
 from __future__ import annotations
@@ -14,11 +14,12 @@ from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
 # Non-HERO kinds — HERO is partial-unique per property, so we never add more.
+# FLOOR_PLAN is deliberately absent: there is no stock floor-plan photo, so
+# seeding one would only ever land the 1x1 placeholder.
 _NON_HERO_KINDS = [
     ImageKind.INTERIOR,
     ImageKind.EXTERIOR,
     ImageKind.GALLERY,
-    ImageKind.FLOOR_PLAN,
 ]
 
 
@@ -35,8 +36,8 @@ def _run(ctx: SeedContext) -> int:
         for i in range(n):
             kind = _NON_HERO_KINDS[i % len(_NON_HERO_KINDS)]
             # Draw from the villa the `properties` stage assigned this property
-            # (coherent with its HERO); FLOOR_PLAN has no generated file, so it
-            # falls back to the 1x1 placeholder, as does any non-manifest prop.
+            # (coherent with its HERO); any non-manifest prop falls back to the
+            # 1x1 placeholder.
             PropertyImage.objects.create(
                 property=prop,
                 image=_villa_image_or_placeholder(slug, kind.value),

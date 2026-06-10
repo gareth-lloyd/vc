@@ -65,8 +65,9 @@ catalogue/detail screens render real villas instead of grey 1×1 placeholders.
 `manifest.yaml` is the single source of truth: one entry per villa with `slug`,
 `display_name`, `location_tag`, `country_iso2`, `style_anchor`, and per-kind
 `prompts`. Each entry owns a subdirectory of `hero.jpg` / `interior.jpg` /
-`exterior.jpg` / `gallery.jpg` (no floor plans — the model produces poor ones;
-`FLOOR_PLAN` falls back to the 1×1 placeholder).
+`exterior.jpg` / `gallery.jpg` (no floor plans — the model produces poor ones,
+so the gallery stage skips `FLOOR_PLAN` entirely rather than seed a 1×1
+placeholder).
 
 How it wires together (mirror this if you extend it):
 

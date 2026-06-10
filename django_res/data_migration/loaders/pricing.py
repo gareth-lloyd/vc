@@ -14,7 +14,11 @@ New structure:
                        nightly, weekly, is_poa, priority)
 
 Strategy:
-- One RatePlan per VillaSeason (currency picked from first VillaSeasonRate).
+- One RatePlan per VillaSeason. Currency comes from the season's own
+  non-NULL VillaSeasonRate rows (most recent first); a season with only
+  NULL/0 CurrencyId rows falls back to the villa's other non-NULL rate rows,
+  then the canonical `resolve_property_currency` chain (settings → EUR) —
+  never `Currency.objects.first()` (GAP-014 step 0).
 - effective_from/to from min/max of VillaSeasonDates rows.
 - One default RateCard per RatePlan (named after the season).
 - One RateRule per VillaSeasonRate. priority=row.Id ensures the EXCLUDE
@@ -30,6 +34,7 @@ from typing import Any
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
 from pricing.models.rate import RateCard, RatePlan, RateRule
+from pricing.services.currency import resolve_property_currency
 from properties.models.property import Property
 
 
@@ -40,18 +45,6 @@ def _to_decimal(v: Any) -> Decimal | None:
         return Decimal(str(v))
     except Exception:
         return None
-
-
-def _resolve_property_currency(prop: Property) -> Currency | None:
-    """Resolve currency via the canonical PropertySettings.effective() chain,
-    with a table-wide first-row fallback when neither property nor group
-    has one configured.
-    """
-    try:
-        currency = prop.settings.effective("currency")
-    except Exception:
-        currency = None
-    return currency or Currency.objects.first()
 
 
 class RatePlanLoader(BaseLoader):
@@ -65,10 +58,18 @@ class RatePlanLoader(BaseLoader):
     name = "rate_plan"
     target_model = RatePlan
     legacy_pk_column = "ID"
+    # CurrencyId: the season's own most recent non-NULL/non-zero rate row.
+    # VillaCurrencyId: same, but across ALL the villa's seasons — the GAP-014
+    # rule-1 inference for the 2023-era seasons whose rows are all NULL but
+    # whose villa later got real currencies.
     legacy_query = (
         "SELECT s.ID, s.Name, s.VillaId, s.Notes, s.Inclusion, "
         "(SELECT TOP 1 r.CurrencyId FROM VillaSeasonRate r "
-        " WHERE r.SeasonId = s.ID ORDER BY r.ID) AS CurrencyId, "
+        " WHERE r.SeasonId = s.ID AND r.CurrencyId IS NOT NULL AND r.CurrencyId <> 0 "
+        " AND r.DeletedAt IS NULL ORDER BY r.ID DESC) AS CurrencyId, "
+        "(SELECT TOP 1 r2.CurrencyId FROM VillaSeasonRate r2 "
+        " WHERE r2.VillaId = s.VillaId AND r2.CurrencyId IS NOT NULL AND r2.CurrencyId <> 0 "
+        " AND r2.DeletedAt IS NULL ORDER BY r2.ID DESC) AS VillaCurrencyId, "
         "(SELECT MIN(d.FromDate) FROM VillaSeasonDates d WHERE d.SeasonId = s.ID) AS DateFrom, "
         "(SELECT MAX(d.ToDate) FROM VillaSeasonDates d WHERE d.SeasonId = s.ID) AS DateTo "
         "FROM VillaSeason s WHERE s.DeletedAt IS NULL"
@@ -80,9 +81,13 @@ class RatePlanLoader(BaseLoader):
             return None
         currency = Currency.objects.filter(legacy_id=str(row.get("CurrencyId") or "")).first()
         if currency is None:
-            # Prefer the property/group's own configured currency; only fall
-            # back to the table-wide first row when neither is set.
-            currency = _resolve_property_currency(prop)
+            # Season has only NULL/0 currency rows — infer from the villa's
+            # other rate rows, then the canonical settings → EUR chain.
+            currency = Currency.objects.filter(
+                legacy_id=str(row.get("VillaCurrencyId") or "")
+            ).first()
+        if currency is None:
+            currency = resolve_property_currency(prop)
             if currency is None:
                 return None
         effective_from = row.get("DateFrom") or date(2020, 1, 1)

@@ -25,6 +25,7 @@ from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
+from pricing.services.currency import resolve_property_currency
 from properties.models.property import Property
 from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
@@ -68,7 +69,9 @@ class BookingLoader(BaseLoader):
         if row.get("CurrencyId"):
             currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
         if currency is None:
-            currency = Currency.objects.first()
+            # Canonical chain: the villa's rate plans → settings → EUR —
+            # never the ordering-dependent `.first()` (GAP-014 step 0).
+            currency = resolve_property_currency(prop)
         if currency is None:
             report.skipped += 1
             return

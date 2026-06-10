@@ -25,6 +25,7 @@ from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
 from pricing.models.currency import Currency
+from pricing.services.currency import default_currency, resolve_property_currency
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -317,7 +318,9 @@ class QuotationLoader(BaseLoader):
         "SELECT q.Id, q.ClientDetailsId, q.AgentId, q.FromDate, q.ToDate, "
         "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.DeletedAt, "
         "(SELECT TOP 1 d.CurrencyId FROM VillaQuotationDetails d "
-        " WHERE d.QuotationMasterId = q.Id ORDER BY d.Id) AS CurrencyId "
+        " WHERE d.QuotationMasterId = q.Id ORDER BY d.Id) AS CurrencyId, "
+        "(SELECT TOP 1 d.VillaId FROM VillaQuotationDetails d "
+        " WHERE d.QuotationMasterId = q.Id ORDER BY d.Id) AS FirstVillaId "
         "FROM VillaQuotationMaster q WHERE q.DeletedAt IS NULL"
     )
 
@@ -329,9 +332,17 @@ class QuotationLoader(BaseLoader):
         if row.get("CurrencyId"):
             currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
         if currency is None:
-            # Legacy currencies were deduplicated (e.g. only one EUR row kept);
-            # fall back to the first available currency so the quotation loads.
-            currency = Currency.objects.first()
+            # No usable line currency — resolve via the first line's villa
+            # (rate plans → settings → EUR), else the EUR system default.
+            # Never the ordering-dependent `.first()` (GAP-014 step 0).
+            first_prop = Property.objects.filter(
+                legacy_id=str(row.get("FirstVillaId") or "")
+            ).first()
+            currency = (
+                resolve_property_currency(first_prop)
+                if first_prop is not None
+                else default_currency()
+            )
         if currency is None:
             return None
         agent = (

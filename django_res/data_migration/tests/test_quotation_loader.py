@@ -58,3 +58,42 @@ def test_transform_treats_zero_quotationno_as_missing(_guest_and_currency: None)
     assert kwargs is not None
     assert "number" not in kwargs
     assert kwargs["reference"] == "QVC42"
+
+
+@pytest.mark.django_db
+def test_missing_currency_resolves_via_first_line_property(_guest_and_currency: None) -> None:
+    """GAP-014 step 0: a NULL line currency resolves through the first line's
+    villa (settings chain), never `Currency.objects.first()`."""
+    from properties.models.geo import Country, Region
+    from properties.models.property import Property, PropertyCategory, PropertyGroup
+    from properties.models.settings import PropertySettings
+
+    country = Country.objects.get(iso2="GB")
+    region = Region.objects.create(country=country, name="Cornwall", slug="cornwall")
+    cat = PropertyCategory.objects.create(name="Villa", slug="villa")
+    group = PropertyGroup.objects.create(name="G")
+    prop = Property.objects.create(
+        name="P",
+        display_name="P",
+        slug="p",
+        category=cat,
+        group=group,
+        region=region,
+        legacy_id="900",
+    )
+    gbp = Currency.objects.get(code="GBP")
+    PropertySettings.objects.create(property=prop, currency=gbp)
+    kwargs = QuotationLoader().transform(_row(CurrencyId=None, FirstVillaId=900))
+    assert kwargs is not None
+    assert kwargs["currency"] == gbp
+
+
+@pytest.mark.django_db
+def test_missing_currency_terminal_default_is_eur_not_first_row(
+    _guest_and_currency: None,
+) -> None:
+    Currency.objects.create(code="AUD", name="Australian dollar", symbol="$", legacy_id="9")
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    kwargs = QuotationLoader().transform(_row(CurrencyId=None, FirstVillaId=None))
+    assert kwargs is not None
+    assert kwargs["currency"] == eur

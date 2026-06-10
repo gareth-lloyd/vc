@@ -24,6 +24,7 @@ from django.db import transaction
 
 from core.exceptions import NoRateAvailable
 from pricing.models import RateCard, RatePlan, RateRule
+from pricing.services.extras import date_ranges_overlap
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
@@ -58,7 +59,7 @@ def _unclaimed_segments(
             continue
         survivors: list[tuple[date, date]] = []
         for lo, hi in segments:
-            if prev["date_from"] > hi or prev["date_to"] < lo:
+            if not date_ranges_overlap(lo, hi, prev["date_from"], prev["date_to"]):
                 survivors.append((lo, hi))
                 continue
             if lo < prev["date_from"]:

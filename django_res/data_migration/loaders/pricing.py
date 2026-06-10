@@ -37,6 +37,7 @@ from django.db import transaction
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
 from pricing.models.rate import RateCard, RatePlan, RateRule
+from pricing.services.extras import date_ranges_overlap
 from properties.models.property import Property
 
 logger = structlog.get_logger(__name__)
@@ -226,7 +227,9 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
             for winner in kept:
                 if not _party_overlap(item, winner):
                     continue
-                if item.date_from > winner.date_to or item.date_to < winner.date_from:
+                if not date_ranges_overlap(
+                    item.date_from, item.date_to, winner.date_from, winner.date_to
+                ):
                     continue
                 if (item.date_from, item.date_to) == (winner.date_from, winner.date_to):
                     remainders = _subtract_party(item.party_intervals, winner.party_intervals)
@@ -308,14 +311,8 @@ class RatePlanLoader(BaseLoader):
             currency = _resolve_property_currency(prop)
             if currency is None:
                 return None
-        effective_from = row.get("DateFrom") or date(2020, 1, 1)
-        if isinstance(effective_from, str):
-            effective_from = date.fromisoformat(effective_from[:10])
-        elif hasattr(effective_from, "date"):
-            effective_from = effective_from.date()
-        effective_to = row.get("DateTo")
-        if effective_to and hasattr(effective_to, "date"):
-            effective_to = effective_to.date()
+        effective_from = _as_date(row.get("DateFrom")) or date(2020, 1, 1)
+        effective_to = _as_date(row.get("DateTo"))
         return {
             "property": prop,
             "name": (row.get("Name") or f"Season {row['ID']}")[:128],

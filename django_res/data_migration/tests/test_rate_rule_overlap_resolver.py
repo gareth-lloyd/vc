@@ -193,6 +193,55 @@ def test_nested_party_specific_winner_clips_null_loser() -> None:
     assert res.party_clipped == 1
 
 
+def test_second_party_clip_preserves_uncovered_brackets() -> None:
+    """Successive party clips subtract from the full remaining interval set —
+    a bracket no winner covers must survive, not vanish on the second clip."""
+    res = resolve_rate_rule_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=2),
+            _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
+            _row(3, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
+        ]
+    )
+    assert [r["ID"] for r in res.rows] == [1, 2, 3]
+    assert res.rows[2]["_party_intervals"] == [(6, None), (3, 4), (1, 1)]
+    assert res.party_clipped == 2
+
+
+def test_party_clip_remainders_conflict_checked_on_identical_dates() -> None:
+    """A clipped row's *whole* interval set claims space: a later row landing
+    inside any remainder interval is resolved, so no interval `transform` can
+    pick ever overlaps another loaded rule."""
+    res = resolve_rate_rule_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
+            _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
+            _row(3, date(2025, 6, 1), date(2025, 6, 10), PartySize=3),
+        ]
+    )
+    # Row 2's remainders [(6, None), (1, 4)] cover row 3's (3, 3) → dropped.
+    assert [r["ID"] for r in res.rows] == [1, 2]
+    assert res.rows[1]["_party_intervals"] == [(6, None), (1, 4)]
+    assert res.dropped == 1
+
+
+def test_party_clip_remainders_conflict_checked_on_date_overlap() -> None:
+    """Date conflicts also test against every remainder interval, not just the
+    preferred one — row 3's (2, 2) sits inside row 2's fallback (1, 4)."""
+    res = resolve_rate_rule_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
+            _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
+            _row(3, date(2025, 6, 5), date(2025, 6, 20), PartySize=2),
+        ]
+    )
+    assert _spans(res.rows) == [
+        (1, date(2025, 6, 1), date(2025, 6, 10)),
+        (2, date(2025, 6, 1), date(2025, 6, 10)),
+        (3, date(2025, 6, 11), date(2025, 6, 20)),
+    ]
+
+
 def test_identical_rows_drop_duplicate() -> None:
     res = resolve_rate_rule_overlaps(
         [

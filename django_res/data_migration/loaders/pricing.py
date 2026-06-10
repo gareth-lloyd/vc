@@ -26,7 +26,7 @@ Strategy:
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -87,12 +87,18 @@ class OverlapResolution:
     party_clipped: int
 
 
+_Interval = tuple[int, int | None]
+
+
 @dataclass
 class _WorkRow:
     """Mutable working copy of one legacy row during resolution.
 
-    `pmax=None` means "up to property capacity" — treated as unbounded so the
-    resolver stays pure (capacity is resolved later, in `transform`).
+    `party_intervals` is the row's authoritative party coverage: inclusive
+    `(low, high)` brackets, `high=None` meaning "up to property capacity" —
+    treated as unbounded so the resolver stays pure (capacity is resolved
+    later, in `transform`). Conflict checks and clips operate on the whole
+    set, so whichever interval `transform` later picks is conflict-free.
     """
 
     id: int
@@ -100,14 +106,17 @@ class _WorkRow:
     orig_from: date
     date_from: date
     date_to: date
-    pmin: int
-    pmax: int | None
+    party_intervals: list[_Interval]
     approved: bool
-    party_intervals: list[tuple[int, int | None]] | None = field(default=None)
+    party_clipped: bool = False
+
+
+def _intervals_overlap(a: _Interval, b: _Interval) -> bool:
+    return (a[1] is None or b[0] <= a[1]) and (b[1] is None or a[0] <= b[1])
 
 
 def _party_overlap(a: _WorkRow, b: _WorkRow) -> bool:
-    return (a.pmax is None or b.pmin <= a.pmax) and (b.pmax is None or a.pmin <= b.pmax)
+    return any(_intervals_overlap(i, j) for i in a.party_intervals for j in b.party_intervals)
 
 
 def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | None:
@@ -126,17 +135,24 @@ def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | No
     return max(candidates, key=lambda span: span[1] - span[0])
 
 
-def _party_remainder(loser: _WorkRow, winner: _WorkRow) -> list[tuple[int, int | None]]:
-    """Remainder intervals of the loser's party bracket minus the winner's,
-    best first. The upper interval is preferred; the lower rides along as a
-    fallback for when property capacity empties the upper one at transform
-    time (`None` upper bound = capacity, unknown here)."""
-    intervals: list[tuple[int, int | None]] = []
-    if winner.pmax is not None and (loser.pmax is None or winner.pmax < loser.pmax):
-        intervals.append((winner.pmax + 1, loser.pmax))
-    if loser.pmin < winner.pmin:
-        intervals.append((loser.pmin, winner.pmin - 1))
-    return intervals
+def _subtract_party(intervals: list[_Interval], winner: list[_Interval]) -> list[_Interval]:
+    """Remainders of `intervals` minus every winner interval, highest bracket
+    first. `transform` prefers the first interval; lower ones are fallbacks
+    for when property capacity empties it (`None` upper bound = capacity,
+    unknown here)."""
+    remaining = list(intervals)
+    for wlo, whi in winner:
+        survivors: list[_Interval] = []
+        for lo, hi in remaining:
+            if not _intervals_overlap((lo, hi), (wlo, whi)):
+                survivors.append((lo, hi))
+                continue
+            if whi is not None and (hi is None or whi < hi):
+                survivors.append((whi + 1, hi))
+            if lo < wlo:
+                survivors.append((lo, wlo - 1))
+        remaining = survivors
+    return sorted(remaining, key=lambda iv: iv[0], reverse=True)
 
 
 def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
@@ -174,7 +190,7 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
         if not _has_price(row):
             continue
         party = int(row.get("PartySize") or 0)
-        pmin, pmax = (party, party) if party > 0 else (1, None)
+        intervals: list[_Interval] = [(party, party)] if party > 0 else [(1, None)]
         groups[row.get("SeasonId")].append(
             _WorkRow(
                 id=int(row["ID"]),
@@ -182,8 +198,7 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
                 orig_from=date_from,
                 date_from=date_from,
                 date_to=date_to,
-                pmin=pmin,
-                pmax=pmax,
+                party_intervals=intervals,
                 approved=bool(row.get("IsApprove")),
             )
         )
@@ -214,13 +229,13 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
                 if item.date_from > winner.date_to or item.date_to < winner.date_from:
                     continue
                 if (item.date_from, item.date_to) == (winner.date_from, winner.date_to):
-                    intervals = _party_remainder(item, winner)
-                    if not intervals:
+                    remainders = _subtract_party(item.party_intervals, winner.party_intervals)
+                    if not remainders:
                         alive = False
                         dropped += 1
                         break
-                    item.pmin, item.pmax = intervals[0]
-                    item.party_intervals = intervals
+                    item.party_intervals = remainders
+                    item.party_clipped = True
                     party_clipped += 1
                     continue
                 remainder = _date_remainder(item, winner)
@@ -239,7 +254,7 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
         out = dict(item.row)
         out["FromDate"] = item.date_from
         out["ToDate"] = item.date_to
-        if item.party_intervals is not None:
+        if item.party_clipped:
             out["_party_intervals"] = item.party_intervals
         out_rows.append(out)
     return OverlapResolution(

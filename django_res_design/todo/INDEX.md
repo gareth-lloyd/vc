@@ -19,11 +19,13 @@ Status icons:
 | [BUG-002](bug-002-raterule-zero-length-range.md) | `RateRule` allows zero-length date ranges | ✅ resolved |
 | [BUG-003](bug-003-raterule-poa-vs-price-contradiction.md) | `RateRule` lets `is_poa=True` coexist with a numeric price | ✅ resolved |
 | [BUG-004](bug-004-owner-approval-race.md) | Owner-approval race | ✅ resolved (promote "Watch" item) |
-| [BUG-005](bug-005-stale-bookinghold-blocks-bookings.md) | Stale `BookingHold` rows block valid bookings | ✏️ revise: prefer sweeper + opportunistic expire |
+| [BUG-005](bug-005-stale-bookinghold-blocks-bookings.md) | Stale `BookingHold` rows block valid bookings | ✏️ revise: prefer sweeper + opportunistic expire — see 2026-06-10 addendum (`place()` IntegrityError→500 window) |
 | [BUG-006](bug-006-payment-active-purpose-uniqueness.md) | `Payment.unique_active_payment_per_purpose` covers only DEPOSIT/BALANCE | ✅ resolved (three per-purpose constraints; SD hold superseded by capture) |
 | [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✅ resolved (sequence + `db_default` on E/P/R/SD; race + retry + bulk_create bypass gone) |
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ (decision-blocked) |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |
+| [BUG-010](bug-010-refund-self-approve-constraint-conflict.md) | Refund self-approve permission conflicts with the SoD constraint → IntegrityError 500 | ⬜ |
+| [BUG-011](bug-011-security-deposit-bare-valueerror-500s.md) | SD service raises bare `ValueError` → 500s; zero log events on the SD money path | ⬜ |
 
 ## 🟠 Footguns
 
@@ -38,6 +40,12 @@ Status icons:
 | [FG-007](fg-007-syncrecord-genericfk-dangling.md) | `SyncRecord` GenericFK leaves dangling rows | ✅ resolved (post_delete cleanup via registry) |
 | [FG-008](fg-008-property-timezone.md) | Property has no timezone | ✅ resolved — `PropertyLocation.timezone` + `services/timing.py` seam + REST/FE surface |
 | [FG-009](fg-009-csrf-prime-coupled-to-shell-server.md) | CSRF priming coupled to HTML-shell server — recurring dev double-login | ⬜ (low priority — not vital) |
+| [FG-010](fg-010-idempotency-races-no-db-backstop.md) | Idempotency is check-then-create with no DB backstop (meta key, `Booking.quotation_line`, over-refund aggregate) | ⬜ |
+| [FG-011](fg-011-adjustment-recompute-skips-bulk-paths.md) | `Booking.adjustment` recompute rides signals; bulk writes desync it | ⬜ |
+| [FG-012](fg-012-track-payments-view-bypasses-ledger.md) | Track-payments POST creates ledger rows straight from `request.data` (mintable SUCCEEDED, 500 on bad amount) | ⬜ |
+| [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ⬜ |
+| [FG-014](fg-014-audit-tracking-gaps.md) | Audit-tracking gaps: SecurityDeposit, Enquiry, Quotation untracked | ⬜ |
+| [FG-015](fg-015-booking-cancel-leaves-pending-payments.md) | `Booking.cancel` leaves PENDING Payment rows live | ⬜ (depends on feat/backend-review-fixes) |
 
 ## 🟡 Smells
 
@@ -50,6 +58,14 @@ Status icons:
 | [SMELL-005](smell-005-residual-property-country-charfield.md) | Verify no residual `Property.country` free-text | ❌ DROPPED — verified clean |
 | [SMELL-006](smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default | ⬜ (**upgrade to 🟠 footgun**) |
 | [SMELL-007](smell-007-occupancy-fallback-doc-claim.md) | Spec misstates legacy occupancy fallback (not "highest bracket") | ✅ resolved (doc-only) |
+| [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) fully implemented in one file | ⬜ |
+| [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
+| [SMELL-010](smell-010-error-signalling-forks.md) | Three coexisting error-signalling patterns in the service layer | ⬜ |
+| [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
+| [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
+| [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ (doc-only) |
+| [SMELL-014](smell-014-quotation-synthesised-row-guard-structural.md) | Synthesised `booking-` quotation rows: make the exclusion structural | ⬜ |
+| [SMELL-015](smell-015-comms-smtp-no-transient-retry.md) | Email send marks FAILED on any SMTP error; no transient retry | ⬜ |
 
 ## Open product questions
 
@@ -70,6 +86,7 @@ Status icons:
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ split into audit-retention vs PII-retention |
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
 | [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
+| [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
 
 Q-012 was resolved (Payment gateway → Flywire).
 

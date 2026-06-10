@@ -24,6 +24,7 @@ from core.exceptions import DomainError, ReadOnlyHold
 from properties.models import Property
 from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS
 from reservations.serializers.availability import (
+    AvailabilityBookingSerializer,
     AvailabilityBulkBlockSerializer,
     AvailabilityExtendHoldSerializer,
     AvailabilityRecordSerializer,
@@ -182,13 +183,18 @@ class AvailabilityDetailView(generics.GenericAPIView):
 
 
 class AvailabilityMultiView(APIView):
-    """`GET /availability` — multi-villa lookup."""
+    """`GET /availability` — multi-villa timeline bands.
+
+    Returns the live operator holds (`records`) and occupying bookings
+    (`bookings`) overlapping the window, across up to 50 properties — one
+    page of the combined availability view.
+    """
 
     permission_classes = [IsStaff]
 
-    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        from reservations.models.booking import BookingHold
+    MAX_PROPERTY_IDS = 50
 
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         ids_param = request.query_params.get("property_ids", "")
         property_ids = [int(part) for part in ids_param.split(",") if part.strip().isdigit()]
         range_start = _parse_date(request.query_params.get("from"))
@@ -202,13 +208,22 @@ class AvailabilityMultiView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        holds = BookingHold.objects.filter(
-            property_id__in=property_ids,
-            released_at__isnull=True,
-            date_to__gt=range_start,
-            date_from__lt=range_end,
+        if len(property_ids) > self.MAX_PROPERTY_IDS:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": f"`property_ids` accepts at most {self.MAX_PROPERTY_IDS} ids",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        holds, bookings = AvailabilityService.multi(property_ids, range_start, range_end)
+        return Response(
+            {
+                "records": AvailabilityRecordSerializer(holds, many=True).data,
+                "bookings": AvailabilityBookingSerializer(bookings, many=True).data,
+            }
         )
-        return Response({"records": AvailabilityRecordSerializer(holds, many=True).data})
 
 
 class AvailabilitySearchView(APIView):

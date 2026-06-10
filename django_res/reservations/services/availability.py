@@ -138,6 +138,33 @@ class AvailabilityService:
         )
 
     @classmethod
+    def multi(
+        cls,
+        property_ids: Iterable[int],
+        date_from: date,
+        date_to: date,
+    ) -> tuple[Any, Any]:
+        """Range bands for the multi-villa timeline: `(holds_qs, bookings_qs)`.
+
+        Returns the raw overlapping intervals (not per-day cells) across the
+        requested properties, via the canonical predicates. Holds linked to a
+        booking are excluded — the deposit-pending state has both a live hold
+        and an occupying Booking row for the same stay, and the timeline must
+        paint one band, not two.
+        """
+        ids = list(property_ids)
+        holds = BookingHold.live_overlapping(
+            date_from=date_from,
+            date_to=date_to,
+        ).filter(property_id__in=ids, booking_id__isnull=True)
+        bookings = (
+            Booking.objects.occupying(date_from=date_from, date_to=date_to)
+            .filter(property_id__in=ids)
+            .select_related("guest")
+        )
+        return holds, bookings
+
+    @classmethod
     def is_available(
         cls,
         property: Any,

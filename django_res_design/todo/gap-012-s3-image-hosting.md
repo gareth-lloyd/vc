@@ -2,10 +2,11 @@
 
 **Severity:** gap (blocks any non-toy image use on staging/prod).
 
-**Status:** ⬜ open — specced, ready to build. Work branch
-`feat/s3-image-hosting` (worktree
-`../villacollective-worktrees/s3-image-hosting/`). **Bucket already created**
-(see Infrastructure below).
+**Status:** 🟨 in progress — **PR-A built** (storage settings, multipart
+upload, `image_url` read path, `UploadTicket` dropped, `post_delete` cleanup,
+FE file picker) on branch `feat/s3-image-hosting` (worktree
+`../villacollective-worktrees/s3-image-hosting/`). Bucket created. Remaining:
+PR-B (legacy import + prod cutover) and the ops prerequisites below.
 
 **Source:** ad-hoc request 2026-06-08 ("proper S3-bucket-based image hosting
 for staging and prod"). An earlier revision of this doc specced **Cloudflare
@@ -164,12 +165,15 @@ set its keys as Render env vars per service. Do not ship the
 
 ## Open decisions (settle at implementation time)
 
-- **A — `seed_dev` writes to S3 on staging.** With S3 as staging's default
-  storage, every `seed_dev` run uploads the committed demo image pool. The
-  pool is small and `AWS_S3_FILE_OVERWRITE=False` suffixes duplicates, so the
-  simplest acceptable answer may be "let it" — but check the seeder doesn't
-  balloon the `staging/` prefix across repeated runs (delete-and-reseed, or
-  deterministic filenames).
+- **A — `seed_dev` writes to S3 on staging. ✅ resolved (2026-06-10): let
+  it.** Each run is ~270 PUTs (default `--scale small`: 30 properties × ~9
+  images from the 11 MB committed pool), adding ~10–30 s; `file_overwrite`
+  False suffixes repeated filenames, so the `staging/` prefix grows
+  monotonically — pennies/month. Hygiene rule: when resetting the staging DB,
+  also wipe the prefix (`aws s3 rm --recursive
+  s3://villacollective-images/staging/`) — safe because rows and objects reset
+  together. Rows seeded *before* the S3 flip point at objects that never
+  reached S3, so reset + reseed staging once after the cutover deploy.
 - **B — Prod cutover ordering.** Once prod's storage flips to S3, every
   legacy row's URL points at S3 immediately, but binaries aren't there until
   `import_legacy_images` runs (needs the `--source` ops prerequisite). **Run

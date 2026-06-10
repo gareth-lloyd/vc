@@ -237,7 +237,13 @@ When staff want **editable** rows for a year — an owner returned real numbers,
 hand-tune the guide before confirming — `pricing.services.RateCarryoverService.materialise(
 property, *, target_year, currency, date_map=…, uplift=…)` clones the anchor year into real
 `RatePlan` / `RateCard` / `RateRule` rows, reusing the same `date_map` + `uplift` as projection
-so the materialised rows match the guide a quote would have shown. It is idempotent per
+so the materialised rows match the guide a quote would have shown. Date-mapping can land
+adjacent source ranges on top of each other (a leap-year span crossing Feb 29; the weekday map
+shifting neighbours in opposite directions); rules claim date space in ascending source-pk
+order — the same precedence `pick_rule_for_night` gives colliding in-memory projected rules —
+with later rules keeping every remainder segment around earlier claims (a mid-punched rule
+splits into two rows). The materialised plan therefore prices every night exactly as the
+projection would have, and `raterule_no_overlap` can never fire. It is idempotent per
 `(property, currency, target_year)` (a plan already starting in that year is returned
 untouched), records provenance in `RatePlan.notes`, and raises `NoRateAvailable` when there is
 no prior year to carry from. Materialised rows are ordinary editable rules staff then

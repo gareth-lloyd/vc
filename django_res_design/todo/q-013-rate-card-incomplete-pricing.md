@@ -49,6 +49,12 @@ evidence settled it (follow-legacy-for-customer-facing rule):
   (`manual_only` pins the checkbox), the cart auto-expands the new line
   onto its total/reason inputs once, and the existing staged-line
   validation (total > 0 + non-blank reason) gates Save.
+- **Review hardening:** `currency_code` resolution is scoped to
+  `no_rate_available` entries only (other error codes render collapsed,
+  never show a currency, and skip the queries); the flagged card carries
+  an `aria-label` and its badge is keyboard-focusable so the
+  `error_detail` tooltip opens on focus; the cart's seen-ids set prunes
+  removed lines, so a removed-then-re-staged villa auto-expands again.
 
 ## Accepted behaviours (not bugs)
 

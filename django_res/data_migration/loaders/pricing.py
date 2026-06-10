@@ -17,8 +17,10 @@ Strategy:
 - One RatePlan per VillaSeason. Currency comes from the season's own
   non-NULL VillaSeasonRate rows (most recent first); a season with only
   NULL/0 CurrencyId rows falls back to the villa's other non-NULL rate rows,
-  then the canonical `resolve_property_currency` chain (settings → EUR) —
-  never `Currency.objects.first()` (GAP-014 step 0).
+  then settings → EUR — never `Currency.objects.first()` (GAP-014 step 0),
+  and never `resolve_property_currency`, whose plans-first step reads the
+  very table this loader populates (load-order dependent, and a wrong stamp
+  would re-resolve from itself forever on idempotent re-runs).
 - effective_from/to from min/max of VillaSeasonDates rows.
 - One default RateCard per RatePlan (named after the season).
 - One RateRule per VillaSeasonRate. priority=row.Id ensures the EXCLUDE
@@ -34,7 +36,7 @@ from typing import Any
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
 from pricing.models.rate import RateCard, RatePlan, RateRule
-from pricing.services.currency import resolve_property_currency
+from pricing.services.currency import default_currency, settings_currency
 from properties.models.property import Property
 
 
@@ -87,7 +89,10 @@ class RatePlanLoader(BaseLoader):
                 legacy_id=str(row.get("VillaCurrencyId") or "")
             ).first()
         if currency is None:
-            currency = resolve_property_currency(prop)
+            # Settings → EUR only: `resolve_property_currency`'s plans-first
+            # step would read the RatePlan rows this loader writes, so a
+            # mis-stamped currency could never self-correct on a re-run.
+            currency = settings_currency(prop) or default_currency()
             if currency is None:
                 return None
         effective_from = row.get("DateFrom") or date(2020, 1, 1)

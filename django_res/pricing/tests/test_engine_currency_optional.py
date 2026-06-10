@@ -137,6 +137,29 @@ def test_projection_anchors_on_post_switch_currency(
 
 
 @pytest.mark.django_db
+def test_projection_ignores_future_dated_plan_currency(
+    property_: Property, gbp: Currency, eur: Currency
+) -> None:
+    """A scheduled currency switch (future-dated EUR plan) must not steer the
+    projection currency for a stay before the switch: the GBP plan in effect
+    today anchors the projection, where resolving EUR would find no anchor
+    and raise NoRateAvailable for a perfectly priceable villa."""
+    _priced_plan(property_, gbp, 2025)
+    future = _priced_plan(property_, eur, 2026, nightly="300.00")
+    future.effective_from = date(2026, 9, 1)  # after today (2026-06-10)
+    future.save(update_fields=["effective_from"])
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 5),
+        date_to=date(2026, 6, 12),
+        party=2,
+    )
+    assert quote.is_projected is True
+    assert quote.currency_code == "GBP"
+    assert quote.breakdown["projection"]["source_year"] == 2025
+
+
+@pytest.mark.django_db
 def test_no_plans_at_all_raises_no_rate_available(property_: Property, eur: Currency) -> None:
     with pytest.raises(NoRateAvailable):
         PricingEngine.quote(

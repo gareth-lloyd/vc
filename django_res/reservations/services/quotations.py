@@ -37,7 +37,13 @@ class QuotationService:
     """Orchestrate quotation creation off the back of an enquiry."""
 
     @classmethod
-    def price_line(cls, quotation: Quotation, line: QuotationLine) -> QuotationLine:
+    def price_line(
+        cls,
+        quotation: Quotation,
+        line: QuotationLine,
+        *,
+        currency: Currency | None = None,
+    ) -> QuotationLine:
         """Run the PricingEngine for a line and persist its total + snapshot.
 
         The single source of truth for line pricing — both the
@@ -45,15 +51,20 @@ class QuotationService:
         `QuotationLineViewSet` path funnel through here so a line is priced
         identically however it's created. Manual-override lines must not be
         passed in; the caller decides whether to reprice.
+
+        `currency=None` prices in the rate plan's own currency (GAP-014) —
+        right for first pricing. Repricing an existing line must PIN its
+        currency: the engine then exact-matches it and a plan-currency switch
+        fails loud (`NoRateAvailable`) instead of silently re-denominating a
+        line the guest may already hold (mirrors FG-001's `modify_dates`).
         """
         party = line.adults + line.children
-        # No currency argument: the engine prices in the rate plan's own
-        # currency (GAP-014) and the line records which one it priced in.
         quote = PricingEngine.quote(
             property=line.property,
             date_from=line.date_from,
             date_to=line.date_to,
             party=party,
+            currency=currency,
         )
         gross = quote.total.quantize(Decimal("0.01"))
         line.currency = Currency.objects.get(code=quote.currency_code)
@@ -161,9 +172,8 @@ class QuotationService:
             adults = int(line_input.get("adults", enquiry.adults))
             children = int(line_input.get("children", enquiry.children))
             is_manual = bool(line_input.get("is_manual", False))
-            currency = line_input.get("currency") or resolve_property_currency(
-                line_input["property"]
-            )
+            supplied_currency = line_input.get("currency")
+            currency = supplied_currency or resolve_property_currency(line_input["property"])
             if currency is None:
                 raise ValidationError(
                     "No currency resolvable for this property — configure a rate "
@@ -187,8 +197,10 @@ class QuotationService:
             line = QuotationLine.objects.create(**create_kwargs)
             # Only non-manual lines are priced — mirror the API `_reprice`
             # guard so a manual line keeps its operator total either way.
+            # An explicitly supplied currency is pinned (exact match, loud
+            # failure); a defaulted one lets the plan's currency win.
             if not is_manual:
-                cls.price_line(quotation, line)
+                cls.price_line(quotation, line, currency=supplied_currency)
             cls.sync_line_hold(line)
 
         # Move the enquiry forward. The service-layer path is the in-app

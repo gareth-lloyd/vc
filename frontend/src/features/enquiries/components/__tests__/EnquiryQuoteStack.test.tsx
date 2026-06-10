@@ -62,9 +62,11 @@ describe("EnquiryQuoteStack", () => {
     expect(screen.getByText("£1,000.00 – £1,500.00")).toBeInTheDocument();
   });
 
-  it("formats a mixed-currency range with each endpoint's own currency", () => {
-    // Lines price in their own currency (GAP-014) — the range endpoints keep
-    // their line's symbol rather than borrowing a header currency.
+  it("ranges mixed-currency lines per currency, never across them", () => {
+    // Lines price in their own currency (GAP-014). Amounts in different
+    // currencies aren't comparable — £900 may well exceed €1,200 — so each
+    // currency gets its own (here single-value) figure instead of one
+    // numeric min–max spanning both.
     renderWithProviders(
       <EnquiryQuoteStack
         quotations={[
@@ -80,7 +82,29 @@ describe("EnquiryQuoteStack", () => {
       />,
     );
 
-    expect(screen.getByText("£900.00 – €1,200.00")).toBeInTheDocument();
+    expect(screen.getByText("£900.00 · €1,200.00")).toBeInTheDocument();
+  });
+
+  it("keeps equal amounts in different currencies distinct", () => {
+    // A naive numeric tie would collapse to one figure and silently hide the
+    // other currency's option.
+    renderWithProviders(
+      <EnquiryQuoteStack
+        quotations={[
+          makeQuote({
+            id: 15,
+            reference: "QVC15",
+            lines: [
+              { id: 6, total: "1000.00", currency: "GBP" },
+              { id: 7, total: "1000.00", currency: "EUR" },
+              { id: 8, total: "1500.00", currency: "GBP" },
+            ] as QuotationDetail["lines"],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("£1,000.00 – £1,500.00 · €1,000.00")).toBeInTheDocument();
   });
 
   it("shows a single price when a quote has one priced line", () => {

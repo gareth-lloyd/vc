@@ -29,7 +29,7 @@ from core.console import render_table
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from pricing.models.currency import Currency
 from pricing.models.rate import RatePlan
-from pricing.services.currency import default_currency
+from pricing.services.currency import default_currency, settings_currency
 
 # Seasons whose own rate rows carry no usable currency, plus the villa-level
 # inference the loader applies (the villa's most recent non-NULL row).
@@ -59,12 +59,11 @@ def _expected_resolution(plan: RatePlan, villa_currency_id: Any) -> tuple[str, C
         villa_currency = Currency.objects.filter(legacy_id=str(villa_currency_id)).first()
         if villa_currency is not None:
             return "villa-rates", villa_currency
-    try:
-        settings_currency = plan.property.settings.effective("currency")
-    except Exception:
-        settings_currency = None
-    if settings_currency is not None:
-        return "settings", settings_currency
+    # Same helper the loader's fallback uses (settings chain incl. the
+    # group fallback) so the audit can never drift from the chain it audits.
+    configured = settings_currency(plan.property)
+    if configured is not None:
+        return "settings", configured
     return "eur-default", default_currency()
 
 

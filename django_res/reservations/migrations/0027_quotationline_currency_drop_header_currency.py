@@ -1,6 +1,10 @@
 # GAP-014: currency moves from the Quotation header to each line (legacy
 # parity — `VillaQuotationDetails.CurrencyId`; the master table had none).
 # Pre-cutover: the backfill covers dev/staging rows only.
+#
+# Deliberately irreversible (no RunPython reverse): reversing RemoveField
+# would re-add the non-null header FK to a populated table with no data to
+# fill it — Django refusing loudly beats a NotNullViolation mid-rollback.
 
 from __future__ import annotations
 
@@ -36,7 +40,7 @@ class Migration(migrations.Migration):
                 to="pricing.currency",
             ),
         ),
-        migrations.RunPython(backfill_line_currency, migrations.RunPython.noop),
+        migrations.RunPython(backfill_line_currency),
         migrations.AlterField(
             model_name="quotationline",
             name="currency",

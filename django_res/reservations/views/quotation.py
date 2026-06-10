@@ -59,9 +59,10 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             "agent",
         )
         # The detail serializer nests `lines`, each of which derives a
-        # hero_image_url from its property's images — prefetch the whole
-        # walk so a quotation with N lines stays at a constant query count.
-        .prefetch_related("lines__property__images")
+        # hero_image_url from its property's images and renders its own
+        # currency code (GAP-014) — prefetch the whole walk so a quotation
+        # with N lines stays at a constant query count.
+        .prefetch_related("lines__property__images", "lines__currency")
     )
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter
@@ -320,6 +321,21 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         read = QuotationLineSerializer(serializer.instance)
         return Response(read.data)
 
+    @staticmethod
+    def _default_line_currency(property: Any) -> Any:
+        """Canonical line-currency default (GAP-014), or a 400."""
+        currency = resolve_property_currency(property)
+        if currency is None:
+            raise DRFValidationError(
+                {
+                    "currency": [
+                        "No currency resolvable for this property — supply one "
+                        "or configure a rate plan / settings currency."
+                    ]
+                }
+            )
+        return currency
+
     def perform_create(self, serializer: Any) -> None:
         # Line + reprice + hold share one transaction: a `HoldUnavailable`
         # (dates already held by another live quote) rolls the line back too,
@@ -327,23 +343,19 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
             extra: dict[str, Any] = {"quotation": quotation}
-            if serializer.validated_data.get("currency") is None:
+            currency_supplied = serializer.validated_data.get("currency") is not None
+            if not currency_supplied:
                 # Canonical default (GAP-014); priced lines are re-stamped from
                 # the engine result in `_reprice` anyway — this is the manual-
                 # line (and pre-pricing) default, never blank.
-                currency = resolve_property_currency(serializer.validated_data["property"])
-                if currency is None:
-                    raise DRFValidationError(
-                        {
-                            "currency": [
-                                "No currency resolvable for this property — supply one "
-                                "or configure a rate plan / settings currency."
-                            ]
-                        }
-                    )
-                extra["currency"] = currency
+                extra["currency"] = self._default_line_currency(
+                    serializer.validated_data["property"]
+                )
             line = serializer.save(**extra)
-            self._reprice(line)
+            # An explicitly supplied currency is pinned: the engine exact-
+            # matches it (loud NoRateAvailable on a plan-currency mismatch);
+            # a defaulted one lets the plan's own currency win.
+            self._reprice(line, currency=line.currency if currency_supplied else None)
             QuotationService.sync_line_hold(line)
 
     def perform_update(self, serializer: Any) -> None:
@@ -353,20 +365,38 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         # row. Then re-sync the hold so an edited date range relocates the
         # line's existing hold instead of leaving it on the old dates.
         with transaction.atomic():
+            old_property_id = serializer.instance.property_id
+            currency_supplied = serializer.validated_data.get("currency") is not None
             line = serializer.save()
-            self._reprice(line)
+            property_changed = line.property_id != old_property_id
+            if property_changed and not currency_supplied and line.is_manual:
+                # Currency follows the new property unless explicitly supplied.
+                # Priced lines are re-stamped by the unpinned reprice below;
+                # manual lines (which `_reprice` skips) re-default here so a
+                # re-anchored line can't keep the old villa's currency.
+                line.currency = self._default_line_currency(line.property)
+                line.save(update_fields=["currency", "updated_at"])
+            # Pin the line's currency on reprice so an edit (notes, discount,
+            # dates) can never silently re-denominate it — a plan-currency
+            # switch fails loud instead. A property change releases the pin:
+            # the new villa's own plan currency should win.
+            pin = None if (property_changed and not currency_supplied) else line.currency
+            self._reprice(line, currency=pin)
             QuotationService.sync_line_hold(line)
 
     # No perform_destroy override: the `QuotationLine` pre_delete signal
     # releases the line's live holds on every delete path (API, ORM, cascade).
 
-    def _reprice(self, line: QuotationLine) -> None:
+    def _reprice(self, line: QuotationLine, *, currency: Any = None) -> None:
         """Recompute a non-manual line's total + pricing_snapshot.
 
         Manual-override lines (`is_manual=True`) keep whatever total /
         pricing_snapshot the operator supplied — the manual-override write
         surface is a later phase, so for now a manual line is simply left
         untouched here.
+
+        `currency` pins the engine to an exact-match reprice (GAP-014 / FG-001
+        semantics); `None` prices in the plan's own currency.
 
         Per FG-006 we re-read the row under `select_for_update` inside a
         transaction before repricing, so a concurrent write to the same line
@@ -380,7 +410,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
                 .select_related("property", "quotation")
                 .get(pk=line.pk)
             )
-            QuotationService.price_line(locked.quotation, locked)
+            QuotationService.price_line(locked.quotation, locked, currency=currency)
         # Reflect the persisted price back onto the serializer's instance so
         # the response (built from it) carries the server-computed values —
         # including any changeover-shifted dates (GAP-007) and the currency

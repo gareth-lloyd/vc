@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 from core.exceptions import NoRateAvailable
 from pricing.models import Currency, FxRate, RatePlan
@@ -57,8 +58,10 @@ def pick_preferred_plan(plans: Sequence[RatePlan], property: Any) -> RatePlan | 
 def resolve_property_currency(property: Any) -> Currency | None:
     """Canonical currency resolution for a property (GAP-014).
 
-    1. the property's rate plans — most recent `effective_from` wins (after a
-       currency switch this is the villa's *current* currency);
+    1. the property's rate plans with `effective_from` on/before today — the
+       most recent wins (after a currency switch this is the villa's *current*
+       currency; a pre-loaded future-dated plan — a scheduled switch — must
+       not dictate today's currency);
     2. else the `PropertySettings.effective("currency")` chain (property,
        falling back to its group);
     3. else EUR via `default_currency()`.
@@ -67,7 +70,11 @@ def resolve_property_currency(property: Any) -> Currency | None:
     loaders, and manual quotation lines so the fallback can never drift.
     """
     plans = list(
-        RatePlan.objects.filter(property=property, is_active=True)
+        RatePlan.objects.filter(
+            property=property,
+            is_active=True,
+            effective_from__lte=timezone.localdate(),
+        )
         .order_by("-effective_from", "-pk")
         .select_related("currency")
     )

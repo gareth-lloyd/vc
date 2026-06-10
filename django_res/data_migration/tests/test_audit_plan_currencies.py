@@ -84,6 +84,22 @@ def test_settings_resolution_is_ok_and_not_flagged(prop: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_group_settings_resolution_is_ok_not_a_false_blocker(prop: Property) -> None:
+    """A villa with no PropertySettings row resolves via its group's settings
+    (the same `settings_currency` chain the loader uses) — the audit must
+    classify that as settings/OK, not expect the EUR default and BLOCKER."""
+    gbp = Currency.objects.create(code="GBP", name="Pound", symbol="£", legacy_id="1")
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    group_settings = prop.group.settings
+    group_settings.currency = gbp
+    group_settings.save()
+    _plan(prop, gbp)
+    result = audit_null_currency_seasons([_row()])
+    assert result.blockers == []
+    assert result.rows[0][2:] == ("settings", "GBP", "OK")
+
+
+@pytest.mark.django_db
 def test_eur_default_remainder_is_listed_for_sign_off(prop: Property) -> None:
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
     _plan(prop, eur)

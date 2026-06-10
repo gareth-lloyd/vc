@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import Currency
+from pricing.models import Currency, RateCard, RatePlan, RateRule
 from properties.enums import PrefilledChangeOverDay
 from properties.models import Property
 from properties.models.settings import PropertySettings
@@ -449,6 +449,114 @@ def test_update_line_reprices(
     assert line.total == Decimal("1400.00")
     assert line.pricing_snapshot != {}
     assert Decimal(str(patch.data["total"])) == Decimal("1400.00")
+
+
+def _priced_plan_in(
+    property_: Property, currency: Currency, effective_from: date, nightly: str
+) -> RatePlan:
+    plan = RatePlan.objects.create(
+        property=property_,
+        name=f"{currency.code} plan",
+        currency=currency,
+        effective_from=effective_from,
+        effective_to=date(2026, 12, 31),
+    )
+    card = RateCard.objects.create(plan=plan, name="Default", sort_order=0)
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal(nightly),
+    )
+    return plan
+
+
+@pytest.mark.django_db
+def test_patch_pins_currency_against_a_newer_plan_in_another_currency(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    gbp: Currency,
+) -> None:
+    """An edit must never silently re-denominate a priced line (GAP-014 /
+    FG-001): after the villa activates a newer EUR plan, a notes-style PATCH
+    repriced WITHOUT a pin would flip the line to EUR — the pin exact-matches
+    the line's own GBP instead."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    assert line.currency == gbp
+
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    # Newer effective_from — an unpinned reprice would prefer this plan.
+    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"adults": 3},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    line.refresh_from_db()
+    assert line.currency == gbp
+    assert line.total == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_patch_fails_loud_when_pinned_currency_no_longer_priceable(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    plan: RatePlan,
+    gbp: Currency,
+) -> None:
+    """If the villa's plan currency switched outright, a reprice of an
+    existing line raises instead of silently changing what the guest pays in."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+
+    plan.is_active = False
+    plan.save(update_fields=["is_active"])
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"adults": 3},
+        format="json",
+    )
+    assert patch.status_code == 409, patch.data
+    line.refresh_from_db()
+    assert line.currency == gbp  # unchanged — the failed reprice rolled back
 
 
 @pytest.mark.django_db

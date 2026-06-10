@@ -60,6 +60,26 @@ def test_same_effective_from_tie_breaks_on_newest_row(
 
 
 @pytest.mark.django_db
+def test_future_dated_plan_does_not_dictate_todays_currency(
+    property_: Property, gbp: Currency, eur: Currency
+) -> None:
+    """A pre-loaded next-year plan (scheduled currency switch) must not win
+    over the plan actually in effect today."""
+    _plan(property_, eur, 2025)
+    _plan(property_, gbp, date.today().year + 1)
+    assert resolve_property_currency(property_) == eur
+
+
+@pytest.mark.django_db
+def test_only_future_plans_fall_through_to_settings(
+    property_: Property, gbp: Currency, eur: Currency
+) -> None:
+    _plan(property_, gbp, date.today().year + 1)
+    PropertySettings.objects.create(property=property_, currency=eur)
+    assert resolve_property_currency(property_) == eur
+
+
+@pytest.mark.django_db
 def test_settings_currency_when_no_plans(property_: Property, gbp: Currency, eur: Currency) -> None:
     PropertySettings.objects.create(property=property_, currency=gbp)
     assert resolve_property_currency(property_) == gbp

@@ -96,3 +96,26 @@ def test_row_skipped_when_nothing_resolves(loaded_property: Property) -> None:
     Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="1")
     # No EUR row, no settings, no usable legacy currency → skip, don't guess.
     assert RatePlanLoader().transform(_row()) is None
+
+
+@pytest.mark.django_db
+def test_fallback_ignores_previously_loaded_plans(loaded_property: Property) -> None:
+    """Re-run convergence: the fallback must not read the RatePlan table this
+    loader populates. A run-1 mis-stamp (EUR) would otherwise re-resolve from
+    itself forever; a since-fixed PropertySettings (GBP) must win instead."""
+    from pricing.models.rate import RatePlan
+
+    gbp = Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="1")
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    RatePlan.objects.create(
+        property=loaded_property,
+        name="High Season",
+        currency=eur,  # the run-1 stamp the re-run must NOT echo
+        effective_from=date(2025, 1, 1),
+        effective_to=date(2025, 12, 31),
+        legacy_id="1",
+    )
+    PropertySettings.objects.create(property=loaded_property, currency=gbp)
+    kwargs = RatePlanLoader().transform(_row())
+    assert kwargs is not None
+    assert kwargs["currency"] == gbp

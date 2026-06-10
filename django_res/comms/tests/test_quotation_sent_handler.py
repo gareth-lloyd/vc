@@ -113,8 +113,12 @@ def test_quotation_sent_email_contains_line_and_total(
     log = EmailLog.objects.get(template_key="quotation.sent")
     expected_name = property_.display_name or property_.name
     assert expected_name in log.rendered_body_html
-    assert "1,234.00" in log.rendered_body_html
+    # Per-line currency (GAP-014): the template renders each line in its own
+    # code — a header-level `currency_code` no longer exists, so a bare total
+    # (or "Total ()") means the template drifted from the render context.
+    assert "GBP 1,234.00" in log.rendered_body_html
+    assert "Total ()" not in log.rendered_body_html
     assert quotation_with_line.reference in log.rendered_subject
     # Plaintext alternative carries the quote too.
     assert expected_name in log.rendered_body
-    assert "1,234.00" in log.rendered_body
+    assert "GBP 1,234.00" in log.rendered_body

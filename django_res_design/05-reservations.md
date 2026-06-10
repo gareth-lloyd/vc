@@ -382,7 +382,11 @@ Semantics:
   symmetrically); FIXED commission passes charges to the owner in full.
   Computed read-side by `reservations.services.charges.owner_effect` and
   layered onto the serializer's `net_to_owner`; tax never recomputed (charges
-  are entered gross).
+  are entered gross). The owner portal applies the same effect via
+  `owner_finance.owner_money_for_booking` (booking detail + dashboard YTD
+  net), so staff and owner surfaces always agree. Percent security deposits
+  size against the charges-inclusive total at creation (see GAP-019 for the
+  no-resync caveat).
 - **State gate:** writes allowed in exactly `ACTIVE_BOOKING_STATUSES`
   (including CHECKED_IN — mid-stay charges are a core use case); DRAFT /
   PENDING_OWNER_APPROVAL / terminal → 409.

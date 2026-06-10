@@ -309,7 +309,14 @@ class SecurityDepositService:
             return Decimal("0.00")
         value = Decimal(str(amount))
         if policy.get("calculation_type") == SecurityDepositCalcType.PERCENT.value:
-            base = Decimal(str(getattr(booking, "balance_due", 0)))
+            # Late import — `PaymentScheduler` lives in another module in
+            # this package and late-imports this one (create_for_booking).
+            from payments.services.payment_scheduler import PaymentScheduler
+
+            # The same charges-inclusive total the deposit/balance schedule
+            # sizes against — a percent SD on bare `balance_due` would
+            # silently undersize once manual charges exist.
+            base = PaymentScheduler._booking_total(booking)
             return (base * value / Decimal(100)).quantize(Decimal("0.01"))
         return value.quantize(Decimal("0.01"))
 

@@ -56,6 +56,40 @@ def test_create_for_booking__is_idempotent(booking: Any, property_: Any) -> None
     assert SecurityDeposit.objects.filter(booking=booking).count() == 1
 
 
+@pytest.mark.django_db
+def test_create_for_booking__percent_base_includes_charge_items(
+    booking: Any, property_: Any, gbp: Any
+) -> None:
+    """A percent SD sizes against the same charges-inclusive total the
+    deposit/balance schedule uses — not bare `balance_due`. 10% of
+    (1400 + 200) = 160, not 140.
+    """
+    from properties.models.finance import GroupFinance, PropertyFinance
+    from reservations.models import Booking, BookingChargeItem
+
+    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
+    gf.security_deposit_required = True
+    gf.security_deposit_amount = Decimal("10.00")
+    gf.security_deposit_calculation_type = "percent"
+    gf.save(
+        update_fields=[
+            "security_deposit_required",
+            "security_deposit_amount",
+            "security_deposit_calculation_type",
+        ]
+    )
+    PropertyFinance.objects.get_or_create(property=property_)
+    booking = Booking.objects.get(pk=booking.pk)
+    BookingChargeItem.objects.create(
+        booking=booking, label="Heating", amount=Decimal("200.00"), currency=gbp
+    )
+
+    sd = SecurityDepositService.create_for_booking(booking)
+
+    assert sd is not None
+    assert sd.amount == Decimal("160.00")
+
+
 @pytest.fixture
 def pre_auth_sd(db: None, booking: Any, gbp: Any) -> SecurityDeposit:
     return SecurityDeposit.objects.create(

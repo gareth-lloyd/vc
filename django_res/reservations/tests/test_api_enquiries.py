@@ -679,3 +679,36 @@ def test_enquiry_status_counts__groups_by_status(
 
     assert response.status_code == 200
     assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.LOST.value: 1}
+
+
+@pytest.mark.django_db
+def test_enquiry_convert_rejects_foreign_quotation(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    gbp: Currency,
+    terms: TermsVersion,
+    guest: Guest,
+) -> None:
+    """`:convert` must only accept a quotation belonging to *this* enquiry —
+    citing another enquiry's quote would mark this one converted with an
+    audit pointer at an unrelated quotation."""
+    enquiry.contact()
+    other_enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    foreign_quotation = Quotation.objects.create(
+        enquiry=other_enquiry,
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:convert",
+        {"quotation": foreign_quotation.pk},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    enquiry.refresh_from_db()
+    assert enquiry.status != EnquiryStatus.CONVERTED.value

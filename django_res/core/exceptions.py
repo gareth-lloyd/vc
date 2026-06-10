@@ -62,6 +62,17 @@ class ReadOnlyHold(DomainError):
     code = "read_only_hold"
 
 
+class QuotationLocked(DomainError):
+    """The quotation is past the point where it can be edited or deleted.
+
+    ACCEPTED/EXPIRED/CANCELLED quotations are closed records — the terms the
+    guest accepted (or the dead quote's audit shape) must not drift after the
+    fact. DRAFT and SENT remain editable (pre-acceptance renegotiation).
+    """
+
+    code = "quotation_locked"
+
+
 class OverlappingBooking(DomainError):
     code = "overlapping_booking"
 

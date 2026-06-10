@@ -122,6 +122,43 @@ def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) 
         )
 
 
+def _expire_payments_on_booking_expired(
+    sender: Any,
+    *,
+    booking: Any,
+    **_: Any,
+) -> None:
+    """Expire a booking's leftover PENDING payments when the booking expires.
+
+    `reservations.tasks.expire_bookings` ages out AWAITING_DEPOSIT bookings;
+    their unpaid DEPOSIT/BALANCE rows must follow, both to keep the ledger
+    honest and to free the active-per-purpose constraint slots. Lives here
+    (not in reservations) because the spine forbids reservations → payments.
+    """
+    from reservations.enums import BookingStatus
+
+    if booking.status != BookingStatus.EXPIRED.value:
+        return
+
+    from payments.enums import EventSource, PaymentPurpose, PaymentStatus
+    from payments.models.payment import Payment
+
+    pending = Payment.objects.filter(
+        booking=booking,
+        status=PaymentStatus.PENDING.value,
+        purpose__in=(
+            PaymentPurpose.DEPOSIT.value,
+            PaymentPurpose.BALANCE.value,
+        ),
+    )
+    for payment in pending:
+        payment.transition_to(
+            PaymentStatus.EXPIRED.value,
+            source=EventSource.SYSTEM.value,
+            kind="BOOKING_EXPIRED",
+        )
+
+
 def _sync_refund_on_outbound_payment(sender: Any, *, payment: Any, **_: Any) -> None:
     """Advance the parent Refund when its outbound Payment terminates.
 
@@ -154,6 +191,10 @@ def _register() -> None:
     booking_transitioned.connect(
         _schedule_payments_on_booking_confirmed,
         dispatch_uid="payments.schedule_on_booking_confirmed",
+    )
+    booking_transitioned.connect(
+        _expire_payments_on_booking_expired,
+        dispatch_uid="payments.expire_payments_on_booking_expired",
     )
     payment_succeeded.connect(
         _advance_booking_on_payment_settled,

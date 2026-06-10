@@ -25,8 +25,9 @@ const bookingFixture = {
   children: 1,
   currency: 1,
   rental_price: "1500.00",
-  balance_due: "1000.00",
+  balance_due: "2500.00",
   balance_due_at: "2026-06-01",
+  amount_paid: "1500.00",
   site_source: "main_website",
   is_archived: false,
   archived_at: null,
@@ -46,6 +47,13 @@ const bookingFixture = {
   payment_method: "card",
   cancel_reason: "",
   cancelled_at: null,
+  net_to_owner: {
+    currency_code: "GBP",
+    gross_total: "2500.00",
+    commission: "500.00",
+    tax: "0.00",
+    net_to_owner: "2000.00",
+  },
 };
 
 const activityFixture = [
@@ -98,7 +106,8 @@ describe("BookingDetailLayout", () => {
   });
 
   it("stains the rail Due tile danger when the balance is overdue", async () => {
-    const overdue = { ...bookingFixture, balance_due: "1000.00", balance_due_at: "2020-01-01" };
+    // due = total 2500 − amount_paid 1500 = 1000
+    const overdue = { ...bookingFixture, balance_due_at: "2020-01-01" };
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(overdue)));
     setup("/bookings/51/overview");
     await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
@@ -107,13 +116,39 @@ describe("BookingDetailLayout", () => {
   });
 
   it("keeps the rail Due tile warning (not danger) when not yet overdue", async () => {
-    const upcoming = { ...bookingFixture, balance_due: "1000.00", balance_due_at: "2099-01-01" };
+    const upcoming = { ...bookingFixture, balance_due_at: "2099-01-01" };
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(upcoming)));
     setup("/bookings/51/overview");
     await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
     const dueValues = screen.getAllByText("£1,000.00");
     expect(dueValues.some((el) => el.className.includes("text-warning"))).toBe(true);
     expect(dueValues.some((el) => el.className.includes("text-danger"))).toBe(false);
+  });
+
+  it("shows Paid from settled payments, never total minus balance_due", async () => {
+    // A net-priced booking: gross total 42000, net rental_price 35000, nothing
+    // paid. The old subtraction rendered the commission as "Paid £-7,000.00".
+    const netPriced = {
+      ...bookingFixture,
+      rental_price: "35000.00",
+      total: "42000.00",
+      balance_due: "42000.00",
+      amount_paid: "0.00",
+    };
+    server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(netPriced)));
+    setup("/bookings/51/overview");
+    await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("£42,000.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("£0.00").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/-7,000/)).not.toBeInTheDocument();
+  });
+
+  it("renders the commission explicitly in the financial summary", async () => {
+    server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)));
+    setup("/bookings/51/overview");
+    await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
+    expect(screen.getByText("Commission")).toBeInTheDocument();
+    expect(screen.getByText("£500.00")).toBeInTheDocument();
   });
 
   it("renders Overview content for the guest + property", async () => {
@@ -145,6 +180,21 @@ describe("BookingDetailLayout", () => {
     setup("/bookings/51/finance");
     expect(await screen.findByText(/Finance — coming in next phase/i)).toBeInTheDocument();
     expect(activityCalls).toBe(0);
+  });
+
+  it("links guest names to the contact and property names to the property", async () => {
+    server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)));
+    setup("/bookings/51/overview");
+    const guestLinks = await screen.findAllByRole("link", { name: "Ada Lovelace" });
+    expect(guestLinks.length).toBeGreaterThan(0);
+    for (const link of guestLinks) {
+      expect(link).toHaveAttribute("href", "/contacts/99");
+    }
+    const propertyLinks = screen.getAllByRole("link", { name: "Casa Norte" });
+    expect(propertyLinks.length).toBeGreaterThan(0);
+    for (const link of propertyLinks) {
+      expect(link).toHaveAttribute("href", "/properties/12/details");
+    }
   });
 
   it("falls back to placeholders when name fields are missing", async () => {

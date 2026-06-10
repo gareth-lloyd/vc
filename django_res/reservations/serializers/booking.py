@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from django.db import models
 from rest_framework import serializers
 
 from properties.models import GroupFinance, GroupSettings, PropertyFinance, PropertySettings
@@ -17,6 +18,14 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
     property_name = serializers.SerializerMethodField()
     guest_name = serializers.SerializerMethodField()
     currency_code = serializers.CharField(source="currency.code", read_only=True)
+    # `balance_due` holds the denormalised guest-facing gross total
+    # (07-payments.md) — it is *not* decremented as payments settle. Expose it
+    # under its real meaning so the FE never reconstructs the gross from
+    # net-of-commission `rental_price`.
+    total = serializers.DecimalField(
+        source="balance_due", max_digits=12, decimal_places=2, read_only=True
+    )
+    amount_paid = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -37,6 +46,8 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "currency",
             "currency_code",
             "rental_price",
+            "total",
+            "amount_paid",
             "balance_due",
             "balance_due_at",
             "site_source",
@@ -68,6 +79,21 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
         if guest is None:
             return None
         return f"{guest.first_name} {guest.last_name}".strip() or None
+
+    def get_amount_paid(self, obj: Booking) -> str:
+        """Settled rental money (SUCCEEDED deposit/balance payments).
+
+        Security-deposit holds and concierge invoices settle on their own
+        tracks and are excluded from rental maths (07-payments.md). The
+        statuses/purposes are string literals because `reservations` sits
+        below `payments` in the import spine and must not import its enums.
+        """
+        paid = getattr(obj, "amount_paid_total", None)
+        if paid is None:
+            paid = obj.payments.filter(
+                status="succeeded", purpose__in=("deposit", "balance")
+            ).aggregate(total=models.Sum("amount"))["total"]
+        return f"{paid or Decimal('0'):.2f}"
 
 
 class BookingDetailSerializer(BookingListSerializer):

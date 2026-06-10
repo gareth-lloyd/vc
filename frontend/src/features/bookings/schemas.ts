@@ -33,6 +33,7 @@ export const bookingListItemSchema = z.object({
   rental_price: z.string(),
   balance_due: z.string(),
   balance_due_at: z.string().nullable().optional(),
+  amount_paid: z.string().nullable().optional(),
   site_source: z.string(),
   is_archived: z.boolean().optional().default(false),
   archived_at: z.string().nullable().optional(),
@@ -116,6 +117,19 @@ export const bookingCommissionSchema = z
   .nullable();
 export type BookingCommission = z.infer<typeof bookingCommissionSchema>;
 
+// The owner-net block BookingDetailSerializer renders from the pricing
+// snapshot — also the staff UI's source for the explicit commission figure.
+export const bookingNetToOwnerSchema = z
+  .object({
+    currency_code: z.string().nullable(),
+    gross_total: z.string(),
+    commission: z.string(),
+    tax: z.string(),
+    net_to_owner: z.string(),
+  })
+  .nullable();
+export type BookingNetToOwner = z.infer<typeof bookingNetToOwnerSchema>;
+
 export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
@@ -128,6 +142,7 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   cancelled_at: z.string().nullable().optional(),
   owner: bookingOwnerSchema.optional(),
   commission: bookingCommissionSchema.optional(),
+  net_to_owner: bookingNetToOwnerSchema.optional(),
 });
 export type BookingDetail = z.infer<typeof bookingDetailSchema>;
 

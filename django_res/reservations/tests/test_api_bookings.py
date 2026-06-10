@@ -242,6 +242,57 @@ def test_detail_booking(api_client: APIClient, staff: User, booking: Booking) ->
 
 
 @pytest.mark.django_db
+def test_list_exposes_total_and_amount_paid(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """`total` is the guest-facing gross (the denormalised `balance_due`,
+    see 07-payments.md); `amount_paid` is real settled money — never derived
+    from `total - balance_due`, which used to render the commission as a
+    negative "Paid" figure on the FE."""
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings")
+
+    assert response.status_code == 200
+    row = response.data["results"][0]
+    assert row["total"] == "1400.00"
+    assert row["amount_paid"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_amount_paid_sums_settled_rental_payments_only(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Only SUCCEEDED deposit/balance payments count: pending rows, the
+    security-deposit hold, and concierge invoices (excluded per
+    07-payments.md outstanding-balance rules) all stay out."""
+    from payments.enums import PaymentPurpose, PaymentStatus
+    from payments.models import Payment
+
+    def pay(purpose: PaymentPurpose, status: PaymentStatus, amount: str) -> None:
+        Payment.objects.create(
+            booking=booking,
+            purpose=purpose.value,
+            status=status.value,
+            amount=Decimal(amount),
+            currency=gbp,
+        )
+
+    pay(PaymentPurpose.DEPOSIT, PaymentStatus.SUCCEEDED, "420.00")
+    pay(PaymentPurpose.BALANCE, PaymentStatus.PENDING, "980.00")
+    pay(PaymentPurpose.SECURITY_DEPOSIT, PaymentStatus.SUCCEEDED, "500.00")
+    pay(PaymentPurpose.CONCIERGE, PaymentStatus.SUCCEEDED, "100.00")
+
+    api_client.force_login(staff)
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert detail.status_code == 200
+    assert detail.data["total"] == "1400.00"
+    assert detail.data["amount_paid"] == "420.00"
+
+    listing = api_client.get("/api/v1/bookings")
+    assert listing.data["results"][0]["amount_paid"] == "420.00"
+
+
+@pytest.mark.django_db
 def test_patch_booking__updates_non_state_fields(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

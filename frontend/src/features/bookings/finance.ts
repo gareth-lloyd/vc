@@ -1,4 +1,25 @@
 import type { StatTone } from "@/components/data/StatTiles";
+import { parseMoney } from "@/lib/format/money";
+
+/**
+ * The Total / Paid / Due trio for a booking — single source for the rail
+ * tiles, the Overview tiles, and the list finance column.
+ *
+ * `total` is the guest-facing gross (`total`, with `balance_due` as fallback —
+ * the backend keeps both as the same denormalised gross, see 07-payments.md).
+ * `paid` comes from the backend's settled-payments sum and is never derived by
+ * subtraction: `total − balance_due` used to surface the agency commission as
+ * a negative "Paid" on net-priced bookings.
+ */
+export function bookingFinance(booking: {
+  total?: string | null;
+  balance_due: string;
+  amount_paid?: string | null;
+}): { total: number; paid: number; due: number } {
+  const total = parseMoney(booking.total ?? booking.balance_due);
+  const paid = parseMoney(booking.amount_paid ?? "0");
+  return { total, paid, due: total - paid };
+}
 
 /** A balance is overdue once today is past its due date. */
 export function isBalanceOverdue(balanceDueAt: string | null | undefined): boolean {

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { Link, NavLink, Outlet, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
 import { StatusBadge } from "@/components/data/StatusBadge";
@@ -8,10 +8,11 @@ import { StatTiles, type StatTileData } from "@/components/data/StatTiles";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
+import { propertyDetailsPath } from "@/lib/routes";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney, parseMoney } from "@/lib/format/money";
+import { formatMoney } from "@/lib/format/money";
 import { useBooking } from "./hooks";
-import { dueTone } from "./finance";
+import { bookingFinance, dueTone } from "./finance";
 import { BookingActions } from "./components/BookingActions";
 import type { BookingDetail } from "./schemas";
 import { BOOKING_TABS } from "./tabConfig";
@@ -19,20 +20,18 @@ import { BOOKING_TABS } from "./tabConfig";
 function RailSummary({ booking }: { booking: BookingDetail }) {
   const { t } = useTranslation("bookings");
   const currency = booking.currency_code ?? null;
-  const total = booking.total ?? booking.rental_price;
-  const paid = parseMoney(total) - parseMoney(booking.balance_due);
-  const outstanding = parseMoney(booking.balance_due);
+  const { total, paid, due } = bookingFinance(booking);
   const tiles: StatTileData[] = [
     { label: t("detail.rail.total"), value: formatMoney(total, currency) },
     {
       label: t("detail.rail.paid"),
-      value: Number.isFinite(paid) ? formatMoney(paid, currency) : "—",
+      value: formatMoney(paid, currency),
       tone: "success",
     },
     {
       label: t("detail.rail.due"),
-      value: formatMoney(booking.balance_due, currency),
-      tone: dueTone(outstanding, booking.balance_due_at),
+      value: formatMoney(due, currency),
+      tone: dueTone(due, booking.balance_due_at),
     },
   ];
   return (
@@ -40,7 +39,10 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
       <div>
         <h2 className="text-foreground font-serif text-lg font-semibold">{booking.reference}</h2>
         <p className="text-muted-foreground text-sm">
-          {booking.property_name ?? t("detail.fallback.property_with_id", { id: booking.property })}
+          <Link to={propertyDetailsPath(booking.property)} className="hover:underline">
+            {booking.property_name ??
+              t("detail.fallback.property_with_id", { id: booking.property })}
+          </Link>
         </p>
       </div>
       <StatusBadge status={booking.status} />
@@ -52,7 +54,11 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
         />
         <FactRow
           label={t("detail.rail.guest")}
-          value={booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
+          value={
+            <Link to={`/contacts/${booking.guest}`} className="hover:underline">
+              {booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
+            </Link>
+          }
         />
       </FactList>
       <BookingActions booking={booking} />
@@ -97,7 +103,13 @@ export function BookingDetailLayout() {
     <div>
       <PageHeader
         title={booking.reference}
-        subtitle={booking.property_name ?? undefined}
+        subtitle={
+          booking.property_name ? (
+            <Link to={propertyDetailsPath(booking.property)} className="hover:underline">
+              {booking.property_name}
+            </Link>
+          ) : undefined
+        }
         breadcrumbs={[
           { label: t("detail.breadcrumb_list"), to: "/bookings" },
           { label: booking.reference },

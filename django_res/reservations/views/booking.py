@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date as date_type
+from decimal import Decimal
 from typing import Any
 
-from django.db.models import Prefetch, QuerySet
+from django.db.models import DecimalField, Prefetch, Q, QuerySet, Sum, Value
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -32,6 +34,31 @@ def _parse_date(value: Any) -> date_type:
     if isinstance(value, date_type):
         return value
     return date_type.fromisoformat(str(value))
+
+
+def _with_amount_paid(qs: QuerySet[Booking]) -> QuerySet[Booking]:
+    """Annotate the settled rental sum BookingListSerializer.amount_paid reads.
+
+    Keeps list responses single-query; un-annotated instances fall back to a
+    per-row aggregate in the serializer. Statuses/purposes are string literals
+    because `reservations` must not import `payments` (import spine).
+    """
+    return qs.annotate(
+        # Coalesce so a payment-less booking annotates as 0, not NULL — a None
+        # would look "un-annotated" to the serializer and trip its per-row
+        # fallback aggregate (an N+1).
+        amount_paid_total=Coalesce(
+            Sum(
+                "payments__amount",
+                filter=Q(
+                    payments__status="succeeded",
+                    payments__purpose__in=("deposit", "balance"),
+                ),
+            ),
+            Value(Decimal("0")),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        )
+    )
 
 
 def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
@@ -84,6 +111,7 @@ class BookingViewSet(
             "currency",
             "quotation_line",
         )
+        qs = _with_amount_paid(qs)
         # Every non-list action returns BookingDetailSerializer (`retrieve` and
         # the state-machine actions all route through `_refresh`), which walks
         # property -> finance -> contact -> emails/phones.
@@ -105,7 +133,7 @@ class BookingViewSet(
         # Re-fetch through the detail queryset so the owner/commission walk
         # hits the prefetch cache instead of issuing 5+ extra queries per
         # action response.
-        fresh = _detail_owner_qs(Booking.objects.all()).get(pk=booking.pk)
+        fresh = _detail_owner_qs(_with_amount_paid(Booking.objects.all())).get(pk=booking.pk)
         return Response(BookingDetailSerializer(fresh).data)
 
     @action(detail=True, methods=["post"], url_path="confirm")
@@ -214,6 +242,7 @@ class BookingArchiveViewSet(
             "currency",
             "quotation_line",
         )
+        qs = _with_amount_paid(qs)
         if self.action != "list":
             qs = _detail_owner_qs(qs)
         return qs

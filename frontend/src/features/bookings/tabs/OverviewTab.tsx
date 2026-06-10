@@ -1,11 +1,12 @@
 import { useTranslation } from "react-i18next";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactGrid, FactGridItem } from "@/components/data/FactGrid";
 import { StatTiles, type StatTileData } from "@/components/data/StatTiles";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney, parseMoney } from "@/lib/format/money";
-import { dueTone } from "../finance";
+import { propertyDetailsPath } from "@/lib/routes";
+import { formatMoney } from "@/lib/format/money";
+import { bookingFinance, dueTone } from "../finance";
 import type { BookingOutletContext } from "../BookingDetailLayout";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -38,20 +39,18 @@ export function OverviewTab() {
     return resolved || booking.site_source.replace(/_/g, " ");
   })();
 
-  const total = booking.total ?? booking.rental_price;
-  const paid = parseMoney(total) - parseMoney(booking.balance_due);
-  const outstanding = parseMoney(booking.balance_due);
+  const { total, paid, due } = bookingFinance(booking);
   const tiles: StatTileData[] = [
     { label: t("detail.rail.total"), value: formatMoney(total, currency) },
     {
       label: t("detail.rail.paid"),
-      value: Number.isFinite(paid) ? formatMoney(paid, currency) : "—",
+      value: formatMoney(paid, currency),
       tone: "success",
     },
     {
       label: t("detail.rail.due"),
-      value: formatMoney(booking.balance_due, currency),
-      tone: dueTone(outstanding, booking.balance_due_at),
+      value: formatMoney(due, currency),
+      tone: dueTone(due, booking.balance_due_at),
       hint: booking.balance_due_at ? formatDate(booking.balance_due_at) : undefined,
     },
     { label: t("overview.fields.nights"), value: nights != null ? nights : "—" },
@@ -88,11 +87,13 @@ export function OverviewTab() {
           <FactGridItem
             label={t("overview.fields.guest")}
             value={
-              booking.guest_name ?? (
-                <span className="text-muted-foreground">
-                  {t("detail.fallback.guest_with_id", { id: booking.guest })}
-                </span>
-              )
+              <Link to={`/contacts/${booking.guest}`} className="hover:underline">
+                {booking.guest_name ?? (
+                  <span className="text-muted-foreground">
+                    {t("detail.fallback.guest_with_id", { id: booking.guest })}
+                  </span>
+                )}
+              </Link>
             }
           />
           <FactGridItem
@@ -102,11 +103,13 @@ export function OverviewTab() {
           <FactGridItem
             label={t("overview.fields.property")}
             value={
-              booking.property_name ?? (
-                <span className="text-muted-foreground">
-                  {t("detail.fallback.property_with_id", { id: booking.property })}
-                </span>
-              )
+              <Link to={propertyDetailsPath(booking.property)} className="hover:underline">
+                {booking.property_name ?? (
+                  <span className="text-muted-foreground">
+                    {t("detail.fallback.property_with_id", { id: booking.property })}
+                  </span>
+                )}
+              </Link>
             }
           />
           <FactGridItem
@@ -130,10 +133,13 @@ export function OverviewTab() {
             label={t("overview.fields.adjustment")}
             value={formatMoney(booking.adjustment ?? "0", currency)}
           />
-          <FactGridItem
-            label={t("overview.fields.balance_due")}
-            value={formatMoney(booking.balance_due, currency)}
-          />
+          {booking.net_to_owner ? (
+            <FactGridItem
+              label={t("overview.fields.commission")}
+              value={formatMoney(booking.net_to_owner.commission, currency)}
+            />
+          ) : null}
+          <FactGridItem label={t("overview.fields.total")} value={formatMoney(total, currency)} />
         </FactGrid>
       </Section>
     </div>

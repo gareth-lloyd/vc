@@ -4,9 +4,9 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { StagePips } from "@/components/data/StagePips";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney, parseMoney } from "@/lib/format/money";
+import { formatMoney } from "@/lib/format/money";
 import { cn } from "@/lib/cn";
-import { isBalanceOverdue } from "./finance";
+import { bookingFinance, isBalanceOverdue } from "./finance";
 import type { BookingListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
@@ -90,19 +90,18 @@ export function useBookingColumns(): ColumnDef<BookingListItem>[] {
         header: t("columns.finance"),
         enableSorting: false,
         cell: ({ row }) => {
-          const { total, rental_price, currency_code, balance_due, balance_due_at } = row.original;
+          const { currency_code, balance_due_at } = row.original;
           const currency = currency_code ?? null;
-          const amount = total ?? rental_price;
-          const outstanding = parseMoney(balance_due);
-          const settled = Number.isFinite(outstanding) && outstanding <= 0;
+          const { total, due } = bookingFinance(row.original);
+          const settled = Number.isFinite(due) && due <= 0;
           return (
             <div className="text-sm tabular-nums">
-              <div>{formatMoney(amount, currency)}</div>
+              <div>{formatMoney(total, currency)}</div>
               {settled ? (
                 <div className="text-success text-xs">{t("columns.paid_off")}</div>
               ) : (
                 <div className={cn("text-xs", balanceTone(balance_due_at))}>
-                  {t("columns.due_amount", { amount: formatMoney(balance_due, currency) })}
+                  {t("columns.due_amount", { amount: formatMoney(due, currency) })}
                 </div>
               )}
             </div>

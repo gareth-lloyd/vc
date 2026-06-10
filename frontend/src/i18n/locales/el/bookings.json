@@ -139,8 +139,8 @@
       "rental_price": "Τιμή ενοικίασης",
       "discount": "Έκπτωση",
       "adjustment": "Προσαρμογή",
-      "balance_due": "Οφειλόμενο υπόλοιπο",
-      "balance_due_by": "Πληρωμή υπολοίπου έως"
+      "commission": "Προμήθεια",
+      "total": "Σύνολο"
     },
     "party_format": {
       "adults_one": "{{count}} ενήλικας",

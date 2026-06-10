@@ -233,7 +233,6 @@ export const rateRuleSchema = z.object({
   date_to: z.string(),
   min_party: z.number().nullable().optional(),
   max_party: z.number().nullable().optional(),
-  priority: z.number().nullable().optional(),
   nightly: z.string().nullable().optional(),
   weekly: z.string().nullable().optional(),
   is_poa: z.boolean().optional(),

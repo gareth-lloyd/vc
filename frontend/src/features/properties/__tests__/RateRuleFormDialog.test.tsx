@@ -32,7 +32,6 @@ const rule: RateRule = {
   date_to: "2026-06-08",
   min_party: 1,
   max_party: 8,
-  priority: 0,
   nightly: "150.00",
   weekly: null,
   is_poa: false,

@@ -7,7 +7,16 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.db.models import DecimalField, Prefetch, Q, QuerySet, Sum, Value
+from django.db.models import (
+    DecimalField,
+    OuterRef,
+    Prefetch,
+    Q,
+    QuerySet,
+    Subquery,
+    Sum,
+    Value,
+)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
@@ -19,7 +28,7 @@ from rest_framework.response import Response
 from accounts.models import ContactEmail, ContactPhone
 from core.api.permissions import IsReservationsWriter
 from reservations.filters import BookingFilter
-from reservations.models import Booking, BookingEvent, BookingNote
+from reservations.models import Booking, BookingChargeItem, BookingEvent, BookingNote
 from reservations.serializers import (
     BookingDetailSerializer,
     BookingListSerializer,
@@ -56,6 +65,30 @@ def _with_amount_paid(qs: QuerySet[Booking]) -> QuerySet[Booking]:
                     payments__purpose__in=("deposit", "balance"),
                 ),
             ),
+            Value(Decimal("0")),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        )
+    )
+
+
+def _with_charges_total(qs: QuerySet[Booking]) -> QuerySet[Booking]:
+    """Annotate Σ charge items for the serializer's `total`/`charges_total`.
+
+    A Subquery (not a Sum over a join) on purpose: it lives only in the
+    SELECT clause, so it can't cross-multiply with the `amount_paid` LEFT
+    JOIN or leak into the status-counts/paginator COUNTs. Coalesce for the
+    same reason as `_with_amount_paid` — an annotated NULL would trip the
+    serializer's per-row fallback aggregate.
+    """
+    charge_sum = (
+        BookingChargeItem.objects.filter(booking=OuterRef("pk"))
+        .values("booking")
+        .annotate(s=Sum("amount"))
+        .values("s")
+    )
+    return qs.annotate(
+        charges_total=Coalesce(
+            Subquery(charge_sum),
             Value(Decimal("0")),
             output_field=DecimalField(max_digits=12, decimal_places=2),
         )
@@ -118,7 +151,7 @@ class BookingViewSet(
         # or the mutation actions (their responses re-fetch via `_refresh`,
         # which annotates separately).
         if self.action in ("list", "retrieve"):
-            qs = _with_amount_paid(qs)
+            qs = _with_charges_total(_with_amount_paid(qs))
         # Every non-list action returns BookingDetailSerializer (`retrieve` and
         # the state-machine actions all route through `_refresh`), which walks
         # property -> finance -> contact -> emails/phones.
@@ -140,7 +173,9 @@ class BookingViewSet(
         # Re-fetch through the detail queryset so the owner/commission walk
         # hits the prefetch cache instead of issuing 5+ extra queries per
         # action response.
-        fresh = _detail_owner_qs(_with_amount_paid(Booking.objects.all())).get(pk=booking.pk)
+        fresh = _detail_owner_qs(_with_charges_total(_with_amount_paid(Booking.objects.all()))).get(
+            pk=booking.pk
+        )
         return Response(BookingDetailSerializer(fresh).data)
 
     @action(detail=True, methods=["post"], url_path="confirm")
@@ -256,7 +291,7 @@ class BookingArchiveViewSet(
             "currency",
             "quotation_line",
         )
-        qs = _with_amount_paid(qs)
+        qs = _with_charges_total(_with_amount_paid(qs))
         if self.action != "list":
             qs = _detail_owner_qs(qs)
         return qs

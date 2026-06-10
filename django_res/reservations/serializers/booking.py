@@ -10,6 +10,7 @@ from rest_framework import serializers
 
 from properties.models import GroupFinance, GroupSettings, PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
+from reservations.services.charges import owner_effect
 
 
 class BookingListSerializer(serializers.ModelSerializer[Booking]):
@@ -18,13 +19,13 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
     property_name = serializers.SerializerMethodField()
     guest_name = serializers.SerializerMethodField()
     currency_code = serializers.CharField(source="currency.code", read_only=True)
-    # `balance_due` holds the denormalised guest-facing gross total
-    # (07-payments.md) — it is *not* decremented as payments settle. Expose it
-    # under its real meaning so the FE never reconstructs the gross from
-    # net-of-commission `rental_price`.
-    total = serializers.DecimalField(
-        source="balance_due", max_digits=12, decimal_places=2, read_only=True
-    )
+    # `balance_due` holds the denormalised engine-gross total (07-payments.md)
+    # — it is *not* decremented as payments settle, and a re-price rewrites it
+    # without touching manual charge items. What the guest actually owes is
+    # `balance_due` plus the live Σ of charge items, exposed here as `total`
+    # so the FE never reconstructs the gross from net-of-commission
+    # `rental_price`.
+    total = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
 
     class Meta:
@@ -80,6 +81,22 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             return None
         return f"{guest.first_name} {guest.last_name}".strip() or None
 
+    @staticmethod
+    def _charges_total(obj: Booking) -> Decimal:
+        """Live Σ of manual charge items (no denormalised column by design).
+
+        Reads the viewset's `charges_total` Subquery annotation when present
+        (Coalesce guarantees a real 0 there, so None means "un-annotated");
+        falls back to a per-row aggregate for hand-constructed instances.
+        """
+        total = getattr(obj, "charges_total", None)
+        if total is None:
+            total = obj.charge_items.aggregate(total=models.Sum("amount"))["total"]
+        return Decimal(total or 0)
+
+    def get_total(self, obj: Booking) -> str:
+        return f"{(obj.balance_due + self._charges_total(obj)):.2f}"
+
     def get_amount_paid(self, obj: Booking) -> str:
         """Settled rental money (SUCCEEDED deposit/balance payments).
 
@@ -103,12 +120,14 @@ class BookingDetailSerializer(BookingListSerializer):
     commission = serializers.SerializerMethodField()
     prices_entered_as = serializers.SerializerMethodField()
     net_to_owner = serializers.SerializerMethodField()
+    charges_total = serializers.SerializerMethodField()
 
     class Meta(BookingListSerializer.Meta):
         fields = [
             *BookingListSerializer.Meta.fields,
             "quotation_line",
             "pricing_snapshot",
+            "charges_total",
             "discount",
             "adjustment",
             "terms_version",
@@ -165,16 +184,25 @@ class BookingDetailSerializer(BookingListSerializer):
             "address_line_2": contact.address_line_2,
         }
 
-    def get_commission(self, obj: Booking) -> dict[str, Any] | None:
-        finance = self._finance(obj)
+    def get_charges_total(self, obj: Booking) -> str:
+        return f"{self._charges_total(obj):.2f}"
+
+    @classmethod
+    def _effective_commission(cls, obj: Booking) -> dict[str, Any] | None:
+        finance = cls._finance(obj)
         if finance is None:
             return None
         try:
-            commission = finance.effective_commission()
+            return finance.effective_commission()
         except GroupFinance.DoesNotExist:
             # PropertyFinance.effective() walks property.group.finance for
             # the fallback; legacy/imported groups may not have one. Narrow
             # catch — real bugs in effective_commission() still surface.
+            return None
+
+    def get_commission(self, obj: Booking) -> dict[str, Any] | None:
+        commission = self._effective_commission(obj)
+        if commission is None:
             return None
         amount = commission["amount"]
         return {
@@ -219,11 +247,14 @@ class BookingDetailSerializer(BookingListSerializer):
         return self._effective_prices_entered_as(obj)
 
     def get_net_to_owner(self, obj: Booking) -> dict[str, Any] | None:
-        """Render owner-net from `Booking.pricing_snapshot`.
+        """Render owner-net from `Booking.pricing_snapshot` + charge items.
 
         `PricingEngine.quote` writes `net_to_owner` directly into the
         snapshot, so the primary path just reads it. The serializer never
-        recomputes money for snapshots produced by the rebuild.
+        recomputes snapshot money — but manual charge items live outside
+        the immutable snapshot, so their owner/agency split (legacy-style:
+        charges enter the commissionable base, see `services.charges`) is
+        layered on at read time.
         """
         snapshot = obj.pricing_snapshot or {}
         try:
@@ -245,6 +276,17 @@ class BookingDetailSerializer(BookingListSerializer):
                 net = (total - commission - tax).quantize(Decimal("0.01"))
         else:
             net = (total - commission - tax).quantize(Decimal("0.01"))
+        charges_total = self._charges_total(obj)
+        if charges_total:
+            effective = self._effective_commission(obj) or {}
+            effect = owner_effect(
+                charges_total,
+                effective.get("calculation_type"),
+                effective.get("amount"),
+            )
+            total += charges_total
+            commission += effect.commission_on_charges
+            net += effect.owner_delta
         currency_code = obj.currency.code if obj.currency_id else None
         return {
             "currency_code": currency_code,

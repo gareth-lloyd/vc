@@ -89,6 +89,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners — consolidated spec + verified assumptions | ⬜ deferred (v2 tracker) |
 | [GAP-012](gap-012-cloudflare-images-hosting.md) | Object-storage image hosting (Cloudflare Images) for staging & prod — incl. legacy binary import (nested→flat `legacy_id` reconstruction) | ⬜ open — specced, building on `feat/s3-image-hosting` |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, currency-change confirm, unpriceable-result note, a11y) | ⬜ open — FE polish, sibling of GAP-005 |
+| [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ⬜ open — design/parity decision; moots GAP-013 item 3 |
 
 ## Investigations
 

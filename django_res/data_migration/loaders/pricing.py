@@ -32,6 +32,7 @@ from decimal import Decimal
 from typing import Any
 
 import structlog
+from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
@@ -337,8 +338,8 @@ class RateRuleLoader(BaseLoader):
     Notes:
     - Skip `IsExTra=1` rows (extras, not base rates).
     - `resolve_rate_rule_overlaps` runs over the full row set first, so the
-      upserted rules are overlap-free per card; rows it drops on a re-run are
-      purged by the stale cleanup in `_load_rows`.
+      inserted rules are overlap-free per card; each run is a full replace
+      (purge legacy-loaded rules, reinsert) — see `_load_rows`.
     - max_party falls back to the property's capacity when PartySize is null.
     """
 
@@ -355,49 +356,35 @@ class RateRuleLoader(BaseLoader):
     def _apply_since(self, query: str) -> str:
         # Deliberate no-op: overlap resolution is a function of a season's
         # whole row set, so a `--since` delta would mis-trim against rows it
-        # can't see (and stale cleanup would delete unmodified rows). The
-        # table is small; every pass is a full reload.
+        # can't see. The table is small; every pass is a full reload.
+        if self.since:
+            logger.warning(
+                "data_migration.rate_rule_since_ignored",
+                since=str(self.since),
+                reason="overlap resolution needs the full row set; full reload",
+            )
         return query
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        """Full replace: purge every legacy-loaded rule, then insert the
+        resolver's output. Inserting into an empty legacy footprint means
+        re-runs can't collide with last run's spans under the
+        `raterule_no_overlap` EXCLUDE constraint (in-place upserts could:
+        a row expanding into — or swapping spans with — a sibling's old
+        range would trip it mid-run). UI-created rules (legacy_id NULL)
+        are never touched.
+        """
         resolution = resolve_rate_rule_overlaps(rows)
-        super()._load_rows(resolution.rows, report)
-        stale_deleted = self._delete_stale(rows, resolution.rows)
+        with transaction.atomic():
+            purged, _ = RateRule.objects.filter(legacy_id__isnull=False).delete()
+            super()._load_rows(resolution.rows, report)
         logger.info(
             "data_migration.rate_rule_overlaps_resolved",
             trimmed=resolution.trimmed,
             dropped=resolution.dropped,
             party_clipped=resolution.party_clipped,
-            stale_deleted=stale_deleted,
+            purged=purged,
         )
-
-    def _delete_stale(
-        self,
-        legacy_rows: list[dict[str, Any]],
-        kept_rows: list[dict[str, Any]],
-    ) -> int:
-        """Purge previously loaded rules the resolver no longer keeps.
-
-        Scoped to the seasons present in this run's legacy row set and to
-        `legacy_id`-bearing rules only — UI-created rules (legacy_id NULL)
-        are never touched.
-        """
-        keep_ids: dict[str, set[str]] = defaultdict(set)
-        for row in kept_rows:
-            keep_ids[str(row.get("SeasonId"))].add(str(row["ID"]))
-        deleted = 0
-        seasons = {str(r["SeasonId"]) for r in legacy_rows if r.get("SeasonId") is not None}
-        for season in seasons:
-            card = RateCard.objects.filter(legacy_id=season).first()
-            if card is None:
-                continue
-            count, _ = (
-                RateRule.objects.filter(card=card, legacy_id__isnull=False)
-                .exclude(legacy_id__in=keep_ids[season])
-                .delete()
-            )
-            deleted += count
-        return deleted
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         card = RateCard.objects.filter(legacy_id=str(row.get("SeasonId") or "")).first()

@@ -188,18 +188,23 @@ overlaps at load time via `resolve_rate_rule_overlaps`:
 
 Consequences:
 
-- The loader **ignores `--since`** — resolution is a function of a season's
-  whole row set, so every pass is a full reload (the table is small). A
-  stale-cleanup pass deletes previously loaded rules the resolver no longer
-  keeps; UI-created rules (`legacy_id IS NULL`) are never touched.
+- The loader **ignores `--since`** (and logs a warning if passed) —
+  resolution is a function of a season's whole row set, so every pass is a
+  full reload (the table is small).
+- Each run is a **full replace**: all legacy-loaded rules are purged, then
+  the resolver's output is inserted. Inserting into an empty legacy footprint
+  means re-runs can never collide with the previous run's spans under the
+  EXCLUDE constraint, so a re-run always converges in one pass (the report
+  shows `created=N`, not `updated=N`). UI-created rules
+  (`legacy_id IS NULL`) are never touched.
 - The 389 dropped rows (and trimmed boundary days) mean quoted prices can
   shift versus legacy for the ~38 seasons that had genuinely conflicting
   prices — previously the winner was the highest `ID % 65535` stamp under
   the old per-priority EXCLUDE constraint, and arbitrary in legacy itself.
 - The loader logs one summary event per run:
   `data_migration.rate_rule_overlaps_resolved` with `trimmed` / `dropped` /
-  `party_clipped` / `stale_deleted` counters (24-Apr-2025 dump: 2281 / 389 /
-  0 / 0).
+  `party_clipped` / `purged` counters (24-Apr-2025 dump, first run:
+  2281 / 389 / 0 / 0).
 
 ## 6. (Optional) Delta load for late writes
 

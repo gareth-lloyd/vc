@@ -185,16 +185,19 @@ def test_load_rows_double_run_converges(loaded_card: RateCard) -> None:
     assert (first.created, first.updated) == (2, 0)
     assert first.errors == []
 
+    # Full-replace semantics: every run purges and reinserts, so the second
+    # run also reports creates — but the resulting row set is identical.
     second = LoadReport(loader="rate_rule")
     loader._load_rows(rows(), second)
-    assert (second.created, second.updated) == (0, 2)
+    assert (second.created, second.updated) == (2, 0)
+    assert second.errors == []
     assert RateRule.objects.count() == 2
     # Boundary trim applied: inclusive ranges no longer share Jun 8.
     assert RateRule.objects.get(legacy_id="1").date_to == date(2025, 6, 7)
 
 
 @pytest.mark.django_db
-def test_load_rows_stale_cleanup_deletes_newly_dropped_row(loaded_card: RateCard) -> None:
+def test_load_rows_purge_deletes_newly_dropped_row(loaded_card: RateCard) -> None:
     loader = RateRuleLoader()
     loader._load_rows(
         [
@@ -205,20 +208,69 @@ def test_load_rows_stale_cleanup_deletes_newly_dropped_row(loaded_card: RateCard
     )
     assert RateRule.objects.count() == 2
 
-    # Legacy row 1 grew to fully cover row 2 → resolver drops 2 → cleanup deletes it.
+    # Legacy row 1 grew to fully cover row 2 → resolver drops 2; the purge
+    # frees row 2's old span so row 1's expansion can't trip the EXCLUDE
+    # constraint — convergence in one run, no report.errors.
+    second = LoadReport(loader="rate_rule")
     loader._load_rows(
         [
             _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 20)),
             _row(ID=2, FromDate=date(2025, 6, 10), ToDate=date(2025, 6, 15)),
         ],
-        LoadReport(loader="rate_rule"),
+        second,
     )
+    assert second.errors == []
     assert list(RateRule.objects.values_list("legacy_id", flat=True)) == ["1"]
+    rule = RateRule.objects.get(legacy_id="1")
+    assert (rule.date_from, rule.date_to) == (date(2025, 6, 1), date(2025, 6, 20))
 
 
 @pytest.mark.django_db
-def test_load_rows_stale_cleanup_spares_ui_rules(loaded_card: RateCard) -> None:
-    """Cleanup is scoped to legacy_id-bearing rules; UI-created rows survive."""
+def test_load_rows_span_swap_converges(loaded_card: RateCard) -> None:
+    """Two rows exchanging spans between dumps can never converge under
+    in-place upserts (each update collides with the other's old span);
+    purge-then-insert makes it a non-event."""
+    loader = RateRuleLoader()
+    loader._load_rows(
+        [
+            _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8)),
+            _row(ID=2, FromDate=date(2025, 6, 10), ToDate=date(2025, 6, 15)),
+        ],
+        LoadReport(loader="rate_rule"),
+    )
+
+    second = LoadReport(loader="rate_rule")
+    loader._load_rows(
+        [
+            _row(ID=1, FromDate=date(2025, 6, 10), ToDate=date(2025, 6, 15)),
+            _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8)),
+        ],
+        second,
+    )
+    assert second.errors == []
+    rule1 = RateRule.objects.get(legacy_id="1")
+    rule2 = RateRule.objects.get(legacy_id="2")
+    assert (rule1.date_from, rule1.date_to) == (date(2025, 6, 10), date(2025, 6, 15))
+    assert (rule2.date_from, rule2.date_to) == (date(2025, 6, 1), date(2025, 6, 8))
+
+
+@pytest.mark.django_db
+def test_load_rows_purge_removes_vanished_season_rules(loaded_card: RateCard) -> None:
+    loader = RateRuleLoader()
+    loader._load_rows(
+        [_row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8))],
+        LoadReport(loader="rate_rule"),
+    )
+    assert RateRule.objects.count() == 1
+
+    # Season 42 disappears from the dump entirely — full reload purges its rules.
+    loader._load_rows([], LoadReport(loader="rate_rule"))
+    assert RateRule.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_load_rows_purge_spares_ui_rules(loaded_card: RateCard) -> None:
+    """The purge is scoped to legacy_id-bearing rules; UI-created rows survive."""
     ui_rule = RateRule.objects.create(
         card=loaded_card,
         date_from=date(2026, 1, 1),

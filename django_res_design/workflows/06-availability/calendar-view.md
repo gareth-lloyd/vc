@@ -4,7 +4,7 @@ Reading the availability calendar.
 
 > ⚠ **Top-of-file warning** — the calendar UI is non-functional in committed *legacy* code. `<AvailabilityCard />` is `[STUB]`: no CREATE / EDIT / REMOVE handlers, no rendered grid. Treat this entire file as describing *intended* behaviour reconstructed from the dropdown shape and the data calls that *would* feed a working calendar.
 >
-> **Rebuilt.** The Django + React rebuild ships a working grid (staff property Availability tab and the owner-portal calendar), AM/PM half-cell turnover for native bookings, and conflict-aware block create/edit/remove dialogs. The `FromDate`/`ToDate` picker note below is legacy; the live grid is month-paged and feeds its block pickers from the property's own availability calendar. See `blocks-and-changeover.md` and `06-availability.md` "Half-day turnover — `CellStatus.segments`".
+> **Rebuilt.** The Django + React rebuild ships a working grid (staff property Availability tab and the owner-portal calendar), AM/PM half-cell turnover for native bookings, and conflict-aware block create/edit/remove dialogs. The `FromDate`/`ToDate` picker note below is legacy; the live grid is month-paged and feeds its block pickers from the property's own availability calendar. The query window is week-aligned (Monday on/before the 1st through Sunday on/after the month end), and the adjacent-month padding days render their real availability state, dimmed — a booked 30 June stays visibly booked in the July view. Both calendars share the month-grid state via `frontend/src/lib/monthGrid.ts` (`useMonthGrid`). See `blocks-and-changeover.md` and `06-availability.md` "Half-day turnover — `CellStatus.segments`".
 
 ## Load availability calendar for a property
 

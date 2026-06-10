@@ -246,6 +246,9 @@
         "title": "No villas match these criteria",
         "description": "Widen the date range, drop a filter, or check region/country."
       },
+      "incomplete_pricing": "Incomplete pricing — manual quote",
+      "incomplete_pricing_hint": "The rate card has no price for these dates — add the villa and type the price.",
+      "add_manual": "Add manually",
       "unavailable": "Unavailable for these dates",
       "unavailable_aria": "{{name}} — unavailable for these dates",
       "unavailable_count_one": "{{count}} villa unavailable for these dates",

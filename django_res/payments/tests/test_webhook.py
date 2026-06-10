@@ -148,3 +148,125 @@ def test_process__deposit_webhook_advances_booking(
 
     booking.refresh_from_db()
     assert booking.status == BookingStatus.DEPOSIT_PAID.value
+
+
+# ----------------------------------------------------------------------
+# _apply hardening — delivery↔payment linkage, amount/currency checks,
+# duplicate and out-of-order events.
+# ----------------------------------------------------------------------
+
+
+def _deliver(event_id: str, **body_fields: Any) -> WebhookDelivery:
+    """Persist + process one signed Flywire delivery; return the delivery."""
+    body_dict: dict[str, Any] = {"event_id": event_id, "event_type": "paid"}
+    body_dict.update(body_fields)
+    body = json.dumps(body_dict).encode("utf-8")
+    delivery, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id=event_id,
+        raw_body=body,
+        headers={},
+        signature=_sign(body),
+    )
+    WebhookDispatcher.process(delivery)
+    delivery.refresh_from_db()
+    return delivery
+
+
+@pytest.mark.django_db
+def test_process__links_delivery_to_payment(pending_payment: Payment) -> None:
+    delivery = _deliver(
+        "ev-link-1",
+        payment_reference=pending_payment.reference,
+        amount="420.00",
+        currency="GBP",
+    )
+
+    assert delivery.payment_id == pending_payment.pk
+
+
+@pytest.mark.django_db
+def test_process__amount_mismatch_refuses_settlement(
+    pending_payment: Payment,
+) -> None:
+    delivery = _deliver(
+        "ev-short-1",
+        payment_reference=pending_payment.reference,
+        amount="100.00",
+        currency="GBP",
+    )
+
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.PENDING.value
+    assert "amount_mismatch" in delivery.processing_error
+    assert delivery.processed_at is not None
+
+
+@pytest.mark.django_db
+def test_process__currency_mismatch_refuses_settlement(
+    pending_payment: Payment,
+) -> None:
+    delivery = _deliver(
+        "ev-eur-1",
+        payment_reference=pending_payment.reference,
+        amount="420.00",
+        currency="EUR",
+    )
+
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.PENDING.value
+    assert "amount_mismatch" in delivery.processing_error
+
+
+@pytest.mark.django_db
+def test_process__duplicate_succeeded_event_is_idempotent_noop(
+    pending_payment: Payment,
+) -> None:
+    """A second settle event (fresh event_id) against an already-SUCCEEDED
+    payment is a clean no-op — no error, no second signal cascade."""
+    _deliver(
+        "ev-dup-1",
+        payment_reference=pending_payment.reference,
+        amount="420.00",
+        currency="GBP",
+    )
+    pending_payment.refresh_from_db()
+    booking_status_after_first = pending_payment.booking.status
+
+    delivery = _deliver(
+        "ev-dup-2",
+        payment_reference=pending_payment.reference,
+        amount="420.00",
+        currency="GBP",
+    )
+
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.SUCCEEDED.value
+    assert delivery.processing_error == ""
+    assert delivery.processed_at is not None
+    pending_payment.booking.refresh_from_db()
+    assert pending_payment.booking.status == booking_status_after_first
+    # No second PaymentEvent for the duplicate settle.
+    assert pending_payment.payment_events.filter(to_status="succeeded").count() == 1
+
+
+@pytest.mark.django_db
+def test_process__failed_after_succeeded_records_error_not_transition(
+    pending_payment: Payment,
+) -> None:
+    _deliver(
+        "ev-ooo-1",
+        payment_reference=pending_payment.reference,
+        amount="420.00",
+        currency="GBP",
+    )
+
+    delivery = _deliver(
+        "ev-ooo-2",
+        event_type="failed",
+        payment_reference=pending_payment.reference,
+    )
+
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.SUCCEEDED.value
+    assert "out_of_order" in delivery.processing_error

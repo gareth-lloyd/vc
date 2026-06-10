@@ -33,6 +33,18 @@ from payments.models.webhook_delivery import WebhookDelivery
 
 logger = structlog.get_logger(__name__)
 
+# Webhook-layer transition policy — stricter than the model-level
+# `PAYMENT_ALLOWED_TRANSITIONS`. A webhook may settle/fail/cancel only a
+# payment that is still open, and refund only a settled one; the looser
+# model-level seams (e.g. SUCCEEDED → CANCELLED for the SD supersede) are
+# operator-only and not reachable from a provider event.
+_WEBHOOK_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    "succeeded": frozenset({"pending", "processing"}),
+    "failed": frozenset({"pending", "processing"}),
+    "cancelled": frozenset({"pending", "processing"}),
+    "refunded": frozenset({"succeeded"}),
+}
+
 
 @dataclass
 class ProviderEvent:
@@ -148,7 +160,7 @@ class WebhookDispatcher:
                 error=str(exc),
             )
         delivery.processed_at = timezone.now()
-        delivery.save(update_fields=["processed_at", "processing_error", "updated_at"])
+        delivery.save(update_fields=["processed_at", "processing_error", "payment", "updated_at"])
 
     # ------------------------------------------------------------------
     # Helpers — provider-specific parsing dispatches per-provider.
@@ -184,18 +196,70 @@ class WebhookDispatcher:
     ) -> None:
         from payments.enums import EventSource, PaymentStatus
 
+        delivery.payment = payment
+
         status_map = {
             "succeeded": PaymentStatus.SUCCEEDED.value,
             "failed": PaymentStatus.FAILED.value,
             "refunded": PaymentStatus.REFUNDED.value,
             "cancelled": PaymentStatus.CANCELLED.value,
         }
-        new_status = status_map.get(event.event_kind.lower())
+        event_kind = event.event_kind.lower()
+        new_status = status_map.get(event_kind)
         if new_status is None:
             delivery.processing_error = (
                 f"Unhandled event_kind {event.event_kind!r} for {payment.reference}"
             )
             return
+
+        if payment.status == new_status:
+            # Provider re-announced a state we already hold (e.g. a second
+            # "paid" event with a fresh event_id). Clean idempotent no-op —
+            # re-transitioning would re-fire the signal cascade.
+            logger.info(
+                "webhook.duplicate_event",
+                provider=delivery.provider,
+                event_id=delivery.event_id,
+                payment_id=payment.pk,
+                payment_status=payment.status,
+            )
+            return
+
+        allowed_from = _WEBHOOK_ALLOWED_TRANSITIONS.get(event_kind, frozenset())
+        if payment.status not in allowed_from:
+            delivery.processing_error = f"out_of_order: {payment.status} -> {new_status}"
+            logger.warning(
+                "webhook.out_of_order",
+                provider=delivery.provider,
+                event_id=delivery.event_id,
+                payment_id=payment.pk,
+                payment_status=payment.status,
+                event_kind=event_kind,
+            )
+            return
+
+        if new_status == PaymentStatus.SUCCEEDED.value:
+            amount_ok = event.amount is None or event.amount == payment.amount
+            currency_ok = not event.currency_code or event.currency_code == payment.currency.code
+            if not (amount_ok and currency_ok):
+                # Partial or wrong-currency settlement: refuse to mark the full
+                # payment paid. Partial-settlement support is future work.
+                delivery.processing_error = (
+                    f"amount_mismatch: expected {payment.amount} {payment.currency.code},"
+                    f" got {event.amount} {event.currency_code}"
+                )
+                logger.warning(
+                    "webhook.amount_mismatch",
+                    provider=delivery.provider,
+                    event_id=delivery.event_id,
+                    payment_id=payment.pk,
+                    expected_amount=str(payment.amount),
+                    expected_currency=payment.currency.code,
+                    amount=str(event.amount),
+                    currency=event.currency_code,
+                )
+                return
+
         payment.transition_to(
             new_status,
             source=EventSource.WEBHOOK.value,
@@ -204,4 +268,3 @@ class WebhookDispatcher:
                 delivery.raw_body.encode("utf-8", errors="replace"),
             ).hexdigest(),
         )
-        delivery.payment = payment

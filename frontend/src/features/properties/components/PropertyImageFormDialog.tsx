@@ -21,10 +21,12 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { useCreatePropertyImage, useUpdatePropertyImage } from "../hooks";
 import {
   PROPERTY_IMAGE_KINDS,
-  propertyImageWriteInputSchema,
+  propertyImageCreateInputSchema,
+  propertyImageMetadataSchema,
   type PropertyImage,
   type PropertyImageKind,
-  type PropertyImageWriteInput,
+  type PropertyImageCreateInput,
+  type PropertyImageMetadataInput,
 } from "../schemas";
 
 interface CommonProps {
@@ -44,19 +46,22 @@ interface EditProps extends CommonProps {
 
 type PropertyImageFormDialogProps = CreateProps | EditProps;
 
-const CREATE_DEFAULTS: PropertyImageWriteInput = {
-  key: "",
+// Create-mode values; `image` stays unset until the user picks a file (the
+// create schema then requires it). Edit mode reuses the same shape minus the
+// file, validated against the metadata-only schema.
+type FormValues = Partial<Pick<PropertyImageCreateInput, "image">> & PropertyImageMetadataInput;
+
+const CREATE_DEFAULTS: FormValues = {
   kind: "gallery",
   name: "",
   description: "",
 };
 
-function defaultsFromImage(image: PropertyImage): PropertyImageWriteInput {
+function defaultsFromImage(image: PropertyImage): FormValues {
   const kind = (PROPERTY_IMAGE_KINDS as readonly string[]).includes(image.kind)
     ? (image.kind as PropertyImageKind)
     : "gallery";
   return {
-    key: image.image ?? "",
     kind,
     name: image.name ?? "",
     description: image.description ?? "",
@@ -70,8 +75,8 @@ export function PropertyImageFormDialog(props: PropertyImageFormDialogProps) {
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
-  const form = useForm<PropertyImageWriteInput>({
-    resolver: zodResolver(propertyImageWriteInputSchema),
+  const form = useForm<FormValues>({
+    resolver: zodResolver(isCreate ? propertyImageCreateInputSchema : propertyImageMetadataSchema),
     defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromImage(props.image),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
@@ -88,11 +93,12 @@ export function PropertyImageFormDialog(props: PropertyImageFormDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.image.id]);
 
-  const handleSubmit = async (values: PropertyImageWriteInput) => {
+  const handleSubmit = async (values: FormValues) => {
     setTopLevelError(null);
     try {
       if (isCreate) {
-        await createMutation.mutateAsync(values);
+        // The create-mode resolver guarantees `image` is a File here.
+        await createMutation.mutateAsync(values as PropertyImageCreateInput);
         toast.success(t("media.toasts.created"));
       } else {
         const { kind, name, description, sort_order, is_active } = values;
@@ -122,22 +128,24 @@ export function PropertyImageFormDialog(props: PropertyImageFormDialogProps) {
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
-          <p className="text-muted-foreground text-xs">{t("media.dialog.s3_note")}</p>
-
-          <div className="space-y-2">
-            <Label htmlFor="property-image-key">{t("media.dialog.fields.key")}</Label>
-            <Input
-              id="property-image-key"
-              placeholder={t("media.dialog.fields.key_placeholder")}
-              disabled={!isCreate}
-              {...form.register("key")}
-            />
-            {form.formState.errors.key ? (
-              <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.key.message)}
-              </p>
-            ) : null}
-          </div>
+          {isCreate ? (
+            <div className="space-y-2">
+              <Label htmlFor="property-image-file">{t("media.dialog.fields.file")}</Label>
+              <Input
+                id="property-image-file"
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  form.setValue("image", e.target.files?.[0], { shouldValidate: true })
+                }
+              />
+              {form.formState.errors.image ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {t("errors.image_file_required")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="property-image-kind">{t("media.dialog.fields.kind")}</Label>

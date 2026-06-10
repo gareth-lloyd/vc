@@ -73,7 +73,7 @@ import type {
   PropertyContactAssignmentWriteInput,
   PropertyFilters,
   PropertyFinanceWriteInput,
-  PropertyImageWriteInput,
+  PropertyImageCreateInput,
   PropertyLocationWriteInput,
   PropertyNearbyPlaceWriteInput,
   PropertyRoomWriteInput,
@@ -459,7 +459,7 @@ export function usePropertyImages(propertyId: number | undefined) {
 export function useCreatePropertyImage(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: PropertyImageWriteInput) => createPropertyImage(propertyId, input),
+    mutationFn: (input: PropertyImageCreateInput) => createPropertyImage(propertyId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.images(propertyId) });
     },

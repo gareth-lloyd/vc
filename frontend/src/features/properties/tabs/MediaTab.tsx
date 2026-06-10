@@ -80,9 +80,9 @@ function ImageCard({ image, canWrite, onSetHero, onEdit, onDelete }: ImageCardPr
         aria-label={canWrite ? t("media.card.drag_handle_label") : undefined}
         role={canWrite ? "button" : undefined}
       >
-        {image.image ? (
+        {image.image_url ? (
           <img
-            src={image.image}
+            src={image.image_url}
             alt={image.name ?? ""}
             className="h-full w-full object-cover"
             draggable={false}
@@ -96,7 +96,7 @@ function ImageCard({ image, canWrite, onSetHero, onEdit, onDelete }: ImageCardPr
       <div className="flex items-start justify-between gap-2 p-3">
         <div className="min-w-0">
           <p className="text-foreground truncate text-sm font-medium">
-            {image.name?.trim() || image.image || `#${image.id}`}
+            {image.name?.trim() || `#${image.id}`}
           </p>
           <div className="mt-1 flex items-center gap-2">
             {isHero ? (

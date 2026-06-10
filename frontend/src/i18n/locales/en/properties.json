@@ -640,10 +640,8 @@
     "dialog": {
       "create_title": "Add image",
       "edit_title": "Edit image",
-      "s3_note": "Paste the S3 key for the uploaded image. Direct upload is coming in a later phase.",
       "fields": {
-        "key": "S3 key",
-        "key_placeholder": "properties/2026/05/villa-front.jpg",
+        "file": "Image file",
         "kind": "Kind",
         "name": "Name",
         "name_placeholder": "Front facade",
@@ -883,7 +881,6 @@
     "fixed": "Fixed"
   },
   "errors": {
-    "image_key_required": "S3 key is required",
     "room_name_required": "Room name is required",
     "nearby_name_required": "Name is required",
     "nearby_distance_required": "Distance is required",
@@ -910,7 +907,8 @@
     "rule_max_party_required": "Maximum party must be at least 1",
     "rule_max_party_lt_min": "Maximum party can't be below minimum party",
     "rule_price_invalid": "Enter a price like 1250 or 1250.00",
-    "rule_price_required": "Set a nightly or weekly price, or mark the rule POA"
+    "rule_price_required": "Set a nightly or weekly price, or mark the rule POA",
+    "image_file_required": "Choose an image file"
   },
   "common": {
     "inherit": "Inherit",

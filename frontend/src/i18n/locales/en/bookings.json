@@ -430,7 +430,10 @@
     "decimal_format": "Use a decimal like 100.00",
     "decimal_amount_format": "Use a decimal like 1000.00",
     "quantity_min": "At least 1",
-    "body_required": "Body is required"
+    "body_required": "Body is required",
+    "label_required": "Label is required",
+    "signed_decimal_format": "Use a decimal like 150.00 or -150.00",
+    "amount_nonzero": "Amount must not be zero"
   },
   "finance": {
     "title": "Finance",

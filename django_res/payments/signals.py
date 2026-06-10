@@ -122,6 +122,26 @@ def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) 
         )
 
 
+def _sync_refund_on_outbound_payment(sender: Any, *, payment: Any, **_: Any) -> None:
+    """Advance the parent Refund when its outbound Payment terminates.
+
+    Guarded to `Payment(purpose=REFUND)` rows carrying `meta['refund_id']`:
+    `payment_refunded` also fires when an ordinary inbound payment reaches
+    REFUNDED, and `payment_failed` fires for every purpose — neither of
+    those has a Refund row to sync.
+    """
+    from payments.enums import PaymentPurpose
+
+    if payment.purpose != PaymentPurpose.REFUND.value:
+        return
+    if not payment.meta.get("refund_id"):
+        return
+
+    from payments.services.refund import RefundService
+
+    RefundService.sync_from_outbound_payment(payment)
+
+
 def _register() -> None:
     """Connect the payments receivers to upstream domain signals.
 
@@ -142,4 +162,12 @@ def _register() -> None:
     payment_waived.connect(
         _advance_booking_on_payment_settled,
         dispatch_uid="payments.advance_booking_on_payment_waived",
+    )
+    payment_refunded.connect(
+        _sync_refund_on_outbound_payment,
+        dispatch_uid="payments.sync_refund_on_payment_refunded",
+    )
+    payment_failed.connect(
+        _sync_refund_on_outbound_payment,
+        dispatch_uid="payments.sync_refund_on_payment_failed",
     )

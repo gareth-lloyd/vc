@@ -16,8 +16,10 @@ from typing import Any
 
 import structlog
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
+from core.logging.operations import log_operation
 from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from properties.enums import DepositCalcType
@@ -143,6 +145,86 @@ class PaymentScheduler:
 
         return list(created)
 
+    @classmethod
+    @transaction.atomic
+    def resync_for_booking(cls, booking: Any) -> None:
+        """Resize the unsettled DEPOSIT/BALANCE rows after the total moved.
+
+        Legacy regenerated the whole schedule on every booking modify; the
+        rebuild equivalent recomputes from scratch (idempotent) but only
+        ever rewrites PENDING rows. SUCCEEDED money is history; PROCESSING
+        is mid-flight at the provider, so both are treated as committed at
+        their current amount. Reached via the `booking_total_changed`
+        receiver in `payments.signals`.
+
+        When the new total can't be absorbed (everything settled, or a
+        credit dropped the total below committed money), PENDING rows clamp
+        at 0 and the residual is logged *and* written to a BookingEvent so
+        operators see it on the Timeline; collecting or refunding it stays
+        an explicit operator action.
+        """
+        rows = list(
+            Payment.objects.select_for_update()
+            .filter(booking=booking, purpose__in=_SCHEDULE_PURPOSES)
+            .order_by("pk")
+        )
+        if not rows:
+            # No schedule yet (pre-AWAITING_DEPOSIT or financeless property)
+            # — `create_for_booking` sizes against the charges when it runs.
+            return
+
+        total = cls._booking_total(booking)
+        with log_operation(
+            "payment.schedule_resync",
+            logger=logger,
+            booking_id=booking.pk,
+            total=str(total),
+        ) as ctx:
+            pending = [r for r in rows if r.status == PaymentStatus.PENDING.value]
+            committed = sum(
+                (
+                    r.amount
+                    for r in rows
+                    if r.status in (PaymentStatus.PROCESSING.value, PaymentStatus.SUCCEEDED.value)
+                ),
+                Decimal("0"),
+            )
+
+            remaining = max(Decimal("0"), total - committed)
+            deposit = next((r for r in pending if r.purpose == PaymentPurpose.DEPOSIT.value), None)
+            if deposit is not None:
+                finance = getattr(booking.property, "finance", None)
+                schedule = finance.effective_payment_schedule() if finance else {}
+                deposit.amount = min(
+                    remaining,
+                    cls._calc_amount(
+                        calculation_type=schedule.get("deposit_calculation_type"),
+                        amount=schedule.get("deposit_amount"),
+                        base=total,
+                    ),
+                ).quantize(Decimal("0.01"))
+                deposit.save(update_fields=["amount", "updated_at"])
+                remaining -= deposit.amount
+
+            balance = next((r for r in pending if r.purpose == PaymentPurpose.BALANCE.value), None)
+            if balance is not None:
+                balance.amount = remaining.quantize(Decimal("0.01"))
+                balance.save(update_fields=["amount", "updated_at"])
+                remaining = Decimal("0")
+
+            residual = (
+                total - committed - sum((r.amount for r in pending), Decimal("0"))
+            ).quantize(Decimal("0.01"))
+            if residual:
+                ctx["residual"] = str(residual)
+                # `payments > reservations` is a clean downward edge, so the
+                # Timeline write happens right here rather than via a signal.
+                booking._write_event(
+                    source="system",
+                    reason="payment_schedule_residual",
+                    meta={"residual": str(residual), "total": str(total)},
+                )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -152,13 +234,18 @@ class PaymentScheduler:
 
         Prefers `booking.pricing_snapshot["total"]` (the locked-in JSON
         breakdown captured at confirmation time); falls back to
-        `booking.balance_due` when no snapshot is set yet.
+        `booking.balance_due` when no snapshot is set yet. Manual charge
+        items live outside the snapshot and are added live on top — the
+        single source of truth shared by `create_for_booking` and
+        `resync_for_booking`.
         """
         snapshot = getattr(booking, "pricing_snapshot", None) or {}
         if isinstance(snapshot, dict) and snapshot.get("total") is not None:
-            return Decimal(str(snapshot["total"])).quantize(Decimal("0.01"))
-        balance = getattr(booking, "balance_due", Decimal("0"))
-        return Decimal(balance).quantize(Decimal("0.01"))
+            total = Decimal(str(snapshot["total"]))
+        else:
+            total = Decimal(getattr(booking, "balance_due", Decimal("0")))
+        charges = booking.charge_items.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        return (total + charges).quantize(Decimal("0.01"))
 
     @staticmethod
     def _calc_amount(

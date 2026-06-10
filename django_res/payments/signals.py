@@ -84,6 +84,25 @@ def _schedule_payments_on_booking_confirmed(
     PaymentScheduler.create_for_booking(booking)
 
 
+def _resync_schedule_on_booking_total_changed(
+    sender: Any,
+    *,
+    booking: Any,
+    **_: Any,
+) -> None:
+    """Resize the unsettled schedule when staff-entered money moves the total.
+
+    reservations fires `booking_total_changed` from the charge-item model
+    signals; the resize lives here because the spine forbids reservations →
+    payments. The resync is a no-op until a schedule exists, and the
+    charge-item write paths run inside one transaction with it, so the
+    charge and the resized rows commit (or roll back) together.
+    """
+    from payments.services.payment_scheduler import PaymentScheduler
+
+    PaymentScheduler.resync_for_booking(booking)
+
+
 def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) -> None:
     """Advance the Booking when a rental payment settles (or is waived).
 
@@ -186,11 +205,15 @@ def _register() -> None:
     other apps to consume; it registers receivers here on its own signals and
     listens *down* the spine to reservations' `booking_transitioned`.
     """
-    from reservations.signals import booking_transitioned
+    from reservations.signals import booking_total_changed, booking_transitioned
 
     booking_transitioned.connect(
         _schedule_payments_on_booking_confirmed,
         dispatch_uid="payments.schedule_on_booking_confirmed",
+    )
+    booking_total_changed.connect(
+        _resync_schedule_on_booking_total_changed,
+        dispatch_uid="payments.resync_on_booking_total_changed",
     )
     booking_transitioned.connect(
         _expire_payments_on_booking_expired,

@@ -18,6 +18,7 @@ from django.core.management import call_command
 
 from properties.models import Property
 from reservations.services.availability import AvailabilityService, CellStatus
+from seeding.context import utc_today
 
 _WINDOW = timedelta(days=365)
 
@@ -66,7 +67,7 @@ def test_seed_dev_mixed_calendar_is_dense_varied_and_current() -> None:
     * occupancy inside the current month.
     """
     _seed("mixed", properties=10, bookings=60, seed=42)
-    today = date.today()
+    today = utc_today()
 
     # ---- Varied density: ≥1 packed villa, a lighter tail, ≥2 empty ----
     # Empty villas double as property_lifecycle fodder (may end up
@@ -116,10 +117,25 @@ def test_seed_dev_mixed_calendar_is_dense_varied_and_current() -> None:
 def test_seed_dev_dense_two_properties_still_books() -> None:
     """A tiny portfolio must still honour `--bookings`. The empty-tier floor is
     capped at `n - 1`, so `--properties 2` leaves one stay-bearing villa instead
-    of consuming the whole portfolio and silently producing zero bookings."""
+    of consuming the whole portfolio and silently producing zero bookings.
+
+    `--no-dashboard-activity` keeps the guaranteed dashboard cohorts out so the
+    exact-budget contract stays assertable."""
     from reservations.models.booking import Booking
 
-    _seed("mixed", properties=2, bookings=10, seed=7)
+    call_command(
+        "seed_dev",
+        "--properties",
+        "2",
+        "--bookings",
+        "10",
+        "--profile",
+        "mixed",
+        "--seed",
+        "7",
+        "--no-dashboard-activity",
+        stdout=StringIO(),
+    )
     assert Booking.objects.count() == 10
 
 
@@ -128,7 +144,7 @@ def test_seed_dev_mixed_covers_reachable_cell_states() -> None:
     """Aggregate over the portfolio the calendar exercises every reachable
     state."""
     _seed("mixed", properties=12, bookings=80, seed=42)
-    today = date.today()
+    today = utc_today()
     reasons: set[str] = set()
     has_available = False
     for cal in _calendars(today).values():
@@ -152,7 +168,7 @@ def test_seed_dev_happy_stays_sparse_with_no_changeover() -> None:
     """The happy profile keeps the legacy shape: null changeover times (so no
     AM/PM split) and a thin round-robin calendar."""
     _seed("happy", properties=4, bookings=6, seed=42)
-    today = date.today()
+    today = utc_today()
     for prop in Property.objects.filter(status="active"):
         assert prop.settings.check_in_time is None
         assert prop.settings.check_out_time is None

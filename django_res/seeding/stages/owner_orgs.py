@@ -124,11 +124,10 @@ def _seed_owner_block(org: OwnerOrganisation, requester: User) -> int:
     `BookingHold`), so the range is pushed far out (120 days) to avoid
     perturbing the calendar density the seed-graph tests pin nearer term.
     """
-    from datetime import date
-
     from reservations.enums import OwnerBlockKind
     from reservations.models import OwnerBlock
     from reservations.services.owner_block import OwnerBlockService
+    from seeding.context import utc_today
 
     grant = (
         OwnerOrgProperty.objects.filter(organisation=org, end_date__isnull=True)
@@ -142,7 +141,7 @@ def _seed_owner_block(org: OwnerOrganisation, requester: User) -> int:
     if OwnerBlock.objects.filter(property=prop, created_by=requester).exists():
         return 0
 
-    start = date.today() + timedelta(days=120)
+    start = utc_today() + timedelta(days=120)
     OwnerBlockService.create(
         property=prop,
         created_by=requester,

@@ -14,19 +14,33 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
+
+
+def utc_today() -> date:
+    """Today as a UTC calendar date — the anchor for all seeded date logic.
+
+    Both dashboards compute "today" in UTC (settings TIME_ZONE is UTC, and the
+    SPA uses `toISOString()`), so the seeder must too: a server-local
+    `date.today()` puts today-anchored stays on the wrong calendar day for
+    part of every day on any non-UTC machine.
+    """
+    return datetime.now(UTC).date()
+
 
 # Rows per stage for each scale preset. Booking budgets are deliberately
 # generous for the non-happy profiles: the `bookings` stage spreads them
 # across density tiers (a few packed villas, several busy, many light, some
 # empty) so default calendars read as realistically dense rather than near
-# empty. `--bookings` still overrides the total exactly.
+# empty. `--bookings` still overrides the total exactly. `dashboard` is the
+# multiplier the dashboard_activity stage applies to its guaranteed cohorts
+# (arrivals/departures today, NEW enquiries, awaiting-balance stays).
 _SCALES: dict[str, dict[str, int]] = {
-    "small": {"properties": 5, "users": 4, "bookings": 30},
-    "medium": {"properties": 20, "users": 8, "bookings": 110},
-    "large": {"properties": 60, "users": 15, "bookings": 400},
+    "small": {"properties": 5, "users": 4, "bookings": 30, "dashboard": 1},
+    "medium": {"properties": 20, "users": 8, "bookings": 110, "dashboard": 2},
+    "large": {"properties": 60, "users": 15, "bookings": 400, "dashboard": 3},
 }
 
 
@@ -199,7 +213,10 @@ class SeedContext:
     n_properties: int
     n_bookings: int
     n_users: int
-    today: date = field(default_factory=date.today)
+    # Multiplier for the dashboard_activity cohorts (set from the scale
+    # preset). 0 disables the stage (`--no-dashboard-activity`).
+    dashboard_factor: int = 1
+    today: date = field(default_factory=utc_today)
     # Shared collections, populated as stages run.
     currencies: dict[str, Any] = field(default_factory=dict)
     properties: list[Any] = field(default_factory=list)

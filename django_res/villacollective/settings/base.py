@@ -167,6 +167,14 @@ REST_FRAMEWORK = {
         "core.api.permissions.IsStaff",
     ],
     "EXCEPTION_HANDLER": "core.api.exception_handler.canonical_exception_handler",
+    # Anti-brute-force throttles on the unauthenticated auth endpoints
+    # (ScopedRateThrottle, anon-keyed by IP). Relaxed in settings/test.py so
+    # the suite's many logins per process don't trip them.
+    "DEFAULT_THROTTLE_RATES": {
+        "auth.login": "10/min",
+        "auth.tfa": "10/min",
+        "auth.password_reset": "5/hour",
+    },
 }
 
 # App-layer Fernet encryption for TOTP secrets / SMTP passwords / OAuth tokens.

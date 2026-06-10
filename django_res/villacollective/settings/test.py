@@ -65,3 +65,15 @@ LOGGING = configure_structlog(json_logs=False, level="WARNING", cache=False, con
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_BROKER_URL = "memory://"
+
+# The suite logs in dozens of times per process against the shared locmem
+# throttle cache — relax the auth rates so legitimate test traffic never
+# trips them. The dedicated throttle tests override these with tight rates.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,  # noqa: F405
+    "DEFAULT_THROTTLE_RATES": {
+        "auth.login": "10000/min",
+        "auth.tfa": "10000/min",
+        "auth.password_reset": "10000/min",
+    },
+}

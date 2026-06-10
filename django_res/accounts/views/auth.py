@@ -15,6 +15,7 @@ from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.enums import TfaMethod
@@ -44,6 +45,8 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth.login"
 
     def post(self, request: Request) -> Response:
         serializer = LoginSerializer(data=request.data)
@@ -213,6 +216,8 @@ class TfaChallengeView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth.tfa"
 
     def post(self, request: Request) -> Response:
         serializer = TfaChallengeSerializer(data=request.data)
@@ -248,6 +253,8 @@ class TfaVerifyView(APIView):
     """`POST /auth/2fa:verify` — submit OTP → completes login."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth.tfa"
 
     def post(self, request: Request) -> Response:
         serializer = TfaVerifySerializer(data=request.data)
@@ -287,6 +294,8 @@ class PasswordResetRequestView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth.password_reset"
 
     def post(self, request: Request) -> Response:
         serializer = PasswordResetRequestSerializer(data=request.data)
@@ -297,6 +306,8 @@ class PasswordResetRequestView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth.password_reset"
 
     def post(self, request: Request) -> Response:
         return not_implemented_response("Password reset confirmation is not yet wired.")

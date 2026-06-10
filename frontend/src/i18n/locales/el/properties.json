@@ -34,6 +34,7 @@
     "breadcrumb_list": "Ακίνητα",
     "sections_aria": "Ενότητες ακινήτου",
     "image_placeholder_aria": "Σύμβολο κράτησης εικόνας ακινήτου",
+    "hero_image_alt": "Φωτογραφία του {{name}}",
     "subtitle_dash": "—",
     "quick_actions": {
       "open_in_availability": "Άνοιγμα στη διαθεσιμότητα",

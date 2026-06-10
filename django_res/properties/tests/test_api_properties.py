@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from properties.enums import PropertyStatus
+from properties.enums import ImageKind, PropertyStatus
 from properties.models import (
     Property,
     PropertyCategory,
     PropertyGroup,
+    PropertyImage,
     PropertyLocation,
     Region,
 )
@@ -132,6 +134,30 @@ def test_detail_by_id_or_slug(api_client: APIClient, staff: User, property_: Pro
     assert by_id.status_code == 200
     assert by_slug.status_code == 200
     assert by_id.json()["id"] == by_slug.json()["id"]
+
+
+@pytest.mark.django_db
+def test_detail_hero_image_url(api_client: APIClient, staff: User, property_: Property) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200
+    assert response.json()["hero_image_url"] is None
+
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.GALLERY,
+        image=SimpleUploadedFile("gallery.jpg", b"x", content_type="image/jpeg"),
+    )
+    hero = PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200
+    assert response.json()["hero_image_url"] == hero.image.url
 
 
 @pytest.mark.django_db

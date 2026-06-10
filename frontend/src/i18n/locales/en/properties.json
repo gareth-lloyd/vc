@@ -34,6 +34,7 @@
     "breadcrumb_list": "Properties",
     "sections_aria": "Property sections",
     "image_placeholder_aria": "Property image placeholder",
+    "hero_image_alt": "Photo of {{name}}",
     "subtitle_dash": "—",
     "quick_actions": {
       "open_in_availability": "Open in availability",

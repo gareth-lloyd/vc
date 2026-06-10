@@ -124,6 +124,26 @@ describe("PropertyDetailLayout", () => {
     expect(screen.getByText("active")).toBeInTheDocument();
   });
 
+  it("renders the hero image in the right rail when the property has one", async () => {
+    installDetailHandlers();
+    server.use(
+      http.get("/api/v1/properties/casa-norte", () =>
+        HttpResponse.json({ ...propertyFixture, hero_image_url: "/media/properties/5/hero.jpg" }),
+      ),
+    );
+    setup("/properties/casa-norte/details");
+    const image = await screen.findByRole("img", { name: /casa norte/i });
+    expect(image).toHaveAttribute("src", "/media/properties/5/hero.jpg");
+  });
+
+  it("renders an empty placeholder when the property has no hero image", async () => {
+    installDetailHandlers();
+    setup("/properties/casa-norte/details");
+    await waitFor(() => expect(screen.getAllByText("Casa Norte")[0]).toBeInTheDocument());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Property image placeholder")).toBeInTheDocument();
+  });
+
   it("renders the Details tab with sub-resources", async () => {
     installDetailHandlers();
     setup("/properties/casa-norte/details");

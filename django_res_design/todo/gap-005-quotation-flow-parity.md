@@ -53,7 +53,8 @@ sat on sand without them. Both are now fixed on branch
 - **F1 — API-created quotation lines were never priced.**
   `QuotationLineViewSet.perform_create` only called `serializer.save()`; there
   was no pricing hook on `QuotationLine` and no signal, so lines saved via
-  `POST /quotations/{id}/lines` (the builder's save path) landed with
+  `POST /quotations/{id}/lines` (then the builder's save path; the builder
+  now saves atomically via nested `lines` on `POST /quotations`) landed with
   `total=0` and an empty `pricing_snapshot`. Only
   `QuotationService.create_from_enquiry` priced correctly, which masked the bug
   in `seed_dev` data. **Fix:** extracted `QuotationService.price_line` and call

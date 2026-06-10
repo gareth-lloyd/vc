@@ -16,6 +16,14 @@ function flattenMessages(value: unknown): string[] {
   return [];
 }
 
+// Flatten a 4xx ApiError into a single banner string for dialogs without an
+// RHF form: the top-level detail plus every nested field message (e.g. errors
+// under `lines[1]` from a nested serializer), so "Validation failed" is never
+// shown bare while the real reason hides in `field_errors`.
+export function apiErrorMessage(error: ApiError): string {
+  return [error.detail, ...flattenMessages(error.fieldErrors)].filter(Boolean).join(" ");
+}
+
 // Maps an API 4xx error onto a form: matched flat fields become inline RHF
 // errors; everything else (non_field_errors, nested objects, and fields with no
 // inline home) is collected into the returned `detail` so it surfaces in the

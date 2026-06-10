@@ -199,8 +199,8 @@ export function useConvertQuotation(id: QuotationId) {
   });
 }
 
-// Line CRUD hooks. Create lives in `SaveQuoteDialog`, which fans the
-// requests out in parallel and invalidates once at the end.
+// Line CRUD hooks. Create has no hook: new lines ride nested on the atomic
+// `POST /quotations` body (`SaveQuoteDialog`); these edit existing lines.
 export function useUpdateQuotationLine(quotationId: QuotationId) {
   const qc = useQueryClient();
   return useMutation({

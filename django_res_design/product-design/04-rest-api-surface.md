@@ -423,7 +423,7 @@ Headers + line items; quote-send is a notable side-effecting action.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/quotations` | List, filter by `status`, `enquiry`, `guest`, `created_after` |
-| POST | `/quotations` | Create header |
+| POST | `/quotations` | Create header, with optional nested `lines` — header + lines + pricing + holds succeed or fail as one transaction (the builder's atomic save; a hold conflict 409s and rolls everything back). `lines` is create-only |
 | GET | `/quotations/{id}` | Detail incl. lines |
 | PATCH | `/quotations/{id}` | Update |
 | DELETE | `/quotations/{id}` | Archive |
@@ -436,7 +436,7 @@ Headers + line items; quote-send is a notable side-effecting action.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/quotations/{id}/lines` | List lines |
-| POST | `/quotations/{id}/lines` | Add line |
+| POST | `/quotations/{id}/lines` | Add line to an existing quotation (the builder creates its initial lines nested on `POST /quotations`) |
 | PATCH | `/quotations/{id}/lines/{line_id}` | Update |
 | DELETE | `/quotations/{id}/lines/{line_id}` | Remove |
 | POST | `/quotations/{id}/lines:reorder` | Reorder |

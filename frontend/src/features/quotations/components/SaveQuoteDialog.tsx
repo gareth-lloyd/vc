@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useQueryClient } from "@tanstack/react-query";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
-import { parseMoney } from "@/lib/format/money";
+import { toDecimalString } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
 import { createQuotationLine } from "../api";
 import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
@@ -28,14 +28,6 @@ interface Props {
   enquiry: EnquiryDetail | null;
   lines: StagedLine[];
   onSaved: (quotation: QuotationDetail) => void;
-}
-
-// Normalise an operator-typed money string to a canonical 2-dp decimal for the
-// wire (e.g. "1,000" → "1000.00"), or null when it doesn't parse to a finite
-// number so callers can fall back. Matches the app's hardcoded 2-dp convention.
-function toDecimalString(value: string | number | null | undefined): string | null {
-  const parsed = parseMoney(value);
-  return Number.isFinite(parsed) ? parsed.toFixed(2) : null;
 }
 
 function defaultExpiresAt(): string {

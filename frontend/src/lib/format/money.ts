@@ -27,6 +27,14 @@ export function parseMoney(value: string | number | null | undefined): number {
   return Number(trimmed);
 }
 
+// Normalise an operator-typed money string to a canonical 2-dp decimal for the
+// wire (e.g. "1,000" → "1000.00"), or null when it doesn't parse to a finite
+// number so callers can fall back. Matches the app's hardcoded 2-dp convention.
+export function toDecimalString(value: string | number | null | undefined): string | null {
+  const parsed = parseMoney(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : null;
+}
+
 // True when `value` parses to a finite money amount strictly greater than zero
 // — e.g. a manual line's total. Pure (no schema import), so schemas.ts and the
 // cart can share one definition without an import cycle.

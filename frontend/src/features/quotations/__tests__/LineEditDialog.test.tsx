@@ -77,6 +77,88 @@ describe("LineEditDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("normalises a comma-typed discount to a canonical 2-dp decimal", async () => {
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLine({ discount: "1500.00" }));
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog open onOpenChange={vi.fn()} quotationId={QUOTATION_ID} line={makeLine()} />,
+    );
+    const dialog = screen.getByRole("dialog");
+    const discount = within(dialog).getByLabelText(/discount/i) as HTMLInputElement;
+    await userEvent.clear(discount);
+    await userEvent.type(discount, "1,500");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(body).not.toBeNull();
+    expect(body!.discount).toBe("1500.00");
+  });
+
+  it("normalises a comma-typed manual total to a canonical 2-dp decimal", async () => {
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLine({ is_manual: true, total: "5000.00" }));
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog
+        open
+        onOpenChange={vi.fn()}
+        quotationId={QUOTATION_ID}
+        line={makeLine({ is_manual: true, total: "100.00", price_override_reason: "Agreed rate" })}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    const total = (await within(dialog).findByLabelText(/manual total/i)) as HTMLInputElement;
+    await userEvent.clear(total);
+    await userEvent.type(total, "5,000");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(body).not.toBeNull();
+    expect(body!.total).toBe("5000.00");
+  });
+
+  it("zeroes and disables the discount on a manual line", async () => {
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLine({ is_manual: true }));
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog
+        open
+        onOpenChange={vi.fn()}
+        quotationId={QUOTATION_ID}
+        line={makeLine({
+          is_manual: true,
+          total: "100.00",
+          price_override_reason: "Agreed rate",
+          discount: "75.00",
+        })}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    // The server never applies a discount to a manual line, so the field is
+    // inert — mirror the cart: disabled input, "0" on the wire.
+    expect(within(dialog).getByLabelText(/discount/i)).toBeDisabled();
+    await within(dialog).findByLabelText(/manual total/i);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(body).not.toBeNull();
+    expect(body!.discount).toBe("0");
+  });
+
   it("blocks submit with an inline error when a manual line has no total", async () => {
     let patched = false;
     server.use(

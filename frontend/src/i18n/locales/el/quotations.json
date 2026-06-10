@@ -184,6 +184,7 @@
         "notes_label": "Σημειώσεις",
         "discount_label": "Έκπτωση",
         "discount_hint": "Αφαιρείται από το τιμολογημένο σύνολο.",
+        "discount_manual_hint": "Δεν εφαρμόζεται σε χειροκίνητο σύνολο.",
         "inclusions_label": "Παροχές",
         "inclusions_placeholder": "π.χ. Καθημερινή καθαριότητα, καλάθι υποδοχής",
         "manual_label": "Χειροκίνητη παράκαμψη τιμής",

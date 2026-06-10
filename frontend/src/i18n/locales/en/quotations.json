@@ -184,6 +184,7 @@
         "notes_label": "Notes",
         "discount_label": "Discount",
         "discount_hint": "Subtracted from the priced total.",
+        "discount_manual_hint": "Not applied to a manual total.",
         "inclusions_label": "Inclusions",
         "inclusions_placeholder": "e.g. Daily housekeeping, welcome hamper",
         "manual_label": "Override the price manually",

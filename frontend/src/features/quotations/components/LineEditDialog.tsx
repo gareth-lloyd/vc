@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { toDecimalString } from "@/lib/format/money";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useUpdateQuotationLine } from "../hooks";
@@ -81,19 +82,23 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
     // Build the wire body explicitly. Decimal fields can't take an empty
     // string, so we only include `total`/`price_override_reason` on the
     // manual path; the server prices non-manual lines and applies `discount`.
+    // Money values are normalised to canonical 2-dp decimals ("1,000" →
+    // "1000.00") — mirrors SaveQuoteDialog so create and edit agree on the
+    // wire shape. A manual line never carries a discount: the server skips
+    // re-pricing manual lines, so a stored discount would never be applied.
     const body: Partial<QuotationLineWriteInput> = {
       property: values.property,
       date_from: values.date_from,
       date_to: values.date_to,
       adults: values.adults,
       children: values.children,
-      discount: (values.discount ?? "").trim() || "0",
+      discount: values.is_manual ? "0" : (toDecimalString(values.discount) ?? "0"),
       inclusions: values.inclusions ?? "",
       is_manual: values.is_manual,
       notes: values.notes,
     };
     if (values.is_manual) {
-      body.total = (values.total ?? "").trim();
+      body.total = toDecimalString(values.total) ?? "";
       body.price_override_reason = values.price_override_reason ?? "";
     }
     try {
@@ -158,10 +163,13 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
                 id="qle-discount"
                 type="text"
                 inputMode="decimal"
+                disabled={isManual}
                 {...form.register("discount")}
               />
               <p className="text-muted-foreground text-xs">
-                {t("detail.dialogs.line_edit.discount_hint")}
+                {isManual
+                  ? t("detail.dialogs.line_edit.discount_manual_hint")
+                  : t("detail.dialogs.line_edit.discount_hint")}
               </p>
             </div>
           </div>

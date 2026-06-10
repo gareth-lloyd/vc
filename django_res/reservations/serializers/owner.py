@@ -22,7 +22,7 @@ from rest_framework import serializers
 
 from reservations.enums import OwnerBlockKind
 from reservations.models import OwnerBlock
-from reservations.services.owner_finance import owner_money_from_snapshot
+from reservations.services.owner_finance import owner_money_for_booking
 
 if TYPE_CHECKING:
     from reservations.models import Booking
@@ -89,7 +89,7 @@ class OwnerBookingListSerializer(serializers.Serializer):
     ) -> None:
         if not vis["view_full_money"]:
             return
-        money = owner_money_from_snapshot(obj.pricing_snapshot)
+        money = owner_money_for_booking(obj)
         if money is None:
             return
         data["gross_total"] = f"{money['gross_total']:.2f}"

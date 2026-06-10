@@ -8,9 +8,9 @@ from typing import Any
 from django.db import models
 from rest_framework import serializers
 
-from properties.models import GroupFinance, GroupSettings, PropertyFinance, PropertySettings
+from properties.models import GroupSettings, PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
-from reservations.services.charges import owner_effect
+from reservations.services.charges import charges_total_for, effective_commission_for, owner_effect
 
 
 class BookingListSerializer(serializers.ModelSerializer[Booking]):
@@ -83,16 +83,7 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
 
     @staticmethod
     def _charges_total(obj: Booking) -> Decimal:
-        """Live Σ of manual charge items (no denormalised column by design).
-
-        Reads the viewset's `charges_total` Subquery annotation when present
-        (Coalesce guarantees a real 0 there, so None means "un-annotated");
-        falls back to a per-row aggregate for hand-constructed instances.
-        """
-        total = getattr(obj, "charges_total", None)
-        if total is None:
-            total = obj.charge_items.aggregate(total=models.Sum("amount"))["total"]
-        return Decimal(total or 0)
+        return charges_total_for(obj)
 
     def get_total(self, obj: Booking) -> str:
         return f"{(obj.balance_due + self._charges_total(obj)):.2f}"
@@ -189,16 +180,7 @@ class BookingDetailSerializer(BookingListSerializer):
 
     @classmethod
     def _effective_commission(cls, obj: Booking) -> dict[str, Any] | None:
-        finance = cls._finance(obj)
-        if finance is None:
-            return None
-        try:
-            return finance.effective_commission()
-        except GroupFinance.DoesNotExist:
-            # PropertyFinance.effective() walks property.group.finance for
-            # the fallback; legacy/imported groups may not have one. Narrow
-            # catch — real bugs in effective_commission() still surface.
-            return None
+        return effective_commission_for(obj)
 
     def get_commission(self, obj: Booking) -> dict[str, Any] | None:
         commission = self._effective_commission(obj)

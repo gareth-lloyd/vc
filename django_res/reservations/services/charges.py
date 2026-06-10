@@ -19,6 +19,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django.db import models, transaction
+from django.db.models.functions import Coalesce
 from rest_framework.exceptions import ValidationError
 
 from core.exceptions import InvalidTransition
@@ -26,10 +27,75 @@ from properties.enums import CommissionCalcType
 from reservations.enums import ACTIVE_BOOKING_STATUSES
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
+
     from pricing.models import Currency
     from reservations.models import Booking, BookingChargeItem
 
 ZERO = Decimal("0.00")
+
+
+def with_charges_total(qs: QuerySet[Booking]) -> QuerySet[Booking]:
+    """Annotate Σ charge items as `charges_total` on a Booking queryset.
+
+    A Subquery (not a Sum over a join) on purpose: it lives only in the
+    SELECT clause, so it can't cross-multiply with other LEFT-JOIN
+    aggregates (e.g. `amount_paid`) or leak into status-counts/paginator
+    COUNTs. Coalesce to a real 0 so an annotated NULL never trips the
+    per-row fallback in `charges_total_for`.
+    """
+    from reservations.models import BookingChargeItem
+
+    charge_sum = (
+        BookingChargeItem.objects.filter(booking=models.OuterRef("pk"))
+        .values("booking")
+        .annotate(s=models.Sum("amount"))
+        .values("s")
+    )
+    return qs.annotate(
+        charges_total=Coalesce(
+            models.Subquery(charge_sum),
+            models.Value(Decimal("0")),
+            output_field=models.DecimalField(max_digits=12, decimal_places=2),
+        )
+    )
+
+
+def charges_total_for(booking: Booking) -> Decimal:
+    """Live Σ of the booking's charge items (no denormalised column by design).
+
+    Reads the `with_charges_total` annotation when present (Coalesce
+    guarantees a real 0 there, so None means "un-annotated"); falls back
+    to a per-row aggregate.
+    """
+    total = getattr(booking, "charges_total", None)
+    if total is None:
+        total = booking.charge_items.aggregate(total=models.Sum("amount"))["total"]
+    return Decimal(total or 0)
+
+
+def effective_commission_for(booking: Booking) -> dict[str, Any] | None:
+    """Resolve the booking property's effective commission config.
+
+    Tolerates missing `PropertyFinance` / `GroupFinance` rows
+    (legacy/imported data) by returning None; any other failure is a real
+    bug and propagates.
+    """
+    from properties.models import GroupFinance, PropertyFinance
+
+    prop = booking.property
+    if prop is None:
+        return None
+    try:
+        finance = prop.finance
+    except PropertyFinance.DoesNotExist:
+        return None
+    try:
+        return finance.effective_commission()
+    except GroupFinance.DoesNotExist:
+        # `effective()` walks property.group.finance for the fallback;
+        # legacy/imported groups may not have one.
+        return None
 
 
 class OwnerEffect(NamedTuple):
@@ -169,9 +235,7 @@ class ChargeItemService:
         Computed live under the booking row lock, so two concurrent credits
         can't slip past the guard together.
         """
-        current = booking.charge_items.aggregate(total=models.Sum("amount"))["total"] or Decimal(
-            "0"
-        )
+        current = charges_total_for(booking)
         if booking.balance_due + current + delta < 0:
             raise ValidationError({"amount": "This would make the booking total negative."})
 
@@ -185,9 +249,7 @@ class ChargeItemService:
         before: dict[str, Any] | None,
         item_id: int | None = None,
     ) -> None:
-        charges_total = booking.charge_items.aggregate(total=models.Sum("amount"))[
-            "total"
-        ] or Decimal("0")
+        charges_total = charges_total_for(booking)
         booking._write_event(
             actor=actor,
             reason=f"charge_item_{action}",

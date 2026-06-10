@@ -9,11 +9,9 @@ from typing import Any
 from django.db import transaction
 from django.db.models import (
     DecimalField,
-    OuterRef,
     Prefetch,
     Q,
     QuerySet,
-    Subquery,
     Sum,
     Value,
 )
@@ -28,7 +26,7 @@ from rest_framework.response import Response
 from accounts.models import ContactEmail, ContactPhone
 from core.api.permissions import IsReservationsWriter
 from reservations.filters import BookingFilter
-from reservations.models import Booking, BookingChargeItem, BookingEvent, BookingNote
+from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers import (
     BookingDetailSerializer,
     BookingListSerializer,
@@ -36,6 +34,7 @@ from reservations.serializers import (
     BookingWriteSerializer,
 )
 from reservations.serializers.booking import BookingEventSerializer
+from reservations.services.charges import with_charges_total as _with_charges_total
 from reservations.views.status_counts import StatusCountsMixin
 
 
@@ -65,30 +64,6 @@ def _with_amount_paid(qs: QuerySet[Booking]) -> QuerySet[Booking]:
                     payments__purpose__in=("deposit", "balance"),
                 ),
             ),
-            Value(Decimal("0")),
-            output_field=DecimalField(max_digits=12, decimal_places=2),
-        )
-    )
-
-
-def _with_charges_total(qs: QuerySet[Booking]) -> QuerySet[Booking]:
-    """Annotate Σ charge items for the serializer's `total`/`charges_total`.
-
-    A Subquery (not a Sum over a join) on purpose: it lives only in the
-    SELECT clause, so it can't cross-multiply with the `amount_paid` LEFT
-    JOIN or leak into the status-counts/paginator COUNTs. Coalesce for the
-    same reason as `_with_amount_paid` — an annotated NULL would trip the
-    serializer's per-row fallback aggregate.
-    """
-    charge_sum = (
-        BookingChargeItem.objects.filter(booking=OuterRef("pk"))
-        .values("booking")
-        .annotate(s=Sum("amount"))
-        .values("s")
-    )
-    return qs.annotate(
-        charges_total=Coalesce(
-            Subquery(charge_sum),
             Value(Decimal("0")),
             output_field=DecimalField(max_digits=12, decimal_places=2),
         )

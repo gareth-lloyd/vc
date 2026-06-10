@@ -42,8 +42,9 @@ from reservations.serializers.owner import (
     OwnerBookingListSerializer,
 )
 from reservations.services.availability import AvailabilityService
+from reservations.services.charges import with_charges_total
 from reservations.services.owner_block import OwnerBlockService
-from reservations.services.owner_finance import owner_money_from_snapshot
+from reservations.services.owner_finance import owner_money_for_booking
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -100,8 +101,15 @@ class OwnerDashboardView(APIView):
             money_ytd = ytd.filter(property_id__in=full_money_ids)
             gross = money_ytd.aggregate(total=Sum("rental_price"))["total"] or Decimal("0")
             net_to_owner = Decimal("0")
-            for snapshot in money_ytd.values_list("pricing_snapshot", flat=True):
-                money = owner_money_from_snapshot(snapshot)
+            # Per-booking, not values_list of snapshots: manual charge items
+            # live outside the snapshot, and their owner effect needs the
+            # charges annotation + the property's commission config. Gross
+            # stays rental-price-based — charges are extras, not rent.
+            money_bookings = with_charges_total(money_ytd).select_related(
+                "property__finance", "property__group__finance"
+            )
+            for money_booking in money_bookings:
+                money = owner_money_for_booking(money_booking)
                 if money is not None:
                     net_to_owner += money["net_to_owner"]
 

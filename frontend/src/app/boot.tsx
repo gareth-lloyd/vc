@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
 import { resetAuthQueryCache } from "@/features/auth/resetAuthQueryCache";
+import { primeCsrf } from "@/features/auth/api";
 import { useMe } from "@/features/auth/hooks";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerMe } from "@/features/owner-portal/hooks";
@@ -14,6 +15,14 @@ const PUBLIC_PATH_PREFIX = "/login";
 export function BootGate() {
   const location = useLocation();
   const isPublic = location.pathname.startsWith(PUBLIC_PATH_PREFIX);
+
+  // Prime the csrftoken cookie once per boot so a fresh browser's first
+  // unsafe request (typically the login POST itself) isn't 403'd by
+  // CsrfViewMiddleware. Fire-and-forget: a failure degrades to the
+  // pre-prime behaviour, it must never block rendering.
+  useEffect(() => {
+    primeCsrf().catch(() => {});
+  }, []);
 
   if (isPublic) return <Outlet />;
   return <AuthenticatedBoot />;

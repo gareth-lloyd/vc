@@ -11,6 +11,8 @@ from typing import Any, cast
 
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -34,6 +36,23 @@ from accounts.services import SessionService, TwoFactorService
 from accounts.services.password_reset import PasswordResetService
 from accounts.services.two_factor import TfaError
 from core.api import not_implemented_response
+
+
+class CsrfView(APIView):
+    """`GET /auth/csrf` — prime the `csrftoken` cookie for the SPA.
+
+    The SPA calls this on boot, so the first session-authenticated POST
+    (typically `/auth/login`) already carries the cookie regardless of which
+    server delivered the HTML shell — Vite dev server on :5173, single-origin
+    Django, or staging. Without it, a fresh browser's first login submit is
+    403'd by `CsrfViewMiddleware` and the user has to submit twice.
+    """
+
+    permission_classes = [AllowAny]
+
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request: Request) -> Response:
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LoginView(APIView):

@@ -312,6 +312,41 @@ def test_quote_bulk_no_rate_entry_carries_image_and_currency(
 
 
 @pytest.mark.django_db
+def test_quote_bulk_other_errors_skip_currency_resolution(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Only no-rate entries feed the manual-quote card, so only they pay the
+    currency-resolution queries; other error codes carry a null currency_code
+    (and keep the prefetched image for the collapsed list's thumbnails)."""
+    api_client.force_login(staff)
+    # Party of 20 exceeds the rule's max_party=8 -> party_out_of_range.
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 20,
+                },
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    (quote,) = response.json()["quotes"]
+    assert quote["available"] is False
+    assert quote["error_code"] == "party_out_of_range"
+    assert quote["currency_code"] is None
+    assert quote["hero_image_url"] is None  # property has no HERO image here
+
+
+@pytest.mark.django_db
 def test_quote_bulk_carries_hero_image_url(
     api_client: APIClient,
     staff: User,

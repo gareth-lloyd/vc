@@ -68,6 +68,7 @@
   ],
   "quotations": [
     "builder.results.incomplete_pricing",
+    "builder.results.incomplete_pricing_aria",
     "builder.results.incomplete_pricing_hint",
     "builder.results.add_manual",
     "builder.cart.line.manual_locked_hint",

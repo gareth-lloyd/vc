@@ -146,6 +146,9 @@ export function QuoteResultsList({
         <article
           key={option.property_id}
           className="border-border flex items-center justify-between gap-3 rounded-md border p-3"
+          aria-label={t("builder.results.incomplete_pricing_aria", {
+            name: option.property_name,
+          })}
         >
           <div className="flex items-center gap-3">
             <PropertyThumbnail
@@ -157,7 +160,10 @@ export function QuoteResultsList({
               <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <p className="text-warning text-xs font-medium">
+                  {/* tabIndex makes the badge keyboard-focusable so the tooltip
+                      (the only place POA is distinguished from a rate-card gap)
+                      opens on focus, not just hover. */}
+                  <p tabIndex={0} className="text-warning text-xs font-medium">
                     {t("builder.results.incomplete_pricing")}
                   </p>
                 </TooltipTrigger>

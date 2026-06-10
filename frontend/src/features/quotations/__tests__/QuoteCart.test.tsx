@@ -191,6 +191,39 @@ describe("QuoteCart", () => {
     expect(screen.queryByLabelText(/manual total/i)).not.toBeInTheDocument();
   });
 
+  it("auto-expands again when a removed manual line is re-staged", async () => {
+    // Remove + re-add is a fresh staging: the guided entry must fire again.
+    function RemoveReAddHarness() {
+      const [lines, setLines] = useState<StagedLine[]>([noRateLine()]);
+      return (
+        <>
+          <button type="button" onClick={() => setLines([noRateLine()])}>
+            restage
+          </button>
+          <QuoteCart
+            lines={lines}
+            onUpdateLine={(id, patch) =>
+              setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
+            }
+            onRemove={(id) => setLines((prev) => prev.filter((l) => l.property_id !== id))}
+            onSaveDraft={() => undefined}
+            onSendToGuest={() => undefined}
+          />
+        </>
+      );
+    }
+    renderWithProviders(<RemoveReAddHarness />);
+    expect(screen.getByLabelText(/manual total/i)).toBeInTheDocument();
+
+    // Collapse first — otherwise a stale expandedId masks the regression.
+    await userEvent.click(screen.getByRole("button", { name: /collapse line/i }));
+    await userEvent.click(screen.getByRole("button", { name: /remove/i }));
+    expect(screen.queryByLabelText(/manual total/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /restage/i }));
+    expect(screen.getByLabelText(/manual total/i)).toBeInTheDocument();
+  });
+
   it("disables the manual checkbox on a line with no engine total to fall back to", () => {
     renderWithProviders(<Harness initial={[noRateLine()]} />);
     // Un-ticking would strand the line permanently invalid (no engine price).

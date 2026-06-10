@@ -86,15 +86,20 @@ class PricingQuoteBulkView(APIView):
                     data=entry,
                 )
             except DomainError as exc:
-                # Q-013: unpriceable entries still feed the builder's manual-quote
-                # card — image for parity with priced siblings, and the resolved
-                # currency the operator's manual total will be saved in.
-                resolved = resolve_property_currency(property_obj)
+                # Q-013: no-rate entries feed the builder's manual-quote card —
+                # image for parity with priced siblings, and the resolved
+                # currency the operator's manual total will be saved in. Only
+                # they pay the currency-resolution queries; other error codes
+                # render collapsed and never show a currency.
+                code = getattr(exc, "code", "domain_error")
+                resolved = (
+                    resolve_property_currency(property_obj) if code == "no_rate_available" else None
+                )
                 quotes.append(
                     {
                         "property_id": entry["property_id"],
                         "available": False,
-                        "error_code": getattr(exc, "code", "domain_error"),
+                        "error_code": code,
                         "error_detail": str(exc),
                         "hero_image_url": property_obj.hero_image_url(),
                         "currency_code": resolved.code if resolved else None,

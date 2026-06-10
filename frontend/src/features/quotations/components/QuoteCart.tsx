@@ -27,6 +27,12 @@ export function QuoteCart({ lines, onUpdateLine, onRemove, onSaveDraft, onSendTo
   // user has deliberately collapsed on every later edit.
   const seenIds = useRef<Set<number>>(new Set());
   useEffect(() => {
+    // Prune removed lines first, so a removed-then-re-staged villa counts as
+    // a fresh add and auto-expands again.
+    const current = new Set(lines.map((line) => line.property_id));
+    for (const id of seenIds.current) {
+      if (!current.has(id)) seenIds.current.delete(id);
+    }
     for (const line of lines) {
       if (seenIds.current.has(line.property_id)) continue;
       seenIds.current.add(line.property_id);

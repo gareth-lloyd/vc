@@ -247,6 +247,7 @@
         "description": "Widen the date range, drop a filter, or check region/country."
       },
       "incomplete_pricing": "Incomplete pricing — manual quote",
+      "incomplete_pricing_aria": "{{name}} — incomplete pricing, add manually to type the price",
       "incomplete_pricing_hint": "The rate card has no price for these dates — add the villa and type the price.",
       "add_manual": "Add manually",
       "unavailable": "Unavailable for these dates",

@@ -104,6 +104,29 @@ describe("QuoteResultsList", () => {
     expect(screen.queryByRole("button", { name: /unavailable/i })).not.toBeInTheDocument();
   });
 
+  it("exposes the flagged card to assistive tech: labelled article, focusable tooltip trigger", async () => {
+    renderList([
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        error_code: "no_rate_available",
+        error_detail: "RateRule 7 is POA for these dates.",
+      }),
+    ]);
+
+    // The article carries an aria-label, mirroring the unavailable cards.
+    expect(screen.getByLabelText(/villa azul — incomplete pricing/i)).toBeInTheDocument();
+
+    // The badge is keyboard-focusable so the error_detail tooltip (the only
+    // place POA is distinguished from a rate-card gap) opens on focus.
+    const badge = screen.getByText(/incomplete pricing/i);
+    expect(badge).toHaveAttribute("tabindex", "0");
+    badge.focus();
+    expect(await screen.findAllByText(/rateRule 7 is POA/i)).not.toHaveLength(0);
+  });
+
   it("invokes onAdd with the no-rate option and shows added state once staged", async () => {
     const onAdd = vi.fn();
     const noRate = option({

@@ -17,10 +17,14 @@ from __future__ import annotations
 from typing import Any
 
 import django.dispatch
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 # Fired by `Payment.mark_paid` and by the webhook pipeline once a Payment
-# settles. Receiver in reservations dispatches to `Booking.record_deposit` or
-# `Booking.record_balance` based on `payment.purpose`.
+# settles. `_advance_booking_on_payment_settled` (below — payments-side, since
+# reservations may not import payments) dispatches to `Booking.record_deposit`
+# or `Booking.record_balance` based on `payment.purpose`.
 payment_succeeded = django.dispatch.Signal()
 
 # Fired when a Payment reaches a terminal failure state.
@@ -31,8 +35,8 @@ payment_failed = django.dispatch.Signal()
 # booking-level totals.
 payment_refunded = django.dispatch.Signal()
 
-# Fired by `Payment.waive`. Reservations treats this the same as
-# `payment_succeeded` for booking-state advancement (no money has moved).
+# Fired by `Payment.waive`. Treated the same as `payment_succeeded` for
+# booking-state advancement (no money has moved).
 payment_waived = django.dispatch.Signal()
 
 # Fired when a SecurityDeposit reaches a release-style terminal state.
@@ -80,16 +84,131 @@ def _schedule_payments_on_booking_confirmed(
     PaymentScheduler.create_for_booking(booking)
 
 
+def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) -> None:
+    """Advance the Booking when a rental payment settles (or is waived).
+
+    DEPOSIT → `Booking.record_deposit`; BALANCE → `Booking.record_balance`;
+    every other purpose is not a rental-lifecycle payment and is ignored.
+
+    Defensive by design: an `InvalidTransition` is logged and swallowed, never
+    raised. That one mechanism covers double settlement (booking already
+    advanced), seeding (which calls `record_*` before `mark_paid`), money
+    landing on a cancelled/expired booking, and a balance settling while the
+    booking is still AWAITING_DEPOSIT — in each case the settle itself must
+    stand and ops resolves from the warning. Anything *other* than
+    `InvalidTransition` propagates and rolls back the payment transition
+    (`transition_to` dispatches inside its atomic block).
+    """
+    from core.exceptions import InvalidTransition
+    from payments.enums import PaymentPurpose
+
+    if payment.purpose == PaymentPurpose.DEPOSIT.value:
+        advance = payment.booking.record_deposit
+    elif payment.purpose == PaymentPurpose.BALANCE.value:
+        advance = payment.booking.record_balance
+    else:
+        return
+
+    try:
+        advance(payment)
+    except InvalidTransition:
+        logger.warning(
+            "payment.booking_advance_skipped",
+            payment_id=payment.pk,
+            booking_id=payment.booking_id,
+            purpose=payment.purpose,
+            booking_status=payment.booking.status,
+            reason="invalid_transition",
+        )
+
+
+def _expire_payments_on_booking_expired(
+    sender: Any,
+    *,
+    booking: Any,
+    **_: Any,
+) -> None:
+    """Expire a booking's leftover PENDING payments when the booking expires.
+
+    `reservations.tasks.expire_bookings` ages out AWAITING_DEPOSIT bookings;
+    their unpaid DEPOSIT/BALANCE rows must follow, both to keep the ledger
+    honest and to free the active-per-purpose constraint slots. Lives here
+    (not in reservations) because the spine forbids reservations → payments.
+    """
+    from reservations.enums import BookingStatus
+
+    if booking.status != BookingStatus.EXPIRED.value:
+        return
+
+    from payments.enums import EventSource, PaymentPurpose, PaymentStatus
+    from payments.models.payment import Payment
+
+    pending = Payment.objects.filter(
+        booking=booking,
+        status=PaymentStatus.PENDING.value,
+        purpose__in=(
+            PaymentPurpose.DEPOSIT.value,
+            PaymentPurpose.BALANCE.value,
+        ),
+    )
+    for payment in pending:
+        payment.transition_to(
+            PaymentStatus.EXPIRED.value,
+            source=EventSource.SYSTEM.value,
+            kind="BOOKING_EXPIRED",
+        )
+
+
+def _sync_refund_on_outbound_payment(sender: Any, *, payment: Any, **_: Any) -> None:
+    """Advance the parent Refund when its outbound Payment terminates.
+
+    Guarded to `Payment(purpose=REFUND)` rows carrying `meta['refund_id']`:
+    `payment_refunded` also fires when an ordinary inbound payment reaches
+    REFUNDED, and `payment_failed` fires for every purpose — neither of
+    those has a Refund row to sync.
+    """
+    from payments.enums import PaymentPurpose
+
+    if payment.purpose != PaymentPurpose.REFUND.value:
+        return
+    if not payment.meta.get("refund_id"):
+        return
+
+    from payments.services.refund import RefundService
+
+    RefundService.sync_from_outbound_payment(payment)
+
+
 def _register() -> None:
     """Connect the payments receivers to upstream domain signals.
 
     Called from `PaymentsConfig.ready()`. Payments fires its own signals for
-    other apps to consume; the one receiver it registers here listens *down*
-    the spine to reservations' `booking_transitioned`.
+    other apps to consume; it registers receivers here on its own signals and
+    listens *down* the spine to reservations' `booking_transitioned`.
     """
     from reservations.signals import booking_transitioned
 
     booking_transitioned.connect(
         _schedule_payments_on_booking_confirmed,
         dispatch_uid="payments.schedule_on_booking_confirmed",
+    )
+    booking_transitioned.connect(
+        _expire_payments_on_booking_expired,
+        dispatch_uid="payments.expire_payments_on_booking_expired",
+    )
+    payment_succeeded.connect(
+        _advance_booking_on_payment_settled,
+        dispatch_uid="payments.advance_booking_on_payment_succeeded",
+    )
+    payment_waived.connect(
+        _advance_booking_on_payment_settled,
+        dispatch_uid="payments.advance_booking_on_payment_waived",
+    )
+    payment_refunded.connect(
+        _sync_refund_on_outbound_payment,
+        dispatch_uid="payments.sync_refund_on_payment_refunded",
+    )
+    payment_failed.connect(
+        _sync_refund_on_outbound_payment,
+        dispatch_uid="payments.sync_refund_on_payment_failed",
     )

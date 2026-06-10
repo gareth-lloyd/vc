@@ -11,6 +11,7 @@ from datetime import timedelta
 
 import structlog
 from celery import shared_task
+from django.conf import settings
 from django.utils import timezone
 
 from reservations.enums import BookingStatus
@@ -83,6 +84,98 @@ def escalate_pending_owner_approvals(threshold_hours: int = 24) -> int:
         status=BookingStatus.PENDING_OWNER_APPROVAL.value,
         updated_at__lt=cutoff,
     ).count()
+
+
+@shared_task
+def expire_quotations() -> int:
+    """Expire DRAFT/SENT quotations whose `expires_at` has passed.
+
+    Per-row defensive: a racing operator action (accept/cancel landing
+    between the queryset and the transition) skips that row rather than
+    aborting the batch.
+    """
+    from core.exceptions import InvalidTransition
+    from reservations.enums import QuotationStatus
+    from reservations.models.quotation import Quotation
+
+    due = Quotation.objects.filter(
+        status__in=(QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
+        expires_at__lt=timezone.now(),
+    )
+    count = 0
+    for quotation in due:
+        try:
+            quotation.expire()
+        except InvalidTransition:
+            continue
+        count += 1
+    if count:
+        logger.info("quotation.expired_batch", count=count)
+    return count
+
+
+@shared_task
+def expire_bookings() -> int:
+    """Expire AWAITING_DEPOSIT bookings whose deposit window has passed.
+
+    The window is `BOOKING_DEPOSIT_EXPIRY_DAYS` of grace from the deposit
+    Payment's `due_at` (stamped at confirmation by the scheduler). Without
+    this sweeper a guest who never pays holds the villa's dates forever via
+    the overlap EXCLUDE constraint.
+
+    The booking's leftover PENDING payment rows are expired by the
+    payments-side `booking_transitioned` receiver (payments sits above
+    reservations in the import spine, so the dependency points down from
+    there, not up from here). The purpose/status literals below match
+    `payments.enums` for the same reason.
+    """
+    from core.exceptions import InvalidTransition
+    from reservations.models.booking import Booking
+
+    window = timedelta(days=settings.BOOKING_DEPOSIT_EXPIRY_DAYS)
+    due = Booking.objects.filter(
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+        payments__purpose="deposit",
+        payments__status="pending",
+        payments__due_at__lt=timezone.now() - window,
+    ).distinct()
+    count = 0
+    for booking in due:
+        try:
+            booking.expire()
+        except InvalidTransition:
+            continue
+        count += 1
+    if count:
+        logger.info("booking.expired_batch", count=count)
+    return count
+
+
+@shared_task
+def arm_balances() -> int:
+    """Advance DEPOSIT_PAID bookings to AWAITING_BALANCE on `balance_due_at`.
+
+    Runs daily before `send_payment_reminders` so a booking arms the same
+    morning its first balance reminder could fire.
+    """
+    from core.exceptions import InvalidTransition
+    from reservations.models.booking import Booking
+
+    due = Booking.objects.filter(
+        status=BookingStatus.DEPOSIT_PAID.value,
+        balance_due_at__isnull=False,
+        balance_due_at__lte=timezone.now().date(),
+    )
+    count = 0
+    for booking in due:
+        try:
+            booking.arm_balance()
+        except InvalidTransition:
+            continue
+        count += 1
+    if count:
+        logger.info("booking.balance_armed_batch", count=count)
+    return count
 
 
 @shared_task

@@ -6,6 +6,7 @@ from datetime import date as date_type
 from decimal import Decimal
 from typing import Any
 
+from django.db import transaction
 from django.db.models import DecimalField, Prefetch, Q, QuerySet, Sum, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
@@ -146,7 +147,12 @@ class BookingViewSet(
     def confirm(self, request: Request, pk: str | None = None) -> Response:
         """Alias for :owner-approve when approval is required."""
         booking = self.get_object()
-        booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
+        # Atomic so the AWAITING_DEPOSIT transition and the payment rows the
+        # booking_transitioned receiver schedules commit (or roll back) as one
+        # unit — the contract documented on
+        # payments.signals._schedule_payments_on_booking_confirmed.
+        with transaction.atomic():
+            booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
         return self._refresh(booking)
 
     @action(detail=True, methods=["post"], url_path="cancel")
@@ -159,7 +165,9 @@ class BookingViewSet(
     @action(detail=True, methods=["post"], url_path="owner-approve")
     def owner_approve(self, request: Request, pk: str | None = None) -> Response:
         booking = self.get_object()
-        booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
+        # Same atomicity contract as :confirm above.
+        with transaction.atomic():
+            booking.owner_approve(actor=request.user, reason=request.data.get("reason", ""))
         return self._refresh(booking)
 
     @action(detail=True, methods=["post"], url_path="owner-decline")

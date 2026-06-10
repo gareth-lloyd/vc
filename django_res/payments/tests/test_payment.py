@@ -107,3 +107,76 @@ def test_transition_to__sets_settled_at_on_succeeded(
     deposit_payment.refresh_from_db()
     assert deposit_payment.settled_at is not None
     assert deposit_payment.settled_at <= dj_timezone.now()
+
+
+# ----------------------------------------------------------------------
+# transition_to state guard — out-of-order transitions must raise.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transition_to__rejects_succeeded_to_failed(
+    deposit_payment: Payment,
+) -> None:
+    from core.exceptions import InvalidTransition
+
+    deposit_payment.transition_to(PaymentStatus.SUCCEEDED.value)
+
+    with pytest.raises(InvalidTransition):
+        deposit_payment.transition_to(PaymentStatus.FAILED.value)
+    deposit_payment.refresh_from_db()
+    assert deposit_payment.status == PaymentStatus.SUCCEEDED.value
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        PaymentStatus.FAILED.value,
+        PaymentStatus.REFUNDED.value,
+        PaymentStatus.CANCELLED.value,
+        PaymentStatus.EXPIRED.value,
+        PaymentStatus.WAIVED.value,
+    ],
+)
+@pytest.mark.django_db
+def test_transition_to__rejects_any_move_from_terminal(
+    booking: Any, gbp: Any, terminal: str
+) -> None:
+    from core.exceptions import InvalidTransition
+
+    payment = Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.CONCIERGE.value,
+        status=terminal,
+        amount=Decimal("50.00"),
+        currency=gbp,
+    )
+
+    with pytest.raises(InvalidTransition):
+        payment.transition_to(PaymentStatus.SUCCEEDED.value)
+
+
+@pytest.mark.django_db
+def test_transition_to__allows_succeeded_to_cancelled_supersede(
+    deposit_payment: Payment,
+) -> None:
+    """SUCCEEDED → CANCELLED stays legal: SecurityDepositService retires a
+    succeeded pre-auth hold with kind=SUPERSEDED_BY_CAPTURE."""
+    deposit_payment.transition_to(PaymentStatus.SUCCEEDED.value)
+
+    deposit_payment.transition_to(PaymentStatus.CANCELLED.value, kind="SUPERSEDED_BY_CAPTURE")
+
+    deposit_payment.refresh_from_db()
+    assert deposit_payment.status == PaymentStatus.CANCELLED.value
+
+
+@pytest.mark.django_db
+def test_transition_to__allows_succeeded_to_refunded(
+    deposit_payment: Payment,
+) -> None:
+    deposit_payment.transition_to(PaymentStatus.SUCCEEDED.value)
+
+    deposit_payment.transition_to(PaymentStatus.REFUNDED.value)
+
+    deposit_payment.refresh_from_db()
+    assert deposit_payment.status == PaymentStatus.REFUNDED.value

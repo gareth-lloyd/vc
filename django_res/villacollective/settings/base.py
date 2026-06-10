@@ -167,6 +167,14 @@ REST_FRAMEWORK = {
         "core.api.permissions.IsStaff",
     ],
     "EXCEPTION_HANDLER": "core.api.exception_handler.canonical_exception_handler",
+    # Anti-brute-force throttles on the unauthenticated auth endpoints
+    # (ScopedRateThrottle, anon-keyed by IP). Relaxed in settings/test.py so
+    # the suite's many logins per process don't trip them.
+    "DEFAULT_THROTTLE_RATES": {
+        "auth.login": "10/min",
+        "auth.tfa": "10/min",
+        "auth.password_reset": "5/hour",
+    },
 }
 
 # App-layer Fernet encryption for TOTP secrets / SMTP passwords / OAuth tokens.
@@ -186,6 +194,11 @@ PAYMENT_WEBHOOK_SECRETS = {
 # email (password reset, magic link, account setup). Must include the scheme
 # and no trailing slash.
 FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:5173")
+
+# Grace window for `reservations.tasks.expire_bookings`: days after the
+# deposit Payment's `due_at` (stamped at confirmation) before an unpaid
+# AWAITING_DEPOSIT booking expires and releases its dates.
+BOOKING_DEPOSIT_EXPIRY_DAYS = env.int("BOOKING_DEPOSIT_EXPIRY_DAYS", default=7)
 PASSWORD_RESET_TTL_SECONDS = env.int("PASSWORD_RESET_TTL_SECONDS", default=3600)
 
 # Ops mailbox(es) to BCC/notify on operational events (failed payments,
@@ -284,5 +297,23 @@ CELERY_BEAT_SCHEDULE = {
     "requeue-stuck-emails": {
         "task": "comms.tasks.requeue_stuck_emails",
         "schedule": timedelta(minutes=10),
+    },
+    "sweep-unprocessed-webhooks": {
+        "task": "payments.tasks.sweep_unprocessed_webhook_deliveries",
+        "schedule": timedelta(minutes=10),
+    },
+    "expire-quotations": {
+        "task": "reservations.tasks.expire_quotations",
+        "schedule": timedelta(minutes=15),
+    },
+    "expire-bookings": {
+        "task": "reservations.tasks.expire_bookings",
+        "schedule": crontab(minute=20),  # hourly
+    },
+    "arm-balances": {
+        # Daily, deliberately before the 07:00 send-payment-reminders run so
+        # a booking arms the same morning its first reminder could fire.
+        "task": "reservations.tasks.arm_balances",
+        "schedule": crontab(hour=6, minute=0),
     },
 }

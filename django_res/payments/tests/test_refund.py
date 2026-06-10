@@ -6,12 +6,14 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+import structlog.testing
 from django.contrib.auth.models import Permission
 from django.db import IntegrityError, transaction
 
 from payments.enums import (
     PaymentPurpose,
     PaymentStatus,
+    RefundMethod,
     RefundPurposeTrack,
     RefundReasonCode,
     RefundStatus,
@@ -378,3 +380,145 @@ def test_refund_service_emits_structured_events(
     executed = next(e for e in logs if e["event"] == "refund.execute.succeeded")
     assert executed["refund_id"] == refund.pk
     assert executed["outbound_payment_created"] is True
+
+
+# ----------------------------------------------------------------------
+# Refund completion — EXECUTING → SUCCEEDED / FAILED via the outbound
+# Payment's terminal signals (payments-side receivers).
+# ----------------------------------------------------------------------
+
+
+def _executing_refund(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+    approver: Any,
+    *,
+    method: str = RefundMethod.ONLINE_GATEWAY.value,
+) -> Refund:
+    _grant(approver, "approve_refund", "execute_refund", "self_approve_refund")
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+        method=method,
+    )
+    RefundService.approve(refund, actor=approver)
+    return RefundService.execute(refund, actor=approver)
+
+
+def _outbound(refund: Refund) -> Payment:
+    return Payment.objects.get(
+        booking=refund.booking,
+        purpose=PaymentPurpose.REFUND.value,
+        meta__refund_id=refund.pk,
+    )
+
+
+@pytest.mark.django_db
+def test_execute__manual_method_completes_refund(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(
+        booking,
+        gbp,
+        paid_deposit,
+        user,
+        approver,
+        method=RefundMethod.MANUAL_BANK_TRANSFER.value,
+    )
+
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.SUCCEEDED.value
+    assert refund.settled_at is not None
+    assert _outbound(refund).status == PaymentStatus.SUCCEEDED.value
+
+
+@pytest.mark.django_db
+def test_execute__manual_method_double_execute_is_idempotent(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(
+        booking,
+        gbp,
+        paid_deposit,
+        user,
+        approver,
+        method=RefundMethod.MANUAL_BANK_TRANSFER.value,
+    )
+    refund.refresh_from_db()
+
+    RefundService.execute(refund, actor=approver)  # double-click retry
+
+    assert refund.status == RefundStatus.SUCCEEDED.value
+    assert Payment.objects.filter(booking=booking, purpose=PaymentPurpose.REFUND.value).count() == 1
+
+
+@pytest.mark.django_db
+def test_execute__gateway_method_stays_executing(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(booking, gbp, paid_deposit, user, approver)
+
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.EXECUTING.value
+    assert _outbound(refund).status == PaymentStatus.PROCESSING.value
+
+
+@pytest.mark.django_db
+def test_outbound_payment_success_advances_refund(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(booking, gbp, paid_deposit, user, approver)
+
+    _outbound(refund).transition_to(PaymentStatus.SUCCEEDED.value)
+
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.SUCCEEDED.value
+    assert refund.settled_at is not None
+
+
+@pytest.mark.django_db
+def test_outbound_payment_failure_marks_refund_failed(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(booking, gbp, paid_deposit, user, approver)
+
+    _outbound(refund).transition_to(PaymentStatus.FAILED.value, reason="card_expired")
+
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.FAILED.value
+    assert refund.failure_reason == "card_expired"
+
+
+@pytest.mark.django_db
+def test_sync_is_idempotent_when_refund_already_terminal(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, approver: Any
+) -> None:
+    refund = _executing_refund(booking, gbp, paid_deposit, user, approver)
+    outbound = _outbound(refund)
+    outbound.transition_to(PaymentStatus.SUCCEEDED.value)
+    refund.refresh_from_db()
+
+    with structlog.testing.capture_logs() as logs:
+        RefundService.sync_from_outbound_payment(outbound)
+
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.SUCCEEDED.value
+    assert any(e["event"] == "refund.sync_skipped" for e in logs)
+
+
+@pytest.mark.django_db
+def test_normal_payment_refunded_status_does_not_touch_refund_rows(
+    booking: Any, gbp: Any, paid_deposit: Payment
+) -> None:
+    """A DEPOSIT payment reaching REFUNDED fires `payment_refunded` too —
+    the sync receiver must ignore non-REFUND-purpose payments."""
+    paid_deposit.transition_to(PaymentStatus.REFUNDED.value)
+
+    assert Refund.objects.count() == 0

@@ -37,10 +37,13 @@ def import_staging(monkeypatch: pytest.MonkeyPatch) -> Callable[[], ModuleType]:
                 sys.modules.pop(name, None)
             monkeypatch.delenv("ALLOWED_HOSTS", raising=False)
 
-    # Render provides both of these on every service; only ALLOWED_HOSTS is
+    # Render provides all of these on every service; only ALLOWED_HOSTS is
     # under test.
     monkeypatch.setenv("DJANGO_SECRET_KEY", "test-secret")
     monkeypatch.setenv("EMAIL_RECIPIENT_ALLOWLIST", "ops@example.com")
+    monkeypatch.setenv("FERNET_KEYS", "wIZ6Ud8oONpJD0Q-uJ4UQAYBgr_xHsv_LBNw_xt4MhA=")
+    monkeypatch.setenv("FLYWIRE_WEBHOOK_SECRET", "test-flywire-secret")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "test-stripe-secret")
     return _import
 
 

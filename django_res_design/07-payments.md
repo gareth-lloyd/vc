@@ -337,7 +337,7 @@ class RefundService:
         its own release/refund path and continues independently."""
 ```
 
-Webhook callbacks land on the spawned `Payment` row first (via the normal payment-webhook flow). The `payment_succeeded` / `payment_failed` signal handler in this service inspects `payment.meta['refund_id']`, looks up the `Refund`, and advances it `EXECUTING → SUCCEEDED|FAILED`. Refunds never get their own webhook URL — they ride on the Payment webhook pipeline.
+Webhook callbacks land on the spawned `Payment` row first (via the normal payment-webhook flow). The `payment_refunded` / `payment_failed` receivers in `payments/signals.py` inspect `payment.meta['refund_id']` and delegate to `RefundService.sync_from_outbound_payment`, which advances the Refund `EXECUTING → SUCCEEDED|FAILED` (idempotent: missing or already-terminal refunds are a logged no-op). Refunds never get their own webhook URL — they ride on the Payment webhook pipeline.
 
 ### `SecurityDepositService` (in `payments/services.py`)
 Coordinates the `SecurityDeposit` workflow. Like `RefundService`, this owns the state machine transitions, permission checks, and the creation of downstream `Payment` rows that record gateway transactions.
@@ -393,17 +393,17 @@ The pre-auth gateway calls (hold / capture / void) run through Celery with retry
 ### Outbound calls
 We never call providers from a request thread for state-changing ops. Tokenised-card charges (auto-balance) and security-deposit captures/refunds go through Celery with retries and a circuit breaker.
 
-## Signal contract (reservations <- payments)
+## Signal contract
 
-Reservations registers handlers for:
+All receivers live in **payments** (`payments/signals.py`, registered from `PaymentsConfig.ready()`): payments sits above reservations in the import spine, so a payments-side receiver calling into `Booking` is a clean downward edge, while a reservations-side receiver would be an illegal upward import. The receivers are defensive — an `InvalidTransition` (duplicate settlement, cancelled booking, out-of-order balance) is logged as `payment.booking_advance_skipped` and swallowed, never raised.
 
-- `payment_succeeded(payment)` — handler dispatches to `Booking.record_deposit(payment)` or `Booking.record_balance(payment)` based on `payment.purpose`.
-- `payment_failed(payment)` — handler may transition booking to `CANCELLED` (deposit failure) or notify ops (balance failure with retry pending).
-- `payment_refunded(payment)` — fired when a `Payment(purpose=REFUND)` reaches `SUCCEEDED`. Handler triggers downstream booking logic (e.g. update `Booking.adjustment`) and also advances the parent `Refund` row to `SUCCEEDED` if `payment.meta['refund_id']` is set, and the parent `SecurityDeposit` to `REFUNDED` / `PARTIALLY_REFUNDED` if `refund.purpose_track == SECURITY_DEPOSIT` and `refund` is linked to an SD.
-- `payment_waived(payment)` — fired by `Payment.waive()`. Handler dispatches to `Booking.record_deposit(payment)` or `Booking.record_balance(payment)` per `payment.purpose` — waiving advances the booking workflow exactly as if the payment had succeeded, just without any money having moved.
+- `payment_succeeded(payment)` — `_advance_booking_on_payment_settled` dispatches to `Booking.record_deposit(payment)` or `Booking.record_balance(payment)` based on `payment.purpose` (DEPOSIT/BALANCE only; SD, concierge and adjustment settlements never touch booking state).
+- `payment_failed(payment)` — for `Payment(purpose=REFUND)` rows carrying `meta['refund_id']`, `_sync_refund_on_outbound_payment` advances the parent Refund `EXECUTING -> FAILED` (copying `failure_reason`). No booking-state change on ordinary payment failure (ops is notified via comms).
+- `payment_refunded(payment)` — fired when a `Payment(purpose=REFUND)` reaches `SUCCEEDED` (and when an ordinary payment reaches `REFUNDED`). `_sync_refund_on_outbound_payment` advances the parent `Refund` to `SUCCEEDED` (stamping `settled_at`) when `payment.meta['refund_id']` is set; rows without a refund id are ignored. Non-gateway refund methods settle their outbound Payment synchronously inside `RefundService.execute`, completing through this same path. (SD `REFUNDED`/`PARTIALLY_REFUNDED` advancement on SD-track refunds remains future work.)
+- `payment_waived(payment)` — fired by `Payment.waive()`. Connected to the same `_advance_booking_on_payment_settled` receiver — waiving advances the booking workflow exactly as if the payment had succeeded, just without any money having moved.
 - `security_deposit_released(sd)`, `security_deposit_expired(sd)` — fired by `SecurityDepositService` for ops-side notifications. Not consumed by `reservations` (no booking-state change), but useful for the notifications and reporting apps.
 
-No reverse dependency: payments never imports reservations models. Reservations imports payments only inside `signals.py` and `services.py`.
+No upward dependency: reservations never imports payments. Payments reaches *down* into reservations (lazy imports inside its receivers), the same direction as `_schedule_payments_on_booking_confirmed` and `_expire_payments_on_booking_expired` (which expires a booking's leftover PENDING payments when `expire_bookings` ages it out).
 
 ## Booking ↔ Payment coupling
 

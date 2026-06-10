@@ -1,8 +1,8 @@
 """Pricing background tasks.
 
-These run on Celery in production. For now they are plain functions that
-the signal handlers call synchronously — a debounced Celery wrapper will
-land when Celery infrastructure is wired in (see TODO below).
+`rebuild_summary` is a plain function (directly callable from the shell
+and tests); `rebuild_summary_task` is its Celery entry point, enqueued by
+the pricing signal handlers via `transaction.on_commit`.
 """
 
 from __future__ import annotations
@@ -11,18 +11,22 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from celery import shared_task
 from django.utils import timezone
 
 from pricing.models import RateRule, VillaPricingSummary
 
 
-def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
-    """Recompute the per-(property, currency) min/max display row.
+@shared_task
+def rebuild_summary_task(property_id: int, currency_id: int) -> None:
+    """Celery wrapper so signal handlers enqueue instead of recomputing
+    inline. Idempotent — a burst of edits enqueuing N rebuilds converges
+    on the same row state, just with some wasted work."""
+    rebuild_summary(property_id=property_id, currency_id=currency_id)
 
-    TODO: wrap in a debounced Celery task once Celery infrastructure exists.
-    The signal currently calls this synchronously; debouncing will collapse
-    bursts of RateRule edits into a single rebuild per (property, currency).
-    """
+
+def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
+    """Recompute the per-(property, currency) min/max display row."""
     # Lazy-import to avoid circulars during app loading.
     from pricing.models import Currency, RatePlan  # noqa: F401
 

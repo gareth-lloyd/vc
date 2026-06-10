@@ -374,7 +374,8 @@ Both `Quotation.terms_version` and `Booking.terms_version` snapshot the version 
 ## Signals
 
 - `booking_transitioned(booking, from_status, to_status, actor, source)` — fired by every transition method.
-- `payments.payment_succeeded` (from payments app) is **received** here; handler calls the matching booking transition (`record_deposit` or `record_balance` based on `payment.purpose`).
+- Reservations registers **no** receiver on payments' signals — the import spine forbids `reservations -> payments`. The booking-advance dispatch (`payment_succeeded`/`payment_waived` -> `record_deposit`/`record_balance` by `payment.purpose`) is owned by the payments app (`payments/signals.py`, `_advance_booking_on_payment_settled`), a clean downward edge mirroring `_schedule_payments_on_booking_confirmed`.
+- Reservations' own beat tasks (`reservations/tasks.py`) drive the time-based transitions: `expire_quotations` (DRAFT/SENT past `expires_at`), `expire_bookings` (AWAITING_DEPOSIT whose deposit Payment `due_at` is older than `BOOKING_DEPOSIT_EXPIRY_DAYS`; the booking's leftover PENDING payments are expired by a payments-side `booking_transitioned` receiver), and `arm_balances` (DEPOSIT_PAID on/after `balance_due_at`).
 
 ## Dropped from legacy
 

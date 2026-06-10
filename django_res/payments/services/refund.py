@@ -27,6 +27,7 @@ from core.api.permissions import actor_has_perm
 from core.idempotency import find_by_meta_key, stamp_meta
 from core.logging.operations import log_operation
 from payments.enums import (
+    EventSource,
     PaymentPurpose,
     PaymentStatus,
     RefundMethod,
@@ -222,9 +223,14 @@ class RefundService:
         already exists for this refund, and short-circuits when the
         refund has already left APPROVED.
         """
-        if refund.status == RefundStatus.EXECUTING.value:
-            # Already executed — likely a webhook retry. Return the
-            # current row without re-firing the outbound Payment.
+        if refund.status == RefundStatus.EXECUTING.value or (
+            refund.status in (RefundStatus.SUCCEEDED.value, RefundStatus.FAILED.value)
+            and refund.executed_at is not None
+        ):
+            # Already executed — a webhook retry or an operator double-click
+            # (manual-method refunds complete synchronously, so the retry may
+            # arrive after the refund is already terminal). Return the current
+            # row without re-firing the outbound Payment.
             return refund
 
         # State + permission guards are expected rejections, not operation
@@ -276,10 +282,76 @@ class RefundService:
             ctx["amount"] = str(refund.amount)
             ctx["outbound_payment_created"] = not outbound_exists
 
-            # TODO: queue Celery `process_refund(refund.id)` — for now we just
-            # record the EXECUTING state and rely on the webhook pipeline (or a
-            # manual transition) to advance it to SUCCEEDED / FAILED.
-            return refund._transition(RefundStatus.EXECUTING.value, actor=actor)
+            refund._transition(RefundStatus.EXECUTING.value, actor=actor)
+
+            if refund.method != RefundMethod.ONLINE_GATEWAY.value:
+                # Manual / offline refunds have no gateway round-trip: the
+                # operator executing IS the settlement. Settle the outbound
+                # Payment now; its `payment_refunded` signal drives
+                # `sync_from_outbound_payment`, landing the refund on
+                # SUCCEEDED through the same path a gateway webhook would.
+                outbound = Payment.objects.get(
+                    booking=refund.booking,
+                    purpose=PaymentPurpose.REFUND.value,
+                    meta__refund_id=refund.pk,
+                )
+                outbound.transition_to(
+                    PaymentStatus.SUCCEEDED.value,
+                    actor=actor,
+                    kind="MANUAL_REFUND",
+                )
+                refund.refresh_from_db()
+            # ONLINE_GATEWAY refunds stay EXECUTING until the provider's
+            # webhook settles the outbound Payment (matched by reference in
+            # the webhook pipeline), which fires the same sync receiver.
+            return refund
+
+    # ------------------------------------------------------------------
+    # Completion — driven by the outbound Payment's terminal signals
+    # ------------------------------------------------------------------
+    @classmethod
+    @transaction.atomic
+    def sync_from_outbound_payment(cls, payment: Payment) -> Refund | None:
+        """Advance the parent Refund when its outbound Payment terminates.
+
+        Called by the `payment_refunded` / `payment_failed` receivers in
+        `payments.signals` for `Payment(purpose=REFUND)` rows carrying
+        `meta['refund_id']` — both the gateway-webhook path and the
+        synchronous manual-method path converge here.
+
+        EXECUTING → SUCCEEDED (stamping `settled_at`) or FAILED (copying
+        `failure_reason`). A missing or already-terminal refund is a logged
+        no-op, so webhook redeliveries can't double-transition.
+        """
+        refund_id = payment.meta.get("refund_id")
+        if refund_id is None:
+            return None
+        refund = Refund.objects.filter(pk=refund_id).first()
+        if refund is None or refund.status != RefundStatus.EXECUTING.value:
+            logger.info(
+                "refund.sync_skipped",
+                refund_id=refund_id,
+                payment_id=payment.pk,
+                refund_status=refund.status if refund is not None else None,
+                reason="missing_or_not_executing",
+            )
+            return refund
+
+        if payment.status == PaymentStatus.SUCCEEDED.value:
+            refund.settled_at = payment.settled_at or timezone.now()
+            refund.save(update_fields=["settled_at", "updated_at"])
+            return refund._transition(
+                RefundStatus.SUCCEEDED.value,
+                source=EventSource.SYSTEM.value,
+            )
+        if payment.status == PaymentStatus.FAILED.value:
+            refund.failure_reason = payment.failure_reason
+            refund.save(update_fields=["failure_reason", "updated_at"])
+            return refund._transition(
+                RefundStatus.FAILED.value,
+                source=EventSource.SYSTEM.value,
+            )
+        return refund
 
     # ------------------------------------------------------------------
     # Convenience constructor: cancellation → refund

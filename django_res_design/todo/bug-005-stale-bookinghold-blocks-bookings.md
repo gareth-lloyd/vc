@@ -39,3 +39,28 @@ burden of option 2 is forever.
 ## Dependencies
 
 None.
+
+## Addendum (2026-06-10)
+
+From the 2026-06-10 backend general review: there is also an
+**IntegrityError → 500 window** in `HoldService.place`
+(`reservations/services/holds.py:114–130`). The Python liveness check
+(`_assert_no_overlap` → `BookingHold.live_overlapping`,
+`reservations/models/booking.py:786–791`) filters on
+`expires_at__gt=now()`, but the Postgres EXCLUDE constraint
+(`bookinghold_no_overlap_live`, migration 0002) gates only on
+`released_at IS NULL`. Between a hold's expiry and the sweeper releasing
+it, `place()` passes the Python check and then hits the constraint
+uncaught:
+
+```python
+cls._assert_no_overlap(property=property, date_from=date_from, date_to=date_to)  # :114 — passes
+...
+return BookingHold.objects.create(  # :120 — IntegrityError from the EXCLUDE
+```
+
+— a raw 500 instead of the documented `HoldUnavailable` 409. Whichever
+option above is chosen, the fix should also catch the
+exclusion-constraint violation in `place()` (and the `update_block`/`move`
+re-check paths) and translate it to `HoldUnavailable`, so the DB floor and
+the API contract agree.

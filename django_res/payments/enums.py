@@ -36,6 +36,40 @@ ACTIVE_PAYMENT_STATUSES: tuple[str, ...] = (
     PaymentStatus.SUCCEEDED.value,
 )
 
+# Legal `Payment.transition_to` moves. Anything not listed raises
+# `InvalidTransition` — an out-of-order webhook must not flip a settled
+# payment to FAILED. SUCCEEDED → CANCELLED stays open for one caller:
+# `SecurityDepositService` retires a succeeded pre-auth hold when the
+# capture supersedes it (kind="SUPERSEDED_BY_CAPTURE"). The webhook
+# pipeline applies its own stricter policy on top.
+PAYMENT_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    PaymentStatus.PENDING.value: frozenset(
+        {
+            PaymentStatus.PROCESSING.value,
+            PaymentStatus.SUCCEEDED.value,
+            PaymentStatus.FAILED.value,
+            PaymentStatus.CANCELLED.value,
+            PaymentStatus.EXPIRED.value,
+            PaymentStatus.WAIVED.value,
+        }
+    ),
+    PaymentStatus.PROCESSING.value: frozenset(
+        {
+            PaymentStatus.SUCCEEDED.value,
+            PaymentStatus.FAILED.value,
+            PaymentStatus.CANCELLED.value,
+            PaymentStatus.WAIVED.value,
+        }
+    ),
+    PaymentStatus.SUCCEEDED.value: frozenset(
+        {
+            PaymentStatus.REFUNDED.value,
+            PaymentStatus.CANCELLED.value,
+        }
+    ),
+    # FAILED / REFUNDED / CANCELLED / EXPIRED / WAIVED are terminal.
+}
+
 # Statuses that fire `payment_succeeded` / `payment_failed` style signals.
 TERMINAL_PAYMENT_STATUSES: tuple[str, ...] = (
     PaymentStatus.SUCCEEDED.value,

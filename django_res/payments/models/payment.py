@@ -24,6 +24,7 @@ from core.refs import reference_db_default
 from payments import signals as payment_signals
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
+    PAYMENT_ALLOWED_TRANSITIONS,
     EventSource,
     PaymentMethod,
     PaymentProvider,
@@ -177,7 +178,12 @@ class Payment(AuditedModel):
         """Generic status transition. Writes a `PaymentEvent` and dispatches
         the appropriate signal when the new status is terminal.
         """
+        from core.exceptions import InvalidTransition
         from payments.models.payment_event import PaymentEvent
+
+        allowed = PAYMENT_ALLOWED_TRANSITIONS.get(self.status, frozenset())
+        if new_status not in allowed:
+            raise InvalidTransition(self.status, new_status, allowed=sorted(allowed))
 
         old_status = self.status
         self.status = new_status

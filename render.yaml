@@ -47,3 +47,15 @@ services:
       # guard against accidentally sending guest mail from the demo box.
       - key: EMAIL_RECIPIENT_ALLOWLIST
         sync: false
+      # Required by settings/production.py (which staging inherits) — the
+      # repo-committed dev defaults are public, so production fails fast
+      # instead of inheriting them. Set values in the dashboard BEFORE
+      # deploying a commit that includes the fail-fast settings change.
+      # FERNET_KEYS: comma-separated, oldest-decrypts/newest-encrypts; keep
+      # the old dev key in the list when rotating so existing rows decrypt.
+      - key: FERNET_KEYS
+        sync: false
+      - key: FLYWIRE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false

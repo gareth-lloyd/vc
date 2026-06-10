@@ -116,3 +116,35 @@ def test_process__advances_payment_to_succeeded(
     assert pending_payment.status == PaymentStatus.SUCCEEDED.value
     assert delivery.processed_at is not None
     assert delivery.processing_error == ""
+
+
+@pytest.mark.django_db
+def test_process__deposit_webhook_advances_booking(
+    pending_payment: Payment,
+) -> None:
+    """End-to-end: a settled deposit webhook leaves the Booking DEPOSIT_PAID."""
+    from reservations.enums import BookingStatus
+
+    booking = pending_payment.booking
+    assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
+
+    body = json.dumps(
+        {
+            "event_id": "ev-advance-1",
+            "event_type": "paid",
+            "payment_reference": pending_payment.reference,
+            "amount": "420.00",
+            "currency": "GBP",
+        }
+    ).encode("utf-8")
+    delivery, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-advance-1",
+        raw_body=body,
+        headers={},
+        signature=_sign(body),
+    )
+    WebhookDispatcher.process(delivery)
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value

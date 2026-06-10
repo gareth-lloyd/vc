@@ -107,6 +107,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (simple v1: no resizing, uploads via Django) — incl. legacy binary import (nested→flat `legacy_id` reconstruction) | 🟨 in progress — PR-A landed (S3 storage, multipart upload, FE picker, on-commit delete cleanup); PR-B (legacy import + prod cutover) outstanding |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable-result note, a11y; item 3 moot per GAP-014) | ⬜ open — FE polish, sibling of GAP-005 |
 | [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ✅ resolved (per-line currency end-to-end; header field dropped; GAP-013 item 3 moot) |
+| [GAP-020](gap-020-direct-booking-creation.md) | Direct booking creation (legacy rate-lookup "book now") — synthetic-quotation design; resolves GAP-006's numbering sub-question; folds SMELL-014's `kind` fix | ⬜ design ready; implementation deferred |
 
 ## Investigations
 

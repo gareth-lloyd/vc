@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatMoney } from "@/lib/format/money";
+import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
 
@@ -37,7 +38,7 @@ function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) 
       <ul className="space-y-1">
         {properties.map((p) => (
           <li key={p.id} className="text-sm">
-            <Link to={`/properties/${p.slug ?? p.id}/details`} className="font-medium underline">
+            <Link to={propertyDetailsPath(p.slug ?? p.id)} className="font-medium underline">
               {p.name}
             </Link>{" "}
             <span className="text-muted-foreground">

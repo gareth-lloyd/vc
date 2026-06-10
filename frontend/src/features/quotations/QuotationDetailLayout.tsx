@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -23,6 +23,7 @@ import { ActionButton } from "@/components/feedback/ActionButton";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
+import { propertyDetailsPath } from "@/lib/routes";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
@@ -87,66 +88,72 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
         </TableRow>
       </TableHeader>
       <TableBody>
-        {results.map((line: QuotationLine) => (
-          <TableRow key={line.id}>
-            <TableCell className="font-mono text-xs">#{line.id}</TableCell>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <PropertyThumbnail
-                  src={line.hero_image_url}
-                  fallbackText={line.property_name}
-                  alt={t("detail.lines.thumbnail_alt", {
-                    name: line.property_name ?? `#${line.property}`,
-                  })}
-                />
-                <span>
-                  {line.property_name ?? (line.property != null ? `#${line.property}` : "—")}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell>
-              {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
-              <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
-            </TableCell>
-            <TableCell>
-              {line.adults}A{line.children ? ` · ${line.children}C` : ""}
-            </TableCell>
-            <TableCell className="text-right">
-              {formatMoney(line.discount ?? null, quotation.currency ?? null)}
-            </TableCell>
-            <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
-              {line.inclusions?.trim() || "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {formatMoney(line.total ?? null, quotation.currency ?? null)}
-            </TableCell>
-            <TableCell>
-              {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex justify-end gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onEdit(line)}
-                  disabled={!canWrite}
-                >
-                  {t("detail.lines.actions.edit")}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onDelete(line)}
-                  disabled={!canWrite}
-                >
-                  {t("detail.lines.actions.remove")}
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
+        {results.map((line: QuotationLine) => {
+          const displayName =
+            line.property_name ?? (line.property != null ? `#${line.property}` : "—");
+          return (
+            <TableRow key={line.id}>
+              <TableCell className="font-mono text-xs">#{line.id}</TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <PropertyThumbnail
+                    src={line.hero_image_url}
+                    fallbackText={line.property_name}
+                    alt={t("detail.lines.thumbnail_alt", { name: displayName })}
+                  />
+                  {line.property != null ? (
+                    <Link to={propertyDetailsPath(line.property)} className="hover:underline">
+                      {displayName}
+                    </Link>
+                  ) : (
+                    <span>{displayName}</span>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
+                <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
+              </TableCell>
+              <TableCell>
+                {line.adults}A{line.children ? ` · ${line.children}C` : ""}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatMoney(line.discount ?? null, quotation.currency ?? null)}
+              </TableCell>
+              <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
+                {line.inclusions?.trim() || "—"}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatMoney(line.total ?? null, quotation.currency ?? null)}
+              </TableCell>
+              <TableCell>
+                {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onEdit(line)}
+                    disabled={!canWrite}
+                  >
+                    {t("detail.lines.actions.edit")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onDelete(line)}
+                    disabled={!canWrite}
+                  >
+                    {t("detail.lines.actions.remove")}
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

@@ -23,12 +23,33 @@ const baseQuotation = {
   lines: [],
 };
 
-const noLinesHandlers = [
-  http.get("/api/v1/quotations/7", () => HttpResponse.json(baseQuotation)),
-  http.get("/api/v1/quotations/7/lines", () =>
-    HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
-  ),
-];
+const baseLine = {
+  id: 33,
+  quotation: 7,
+  property: 12,
+  date_from: "2026-07-04",
+  date_to: "2026-07-11",
+  adults: 2,
+  children: 1,
+  total: "1234.50",
+  is_selected: true,
+  is_manual: false,
+  notes: "",
+};
+
+function quotationHandlers(
+  quotation: Record<string, unknown>,
+  lines: Array<Record<string, unknown>>,
+) {
+  return [
+    http.get("/api/v1/quotations/7", () => HttpResponse.json(quotation)),
+    http.get("/api/v1/quotations/7/lines", () =>
+      HttpResponse.json({ count: lines.length, next: null, previous: null, results: lines }),
+    ),
+  ];
+}
+
+const noLinesHandlers = quotationHandlers(baseQuotation, []);
 
 afterEach(() => {
   server.resetHandlers();
@@ -81,30 +102,7 @@ describe("QuotationDetailLayout", () => {
   it("renders line rows when the lines endpoint returns data", async () => {
     server.resetHandlers();
     server.use(
-      http.get("/api/v1/quotations/7", () => HttpResponse.json(baseQuotation)),
-      http.get("/api/v1/quotations/7/lines", () =>
-        HttpResponse.json({
-          count: 1,
-          next: null,
-          previous: null,
-          results: [
-            {
-              id: 33,
-              quotation: 7,
-              property: 12,
-              date_from: "2026-07-04",
-              date_to: "2026-07-11",
-              changeover_shifted_from: "2026-07-01",
-              adults: 2,
-              children: 1,
-              total: "1234.50",
-              is_selected: true,
-              is_manual: false,
-              notes: "",
-            },
-          ],
-        }),
-      ),
+      ...quotationHandlers(baseQuotation, [{ ...baseLine, changeover_shifted_from: "2026-07-01" }]),
     );
     setup();
     expect(await screen.findByText("#33")).toBeInTheDocument();
@@ -115,6 +113,18 @@ describe("QuotationDetailLayout", () => {
     expect(
       screen.getByText(/arrival moved from .+ to the property's changeover day/i),
     ).toBeInTheDocument();
+  });
+
+  it("links the line's property name to the property detail page", async () => {
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [{ ...baseLine, property_name: "Villa Aurora" }]),
+    );
+    setup();
+    expect(await screen.findByRole("link", { name: "Villa Aurora" })).toHaveAttribute(
+      "href",
+      "/properties/12/details",
+    );
   });
 
   it("disables action buttons when the user lacks the reservations role", async () => {
@@ -139,33 +149,7 @@ describe("QuotationDetailLayout", () => {
   it("enables convert once status is sent and lines exist", async () => {
     asReservationsUser();
     server.resetHandlers();
-    server.use(
-      http.get("/api/v1/quotations/7", () =>
-        HttpResponse.json({ ...baseQuotation, status: "sent" }),
-      ),
-      http.get("/api/v1/quotations/7/lines", () =>
-        HttpResponse.json({
-          count: 1,
-          next: null,
-          previous: null,
-          results: [
-            {
-              id: 33,
-              quotation: 7,
-              property: 12,
-              date_from: "2026-07-01",
-              date_to: "2026-07-08",
-              adults: 2,
-              children: 1,
-              total: "1234.50",
-              is_selected: true,
-              is_manual: false,
-              notes: "",
-            },
-          ],
-        }),
-      ),
-    );
+    server.use(...quotationHandlers({ ...baseQuotation, status: "sent" }, [baseLine]));
     setup();
     // Wait for lines to load (button starts disabled with "no_lines" until
     // the list resolves; once data lands the disable_reason clears).

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
+import { propertyDetailsPath } from "@/lib/routes";
 import { propertyColumns } from "./columns";
 import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
 import type { PropertyFilters, PropertyListItem } from "./schemas";
@@ -118,7 +119,7 @@ export function PropertiesListPage() {
   const handleRowClick = (row: PropertyListItem) => {
     const slug = row.slug?.trim();
     const isValidSlug = slug && !slug.includes("/");
-    navigate(`/properties/${isValidSlug ? slug : row.id}/details`);
+    navigate(propertyDetailsPath(isValidSlug ? slug : row.id));
   };
 
   return (

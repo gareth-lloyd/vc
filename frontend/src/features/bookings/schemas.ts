@@ -133,6 +133,7 @@ export type BookingNetToOwner = z.infer<typeof bookingNetToOwnerSchema>;
 export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
+  charges_total: z.string().nullable().optional(),
   discount: z.string().nullable().optional(),
   adjustment: z.string().nullable().optional(),
   terms_version: z.number().nullable().optional(),
@@ -312,6 +313,38 @@ export const conciergeTierOptions = (): Array<{ value: ConciergeTier; label: str
 
 export const conciergeUnitOptions = (): Array<{ value: ConciergeUnit; label: string }> =>
   conciergeUnitSchema.options.map((value) => ({ value, label: conciergeUnitLabel(value) }));
+
+// ----------------------------------------------------------------------
+// Manual charge items — signed money lines outside the pricing snapshot.
+// ----------------------------------------------------------------------
+
+export const bookingChargeItemSchema = z.object({
+  id: z.number(),
+  booking: z.number().optional(),
+  label: z.string(),
+  amount: z.string(),
+  currency: z.number(),
+  currency_code: z.string().nullable().optional(),
+  notes: z.string().optional().default(""),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type BookingChargeItem = z.infer<typeof bookingChargeItemSchema>;
+
+export const bookingChargeItemsResponseSchema = paginated(bookingChargeItemSchema);
+
+// Currency is deliberately absent from the write body — the backend pins
+// charge lines to the booking's currency.
+export const chargeItemWriteInputSchema = z.object({
+  label: z.string().trim().min(1, i18n.t("bookings:schema_errors.label_required")).max(200),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^-?\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.signed_decimal_format"))
+    .refine((v) => Number(v) !== 0, i18n.t("bookings:schema_errors.amount_nonzero")),
+  notes: z.string().trim().max(2000),
+});
+export type ChargeItemWriteInput = z.infer<typeof chargeItemWriteInputSchema>;
 
 // ----------------------------------------------------------------------
 // Payment tracks (deposit / balance / security)

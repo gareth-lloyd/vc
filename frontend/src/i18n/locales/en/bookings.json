@@ -430,7 +430,10 @@
     "decimal_format": "Use a decimal like 100.00",
     "decimal_amount_format": "Use a decimal like 1000.00",
     "quantity_min": "At least 1",
-    "body_required": "Body is required"
+    "body_required": "Body is required",
+    "label_required": "Label is required",
+    "signed_decimal_format": "Use a decimal like 150.00 or -150.00",
+    "amount_nonzero": "Amount must not be zero"
   },
   "finance": {
     "title": "Finance",
@@ -459,10 +462,53 @@
       "unit_price": "Unit price",
       "total": "Total"
     },
-    "alert": "Line-item editing coming in a later phase. Recalculate via Modify dates / Modify guests on the Overview tab.",
+    "alert": "The engine-priced snapshot is fixed at confirmation. Add manual charges below, or recalculate via Modify dates / Modify guests on the Overview tab.",
     "empty": {
       "title": "Pricing snapshot not available",
       "description": "This booking has no pricing snapshot to display."
+    },
+    "charges": {
+      "title": "Manual charges",
+      "add": "Add charge",
+      "columns": {
+        "label": "Label",
+        "notes": "Notes",
+        "amount": "Amount"
+      },
+      "empty_title": "No manual charges",
+      "empty_description": "Add a charge or credit to adjust what the guest owes.",
+      "charges_total": "Charges total",
+      "total_with_charges": "Total incl. charges",
+      "load_failed_title": "Could not load charges",
+      "load_failed_body": "Something went wrong fetching the manual charges.",
+      "role_required_tooltip": "You need the Reservations role to manage charges",
+      "row": {
+        "edit_for": "Edit {{label}}",
+        "delete_for": "Delete {{label}}"
+      },
+      "confirm_delete": {
+        "title": "Delete this charge?",
+        "description": "Removing it lowers the booking total and resizes any unsettled payment schedule.",
+        "confirm_label": "Delete charge"
+      },
+      "toasts": {
+        "added": "Charge added",
+        "updated": "Charge updated",
+        "removed": "Charge removed",
+        "remove_failed": "Could not remove the charge"
+      },
+      "form_dialog": {
+        "create_title": "Add charge",
+        "edit_title": "Edit charge",
+        "description": "Positive amounts charge the guest, negative amounts credit them. Amounts are gross (tax-inclusive) in the booking currency and flow into the payment schedule.",
+        "fields": {
+          "label": "Label",
+          "amount": "Amount",
+          "notes": "Notes",
+          "currency": "Currency"
+        },
+        "submit_create": "Add charge"
+      }
     }
   },
   "owner": {

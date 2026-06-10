@@ -19,6 +19,7 @@ from properties.models import Property, PropertyFinance, PropertySettings
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
+    BookingChargeItem,
     Guest,
     Quotation,
     QuotationLine,
@@ -882,6 +883,184 @@ def test_staff_list_view_still_shows_gross(
     assert "rental_price" in row
     assert "net_to_owner" not in row
     assert "prices_entered_as" not in row
+
+
+# ---------------------------------------------------------------------------
+# Manual charge items — `total`, `charges_total` and the owner-net effect.
+# ---------------------------------------------------------------------------
+
+
+def _add_charge(booking: Booking, gbp: Currency, amount: str, label: str = "Extra") -> None:
+    BookingChargeItem.objects.create(
+        booking=booking, label=label, amount=Decimal(amount), currency=gbp
+    )
+
+
+@pytest.mark.django_db
+def test_total_includes_charge_items(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """`total` = `balance_due` + Σ charge items, on list and detail alike.
+
+    `balance_due` keeps its engine-gross meaning so a re-price never wipes
+    manual charges; the FE reads `total` and needs no finance changes.
+    """
+    _add_charge(booking, gbp, "200.00", label="Late checkout")
+    _add_charge(booking, gbp, "-50.00", label="Goodwill credit")
+
+    api_client.force_login(staff)
+    listing = api_client.get("/api/v1/bookings")
+    row = listing.data["results"][0]
+    assert row["total"] == "1550.00"
+    assert row["balance_due"] == "1400.00"
+
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert detail.data["total"] == "1550.00"
+    assert detail.data["balance_due"] == "1400.00"
+    assert detail.data["charges_total"] == "150.00"
+
+
+@pytest.mark.django_db
+def test_charges_total_zero_without_rows(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert detail.data["charges_total"] == "0.00"
+    assert detail.data["total"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_status_counts__not_inflated_by_charge_rows(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Counts stay per booking, never per booking x charge row (the same
+    regression class as the payments join leak)."""
+    _add_charge(booking, gbp, "10.00")
+    _add_charge(booking, gbp, "20.00")
+    _add_charge(booking, gbp, "30.00")
+
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings/status-counts")
+
+    assert response.status_code == 200
+    assert response.data == {BookingStatus.AWAITING_DEPOSIT.value: 1}
+
+
+@pytest.mark.django_db
+def test_total_does_not_cross_multiply_with_amount_paid(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Charges and payments on one booking must not inflate each other.
+
+    Two live Sum aggregates over different child tables cross-multiply via
+    their LEFT JOINs; the charges total is a Subquery precisely to avoid
+    that. Three payment rows x two charge rows pins it.
+    """
+    from payments.enums import PaymentPurpose, PaymentStatus
+    from payments.models import Payment
+
+    for purpose, status_, amount in (
+        (PaymentPurpose.DEPOSIT, PaymentStatus.SUCCEEDED, "420.00"),
+        (PaymentPurpose.BALANCE, PaymentStatus.PENDING, "980.00"),
+        (PaymentPurpose.SECURITY_DEPOSIT, PaymentStatus.PENDING, "500.00"),
+    ):
+        Payment.objects.create(
+            booking=booking,
+            purpose=purpose.value,
+            status=status_.value,
+            amount=Decimal(amount),
+            currency=gbp,
+        )
+    _add_charge(booking, gbp, "100.00")
+    _add_charge(booking, gbp, "100.00")
+
+    api_client.force_login(staff)
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert detail.data["amount_paid"] == "420.00"
+    assert detail.data["charges_total"] == "200.00"
+    assert detail.data["total"] == "1600.00"
+
+
+@pytest.mark.django_db
+def test_net_to_owner_includes_charges_under_percent_commission(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Legacy-style owner accounting: charges enter the commissionable base.
+
+    With 12.5% commission, a +200 charge adds 25.00 commission and 175.00
+    to owner net; gross grows by the full 200 (the guest pays the entered
+    amount verbatim). Snapshot tax is untouched.
+    """
+    booking.pricing_snapshot = _snapshot()  # total 1700, commission 180, tax 70
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+    )
+    _add_charge(booking, gbp, "200.00")
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1900.00"
+    assert block["commission"] == "205.00"
+    assert block["tax"] == "70.00"
+    # base net 1700 - 180 - 70 = 1450; +200 charge - 25 commission = 1625.
+    assert block["net_to_owner"] == "1625.00"
+
+
+@pytest.mark.django_db
+def test_net_to_owner_includes_charges_under_fixed_commission(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Fixed commission never moves with charges — they flow to the owner."""
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.FIXED.value,
+        amount=Decimal("180.00"),
+    )
+    _add_charge(booking, gbp, "200.00")
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1900.00"
+    assert block["commission"] == "180.00"
+    assert block["net_to_owner"] == "1650.00"
+
+
+@pytest.mark.django_db
+def test_net_to_owner_credit_is_shared_under_percent_commission(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """A credit is symmetric: owner and agency share it by the same split.
+
+    A -500 negotiated discount at 12.5% takes 62.50 off commission and
+    437.50 off owner net.
+    """
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+    )
+    _add_charge(booking, gbp, "-500.00", label="Negotiated discount")
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1200.00"
+    assert block["commission"] == "117.50"
+    assert block["net_to_owner"] == "1012.50"
 
 
 @pytest.mark.django_db

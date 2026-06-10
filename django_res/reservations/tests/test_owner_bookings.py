@@ -21,10 +21,19 @@ from owners.factories import (
 )
 from owners.models import OwnerOrganisation
 from pricing.models import Currency
+from properties.enums import CommissionCalcType
 from properties.factories import PropertyFactory
 from properties.models import Country, Property
+from properties.models.finance import PropertyFinance
 from reservations.enums import BookingStatus, PaymentMethod
-from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import (
+    Booking,
+    BookingChargeItem,
+    Guest,
+    Quotation,
+    QuotationLine,
+    TermsVersion,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -171,6 +180,58 @@ def test_money_shown_with_full_money_grant(
     assert detail["gross_total"] == "1400.00"
     assert detail["commission"] == "200.00"
     assert detail["net_to_owner"] == "1100.00"
+
+
+def test_detail_money_includes_charge_owner_effect_percent_commission(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    """Owner detail money must agree with the staff API once charges exist.
+
+    Legacy-style accounting: charges enter the commissionable base. With
+    12.5% commission, a +200 charge adds 25.00 commission and 175.00 to
+    owner net; gross grows by the full 200.
+    """
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+    )
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, guest=guest, snapshot=_SNAPSHOT
+    )
+    BookingChargeItem.objects.create(
+        booking=booking, label="Late checkout", amount=Decimal("200.00"), currency=gbp
+    )
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["gross_total"] == "1600.00"
+    assert detail["commission"] == "225.00"
+    assert detail["net_to_owner"] == "1275.00"
+
+
+def test_detail_money_charges_flow_to_owner_without_commission_config(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    """No PropertyFinance row → charges flow to the owner in full."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, guest=guest, snapshot=_SNAPSHOT
+    )
+    BookingChargeItem.objects.create(
+        booking=booking, label="Heating", amount=Decimal("200.00"), currency=gbp
+    )
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["gross_total"] == "1600.00"
+    assert detail["commission"] == "200.00"
+    assert detail["net_to_owner"] == "1300.00"
 
 
 def test_guest_contact_hidden_by_default(

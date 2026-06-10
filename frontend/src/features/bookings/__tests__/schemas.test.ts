@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bookingChargeItemSchema,
   bookingCommissionSchema,
   bookingDetailSchema,
   bookingEventSchema,
@@ -12,6 +13,7 @@ import {
   bookingOwnerSchema,
   bookingStatusSchema,
   cancelBookingInputSchema,
+  chargeItemWriteInputSchema,
   declineBookingInputSchema,
   modifyDatesInputSchema,
   modifyGuestsInputSchema,
@@ -445,5 +447,66 @@ describe("modifyGuestsInputSchema", () => {
   it("accepts adults alone", () => {
     const parsed = modifyGuestsInputSchema.parse({ adults: 2 });
     expect(parsed.adults).toBe(2);
+  });
+});
+
+describe("bookingChargeItemSchema", () => {
+  it("parses a charge row", () => {
+    const parsed = bookingChargeItemSchema.parse({
+      id: 7,
+      booking: 51,
+      label: "Late checkout",
+      amount: "150.00",
+      currency: 1,
+      currency_code: "GBP",
+      notes: "Agreed by phone",
+      created_at: "2026-06-01T00:00:00Z",
+      updated_at: "2026-06-01T00:00:00Z",
+    });
+    expect(parsed.amount).toBe("150.00");
+  });
+
+  it("parses a negative (credit) amount", () => {
+    const parsed = bookingChargeItemSchema.parse({
+      id: 8,
+      label: "Goodwill credit",
+      amount: "-500.00",
+      currency: 1,
+    });
+    expect(parsed.amount).toBe("-500.00");
+    expect(parsed.notes).toBe("");
+  });
+});
+
+describe("chargeItemWriteInputSchema", () => {
+  const base = { label: "Late checkout", amount: "150.00", notes: "" };
+
+  it("accepts signed decimals", () => {
+    for (const amount of ["150.00", "-500.00", "1.5", "-3", "200"]) {
+      expect(chargeItemWriteInputSchema.safeParse({ ...base, amount }).success).toBe(true);
+    }
+  });
+
+  it("rejects malformed amounts", () => {
+    for (const amount of ["1.555", "abc", "--5", "1,5", ""]) {
+      expect(chargeItemWriteInputSchema.safeParse({ ...base, amount }).success).toBe(false);
+    }
+  });
+
+  it("rejects zero", () => {
+    for (const amount of ["0", "0.00", "-0.00"]) {
+      expect(chargeItemWriteInputSchema.safeParse({ ...base, amount }).success).toBe(false);
+    }
+  });
+
+  it("requires a label", () => {
+    expect(chargeItemWriteInputSchema.safeParse({ ...base, label: " " }).success).toBe(false);
+  });
+});
+
+describe("bookingDetailSchema charges_total", () => {
+  it("accepts the charges_total field", () => {
+    const parsed = bookingDetailSchema.parse({ ...baseListItem, charges_total: "150.00" });
+    expect(parsed.charges_total).toBe("150.00");
   });
 });

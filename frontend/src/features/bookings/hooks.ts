@@ -14,13 +14,16 @@ import {
   confirmBooking,
   confirmConciergeItem,
   createBookingNote,
+  createChargeItem,
   createConciergeItem,
   declineBooking,
   deleteBookingNote,
+  deleteChargeItem,
   deleteConciergeItem,
   fetchBalanceTrack,
   fetchBooking,
   fetchBookingActivity,
+  fetchBookingChargeItems,
   fetchBookingConciergeItems,
   fetchBookingEmails,
   fetchBookingNotes,
@@ -35,6 +38,7 @@ import {
   resendBookingEmail,
   restoreBooking,
   updateBookingNote,
+  updateChargeItem,
   updateConciergeItem,
   waiveTrack,
   type TrackName,
@@ -45,6 +49,7 @@ import type {
   BookingNote,
   BookingNoteWriteInput,
   CancelBookingInput,
+  ChargeItemWriteInput,
   ConciergeItemWriteInput,
   DeclineBookingInput,
   MarkPaidInput,
@@ -294,6 +299,56 @@ export function useWaiveTrack(bookingId: BookingId, track: TrackName) {
 
 // Re-export the existing fetcher map and trackName name for downstream tests.
 export { TRACK_FETCHER };
+
+// ----------------------------------------------------------------------
+// Manual charge items
+// ----------------------------------------------------------------------
+
+export function useBookingChargeItems(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.chargeItems, fetchBookingChargeItems));
+}
+
+// A charge mutation moves the booking total, which moves the rail tiles
+// (detail), the list row, the timeline and the resized deposit/balance
+// schedule — invalidate them all, not just the charge list. (The concierge
+// hooks invalidate narrowly because concierge money never enters `total`.)
+function invalidateChargeDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.chargeItems(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.deposit(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.balance(bookingId) });
+}
+
+export function useCreateChargeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ChargeItemWriteInput) => createChargeItem(bookingId, input),
+    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+  });
+}
+
+interface UpdateChargeVars {
+  itemId: number;
+  input: Partial<ChargeItemWriteInput>;
+}
+
+export function useUpdateChargeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, input }: UpdateChargeVars) => updateChargeItem(bookingId, itemId, input),
+    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+  });
+}
+
+export function useDeleteChargeItem(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId }: { itemId: number }) => deleteChargeItem(bookingId, itemId),
+    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+  });
+}
 
 // ----------------------------------------------------------------------
 // Concierge items

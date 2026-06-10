@@ -7,7 +7,14 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.db.models import DecimalField, Prefetch, Q, QuerySet, Sum, Value
+from django.db.models import (
+    DecimalField,
+    Prefetch,
+    Q,
+    QuerySet,
+    Sum,
+    Value,
+)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
@@ -27,6 +34,7 @@ from reservations.serializers import (
     BookingWriteSerializer,
 )
 from reservations.serializers.booking import BookingEventSerializer
+from reservations.services.charges import with_charges_total as _with_charges_total
 from reservations.views.status_counts import StatusCountsMixin
 
 
@@ -118,7 +126,7 @@ class BookingViewSet(
         # or the mutation actions (their responses re-fetch via `_refresh`,
         # which annotates separately).
         if self.action in ("list", "retrieve"):
-            qs = _with_amount_paid(qs)
+            qs = _with_charges_total(_with_amount_paid(qs))
         # Every non-list action returns BookingDetailSerializer (`retrieve` and
         # the state-machine actions all route through `_refresh`), which walks
         # property -> finance -> contact -> emails/phones.
@@ -140,7 +148,9 @@ class BookingViewSet(
         # Re-fetch through the detail queryset so the owner/commission walk
         # hits the prefetch cache instead of issuing 5+ extra queries per
         # action response.
-        fresh = _detail_owner_qs(_with_amount_paid(Booking.objects.all())).get(pk=booking.pk)
+        fresh = _detail_owner_qs(_with_charges_total(_with_amount_paid(Booking.objects.all()))).get(
+            pk=booking.pk
+        )
         return Response(BookingDetailSerializer(fresh).data)
 
     @action(detail=True, methods=["post"], url_path="confirm")
@@ -256,7 +266,7 @@ class BookingArchiveViewSet(
             "currency",
             "quotation_line",
         )
-        qs = _with_amount_paid(qs)
+        qs = _with_charges_total(_with_amount_paid(qs))
         if self.action != "list":
             qs = _detail_owner_qs(qs)
         return qs

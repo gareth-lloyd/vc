@@ -4,6 +4,8 @@ import type { Paginated } from "@/types/api";
 import type { BookingId } from "@/lib/query/keys";
 import {
   bookingActivityResponseSchema,
+  bookingChargeItemSchema,
+  bookingChargeItemsResponseSchema,
   bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
@@ -14,6 +16,7 @@ import {
   bookingNotesResponseSchema,
   paymentRecordsListSchema,
   paymentTrackSchema,
+  type BookingChargeItem,
   type BookingConciergeItem,
   type BookingDetail,
   type BookingEmail,
@@ -23,6 +26,7 @@ import {
   type BookingNote,
   type BookingNoteWriteInput,
   type CancelBookingInput,
+  type ChargeItemWriteInput,
   type ConciergeItemWriteInput,
   type DeclineBookingInput,
   type MarkPaidInput,
@@ -236,6 +240,42 @@ export async function waiveTrack(
 ): Promise<PaymentTrack> {
   const data = await apiSend<unknown>("POST", `/bookings/${id}/${track}:waive`, body);
   return paymentTrackSchema.parse(data);
+}
+
+// ----------------------------------------------------------------------
+// Manual charge items
+// ----------------------------------------------------------------------
+
+export async function fetchBookingChargeItems(
+  id: BookingId,
+): Promise<Paginated<BookingChargeItem>> {
+  const data = await apiGet<unknown>(`/bookings/${id}/charge-items`);
+  return bookingChargeItemsResponseSchema.parse(data);
+}
+
+export async function createChargeItem(
+  bookingId: BookingId,
+  body: ChargeItemWriteInput,
+): Promise<BookingChargeItem> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/charge-items`, body);
+  return bookingChargeItemSchema.parse(data);
+}
+
+export async function updateChargeItem(
+  bookingId: BookingId,
+  itemId: number,
+  body: Partial<ChargeItemWriteInput>,
+): Promise<BookingChargeItem> {
+  const data = await apiSend<unknown>(
+    "PATCH",
+    `/bookings/${bookingId}/charge-items/${itemId}`,
+    body,
+  );
+  return bookingChargeItemSchema.parse(data);
+}
+
+export async function deleteChargeItem(bookingId: BookingId, itemId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/bookings/${bookingId}/charge-items/${itemId}`);
 }
 
 // ----------------------------------------------------------------------

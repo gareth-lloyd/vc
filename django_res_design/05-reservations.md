@@ -232,8 +232,8 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `pricing_snapshot` — JSONField  # **copied from QuotationLine at creation, never recomputed**
 - `rental_price` — Decimal(12, 2)  # extracted for reports
 - `discount` — Decimal(12, 2, default=0)
-- `adjustment` — Decimal(12, 2, default=0)  # one-off line item (concierge total feeds in here)
-- `balance_due` — Decimal(12, 2)  # computed at creation. Despite the name this is the **denormalised guest-facing gross total** (snapshot `total`), never decremented as payments settle — outstanding is computed from Payment rows (07-payments.md). The API exposes it as `total`. The legacy loader fills it from `RentalPrice` (legacy `BalanceDue` is a DATETIME — the due *date* — not money).
+- `adjustment` — Decimal(12, 2, default=0)  # concierge total **only** (signal-maintained from `BookingConciergeItem`; settles on its own CONCIERGE payment track, never enters `total`). Manual money lines live on `BookingChargeItem`, not here.
+- `balance_due` — Decimal(12, 2)  # computed at creation. Despite the name this is the **denormalised engine-gross total** (snapshot `total`), never decremented as payments settle — outstanding is computed from Payment rows (07-payments.md). The API `total` is `balance_due` **plus the live Σ of `BookingChargeItem` rows** (no denormalised charges column — computed via a Subquery annotation / per-row aggregate), so a re-price rewriting `balance_due` never wipes manual charges. The legacy loader fills it from `RentalPrice` (legacy `BalanceDue` is a DATETIME — the due *date* — not money).
 - `balance_due_at` — DateField  # derived from PaymentSchedule; the legacy loader maps `VillaBooking.BalanceDue` (datetime) here
 - `status` — TextChoices (see 06-availability.md for full machine)
 - `agent` — FK accounts.Contact SET_NULL, null=True  # external agent / intermediary; same distinction as Enquiry.agent
@@ -352,6 +352,51 @@ There is no separate `ConciergeService` catalogue model. Legacy `VillaConciergeS
 
 Aggregation feeds `Booking.adjustment` via signal on save/delete.
 
+## Manual charge items
+
+Legacy `VillaBookingDetails` rows (Price + Notes + CurrencyId) were staff-entered
+money lines on a booking — negotiated extras, mid-stay charges, one-off
+corrections — and legacy regenerated the payment schedule on every save. The
+rebuild's analogue (supersedes the earlier "extras collapse into `adjustment`"
+plan — `adjustment` is concierge-only):
+
+### `BookingChargeItem(AuditedModel)`
+- `booking` — FK CASCADE, related_name `charge_items`
+- `label` — CharField(200)  # legacy `Notes` was the display label
+- `amount` — Decimal(12, 2) **signed** — negative = credit. CheckConstraint `amount != 0`.
+- `currency` — FK pricing.Currency PROTECT  # service-validated equal to `booking.currency`; kept per-row for legacy-import parity
+- `notes` — TextField(blank=True)
+- `legacy_id` — nullable, indexed
+
+Semantics:
+
+- **Guest total:** API `total = balance_due + Σ charge_items`, computed live
+  (Subquery annotation; no denormalised column). The snapshot is never touched.
+- **Payment schedule:** every mutation fires `booking_total_changed`;
+  payments' receiver runs `PaymentScheduler.resync_for_booking`, which resizes
+  **PENDING** deposit/balance rows only (SUCCEEDED is history, PROCESSING is
+  mid-flight at the provider). Unabsorbable residuals clamp PENDING at 0 and
+  are logged + written to a `BookingEvent` (`payment_schedule_residual`).
+- **Owner accounting (legacy-style):** charges enter the commissionable base.
+  PERCENT commission skims its share off every charge (credits shared
+  symmetrically); FIXED commission passes charges to the owner in full.
+  Computed read-side by `reservations.services.charges.owner_effect` and
+  layered onto the serializer's `net_to_owner`; tax never recomputed (charges
+  are entered gross). The owner portal applies the same effect via
+  `owner_finance.owner_money_for_booking` (booking detail + dashboard YTD
+  net), so staff and owner surfaces always agree. Percent security deposits
+  size against the charges-inclusive total at creation (see GAP-019 for the
+  no-resync caveat).
+- **State gate:** writes allowed in exactly `ACTIVE_BOOKING_STATUSES`
+  (including CHECKED_IN — mid-stay charges are a core use case); DRAFT /
+  PENDING_OWNER_APPROVAL / terminal → 409.
+- **Service layer:** `ChargeItemService` (create/update/delete, `actor` kwarg)
+  owns the booking row lock, the state gate, the currency pin, the
+  negative-combined-total guard and the `BookingEvent` audit trail (reason
+  `charge_item_{created,updated,deleted}` with before/after meta).
+- **API:** nested CRUD `/bookings/{id}/charge-items` (+ `/{pk}`), writes
+  respond with the read representation.
+
 ## Terms
 
 ### `TermsVersion(TimestampedModel)`
@@ -374,6 +419,7 @@ Both `Quotation.terms_version` and `Booking.terms_version` snapshot the version 
 ## Signals
 
 - `booking_transitioned(booking, from_status, to_status, actor, source)` — fired by every transition method.
+- `booking_total_changed(booking)` — fired from `BookingChargeItem` post_save/post_delete (so direct ORM writes trigger it too). payments listens and resizes the unsettled DEPOSIT/BALANCE schedule (`PaymentScheduler.resync_for_booking`) — the signal exists because the spine forbids `reservations -> payments`.
 - Reservations registers **no** receiver on payments' signals — the import spine forbids `reservations -> payments`. The booking-advance dispatch (`payment_succeeded`/`payment_waived` -> `record_deposit`/`record_balance` by `payment.purpose`) is owned by the payments app (`payments/signals.py`, `_advance_booking_on_payment_settled`), a clean downward edge mirroring `_schedule_payments_on_booking_confirmed`.
 - Reservations' own beat tasks (`reservations/tasks.py`) drive the time-based transitions: `expire_quotations` (DRAFT/SENT past `expires_at`), `expire_bookings` (AWAITING_DEPOSIT whose deposit Payment `due_at` is older than `BOOKING_DEPOSIT_EXPIRY_DAYS`; the booking's leftover PENDING payments are expired by a payments-side `booking_transitioned` receiver), and `arm_balances` (DEPOSIT_PAID on/after `balance_due_at`).
 

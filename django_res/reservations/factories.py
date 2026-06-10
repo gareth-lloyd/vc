@@ -123,6 +123,21 @@ class BookingNoteFactory(DjangoModelFactory):
     is_pinned = False
 
 
+class BookingChargeItemFactory(DjangoModelFactory):
+    """Manual charge/credit line on a Booking. Caller must supply `booking=`
+    and `currency=` (`Booking` rows are service-built, and the currency must
+    match the booking's, so neither has a SubFactory default)."""
+
+    class Meta:
+        model = models.BookingChargeItem
+
+    booking = None  # required: provided by caller
+    label = factory.Faker("sentence", nb_words=3)
+    amount = Decimal("100.00")
+    currency = None  # required: provided by caller (must equal booking.currency)
+    notes = ""
+
+
 class BookingServiceCoverageFactory(DjangoModelFactory):
     """One concierge coverage cell on a Booking. Caller must supply `booking=`
     (`Booking` rows are service-built, so there is no SubFactory default).

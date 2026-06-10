@@ -12,6 +12,7 @@ class ReservationsConfig(AppConfig):
         from reservations import signals  # noqa: F401
         from reservations.models import (
             Booking,
+            BookingChargeItem,
             BookingGuest,
             BookingServiceCoverage,
             Guest,
@@ -62,6 +63,19 @@ class ReservationsConfig(AppConfig):
                 "cancelled_at",
                 "is_archived",
                 "archived_at",
+            ],
+        )
+        # BookingChargeItem: staff-entered money on the guest total. Every
+        # add/edit/delete moves what the guest owes, so the full row is the
+        # audit trail a billing dispute needs.
+        track(
+            BookingChargeItem,
+            fields=[
+                "booking_id",
+                "label",
+                "amount",
+                "currency_id",
+                "notes",
             ],
         )
         # BookingGuest: who is on a booking, in what role. PII via the

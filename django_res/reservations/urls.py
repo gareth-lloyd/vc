@@ -19,6 +19,7 @@ from reservations.views import (
     AvailabilityReleaseHoldView,
     AvailabilitySearchView,
     BookingArchiveViewSet,
+    BookingChargeItemViewSet,
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
     BookingViewSet,
@@ -250,6 +251,29 @@ _booking_actions: list[URLPattern | URLResolver] = [
 
 
 # ----------------------------------------------------------------------
+# Charge-item nested routes
+# ----------------------------------------------------------------------
+_charge_routes: list[URLPattern | URLResolver] = [
+    path(
+        "bookings/<int:booking_pk>/charge-items",
+        BookingChargeItemViewSet.as_view({"get": "list", "post": "create"}),
+        name="booking-charge-items",
+    ),
+    path(
+        "bookings/<int:booking_pk>/charge-items/<int:pk>",
+        BookingChargeItemViewSet.as_view(
+            {
+                "get": "retrieve",
+                "patch": "partial_update",
+                "delete": "destroy",
+            }
+        ),
+        name="booking-charge-item-detail",
+    ),
+]
+
+
+# ----------------------------------------------------------------------
 # Concierge nested routes
 # ----------------------------------------------------------------------
 _concierge_routes: list[URLPattern | URLResolver] = [
@@ -436,6 +460,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     *_enquiry_actions,
     *_quotation_actions,
     *_booking_actions,
+    *_charge_routes,
     *_concierge_routes,
     *_concierge_overview_routes,
     *_availability_routes,

@@ -111,7 +111,13 @@ class BookingViewSet(
             "currency",
             "quotation_line",
         )
-        qs = _with_amount_paid(qs)
+        # Annotate only the actions whose response serializer reads
+        # `amount_paid`. The Sum's LEFT JOIN onto payments must not leak into
+        # `status_counts` (its Count('id') would count booking x payment rows)
+        # or the mutation actions (their responses re-fetch via `_refresh`,
+        # which annotates separately).
+        if self.action in ("list", "retrieve"):
+            qs = _with_amount_paid(qs)
         # Every non-list action returns BookingDetailSerializer (`retrieve` and
         # the state-machine actions all route through `_refresh`), which walks
         # property -> finance -> contact -> emails/phones.

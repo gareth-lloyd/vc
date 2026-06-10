@@ -920,6 +920,39 @@ def test_status_counts__groups_by_status(
 
 
 @pytest.mark.django_db
+def test_status_counts__not_inflated_by_payment_rows(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """Counts are per booking, never per booking x payment row.
+
+    The amount_paid annotation joins payments onto the bookings queryset; if
+    that join leaks into the status-counts aggregate, a booking with N payment
+    rows is counted N times in its status badge.
+    """
+    from payments.enums import PaymentPurpose, PaymentStatus
+    from payments.models import Payment
+
+    for purpose, status_ in (
+        (PaymentPurpose.DEPOSIT, PaymentStatus.SUCCEEDED),
+        (PaymentPurpose.BALANCE, PaymentStatus.PENDING),
+        (PaymentPurpose.SECURITY_DEPOSIT, PaymentStatus.PENDING),
+    ):
+        Payment.objects.create(
+            booking=booking,
+            purpose=purpose.value,
+            status=status_.value,
+            amount=Decimal("100.00"),
+            currency=gbp,
+        )
+
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings/status-counts")
+
+    assert response.status_code == 200
+    assert response.data == {BookingStatus.AWAITING_DEPOSIT.value: 1}
+
+
+@pytest.mark.django_db
 def test_status_counts__ignores_status_filter_but_honours_others(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

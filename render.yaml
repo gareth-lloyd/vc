@@ -89,11 +89,16 @@ services:
           type: keyvalue
           property: connectionString
       - key: EMAIL_RECIPIENT_ALLOWLIST
-        sync: false
+        fromService:
+          name: villacollective-api
+          type: web
+          envVarKey: EMAIL_RECIPIENT_ALLOWLIST
 
   # Celery beat — the periodic scheduler. MUST stay at a single instance:
   # multiple beat replicas would double-fire every scheduled job. Does not
-  # serve traffic and does not need the email allowlist (it only enqueues).
+  # serve traffic and never sends mail itself (it only enqueues), but the
+  # staging settings module refuses to boot with an empty allowlist, so it
+  # shares the web service's value.
   - type: worker
     name: villacollective-beat
     runtime: docker

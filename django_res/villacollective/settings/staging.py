@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import os
+
 from django.core.exceptions import ImproperlyConfigured
+
+# Staging-only ALLOWED_HOSTS default. production.py reads the env var with no
+# default (fail-fast for real prod), and it does so *during* the star-import
+# below — so an ordinary `ALLOWED_HOSTS = ...` override here would never run.
+# Defaulting the env var first keeps prod strict while letting every Render
+# staging service (web, worker, beat) boot without declaring it. An explicitly
+# set env var still wins.
+os.environ.setdefault("ALLOWED_HOSTS", ".onrender.com")
 
 from .base import env
 from .production import *  # noqa: F403

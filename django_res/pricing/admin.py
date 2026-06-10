@@ -96,7 +96,6 @@ class RateRuleAdmin(admin.ModelAdmin):
         "date_to",
         "min_party",
         "max_party",
-        "priority",
         "nightly",
         "weekly",
         "is_poa",

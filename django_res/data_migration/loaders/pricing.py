@@ -11,7 +11,7 @@ New structure:
   RatePlan (property, currency, effective_from, effective_to)
     └── RateCard (plan, name, ...)
           └── RateRule (card, date_from, date_to, min_party, max_party,
-                       nightly, weekly, is_poa, priority)
+                       nightly, weekly, is_poa)
 
 Strategy:
 - One RatePlan per VillaSeason (currency picked from first VillaSeasonRate).
@@ -447,7 +447,6 @@ class RateRuleLoader(BaseLoader):
             "date_to": date_to,
             "min_party": min_party,
             "max_party": max_party,
-            "priority": min(int(row["ID"]) % 65535, 65535),
             "nightly": nightly,
             "weekly": weekly,
             "is_poa": is_poa,

@@ -141,3 +141,47 @@ def test_materialise_skips_inactive_cards_and_unapproved_rules(
 def test_materialise_without_anchor_raises(property_: Property, gbp: Currency) -> None:
     with pytest.raises(NoRateAvailable):
         RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+
+
+@pytest.mark.django_db
+def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currency) -> None:
+    """A leap-year anchor range spanning Feb 29 lands one day longer relative
+    to its neighbour after mapping (span is preserved, Feb 29 isn't), so the
+    shifted ranges collide on the boundary. materialise must clip the later
+    rule instead of tripping raterule_no_overlap with an IntegrityError."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    card = RateCard.objects.create(plan=plan, name="Default", sort_order=0)
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2024, 2, 25),
+        date_to=date(2024, 2, 29),  # spans Feb 29
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2024, 3, 1),
+        date_to=date(2024, 3, 7),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("150.00"),
+    )
+
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
+    )
+
+    new_rules = list(
+        RateRule.objects.filter(card__plan=new_plan).order_by("date_from"),
+    )
+    assert [(r.date_from, r.date_to) for r in new_rules] == [
+        (date(2025, 2, 25), date(2025, 3, 1)),  # span preserved across the lost Feb 29
+        (date(2025, 3, 2), date(2025, 3, 7)),  # clipped off the collided boundary day
+    ]

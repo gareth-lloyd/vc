@@ -29,11 +29,6 @@ def rule_nightly(rule: RateRule) -> Decimal:
     raise NoRateAvailable(f"RateRule {rule.pk} is POA and cannot be priced")
 
 
-def rule_specificity(rule: RateRule) -> int:
-    """Days in `rule`'s date range — narrower wins on priority ties."""
-    return (rule.date_to - rule.date_from).days
-
-
 @dataclass(frozen=True)
 class Picked:
     """A rule was found that covers both the night and the party."""
@@ -67,26 +62,27 @@ def pick_rule_for_night(
     night: date,
     party: int,
 ) -> PickResult:
-    """Pick the highest-priority rule covering `night` and `party` across cards.
+    """Pick the rule covering `night` and `party` by card order.
+
+    Cards are walked in the caller-supplied order — both the engine and the
+    projection load them `("sort_order", "pk")` — and the first card with a
+    rule covering both the night and the party wins; later cards never
+    override it, however narrow their rules. Within a card the DB forbids
+    overlapping rules outright (`raterule_no_overlap`), but in-memory
+    projected rules can collide after Feb-29 date mapping; the lowest pk
+    wins deterministically.
 
     Returns a tagged result so the caller can distinguish "no rule at all"
     (`NoCoverage`) from "rules cover the night but the party is outside
-    every bracket" (`OutOfRange`). The disambiguation used to live in a
-    sibling helper (`any_rule_covers_night`) that re-walked the same
-    grid; folding it into the single pass keeps the engine to one loop
-    per night.
-
-    Tie-break order (per 04-pricing.md §Services step 2):
-    1. Higher `priority` wins.
-    2. Narrower date range wins (most-specific match).
-    3. Lower `card.sort_order` wins (cross-card tie-break).
-    4. Higher `rule.id` wins (deterministic fallback).
+    every bracket" (`OutOfRange`). The night-coverage flag spans *all*
+    cards: a first-card rule whose party bracket excludes the request must
+    neither shadow a matching rule on a later card nor erase the
+    OutOfRange signal.
     """
-    best: tuple[RateCard, RateRule] | None = None
-    best_key: tuple[int, int, int, int] | None = None
     any_rule_covered = False
 
     for card in cards:
+        best: RateRule | None = None
         for rule in rules_by_card.get(card.pk, []):
             if not (rule.date_from <= night <= rule.date_to):
                 continue
@@ -96,18 +92,11 @@ def pick_rule_for_night(
             any_rule_covered = True
             if not (rule.min_party <= party <= rule.max_party):
                 continue
-            key = (
-                int(rule.priority),
-                -rule_specificity(rule),
-                -int(card.sort_order),
-                int(rule.pk),
-            )
-            if best_key is None or key > best_key:
-                best_key = key
-                best = (card, rule)
+            if best is None or int(rule.pk) < int(best.pk):
+                best = rule
+        if best is not None:
+            return Picked(card=card, rule=best)
 
-    if best is not None:
-        return Picked(card=best[0], rule=best[1])
     if any_rule_covered:
         return OutOfRange()
     return NoCoverage()

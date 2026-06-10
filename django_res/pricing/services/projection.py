@@ -140,7 +140,6 @@ def projected_rule_fields(
         "date_to": new_to,
         "min_party": rule.min_party,
         "max_party": rule.max_party,
-        "priority": rule.priority,
         "nightly": apply_uplift(rule.nightly, factor),
         "weekly": apply_uplift(rule.weekly, factor),
         "is_poa": rule.is_poa,

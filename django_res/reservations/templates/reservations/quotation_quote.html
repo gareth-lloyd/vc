@@ -16,7 +16,6 @@
   table.vc-lines td { font-size: 14px; color: #333333; border-bottom: 1px solid #f0f0f0; padding: 10px 6px; vertical-align: top; }
   td.vc-right, th.vc-right { text-align: right; }
   .vc-thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; display: block; }
-  .vc-grand { font-size: 18px; font-weight: bold; color: #222222; text-align: right; padding: 12px 6px; }
   .vc-meta { font-size: 13px; color: #888888; }
   .vc-terms { font-size: 13px; color: #777777; border-top: 1px solid #eeeeee; padding-top: 16px; margin-top: 24px; }
   .vc-notes { font-size: 13px; color: #888888; font-style: italic; }
@@ -64,11 +63,6 @@
           </tr>
           {% endfor %}
         </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="6" class="vc-grand">Total: {{ currency_code }} {{ grand_total }}</td>
-          </tr>
-        </tfoot>
       </table>
 
       <p class="vc-meta">Quotation reference: {{ quotation_reference }}{% if expires_at %} &middot; valid until {{ expires_at }}{% endif %}</p>

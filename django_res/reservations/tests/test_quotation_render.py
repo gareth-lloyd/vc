@@ -53,7 +53,7 @@ def priced_quotation(
 
 
 @pytest.mark.django_db
-def test_build_quotation_context_includes_line_and_grand_total(
+def test_build_quotation_context_includes_line_totals(
     priced_quotation: Quotation,
     property_: Property,
 ) -> None:
@@ -74,15 +74,17 @@ def test_build_quotation_context_includes_line_and_grand_total(
     # Formatted as a thousands-grouped 2-dp string.
     assert line["total"] == "1,234.00"
 
-    assert ctx["grand_total"] == "1,234.00"
     assert "terms_html" in ctx
 
 
 @pytest.mark.django_db
-def test_build_quotation_context_sums_multiple_lines(
+def test_build_quotation_context_has_no_summed_total(
     priced_quotation: Quotation,
     property_: Property,
 ) -> None:
+    """Lines are alternative villa options the guest picks ONE of, so a
+    combined total across them is misleading. Mirrors the quote-builder cart,
+    which dropped its summed "Subtotal" for the same reason."""
     QuotationLine.objects.create(
         quotation=priced_quotation,
         property=property_,
@@ -95,7 +97,12 @@ def test_build_quotation_context_sums_multiple_lines(
     ctx = build_quotation_context(priced_quotation)
 
     assert len(ctx["lines"]) == 2
-    assert ctx["grand_total"] == "2,234.00"
+    assert [line["total"] for line in ctx["lines"]] == ["1,234.00", "1,000.00"]
+    assert "grand_total" not in ctx
+
+    html = render_quotation_html(priced_quotation)
+    assert "2,234.00" not in html  # no summed figure anywhere
+    assert "Total:" not in html  # no combined-total footer row
 
 
 @pytest.mark.django_db

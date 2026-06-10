@@ -96,9 +96,7 @@ def build_quotation_context(
     )
 
     line_dicts: list[dict[str, Any]] = []
-    grand_total = Decimal("0")
     for line in lines_qs:
-        grand_total += line.total
         nights = (line.date_to - line.date_from).days
         line_dicts.append(
             {
@@ -132,7 +130,6 @@ def build_quotation_context(
         "agent_name": agent_name,
         "quotation_reference": quotation.reference,
         "currency_code": quotation.currency.code,
-        "grand_total": _money(grand_total),
         "expires_at": quotation.expires_at,
         "terms_html": terms_html,
         "subject": (subject or "").strip() or f"Your quotation {quotation.reference}",

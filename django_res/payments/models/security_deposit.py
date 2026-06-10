@@ -110,6 +110,16 @@ class SecurityDeposit(AuditedModel):
     def __str__(self) -> str:
         return f"{self.reference} ({self.kind}/{self.status})"
 
+    def _assert_capturable_amount(self, captured_amount: Decimal) -> None:
+        """A claim captures between zero and the full held amount."""
+        if captured_amount < 0:
+            raise ValueError(f"SD {self.reference}: captured_amount {captured_amount} is negative")
+        if captured_amount > self.amount:
+            raise ValueError(
+                f"SD {self.reference}: captured_amount {captured_amount} "
+                f"exceeds amount {self.amount}"
+            )
+
     # ------------------------------------------------------------------
     # Transitions
     # ------------------------------------------------------------------
@@ -182,11 +192,7 @@ class SecurityDeposit(AuditedModel):
             raise ValueError(f"SD {self.reference}: :claim → CAPTURED only valid for PRE_AUTH_HOLD")
         if self.status != SecurityDepositStatus.PRE_AUTHED.value:
             raise ValueError(f"SD {self.reference}: cannot :claim from status {self.status!r}")
-        if captured_amount > self.amount:
-            raise ValueError(
-                f"SD {self.reference}: captured_amount {captured_amount} "
-                f"exceeds amount {self.amount}"
-            )
+        self._assert_capturable_amount(captured_amount)
         self.captured_amount = captured_amount
         self.damage_claim_id = getattr(damage_claim, "pk", damage_claim)
         self.save(update_fields=["captured_amount", "damage_claim_id", "updated_at"])
@@ -213,6 +219,9 @@ class SecurityDeposit(AuditedModel):
             raise ValueError(
                 f"SD {self.reference}: cannot partial-refund from status {self.status!r}"
             )
+        # Bounds matter doubly here: `refunded_amount = amount - captured`,
+        # so an over-amount capture silently produced a negative refund.
+        self._assert_capturable_amount(captured_amount)
         self.captured_amount = captured_amount
         self.refunded_amount = self.amount - captured_amount
         self.damage_claim_id = getattr(damage_claim, "pk", damage_claim)

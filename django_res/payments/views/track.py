@@ -8,14 +8,17 @@ delegate to `SecurityDepositService` / `Payment` model methods.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -29,13 +32,17 @@ from core.exceptions import (
     UnknownAction,
 )
 from payments.enums import (
+    TERMINAL_SD_STATUSES,
     PaymentMethod,
     PaymentPurpose,
     PaymentStatus,
-    SecurityDepositStatus,
 )
 from payments.models import Payment, SecurityDeposit
-from payments.serializers import PaymentSerializer, TrackSerializer
+from payments.serializers import (
+    ManualPaymentCreateSerializer,
+    PaymentSerializer,
+    TrackSerializer,
+)
 from payments.services.security_deposit import SecurityDepositService
 from reservations.models import Booking
 
@@ -51,14 +58,39 @@ def _track_response(booking: Booking, purpose: str) -> Response:
     return Response(TrackSerializer(data).data)
 
 
-def _parse_decimal(value: Any) -> Decimal:
-    return Decimal(str(value))
+def _parse_decimal(value: Any, *, field: str = "amount") -> Decimal:
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        raise DRFValidationError({field: ["A valid decimal number is required."]}) from None
 
 
-def _parse_datetime(value: Any) -> datetime:
+def _parse_positive_decimal(value: Any, *, field: str = "amount") -> Decimal:
+    amount = _parse_decimal(value, field=field)
+    if amount <= 0:
+        raise DRFValidationError({field: ["Must be greater than zero."]})
+    return amount
+
+
+def _parse_datetime(value: Any, *, field: str = "due_at") -> datetime:
     if isinstance(value, datetime):
         return value
-    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        raise DRFValidationError({field: ["A valid ISO-8601 datetime is required."]}) from None
+
+
+def _service_call[T](call: Callable[[], T]) -> T:
+    """Translate service-layer `ValueError`s (state-machine misuse) to 409.
+
+    Mirrors `RefundViewSet._run_service`: the SD/payment services guard their
+    transitions with `ValueError`, which would otherwise surface as a 500.
+    """
+    try:
+        return call()
+    except ValueError as exc:
+        raise InvalidPaymentState(str(exc)) from exc
 
 
 def _patch_pending_payment(request: Request, booking: Booking, purpose: str) -> None:
@@ -75,7 +107,12 @@ def _patch_pending_payment(request: Request, booking: Booking, purpose: str) -> 
         raise NoPendingPayment(f"No pending {purpose} payment to update")
     updates: list[str] = []
     if "amount" in request.data:
-        row.amount = _parse_decimal(request.data["amount"])
+        amount = _parse_decimal(request.data["amount"])
+        # Zero is legitimate (a 100%-deposit schedule leaves a zero balance
+        # row); negative would invert the ledger.
+        if amount < 0:
+            raise DRFValidationError({"amount": ["Must not be negative."]})
+        row.amount = amount
         updates.append("amount")
     if "due_at" in request.data and request.data["due_at"] is not None:
         row.due_at = _parse_datetime(request.data["due_at"])
@@ -166,14 +203,24 @@ def security_track_action(request: Request, booking_pk: int, action: str) -> Res
     if action == "request-payment":
         return not_implemented_response("Security request-payment is not yet implemented.")
     if action == "mark-paid":
+        if "amount" not in request.data or "paid_at" not in request.data:
+            raise DRFValidationError(
+                {
+                    field: ["This field is required."]
+                    for field in ("amount", "paid_at")
+                    if field not in request.data
+                }
+            )
         sd = _get_active_sd(booking)
-        SecurityDepositService.mark_paid(
-            sd,
-            amount=_parse_decimal(request.data["amount"]),
-            paid_at=_parse_datetime(request.data["paid_at"]),
-            method=request.data.get("method", PaymentMethod.BANK_TRANSFER.value),
-            reference=request.data.get("reference", ""),
-            actor=request.user,
+        _service_call(
+            lambda: SecurityDepositService.mark_paid(
+                sd,
+                amount=_parse_positive_decimal(request.data["amount"]),
+                paid_at=_parse_datetime(request.data["paid_at"], field="paid_at"),
+                method=request.data.get("method", PaymentMethod.BANK_TRANSFER.value),
+                reference=request.data.get("reference", ""),
+                actor=request.user,
+            )
         )
         sd.refresh_from_db()
         return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
@@ -191,19 +238,26 @@ def security_payment_action(
         return _payment_capture(request, booking, payment_pk)
     sd = _get_active_sd(booking)
     if action == "hold":
-        SecurityDepositService.hold(
-            sd,
-            gateway_response=request.data.get("gateway_response", {}),
-            actor=request.user,
+        _service_call(
+            lambda: SecurityDepositService.hold(
+                sd,
+                gateway_response=request.data.get("gateway_response", {}),
+                actor=request.user,
+            )
         )
     elif action == "release":
-        SecurityDepositService.release(sd, actor=request.user)
+        _service_call(lambda: SecurityDepositService.release(sd, actor=request.user))
     elif action == "claim":
-        SecurityDepositService.claim(
-            sd,
-            damage_claim=request.data.get("damage_claim"),
-            captured_amount=_parse_decimal(request.data.get("captured_amount", sd.amount)),
-            actor=request.user,
+        captured = _parse_decimal(
+            request.data.get("captured_amount", sd.amount), field="captured_amount"
+        )
+        _service_call(
+            lambda: SecurityDepositService.claim(
+                sd,
+                damage_claim=request.data.get("damage_claim"),
+                captured_amount=captured,
+                actor=request.user,
+            )
         )
     else:
         raise UnknownAction(f"Unknown action {action!r}")
@@ -212,16 +266,12 @@ def security_payment_action(
 
 
 def _get_active_sd(booking: Booking) -> SecurityDeposit:
+    # All terminal statuses are excluded — a CAPTURED or PARTIALLY_REFUNDED
+    # deposit is just as closed as a RELEASED one and must not be served as
+    # the actionable SD.
     sd = (
         SecurityDeposit.objects.filter(booking=booking)
-        .exclude(
-            status__in=(
-                SecurityDepositStatus.RELEASED.value,
-                SecurityDepositStatus.REFUNDED.value,
-                SecurityDepositStatus.EXPIRED.value,
-                SecurityDepositStatus.FAILED.value,
-            )
-        )
+        .exclude(status__in=TERMINAL_SD_STATUSES)
         .order_by("-created_at")
         .first()
     )
@@ -274,20 +324,32 @@ def _track_payments(request: Request, booking: Booking, purpose: str) -> Respons
     if request.method == "GET":
         rows = Payment.objects.filter(booking=booking, purpose=purpose).order_by("-created_at")
         return Response(PaymentSerializer(rows, many=True).data)
-    # POST — record a manual payment
-    data = request.data
-    payment = Payment.objects.create(
-        booking=booking,
-        purpose=purpose,
-        status=data.get("status", PaymentStatus.PENDING.value),
-        amount=_parse_decimal(data.get("amount", 0)),
-        currency=booking.currency,
-        provider=data.get("provider", ""),
-        provider_reference=data.get("provider_reference", ""),
-        payment_method=data.get("payment_method", ""),
-        due_at=_parse_datetime(data["due_at"]) if data.get("due_at") else None,
-        meta=data.get("meta", {}),
-    )
+    # POST — record a manual payment. Born PENDING, always: settlement goes
+    # through `:mark-paid`/`:capture` so every status change carries a
+    # PaymentEvent and fires the booking-advance signals.
+    serializer = ManualPaymentCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.create(
+                booking=booking,
+                purpose=purpose,
+                status=PaymentStatus.PENDING.value,
+                amount=data["amount"],
+                currency=booking.currency,
+                provider=data["provider"],
+                provider_reference=data["provider_reference"],
+                payment_method=data["payment_method"],
+                due_at=data["due_at"],
+                meta=data["meta"],
+            )
+    except IntegrityError as exc:
+        # The one-active-row-per-purpose constraint: surface as a conflict,
+        # not a 500. Void or settle the existing row first.
+        raise InvalidPaymentState(
+            f"An active {purpose} payment already exists for this booking."
+        ) from exc
     return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
 
@@ -306,22 +368,28 @@ def _track_action(request: Request, booking: Booking, purpose: str, action: str)
     if pending is None:
         raise NoPendingPayment("No pending payment to action")
     if action == "mark-paid":
-        amount = _parse_decimal(request.data.get("amount", pending.amount))
-        paid_at = _parse_datetime(request.data.get("paid_at", timezone.now().isoformat()))
+        amount = _parse_positive_decimal(request.data.get("amount", pending.amount))
+        paid_at = _parse_datetime(
+            request.data.get("paid_at", timezone.now().isoformat()), field="paid_at"
+        )
         method = request.data.get("method", PaymentMethod.BANK_TRANSFER.value)
         reference = request.data.get("reference", "")
-        pending.mark_paid(
-            amount=amount,
-            paid_at=paid_at,
-            method=method,
-            reference=reference,
-            notes=request.data.get("notes", ""),
-            actor=request.user,
+        _service_call(
+            lambda: pending.mark_paid(
+                amount=amount,
+                paid_at=paid_at,
+                method=method,
+                reference=reference,
+                notes=request.data.get("notes", ""),
+                actor=request.user,
+            )
         )
         pending.refresh_from_db()
         return _track_response(booking, purpose)
     if action == "waive":
-        pending.waive(reason=request.data.get("reason", ""), actor=request.user)
+        _service_call(
+            lambda: pending.waive(reason=request.data.get("reason", ""), actor=request.user)
+        )
         pending.refresh_from_db()
         return _track_response(booking, purpose)
     raise UnknownAction(f"Unknown action {action!r}")

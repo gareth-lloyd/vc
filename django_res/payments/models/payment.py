@@ -155,6 +155,14 @@ class Payment(AuditedModel):
                 condition=~(Q(purpose=PaymentPurpose.REFUND.value) & Q(amount__lt=0)),
                 name="payment_refund_amount_non_negative",
             ),
+            # INV-003 extended to every purpose: amounts are stored positive
+            # (or zero — a 100%-deposit schedule leaves a legitimate zero
+            # BALANCE row); direction is tagged by `purpose`. A negative
+            # amount anywhere would silently invert ledger sums.
+            models.CheckConstraint(
+                condition=Q(amount__gte=0),
+                name="payment_amount_non_negative",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -267,6 +275,10 @@ class Payment(AuditedModel):
         if self.status != PaymentStatus.PENDING.value:
             raise ValueError(
                 f"Cannot mark_paid on Payment {self.reference} from status {self.status!r}"
+            )
+        if amount <= 0:
+            raise ValueError(
+                f"Cannot mark_paid on Payment {self.reference} with non-positive amount {amount}"
             )
         # The operator is the system-of-record — set provider per the spec.
         # Bank transfer → MANUAL_BANK_TRANSFER; everything else → OTHER.

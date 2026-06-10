@@ -35,6 +35,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     inclusions: "",
     price_override_reason: "",
     is_manual: false,
+    manual_only: false,
     notes: "",
     ...overrides,
   };

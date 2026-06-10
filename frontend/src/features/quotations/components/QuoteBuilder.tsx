@@ -132,6 +132,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     if (!lastCriteria) return;
     setStaged((prev) => {
       if (prev.some((line) => line.property_id === option.property_id)) return prev;
+      // Q-013: a no-rate villa stages straight onto the manual path — there is
+      // no engine price, so the operator must type the total (legacy NO RATE).
+      const manualOnly = option.error_code === "no_rate_available";
       const next: StagedLine = {
         property_id: option.property_id,
         property_name: option.property_name,
@@ -154,7 +157,8 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         discount: "0",
         inclusions: "",
         price_override_reason: "",
-        is_manual: false,
+        is_manual: manualOnly,
+        manual_only: manualOnly,
         notes: "",
       };
       return [...prev, next];

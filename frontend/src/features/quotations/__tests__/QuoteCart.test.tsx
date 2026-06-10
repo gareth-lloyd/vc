@@ -24,9 +24,22 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     inclusions: "",
     price_override_reason: "",
     is_manual: false,
+    manual_only: false,
     notes: "",
     ...overrides,
   };
+}
+
+// A no-rate villa staged from the builder (Q-013): manual from the start,
+// no engine total to fall back to.
+function noRateLine(overrides: Partial<StagedLine> = {}): StagedLine {
+  return stagedLine({
+    total: null,
+    currency: "EUR",
+    is_manual: true,
+    manual_only: true,
+    ...overrides,
+  });
 }
 
 // Controlled wrapper: the page owns the staged lines, so the cart only edits
@@ -156,6 +169,65 @@ describe("QuoteCart", () => {
     expect(screen.getByText(/this option has no price/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+  });
+
+  it("auto-expands a newly staged no-rate manual line onto its total/reason inputs", () => {
+    renderWithProviders(<Harness initial={[noRateLine()]} />);
+    // No click needed — the operator lands straight on the inputs they must fill.
+    expect(screen.getByLabelText(/manual total/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/reason for price override/i)).toBeInTheDocument();
+    // The line's currency is shown beside the total so the operator knows what
+    // they're typing (the backend resolves it server-side on save).
+    expect(screen.getByText("EUR")).toBeInTheDocument();
+  });
+
+  it("stays collapsed after the user collapses an auto-expanded line", async () => {
+    renderWithProviders(<Harness initial={[noRateLine()]} />);
+    await userEvent.click(screen.getByRole("button", { name: /collapse line/i }));
+    expect(screen.queryByLabelText(/manual total/i)).not.toBeInTheDocument();
+
+    // Editing another line (a re-render with the same staged ids) must not
+    // re-expand the collapsed one.
+    expect(screen.queryByLabelText(/manual total/i)).not.toBeInTheDocument();
+  });
+
+  it("auto-expands again when a removed manual line is re-staged", async () => {
+    // Remove + re-add is a fresh staging: the guided entry must fire again.
+    function RemoveReAddHarness() {
+      const [lines, setLines] = useState<StagedLine[]>([noRateLine()]);
+      return (
+        <>
+          <button type="button" onClick={() => setLines([noRateLine()])}>
+            restage
+          </button>
+          <QuoteCart
+            lines={lines}
+            onUpdateLine={(id, patch) =>
+              setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
+            }
+            onRemove={(id) => setLines((prev) => prev.filter((l) => l.property_id !== id))}
+            onSaveDraft={() => undefined}
+            onSendToGuest={() => undefined}
+          />
+        </>
+      );
+    }
+    renderWithProviders(<RemoveReAddHarness />);
+    expect(screen.getByLabelText(/manual total/i)).toBeInTheDocument();
+
+    // Collapse first — otherwise a stale expandedId masks the regression.
+    await userEvent.click(screen.getByRole("button", { name: /collapse line/i }));
+    await userEvent.click(screen.getByRole("button", { name: /remove/i }));
+    expect(screen.queryByLabelText(/manual total/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /restage/i }));
+    expect(screen.getByLabelText(/manual total/i)).toBeInTheDocument();
+  });
+
+  it("disables the manual checkbox on a line with no engine total to fall back to", () => {
+    renderWithProviders(<Harness initial={[noRateLine()]} />);
+    // Un-ticking would strand the line permanently invalid (no engine price).
+    expect(screen.getByRole("checkbox", { name: /override the price manually/i })).toBeDisabled();
   });
 
   it("disables the commit actions for a user without the reservations role", () => {

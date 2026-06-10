@@ -82,7 +82,7 @@ Status icons:
 | [Q-009](q-009-multi-site-inventory-sharing.md) | Multi-site inventory sharing | ✅ resolved — single site v1 |
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-011](q-011-email-template-inheritance.md) | Email template inheritance chain | ✅ resolved — system → site, no property layer |
-| [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ⬜ |
+| [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ✅ resolved — flag + manual quote per legacy NO RATE; builder affordance built (no-rate cards stage manual lines) |
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ split into audit-retention vs PII-retention |
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
 | [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
@@ -138,10 +138,10 @@ After those three, the next-highest-value moves are:
 Highest-leverage unanswered Qs (block lots of downstream work):
 
 - **Q-005** — Reports base currency + FX source (blocks every report)
-- **Q-013** — Rate-card incomplete-pricing behaviour (blocks quote builder)
 - **Q-006** — Owner statement cadence + delivery (no code exists yet)
 - **BUG-008** — `DamageClaim` in v1? (scope call; blocks SD damage slice)
 
 Recently unblocked / resolved (was on this list): **Q-002** owner SLA
-(partially built), **Q-015** owner financial visibility (resolved),
-**Q-016** ledger lane (taken in code — just needs recording).
+(partially built), **Q-013** incomplete pricing (flag + manual quote,
+built), **Q-015** owner financial visibility (resolved), **Q-016**
+ledger lane (taken in code — just needs recording).

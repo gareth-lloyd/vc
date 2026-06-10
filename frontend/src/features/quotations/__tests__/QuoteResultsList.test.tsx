@@ -81,6 +81,126 @@ describe("QuoteResultsList", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("renders a no-rate option in the main list, flagged, with an Add manually button", () => {
+    // Q-013: legacy keeps NO RATE villas selectable — never hide them.
+    renderList([
+      option(),
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        currency: "EUR",
+        error_code: "no_rate_available",
+        error_detail: "No rate rule covers 2026-09-10 to 2026-09-17.",
+      }),
+    ]);
+
+    // Visible without expanding anything, flagged where the price would be.
+    expect(screen.getByText("Villa Azul")).toBeInTheDocument();
+    expect(screen.getByText(/incomplete pricing/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add manually/i })).toBeEnabled();
+    // It is NOT in a collapsed unavailable section.
+    expect(screen.queryByRole("button", { name: /unavailable/i })).not.toBeInTheDocument();
+  });
+
+  it("exposes the flagged card to assistive tech: labelled article, focusable tooltip trigger", async () => {
+    renderList([
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        error_code: "no_rate_available",
+        error_detail: "RateRule 7 is POA for these dates.",
+      }),
+    ]);
+
+    // The article carries an aria-label, mirroring the unavailable cards.
+    expect(screen.getByLabelText(/villa azul — incomplete pricing/i)).toBeInTheDocument();
+
+    // The badge is keyboard-focusable so the error_detail tooltip (the only
+    // place POA is distinguished from a rate-card gap) opens on focus.
+    const badge = screen.getByText(/incomplete pricing/i);
+    expect(badge).toHaveAttribute("tabindex", "0");
+    badge.focus();
+    expect(await screen.findAllByText(/rateRule 7 is POA/i)).not.toHaveLength(0);
+  });
+
+  it("invokes onAdd with the no-rate option and shows added state once staged", async () => {
+    const onAdd = vi.fn();
+    const noRate = option({
+      property_id: 2,
+      property_name: "Villa Azul",
+      available: false,
+      total: null,
+      error_code: "no_rate_available",
+    });
+    const { rerender } = renderWithProviders(
+      <QuoteResultsList
+        options={[noRate]}
+        isLoading={false}
+        stagedPropertyIds={new Set()}
+        onAdd={onAdd}
+        hasMore={false}
+        isLoadingMore={false}
+        totalMatched={1}
+        onLoadMore={noop}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /add manually/i }));
+    expect(onAdd).toHaveBeenCalledWith(noRate);
+
+    rerender(
+      <QuoteResultsList
+        options={[noRate]}
+        isLoading={false}
+        stagedPropertyIds={new Set([2])}
+        onAdd={onAdd}
+        hasMore={false}
+        isLoadingMore={false}
+        totalMatched={1}
+        onLoadMore={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /added/i })).toBeDisabled();
+  });
+
+  it("keeps other error codes collapsed and unselectable", () => {
+    renderList([
+      option(),
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        error_code: "party_out_of_range",
+      }),
+    ]);
+    // Hidden behind the collapsed toggle, exactly as before Q-013.
+    expect(screen.queryByText("Villa Azul")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1 villa unavailable/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add manually/i })).not.toBeInTheDocument();
+  });
+
+  it("excludes flagged no-rate cards from the available count", () => {
+    renderList(
+      [
+        option(),
+        option({
+          property_id: 2,
+          property_name: "Villa Azul",
+          available: false,
+          total: null,
+          error_code: "no_rate_available",
+        }),
+      ],
+      { totalMatched: 120 },
+    );
+    // The flagged card is visible in the list but isn't "available".
+    expect(screen.getByText(/1 available · priced 2 of 120 matching villas/i)).toBeInTheDocument();
+  });
+
   it("shows no unavailable toggle when every option is available", () => {
     renderList([option()]);
     expect(screen.queryByRole("button", { name: /unavailable/i })).not.toBeInTheDocument();

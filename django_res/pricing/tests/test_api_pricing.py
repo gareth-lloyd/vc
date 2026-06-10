@@ -264,6 +264,89 @@ def test_discount_lookup_code_not_found(
 
 
 @pytest.mark.django_db
+def test_quote_bulk_no_rate_entry_carries_image_and_currency(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Q-013: an unpriceable property's bulk entry must carry enough for the
+    manual-quote affordance — the no-rate flag, the hero image (card parity
+    with priced siblings), and the resolved currency the operator will type
+    a manual total against."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from properties.enums import ImageKind
+    from properties.models import PropertyImage
+
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+
+    api_client.force_login(staff)
+    # September is inside the rate plan but outside the only rule (Jun-Aug).
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-09-10",
+                    "date_to": "2026-09-17",
+                    "adults": 4,
+                },
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    (quote,) = response.json()["quotes"]
+    assert quote["available"] is False
+    assert quote["error_code"] == "no_rate_available"
+    assert quote["hero_image_url"] is not None
+    assert ".jpg" in quote["hero_image_url"]
+    assert quote["currency_code"] == "GBP"
+
+
+@pytest.mark.django_db
+def test_quote_bulk_other_errors_skip_currency_resolution(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Only no-rate entries feed the manual-quote card, so only they pay the
+    currency-resolution queries; other error codes carry a null currency_code
+    (and keep the prefetched image for the collapsed list's thumbnails)."""
+    api_client.force_login(staff)
+    # Party of 20 exceeds the rule's max_party=8 -> party_out_of_range.
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 20,
+                },
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    (quote,) = response.json()["quotes"]
+    assert quote["available"] is False
+    assert quote["error_code"] == "party_out_of_range"
+    assert quote["currency_code"] is None
+    assert quote["hero_image_url"] is None  # property has no HERO image here
+
+
+@pytest.mark.django_db
 def test_quote_bulk_carries_hero_image_url(
     api_client: APIClient,
     staff: User,

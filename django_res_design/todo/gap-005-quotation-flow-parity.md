@@ -76,8 +76,8 @@ Priority order below reflects operator-pain / spec-commitment.
 > ✅ done — #1 preview-before-send, #2 copy-to-Outlook, #4 imagery,
 > #5 per-line discount, #6 inclusions, #7 price-override-with-reason.
 > ⏸ deferred — #3 auto-hold (needs hold surface), #9 two-pane builder,
-> #10 availability badges (blocked on
-> [Q-013](q-013-rate-card-incomplete-pricing.md)), #11 TBC mode,
+> #10 availability badges (Q-013 resolved; incomplete-pricing flag built,
+> richer badge taxonomy still open), #11 TBC mode,
 > #12 line pagination.
 > ❌ dropped — #8 PDF (beyond-legacy overreach; see below).
 
@@ -153,9 +153,10 @@ Priority order below reflects operator-pain / spec-commitment.
 
 10. **Availability badge richness** — design wants
     `Available / Hold-able / Partial / Unavailable` + an "incomplete
-    pricing — manual quote" flag on result cards
-    (blocked on [Q-013](q-013-rate-card-incomplete-pricing.md)); current
-    results list is simpler.
+    pricing — manual quote" flag on result cards. The incomplete-pricing
+    flag + manual-quote path landed with
+    [Q-013](q-013-rate-card-incomplete-pricing.md) (resolved); the richer
+    `Hold-able / Partial` badge taxonomy stays open here.
 11. **TBC occupancy mode** — legacy TBC checkbox (`Booking.razor:119`)
     clears adults/children for flexible group quotes; `QuotationLine`
     requires both. Confirm if still needed.
@@ -332,7 +333,8 @@ M1→M4 above.
 ## Dependencies
 
 - #3 (auto-hold) depends on the availability/hold surface.
-- #4 discount-cap and #9 incomplete-pricing depend on open design
-  questions ([Q-013](q-013-rate-card-incomplete-pricing.md)).
+- [Q-013](q-013-rate-card-incomplete-pricing.md) is resolved — the
+  incomplete-pricing manual-quote path is built; it no longer blocks
+  anything here.
 - [SMELL-002](smell-002-quotation-expire-draft.md) (quote expiry) is
   related but tracked separately.

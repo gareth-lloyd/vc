@@ -174,6 +174,10 @@ export interface StagedLine {
   inclusions: string;
   price_override_reason: string;
   is_manual: boolean;
+  // True when the engine couldn't price this villa at all (Q-013 no-rate):
+  // there is no engine total to fall back to, so `is_manual` can't be
+  // un-ticked — the cart disables the checkbox.
+  manual_only: boolean;
   notes: string;
 }
 

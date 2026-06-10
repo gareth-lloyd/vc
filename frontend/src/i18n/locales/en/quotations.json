@@ -246,6 +246,10 @@
         "title": "No villas match these criteria",
         "description": "Widen the date range, drop a filter, or check region/country."
       },
+      "incomplete_pricing": "Incomplete pricing — manual quote",
+      "incomplete_pricing_aria": "{{name}} — incomplete pricing, add manually to type the price",
+      "incomplete_pricing_hint": "The rate card has no price for these dates — add the villa and type the price.",
+      "add_manual": "Add manually",
       "unavailable": "Unavailable for these dates",
       "unavailable_aria": "{{name}} — unavailable for these dates",
       "unavailable_count_one": "{{count}} villa unavailable for these dates",
@@ -281,6 +285,7 @@
         "inclusions_placeholder": "e.g. Daily housekeeping, welcome hamper",
         "manual": "Override the price manually",
         "manual_hint": "Replace the engine price with a fixed total. A reason is required.",
+        "manual_locked_hint": "The rate card has no price for these dates, so the total must be entered manually.",
         "total": "Manual total",
         "reason": "Reason for price override",
         "reason_placeholder": "e.g. Agreed rate with returning guest",

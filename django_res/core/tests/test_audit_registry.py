@@ -39,6 +39,7 @@ EXPECTED_TRACKED_MODELS = {
     "properties.PropertyCalendarFeed",
     "properties.PropertyFinance",
     "reservations.Booking",
+    "reservations.BookingChargeItem",
     "reservations.BookingGuest",
     "reservations.BookingServiceCoverage",
     "reservations.Guest",

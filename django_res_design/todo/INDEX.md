@@ -26,6 +26,7 @@ Status icons:
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |
 | [BUG-010](bug-010-refund-self-approve-constraint-conflict.md) | Refund self-approve permission conflicts with the SoD constraint → IntegrityError 500 | ⬜ |
 | [BUG-011](bug-011-security-deposit-bare-valueerror-500s.md) | SD service raises bare `ValueError` → 500s; zero log events on the SD money path | ⬜ |
+| [BUG-012](bug-012-auditlog-retains-pii-after-anonymize.md) | `AuditLog` retains cleartext PII after `anonymize()`/`merge()` — GDPR erasure hole | ⬜ |
 
 ## 🟠 Footguns
 
@@ -46,6 +47,8 @@ Status icons:
 | [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ⬜ |
 | [FG-014](fg-014-audit-tracking-gaps.md) | Audit-tracking gaps: SecurityDeposit, Enquiry, Quotation untracked | ⬜ |
 | [FG-015](fg-015-booking-cancel-leaves-pending-payments.md) | `Booking.cancel` leaves PENDING Payment rows live | ⬜ (depends on feat/backend-review-fixes) |
+| [FG-016](fg-016-audit-signals-skip-bulk-writes.md) | Audit signals skip bulk writes; merge FK rewrites unaudited (spec claims otherwise) | ⬜ |
+| [FG-017](fg-017-audit-coverage-second-tier.md) | Audit-coverage second tier: BookingHold, Property, property-child hard deletes | ⬜ (after FG-014) |
 
 ## 🟡 Smells
 
@@ -66,6 +69,7 @@ Status icons:
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ (doc-only) |
 | [SMELL-014](smell-014-quotation-synthesised-row-guard-structural.md) | Synthesised `booking-` quotation rows: make the exclusion structural | ⬜ |
 | [SMELL-015](smell-015-comms-smtp-no-transient-retry.md) | Email send marks FAILED on any SMTP error; no transient retry | ⬜ |
+| [SMELL-016](smell-016-audit-actor-threadlocal-not-asgi-safe.md) | Audit actor capture rides `threading.local`; breaks silently under ASGI | ⬜ |
 
 ## Open product questions
 
@@ -83,7 +87,7 @@ Status icons:
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-011](q-011-email-template-inheritance.md) | Email template inheritance chain | ✅ resolved — system → site, no property layer |
 | [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ✅ resolved — flag + manual quote per legacy NO RATE; builder affordance built (no-rate cards stage manual lines) |
-| [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ split into audit-retention vs PII-retention |
+| [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ recommendation recorded: keep-forever + BUG-012 scrub; exposure half blocks GAP-021 |
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
 | [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
@@ -108,6 +112,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable-result note, a11y; item 3 moot per GAP-014) | ⬜ open — FE polish, sibling of GAP-005 |
 | [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ✅ resolved (per-line currency end-to-end; header field dropped; GAP-013 item 3 moot) |
 | [GAP-020](gap-020-direct-booking-creation.md) | Direct booking creation (legacy rate-lookup "book now") — synthetic-quotation design; resolves GAP-006's numbering sub-question; folds SMELL-014's `kind` fix | ⬜ design ready; implementation deferred |
+| [GAP-021](gap-021-audit-history-ui.md) | Per-entity "History" tab in the SPA (audit-log surface; backend filters already exist) | ⬜ blocked by Q-014 exposure decision |
 
 ## Investigations
 

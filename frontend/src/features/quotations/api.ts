@@ -168,7 +168,6 @@ async function fetchCapacityUnsetCandidates(
 
 export async function searchQuoteOptions(
   criteria: QuoteCriteriaInput,
-  currency: string,
   page = 1,
 ): Promise<QuoteSearchResult> {
   const searchFilters: PropertySearchFilters = {
@@ -203,8 +202,9 @@ export async function searchQuoteOptions(
 
   if (candidates.length === 0) return { options: [], hiddenForCapacity, hasMore, totalMatched };
 
+  // No `currency` on the request (GAP-014): each property is priced in its
+  // own rate plan's currency, reported back per result as `currency_code`.
   const body = {
-    currency,
     requests: candidates.map((p) => ({
       property_id: p.id,
       date_from: criteria.date_from,
@@ -225,7 +225,7 @@ export async function searchQuoteOptions(
       hero_image_url: q.hero_image_url ?? null,
       available: q.available !== false && !q.error_code,
       total: q.total ?? null,
-      currency: q.currency_code ?? currency,
+      currency: q.currency_code ?? null,
       rate_subtotal: q.rate_subtotal ?? null,
       date_from: q.date_from ?? null,
       date_to: q.date_to ?? null,

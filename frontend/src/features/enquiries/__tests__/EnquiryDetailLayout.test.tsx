@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
-import { drfPage } from "@/test/drf";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
@@ -52,7 +51,6 @@ const quotedEnquiry = {
       id: 50,
       reference: "QVC50",
       status: "draft",
-      currency: "GBP",
       is_unbranded: false,
       cancel_reason: "",
       lines: [],
@@ -86,14 +84,6 @@ function asViewerUser() {
     .setMe(makeUser(), { role: "VIEWER", is_superuser: false, permissions: [] });
 }
 
-// The inline builder mounts (expanded) whenever an enquiry has no quotes and
-// its currency selector loads the active currencies — stub that so a
-// reservations-role render makes no unhandled requests. (The current-terms
-// fetch now only fires once the save dialog opens, which these tests never do.)
-function mockBuilderDeps() {
-  return [http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([])))];
-}
-
 // Routes mirror the app: the workspace plus the three legacy sub-route
 // redirects (Details/Activity/Notes collapsed into the single page).
 function setup(initial: string) {
@@ -113,7 +103,6 @@ function setup(initial: string) {
 
 beforeEach(() => {
   useAuthStore.getState().clear();
-  server.use(...mockBuilderDeps());
 });
 afterEach(() => {
   server.resetHandlers();

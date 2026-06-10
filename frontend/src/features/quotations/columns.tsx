@@ -49,17 +49,6 @@ export function buildQuotationColumns(t: TFunction<"quotations">): ColumnDef<Quo
       },
     },
     {
-      accessorKey: "currency",
-      header: () => t("detail.summary.currency"),
-      enableSorting: false,
-      cell: ({ row }) =>
-        row.original.currency ? (
-          <span className="text-sm">{row.original.currency}</span>
-        ) : (
-          MUTED_DASH
-        ),
-    },
-    {
       accessorKey: "created_at",
       header: () => t("detail.summary.created_at"),
       enableSorting: true,

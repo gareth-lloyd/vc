@@ -5,17 +5,23 @@ import { formatMoney, parseMoney } from "@/lib/format/money";
 import type { QuotationDetail } from "@/features/quotations/schemas";
 
 // A quotation's lines are alternative *options*, not a basket — so the headline
-// figure is the price range across them (min–max), never a sum.
+// figure is the price range across them (min–max), never a sum. Each line is
+// priced in its own currency (GAP-014), so the endpoints format with their own
+// line's code — a mixed quote reads e.g. "£900.00 – €1,200.00".
 function priceRange(quote: QuotationDetail, noPrice: string): string {
-  const totals = quote.lines
-    .map((line) => parseMoney(line.total))
-    .filter((n) => Number.isFinite(n));
-  if (totals.length === 0) return noPrice;
-  const min = Math.min(...totals);
-  const max = Math.max(...totals);
-  return min === max
-    ? formatMoney(min, quote.currency)
-    : `${formatMoney(min, quote.currency)} – ${formatMoney(max, quote.currency)}`;
+  const priced = quote.lines
+    .map((line) => ({ amount: parseMoney(line.total), currency: line.currency ?? null }))
+    .filter((p) => Number.isFinite(p.amount));
+  if (priced.length === 0) return noPrice;
+  let min = priced[0];
+  let max = priced[0];
+  for (const p of priced) {
+    if (p.amount < min.amount) min = p;
+    if (p.amount > max.amount) max = p;
+  }
+  const low = formatMoney(min.amount, min.currency);
+  const high = formatMoney(max.amount, max.currency);
+  return low === high ? low : `${low} – ${high}`;
 }
 
 function QuoteCard({ quote }: { quote: QuotationDetail }) {

@@ -18,7 +18,6 @@ const fixture = {
       reference: "Q-2026-001",
       status: "draft",
       guest: 42,
-      currency: "EUR",
       created_at: "2026-05-01T10:00:00Z",
     },
     {
@@ -26,7 +25,6 @@ const fixture = {
       reference: "Q-2026-002",
       status: "sent",
       guest: null,
-      currency: null,
       created_at: "2026-05-02T10:00:00Z",
     },
   ],

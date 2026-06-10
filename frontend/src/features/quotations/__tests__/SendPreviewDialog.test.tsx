@@ -20,7 +20,6 @@ const QUOTATION: QuotationDetail = {
   enquiry: 11,
   guest: 42,
   agent: null,
-  currency: "EUR",
   is_unbranded: false,
   expires_at: "2026-06-01T00:00:00Z",
   created_at: "2026-05-01T00:00:00Z",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { parseMoney } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
-import { useCurrencies } from "@/features/admin/currencies/hooks";
 import { createQuotationLine } from "../api";
 import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
 import { isStagedLineValid } from "../lineTotals";
@@ -28,10 +27,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   enquiry: EnquiryDetail | null;
   lines: StagedLine[];
-  // Read-only here — the currency is chosen in the criteria pane and the lines
-  // were priced in it; an editable picker at commit would let the operator pick
-  // a currency the cart totals were never priced in.
-  currencyCode: string;
   onSaved: (quotation: QuotationDetail) => void;
 }
 
@@ -51,17 +46,9 @@ function defaultExpiresAt(): string {
   return d.toISOString();
 }
 
-export function SaveQuoteDialog({
-  open,
-  onOpenChange,
-  enquiry,
-  lines,
-  currencyCode,
-  onSaved,
-}: Props) {
+export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }: Props) {
   const { t } = useTranslation("quotations");
 
-  const currenciesQuery = useCurrencies({});
   const termsQuery = useCurrentTermsVersion();
 
   const [expiresAt, setExpiresAt] = useState<string>(defaultExpiresAt());
@@ -80,12 +67,6 @@ export function SaveQuoteDialog({
     }
   }, [open]);
 
-  const activeCurrencies = useMemo(
-    () => (currenciesQuery.data?.results ?? []).filter((c) => c.is_active),
-    [currenciesQuery.data],
-  );
-  const selectedCurrency = activeCurrencies.find((c) => c.code === currencyCode);
-
   const handleSubmit = async () => {
     setTopLevelError(null);
     if (!enquiry) {
@@ -101,11 +82,6 @@ export function SaveQuoteDialog({
     // quotation. The cart already blocks Save, but guard here too.
     if (!lines.every(isStagedLineValid)) {
       setTopLevelError(t("builder.save.errors.invalid_line"));
-      return;
-    }
-    const currency = activeCurrencies.find((c) => c.code === currencyCode);
-    if (!currency) {
-      setTopLevelError(t("builder.save.errors.no_currency"));
       return;
     }
     const terms = termsQuery.data;
@@ -145,11 +121,11 @@ export function SaveQuoteDialog({
         guestId = guest.id;
       }
 
+      // No header currency (GAP-014) — currency lives per line.
       const quotation = await createQuotation.mutateAsync({
         enquiry: enquiry.id,
         guest: guestId,
         agent: null,
-        currency: currency.id,
         is_unbranded: false,
         expires_at: expiresAt,
         terms_version: terms.id,
@@ -183,6 +159,12 @@ export function SaveQuoteDialog({
               is_manual: line.is_manual,
               notes: line.notes,
             };
+            // Pin the currency the option was priced in (GAP-014). A line
+            // without one (e.g. unpriceable) omits it so the backend resolves
+            // its canonical per-property default.
+            if (line.currency) {
+              body.currency = line.currency;
+            }
             if (line.is_manual) {
               body.total = toDecimalString(line.total) ?? "";
               body.price_override_reason = line.price_override_reason;
@@ -225,16 +207,6 @@ export function SaveQuoteDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>{t("builder.save.currency")}</Label>
-            <p className="text-foreground text-sm">
-              {selectedCurrency
-                ? `${selectedCurrency.code} — ${selectedCurrency.name}`
-                : currencyCode}
-            </p>
-            <p className="text-muted-foreground text-xs">{t("builder.save.currency_hint")}</p>
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="qs-expires">{t("builder.save.expires_at")}</Label>
             <Input

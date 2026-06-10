@@ -16,7 +16,6 @@ import { ChangeoverShiftedNote } from "./ChangeoverShiftedNote";
 
 interface Props {
   line: StagedLine;
-  currency: string;
   expanded: boolean;
   onToggle: () => void;
   onUpdate: (patch: Partial<StagedLine>) => void;
@@ -30,7 +29,7 @@ function nightCount(line: StagedLine): number {
   return Number.isFinite(nights) && nights > 0 ? nights : 0;
 }
 
-export function QuoteCartLine({ line, currency, expanded, onToggle, onUpdate, onRemove }: Props) {
+export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: Props) {
   const { t } = useTranslation("quotations");
   const nights = nightCount(line);
   const effective = lineEffectiveTotal(line);
@@ -58,7 +57,8 @@ export function QuoteCartLine({ line, currency, expanded, onToggle, onUpdate, on
             {t("builder.cart.line.nights", { count: nights })} ·{" "}
             {t("builder.cart.line.guests", { adults: line.adults, children: line.children })} ·{" "}
             <span className="text-foreground font-medium">
-              {effective == null ? "—" : formatMoney(effective, currency)}
+              {/* Each line formats in its own priced currency (GAP-014). */}
+              {effective == null ? "—" : formatMoney(effective, line.currency)}
             </span>
           </p>
           {!line.is_manual && errors.total ? (

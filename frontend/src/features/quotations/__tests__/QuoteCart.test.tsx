@@ -18,6 +18,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     priced_date_to: "2026-07-08",
     adults: 2,
     children: 0,
+    currency: "USD",
     total: "4500.00",
     discount: "0",
     inclusions: "",
@@ -35,7 +36,6 @@ function Harness({ initial }: { initial: StagedLine[] }) {
   return (
     <QuoteCart
       lines={lines}
-      currency="USD"
       onUpdateLine={(id, patch) =>
         setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
       }
@@ -70,6 +70,25 @@ describe("QuoteCart", () => {
     expect(screen.getByText("$4,500.00")).toBeInTheDocument();
     expect(screen.getByText("$7,200.00")).toBeInTheDocument();
     expect(screen.queryByText("$11,700.00")).not.toBeInTheDocument();
+  });
+
+  it("renders mixed-currency lines each in their own currency", () => {
+    // Currency travels per line (GAP-014) — a cart can mix £/€ side by side.
+    renderWithProviders(
+      <Harness
+        initial={[
+          stagedLine({ currency: "GBP" }),
+          stagedLine({
+            property_id: 8,
+            property_name: "Villa Azul",
+            total: "7200.00",
+            currency: "EUR",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("£4,500.00")).toBeInTheDocument();
+    expect(screen.getByText("€7,200.00")).toBeInTheDocument();
   });
 
   it("applies a discount to the line total", async () => {

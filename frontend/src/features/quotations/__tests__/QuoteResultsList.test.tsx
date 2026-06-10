@@ -12,6 +12,7 @@ function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
     hero_image_url: null,
     available: true,
     total: "4500.00",
+    currency: "USD",
     ...overrides,
   };
 }
@@ -32,7 +33,6 @@ function renderList(options: QuoteOption[], opts: RenderOpts = {}) {
       options={options}
       hiddenForCapacity={opts.hiddenForCapacity ?? []}
       isLoading={false}
-      currency="USD"
       stagedPropertyIds={new Set()}
       onAdd={noop}
       hasMore={opts.hasMore ?? false}
@@ -48,6 +48,16 @@ describe("QuoteResultsList", () => {
     renderList([option()]);
     expect(screen.getByText("Villa Sol")).toBeInTheDocument();
     expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+  });
+
+  it("renders mixed-currency results each in their own currency", () => {
+    // No builder-level currency (GAP-014) — one list freely mixes £/€/$.
+    renderList([
+      option({ currency: "GBP" }),
+      option({ property_id: 2, property_name: "Villa Azul", total: "5200.00", currency: "EUR" }),
+    ]);
+    expect(screen.getByText("£4,500.00")).toBeInTheDocument();
+    expect(screen.getByText("€5,200.00")).toBeInTheDocument();
   });
 
   it("collapses unavailable options behind a toggle, revealing them on expand", async () => {
@@ -117,7 +127,6 @@ describe("QuoteResultsList", () => {
       <QuoteResultsList
         options={[option()]}
         isLoading={false}
-        currency="USD"
         stagedPropertyIds={new Set()}
         onAdd={noop}
         hasMore

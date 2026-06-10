@@ -118,13 +118,14 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
                 {line.adults}A{line.children ? ` · ${line.children}C` : ""}
               </TableCell>
               <TableCell className="text-right">
-                {formatMoney(line.discount ?? null, quotation.currency ?? null)}
+                {formatMoney(line.discount ?? null, line.currency ?? null)}
               </TableCell>
               <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
                 {line.inclusions?.trim() || "—"}
               </TableCell>
               <TableCell className="text-right">
-                {formatMoney(line.total ?? null, quotation.currency ?? null)}
+                {/* Each line is priced in its own currency (GAP-014). */}
+                {formatMoney(line.total ?? null, line.currency ?? null)}
               </TableCell>
               <TableCell>
                 {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
@@ -235,7 +236,6 @@ function RailSummary({
           label={t("detail.summary.agent")}
           value={quotation.agent_name ?? (quotation.agent != null ? `#${quotation.agent}` : "—")}
         />
-        <FactRow label={t("detail.summary.currency")} value={quotation.currency ?? "—"} />
         <FactRow
           label={t("detail.summary.expires_at")}
           value={formatDate(quotation.expires_at ?? null)}

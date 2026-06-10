@@ -144,7 +144,7 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
                             adults: line.adults ?? 0,
                             children: line.children ?? 0,
                           })}{" "}
-                          · {formatMoney(line.total ?? null, quotation.currency ?? null)}
+                          · {formatMoney(line.total ?? null, line.currency ?? null)}
                         </span>
                         <ChangeoverShiftedNote
                           from={line.changeover_shifted_from}

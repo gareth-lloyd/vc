@@ -1,6 +1,11 @@
 # GAP-014 — Quote builder forces currency selection; legacy prices each villa in its rate card's currency
 
 - **Severity:** Gap (legacy-parity, customer/operator-facing behaviour) — design decision + tracker
+- **Status:** ✅ **Implemented 2026-06-10** on `feat/gap-014-quote-currency` — all five
+  steps landed (0: canonical currency resolution + loader fixes + audit command;
+  1: engine currency optional; 2: API currency optional; 3: `QuotationLine.currency`,
+  header field dropped, FG-001 re-scoped; 4: frontend selector removed, per-line
+  currency throughout). Backend + frontend quality gates green.
 - **Source:** 2026-06-10 investigation: legacy quote pages read from `ResSystem` branch
   `pinned-2025-04-03` (`QuoteGenerator.razor`, `RateLookup.razor`, `QuotationArgs.cs`,
   `sp_getQuotationData` / `sp_getQuotationPrices` in `Database/DbScript.sql`), a currency

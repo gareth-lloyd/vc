@@ -10,21 +10,13 @@ import { QuoteCartLine } from "./QuoteCartLine";
 
 interface Props {
   lines: StagedLine[];
-  currency: string;
   onUpdateLine: (propertyId: number, patch: Partial<StagedLine>) => void;
   onRemove: (propertyId: number) => void;
   onSaveDraft: () => void;
   onSendToGuest: () => void;
 }
 
-export function QuoteCart({
-  lines,
-  currency,
-  onUpdateLine,
-  onRemove,
-  onSaveDraft,
-  onSendToGuest,
-}: Props) {
+export function QuoteCart({ lines, onUpdateLine, onRemove, onSaveDraft, onSendToGuest }: Props) {
   const { t } = useTranslation("quotations");
   const hasRole = useHasReservationsRole();
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -58,7 +50,6 @@ export function QuoteCart({
             <QuoteCartLine
               key={line.property_id}
               line={line}
-              currency={currency}
               expanded={expandedId === line.property_id}
               onToggle={() =>
                 setExpandedId((id) => (id === line.property_id ? null : line.property_id))

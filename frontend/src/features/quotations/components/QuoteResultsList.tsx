@@ -13,7 +13,6 @@ import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
-  currency: string;
   stagedPropertyIds: Set<number>;
   onAdd: (option: QuoteOption) => void;
   hiddenForCapacity?: HiddenCapacityProperty[];
@@ -54,7 +53,6 @@ function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) 
 export function QuoteResultsList({
   options,
   isLoading,
-  currency,
   stagedPropertyIds,
   onAdd,
   hiddenForCapacity = [],
@@ -118,7 +116,8 @@ export function QuoteResultsList({
               <p className="text-muted-foreground text-xs">
                 {t("builder.results.total")}:{" "}
                 <span className="text-foreground font-medium">
-                  {formatMoney(option.total ?? null, currency)}
+                  {/* Per-result currency (GAP-014) — one list freely mixes £/€/$. */}
+                  {formatMoney(option.total ?? null, option.currency ?? null)}
                 </span>
               </p>
             </div>

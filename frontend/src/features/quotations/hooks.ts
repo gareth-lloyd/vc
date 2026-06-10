@@ -93,15 +93,8 @@ export function useCurrentTermsVersion() {
 // of priced options; the builder accumulates pages as the operator loads more.
 export function useQuoteOptionsSearch() {
   return useMutation({
-    mutationFn: ({
-      criteria,
-      currency,
-      page,
-    }: {
-      criteria: QuoteCriteriaInput;
-      currency: string;
-      page: number;
-    }) => searchQuoteOptions(criteria, currency, page),
+    mutationFn: ({ criteria, page }: { criteria: QuoteCriteriaInput; page: number }) =>
+      searchQuoteOptions(criteria, page),
   });
 }
 

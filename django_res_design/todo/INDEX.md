@@ -29,7 +29,7 @@ Status icons:
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-001](fg-001-booking-quotation-currency-drift.md) | Booking ↔ Quotation currency drift | ✏️ revise: drop "silent corruption" framing |
+| [FG-001](fg-001-booking-quotation-currency-drift.md) | Booking ↔ quotation-line currency drift | ✅ resolved via GAP-014 (per-line invariant enforced at write time + pinned test; modify_dates fails loud) |
 | [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ (consider downgrade to smell) |
 | [FG-003](fg-003-effective-crashes-on-null-group.md) | `effective()` crashes if `property.group` is null | ❌ DROPPED — `Property.group` is non-nullable |
 | [FG-004](fg-004-payment-purpose-field-coherence.md) | Payment fields not gated by `purpose` | ✅ resolved — 3 check constraints (refund no `due_at`, `concierge_item` CONCIERGE-only, refund `amount >= 0`) |
@@ -88,8 +88,8 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-009](gap-009-discount-loose-ends.md) | Discount loose ends: REPEAT_GUEST dead, `uses_count` inert, `DiscountApply` dropped | ✅ resolved (now-slice; `uses_count`/`max_uses` deferred) |
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners — consolidated spec + verified assumptions | ⬜ deferred (v2 tracker) |
 | [GAP-012](gap-012-cloudflare-images-hosting.md) | Object-storage image hosting (Cloudflare Images) for staging & prod — incl. legacy binary import (nested→flat `legacy_id` reconstruction) | ⬜ open — specced, building on `feat/s3-image-hosting` |
-| [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, currency-change confirm, unpriceable-result note, a11y) | ⬜ open — FE polish, sibling of GAP-005 |
-| [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ⬜ open — design/parity decision; moots GAP-013 item 3 |
+| [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable-result note, a11y; item 3 moot per GAP-014) | ⬜ open — FE polish, sibling of GAP-005 |
+| [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ✅ resolved (per-line currency end-to-end; header field dropped; GAP-013 item 3 moot) |
 
 ## Investigations
 

@@ -47,6 +47,11 @@ describe("quotation schemas", () => {
     expect(parsed.total).toBe("1234.50");
   });
 
+  it("parses the per-line currency ISO code (GAP-014)", () => {
+    const parsed = quotationLineSchema.parse({ id: 10, currency: "GBP" });
+    expect(parsed.currency).toBe("GBP");
+  });
+
   it("parses a line with the new pricing fields", () => {
     const parsed = quotationLineSchema.parse({
       id: 10,
@@ -171,6 +176,23 @@ describe("quotation schemas", () => {
       notes: "",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts an optional per-line currency on a line write (GAP-014)", () => {
+    const base = {
+      property: 1,
+      date_from: "2026-07-01",
+      date_to: "2026-07-08",
+      adults: 2,
+      children: 0,
+      is_manual: false,
+      notes: "",
+    };
+    expect(quotationLineWriteInputSchema.safeParse({ ...base, currency: "EUR" }).success).toBe(
+      true,
+    );
+    // Omitted → the backend resolves the canonical per-property default.
+    expect(quotationLineWriteInputSchema.safeParse(base).success).toBe(true);
   });
 
   it("parses a paginated list response", () => {

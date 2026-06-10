@@ -33,7 +33,6 @@ export const quotationListItemSchema = z.object({
   guest_name: z.string().nullable().optional(),
   agent: z.number().nullable().optional(),
   agent_name: z.string().nullable().optional(),
-  currency: z.string().nullable().optional(),
   status: looseStatus,
   expires_at: z.string().nullable().optional(),
   is_unbranded: z.boolean().optional().default(false),
@@ -56,6 +55,9 @@ export const quotationLineSchema = z.object({
   changeover_shifted_from: z.string().nullable().optional(),
   adults: z.number().optional().default(0),
   children: z.number().optional().default(0),
+  // ISO code the line was priced in (GAP-014) — currency lives per line, not
+  // on the quotation header; a mixed-currency quote is legacy-parity.
+  currency: z.string().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
   total: z.union([z.string(), z.number()]).nullable().optional(),
   discount: z.union([z.string(), z.number()]).nullable().optional(),
@@ -157,6 +159,11 @@ export interface StagedLine {
   priced_date_to: string;
   adults: number;
   children: number;
+  // ISO code the option was priced in (GAP-014) — each result carries its own
+  // rate plan's currency. Null when the engine returned no currency (e.g. an
+  // unpriceable result); the save path then omits it so the backend defaults
+  // canonically.
+  currency: string | null;
   // The engine gross for a priced line, or the operator-typed total for a
   // manual line. The cart's effective total nets `discount` off this (priced
   // lines only), floored at zero — see `lineEffectiveTotal`.
@@ -175,7 +182,6 @@ export const quotationWriteInputSchema = z.object({
   enquiry: z.number().int().nullable(),
   guest: z.number().int(),
   agent: z.number().int().nullable().optional(),
-  currency: z.number().int(),
   is_unbranded: z.boolean().optional().default(false),
   expires_at: z.string(),
   terms_version: z.number().int(),
@@ -198,6 +204,9 @@ export const quotationLineWriteInputSchema = z
     date_to: z.string().min(1),
     adults: z.number().int().min(1),
     children: z.number().int().min(0),
+    // Optional ISO code (GAP-014) — pins the currency the option was priced
+    // in; omitted, the backend resolves a canonical default per property.
+    currency: z.string().optional(),
     discount: z.string().optional(),
     inclusions: z.string().optional(),
     is_manual: z.boolean(),

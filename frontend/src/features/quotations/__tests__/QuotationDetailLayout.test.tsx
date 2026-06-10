@@ -15,7 +15,6 @@ const baseQuotation = {
   enquiry: 11,
   guest: 42,
   agent: null,
-  currency: "EUR",
   expires_at: "2026-06-01T00:00:00Z",
   created_at: "2026-05-01T00:00:00Z",
   updated_at: "2026-05-01T00:00:00Z",
@@ -31,6 +30,7 @@ const baseLine = {
   date_to: "2026-07-11",
   adults: 2,
   children: 1,
+  currency: "EUR",
   total: "1234.50",
   is_selected: true,
   is_manual: false,
@@ -113,6 +113,20 @@ describe("QuotationDetailLayout", () => {
     expect(
       screen.getByText(/arrival moved from .+ to the property's changeover day/i),
     ).toBeInTheDocument();
+  });
+
+  it("renders mixed-currency lines each in their own currency", async () => {
+    // Currency lives per line (GAP-014) — a saved quote can mix €/£ lines.
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [
+        baseLine,
+        { ...baseLine, id: 34, property: 13, currency: "GBP", total: "980.00" },
+      ]),
+    );
+    setup();
+    expect(await screen.findByText(/€1,234\.50/)).toBeInTheDocument();
+    expect(screen.getByText(/£980\.00/)).toBeInTheDocument();
   });
 
   it("links the line's property name to the property detail page", async () => {

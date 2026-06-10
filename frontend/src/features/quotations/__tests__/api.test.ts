@@ -22,6 +22,7 @@ afterEach(() => server.resetHandlers());
 describe("searchQuoteOptions", () => {
   it("omits page on the first request and reports more pages from DRF next", async () => {
     let seenPage: string | null = "unset";
+    let bulkBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", ({ request }) => {
         seenPage = new URL(request.url).searchParams.get("page");
@@ -40,19 +41,24 @@ describe("searchQuoteOptions", () => {
           ),
         );
       }),
-      http.post("/api/v1/pricing:quote-bulk", () =>
-        HttpResponse.json({
+      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+        bulkBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
           quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
-        }),
-      ),
+        });
+      }),
     );
 
-    const result = await searchQuoteOptions(criteria, "USD");
+    const result = await searchQuoteOptions(criteria);
 
     expect(seenPage).toBeNull(); // page 1 is left off the query
     expect(result.options).toHaveLength(1);
     expect(result.hasMore).toBe(true);
     expect(result.totalMatched).toBe(2);
+    // No currency input (GAP-014): each property is priced in its own rate
+    // plan's currency and reports it back per result.
+    expect(bulkBody).not.toHaveProperty("currency");
+    expect(result.options[0].currency).toBe("USD");
   });
 
   it("sends page=2 on a later page and reports the last page", async () => {
@@ -82,11 +88,39 @@ describe("searchQuoteOptions", () => {
       ),
     );
 
-    const result = await searchQuoteOptions(criteria, "USD", 2);
+    const result = await searchQuoteOptions(criteria, 2);
 
     expect(seenPage).toBe("2");
     expect(result.hasMore).toBe(false);
     expect(result.totalMatched).toBe(2);
+  });
+
+  it("leaves the option currency null when a result has no currency_code", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 9,
+              name: "Villa Mar",
+              display_name: "Villa Mar",
+              slug: "villa-mar",
+              status: "active",
+            },
+          ]),
+        ),
+      ),
+      // An unpriceable result reports no currency_code.
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 9, available: false, error_code: "no_rate_available" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].currency).toBeNull();
   });
 
   it("returns an empty page without pricing when no candidates match", async () => {
@@ -99,7 +133,7 @@ describe("searchQuoteOptions", () => {
       }),
     );
 
-    const result = await searchQuoteOptions(criteria, "USD");
+    const result = await searchQuoteOptions(criteria);
 
     expect(result.options).toEqual([]);
     expect(result.hasMore).toBe(false);

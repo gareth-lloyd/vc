@@ -1,16 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ApiError } from "@/lib/api/errors";
-import { useCurrencies } from "@/features/admin/currencies/hooks";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 import { QuoteCriteriaForm } from "./QuoteCriteriaForm";
 import { QuoteResultsList } from "./QuoteResultsList";
@@ -51,11 +42,6 @@ interface QuoteBuilderProps {
 export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   const { t } = useTranslation("quotations");
 
-  // Empty until the tenant's active currencies load — the effect below seeds it
-  // from the list rather than a hardcoded guess, so there's no flash of a
-  // currency the tenant may not have and the Select never binds an out-of-range
-  // value. `formatMoney`/search treat "" as not-yet-priced (renders "—").
-  const [currency, setCurrency] = useState("");
   const [staged, setStaged] = useState<StagedLine[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveIntent, setSaveIntent] = useState<SaveIntent>("draft");
@@ -78,22 +64,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const search = useQuoteOptionsSearch();
-  const currenciesQuery = useCurrencies({});
-  const activeCurrencies = useMemo(
-    () => (currenciesQuery.data?.results ?? []).filter((c) => c.is_active),
-    [currenciesQuery.data],
-  );
-
-  // Seed the currency from the tenant's active list as soon as it lands (and
-  // re-seed if the current code somehow isn't active). Fires at mount before any
-  // search, so there's no cart to clear, and never fights a manual choice — the
-  // picker only offers active codes.
-  useEffect(() => {
-    if (activeCurrencies.length === 0) return;
-    if (!activeCurrencies.some((c) => c.code === currency)) {
-      setCurrency(activeCurrencies[0].code);
-    }
-  }, [activeCurrencies, currency]);
 
   const initial = useMemo<Partial<QuoteCriteriaInput>>(
     () => ({
@@ -112,19 +82,15 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   );
 
   // Runs one page of the search. Page 1 replaces the results; page 2+ (Load
-  // more) concatenates. Returns whether it succeeded so callers (currency
-  // change) can decide whether to act on stale state. Errors are caught +
-  // toasted here; on failure existing results are left untouched so the
-  // Load-more button stays. `lastCriteria` is recorded only on success, so a
-  // failed re-search can't pair stale prices with the new form criteria.
-  const runSearch = async (
-    values: QuoteCriteriaInput,
-    curr: string,
-    page: number,
-  ): Promise<boolean> => {
+  // more) concatenates. No currency input (GAP-014): each villa is priced in
+  // its own rate plan's currency. Errors are caught + toasted here; on failure
+  // existing results are left untouched so the Load-more button stays.
+  // `lastCriteria` is recorded only on success, so a failed re-search can't
+  // pair stale prices with the new form criteria.
+  const runSearch = async (values: QuoteCriteriaInput, page: number): Promise<boolean> => {
     const append = page > 1;
     try {
-      const result = await search.mutateAsync({ criteria: values, currency: curr, page });
+      const result = await search.mutateAsync({ criteria: values, page });
       setResults((prev) =>
         append && prev ? dedupeById([...prev, ...result.options]) : result.options,
       );
@@ -147,7 +113,7 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   };
 
   const handleSearch = (values: QuoteCriteriaInput) => {
-    void runSearch(values, currency, 1);
+    void runSearch(values, 1);
   };
 
   const handleLoadMore = async () => {
@@ -156,25 +122,10 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     if (!lastCriteria || isLoadingMore || search.isPending) return;
     setIsLoadingMore(true);
     try {
-      await runSearch(lastCriteria, currency, searchPage + 1);
+      await runSearch(lastCriteria, searchPage + 1);
     } finally {
       setIsLoadingMore(false);
     }
-  };
-
-  // Currency is a pricing input: the staged lines were priced in the old one,
-  // so re-run the last search in the new currency and clear the cart — but only
-  // once the new-currency results land. Clearing eagerly would wipe the cart
-  // even when the re-search fails (offline, transient 5xx), leaving the operator
-  // with nothing and no way back. On failure, revert the picker so cart and
-  // currency stay consistent.
-  const handleCurrencyChange = async (code: string) => {
-    const prev = currency;
-    setCurrency(code);
-    if (!lastCriteria) return; // nothing searched yet → nothing to lose
-    const ok = await runSearch(lastCriteria, code, 1);
-    if (ok) setStaged([]);
-    else setCurrency(prev);
   };
 
   const handleAdd = (option: QuoteOption) => {
@@ -196,6 +147,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         priced_date_to: option.date_to ?? lastCriteria.date_to,
         adults: lastCriteria.adults,
         children: lastCriteria.children,
+        // The currency the engine priced this option in — carried per line
+        // (GAP-014) so the cart and save path stay per-currency.
+        currency: option.currency ?? null,
         total: option.total ?? null,
         discount: "0",
         inclusions: "",
@@ -236,30 +190,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
       <div className="space-y-6">
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
-          <div className="space-y-2">
-            <Label htmlFor="qb-currency">{t("builder.criteria.currency")}</Label>
-            <Select
-              value={currency}
-              onValueChange={(code) => void handleCurrencyChange(code)}
-              disabled={search.isPending}
-            >
-              <SelectTrigger id="qb-currency" aria-label={t("builder.criteria.currency")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {activeCurrencies.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-muted-foreground text-xs">{t("builder.criteria.currency_hint")}</p>
-          </div>
           <QuoteCriteriaForm
             initial={initial}
             isSubmitting={search.isPending}
-            disabled={!currency}
             onSubmit={handleSearch}
           />
         </section>
@@ -270,7 +203,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             options={results}
             hiddenForCapacity={hiddenForCapacity}
             isLoading={search.isPending && !isLoadingMore}
-            currency={currency}
             stagedPropertyIds={stagedPropertyIds}
             onAdd={handleAdd}
             hasMore={hasMore}
@@ -287,7 +219,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             Send to guest. */}
         <QuoteCart
           lines={staged}
-          currency={currency}
           onUpdateLine={handleUpdateLine}
           onRemove={handleRemove}
           onSaveDraft={() => openSave("draft")}
@@ -304,7 +235,6 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
           onOpenChange={setSaveOpen}
           enquiry={enquiry}
           lines={staged}
-          currencyCode={currency}
           onSaved={handleSaved}
         />
       ) : null}

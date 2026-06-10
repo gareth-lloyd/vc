@@ -7,8 +7,8 @@
   **not** re-add a grand total. Customer-facing copy stays aligned with legacy
   `ResSystem`; tweaks below are operator-facing.
 - **Files (all `frontend/src/features/quotations/components/`):**
-  - `QuoteBuilder.tsx` — `handleRemove` (L157), `handleCurrencyChange` (L112),
-    currency `Select` (L182–197)
+  - `QuoteBuilder.tsx` — `handleRemove` (the currency `Select` /
+    `handleCurrencyChange` references are gone — removed by GAP-014)
   - `QuoteCart.tsx` — `CartActions` disable-reason tooltip (L92–113), `expandedId`
     ownership (L30)
   - `QuoteCartLine.tsx` — collapsed header (L52–73), money inputs (discount
@@ -30,8 +30,10 @@ changed:
    find the offending one.
 2. **Line removal is silent + instant** (`handleRemove`) — no confirm, no undo,
    though staged lines are pure client state (cheaply recoverable).
-3. **Currency change wipes a non-empty cart** with only a static hint; an
-   accidental tap discards staged work.
+3. ~~**Currency change wipes a non-empty cart**~~ **Moot** —
+   [GAP-014](gap-014-quote-currency-forced-selection.md) removed the currency
+   selector (and the cart-wipe) entirely; each villa prices in its own rate
+   card's currency.
 4. **Unpriceable "available" results can be added blind** — an `available`
    option with `total == null` renders "—"; the operator only learns it needs a
    manual total once it's in the cart.
@@ -41,10 +43,10 @@ changed:
    unsignposted — the operator doesn't expect a second modal.
 7. **Disable reasons live only in a hover `Tooltip`** — no keyboard/SR path.
 8. **Results swap in with no `aria-live`** — SR users aren't told the count.
-9. **Polish:** currency `Select` shows blank on first paint while currencies
-   load (search disabled, unexplained); money inputs are plain text with terse
-   validation and no currency adornment; expiry default (today+7d, 23:59 UTC) is
-   unexplained and UTC-only.
+9. **Polish:** money inputs are plain text with terse validation and no
+   currency adornment; expiry default (today+7d, 23:59 UTC) is unexplained and
+   UTC-only. (The currency-`Select` first-paint blank is moot — GAP-014
+   removed the selector.)
 
 ## Proposed fix
 
@@ -57,8 +59,8 @@ Independent, individually shippable. Recommended order:
   disabled action is clicked. Lift `expandedId` control as needed.
 - **(2)** Replace silent remove with a `sonner` toast carrying an **Undo** action
   that re-inserts the staged line (lighter than a confirm for recoverable state).
-- **(3)** Gate `handleCurrencyChange` behind `components/feedback/ConfirmDialog`
-  when `staged.length > 0`.
+- **(3)** ~~Gate `handleCurrencyChange` behind a confirm~~ **Moot** — GAP-014
+  deleted `handleCurrencyChange` and the selector.
 - **(4)** In `QuoteResultsList`, render a "price unavailable — manual total
   required" note on available rows with `total == null`.
 
@@ -71,17 +73,16 @@ Independent, individually shippable. Recommended order:
 - **(8)** Wrap the results section in a polite `aria-live` region.
 
 **Polish**
-- **(9)** "Loading currencies…" placeholder in `SelectValue` while
-  `currenciesQuery.isLoading`; currency-code adornment + "Amount in {currency}"
-  hint on money inputs; one-line expiry hint clarifying the default + local time.
+- **(9)** Currency-code adornment + "Amount in {currency}" hint on money
+  inputs (per-line currency since GAP-014); one-line expiry hint clarifying
+  the default + local time.
 
 ## Acceptance
 
 - Invalid staged line is flagged on its collapsed header and clears when fixed;
   clicking a disabled action expands the first invalid line. (component test)
 - Removing a line shows an Undo toast that restores it. (component test)
-- Changing currency with a non-empty cart prompts a confirm; cancel keeps cart +
-  currency. (component test)
+- ~~Changing currency with a non-empty cart prompts a confirm.~~ Moot (GAP-014).
 - An available result with `total == null` shows the unpriceable note. (test)
 - Results section announces count changes via `aria-live`; blocked actions expose
   their reason without hover.

@@ -529,7 +529,7 @@ For the migration script's reference.
 | `VillaPayment` | Renamed `PaymentInstrument`. |
 | `VillaPaymentStatus` | Dropped as separate lookup table; enum on `PaymentEvent.status`. |
 | `VillaBookingConcierge` + `VillaConcierge` | Collapsed into `ConciergeLineItem`. |
-| `VillaBookingDetail` | Folded into `Booking` (one-row-per-booking was always 1:1). |
+| `VillaBookingDetail` | `reservations.BookingChargeItem` — manual signed charge/credit lines on a booking (the earlier "folded into Booking" call understated it: live data held per-price-line rows, not 1:1). See `05-reservations.md` §Manual charge items. |
 | `VillaStatus` | Dropped as lookup table; enum on `Property.status`. |
 | `AvailabilityStatus` | Dropped as lookup table; enum on `AvailabilityRecord.status`. |
 | `EnquireStatus` | Dropped as lookup table; enum on `Enquiry.status`. |

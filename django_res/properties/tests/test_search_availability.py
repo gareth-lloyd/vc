@@ -132,13 +132,13 @@ def _make_active_booking(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=datetime(2027, 1, 1, tzinfo=UTC),
         terms_version=terms,
     )
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date_from,
         date_to=date_to,
         adults=2,

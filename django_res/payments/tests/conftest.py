@@ -89,7 +89,6 @@ def quotation_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -98,6 +97,7 @@ def quotation_line(
     return QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date_from,
         date_to=date_to,
         adults=2,

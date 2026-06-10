@@ -69,7 +69,9 @@ class BookingService:
             date_to=quotation_line.date_to,
             adults=quotation_line.adults,
             children=quotation_line.children,
-            currency=quotation.currency,
+            # The line's currency, not a header one — the booking prices in
+            # whatever the accepted option was priced in (GAP-014 / FG-001).
+            currency=quotation_line.currency,
             pricing_snapshot=snapshot,
             rental_price=cls._decimal(snapshot.get("rate_subtotal", 0)),
             balance_due=total,

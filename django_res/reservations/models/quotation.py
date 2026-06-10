@@ -62,11 +62,9 @@ class Quotation(AuditedModel):
         on_delete=models.PROTECT,
         related_name="quotations_as_agent",
     )
-    currency = models.ForeignKey(
-        "pricing.Currency",
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
+    # No header currency: each line carries its own (GAP-014, legacy parity —
+    # `VillaQuotationMaster` had no currency column; a results list freely
+    # mixed £/€/$ per line).
     is_unbranded = models.BooleanField(default=False)
     status = models.CharField(
         max_length=16,
@@ -224,6 +222,14 @@ class QuotationLine(AuditedModel):
         "properties.Property",
         on_delete=models.PROTECT,
         related_name="quotation_lines",
+    )
+    # Per-line currency (GAP-014, legacy `VillaQuotationDetails.CurrencyId`).
+    # Stamped from the engine result for priced lines; manual lines default
+    # via the canonical `resolve_property_currency` chain.
+    currency = models.ForeignKey(
+        "pricing.Currency",
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     date_from = models.DateField()
     date_to = models.DateField()

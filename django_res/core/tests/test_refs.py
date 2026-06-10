@@ -13,7 +13,6 @@ from core.refs import (
     quotation_reference,
     sync_quotation_sequence,
 )
-from pricing.models import Currency
 from reservations.models import Booking, Guest, Quotation, TermsVersion
 
 
@@ -29,7 +28,6 @@ def test_booking_reference_plain_when_no_collision() -> None:
 @pytest.mark.django_db
 def test_sync_quotation_sequence_advances_past_imported_max() -> None:
     guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
-    currency = Currency.objects.create(code="GBP", name="Pound sterling", symbol="£")
     terms = TermsVersion.objects.create(version="2026-01", body_markdown="**T&Cs**")
 
     # Simulate an import that set `number` explicitly (short-circuiting the
@@ -39,7 +37,6 @@ def test_sync_quotation_sequence_advances_past_imported_max() -> None:
         reference="QVC5000",
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=currency,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

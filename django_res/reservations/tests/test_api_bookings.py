@@ -91,13 +91,13 @@ def booking(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -188,7 +188,6 @@ def test_archived_listing_has_no_n_plus_one(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -196,6 +195,7 @@ def test_archived_listing_has_no_n_plus_one(
         line = QuotationLine.objects.create(
             quotation=quotation,
             property=property_,
+            currency=gbp,
             date_from=date(2026, 6, 10) + timedelta(days=offset * 30),
             date_to=date(2026, 6, 17) + timedelta(days=offset * 30),
             adults=2,

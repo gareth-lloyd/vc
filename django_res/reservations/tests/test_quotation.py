@@ -21,17 +21,17 @@ def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quo
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
 
 
 @pytest.fixture
-def line(quotation: Quotation, property_: Property) -> QuotationLine:
+def line(quotation: Quotation, property_: Property, gbp: Currency) -> QuotationLine:
     return QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -54,14 +54,12 @@ def test_real_excludes_booking_synthesised_quotations(
     real = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         legacy_id="booking-999",
@@ -72,7 +70,7 @@ def test_real_excludes_booking_synthesised_quotations(
 
 @pytest.mark.django_db
 def test_line_real_excludes_booking_synthesised_lines(
-    quotation: Quotation, property_: Property
+    quotation: Quotation, property_: Property, gbp: Currency
 ) -> None:
     """`QuotationLine.objects.real()` mirrors `Quotation.objects.real()` so the
     nested lines endpoint and the quote render both drop BookingLoader's
@@ -81,6 +79,7 @@ def test_line_real_excludes_booking_synthesised_lines(
     real = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -88,6 +87,7 @@ def test_line_real_excludes_booking_synthesised_lines(
     QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -163,7 +163,6 @@ def test_accept_rejects_foreign_line(
     other = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -206,11 +205,12 @@ def test_cancel_with_reason(quotation: Quotation) -> None:
 
 
 @pytest.mark.django_db
-def test_line_date_constraint(quotation: Quotation, property_: Property) -> None:
+def test_line_date_constraint(quotation: Quotation, property_: Property, gbp: Currency) -> None:
     with pytest.raises(IntegrityError), transaction.atomic():
         QuotationLine.objects.create(
             quotation=quotation,
             property=property_,
+            currency=gbp,
             date_from=date(2026, 6, 17),
             date_to=date(2026, 6, 10),
             adults=2,
@@ -285,13 +285,14 @@ def test_quotation_accept_without_enquiry_still_works(
 
 @pytest.mark.django_db
 def test_only_one_selected_line_per_quotation(
-    quotation: Quotation, property_: Property, line: QuotationLine
+    quotation: Quotation, property_: Property, line: QuotationLine, gbp: Currency
 ) -> None:
     line.is_selected = True
     line.save(update_fields=["is_selected", "updated_at"])
     other = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
         adults=2,

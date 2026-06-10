@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, cast
+from typing import cast
 
 from django.db import transaction
 from django.utils import timezone
@@ -32,8 +32,6 @@ def _run(ctx: SeedContext) -> int:
         date_to = date_from + timedelta(days=5)
         guest = pick_guest(ctx)
         terms = ctx.terms[0]
-        plan = prop.rate_plans.first()
-        currency: Any = plan.currency if plan is not None else ctx.default_currency
         enquiry = cast(
             Enquiry,
             EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
@@ -51,7 +49,6 @@ def _run(ctx: SeedContext) -> int:
                         "children": 0,
                     }
                 ],
-                currency=currency,
                 terms_version=terms,
                 expires_at=expires_at,
             )

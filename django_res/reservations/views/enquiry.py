@@ -37,8 +37,8 @@ def _quotations_prefetch() -> Prefetch:
     return Prefetch(
         "quotations",
         queryset=Quotation.objects.real()
-        .select_related("guest", "agent", "currency", "enquiry")
-        .prefetch_related("lines__property__images"),
+        .select_related("guest", "agent", "enquiry")
+        .prefetch_related("lines__property__images", "lines__currency"),
     )
 
 

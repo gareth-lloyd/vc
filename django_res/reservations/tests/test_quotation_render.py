@@ -35,13 +35,13 @@ def priced_quotation(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -62,10 +62,11 @@ def test_build_quotation_context_includes_line_totals(
     assert ctx["guest_first_name"] == "Ada"
     assert ctx["guest_full_name"] == "Ada Lovelace"
     assert ctx["quotation_reference"] == priced_quotation.reference
-    assert ctx["currency_code"] == "GBP"
+    assert "currency_code" not in ctx  # per-line since GAP-014
 
     assert len(ctx["lines"]) == 1
     line = ctx["lines"][0]
+    assert line["currency_code"] == "GBP"
     expected_name = property_.display_name or property_.name
     assert line["property_name"] == expected_name
     assert line["nights"] == 7
@@ -81,6 +82,7 @@ def test_build_quotation_context_includes_line_totals(
 def test_build_quotation_context_has_no_summed_total(
     priced_quotation: Quotation,
     property_: Property,
+    gbp: Currency,
 ) -> None:
     """Lines are alternative villa options the guest picks ONE of, so a
     combined total across them is misleading. Mirrors the quote-builder cart,
@@ -88,6 +90,7 @@ def test_build_quotation_context_has_no_summed_total(
     QuotationLine.objects.create(
         quotation=priced_quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
         adults=2,
@@ -251,3 +254,30 @@ def test_render_quotation_html_contains_line_and_terms(
     # Terms markdown ("**T&Cs**") renders to HTML.
     assert "T&amp;Cs" in html or "T&Cs" in html
     assert "<strong>" in html
+
+
+@pytest.mark.django_db
+def test_mixed_currency_lines_each_render_their_own_code(
+    priced_quotation: Quotation,
+    property_: Property,
+) -> None:
+    """Legacy quote emails freely mixed £/€/$ across options (GAP-014) — each
+    line renders its own currency code, in the context and in the HTML."""
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    QuotationLine.objects.create(
+        quotation=priced_quotation,
+        property=property_,
+        currency=eur,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        adults=2,
+        total=Decimal("2000.00"),
+        pricing_snapshot={"total": "2000.00"},
+    )
+
+    ctx = build_quotation_context(priced_quotation)
+    assert [line["currency_code"] for line in ctx["lines"]] == ["GBP", "EUR"]
+
+    html = render_quotation_html(priced_quotation)
+    assert "GBP 1,234.00" in html
+    assert "EUR 2,000.00" in html

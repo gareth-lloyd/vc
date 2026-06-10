@@ -92,7 +92,9 @@ def build_quotation_context(
     semantics: `""` is a legitimate "no paragraph" and is respected.
     """
     lines_qs = (
-        quotation.lines.real().select_related("property").prefetch_related("property__images")
+        quotation.lines.real()
+        .select_related("property", "currency")
+        .prefetch_related("property__images")
     )
 
     line_dicts: list[dict[str, Any]] = []
@@ -106,6 +108,9 @@ def build_quotation_context(
                 "nights": nights,
                 "adults": line.adults,
                 "children": line.children,
+                # Per-line currency (GAP-014): legacy quote emails freely
+                # mixed £/€/$ across options, so each line renders its own.
+                "currency_code": line.currency.code,
                 "total": _money(line.total),
                 "discount": _money(line.discount),
                 "inclusions": line.inclusions,
@@ -129,7 +134,6 @@ def build_quotation_context(
         "guest_full_name": f"{guest.first_name} {guest.last_name}".strip(),
         "agent_name": agent_name,
         "quotation_reference": quotation.reference,
-        "currency_code": quotation.currency.code,
         "expires_at": quotation.expires_at,
         "terms_html": terms_html,
         "subject": (subject or "").strip() or f"Your quotation {quotation.reference}",

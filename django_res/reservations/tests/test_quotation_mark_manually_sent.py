@@ -92,17 +92,17 @@ def quotation(
     return Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
 
 
 @pytest.fixture
-def line(quotation: Quotation, property_: Property) -> QuotationLine:
+def line(quotation: Quotation, property_: Property, gbp: Currency) -> QuotationLine:
     return QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,

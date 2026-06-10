@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
+from pricing.models import Currency
 from pricing.services import PricingEngine
+from pricing.services.currency import resolve_property_currency
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
@@ -28,6 +30,7 @@ class QuotationLineInput(TypedDict, total=False):
     notes: str
     is_manual: bool
     total: Decimal
+    currency: Any
 
 
 class QuotationService:
@@ -44,14 +47,16 @@ class QuotationService:
         passed in; the caller decides whether to reprice.
         """
         party = line.adults + line.children
+        # No currency argument: the engine prices in the rate plan's own
+        # currency (GAP-014) and the line records which one it priced in.
         quote = PricingEngine.quote(
             property=line.property,
             date_from=line.date_from,
             date_to=line.date_to,
             party=party,
-            currency=quotation.currency,
         )
         gross = quote.total.quantize(Decimal("0.01"))
+        line.currency = Currency.objects.get(code=quote.currency_code)
         # Annotate the snapshot so the gross (pre-discount engine figure) and
         # the applied discount survive alongside the engine breakdown — the
         # stored `total` is the net the guest pays.
@@ -69,7 +74,16 @@ class QuotationService:
         # original arrival for the "we moved your dates" note.
         line.date_from = quote.date_from
         line.date_to = quote.date_to
-        line.save(update_fields=["pricing_snapshot", "total", "date_from", "date_to", "updated_at"])
+        line.save(
+            update_fields=[
+                "pricing_snapshot",
+                "total",
+                "currency",
+                "date_from",
+                "date_to",
+                "updated_at",
+            ]
+        )
         return line
 
     @classmethod
@@ -111,14 +125,18 @@ class QuotationService:
         enquiry: Enquiry,
         lines: list[dict[str, Any]],
         *,
-        currency: Any,
         terms_version: Any,
         expires_at: Any,
         guest: Any | None = None,
         agent: Any | None = None,
         actor: Any = None,
     ) -> Quotation:
-        """Build Quotation + lines, run PricingEngine per line, place holds."""
+        """Build Quotation + lines, run PricingEngine per line, place holds.
+
+        Currency is per line (GAP-014): priced lines get the engine result's
+        currency; a manual line takes the supplied one, defaulting via the
+        canonical `resolve_property_currency` chain.
+        """
         # A lost/converted enquiry is closed to new quotes — the workspace
         # suppresses the builder for these, but guard the service too so the
         # API rejects a direct POST (the old UI disabled the action via `isFinal`).
@@ -135,7 +153,6 @@ class QuotationService:
             enquiry=enquiry,
             guest=resolved_guest,
             agent=agent,
-            currency=currency,
             terms_version=terms_version,
             expires_at=expires_at,
         )
@@ -144,6 +161,14 @@ class QuotationService:
             adults = int(line_input.get("adults", enquiry.adults))
             children = int(line_input.get("children", enquiry.children))
             is_manual = bool(line_input.get("is_manual", False))
+            currency = line_input.get("currency") or resolve_property_currency(
+                line_input["property"]
+            )
+            if currency is None:
+                raise ValidationError(
+                    "No currency resolvable for this property — configure a rate "
+                    "plan, a settings currency, or seed EUR."
+                )
             create_kwargs: dict[str, Any] = {
                 "quotation": quotation,
                 "property": line_input["property"],
@@ -151,6 +176,7 @@ class QuotationService:
                 "date_to": line_input["date_to"],
                 "adults": adults,
                 "children": children,
+                "currency": currency,
                 "is_manual": is_manual,
                 "notes": line_input.get("notes", ""),
             }
@@ -205,7 +231,6 @@ class QuotationService:
         *,
         guest: Any,
         lines: list[dict[str, Any]],
-        currency: Any,
         terms_version: Any,
         expires_at: Any,
         agent: Any | None = None,
@@ -216,7 +241,6 @@ class QuotationService:
         return cls.create_from_enquiry(
             enquiry,
             lines,
-            currency=currency,
             terms_version=terms_version,
             expires_at=expires_at,
             guest=guest,

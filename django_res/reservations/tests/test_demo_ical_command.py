@@ -242,13 +242,13 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     quotation = Quotation.objects.create(
         enquiry=other_enquiry,
         guest=other_guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     QuotationLine.objects.create(
         quotation=quotation,
         property=prop,
+        currency=gbp,
         date_from=date(2026, 8, 1),
         date_to=date(2026, 8, 8),
         adults=2,

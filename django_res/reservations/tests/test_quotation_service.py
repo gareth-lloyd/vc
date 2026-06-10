@@ -47,7 +47,6 @@ def test_create_from_enquiry_happy_path(
                 "children": 0,
             },
         ],
-        currency=gbp,
         terms_version=terms,
         expires_at=expires,
     )
@@ -94,10 +93,10 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
                 "adults": 2,
                 "children": 0,
                 "is_manual": True,
+                "currency": gbp,
                 "total": Decimal("750.00"),
             },
         ],
-        currency=gbp,
         terms_version=terms,
         expires_at=timezone.now() + timedelta(days=7),
     )
@@ -128,7 +127,6 @@ def test_create_from_enquiry_requires_guest(
                     "adults": 2,
                 },
             ],
-            currency=gbp,
             terms_version=terms,
             expires_at=timezone.now() + timedelta(days=7),
         )
@@ -161,7 +159,6 @@ def test_create_from_enquiry_rejects_final_enquiry(
                     "adults": 2,
                 },
             ],
-            currency=gbp,
             terms_version=terms,
             expires_at=timezone.now() + timedelta(days=7),
         )
@@ -199,7 +196,6 @@ def test_create_from_enquiry_records_send_path_smtp(
                 "adults": 2,
             },
         ],
-        currency=gbp,
         terms_version=terms,
         expires_at=timezone.now() + timedelta(days=7),
     )
@@ -216,7 +212,6 @@ def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: Terms
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -253,7 +248,6 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
     quotation = QuotationService.create_from_enquiry(
         enquiry,
         [line_input],
-        currency=gbp,
         terms_version=terms,
         expires_at=timezone.now() + timedelta(days=7),
     )
@@ -291,12 +285,12 @@ def test_backfill_links_orphaned_holds_to_their_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     line = quotation.lines.create(
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -341,7 +335,6 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
                 "children": 0,
             },
         ],
-        currency=gbp,
         terms_version=terms,
         expires_at=timezone.now() + timedelta(days=7),
     )

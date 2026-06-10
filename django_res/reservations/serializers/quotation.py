@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from pricing.models import Currency
 from reservations.models import Quotation, QuotationLine
 
 
@@ -12,6 +13,11 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
 
     property_name = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
+    # Per-line currency as the ISO code (GAP-014) — the FE feeds it straight
+    # into formatMoney(); a quotation's lines may mix currencies.
+    currency: serializers.SlugRelatedField = serializers.SlugRelatedField(
+        slug_field="code", read_only=True
+    )
     # The original arrival when the engine nudged it forward to the property's
     # changeover day (GAP-007). `null` when the dates weren't moved. The FE
     # renders the "we moved your dates" note from this + `date_from`.
@@ -25,6 +31,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "property",
             "property_name",
             "hero_image_url",
+            "currency",
             "date_from",
             "date_to",
             "changeover_shifted_from",
@@ -46,6 +53,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "quotation",
             "property_name",
             "hero_image_url",
+            "currency",
             "changeover_shifted_from",
             "pricing_snapshot",
             "total",
@@ -93,6 +101,15 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
         required=False,
         allow_null=True,
     )
+    # Optional ISO code (GAP-014): a manual line may pin its currency; omitted
+    # means the view defaults via the canonical chain, and priced lines are
+    # re-stamped from the engine result regardless.
+    currency = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=Currency.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
     def to_internal_value(self, data: dict) -> dict:
         # Coerce an empty-string `total` to None so the DecimalField doesn't
@@ -105,6 +122,7 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
         model = QuotationLine
         fields = [
             "property",
+            "currency",
             "date_from",
             "date_to",
             "adults",
@@ -150,17 +168,16 @@ class QuotationLineWriteSerializer(serializers.ModelSerializer[QuotationLine]):
             # an explicit None so it never reaches the non-nullable model field;
             # the model default / repricing supplies the real value.
             attrs.pop("total", None)
+        if attrs.get("currency") is None:
+            # Same treatment: an explicit null currency means "default it" —
+            # never let None reach the non-nullable column.
+            attrs.pop("currency", None)
         return attrs
 
 
 class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
-    """Light header representation."""
+    """Light header representation. Currency lives per line (GAP-014)."""
 
-    # Surface the ISO code, not the FK PK — the FE renders this as text in
-    # lists and feeds it into formatMoney() for inline price display.
-    currency: serializers.SlugRelatedField = serializers.SlugRelatedField(
-        slug_field="code", read_only=True
-    )
     guest_name = serializers.SerializerMethodField()
     enquiry_reference = serializers.SerializerMethodField()
     agent_name = serializers.SerializerMethodField()
@@ -176,7 +193,6 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
             "guest_name",
             "agent",
             "agent_name",
-            "currency",
             "status",
             "expires_at",
             "is_unbranded",
@@ -231,7 +247,6 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
             "enquiry",
             "guest",
             "agent",
-            "currency",
             "is_unbranded",
             "expires_at",
             "terms_version",

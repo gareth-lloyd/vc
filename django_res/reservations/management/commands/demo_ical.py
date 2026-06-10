@@ -400,7 +400,6 @@ def _new_quotation() -> Any:
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=_demo_currency(),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=_demo_terms(),
     )

@@ -36,13 +36,13 @@ def booking(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date.today() + timedelta(days=10),
         date_to=date.today() + timedelta(days=17),
         adults=2,

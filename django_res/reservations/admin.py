@@ -50,14 +50,23 @@ class EnquiryEventAdmin(admin.ModelAdmin):
 
 @admin.register(Quotation)
 class QuotationAdmin(admin.ModelAdmin):
-    list_display = ("reference", "status", "currency", "expires_at")
+    list_display = ("reference", "status", "expires_at")
     list_filter = ("status",)
     search_fields = ("reference",)
 
 
 @admin.register(QuotationLine)
 class QuotationLineAdmin(admin.ModelAdmin):
-    list_display = ("pk", "quotation", "property", "date_from", "date_to", "total", "is_selected")
+    list_display = (
+        "pk",
+        "quotation",
+        "property",
+        "currency",
+        "date_from",
+        "date_to",
+        "total",
+        "is_selected",
+    )
     list_filter = ("is_selected",)
 
 

@@ -39,7 +39,7 @@
             <th>Dates</th>
             <th class="vc-right">Nights</th>
             <th class="vc-right">Guests</th>
-            <th class="vc-right">Total ({{ currency_code }})</th>
+            <th class="vc-right">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -57,8 +57,8 @@
             <td class="vc-right">{{ line.nights }}</td>
             <td class="vc-right">{{ line.adults }}+{{ line.children }}</td>
             <td class="vc-right">
-              {{ line.total }}
-              {% if line.discount and line.discount != "0.00" %}<div class="vc-disc">incl. {{ currency_code }} {{ line.discount }} discount</div>{% endif %}
+              {{ line.currency_code }} {{ line.total }}
+              {% if line.discount and line.discount != "0.00" %}<div class="vc-disc">incl. {{ line.currency_code }} {{ line.discount }} discount</div>{% endif %}
             </td>
           </tr>
           {% endfor %}

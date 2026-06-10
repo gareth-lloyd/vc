@@ -37,7 +37,6 @@ def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quo
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -172,6 +171,7 @@ def test_enquiry_is_converted_true_with_accepted_quotation(
     enquiry: Enquiry,
     quotation: Quotation,
     property_: Any,
+    gbp: Currency,
 ) -> None:
     """An ACCEPTED quotation on this enquiry flips `is_converted` to True."""
     from datetime import date
@@ -184,6 +184,7 @@ def test_enquiry_is_converted_true_with_accepted_quotation(
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -203,6 +204,7 @@ def test_enquiry_is_converted_uses_prefetch_cache(
     quotation: Quotation,
     property_: Any,
     django_assert_num_queries: Any,
+    gbp: Currency,
 ) -> None:
     """`is_converted` must consult the prefetched `.quotations` queryset.
 
@@ -225,6 +227,7 @@ def test_enquiry_is_converted_uses_prefetch_cache(
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,

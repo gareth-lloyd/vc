@@ -190,3 +190,32 @@ def test_create_from_quotation_line__idempotent_does_not_double_payments(
     BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
     assert Payment.objects.filter(booking=booking).count() == first_count
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line_carries_line_currency(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """The booking prices in the *line's* currency (GAP-014; re-scoped FG-001).
+
+    With per-line currencies a quotation's options can mix £/€/$ — the
+    accepted line's currency, not any sibling's, is what the guest pays in.
+    """
+    from pricing.models import Currency
+    from reservations.models import QuotationLine as QL
+
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    # A sibling line in another currency must not bleed into the booking.
+    QL.objects.create(
+        quotation=quotation_line.quotation,
+        property=quotation_line.property,
+        currency=eur,
+        date_from=quotation_line.date_from,
+        date_to=quotation_line.date_to,
+        adults=2,
+    )
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+    assert booking.currency == quotation_line.currency
+    assert booking.currency.code == "GBP"

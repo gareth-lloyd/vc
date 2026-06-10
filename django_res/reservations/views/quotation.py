@@ -9,12 +9,14 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from core.exceptions import HoldUnavailable
+from pricing.services.currency import resolve_property_currency
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
@@ -52,7 +54,6 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     queryset = (
         Quotation.objects.real()
         .select_related(
-            "currency",
             "guest",
             "enquiry",
             "agent",
@@ -185,7 +186,6 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                 enquiry=quotation.enquiry,
                 guest=quotation.guest,
                 agent=quotation.agent,
-                currency=quotation.currency,
                 is_unbranded=quotation.is_unbranded,
                 expires_at=quotation.expires_at,
                 terms_version=quotation.terms_version,
@@ -194,6 +194,7 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                 clone_line = QuotationLine.objects.create(
                     quotation=clone,
                     property=line.property,
+                    currency=line.currency,
                     date_from=line.date_from,
                     date_to=line.date_to,
                     adults=line.adults,
@@ -288,7 +289,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         return (
             QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"])
             .real()
-            .select_related("property")
+            .select_related("property", "currency")
             # The read serializer derives hero_image_url per line — prefetch
             # the property's images so a list of N lines stays constant-query.
             .prefetch_related("property__images")
@@ -325,7 +326,23 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         # so we never persist a line without its protecting hold.
         with transaction.atomic():
             quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
-            line = serializer.save(quotation=quotation)
+            extra: dict[str, Any] = {"quotation": quotation}
+            if serializer.validated_data.get("currency") is None:
+                # Canonical default (GAP-014); priced lines are re-stamped from
+                # the engine result in `_reprice` anyway — this is the manual-
+                # line (and pre-pricing) default, never blank.
+                currency = resolve_property_currency(serializer.validated_data["property"])
+                if currency is None:
+                    raise DRFValidationError(
+                        {
+                            "currency": [
+                                "No currency resolvable for this property — supply one "
+                                "or configure a rate plan / settings currency."
+                            ]
+                        }
+                    )
+                extra["currency"] = currency
+            line = serializer.save(**extra)
             self._reprice(line)
             QuotationService.sync_line_hold(line)
 
@@ -360,15 +377,17 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             locked = (
                 QuotationLine.objects.select_for_update()
-                .select_related("property", "quotation__currency")
+                .select_related("property", "quotation")
                 .get(pk=line.pk)
             )
             QuotationService.price_line(locked.quotation, locked)
         # Reflect the persisted price back onto the serializer's instance so
         # the response (built from it) carries the server-computed values —
-        # including any changeover-shifted dates (GAP-007).
+        # including any changeover-shifted dates (GAP-007) and the currency
+        # the engine actually priced in (GAP-014).
         line.total = locked.total
         line.pricing_snapshot = locked.pricing_snapshot
+        line.currency = locked.currency
         line.date_from = locked.date_from
         line.date_to = locked.date_to
 

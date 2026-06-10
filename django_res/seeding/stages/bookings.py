@@ -56,14 +56,6 @@ def _terms_for(prop: Any, ctx: SeedContext) -> Any:
     return ctx.terms[0]
 
 
-def _currency_for(prop: Any, ctx: SeedContext) -> Any:
-    """Return the property's own currency (the RatePlan it was built with)."""
-    plan = prop.rate_plans.first()
-    if plan is None:
-        return ctx.default_currency
-    return plan.currency
-
-
 def _run(ctx: SeedContext) -> int:
     if not ctx.properties:
         return 0
@@ -89,7 +81,6 @@ def _run_legacy(ctx: SeedContext) -> int:
             date_from=date_from,
             date_to=date_to,
             i=i,
-            currency=_currency_for(prop, ctx),
             terms=_terms_for(prop, ctx),
             expires_at=expires_at,
         )
@@ -114,7 +105,6 @@ def _run_dense(ctx: SeedContext) -> int:
             count = counts.get(prop.pk, 0)
             if count <= 0:
                 continue
-            currency = _currency_for(prop, ctx)
             terms = _terms_for(prop, ctx)
             for stay in _stay_plan(count, spread, ctx.rng, packed=(tier == "packed")):
                 create_one_booking(
@@ -123,7 +113,6 @@ def _run_dense(ctx: SeedContext) -> int:
                     date_from=ctx.today + timedelta(days=stay["from_off"]),
                     date_to=ctx.today + timedelta(days=stay["to_off"]),
                     i=i,
-                    currency=currency,
                     terms=terms,
                     expires_at=expires_at,
                     force_occupying=stay["force"],

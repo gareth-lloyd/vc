@@ -106,7 +106,6 @@ def create_one_booking(
     date_from: date,
     date_to: date,
     i: int,
-    currency: Any,
     terms: Any,
     expires_at: Any,
     force_occupying: bool = False,
@@ -150,7 +149,6 @@ def create_one_booking(
                     "children": 1,
                 }
             ],
-            currency=currency,
             terms_version=terms,
             expires_at=expires_at,
         )

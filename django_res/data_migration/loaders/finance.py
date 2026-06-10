@@ -25,7 +25,7 @@ from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
 from pricing.models.currency import Currency
-from pricing.services.currency import default_currency, resolve_property_currency
+from pricing.services.currency import resolve_property_currency
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -314,36 +314,18 @@ def _ensure_default_terms() -> TermsVersion:
 class QuotationLoader(BaseLoader):
     name = "quotation"
     target_model = Quotation
+    # No currency here: the header has none (GAP-014, legacy parity) — each
+    # line carries its own, resolved by QuotationLineLoader from the legacy
+    # per-detail CurrencyId.
     legacy_query = (
         "SELECT q.Id, q.ClientDetailsId, q.AgentId, q.FromDate, q.ToDate, "
-        "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.DeletedAt, "
-        "(SELECT TOP 1 d.CurrencyId FROM VillaQuotationDetails d "
-        " WHERE d.QuotationMasterId = q.Id ORDER BY d.Id) AS CurrencyId, "
-        "(SELECT TOP 1 d.VillaId FROM VillaQuotationDetails d "
-        " WHERE d.QuotationMasterId = q.Id ORDER BY d.Id) AS FirstVillaId "
+        "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.DeletedAt "
         "FROM VillaQuotationMaster q WHERE q.DeletedAt IS NULL"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         guest = Guest.objects.filter(legacy_id=str(row.get("ClientDetailsId") or "")).first()
         if guest is None:
-            return None
-        currency: Currency | None = None
-        if row.get("CurrencyId"):
-            currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
-        if currency is None:
-            # No usable line currency — resolve via the first line's villa
-            # (rate plans → settings → EUR), else the EUR system default.
-            # Never the ordering-dependent `.first()` (GAP-014 step 0).
-            first_prop = Property.objects.filter(
-                legacy_id=str(row.get("FirstVillaId") or "")
-            ).first()
-            currency = (
-                resolve_property_currency(first_prop)
-                if first_prop is not None
-                else default_currency()
-            )
-        if currency is None:
             return None
         agent = (
             Contact.objects.filter(legacy_id=str(row["AgentId"])).first()
@@ -376,7 +358,6 @@ class QuotationLoader(BaseLoader):
             "enquiry": enquiry,
             "guest": guest,
             "agent": agent,
-            "currency": currency,
             "expires_at": timezone.now() + timedelta(days=7),
             "status": QuotationStatus.DRAFT,
             "terms_version": terms,
@@ -411,9 +392,19 @@ class QuotationLineLoader(BaseLoader):
             date_to = date_to.date()
         if date_from >= date_to:
             return None
+        # Per-line currency (GAP-014, legacy VillaQuotationDetails.CurrencyId):
+        # row value, else the villa's canonical chain — never `.first()`.
+        currency: Currency | None = None
+        if row.get("CurrencyId"):
+            currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
+        if currency is None:
+            currency = resolve_property_currency(prop)
+        if currency is None:
+            return None
         return {
             "quotation": quotation,
             "property": prop,
+            "currency": currency,
             "date_from": date_from,
             "date_to": date_to,
             "adults": 2,

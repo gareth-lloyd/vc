@@ -1,47 +1,46 @@
-# FG-001 — `Booking` and `Quotation` currencies are independent
+# FG-001 — `Booking` and quotation-line currencies are independent
 
-- **Severity:** 🟠 Footgun
-- **Source:** the 2026-05-26 data-model deep audit §F1
-- **Files:** `reservations/models/booking.py:63–67`,
-  `reservations/models/quotation.py:42–46`,
-  `reservations/services/bookings.py` (`create_from_quotation_line`),
-  `reservations/models/booking.py:387–437` (`modify_dates`)
+- **Severity:** 🟠 Footgun — **largely resolved by GAP-014** (see below)
+- **Source:** the 2026-05-26 data-model deep audit §F1; re-scoped 2026-06-10 by
+  [GAP-014](gap-014-quote-currency-forced-selection.md)
+- **Files:** `reservations/models/booking.py` (`currency`, `modify_dates`),
+  `reservations/models/quotation.py` (`QuotationLine.currency`),
+  `reservations/services/bookings.py` (`create_from_quotation_line`)
 
-## Problem
+## Problem (as re-scoped)
 
-Both `Booking` and `Quotation` hold their own `currency_id` FK. Nothing
-enforces equality between a Booking and the source QuotationLine's
-Quotation. `Booking.modify_dates` re-runs pricing inside
-`@transaction.atomic` using `self.currency` as the snapshot input — if
-the property's RatePlan currency has drifted, the recomputed
-`balance_due` ends up in a different currency than the customer was
-originally quoted in.
+The original ticket anchored the invariant on the **header** `Quotation.currency`.
+GAP-014 removed that field: currency now lives per line
+(`QuotationLine.currency`, legacy parity), so the invariant is
 
-There is no "currency-locked at confirmation" invariant.
+> `Booking.currency == source QuotationLine.currency`
 
-## Proposed fix
+**Status:** enforced at write time — `BookingService.create_from_quotation_line`
+copies `quotation_line.currency` onto the Booking, pinned by
+`test_create_from_quotation_line_carries_line_currency`
+(`reservations/tests/test_booking_service.py`). A quotation's options can mix
+currencies; the accepted line's currency is what the guest pays in.
 
-Two layers:
+`Booking.modify_dates` / `modify_guests` re-run pricing with an **explicit**
+`currency=self.currency`, and the engine exact-matches it (no FX): if the
+property's rate-plan currency has switched since confirmation, the recompute
+raises `NoRateAvailable` — a loud failure, not a silently re-denominated
+`balance_due`.
 
-1. **Schema invariant.** Denormalise `quotation_currency_id` onto
-   `Booking` (or reach through to the source QuotationLine via a
-   constraint expression) and add a CheckConstraint that
-   `currency_id == quotation_currency_id`. Easier alternative: enforce
-   the equality only at write time in `BookingService` and add a test.
-   Constraints win when feasible.
-2. **Operational guard.** In `Booking.modify_dates` / `modify_guests`,
-   assert that the pricing recompute returns an amount in
-   `self.currency` and raise a typed error if not. The pricing engine
-   probably already returns currency in its result — verify it does
-   and add the guard.
+## Remaining (optional) hardening
+
+- A DB-level expression of the invariant would require denormalising
+  `line_currency_id` onto Booking purely for a CheckConstraint — judged not
+  worth the duplicate column while the single write path + test hold the line.
+  Revisit if a second Booking-creation path appears.
 
 ## Acceptance
 
-- Service-level test: creating a booking with a currency that mismatches
-  its quotation raises a domain error.
-- Modify-dates test: forcing a currency mismatch in the recompute raises
-  rather than silently corrupting `balance_due`.
+- ✅ Booking-from-line carries the line's currency (test above).
+- ✅ Engine exact-match means a modify-dates recompute can never come back in
+  a different currency than `self.currency`.
 
 ## Dependencies
 
-None.
+- [GAP-014](gap-014-quote-currency-forced-selection.md) — the re-scoping
+  change (per-line currency, header dropped).

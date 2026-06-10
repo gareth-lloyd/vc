@@ -105,7 +105,6 @@ class BookingLoader(BaseLoader):
             defaults={
                 "enquiry": enquiry,
                 "guest": guest,
-                "currency": currency,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],
                 "expires_at": timezone.now() + timedelta(days=7),
                 "status": QuotationStatus.DRAFT,
@@ -117,6 +116,7 @@ class BookingLoader(BaseLoader):
             defaults={
                 "quotation": quotation,
                 "property": prop,
+                "currency": currency,
                 "date_from": date_from,
                 "date_to": date_to,
                 "adults": 2,

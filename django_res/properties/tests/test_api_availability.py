@@ -202,12 +202,8 @@ def _system_quotation_hold(property_: Property) -> BookingHold:
     """A read-only hold backed by an open quotation (not operator-editable)."""
     from datetime import timedelta
 
-    from pricing.models import Currency
     from reservations.models import Guest, Quotation, TermsVersion
 
-    currency, _ = Currency.objects.get_or_create(
-        code="GBP", defaults={"name": "Pound sterling", "symbol": "£"}
-    )
     guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@x.com")
     terms = TermsVersion.objects.create(
         version="2026-01", body_markdown="x", published_at=timezone.now(), is_current=True
@@ -215,7 +211,6 @@ def _system_quotation_hold(property_: Property) -> BookingHold:
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=currency,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

@@ -41,7 +41,6 @@ def _quote(
     return Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         status=status,
@@ -63,6 +62,7 @@ def _booking_for(
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,

@@ -51,17 +51,17 @@ def quotation(
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
 
 
 @pytest.fixture
-def line(quotation: Quotation, property_: Property) -> QuotationLine:
+def line(quotation: Quotation, property_: Property, gbp: Currency) -> QuotationLine:
     return QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -265,6 +265,7 @@ def test_duplicate_quotation_clones_line_money_and_override_fields(
     staff: User,
     quotation: Quotation,
     property_: Property,
+    gbp: Currency,
 ) -> None:
     """The clone must carry discount/inclusions and the manual-override fields.
 
@@ -275,6 +276,7 @@ def test_duplicate_quotation_clones_line_money_and_override_fields(
     source = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -422,12 +424,14 @@ def test_update_line_reprices(
     quotation: Quotation,
     property_: Property,
     rate_rule: object,
+    gbp: Currency,
 ) -> None:
     """PATCHing a non-manual line reprices it from scratch."""
     api_client.force_login(staff)
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -678,13 +682,13 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     line = QuotationLine.objects.create(
         quotation=quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -759,13 +763,13 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     other_quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
-        currency=gbp,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     other_line = QuotationLine.objects.create(
         quotation=other_quotation,
         property=property_,
+        currency=gbp,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         adults=2,
@@ -946,6 +950,7 @@ def test_lines_list_constant_query_count(
     staff: User,
     quotation: Quotation,
     property_: Property,
+    gbp: Currency,
 ) -> None:
     from core.tests import assert_max_queries
 
@@ -954,6 +959,7 @@ def test_lines_list_constant_query_count(
         QuotationLine.objects.create(
             quotation=quotation,
             property=property_,
+            currency=gbp,
             date_from=date(2026, 6, 10 + offset),
             date_to=date(2026, 6, 17 + offset),
             adults=2,
@@ -972,6 +978,7 @@ def test_quotation_detail_constant_query_count(
     staff: User,
     quotation: Quotation,
     property_: Property,
+    gbp: Currency,
 ) -> None:
     from core.tests import assert_max_queries
 
@@ -980,6 +987,7 @@ def test_quotation_detail_constant_query_count(
         QuotationLine.objects.create(
             quotation=quotation,
             property=property_,
+            currency=gbp,
             date_from=date(2026, 6, 10 + offset),
             date_to=date(2026, 6, 17 + offset),
             adults=2,

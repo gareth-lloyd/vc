@@ -15,14 +15,16 @@ or the carry-forward endpoint.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.db import transaction
 
 from core.exceptions import NoRateAvailable
 from pricing.models import RateCard, RatePlan, RateRule
+from pricing.services.extras import date_ranges_overlap
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
@@ -31,6 +33,41 @@ from pricing.services.projection import (
     projected_rule_fields,
     shift_to_changeover_weekday,
 )
+
+logger = structlog.get_logger(__name__)
+
+
+def _unclaimed_segments(
+    fields: dict[str, Any], claimed: list[dict[str, Any]]
+) -> list[tuple[date, date]]:
+    """Date sub-ranges of a mapped rule not covered by any party-overlapping
+    already-claimed segment, in date order.
+
+    Date-mapping can land adjacent source ranges on top of each other (a
+    leap-year range spanning Feb 29 keeps its span while the calendar loses a
+    day; the weekday map can shift neighbours in opposite directions by up to
+    3 days each), and `raterule_no_overlap` would turn that into an
+    `IntegrityError`. Rules claim space in ascending source-pk order — the
+    same precedence `pick_rule_for_night` gives colliding in-memory projected
+    rules — so the materialised rows price every night exactly as the
+    projection would have. A remainder can sit on either side of a claim (or
+    both, splitting the rule into two rows).
+    """
+    segments = [(fields["date_from"], fields["date_to"])]
+    for prev in claimed:
+        if fields["min_party"] > prev["max_party"] or fields["max_party"] < prev["min_party"]:
+            continue
+        survivors: list[tuple[date, date]] = []
+        for lo, hi in segments:
+            if not date_ranges_overlap(lo, hi, prev["date_from"], prev["date_to"]):
+                survivors.append((lo, hi))
+                continue
+            if lo < prev["date_from"]:
+                survivors.append((lo, prev["date_from"] - timedelta(days=1)))
+            if prev["date_to"] < hi:
+                survivors.append((prev["date_to"] + timedelta(days=1), hi))
+        segments = survivors
+    return sorted(segments)
 
 
 class RateCarryoverService:
@@ -109,12 +146,35 @@ class RateCarryoverService:
                     is_active=card.is_active,
                     notes=card.notes,
                 )
-                for rule in rules:
-                    RateRule.objects.create(
-                        card=new_card,
-                        is_approved=True,
-                        is_locked=False,
-                        notes=rule.notes,
-                        **projected_rule_fields(rule, year_delta, date_map, factor),
-                    )
+                claimed: list[dict[str, Any]] = []
+                for rule in sorted(rules, key=lambda r: r.pk):
+                    fields = projected_rule_fields(rule, year_delta, date_map, factor)
+                    # Single-night remainders (lo == hi) can't be persisted —
+                    # the model requires date_from < date_to — so they drop.
+                    segments = [
+                        (lo, hi) for lo, hi in _unclaimed_segments(fields, claimed) if lo < hi
+                    ]
+                    if not segments:
+                        logger.info(
+                            "pricing.carryover.rule_skipped",
+                            source_rule_id=rule.pk,
+                            reason="date_map_collision_emptied_range",
+                        )
+                        continue
+                    if segments != [(fields["date_from"], fields["date_to"])]:
+                        logger.info(
+                            "pricing.carryover.rule_clipped",
+                            source_rule_id=rule.pk,
+                            segments=[(str(lo), str(hi)) for lo, hi in segments],
+                        )
+                    for lo, hi in segments:
+                        seg_fields = {**fields, "date_from": lo, "date_to": hi}
+                        claimed.append(seg_fields)
+                        RateRule.objects.create(
+                            card=new_card,
+                            is_approved=True,
+                            is_locked=False,
+                            notes=rule.notes,
+                            **seg_fields,
+                        )
         return new_plan

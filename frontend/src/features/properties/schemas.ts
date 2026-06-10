@@ -233,7 +233,6 @@ export const rateRuleSchema = z.object({
   date_to: z.string(),
   min_party: z.number().nullable().optional(),
   max_party: z.number().nullable().optional(),
-  priority: z.number().nullable().optional(),
   nightly: z.string().nullable().optional(),
   weekly: z.string().nullable().optional(),
   is_poa: z.boolean().optional(),
@@ -505,7 +504,7 @@ export const PROPERTY_IMAGE_KIND_LABELS: Record<PropertyImageKind, string> = {
 export const propertyImageSchema = z.object({
   id: z.number(),
   property: z.number(),
-  image: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
   kind: z.string(),
   name: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
@@ -518,15 +517,20 @@ export type PropertyImage = z.infer<typeof propertyImageSchema>;
 
 export const propertyImagesResponseSchema = paginated(propertyImageSchema);
 
-export const propertyImageWriteInputSchema = z.object({
-  key: z.string().trim().min(1, { message: "properties:errors.image_key_required" }).max(512),
+export const propertyImageMetadataSchema = z.object({
   kind: z.enum(PROPERTY_IMAGE_KINDS),
   name: z.string().trim().max(255).optional(),
   description: z.string().trim().optional(),
   sort_order: z.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
 });
-export type PropertyImageWriteInput = z.infer<typeof propertyImageWriteInputSchema>;
+export type PropertyImageMetadataInput = z.infer<typeof propertyImageMetadataSchema>;
+
+// Create = metadata + the file itself (multipart). Edit PATCHes metadata only.
+export const propertyImageCreateInputSchema = propertyImageMetadataSchema.extend({
+  image: z.instanceof(File, { message: "properties:errors.image_file_required" }),
+});
+export type PropertyImageCreateInput = z.infer<typeof propertyImageCreateInputSchema>;
 
 export const PROPERTY_AVAILABILITY_DEFAULTS = ["available", "unavailable", "on_request"] as const;
 

@@ -131,48 +131,61 @@ def test_quote_opt_in_extra_only_when_requested(
 
 
 @pytest.mark.django_db
-def test_quote_tiebreak_higher_priority_wins(
+def test_quote_first_card_by_sort_order_wins(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
+    """Card sort_order is the only cross-card precedence; swapping it flips
+    the winner (proving it's the order, not rule specificity, deciding)."""
     base_card = RateCard.objects.create(plan=plan, name="Base", sort_order=0)
     overlay_card = RateCard.objects.create(plan=plan, name="Overlay", sort_order=1)
 
-    # base: priority 0, broad range
     RateRule.objects.create(
         card=base_card,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
-        priority=0,
         nightly=Decimal("100.00"),
     )
-    # overlay: priority 10, narrower range — should win on these dates
     RateRule.objects.create(
         card=overlay_card,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
         min_party=1,
         max_party=8,
-        priority=10,
         nightly=Decimal("250.00"),
     )
 
     quote = PricingEngine.quote(
         property=property_,
         date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 14),  # 4 nights, fully inside overlay
+        date_to=date(2026, 6, 14),  # 4 nights, covered by both cards
         party=4,
         currency=gbp,
     )
-    assert all(ln.nightly == Decimal("250.00") for ln in quote.lines)
-    assert quote.rate_subtotal == Decimal("1000.00")
+    assert all(ln.nightly == Decimal("100.00") for ln in quote.lines)
+    assert quote.rate_subtotal == Decimal("400.00")
+
+    base_card.sort_order, overlay_card.sort_order = 1, 0
+    base_card.save()
+    overlay_card.save()
+
+    flipped = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 14),
+        party=4,
+        currency=gbp,
+    )
+    assert all(ln.nightly == Decimal("250.00") for ln in flipped.lines)
 
 
 @pytest.mark.django_db
-def test_quote_tiebreak_equal_priority_narrower_range_wins(
+def test_quote_card_order_beats_narrower_range(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
+    """Deliberate behavioural change: there is no specificity tie-break. A
+    narrower rule on a later card never overrides the first covering card."""
     base_card = RateCard.objects.create(plan=plan, name="Base", sort_order=0)
     overlay_card = RateCard.objects.create(plan=plan, name="Overlay", sort_order=1)
 
@@ -182,17 +195,15 @@ def test_quote_tiebreak_equal_priority_narrower_range_wins(
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
-        priority=5,
         nightly=Decimal("100.00"),
     )
-    # Narrower (1 week) — same priority — should win on its nights.
+    # Narrower (1 week) on the later card — must NOT win on its nights.
     RateRule.objects.create(
         card=overlay_card,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 16),
         min_party=1,
         max_party=8,
-        priority=5,
         nightly=Decimal("180.00"),
     )
 
@@ -203,7 +214,7 @@ def test_quote_tiebreak_equal_priority_narrower_range_wins(
         party=4,
         currency=gbp,
     )
-    assert all(ln.nightly == Decimal("180.00") for ln in quote.lines)
+    assert all(ln.nightly == Decimal("100.00") for ln in quote.lines)
 
 
 @pytest.mark.django_db
@@ -224,7 +235,6 @@ def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
         "card": card,
         "date_from": date(2026, 6, 1),
         "date_to": date(2026, 8, 31),
-        "priority": 0,
     }
     rule_small = RateRule.objects.create(
         **common,

@@ -52,7 +52,7 @@ import {
   type PropertyFinance,
   type PropertyFinanceWriteInput,
   type PropertyImage,
-  type PropertyImageWriteInput,
+  type PropertyImageCreateInput,
   type PropertyListItem,
   type PropertyLocation,
   type PropertyLocationWriteInput,
@@ -407,9 +407,16 @@ export async function fetchPropertyImages(propertyId: number): Promise<Paginated
 
 export async function createPropertyImage(
   propertyId: number,
-  body: PropertyImageWriteInput,
+  input: PropertyImageCreateInput,
 ): Promise<PropertyImage> {
-  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/images`, body);
+  const form = new FormData();
+  form.append("image", input.image);
+  form.append("kind", input.kind);
+  if (input.name !== undefined) form.append("name", input.name);
+  if (input.description !== undefined) form.append("description", input.description);
+  if (input.sort_order !== undefined) form.append("sort_order", String(input.sort_order));
+  if (input.is_active !== undefined) form.append("is_active", String(input.is_active));
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/images`, form);
   return propertyImageSchema.parse(data);
 }
 

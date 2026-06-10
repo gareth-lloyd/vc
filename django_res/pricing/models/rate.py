@@ -94,7 +94,6 @@ class RateRule(AuditedModel):
     date_to = models.DateField()
     min_party = models.PositiveSmallIntegerField(default=1)
     max_party = models.PositiveSmallIntegerField()
-    priority = models.PositiveSmallIntegerField(default=0)
     nightly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     weekly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     is_poa = models.BooleanField(default=False)
@@ -104,7 +103,7 @@ class RateRule(AuditedModel):
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
-        ordering = ["card", "-priority", "date_from"]
+        ordering = ["card", "date_from"]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(date_from__lt=models.F("date_to")),
@@ -132,7 +131,6 @@ class RateRule(AuditedModel):
         ]
         indexes = [
             models.Index(fields=["card", "date_from", "date_to"]),
-            models.Index(fields=["card", "-priority"]),
         ]
 
     def __str__(self) -> str:

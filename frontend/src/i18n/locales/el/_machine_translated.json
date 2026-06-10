@@ -62,7 +62,9 @@
     "errors.season_name_required",
     "errors.season_currency_required",
     "errors.season_effective_from_required",
-    "errors.season_effective_to_before_from"
+    "errors.season_effective_to_before_from",
+    "media.dialog.fields.file",
+    "errors.image_file_required"
   ],
   "quotations": [
     "detail.lines.columns.discount",

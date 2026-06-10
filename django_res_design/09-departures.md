@@ -63,7 +63,7 @@ Disposition column legend:
 |---|---|---|---|
 | `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container (name, notes, inclusion, currency, envelope dates) |
 | — (legacy had no equivalent) | `pricing.RateCard` | Added | Operator-mental-unit: name, min/max nights, discount profile. Sits between Plan and Rule. (Changeover is property-level, not card-level — GAP-007.) |
-| `VillaSeasonRate` | `pricing.RateRule` | Replaced | Price row with date range + party range + priority; one card has many rules (one per band / disjoint sub-range) |
+| `VillaSeasonRate` | `pricing.RateRule` | Replaced | Price row with date range + party range; one card has many rules (one per band / disjoint sub-range). Legacy overlaps are resolved at load time (`data_migration/CUTOVER.md`); precedence between cards is `RateCard.sort_order` |
 | `VillaSeasonDate` | Folded into `RateRule.date_from/date_to` | Merged | Production data showed ~1.0 ranges per season; separate table was vestigial |
 | `VillaOccupencyPrice` | Folded into sibling `RateRule` rows on the same card | Merged | Only 3% of legacy rates used banding; sibling rules with disjoint party ranges express the same shape |
 | `VillaWebsitePricing`, `VillaMapping` | `pricing.VillaPricingSummary` (signal-rebuilt cache, named explicitly) | Replaced | Honest about being a cache; single owner |

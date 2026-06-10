@@ -154,11 +154,57 @@ is where the dry-run calibration happens), not just here.
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
 | `VillaFinance`            | 1236         | 413 contact-default rows mirror onto `GroupFinance` (no 1:1 mapping); 676 parent-child override rows have no schema equivalent. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeasonRate`         | 3462         | Rows with no price (`NightlyPrice IS NULL AND WeeklyPrice IS NULL AND Price IS NULL AND IsPOA = 0`) are skipped — they were unusable in legacy too. |
+| `VillaSeasonRate`         | 3727         | 3462 pre-resolver gap (rows with no price — unusable in legacy too — plus rows on the 67 unloaded seasons) + 265 rows newly dropped by overlap resolution (see below; 389 total drops, but 124 sit on unloaded seasons and were already counted). |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 
 Any other gap is a **blocker**. Track it down before proceeding.
+
+### Rate rule overlap resolution
+
+Legacy had no rate-precedence concept: its per-night lookup was an unordered
+`SELECT TOP 1` (`sp_get_quote_weeks_price`) / `FirstOrDefault` over an
+unordered `DISTINCT` (`ResService.cs`), so the winner among overlapping
+`VillaSeasonRate` rows was formally arbitrary (de-facto lowest ID via the
+clustered index). The new schema forbids within-card overlap outright
+(`raterule_no_overlap` EXCLUDE constraint), so `RateRuleLoader` resolves
+overlaps at load time via `resolve_rate_rule_overlaps`:
+
+- **Boundary trim** — legacy stored checkout-style contiguous bands (the next
+  band starts on the day the previous one ends) but looked them up
+  inclusively. The new model is inclusive on both ends, so the earlier row's
+  end is trimmed back one day when a party-overlapping sibling starts on it.
+- **Approved-first tiers** — `IsApprove = 1` rows claim date space before
+  unapproved rows, protecting currently-quotable ranges from being clipped by
+  unapproved drafts (67 such pairs in the 24-Apr-2025 dump).
+- **Earliest legacy ID wins within a tier** — matching legacy's de-facto
+  behaviour.
+- **Clip-only** — a losing row is clipped to its largest uncovered remainder
+  (a winner punched into its middle discards the smaller side) or dropped
+  when fully covered. One legacy row maps to at most one rule; legacy IDs are
+  never suffixed or split.
+- Rows with identical date spans clip the **party bracket** instead; the
+  property's capacity resolves unbounded remainders at transform time.
+
+Consequences:
+
+- The loader **ignores `--since`** (and logs a warning if passed) —
+  resolution is a function of a season's whole row set, so every pass is a
+  full reload (the table is small).
+- Each run is a **full replace**: all legacy-loaded rules are purged, then
+  the resolver's output is inserted. Inserting into an empty legacy footprint
+  means re-runs can never collide with the previous run's spans under the
+  EXCLUDE constraint, so a re-run always converges in one pass (the report
+  shows `created=N`, not `updated=N`). UI-created rules
+  (`legacy_id IS NULL`) are never touched.
+- The 389 dropped rows (and trimmed boundary days) mean quoted prices can
+  shift versus legacy for the ~38 seasons that had genuinely conflicting
+  prices — previously the winner was the highest `ID % 65535` stamp under
+  the old per-priority EXCLUDE constraint, and arbitrary in legacy itself.
+- The loader logs one summary event per run:
+  `data_migration.rate_rule_overlaps_resolved` with `trimmed` / `dropped` /
+  `party_clipped` / `purged` counters (24-Apr-2025 dump, first run:
+  2281 / 389 / 0 / 0).
 
 ## 6. (Optional) Delta load for late writes
 
@@ -170,7 +216,9 @@ uv run python manage.py loadlegacy --all --since '2026-05-13T17:00:00'
 ```
 
 Loaders use the legacy `UpdatedAt` column for this filter — a few lookups
-without that column will silently ignore the flag.
+without that column will silently ignore the flag. `rate_rule` also ignores
+it by design: overlap resolution needs the whole season's row set, so it
+always does a full reload (see "Rate rule overlap resolution" above).
 
 ## 7. England → GB merge
 
@@ -189,8 +237,8 @@ Output should report `Rewrote N rows and deleted source country.`
 `/uploads/` tree; the actual files live wherever ops has them (S3, a
 backup tarball, etc.). Copy the binaries into the new storage backend
 according to the separate **Image migration workstream**, tracked as the
-legacy-import slice (§11) of
-`django_res_design/todo/gap-012-cloudflare-images-hosting.md` (the canonical
+legacy-import slice (§8 of "Proposed shape") in
+`django_res_design/todo/gap-012-s3-image-hosting.md` (the canonical
 home — note the loader flattens `PropertyImages/<VillaId>/<file>` to a flat
 `properties/legacy/<file>` key, so the copy must reconstruct the source
 subfolder from each row's `property.legacy_id`). The DB rows are already in

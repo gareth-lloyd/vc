@@ -21,9 +21,11 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function buildHeaders(method: string, hasBody: boolean): Headers {
+function buildHeaders(method: string, hasJsonBody: boolean): Headers {
+  // A FormData body must NOT get an explicit Content-Type — the browser sets
+  // multipart/form-data with its boundary.
   const headers = new Headers({ Accept: "application/json" });
-  if (hasBody) headers.set("Content-Type", "application/json");
+  if (hasJsonBody) headers.set("Content-Type", "application/json");
   if (UNSAFE_METHODS.has(method)) {
     const csrf = readCookie("csrftoken");
     if (csrf) headers.set("X-CSRFToken", csrf);
@@ -61,11 +63,12 @@ async function request<T>(
 ): Promise<T> {
   const url = joinUrl(apiBase(), `${API_PREFIX}${path}${buildQuery(options.query)}`);
   const hasBody = body !== undefined;
+  const isForm = body instanceof FormData;
   const response = await fetch(url, {
     method,
     credentials: "include",
-    headers: buildHeaders(method, hasBody),
-    body: hasBody ? JSON.stringify(body) : undefined,
+    headers: buildHeaders(method, hasBody && !isForm),
+    body: hasBody ? (isForm ? body : JSON.stringify(body)) : undefined,
     signal: options.signal,
   });
   return handleResponse<T>(response);

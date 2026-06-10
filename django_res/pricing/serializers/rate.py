@@ -26,7 +26,6 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
             "date_to",
             "min_party",
             "max_party",
-            "priority",
             "nightly",
             "weekly",
             "is_poa",
@@ -39,10 +38,11 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Mirror the RateRule DB constraints as 400s instead of 500s.
 
-        Covers the four CHECK constraints plus the `raterule_no_overlap_same_priority`
-        EXCLUDE constraint (inclusive date + party ranges). A missing key falls
-        back to the stored instance value (PATCH) or the model default (create),
-        so neither path can combine into a row the constraints would reject.
+        Covers the four CHECK constraints plus the `raterule_no_overlap`
+        EXCLUDE constraint (inclusive date + party ranges; within-card overlap
+        is forbidden unconditionally). A missing key falls back to the stored
+        instance value (PATCH) or the model default (create), so neither path
+        can combine into a row the constraints would reject.
         """
 
         def effective(field: str) -> Any:
@@ -81,7 +81,6 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
         if card is not None and None not in (date_from, date_to, min_party, max_party):
             overlapping = RateRule.objects.filter(
                 card=card,
-                priority=effective("priority"),
                 date_from__lte=date_to,
                 date_to__gte=date_from,
                 min_party__lte=max_party,

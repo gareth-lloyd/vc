@@ -30,7 +30,7 @@ const propertyFixture = {
 const imageA = {
   id: 100,
   property: 7,
-  image: "properties/2026/05/hero.jpg",
+  image_url: "/media/properties/2026/05/hero.jpg",
   kind: "hero",
   name: "Front view",
   description: "",
@@ -43,7 +43,7 @@ const imageA = {
 const imageB = {
   id: 101,
   property: 7,
-  image: "properties/2026/05/garden.jpg",
+  image_url: "/media/properties/2026/05/garden.jpg",
   kind: "gallery",
   name: "Garden",
   description: "",
@@ -173,7 +173,47 @@ describe("MediaTab", () => {
     const btn = await screen.findByRole("button", { name: /add image/i });
     expect(btn).toBeEnabled();
     await userEvent.click(btn);
-    expect(await screen.findByLabelText(/S3 key/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/image file/i)).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("uploads the chosen file as multipart form data", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(http.get("/api/v1/properties/7/images", () => HttpResponse.json(drfPage([]))));
+
+    let received: { filename?: string; kind?: string } | null = null;
+    server.use(
+      http.post("/api/v1/properties/7/images", async ({ request }) => {
+        const form = await request.formData();
+        const file = form.get("image");
+        received = {
+          filename: file instanceof File ? file.name : undefined,
+          kind: String(form.get("kind")),
+        };
+        return HttpResponse.json(imageA, { status: 201 });
+      }),
+    );
+
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /add image/i }));
+    const fileInput = await screen.findByLabelText(/image file/i);
+    await userEvent.upload(fileInput, new File(["png-bytes"], "pool.png", { type: "image/png" }));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(received).toEqual({ filename: "pool.png", kind: "gallery" }));
+    useAuthStore.getState().clear();
+  });
+
+  it("requires a file before submitting a new image", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(http.get("/api/v1/properties/7/images", () => HttpResponse.json(drfPage([]))));
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /add image/i }));
+    await screen.findByLabelText(/image file/i);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/choose an image file/i);
     useAuthStore.getState().clear();
   });
 });

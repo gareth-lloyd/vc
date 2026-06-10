@@ -7,7 +7,16 @@ from django.conf import settings
 from django.db import migrations, models
 
 import core.models.idempotency
-import core.models.upload
+
+
+def _upload_ticket_default_expires_at():
+    """Inlined from the deleted `core.models.upload` (UploadTicket is dropped
+    in 0005); kept so this historical migration stays importable."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    return timezone.now() + timedelta(hours=1)
 
 
 class Migration(migrations.Migration):
@@ -34,9 +43,7 @@ class Migration(migrations.Migration):
                 ("max_bytes", models.PositiveIntegerField(default=0)),
                 (
                     "expires_at",
-                    models.DateTimeField(
-                        db_index=True, default=core.models.upload._default_expires_at
-                    ),
+                    models.DateTimeField(db_index=True, default=_upload_ticket_default_expires_at),
                 ),
                 ("consumed_at", models.DateTimeField(blank=True, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),

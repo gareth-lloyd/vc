@@ -38,6 +38,7 @@ dependencies = [
     # docker-compose `redis` locally; Render Key Value in prod). No result
     # backend — tasks are fire-and-forget (CELERY_TASK_IGNORE_RESULT=True).
     "celery[redis]>=5.4",
+    "django-storages[s3]>=1.14.6",
 ]
 
 [dependency-groups]

@@ -8,6 +8,10 @@ from reservations.serializers.booking import (
     BookingNoteSerializer,
     BookingWriteSerializer,
 )
+from reservations.serializers.charge_item import (
+    BookingChargeItemSerializer,
+    BookingChargeItemWriteSerializer,
+)
 from reservations.serializers.concierge import (
     BookingConciergeItemSerializer,
     BookingConciergeItemWriteSerializer,
@@ -35,6 +39,8 @@ from reservations.serializers.quotation import (
 )
 
 __all__ = [
+    "BookingChargeItemSerializer",
+    "BookingChargeItemWriteSerializer",
     "BookingConciergeItemSerializer",
     "BookingConciergeItemWriteSerializer",
     "BookingDetailSerializer",

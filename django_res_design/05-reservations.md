@@ -233,8 +233,8 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `rental_price` — Decimal(12, 2)  # extracted for reports
 - `discount` — Decimal(12, 2, default=0)
 - `adjustment` — Decimal(12, 2, default=0)  # one-off line item (concierge total feeds in here)
-- `balance_due` — Decimal(12, 2)  # computed at creation
-- `balance_due_at` — DateField  # derived from PaymentSchedule
+- `balance_due` — Decimal(12, 2)  # computed at creation. Despite the name this is the **denormalised guest-facing gross total** (snapshot `total`), never decremented as payments settle — outstanding is computed from Payment rows (07-payments.md). The API exposes it as `total`. The legacy loader fills it from `RentalPrice` (legacy `BalanceDue` is a DATETIME — the due *date* — not money).
+- `balance_due_at` — DateField  # derived from PaymentSchedule; the legacy loader maps `VillaBooking.BalanceDue` (datetime) here
 - `status` — TextChoices (see 06-availability.md for full machine)
 - `agent` — FK accounts.Contact SET_NULL, null=True  # external agent / intermediary; same distinction as Enquiry.agent
 - `assigned_to` — FK User SET_NULL, null=True, blank=True, related_name="assigned_bookings"  # internal staff owner of this booking, backing `?assigned_to=` filter and `:assign` action. See reconciliation issue #26.

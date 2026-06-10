@@ -364,6 +364,18 @@ on at least one list endpoint per app:
     with assert_max_queries(10):
         api_client.get("/api/v1/payments")
 
+Annotations that join a **multi-valued** relation (e.g. a `Sum` over a
+reverse FK) must be **gated by `self.action`** to the actions whose
+serializer actually reads them. The LEFT JOIN survives even when the
+annotation is pruned from the SELECT, so an ungated annotation leaks into
+`StatusCountsMixin` — its `Count("id")` then counts parent x child rows
+and inflates the status badges — and into the paginator's COUNT. Coalesce
+the annotation to a real zero so the serializer's per-instance fallback
+can tell "annotated as 0" from "not annotated" (a NULL looks un-annotated
+and re-triggers the fallback per row). Reference: `_with_amount_paid` in
+`reservations/views/booking.py` and
+`test_status_counts__not_inflated_by_payment_rows`.
+
 Reference: `payments/views/payment.py`, `payments/views/refund.py`, and the
 existing `select_related` discipline in `reservations/views/booking.py`,
 `properties/views/property.py`, `pricing/views/rate.py`.

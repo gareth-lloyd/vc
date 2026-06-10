@@ -84,6 +84,19 @@ abstraction. The template is `NoteFormDialog.tsx`.
   `RateCardFormDialog.tsx` / `RateRuleFormDialog.tsx`. Older dialogs still
   render `String(message)` and show raw keys — retrofit when touched.
 
+### Booking money display
+
+The Total / Paid / Due trio always comes from `bookingFinance(booking)`
+(`features/bookings/finance.ts`): `total` is the guest-facing **gross**
+(API `total`; `rental_price` may be net-of-commission on net-priced
+properties), `paid` is the backend's `amount_paid` (settled payments),
+and `due = total − paid`. **Never derive Paid by subtraction of two other
+fields** — `total − balance_due` once rendered the agency commission as
+"Paid €-7,000". Tone the Due figure with `dueTone(due, balance_due_at)`.
+Commission is only ever displayed under an explicit "Commission" label
+(from the detail payload's `net_to_owner.commission`), never folded into
+another figure.
+
 ### Role gating
 
 `useHasReservationsRole()` returns true for `ADMIN`, `RESERVATIONS`, or

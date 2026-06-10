@@ -17,20 +17,28 @@ Strategy:
 - One RatePlan per VillaSeason (currency picked from first VillaSeasonRate).
 - effective_from/to from min/max of VillaSeasonDates rows.
 - One default RateCard per RatePlan (named after the season).
-- One RateRule per VillaSeasonRate. priority=row.Id ensures the EXCLUDE
-  constraint never trips on legacy overlaps with different priorities.
+- One VillaSeasonRate -> at most one RateRule: `resolve_rate_rule_overlaps`
+  trims/drops overlapping legacy rows before the upsert (legacy had no
+  precedence concept — see "Rate rule overlap resolution" in
+  data_migration/CUTOVER.md).
 """
 
 from __future__ import annotations
 
-from datetime import date
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
+
+import structlog
 
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
 from pricing.models.rate import RateCard, RatePlan, RateRule
 from properties.models.property import Property
+
+logger = structlog.get_logger(__name__)
 
 
 def _to_decimal(v: Any) -> Decimal | None:
@@ -40,6 +48,205 @@ def _to_decimal(v: Any) -> Decimal | None:
         return Decimal(str(v))
     except Exception:
         return None
+
+
+def _as_date(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return date.fromisoformat(value[:10])
+    if hasattr(value, "date"):  # datetime -> date
+        return value.date()
+    return value
+
+
+def _row_prices(row: dict[str, Any]) -> tuple[Decimal | None, Decimal | None, Decimal | None, bool]:
+    """The price columns of a VillaSeasonRate row, shared by the overlap
+    resolver's pre-filter and `transform` so the skip predicate can't drift."""
+    return (
+        _to_decimal(row.get("NightlyPrice")),
+        _to_decimal(row.get("WeeklyPrice")),
+        _to_decimal(row.get("Price")),
+        bool(row.get("IsPOA")),
+    )
+
+
+def _has_price(row: dict[str, Any]) -> bool:
+    nightly, weekly, price, is_poa = _row_prices(row)
+    return bool(nightly or weekly or price or is_poa)
+
+
+@dataclass(frozen=True)
+class OverlapResolution:
+    """Outcome of `resolve_rate_rule_overlaps`: surviving rows + counters."""
+
+    rows: list[dict[str, Any]]
+    trimmed: int
+    dropped: int
+    party_clipped: int
+
+
+@dataclass
+class _WorkRow:
+    """Mutable working copy of one legacy row during resolution.
+
+    `pmax=None` means "up to property capacity" — treated as unbounded so the
+    resolver stays pure (capacity is resolved later, in `transform`).
+    """
+
+    id: int
+    row: dict[str, Any]
+    orig_from: date
+    date_from: date
+    date_to: date
+    pmin: int
+    pmax: int | None
+    approved: bool
+    party_intervals: list[tuple[int, int | None]] | None = field(default=None)
+
+
+def _party_overlap(a: _WorkRow, b: _WorkRow) -> bool:
+    return (a.pmax is None or b.pmin <= a.pmax) and (b.pmax is None or a.pmin <= b.pmax)
+
+
+def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | None:
+    """Largest valid remainder of the loser's date span minus the winner's.
+
+    Clip-only: when the winner sits strictly inside the loser, the smaller
+    side is discarded rather than splitting into two rows. Remainders must
+    satisfy the model's strict `date_from < date_to`, mirroring transform's
+    skip rule.
+    """
+    left = (loser.date_from, winner.date_from - timedelta(days=1))
+    right = (winner.date_to + timedelta(days=1), loser.date_to)
+    candidates = [span for span in (left, right) if span[0] < span[1]]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda span: span[1] - span[0])
+
+
+def _party_remainder(loser: _WorkRow, winner: _WorkRow) -> list[tuple[int, int | None]]:
+    """Remainder intervals of the loser's party bracket minus the winner's,
+    best first. The upper interval is preferred; the lower rides along as a
+    fallback for when property capacity empties the upper one at transform
+    time (`None` upper bound = capacity, unknown here)."""
+    intervals: list[tuple[int, int | None]] = []
+    if winner.pmax is not None and (loser.pmax is None or winner.pmax < loser.pmax):
+        intervals.append((winner.pmax + 1, loser.pmax))
+    if loser.pmin < winner.pmin:
+        intervals.append((loser.pmin, winner.pmin - 1))
+    return intervals
+
+
+def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
+    """Resolve legacy VillaSeasonRate overlaps before loading.
+
+    Legacy had no precedence concept (its per-night lookup was an unordered
+    `TOP 1`), so overlapping rows are data noise to resolve, not behaviour to
+    preserve. Policy (user-confirmed, see CUTOVER.md):
+
+    1. Pre-filter rows `transform()` would skip (junk dates, no price and not
+       POA) so they can neither trim nor be trimmed.
+    2. Boundary trim: legacy stored checkout-style contiguous bands (the next
+       row starts on the day the previous one ends) but the new model is
+       inclusive on both ends — trim one day off the earlier row's end.
+       Compares *original* FromDates (never modified), so chains trim cleanly
+       and the pass is order-independent.
+    3. Conflict resolution: approved rows claim space before unapproved ones;
+       within each tier the lowest legacy ID wins. Losers are clipped to the
+       uncovered remainder or dropped when fully covered. Rows with identical
+       date spans clip the party bracket instead, recording the surviving
+       intervals on `_party_intervals`.
+
+    Pure function of the input row set — deterministic, order-independent,
+    DB-free. One input row maps to zero or one output rows, legacy ID
+    unchanged.
+    """
+    trimmed = dropped = party_clipped = 0
+
+    groups: dict[Any, list[_WorkRow]] = defaultdict(list)
+    for row in rows:
+        date_from = _as_date(row.get("FromDate"))
+        date_to = _as_date(row.get("ToDate"))
+        if date_from is None or date_to is None or date_to <= date_from:
+            continue
+        if not _has_price(row):
+            continue
+        party = int(row.get("PartySize") or 0)
+        pmin, pmax = (party, party) if party > 0 else (1, None)
+        groups[row.get("SeasonId")].append(
+            _WorkRow(
+                id=int(row["ID"]),
+                row=row,
+                orig_from=date_from,
+                date_from=date_from,
+                date_to=date_to,
+                pmin=pmin,
+                pmax=pmax,
+                approved=bool(row.get("IsApprove")),
+            )
+        )
+
+    kept_all: list[_WorkRow] = []
+    for items in groups.values():
+        survivors: list[_WorkRow] = []
+        for item in items:
+            if any(
+                other is not item
+                and _party_overlap(item, other)
+                and other.orig_from == item.date_to
+                for other in items
+            ):
+                item.date_to -= timedelta(days=1)
+                trimmed += 1
+            if item.date_to <= item.date_from:
+                dropped += 1
+            else:
+                survivors.append(item)
+
+        kept: list[_WorkRow] = []
+        for item in sorted(survivors, key=lambda it: (not it.approved, it.id)):
+            alive = True
+            for winner in kept:
+                if not _party_overlap(item, winner):
+                    continue
+                if item.date_from > winner.date_to or item.date_to < winner.date_from:
+                    continue
+                if (item.date_from, item.date_to) == (winner.date_from, winner.date_to):
+                    intervals = _party_remainder(item, winner)
+                    if not intervals:
+                        alive = False
+                        dropped += 1
+                        break
+                    item.pmin, item.pmax = intervals[0]
+                    item.party_intervals = intervals
+                    party_clipped += 1
+                    continue
+                remainder = _date_remainder(item, winner)
+                if remainder is None:
+                    alive = False
+                    dropped += 1
+                    break
+                item.date_from, item.date_to = remainder
+                trimmed += 1
+            if alive:
+                kept.append(item)
+        kept_all.extend(kept)
+
+    out_rows: list[dict[str, Any]] = []
+    for item in sorted(kept_all, key=lambda it: it.id):
+        out = dict(item.row)
+        out["FromDate"] = item.date_from
+        out["ToDate"] = item.date_to
+        if item.party_intervals is not None:
+            out["_party_intervals"] = item.party_intervals
+        out_rows.append(out)
+    return OverlapResolution(
+        rows=out_rows,
+        trimmed=trimmed,
+        dropped=dropped,
+        party_clipped=party_clipped,
+    )
 
 
 def _resolve_property_currency(prop: Property) -> Currency | None:
@@ -129,7 +336,9 @@ class RateRuleLoader(BaseLoader):
 
     Notes:
     - Skip `IsExTra=1` rows (extras, not base rates).
-    - priority = legacy ID so EXCLUDE constraint never trips on overlaps.
+    - `resolve_rate_rule_overlaps` runs over the full row set first, so the
+      upserted rules are overlap-free per card; rows it drops on a re-run are
+      purged by the stale cleanup in `_load_rows`.
     - max_party falls back to the property's capacity when PartySize is null.
     """
 
@@ -143,18 +352,61 @@ class RateRuleLoader(BaseLoader):
         "FROM VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra <> 1"
     )
 
+    def _apply_since(self, query: str) -> str:
+        # Deliberate no-op: overlap resolution is a function of a season's
+        # whole row set, so a `--since` delta would mis-trim against rows it
+        # can't see (and stale cleanup would delete unmodified rows). The
+        # table is small; every pass is a full reload.
+        return query
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        resolution = resolve_rate_rule_overlaps(rows)
+        super()._load_rows(resolution.rows, report)
+        stale_deleted = self._delete_stale(rows, resolution.rows)
+        logger.info(
+            "data_migration.rate_rule_overlaps_resolved",
+            trimmed=resolution.trimmed,
+            dropped=resolution.dropped,
+            party_clipped=resolution.party_clipped,
+            stale_deleted=stale_deleted,
+        )
+
+    def _delete_stale(
+        self,
+        legacy_rows: list[dict[str, Any]],
+        kept_rows: list[dict[str, Any]],
+    ) -> int:
+        """Purge previously loaded rules the resolver no longer keeps.
+
+        Scoped to the seasons present in this run's legacy row set and to
+        `legacy_id`-bearing rules only — UI-created rules (legacy_id NULL)
+        are never touched.
+        """
+        keep_ids: dict[str, set[str]] = defaultdict(set)
+        for row in kept_rows:
+            keep_ids[str(row.get("SeasonId"))].add(str(row["ID"]))
+        deleted = 0
+        seasons = {str(r["SeasonId"]) for r in legacy_rows if r.get("SeasonId") is not None}
+        for season in seasons:
+            card = RateCard.objects.filter(legacy_id=season).first()
+            if card is None:
+                continue
+            count, _ = (
+                RateRule.objects.filter(card=card, legacy_id__isnull=False)
+                .exclude(legacy_id__in=keep_ids[season])
+                .delete()
+            )
+            deleted += count
+        return deleted
+
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         card = RateCard.objects.filter(legacy_id=str(row.get("SeasonId") or "")).first()
         if card is None:
             return None
-        date_from = row.get("FromDate")
-        date_to = row.get("ToDate")
+        date_from = _as_date(row.get("FromDate"))
+        date_to = _as_date(row.get("ToDate"))
         if date_from is None or date_to is None:
             return None
-        if hasattr(date_from, "date"):
-            date_from = date_from.date()
-        if hasattr(date_to, "date"):
-            date_to = date_to.date()
         if date_to <= date_from:
             # Zero-length / inverted ranges violate raterule_date_from_lt_date_to.
             return None
@@ -165,10 +417,19 @@ class RateRuleLoader(BaseLoader):
             min_party, max_party = 1, max(cap, 1)
         else:
             min_party, max_party = party, party
-        nightly = _to_decimal(row.get("NightlyPrice"))
-        weekly = _to_decimal(row.get("WeeklyPrice"))
-        price = _to_decimal(row.get("Price"))
-        is_poa = bool(row.get("IsPOA"))
+        intervals = row.get("_party_intervals")
+        if intervals:
+            # The resolver clipped this row's party bracket; pick the first
+            # interval that survives the property's real capacity.
+            cap = max(card.plan.property.capacity.guests or 1, 1)
+            for low, high in intervals:
+                effective_high = cap if high is None else high
+                if low <= effective_high:
+                    min_party, max_party = low, effective_high
+                    break
+            else:
+                return None
+        nightly, weekly, price, is_poa = _row_prices(row)
         if not (nightly or weekly or price or is_poa):
             return None
         # If only Price is set, treat it as nightly.

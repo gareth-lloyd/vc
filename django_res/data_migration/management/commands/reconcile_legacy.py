@@ -157,7 +157,12 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra <> 1",
         RateRule,
         "RateRule",
-        expected_gap=3462,  # rows with no price (all-NULL, IsPOA=0) — unusable in legacy too.
+        # 3462 = the pre-resolver gap (priceless rows — unusable in legacy
+        # too — plus rows on the 67 unloaded seasons), + 265 rows dropped by
+        # load-time overlap resolution (fully covered by a winning row; 389
+        # total drops, but 124 sit on unloaded seasons and were already in
+        # the 3462). See CUTOVER.md "Rate rule overlap resolution".
+        expected_gap=3727,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaContactMapping",

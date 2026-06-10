@@ -19,6 +19,21 @@ SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# Fail fast (like SECRET_KEY above) instead of inheriting the repo-committed
+# dev defaults from base.py: the dev Fernet key and webhook secrets are
+# public, so a deploy that forgot these env vars would encrypt TOTP/SMTP/
+# OAuth secrets under a known key and accept forged payment webhooks.
+# DEPLOY ORDER: set these on the Render service (staging inherits this
+# module) BEFORE deploying this change — preDeployCommand imports settings.
+# Fernet rotation: FERNET_KEYS is "oldest decrypts, newest encrypts" — when
+# rotating away from the dev key, keep it in the list so existing rows still
+# decrypt (or reseed the demo DB).
+FERNET_KEYS = env.list("FERNET_KEYS")
+PAYMENT_WEBHOOK_SECRETS = {
+    "FLYWIRE": env.str("FLYWIRE_WEBHOOK_SECRET"),
+    "STRIPE": env.str("STRIPE_WEBHOOK_SECRET"),
+}
+
 # Email safety: production is the only environment that opens both gates.
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_REAL_SENDS_ALLOWED = True

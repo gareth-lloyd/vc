@@ -55,6 +55,9 @@ def test_production_opens_both_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     # Production settings demand these env vars at import time.
     monkeypatch.setenv("DJANGO_SECRET_KEY", "test-prod-key")
     monkeypatch.setenv("ALLOWED_HOSTS", "example.com")
+    monkeypatch.setenv("FERNET_KEYS", "wIZ6Ud8oONpJD0Q-uJ4UQAYBgr_xHsv_LBNw_xt4MhA=")
+    monkeypatch.setenv("FLYWIRE_WEBHOOK_SECRET", "test-flywire-secret")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "test-stripe-secret")
     _fresh_import("villacollective.settings.base")
     prod = _fresh_import("villacollective.settings.production")
     assert prod.EMAIL_BACKEND == SMTP

@@ -104,22 +104,24 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Uploaded / seeded media (e.g. PropertyImage), stored on local
-# FileSystemStorage and served by `core.middleware.MediaWhiteNoiseMiddleware`
-# (which mounts MEDIA_ROOT) in every environment. The `/media/` prefix keeps
-# uploads out of the SPA's root namespace so they don't collide with
-# client-side routes (`/properties/:id`); `villacollective.urls` excludes
-# `media/` from the SPA catch-all so a missing file 404s instead of returning
-# the shell. `test` settings override MEDIA_ROOT to a throwaway temp dir.
+# Uploaded / seeded media (e.g. PropertyImage). Locally (dev/test) it lives on
+# FileSystemStorage and is served by `core.middleware.MediaWhiteNoiseMiddleware`
+# (which mounts MEDIA_ROOT); the `/media/` prefix keeps uploads out of the
+# SPA's root namespace so they don't collide with client-side routes
+# (`/properties/:id`); `villacollective.urls` excludes `media/` from the SPA
+# catch-all so a missing file 404s instead of returning the shell. `test`
+# settings override MEDIA_ROOT to a throwaway temp dir.
 #
-# NOTE: WhiteNoise indexes files at boot; runtime-written media (a live
-# `seed_dev` run, a user upload) is only served when WHITENOISE_AUTOREFRESH is
-# on — default under DEBUG, enabled on staging. Production uploads at scale
-# should move to remote storage (see PropertyImageWriteSerializer's signed-URL
-# write path), which would replace the WhiteNoise media mount.
+# Staging/production override `STORAGES["default"]` to S3 (see production.py)
+# so media survives Render redeploys; the WhiteNoise media mount only matters
+# locally. WhiteNoise indexes files at boot, so runtime-written local media (a
+# live `seed_dev` run, a dev upload) is only served when
+# WHITENOISE_AUTOREFRESH is on — default under DEBUG.
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-STORAGES = {
+# Upload size cap enforced by the image write serializers.
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+STORAGES: dict[str, dict[str, object]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }

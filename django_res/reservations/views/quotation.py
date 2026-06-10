@@ -9,14 +9,12 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from core.exceptions import HoldUnavailable
-from pricing.services.currency import resolve_property_currency
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Quotation, QuotationLine
@@ -95,21 +93,17 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer: Any) -> None:
-        """Auto-create a minimal enquiry for agent-direct quotes (no enquiry).
+        """Create header + optional nested lines atomically via the service.
 
-        `Quotation.enquiry` is non-null; the write serializer keeps it optional
-        so an agent-direct quote can be saved without one. Here we mint the
-        minimal `AGENT_PORTAL` enquiry via the service so "every quote has an
-        enquiry" holds without a forced separate capture step.
+        `lines` is write-only sugar on the write serializer and shadows the
+        model related-name, so it must be popped before anything could reach
+        `serializer.save()`. The service also mints the minimal AGENT_PORTAL
+        enquiry for an agent-direct quote (no enquiry in the body), inside the
+        same transaction as the lines and their holds.
         """
-        if serializer.validated_data.get("enquiry") is None:
-            enquiry = QuotationService.minimal_enquiry_for(
-                serializer.validated_data["guest"],
-                agent=serializer.validated_data.get("agent"),
-            )
-            serializer.save(enquiry=enquiry)
-        else:
-            serializer.save()
+        header = dict(serializer.validated_data)
+        lines = header.pop("lines", [])
+        serializer.instance = QuotationService.create_with_lines(header, lines)
 
     def perform_update(self, serializer: Any) -> None:
         """Never null an existing quotation's enquiry.
@@ -321,42 +315,12 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         read = QuotationLineSerializer(serializer.instance)
         return Response(read.data)
 
-    @staticmethod
-    def _default_line_currency(property: Any) -> Any:
-        """Canonical line-currency default (GAP-014), or a 400."""
-        currency = resolve_property_currency(property)
-        if currency is None:
-            raise DRFValidationError(
-                {
-                    "currency": [
-                        "No currency resolvable for this property — supply one "
-                        "or configure a rate plan / settings currency."
-                    ]
-                }
-            )
-        return currency
-
     def perform_create(self, serializer: Any) -> None:
-        # Line + reprice + hold share one transaction: a `HoldUnavailable`
-        # (dates already held by another live quote) rolls the line back too,
-        # so we never persist a line without its protecting hold.
-        with transaction.atomic():
-            quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
-            extra: dict[str, Any] = {"quotation": quotation}
-            currency_supplied = serializer.validated_data.get("currency") is not None
-            if not currency_supplied:
-                # Canonical default (GAP-014); priced lines are re-stamped from
-                # the engine result in `_reprice` anyway — this is the manual-
-                # line (and pre-pricing) default, never blank.
-                extra["currency"] = self._default_line_currency(
-                    serializer.validated_data["property"]
-                )
-            line = serializer.save(**extra)
-            # An explicitly supplied currency is pinned: the engine exact-
-            # matches it (loud NoRateAvailable on a plan-currency mismatch);
-            # a defaulted one lets the plan's own currency win.
-            self._reprice(line, currency=line.currency if currency_supplied else None)
-            QuotationService.sync_line_hold(line)
+        # `QuotationService.add_line` owns the whole recipe — currency default,
+        # pricing (pinned iff a currency was supplied), hold placement — inside
+        # one transaction, shared with the atomic nested-lines create path.
+        quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
+        serializer.instance = QuotationService.add_line(quotation, dict(serializer.validated_data))
 
     def perform_update(self, serializer: Any) -> None:
         # Persist the edited fields (adults, discount, …) BEFORE repricing so
@@ -374,7 +338,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
                 # Priced lines are re-stamped by the unpinned reprice below;
                 # manual lines (which `_reprice` skips) re-default here so a
                 # re-anchored line can't keep the old villa's currency.
-                line.currency = self._default_line_currency(line.property)
+                line.currency = QuotationService.default_line_currency(line.property)
                 line.save(update_fields=["currency", "updated_at"])
             # Pin the line's currency on reprice so an edit (notes, discount,
             # dates) can never silently re-denominate it — a plan-currency

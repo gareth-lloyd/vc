@@ -1347,3 +1347,413 @@ def test_discount_change_writes_audit_log(
     audited = AuditLog.objects.filter(content_type=ct, object_id=str(line_pk))
     assert audited.exists()
     assert any("discount" in row.field_diffs for row in audited)
+
+
+# ---------------------------------------------------------------------------
+# Atomic create — POST /quotations with nested `lines` (header + lines +
+# pricing + holds, all-or-nothing). The header-then-lines two-step left a
+# half-populated draft when a line POST failed mid-fan-out.
+# ---------------------------------------------------------------------------
+
+
+def _second_property(template: Property) -> Property:
+    """A sibling villa on the same graph, for multi-line quotes."""
+    from properties.models import Property as PropertyModel
+
+    return PropertyModel.objects.create(
+        name="Second Villa",
+        display_name="Second Villa",
+        slug="second-villa",
+        category=template.category,
+        group=template.group,
+        region=template.region,
+    )
+
+
+@pytest.mark.django_db
+def test_create_quotation_with_lines_atomic_happy_path(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """One POST creates header + a priced and a manual line + their holds, and
+    echoes the detail shape with the server-priced values."""
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+    status_before = enquiry.status
+    second = _second_property(property_)
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                },
+                {
+                    "property": second.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                    "is_manual": True,
+                    "total": "5000.00",
+                    "price_override_reason": "Agreed rate",
+                    "currency": "GBP",
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    quotation = Quotation.objects.get()
+    assert response.data["id"] == quotation.pk
+    assert response.data["status"] == QuotationStatus.DRAFT
+    lines = response.data["lines"]
+    assert len(lines) == 2
+    priced = next(row for row in lines if not row["is_manual"])
+    manual = next(row for row in lines if row["is_manual"])
+    # 7 nights @ £200 = £1400, engine-priced with a populated snapshot.
+    assert Decimal(str(priced["total"])) == Decimal("1400.00")
+    assert priced["pricing_snapshot"] != {}
+    # Manual line keeps the operator total and its pinned currency.
+    assert Decimal(str(manual["total"])) == Decimal("5000.00")
+    assert manual["currency"] == "GBP"
+    # Both lines hold their dates, expiring with the quotation.
+    holds = BookingHold.objects.filter(quotation=quotation)
+    assert holds.count() == 2
+    for hold in holds:
+        assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
+        assert hold.expires_at == quotation.expires_at
+        assert hold.is_live() is True
+    # Saving a draft is not sending: the enquiry must NOT advance to QUOTED
+    # (that transition belongs to :send / :mark-manually-sent).
+    enquiry.refresh_from_db()
+    assert enquiry.status == status_before
+
+
+@pytest.mark.django_db
+def test_create_with_lines_invalid_line_is_nested_400_and_writes_nothing(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+    second = _second_property(property_)
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                },
+                # Manual line with no override reason — invalid.
+                {
+                    "property": second.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                    "is_manual": True,
+                    "total": "5000.00",
+                    "currency": "GBP",
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    # DRF nests many=True errors as a list aligned with the input rows.
+    assert "price_override_reason" in response.data["field_errors"]["lines"][1]
+    assert Quotation.objects.count() == 0
+    assert QuotationLine.objects.count() == 0
+    assert BookingHold.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_with_lines_rolls_back_on_hold_unavailable(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """An unavailable line fails the WHOLE save: no header, no sibling lines,
+    no holds — never a half-populated draft."""
+    from reservations.services.holds import HoldService
+
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+    second = _second_property(property_)
+    # Another live hold already owns the second villa's dates.
+    HoldService.place(
+        property=second,
+        date_from=date(2026, 6, 12),
+        date_to=date(2026, 6, 15),
+        never_expires=True,
+    )
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                },
+                {
+                    "property": second.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                    "is_manual": True,
+                    "total": "5000.00",
+                    "price_override_reason": "Agreed rate",
+                    "currency": "GBP",
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "hold_unavailable"
+    assert Quotation.objects.count() == 0
+    assert QuotationLine.objects.count() == 0
+    # Only the pre-existing hold survives — line 1's hold rolled back too.
+    assert BookingHold.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """The auto-minted enquiry (agent-direct: no `enquiry` in the body) is part
+    of the same transaction and must vanish with everything else."""
+    from reservations.models import Enquiry
+    from reservations.services.holds import HoldService
+
+    api_client.force_login(staff)
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 12),
+        date_to=date(2026, 6, 15),
+        never_expires=True,
+    )
+    enquiries_before = Enquiry.objects.count()
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert Quotation.objects.count() == 0
+    assert Enquiry.objects.count() == enquiries_before
+
+
+@pytest.mark.django_db
+def test_create_with_lines_nets_discount(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                    "discount": "150.00",
+                    "inclusions": "Welcome hamper",
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    row = response.data["lines"][0]
+    # Gross = 7 nights @ £200 = £1400; net = 1400 - 150 = 1250.
+    assert row["total"] == "1250.00"
+    assert row["discount"] == "150.00"
+    assert row["inclusions"] == "Welcome hamper"
+
+
+@pytest.mark.django_db
+def test_create_with_lines_pins_supplied_currency(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+    gbp: Currency,
+) -> None:
+    """An explicitly supplied currency exact-matches its plan even when a newer
+    plan in another currency would win an unpinned search (GAP-014)."""
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    # Newer effective_from — an unpinned pricing would prefer this plan.
+    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                    "currency": "GBP",
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    row = response.data["lines"][0]
+    assert row["currency"] == "GBP"
+    assert row["total"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_create_with_lines_records_changeover_shift(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A nested line off the changeover day is shifted exactly like the
+    per-line endpoint (GAP-007), and its hold spans the shifted dates."""
+    PropertySettings.objects.create(
+        property=property_,
+        changeover_day=PrefilledChangeOverDay.SAT.value,
+    )
+    api_client.force_login(staff)
+    enquiry = guest.enquiries.create()
+
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "enquiry": enquiry.pk,
+            "guest": guest.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+            "lines": [
+                {
+                    "property": property_.pk,
+                    "date_from": "2026-06-10",  # Wednesday
+                    "date_to": "2026-06-17",
+                    "adults": 2,
+                    "children": 0,
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    row = response.data["lines"][0]
+    assert row["date_from"] == "2026-06-13"  # next Saturday
+    assert row["date_to"] == "2026-06-20"
+    assert row["changeover_shifted_from"] == "2026-06-10"
+    hold = BookingHold.objects.get()
+    assert hold.date_from == date(2026, 6, 13)
+    assert hold.date_to == date(2026, 6, 20)
+
+
+@pytest.mark.django_db
+def test_patch_quotation_rejects_lines(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """`lines` is a create-only convenience — a PATCH must reject it loudly
+    rather than silently ignoring it."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}",
+        {"lines": []},
+        format="json",
+    )
+    assert response.status_code == 400, response.data
+    assert "lines" in response.data["field_errors"]

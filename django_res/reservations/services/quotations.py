@@ -130,6 +130,80 @@ class QuotationService:
         )
 
     @classmethod
+    def default_line_currency(cls, property: Any) -> Currency:
+        """Canonical line-currency default (GAP-014), or a 400."""
+        currency = resolve_property_currency(property)
+        if currency is None:
+            raise ValidationError(
+                {
+                    "currency": [
+                        "No currency resolvable for this property — supply one "
+                        "or configure a rate plan / settings currency."
+                    ]
+                }
+            )
+        return currency
+
+    @classmethod
+    def add_line(cls, quotation: Quotation, data: dict[str, Any]) -> QuotationLine:
+        """Create one line correctly: default currency, price, place its hold.
+
+        The single source of truth for API-shaped line creation —
+        `QuotationLineViewSet.perform_create` and `create_with_lines` both
+        funnel through here. `data` is `QuotationLineWriteSerializer`
+        validated_data. Line + reprice + hold share one transaction: a
+        `HoldUnavailable` (dates already held by another live quote) rolls the
+        line back too, so we never persist a line without its protecting hold.
+
+        An explicitly supplied currency is pinned: the engine exact-matches it
+        (loud `NoRateAvailable` on a plan-currency mismatch); a defaulted one
+        lets the plan's own currency win. Returns the priced row (re-read
+        under `select_for_update`, per FG-006) so callers see the
+        server-computed total / snapshot / shifted dates.
+        """
+        with transaction.atomic():
+            supplied_currency = data.get("currency")
+            create_kwargs = {**data, "quotation": quotation}
+            if supplied_currency is None:
+                create_kwargs["currency"] = cls.default_line_currency(data["property"])
+            line = QuotationLine.objects.create(**create_kwargs)
+            if not line.is_manual:
+                locked = (
+                    QuotationLine.objects.select_for_update()
+                    .select_related("property", "quotation")
+                    .get(pk=line.pk)
+                )
+                cls.price_line(quotation, locked, currency=supplied_currency)
+                line = locked
+            cls.sync_line_hold(line)
+            return line
+
+    @classmethod
+    @transaction.atomic
+    def create_with_lines(
+        cls,
+        header: dict[str, Any],
+        lines: list[dict[str, Any]],
+    ) -> Quotation:
+        """Atomic `POST /quotations` body: header + nested lines, all-or-nothing.
+
+        The builder's save path. Unlike `create_from_enquiry` this never
+        advances the enquiry — saving a draft is not sending; that transition
+        belongs to `:send` / `:mark-manually-sent`. An agent-direct header
+        (no enquiry) mints the minimal AGENT_PORTAL enquiry inside the same
+        transaction, so a failed line rolls it back too.
+        """
+        if header.get("enquiry") is None:
+            header = {
+                **header,
+                "enquiry": cls.minimal_enquiry_for(header["guest"], agent=header.get("agent")),
+            }
+        quotation = Quotation.objects.create(**header)
+        for line_data in lines:
+            cls.add_line(quotation, line_data)
+        return quotation
+
+    @classmethod
     @transaction.atomic
     def create_from_enquiry(
         cls,

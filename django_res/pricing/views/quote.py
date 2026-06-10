@@ -22,7 +22,17 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
-def _run_quote(*, property: Property, currency: Currency, data: dict[str, Any]) -> dict[str, Any]:
+def _resolve_currency(code: str) -> Currency | None:
+    """An explicit currency code → Currency (404 on unknown); blank → None,
+    which lets the engine price in the rate plan's own currency (GAP-014)."""
+    if not code:
+        return None
+    return get_object_or_404(Currency, code=code.upper())
+
+
+def _run_quote(
+    *, property: Property, currency: Currency | None, data: dict[str, Any]
+) -> dict[str, Any]:
     quote = PricingEngine.quote(
         property=property,
         date_from=data["date_from"],
@@ -43,7 +53,7 @@ class PricingQuoteView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         property_obj = get_object_or_404(Property, pk=data["property_id"])
-        currency = get_object_or_404(Currency, code=data["currency"].upper())
+        currency = _resolve_currency(data["currency"])
         breakdown = _run_quote(property=property_obj, currency=currency, data=data)
         return Response(breakdown)
 
@@ -55,7 +65,7 @@ class PricingQuoteBulkView(APIView):
         serializer = PricingQuoteBulkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        currency = get_object_or_404(Currency, code=data["currency"].upper())
+        currency = _resolve_currency(data["currency"])
         # Batch-load every requested property (with its images) up front so the
         # per-entry hero_image_url lookup doesn't fire a query per row.
         property_ids = [entry["property_id"] for entry in data["requests"]]

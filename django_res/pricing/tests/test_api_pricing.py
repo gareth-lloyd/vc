@@ -93,6 +93,123 @@ def test_pricing_quote_bulk_returns_all_requests(
 
 
 @pytest.mark.django_db
+def test_pricing_quote_without_currency_prices_in_plan_currency(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """GAP-014: currency omitted → priced in the rate plan's own currency."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/pricing:quote",
+        data={
+            "property_id": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 4,
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["currency_code"] == "GBP"
+    assert body["total"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_pricing_quote_bulk_mixed_currencies_all_price(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """GAP-014: a currency-less bulk quote prices a GBP villa and an EUR villa
+    in one batch — no `no_rate_available` from currency mismatch."""
+    from pricing.models import RateCard, RatePlan
+    from pricing.models import RateRule as RR
+
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    eur_villa = Property.objects.create(
+        name="EUR Villa",
+        display_name="EUR Villa",
+        slug="eur-villa",
+        category=property_.category,
+        group=property_.group,
+        region=property_.region,
+    )
+    plan2 = RatePlan.objects.create(
+        property=eur_villa,
+        name="Summer 2026",
+        currency=eur,
+        effective_from=date(2026, 1, 1),
+        effective_to=date(2026, 12, 31),
+    )
+    card2 = RateCard.objects.create(plan=plan2, name="Default", sort_order=0)
+    RR.objects.create(
+        card=card2,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("300.00"),
+    )
+
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 4,
+                },
+                {
+                    "property_id": eur_villa.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 4,
+                },
+            ],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    by_id = {q["property_id"]: q for q in response.json()["quotes"]}
+    assert by_id[property_.pk]["available"] is True
+    assert by_id[property_.pk]["currency_code"] == "GBP"
+    assert by_id[eur_villa.pk]["available"] is True
+    assert by_id[eur_villa.pk]["currency_code"] == "EUR"
+
+
+@pytest.mark.django_db
+def test_pricing_quote_unknown_explicit_currency_404s(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/pricing:quote",
+        data={
+            "property_id": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 4,
+            "currency": "XXX",
+        },
+        format="json",
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
 def test_discount_lookup_code_happy(
     api_client: APIClient,
     staff: User,

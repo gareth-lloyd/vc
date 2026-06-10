@@ -13,7 +13,9 @@ class PricingQuoteRequestSerializer(serializers.Serializer[None]):
     date_to = serializers.DateField()
     adults = serializers.IntegerField(min_value=1)
     children = serializers.IntegerField(required=False, default=0, min_value=0)
-    currency = serializers.CharField(max_length=3)
+    # Optional (GAP-014): omitted means "price in the rate plan's own
+    # currency"; supplying it keeps the explicit-currency exact match.
+    currency = serializers.CharField(max_length=3, required=False, allow_blank=True, default="")
     opt_in_extras = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,
@@ -39,4 +41,5 @@ class PricingQuoteBulkRequestSerializer(serializers.Serializer[None]):
     """Body for `POST /pricing:quote-bulk`."""
 
     requests = _BulkRequestEntrySerializer(many=True, allow_empty=False)
-    currency = serializers.CharField(max_length=3)
+    # Optional (GAP-014) — see PricingQuoteRequestSerializer.currency.
+    currency = serializers.CharField(max_length=3, required=False, allow_blank=True, default="")

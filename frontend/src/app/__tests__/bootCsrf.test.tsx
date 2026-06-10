@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -37,11 +37,16 @@ describe("boot CSRF prime", () => {
     await waitFor(() => expect(calls).toBe(1));
   });
 
-  it("still renders the route when the prime request fails", async () => {
+  it("still renders the route and warns when the prime request fails", async () => {
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.error()));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      renderWithProviders(tree(), { route: "/login" });
 
-    renderWithProviders(tree(), { route: "/login" });
-
-    await waitFor(() => expect(document.body.textContent).toContain("LOGIN"));
+      await waitFor(() => expect(document.body.textContent).toContain("LOGIN"));
+      await waitFor(() => expect(warn).toHaveBeenCalled());
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

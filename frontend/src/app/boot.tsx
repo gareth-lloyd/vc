@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
 import { resetAuthQueryCache } from "@/features/auth/resetAuthQueryCache";
-import { primeCsrf } from "@/features/auth/api";
+import { primeCsrfCookie } from "@/lib/api/client";
 import { useMe } from "@/features/auth/hooks";
 import { useAuthStore } from "@/features/auth/store";
 import { useOwnerMe } from "@/features/owner-portal/hooks";
@@ -18,10 +18,13 @@ export function BootGate() {
 
   // Prime the csrftoken cookie once per boot so a fresh browser's first
   // unsafe request (typically the login POST itself) isn't 403'd by
-  // CsrfViewMiddleware. Fire-and-forget: a failure degrades to the
-  // pre-prime behaviour, it must never block rendering.
+  // CsrfViewMiddleware. Fire-and-forget — the API client also self-heals by
+  // priming and replaying a CSRF-rejected request — but a failure here is
+  // the early signal that the endpoint is broken, so it must not be silent.
   useEffect(() => {
-    primeCsrf().catch(() => {});
+    void primeCsrfCookie().then((ok) => {
+      if (!ok) console.warn("csrf cookie prime failed; login may need a retry");
+    });
   }, []);
 
   if (isPublic) return <Outlet />;

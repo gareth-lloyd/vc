@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { ApiError } from "./errors";
 import { authChannel } from "./authChannel";
-import { apiGet, apiSend } from "./client";
+import { apiGet, apiSend, primeCsrfCookie } from "./client";
 
 const setCookie = (value: string) => {
   document.cookie = value;
@@ -74,6 +74,32 @@ describe("apiGet", () => {
   });
 });
 
+describe("primeCsrfCookie", () => {
+  it("returns true on 204", async () => {
+    server.use(http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 204 })));
+    await expect(primeCsrfCookie()).resolves.toBe(true);
+  });
+
+  it("returns false on a 401 without tripping the auth channel", async () => {
+    // e.g. a basic-auth-protected staging proxy; a background prime must
+    // never flip the app's auth state.
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({}, { status: 401 })));
+    const handler = vi.fn();
+    const unsubscribe = authChannel.onUnauthorized(handler);
+    try {
+      await expect(primeCsrfCookie()).resolves.toBe(false);
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("returns false on network error without throwing", async () => {
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.error()));
+    await expect(primeCsrfCookie()).resolves.toBe(false);
+  });
+});
+
 describe("apiSend", () => {
   it("sends X-CSRFToken from csrftoken cookie on unsafe verbs", async () => {
     setCookie("csrftoken=ABC123");
@@ -94,6 +120,93 @@ describe("apiSend", () => {
     server.use(http.delete("/api/v1/things/1", () => new HttpResponse(null, { status: 204 })));
     const result = await apiSend("DELETE", "/things/1");
     expect(result).toBeUndefined();
+  });
+
+  it("primes the cookie and replays once when CsrfViewMiddleware rejects (non-JSON 403)", async () => {
+    // Fresh browser racing the boot prime: no csrftoken cookie yet.
+    let posts = 0;
+    let primes = 0;
+    let tokenOnReplay: string | null = null;
+    server.use(
+      http.get("/api/v1/auth/csrf", () => {
+        primes += 1;
+        setCookie("csrftoken=FRESH"); // what the browser would do with Set-Cookie
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post("/api/v1/things", ({ request }) => {
+        posts += 1;
+        if (request.headers.get("x-csrftoken") !== "FRESH") {
+          return new HttpResponse("<html>CSRF verification failed</html>", {
+            status: 403,
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+        tokenOnReplay = request.headers.get("x-csrftoken");
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+
+    const result = await apiSend<{ id: number }>("POST", "/things", { name: "x" });
+
+    expect(result).toEqual({ id: 1 });
+    expect(primes).toBe(1);
+    expect(posts).toBe(2);
+    expect(tokenOnReplay).toBe("FRESH");
+  });
+
+  it("replays a CSRF-rejected request at most once", async () => {
+    let posts = 0;
+    server.use(
+      http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 204 })),
+      http.post("/api/v1/things", () => {
+        posts += 1;
+        return new HttpResponse("<html>CSRF verification failed</html>", {
+          status: 403,
+          headers: { "Content-Type": "text/html" },
+        });
+      }),
+    );
+
+    await expect(apiSend("POST", "/things", { name: "x" })).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(posts).toBe(2);
+  });
+
+  it("does not replay a JSON 403 (real permission denial)", async () => {
+    setCookie("csrftoken=ABC123");
+    let posts = 0;
+    server.use(
+      http.post("/api/v1/things", () => {
+        posts += 1;
+        return HttpResponse.json({ code: "forbidden", detail: "Nope" }, { status: 403 });
+      }),
+    );
+
+    await expect(apiSend("POST", "/things", { name: "x" })).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden",
+    });
+    expect(posts).toBe(1);
+  });
+
+  it("does not replay when the prime itself fails", async () => {
+    let posts = 0;
+    server.use(
+      http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 500 })),
+      http.post("/api/v1/things", () => {
+        posts += 1;
+        return new HttpResponse("<html>CSRF verification failed</html>", {
+          status: 403,
+          headers: { "Content-Type": "text/html" },
+        });
+      }),
+    );
+
+    await expect(apiSend("POST", "/things", { name: "x" })).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(posts).toBe(1);
   });
 
   it("serialises JSON body and sets Content-Type", async () => {

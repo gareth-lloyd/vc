@@ -101,6 +101,51 @@ class WebhookDispatcher:
             return existing, False
 
     @classmethod
+    def reclaim(
+        cls,
+        delivery: WebhookDelivery,
+        *,
+        raw_body: bytes,
+        headers: dict[str, str],
+        signature: str,
+    ) -> WebhookDelivery:
+        """Overwrite a signature-invalid delivery with a verified re-send.
+
+        Persist-first means a garbage POST can squat an `event_id` before the
+        genuine provider delivery arrives (it gets a 401, but the row stays).
+        When a *signature-valid* request later lands on that id, the stored
+        garbage is replaced with the verified body and processing state is
+        reset. Benign race: two concurrent reclaims are safe because
+        `process()` is delivery-level idempotent.
+        """
+        delivery.raw_body = raw_body.decode("utf-8", errors="replace")
+        delivery.headers = headers
+        delivery.signature = signature
+        delivery.signature_valid = True
+        delivery.received_at = timezone.now()
+        delivery.processed_at = None
+        delivery.processing_error = ""
+        delivery.save(
+            update_fields=[
+                "raw_body",
+                "headers",
+                "signature",
+                "signature_valid",
+                "received_at",
+                "processed_at",
+                "processing_error",
+                "updated_at",
+            ]
+        )
+        logger.info(
+            "webhook.delivery_reclaimed",
+            provider=delivery.provider,
+            event_id=delivery.event_id,
+            delivery_id=delivery.pk,
+        )
+        return delivery
+
+    @classmethod
     def verify_signature(cls, *, provider: str, raw_body: bytes, signature: str) -> bool:
         """HMAC-SHA256 verification over the raw body bytes.
 

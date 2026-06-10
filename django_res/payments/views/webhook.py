@@ -74,8 +74,9 @@ def webhook_view(request: HttpRequest, provider_slug: str) -> HttpResponse:
         signature=signature,
     )
 
-    if not created:
-        # Replay: short-circuit with the original outcome.
+    if not created and delivery.signature_valid:
+        # Replay of a verified delivery: short-circuit with the original
+        # outcome.
         return JsonResponse(
             {
                 "delivery_id": delivery.pk,
@@ -90,13 +91,32 @@ def webhook_view(request: HttpRequest, provider_slug: str) -> HttpResponse:
         raw_body=raw_body,
         signature=signature,
     )
-    delivery.signature_valid = signature_valid
-    delivery.save(update_fields=["signature_valid", "updated_at"])
 
     if not signature_valid:
+        # New row: record the failed verification. Existing squatted row:
+        # leave it as-is — never honour the replay short-circuit for a row
+        # that has not passed verification, or a garbage POST could
+        # permanently block the genuine delivery for this event_id.
+        if created:
+            delivery.signature_valid = False
+            delivery.save(update_fields=["signature_valid", "updated_at"])
         return JsonResponse(
             {"delivery_id": delivery.pk, "error": "invalid_signature"},
             status=401,
+        )
+
+    if created:
+        delivery.signature_valid = True
+        delivery.save(update_fields=["signature_valid", "updated_at"])
+    else:
+        # A verified request landed on an event_id squatted by an unverified
+        # POST: replace the stored garbage with this body and re-open
+        # processing.
+        delivery = WebhookDispatcher.reclaim(
+            delivery,
+            raw_body=raw_body,
+            headers=headers,
+            signature=signature,
         )
 
     # TODO: enqueue Celery `process_webhook_delivery.delay(delivery.pk)`.

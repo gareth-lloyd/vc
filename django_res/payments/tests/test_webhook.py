@@ -270,3 +270,92 @@ def test_process__failed_after_succeeded_records_error_not_transition(
     pending_payment.refresh_from_db()
     assert pending_payment.status == PaymentStatus.SUCCEEDED.value
     assert "out_of_order" in delivery.processing_error
+
+
+# ----------------------------------------------------------------------
+# View-level — event-id squatting and replay semantics.
+# ----------------------------------------------------------------------
+
+_WEBHOOK_URL = "/api/v1/webhooks/payments/flywire/"
+
+
+def _post(client: Any, body: bytes, *, event_id: str, signature: str) -> Any:
+    return client.post(
+        _WEBHOOK_URL,
+        data=body,
+        content_type="application/json",
+        HTTP_X_WEBHOOK_EVENT_ID=event_id,
+        HTTP_X_WEBHOOK_SIGNATURE=signature,
+    )
+
+
+@pytest.mark.django_db
+def test_view__unsigned_garbage_then_genuine_delivery_processes(
+    client: Any, pending_payment: Payment
+) -> None:
+    """An attacker squatting an event_id with a garbage unsigned POST must not
+    block the genuine signed delivery that arrives later."""
+    garbage = b'{"event_type": "paid", "amount": "0.01"}'
+    response = _post(client, garbage, event_id="ev-squat-1", signature="forged")
+    assert response.status_code == 401
+    delivery = WebhookDelivery.objects.get(provider="flywire", event_id="ev-squat-1")
+    assert delivery.signature_valid is False
+
+    genuine = json.dumps(
+        {
+            "event_id": "ev-squat-1",
+            "event_type": "paid",
+            "payment_reference": pending_payment.reference,
+            "amount": "420.00",
+            "currency": "GBP",
+        }
+    ).encode("utf-8")
+    response = _post(client, genuine, event_id="ev-squat-1", signature=_sign(genuine))
+
+    assert response.status_code == 200
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.SUCCEEDED.value
+    delivery.refresh_from_db()
+    assert delivery.signature_valid is True
+    assert pending_payment.reference in delivery.raw_body
+    assert WebhookDelivery.objects.filter(event_id="ev-squat-1").count() == 1
+
+
+@pytest.mark.django_db
+def test_view__replay_of_signature_valid_delivery_short_circuits(
+    client: Any, pending_payment: Payment
+) -> None:
+    body = json.dumps(
+        {
+            "event_id": "ev-replay-1",
+            "event_type": "paid",
+            "payment_reference": pending_payment.reference,
+            "amount": "420.00",
+            "currency": "GBP",
+        }
+    ).encode("utf-8")
+    first = _post(client, body, event_id="ev-replay-1", signature=_sign(body))
+    assert first.status_code == 200
+
+    second = _post(client, body, event_id="ev-replay-1", signature=_sign(body))
+
+    assert second.status_code == 200
+    assert second.json()["replay"] is True
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.SUCCEEDED.value
+    assert pending_payment.payment_events.filter(to_status="succeeded").count() == 1
+
+
+@pytest.mark.django_db
+def test_view__still_invalid_signature_on_squatted_row_returns_401(
+    client: Any, pending_payment: Payment
+) -> None:
+    garbage = b'{"event_type": "paid"}'
+    _post(client, garbage, event_id="ev-squat-2", signature="forged")
+
+    response = _post(client, garbage, event_id="ev-squat-2", signature="still-forged")
+
+    assert response.status_code == 401
+    delivery = WebhookDelivery.objects.get(event_id="ev-squat-2")
+    assert delivery.signature_valid is False
+    assert delivery.processed_at is None

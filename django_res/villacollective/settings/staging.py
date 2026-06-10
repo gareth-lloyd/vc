@@ -40,3 +40,12 @@ if not EMAIL_RECIPIENT_ALLOWLIST:
         "Staging requires EMAIL_RECIPIENT_ALLOWLIST to be set. "
         "Refusing to start with an empty allowlist + real SMTP backend."
     )
+
+# Staging runs no Celery worker/beat services (pointless expense for a demo
+# box) — tasks execute inline in the web process, same as test.py. The
+# trade-offs are acceptable here: SMTP sends add latency to the request that
+# triggers them, and beat's periodic sweeps (hold expiry, payment reminders,
+# iCal ingest, auto check-out) simply don't run.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_BROKER_URL = "memory://"

@@ -52,6 +52,15 @@ def test_staging_boots_without_allowed_hosts_env(
     assert staging.ALLOWED_HOSTS == [".onrender.com"]
 
 
+def test_staging_runs_celery_tasks_eagerly(
+    import_staging: Callable[[], ModuleType],
+) -> None:
+    """Staging has no worker/beat services (cost) — tasks must run inline."""
+    staging = import_staging()
+    assert staging.CELERY_TASK_ALWAYS_EAGER is True
+    assert staging.CELERY_TASK_EAGER_PROPAGATES is True
+
+
 def test_explicit_allowed_hosts_env_still_wins(
     import_staging: Callable[[], ModuleType], monkeypatch: pytest.MonkeyPatch
 ) -> None:

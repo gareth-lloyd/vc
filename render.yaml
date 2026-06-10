@@ -10,6 +10,12 @@ databases:
 services:
   # Single service: Django serves the REST API and the built SPA from one
   # origin (Docker multi-stage build). No separate static site, no CORS.
+  #
+  # No Celery worker / beat / Redis on staging — the staging settings module
+  # sets CELERY_TASK_ALWAYS_EAGER so tasks run inline in the web process
+  # (beat's periodic sweeps simply don't run on the demo box). Re-add the
+  # worker/beat/keyvalue services here when an environment needs real
+  # background processing; see git history for their previous definitions.
   - type: web
     name: villacollective-api
     runtime: docker
@@ -41,88 +47,3 @@ services:
       # guard against accidentally sending guest mail from the demo box.
       - key: EMAIL_RECIPIENT_ALLOWLIST
         sync: false
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: villacollective-redis
-          type: keyvalue
-          property: connectionString
-
-  # Celery broker. noeviction so Redis never silently drops queued jobs under
-  # memory pressure (the `requeue_stuck_emails` sweep is the durability
-  # backstop for an outright restart, not for eviction).
-  - type: keyvalue
-    name: villacollective-redis
-    region: frankfurt
-    plan: starter
-    ipAllowList: []
-    maxmemoryPolicy: noeviction
-
-  # Celery worker — same image as the web service, different command. Sends
-  # real guest email (decrypts SMTP creds, fires SMTP), so it needs the SAME
-  # settings module + secrets + recipient allowlist as web.
-  - type: worker
-    name: villacollective-worker
-    runtime: docker
-    region: frankfurt
-    plan: starter
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    autoDeploy: true
-    branch: main
-    dockerCommand: celery -A villacollective worker -l info --concurrency 2
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: villacollective-db
-          property: connectionString
-      # Share the web service's generated key so signing/sessions match.
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          name: villacollective-api
-          type: web
-          envVarKey: DJANGO_SECRET_KEY
-      - key: DJANGO_SETTINGS_MODULE
-        value: villacollective.settings.staging
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: villacollective-redis
-          type: keyvalue
-          property: connectionString
-      - key: EMAIL_RECIPIENT_ALLOWLIST
-        fromService:
-          name: villacollective-api
-          type: web
-          envVarKey: EMAIL_RECIPIENT_ALLOWLIST
-
-  # Celery beat — the periodic scheduler. MUST stay at a single instance:
-  # multiple beat replicas would double-fire every scheduled job. Does not
-  # serve traffic and never sends mail itself (it only enqueues), but the
-  # staging settings module refuses to boot with an empty allowlist, so it
-  # shares the web service's value.
-  - type: worker
-    name: villacollective-beat
-    runtime: docker
-    region: frankfurt
-    plan: starter
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    autoDeploy: true
-    branch: main
-    dockerCommand: celery -A villacollective beat -l info
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: villacollective-db
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          name: villacollective-api
-          type: web
-          envVarKey: DJANGO_SECRET_KEY
-      - key: DJANGO_SETTINGS_MODULE
-        value: villacollective.settings.staging
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: villacollective-redis
-          type: keyvalue
-          property: connectionString

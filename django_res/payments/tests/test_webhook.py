@@ -359,3 +359,127 @@ def test_view__still_invalid_signature_on_squatted_row_returns_401(
     delivery = WebhookDelivery.objects.get(event_id="ev-squat-2")
     assert delivery.signature_valid is False
     assert delivery.processed_at is None
+
+
+# ----------------------------------------------------------------------
+# Retry policy — transient errors propagate (Celery retries); permanent
+# ones are recorded; the sweeper requeues rows that never processed.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_process__unexpected_exception_propagates_and_leaves_unprocessed(
+    pending_payment: Payment, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A transient failure (DB hiccup mid-apply) must NOT be stamped as
+    processed — it has to stay retryable."""
+    body = json.dumps(
+        {
+            "event_id": "ev-transient-1",
+            "event_type": "paid",
+            "payment_reference": pending_payment.reference,
+            "amount": "420.00",
+            "currency": "GBP",
+        }
+    ).encode("utf-8")
+    delivery, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-transient-1",
+        raw_body=body,
+        headers={},
+        signature=_sign(body),
+    )
+    monkeypatch.setattr(
+        WebhookDispatcher,
+        "_apply",
+        classmethod(lambda cls, *a, **kw: (_ for _ in ()).throw(RuntimeError("db hiccup"))),
+    )
+
+    with pytest.raises(RuntimeError):
+        WebhookDispatcher.process(delivery)
+
+    delivery.refresh_from_db()
+    assert delivery.processed_at is None
+
+
+@pytest.mark.django_db
+def test_process__parse_error_is_permanent(db: None) -> None:
+    delivery, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-garbage-1",
+        raw_body=b"this is not json",
+        headers={},
+        signature="irrelevant",
+    )
+
+    WebhookDispatcher.process(delivery)
+
+    delivery.refresh_from_db()
+    assert delivery.processed_at is not None
+    assert delivery.processing_error != ""
+
+
+@pytest.mark.django_db
+def test_sweep_unprocessed_webhook_deliveries_requeues_stale_rows(
+    pending_payment: Payment,
+) -> None:
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from payments.tasks import sweep_unprocessed_webhook_deliveries
+
+    body = json.dumps(
+        {
+            "event_id": "ev-stale-1",
+            "event_type": "paid",
+            "payment_reference": pending_payment.reference,
+            "amount": "420.00",
+            "currency": "GBP",
+        }
+    ).encode("utf-8")
+    stale, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-stale-1",
+        raw_body=body,
+        headers={},
+        signature=_sign(body),
+    )
+    stale.signature_valid = True
+    stale.save(update_fields=["signature_valid"])
+    WebhookDelivery.objects.filter(pk=stale.pk).update(
+        received_at=timezone.now() - timedelta(minutes=20)
+    )
+
+    fresh, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-fresh-1",
+        raw_body=body,
+        headers={},
+        signature=_sign(body),
+    )
+    fresh.signature_valid = True
+    fresh.save(update_fields=["signature_valid"])
+
+    unsigned, _ = WebhookDispatcher.persist(
+        provider="flywire",
+        event_id="ev-unsigned-1",
+        raw_body=b"garbage",
+        headers={},
+        signature="bad",
+    )
+    WebhookDelivery.objects.filter(pk=unsigned.pk).update(
+        received_at=timezone.now() - timedelta(minutes=20)
+    )
+
+    requeued = sweep_unprocessed_webhook_deliveries()
+
+    assert requeued == 1
+    stale.refresh_from_db()
+    assert stale.processed_at is not None  # eager Celery processed it inline
+    pending_payment.refresh_from_db()
+    assert pending_payment.status == PaymentStatus.SUCCEEDED.value
+    fresh.refresh_from_db()
+    assert fresh.processed_at is None
+    unsigned.refresh_from_db()
+    assert unsigned.processed_at is None

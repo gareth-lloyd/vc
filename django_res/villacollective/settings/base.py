@@ -285,4 +285,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "comms.tasks.requeue_stuck_emails",
         "schedule": timedelta(minutes=10),
     },
+    "sweep-unprocessed-webhooks": {
+        "task": "payments.tasks.sweep_unprocessed_webhook_deliveries",
+        "schedule": timedelta(minutes=10),
+    },
 }

@@ -7,7 +7,7 @@ in production, or driven by beat (``send_payment_reminders``).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -53,16 +53,59 @@ SECURITY_DEPOSIT_OPEN_STATUSES: frozenset[str] = frozenset(
 )
 
 
-@shared_task
-def process_webhook_delivery(delivery_id: int) -> None:
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=6,
+)
+def process_webhook_delivery(self: Any, delivery_id: int) -> None:
     """Load a persisted delivery and apply its event.
 
-    TODO: add autoretry on transient exceptions + a Sentry alert after retry
-    exhaustion once the dispatcher's transient/permanent error taxonomy is
-    pinned down. `acks_late` already re-queues on a worker crash.
+    `WebhookDispatcher.process` records permanent failures (unparseable
+    body) in-band and re-raises transient ones — those drive the autoretry
+    backoff here. After exhaustion django-structlog's `task_failed` is the
+    alert, and `sweep_unprocessed_webhook_deliveries` is the safety net.
+    `acks_late` already re-queues on a worker crash.
     """
     delivery = WebhookDelivery.objects.get(pk=delivery_id)
+    if self.request.retries:
+        delivery.retry_count = self.request.retries
+        delivery.save(update_fields=["retry_count", "updated_at"])
     WebhookDispatcher.process(delivery)
+
+
+# Rows older than this without a processed_at stamp are presumed lost between
+# the view's enqueue and the broker (or stuck behind exhausted retries).
+WEBHOOK_SWEEP_GRACE = timedelta(minutes=15)
+WEBHOOK_SWEEP_RETRY_CAP = 8
+
+
+@shared_task
+def sweep_unprocessed_webhook_deliveries() -> int:
+    """Re-enqueue signature-valid deliveries that never finished processing.
+
+    Backstop for enqueues lost between persist and broker publish, and for
+    deliveries whose retries exhausted on a long transient outage. Rows at
+    the retry cap are counted as `stuck` (the ops signal) but left alone.
+    """
+    cutoff = timezone.now() - WEBHOOK_SWEEP_GRACE
+    base = WebhookDelivery.objects.filter(
+        signature_valid=True,
+        processed_at__isnull=True,
+        received_at__lt=cutoff,
+    )
+    stuck = base.filter(retry_count__gte=WEBHOOK_SWEEP_RETRY_CAP).count()
+    requeued = 0
+    for delivery_id in base.filter(
+        retry_count__lt=WEBHOOK_SWEEP_RETRY_CAP,
+    ).values_list("pk", flat=True):
+        process_webhook_delivery.delay(delivery_id)
+        requeued += 1
+    logger.info("webhook.sweep_batch", requeued=requeued, stuck=stuck)
+    return requeued
 
 
 @shared_task

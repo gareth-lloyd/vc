@@ -119,9 +119,10 @@ def webhook_view(request: HttpRequest, provider_slug: str) -> HttpResponse:
             signature=signature,
         )
 
-    # TODO: enqueue Celery `process_webhook_delivery.delay(delivery.pk)`.
-    # For now we process inline so the synchronous test suite can observe
-    # the side effects; production must run this off-thread.
-    process_webhook_delivery(delivery.pk)
+    # Off-thread so the provider isn't blocked on our business logic; tests
+    # run eager so .delay executes inline. The view runs outside any atomic
+    # block, so the row is committed before the broker publish — a worker
+    # can't race a not-yet-visible delivery.
+    process_webhook_delivery.delay(delivery.pk)
 
     return JsonResponse({"delivery_id": delivery.pk, "replay": False}, status=200)

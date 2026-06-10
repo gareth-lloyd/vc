@@ -194,10 +194,13 @@ class WebhookDispatcher:
                     event_id=delivery.event_id,
                     payment_id=payment.pk,
                 )
-        except Exception as exc:
+        except ValueError as exc:
+            # Permanent: malformed body / unknown provider (`_parse` raises
+            # ValueError). Record and stamp processed — retrying can't fix a
+            # body that doesn't parse. Anything else (DB hiccup, deadlock) is
+            # transient and PROPAGATES so the Celery task's autoretry — and
+            # ultimately the sweeper — can re-process the delivery.
             delivery.processing_error = str(exc)
-            # The contract is fail-soft (store the error, set processed_at, never
-            # raise) — but a swallowed webhook error was previously invisible.
             logger.exception(
                 "webhook.process_failed",
                 provider=delivery.provider,

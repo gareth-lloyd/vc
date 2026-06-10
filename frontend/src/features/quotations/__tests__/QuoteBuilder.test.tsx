@@ -265,6 +265,60 @@ describe("QuoteBuilder", () => {
     expect(await screen.findByText(/7 nights/i)).toBeInTheDocument();
   });
 
+  it("stages a no-rate villa as a manual line and saves it with total, reason and currency", async () => {
+    // Q-013: legacy NO RATE villas stay quotable with an operator-typed price.
+    const lineBodies: Array<Record<string, unknown>> = [];
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: false,
+              error_code: "no_rate_available",
+              error_detail: "No rate rule covers these dates.",
+              currency_code: "EUR",
+              hero_image_url: null,
+            },
+          ],
+        }),
+      ),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", () =>
+        HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 }),
+      ),
+      http.post("/api/v1/quotations/50/lines", async ({ request }) => {
+        lineBodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ id: 1 }, { status: 201 });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    // Flagged in the main list with the manual-add affordance.
+    expect(await screen.findByText(/incomplete pricing/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /add manually/i }));
+
+    // Staged manual + auto-expanded; commit blocked until total + reason filled.
+    expect(screen.getByRole("button", { name: /save draft/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/manual total/i), "5000");
+    await userEvent.type(screen.getByLabelText(/reason for price override/i), "Priced by phone");
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(lineBodies).toHaveLength(1));
+    expect(lineBodies[0]).toMatchObject({
+      property: 7,
+      is_manual: true,
+      total: "5000.00",
+      price_override_reason: "Priced by phone",
+      currency: "EUR",
+    });
+  });
+
   it("runs save then opens the send-preview dialog for Send to guest", async () => {
     server.use(
       ...mockSaveFlow(),

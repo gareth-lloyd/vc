@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,6 +20,19 @@ export function QuoteCart({ lines, onUpdateLine, onRemove, onSaveDraft, onSendTo
   const { t } = useTranslation("quotations");
   const hasRole = useHasReservationsRole();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Auto-expand a no-rate manual line exactly once, when it is first staged,
+  // so the operator lands on the total/reason inputs they must fill. Track
+  // seen ids in a ref — keying off `lines` alone would re-expand a line the
+  // user has deliberately collapsed on every later edit.
+  const seenIds = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const line of lines) {
+      if (seenIds.current.has(line.property_id)) continue;
+      seenIds.current.add(line.property_id);
+      if (line.is_manual && line.total == null) setExpandedId(line.property_id);
+    }
+  }, [lines]);
 
   const anyInvalid = lines.some((line) => !isStagedLineValid(line));
 

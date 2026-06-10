@@ -127,27 +127,39 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
 
           <div className="space-y-2">
             <CheckboxLabel>
+              {/* A no-rate line has no engine total to fall back to: un-ticking
+                  would strand it permanently invalid, so the box locks on. */}
               <Checkbox
                 checked={line.is_manual}
+                disabled={line.manual_only}
                 onCheckedChange={(v) => onUpdate({ is_manual: v === true })}
               />
               <span>{t("builder.cart.line.manual")}</span>
             </CheckboxLabel>
-            <p className="text-muted-foreground text-xs">{t("builder.cart.line.manual_hint")}</p>
+            <p className="text-muted-foreground text-xs">
+              {line.manual_only
+                ? t("builder.cart.line.manual_locked_hint")
+                : t("builder.cart.line.manual_hint")}
+            </p>
           </div>
 
           {line.is_manual ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor={fieldId("total")}>{t("builder.cart.line.total")}</Label>
-                <Input
-                  id={fieldId("total")}
-                  type="text"
-                  inputMode="decimal"
-                  value={line.total == null ? "" : String(line.total)}
-                  aria-invalid={errors.total != null}
-                  onChange={(e) => onUpdate({ total: e.target.value })}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id={fieldId("total")}
+                    type="text"
+                    inputMode="decimal"
+                    value={line.total == null ? "" : String(line.total)}
+                    aria-invalid={errors.total != null}
+                    onChange={(e) => onUpdate({ total: e.target.value })}
+                  />
+                  {line.currency ? (
+                    <span className="text-muted-foreground shrink-0 text-sm">{line.currency}</span>
+                  ) : null}
+                </div>
                 {errors.total ? (
                   <p className="text-destructive text-xs" role="alert">
                     {t(errors.total)}

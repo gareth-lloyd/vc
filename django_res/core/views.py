@@ -148,10 +148,12 @@ def spa_index(request: HttpRequest) -> FileResponse:
     client-side routes return the SPA shell. Wired as the URLconf catch-all
     *after* `/api/`, `/admin/`, `/static/`.
 
-    `@ensure_csrf_cookie` is load-bearing: the first session-authenticated
-    POST (typically `/auth/login`) needs the `csrftoken` cookie already set,
-    otherwise `CsrfViewMiddleware` rejects it and the user has to submit
-    twice — the failed first submit is what primes the cookie.
+    `@ensure_csrf_cookie` primes the `csrftoken` cookie with the HTML shell:
+    the first session-authenticated POST (typically `/auth/login`) needs it
+    already set, otherwise `CsrfViewMiddleware` rejects it and the user has
+    to submit twice. The SPA additionally primes via `GET /auth/csrf`
+    (`accounts.views.CsrfView`) on boot, which also covers the Vite dev
+    server origin where this view never runs.
 
     `settings.SPA_ROOT` is read per-request so tests can override it and so
     a build-less local checkout (Vite proxy serves the SPA) cleanly 404s

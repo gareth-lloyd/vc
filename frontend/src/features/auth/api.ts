@@ -11,6 +11,10 @@ import {
   type UserMe,
 } from "./schemas";
 
+export async function primeCsrf(): Promise<void> {
+  await apiGet<void>("/auth/csrf");
+}
+
 export async function fetchMe(): Promise<UserMe> {
   const data = await apiGet<unknown>("/auth/me");
   return userMeSchema.parse(data);

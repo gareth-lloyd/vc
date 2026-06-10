@@ -139,6 +139,9 @@ STORAGES: dict[str, dict[str, object]] = {
 # POST is 403'd by CsrfViewMiddleware — the recurring "log in twice" bug. With
 # it off, every HTML entry point falls through to `spa_index`, which primes
 # the cookie; WhiteNoise still serves `/assets/*` and the literal `/index.html`.
+# The SPA also primes explicitly via `GET /api/v1/auth/csrf` on boot
+# (`accounts.views.CsrfView`), which covers origins where Django never serves
+# the HTML at all (the Vite dev server on :5173).
 SPA_ROOT = BASE_DIR / "frontend_dist"
 WHITENOISE_INDEX_FILE = False
 if SPA_ROOT.is_dir():

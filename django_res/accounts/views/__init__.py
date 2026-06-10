@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from accounts.views.auth import (
     AuthSessionViewSet,
+    CsrfView,
     LoginView,
     LogoutView,
     MagicLinkConsumeView,
@@ -41,6 +42,7 @@ __all__ = [
     "ContactPhoneViewSet",
     "ContactPropertiesView",
     "ContactViewSet",
+    "CsrfView",
     "LoginView",
     "LogoutView",
     "MagicLinkConsumeView",

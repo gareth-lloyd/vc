@@ -4,6 +4,9 @@ export const defaultHandlers = [
   http.get("/api/v1/auth/me", () =>
     HttpResponse.json({ detail: "Unauthenticated" }, { status: 401 }),
   ),
+  // BootGate fires this on every mount (CSRF cookie prime); always-on so
+  // unrelated tests don't trip onUnhandledRequest.
+  http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 204 })),
 ];
 
 // The block dialogs read a property's calendar to grey out occupied days in the

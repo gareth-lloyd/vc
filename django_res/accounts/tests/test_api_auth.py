@@ -63,6 +63,41 @@ def test_login_with_wrong_password_returns_401(api_client: APIClient, user: User
     assert response.json()["code"] == "invalid_credentials"
 
 
+def test_csrf_prime_sets_cookie_for_anonymous(api_client: APIClient) -> None:
+    response = api_client.get("/api/v1/auth/csrf")
+
+    assert response.status_code == 204
+    assert "csrftoken" in response.cookies
+
+
+def test_csrf_prime_then_login_succeeds_with_enforced_csrf(db: None, password: str) -> None:
+    """A fresh browser that primes via /auth/csrf can log in first try.
+
+    `enforce_csrf_checks=True` makes the test client behave like a real
+    browser against CsrfViewMiddleware — without the prime, the first
+    login POST 403s (the historical "log in twice" bug).
+    """
+    user = User.objects.create_user(
+        email="fresh@example.com",
+        password=password,
+        first_name="Fresh",
+        last_name="Browser",
+    )
+    client = APIClient(enforce_csrf_checks=True)
+
+    prime = client.get("/api/v1/auth/csrf")
+    token = prime.cookies["csrftoken"].value
+
+    response = client.post(
+        "/api/v1/auth/login",
+        {"email": user.email, "password": password},
+        format="json",
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+
+
 @pytest.mark.django_db
 def test_logout_clears_session(api_client: APIClient, user: User) -> None:
     api_client.force_login(user)

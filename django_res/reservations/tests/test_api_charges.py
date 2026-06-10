@@ -113,6 +113,9 @@ def test_charge_crud(api_client: APIClient, staff: User, booking: Booking) -> No
     item = BookingChargeItem.objects.get()
     assert item.amount == Decimal("150.00")
     assert item.currency == booking.currency
+    # Writes respond with the read representation, so the FE can use the row.
+    assert create.data["id"] == item.pk
+    assert create.data["currency_code"] == "GBP"
 
     listing = api_client.get(f"/api/v1/bookings/{booking.pk}/charge-items")
     assert listing.data["count"] == 1
@@ -124,6 +127,8 @@ def test_charge_crud(api_client: APIClient, staff: User, booking: Booking) -> No
         format="json",
     )
     assert patch.status_code == 200, patch.data
+    assert patch.data["id"] == item.pk
+    assert patch.data["amount"] == "-75.00"
     item.refresh_from_db()
     assert item.amount == Decimal("-75.00")
 

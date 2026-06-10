@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from reservations.models import Booking, BookingChargeItem
@@ -38,6 +40,26 @@ class BookingChargeItemViewSet(viewsets.ModelViewSet):
         if self.action in ("create", "update", "partial_update"):
             return BookingChargeItemWriteSerializer
         return BookingChargeItemSerializer
+
+    # Writes accept the write serializer but respond with the read
+    # representation (id, currency_code, timestamps) so the FE can parse
+    # the result without a follow-up fetch.
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            BookingChargeItemSerializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(BookingChargeItemSerializer(serializer.instance).data)
 
     def perform_create(self, serializer: Any) -> None:
         booking = get_object_or_404(Booking, pk=self.kwargs["booking_pk"])

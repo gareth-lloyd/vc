@@ -239,7 +239,20 @@ class QuotationDetailSerializer(QuotationListSerializer):
 
 
 class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
-    """Header write body. Status is action-driven."""
+    """Header write body. Status is action-driven.
+
+    Optional nested `lines` (create only) make the builder's save atomic:
+    header + lines + pricing + holds succeed or fail as one transaction
+    (`QuotationService.create_with_lines`). The two-step header-then-lines
+    flow left a half-populated draft when a line POST failed mid-fan-out.
+    The per-line endpoints remain for editing an existing quotation.
+    """
+
+    # Shares every per-line rule (manual total/reason, blank-total coercion,
+    # ISO-code currency) with POST /quotations/{id}/lines. The name shadows
+    # the model's `lines` related-name, so the view MUST pop it from
+    # `validated_data` before any `serializer.save()` path.
+    lines = QuotationLineWriteSerializer(many=True, required=False, write_only=True)
 
     class Meta:
         model = Quotation
@@ -250,8 +263,18 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
             "is_unbranded",
             "expires_at",
             "terms_version",
+            "lines",
         ]
         # `enquiry` is non-null on the model, but agent-direct quotes arrive
-        # without one — the view auto-creates a minimal enquiry in that case
-        # (see QuotationViewSet.perform_create). Keep it optional on the wire.
+        # without one — the service auto-creates a minimal enquiry in that case
+        # (see QuotationService.create_with_lines). Keep it optional on the wire.
         extra_kwargs = {"enquiry": {"required": False, "allow_null": True}}
+
+    def validate(self, attrs: dict) -> dict:
+        # Create-only: an update path has no atomic-save story for nested
+        # lines, so reject loudly rather than silently dropping them.
+        if self.instance is not None and "lines" in attrs:
+            raise serializers.ValidationError(
+                {"lines": ["Lines can only be supplied on create — edit via the lines endpoints."]}
+            )
+        return attrs

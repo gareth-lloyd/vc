@@ -242,14 +242,6 @@ export async function createQuotation(body: QuotationWriteInput): Promise<Quotat
   return quotationDetailSchema.parse(data);
 }
 
-export async function createQuotationLine(
-  quotationId: QuotationId,
-  body: QuotationLineWriteInput,
-): Promise<QuotationLine> {
-  const data = await apiSend<unknown>("POST", `/quotations/${quotationId}/lines`, body);
-  return quotationLineSchema.parse(data);
-}
-
 export async function updateQuotationLine(
   quotationId: QuotationId,
   lineId: number,

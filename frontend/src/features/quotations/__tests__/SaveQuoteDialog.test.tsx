@@ -41,39 +41,32 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
   };
 }
 
-function mockSaveEndpoints(
-  captureLineBody: (body: Record<string, unknown>) => void,
-  captureQuotationBody?: (body: Record<string, unknown>) => void,
-) {
+// The save is ONE atomic POST: header + nested lines. Per-line assertions
+// read `body.lines[i]`.
+function mockSaveEndpoints(captureQuotationBody: (body: Record<string, unknown>) => void) {
   server.use(
     http.get("/api/v1/terms-versions/current", () =>
       HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
     ),
     http.post("/api/v1/quotations", async ({ request }) => {
-      captureQuotationBody?.((await request.json()) as Record<string, unknown>);
+      captureQuotationBody((await request.json()) as Record<string, unknown>);
       return HttpResponse.json({ id: 50, reference: "Q-50", status: "draft" }, { status: 201 });
     }),
-    http.post("/api/v1/quotations/50/lines", async ({ request }) => {
-      captureLineBody((await request.json()) as Record<string, unknown>);
-      return HttpResponse.json({ id: 1 }, { status: 201 });
-    }),
   );
+}
+
+function linesOf(body: Record<string, unknown>): Record<string, unknown>[] {
+  return body.lines as Record<string, unknown>[];
 }
 
 afterEach(() => server.resetHandlers());
 
 describe("SaveQuoteDialog", () => {
   it("posts no header currency and pins each line's own priced currency", async () => {
-    let lineBody: Record<string, unknown> | null = null;
     let quotationBody: Record<string, unknown> | null = null;
-    mockSaveEndpoints(
-      (body) => {
-        lineBody = body;
-      },
-      (body) => {
-        quotationBody = body;
-      },
-    );
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
 
     renderWithProviders(
       <SaveQuoteDialog
@@ -87,16 +80,16 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
+    await waitFor(() => expect(quotationBody).not.toBeNull());
     // Currency lives per line (GAP-014) — the header write carries none.
     expect(quotationBody).not.toHaveProperty("currency");
-    expect(lineBody).toMatchObject({ currency: "GBP" });
+    expect(linesOf(quotationBody!)[0]).toMatchObject({ currency: "GBP" });
   });
 
   it("omits the line currency when the option priced without one", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     // A manual line staged from an unpriceable option carries no currency —
@@ -120,14 +113,14 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
-    expect(lineBody).not.toHaveProperty("currency");
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    expect(linesOf(quotationBody!)[0]).not.toHaveProperty("currency");
   });
 
   it("posts the operator's requested dates, leaving the backend as the single changeover shifter", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     // Requested 1–8 Jul, but the engine priced the changeover-day stay from 4 Jul.
@@ -143,10 +136,10 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
+    await waitFor(() => expect(quotationBody).not.toBeNull());
     // The requested dates go to the server, NOT the pre-shifted priced ones —
     // the backend re-derives and records the changeover shift on save.
-    expect(lineBody).toMatchObject({
+    expect(linesOf(quotationBody!)[0]).toMatchObject({
       property: 7,
       date_from: "2026-07-01",
       date_to: "2026-07-08",
@@ -154,9 +147,9 @@ describe("SaveQuoteDialog", () => {
   });
 
   it("persists the per-line discount and inclusions instead of zeroing them", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     renderWithProviders(
@@ -171,22 +164,23 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const line = linesOf(quotationBody!)[0];
     // Regression: the builder used to hardcode discount "0" / inclusions "".
-    expect(lineBody).toMatchObject({
+    expect(line).toMatchObject({
       discount: "150.00",
       inclusions: "Welcome hamper",
       is_manual: false,
     });
     // Non-manual lines omit the manual-only fields entirely.
-    expect(lineBody).not.toHaveProperty("total");
-    expect(lineBody).not.toHaveProperty("price_override_reason");
+    expect(line).not.toHaveProperty("total");
+    expect(line).not.toHaveProperty("price_override_reason");
   });
 
   it("normalises a comma-typed discount to a canonical 2-dp decimal", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     renderWithProviders(
@@ -201,15 +195,15 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
+    await waitFor(() => expect(quotationBody).not.toBeNull());
     // The wire always gets "1000.00", never the raw "1,000" the user typed.
-    expect(lineBody).toMatchObject({ discount: "1000.00" });
+    expect(linesOf(quotationBody!)[0]).toMatchObject({ discount: "1000.00" });
   });
 
   it("never persists a discount on a manual line", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     // A discount was typed before the operator toggled the line to manual.
@@ -232,16 +226,20 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
+    await waitFor(() => expect(quotationBody).not.toBeNull());
     // Regression (#5): the server skips re-pricing manual lines, so a stale
     // discount would be stored yet never applied. Force it to "0".
-    expect(lineBody).toMatchObject({ is_manual: true, discount: "0", total: "5000.00" });
+    expect(linesOf(quotationBody!)[0]).toMatchObject({
+      is_manual: true,
+      discount: "0",
+      total: "5000.00",
+    });
   });
 
   it("sends total + reason for a manual-override line", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     renderWithProviders(
@@ -262,8 +260,8 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(lineBody).not.toBeNull());
-    expect(lineBody).toMatchObject({
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    expect(linesOf(quotationBody!)[0]).toMatchObject({
       is_manual: true,
       total: "5000.00",
       price_override_reason: "Agreed rate",
@@ -271,9 +269,9 @@ describe("SaveQuoteDialog", () => {
   });
 
   it("blocks save when a manual line is missing its total/reason", async () => {
-    let lineBody: Record<string, unknown> | null = null;
+    let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {
-      lineBody = body;
+      quotationBody = body;
     });
 
     renderWithProviders(
@@ -288,9 +286,99 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    // The pre-save gate fires before any line POST.
+    // The pre-save gate fires before the POST.
     expect(await screen.findByText(/missing its total or reason/i)).toBeInTheDocument();
-    expect(lineBody).toBeNull();
+    expect(quotationBody).toBeNull();
+  });
+
+  it("surfaces nested per-line server errors in the banner, not just 'Validation failed'", async () => {
+    server.use(
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: {
+              lines: [{}, { price_override_reason: ["This field is required for a manual line."] }],
+            },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine()]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    expect(await screen.findByText(/required for a manual line/i)).toBeInTheDocument();
+  });
+
+  it("retries after a failed save without duplicating the created guest", async () => {
+    let guestPosts = 0;
+    let quotationPosts = 0;
+    server.use(
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/guests", () => {
+        guestPosts += 1;
+        return HttpResponse.json(
+          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { status: 201 },
+        );
+      }),
+      // First save attempt fails after the guest exists; the retry succeeds.
+      http.post("/api/v1/quotations", () => {
+        quotationPosts += 1;
+        if (quotationPosts === 1) {
+          return HttpResponse.json(
+            { code: "validation_error", detail: "Boom", field_errors: {} },
+            { status: 400 },
+          );
+        }
+        return HttpResponse.json({ id: 50, reference: "Q-50", status: "draft" }, { status: 201 });
+      }),
+    );
+
+    const unattached = {
+      id: 99,
+      reference: "ENQ-99",
+      guest: null,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.com",
+    } as unknown as EnquiryDetail;
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={unattached}
+        lines={[stagedLine()]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    expect(await screen.findByText(/boom/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(quotationPosts).toBe(2));
+    // The guest created on attempt #1 is reused, never duplicated.
+    expect(guestPosts).toBe(1);
   });
 
   it("passes the enquiry's phone through and never fabricates a synthetic email", async () => {
@@ -309,7 +397,6 @@ describe("SaveQuoteDialog", () => {
       http.post("/api/v1/quotations", () =>
         HttpResponse.json({ id: 50, reference: "Q-50", status: "draft" }, { status: 201 }),
       ),
-      http.post("/api/v1/quotations/50/lines", () => HttpResponse.json({ id: 1 }, { status: 201 })),
     );
 
     // Unattached, phone-only enquiry (no email captured at lead time).
@@ -401,7 +488,6 @@ describe("SaveQuoteDialog", () => {
       http.post("/api/v1/quotations", () =>
         HttpResponse.json({ id: 50, reference: "Q-50", status: "draft" }, { status: 201 }),
       ),
-      http.post("/api/v1/quotations/50/lines", () => HttpResponse.json({ id: 1 }, { status: 201 })),
     );
   }
 

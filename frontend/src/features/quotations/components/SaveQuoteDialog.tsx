@@ -14,9 +14,9 @@ import { Label } from "@/components/ui/label";
 import { useQueryClient } from "@tanstack/react-query";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
+import { apiErrorMessage } from "@/lib/api/forms";
 import { toDecimalString } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
-import { createQuotationLine } from "../api";
 import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
 import { isStagedLineValid } from "../lineTotals";
 import type { QuotationDetail, QuotationLineWriteInput, StagedLine } from "../schemas";
@@ -38,6 +38,40 @@ function defaultExpiresAt(): string {
   return d.toISOString();
 }
 
+// One staged cart line → the wire shape nested under the create body's
+// `lines`. `total`/`price_override_reason` ride only on the manual path
+// (decimal fields can't take an empty string); the server prices non-manual
+// lines and nets the discount. A manual line never carries a discount: the
+// field is disabled in the cart and the server skips re-pricing manual lines,
+// so a stale discount would be stored yet never applied — send "0". Money is
+// normalised to canonical 2-dp decimals ("1,000" → "1000.00").
+function toLineWriteBody(line: StagedLine): QuotationLineWriteInput {
+  const body: QuotationLineWriteInput = {
+    property: line.property_id,
+    // The operator's requested dates, NOT the pre-shifted priced ones — the
+    // backend is the single changeover shifter and records the move on save.
+    date_from: line.date_from,
+    date_to: line.date_to,
+    adults: line.adults,
+    children: line.children,
+    discount: line.is_manual ? "0" : (toDecimalString(line.discount) ?? "0"),
+    inclusions: line.inclusions,
+    is_manual: line.is_manual,
+    notes: line.notes,
+  };
+  // Pin the currency the option was priced in (GAP-014). A line without one
+  // (e.g. unpriceable) omits it so the backend resolves its canonical
+  // per-property default.
+  if (line.currency) {
+    body.currency = line.currency;
+  }
+  if (line.is_manual) {
+    body.total = toDecimalString(line.total) ?? "";
+    body.price_override_reason = line.price_override_reason;
+  }
+  return body;
+}
+
 export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }: Props) {
   const { t } = useTranslation("quotations");
 
@@ -49,13 +83,17 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
   const qc = useQueryClient();
   const createGuest = useCreateGuest();
   const createQuotation = useCreateQuotation();
-  const [linesSaving, setLinesSaving] = useState(false);
-  const submitting = createGuest.isPending || createQuotation.isPending || linesSaving;
+  // Remembers a guest created by a failed save attempt so a retry reuses it
+  // instead of creating a duplicate (the enquiry cache still says `guest:
+  // null` until the save succeeds and invalidates it).
+  const [createdGuestId, setCreatedGuestId] = useState<number | null>(null);
+  const submitting = createGuest.isPending || createQuotation.isPending;
 
   useEffect(() => {
     if (open) {
       setExpiresAt(defaultExpiresAt());
       setTopLevelError(null);
+      setCreatedGuestId(null);
     }
   }, [open]);
 
@@ -69,9 +107,9 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
       setTopLevelError(t("builder.save.errors.no_lines"));
       return;
     }
-    // Final gate before the parallel line-POST fan-out: an invalid manual line
-    // (missing total/reason) would 400 mid-flight and leave a half-populated
-    // quotation. The cart already blocks Save, but guard here too.
+    // The save is atomic server-side, so an invalid line can no longer leave
+    // a half-populated quotation — this gate is pure UX: an instant banner
+    // instead of a round-trip 400. The cart already blocks Save; guard again.
     if (!lines.every(isStagedLineValid)) {
       setTopLevelError(t("builder.save.errors.invalid_line"));
       return;
@@ -83,7 +121,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
     }
 
     try {
-      let guestId = enquiry.guest;
+      let guestId = enquiry.guest ?? createdGuestId;
       if (guestId == null) {
         // An active guest must be reachable by at least one channel (mirrors
         // the server CHECK). No synthetic email — pass through whatever the
@@ -110,10 +148,13 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
           ...(enquiry.phone ? { phone: enquiry.phone } : {}),
           ...(carryContactMethod ? { contact_method: carryContactMethod } : {}),
         });
+        setCreatedGuestId(guest.id);
         guestId = guest.id;
       }
 
-      // No header currency (GAP-014) — currency lives per line.
+      // One atomic POST: header + lines + pricing + holds succeed or fail
+      // together server-side — never a half-populated draft. No header
+      // currency (GAP-014) — currency lives per line.
       const quotation = await createQuotation.mutateAsync({
         enquiry: enquiry.id,
         guest: guestId,
@@ -121,59 +162,13 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
         is_unbranded: false,
         expires_at: expiresAt,
         terms_version: terms.id,
+        lines: lines.map(toLineWriteBody),
       });
 
-      setLinesSaving(true);
-      try {
-        await Promise.all(
-          lines.map((line) => {
-            // Mirror LineEditDialog's wire shape: decimal fields can't take an
-            // empty string, so `total`/`price_override_reason` ride only on the
-            // manual path; the server prices non-manual lines and nets the
-            // discount. Persist the operator's real per-line edits — the old
-            // hardcoded `discount:"0"`/`inclusions:""` silently dropped them.
-            //
-            // A manual line never carries a discount: the field is disabled in
-            // the cart and the server skips re-pricing manual lines, so a stale
-            // discount would be stored yet never applied. Send "0" for those.
-            // Otherwise normalise the typed value to a canonical 2-dp decimal
-            // (`parseMoney` strips any thousands separators) so the wire always
-            // gets "1000.00", never the raw "1,000" the user may have typed.
-            const discount = line.is_manual ? "0" : (toDecimalString(line.discount) ?? "0");
-            const body: QuotationLineWriteInput = {
-              property: line.property_id,
-              date_from: line.date_from,
-              date_to: line.date_to,
-              adults: line.adults,
-              children: line.children,
-              discount,
-              inclusions: line.inclusions,
-              is_manual: line.is_manual,
-              notes: line.notes,
-            };
-            // Pin the currency the option was priced in (GAP-014). A line
-            // without one (e.g. unpriceable) omits it so the backend resolves
-            // its canonical per-property default.
-            if (line.currency) {
-              body.currency = line.currency;
-            }
-            if (line.is_manual) {
-              body.total = toDecimalString(line.total) ?? "";
-              body.price_override_reason = line.price_override_reason;
-            }
-            return createQuotationLine(quotation.id, body);
-          }),
-        );
-      } finally {
-        setLinesSaving(false);
-      }
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(quotation.id) });
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(quotation.id) });
       // The enquiry detail carries the inline quote-stack, so a freshly-created
       // draft must refresh it (the workspace renders the new quote in place
-      // without a reload). `useCreateQuotation` only invalidates the quotations
-      // list/badges; the enquiry view is invalidated here, once the lines exist,
-      // so the refetch sees the quote with its priced lines.
+      // without a reload). `useCreateQuotation` already invalidates the
+      // quotations list/badges; the brand-new detail has no cached entries.
       qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(enquiry.id) });
 
       toast.success(t("builder.save.toasts.success"));
@@ -181,7 +176,9 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
       onOpenChange(false);
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
-        setTopLevelError(error.detail);
+        // Include nested per-line messages — the bare detail for a nested 400
+        // is just "Validation failed".
+        setTopLevelError(apiErrorMessage(error));
       } else {
         toast.error(t("builder.save.errors.unknown"));
       }

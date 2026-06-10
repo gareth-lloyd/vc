@@ -181,17 +181,6 @@ export interface StagedLine {
   notes: string;
 }
 
-// Header write — what `POST /quotations` accepts.
-export const quotationWriteInputSchema = z.object({
-  enquiry: z.number().int().nullable(),
-  guest: z.number().int(),
-  agent: z.number().int().nullable().optional(),
-  is_unbranded: z.boolean().optional().default(false),
-  expires_at: z.string(),
-  terms_version: z.number().int(),
-});
-export type QuotationWriteInput = z.infer<typeof quotationWriteInputSchema>;
-
 // Line write — what `POST/PATCH /quotations/{id}/lines` accepts.
 // Decimal fields (`discount`, `total`) travel as strings to avoid float
 // drift through DRF's DecimalField. When `is_manual` is on, the server
@@ -233,6 +222,21 @@ export const quotationLineWriteInputSchema = z
     message: i18n.t("quotations:schema_errors.manual_total_required"),
   });
 export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSchema>;
+
+// Header write — what `POST /quotations` accepts. Optional nested `lines`
+// (create only) make the builder's save atomic: header + lines + pricing +
+// holds succeed or fail as one request, so a mid-save failure can never leave
+// a half-populated draft.
+export const quotationWriteInputSchema = z.object({
+  enquiry: z.number().int().nullable(),
+  guest: z.number().int(),
+  agent: z.number().int().nullable().optional(),
+  is_unbranded: z.boolean().optional().default(false),
+  expires_at: z.string(),
+  terms_version: z.number().int(),
+  lines: z.array(quotationLineWriteInputSchema).optional(),
+});
+export type QuotationWriteInput = z.infer<typeof quotationWriteInputSchema>;
 
 // Current terms version — returned by GET /terms-versions/current.
 export const termsVersionSchema = z.object({

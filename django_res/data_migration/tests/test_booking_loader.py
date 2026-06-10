@@ -9,7 +9,7 @@ falls to a non-numeric `VC-TMP-…` sentinel, never a bare `VC{int}`.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -56,7 +56,9 @@ def _row(**overrides: object) -> dict[str, object]:
         "FromDate": date(2026, 6, 10),
         "ToDate": date(2026, 6, 17),
         "RentalPrice": Decimal("1400.00"),
-        "BalanceDue": Decimal("700.00"),
+        # Legacy `VillaBooking.BalanceDue` is a DATETIME (the date the balance
+        # falls due), not money — see ResSystem VillaBooking.cs.
+        "BalanceDue": datetime(2026, 5, 15, 0, 0),
         "CurrencyId": 2,
         "QuotationNo": 1805,
     }
@@ -83,6 +85,34 @@ def test_booking_without_quotationno_uses_interim_sentinel(seeded: Property) -> 
 
     booking = Booking.objects.get(legacy_id="7")
     assert booking.reference.startswith("VC-TMP")
+
+
+@pytest.mark.django_db
+def test_booking_money_fields_map_gross_and_due_date(seeded: Property) -> None:
+    """`balance_due` is the rebuild's denormalised gross total (RentalPrice).
+
+    Legacy `BalanceDue` is a datetime — the date the balance falls due — and
+    maps to `balance_due_at`. The old guard (`isinstance(..., Decimal)`) could
+    never pass, so every migrated booking landed with balance_due=0 and the
+    staff UI rendered "Total 0.00 / Paid in full" for the whole legacy book.
+    """
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.rental_price == Decimal("1400.00")
+    assert booking.balance_due == Decimal("1400.00")
+    assert booking.balance_due_at == date(2026, 5, 15)
+
+
+@pytest.mark.django_db
+def test_booking_balance_due_at_absent_when_legacy_date_missing(seeded: Property) -> None:
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(BalanceDue=None), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.balance_due == Decimal("1400.00")
+    assert booking.balance_due_at is None
 
 
 @pytest.mark.django_db

@@ -123,6 +123,15 @@ class BookingLoader(BaseLoader):
             },
         )
 
+        # Legacy `VillaBooking.BalanceDue` is a DATETIME — the date the
+        # balance falls due — not money (VillaBooking.cs). It feeds
+        # `balance_due_at`; the rebuild's `balance_due` is the denormalised
+        # guest-facing gross total (07-payments.md), which for legacy rows is
+        # the RentalPrice.
+        balance_due_at = row.get("BalanceDue")
+        if balance_due_at is not None and hasattr(balance_due_at, "date"):
+            balance_due_at = balance_due_at.date()
+
         defaults: dict[str, Any] = {
             "quotation_line": line,
             "guest": guest,
@@ -133,9 +142,8 @@ class BookingLoader(BaseLoader):
             "children": 0,
             "currency": currency,
             "rental_price": _decimal(row.get("RentalPrice")) or Decimal("0"),
-            "balance_due": _decimal(row.get("BalanceDue"))
-            if isinstance(row.get("BalanceDue"), Decimal)
-            else Decimal("0"),
+            "balance_due": _decimal(row.get("RentalPrice")) or Decimal("0"),
+            "balance_due_at": balance_due_at,
             "status": BookingStatus.DRAFT,
             "terms_version": terms,
             "terms_accepted_at": timezone.now(),

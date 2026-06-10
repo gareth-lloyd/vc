@@ -220,6 +220,16 @@ describe("AvailabilityTab", () => {
     expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
   });
 
+  it("shows booked state on adjacent-month days in the grid", async () => {
+    // May 2026 starts on a Friday, so the grid leads with 27–30 April.
+    installBaseHandlers();
+    installCalendar([{ date: "2026-04-28", available: false, reason: "booked", block_id: null }]);
+
+    setup();
+
+    expect(await screen.findByLabelText(/28 April: Booked/i)).toBeInTheDocument();
+  });
+
   it("navigates between months", async () => {
     installBaseHandlers();
     installCalendar([]);

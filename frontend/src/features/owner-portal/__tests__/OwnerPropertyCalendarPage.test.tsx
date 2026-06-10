@@ -130,6 +130,28 @@ describe("OwnerPropertyCalendarPage block requests", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows booked state on adjacent-month days in the grid", async () => {
+    // May 2026 starts on a Friday, so the grid leads with 27–30 April.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 4, 15));
+    try {
+      mockEndpoints();
+      server.use(
+        http.get("/api/v1/owner/properties/3/calendar", () =>
+          HttpResponse.json({
+            property_id: 3,
+            can_request_block: true,
+            cells: [{ date: "2026-04-28", available: false, reason: "booked" }],
+          }),
+        ),
+      );
+      renderPage();
+      expect(await screen.findByLabelText(/28 April: Booked/i)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders a single-night block without a date range", async () => {
     mockEndpoints({
       requests: [blockRequest({ date_from: "2026-08-01", date_to: "2026-08-02" })],

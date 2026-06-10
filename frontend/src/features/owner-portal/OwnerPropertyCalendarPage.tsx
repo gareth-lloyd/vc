@@ -1,17 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
-  format,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek,
-  subMonths,
-} from "date-fns";
+import { format } from "date-fns";
 import { ChevronLeft, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -21,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ApiError } from "@/lib/api/errors";
 import { formatNightRange } from "@/lib/format/date";
+import { cellsByDate, useMonthGrid, WEEKDAYS } from "@/lib/monthGrid";
 import { nightRangeParts } from "@/lib/nights";
 import { BlockRequestDialog } from "./BlockRequestDialog";
 import {
@@ -35,7 +26,6 @@ import type { OwnerBlockRequest, OwnerCalendarCell } from "./schemas";
 // are terminal.
 const CANCELLABLE_STATUSES: ReadonlySet<OwnerBlockRequest["status"]> = new Set(["approved"]);
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const CELL_BASE = "flex h-10 w-full items-center justify-center rounded text-sm";
 
 type CellKind = "available" | "booked" | "hold";
@@ -77,26 +67,18 @@ export function OwnerPropertyCalendarPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const propertyId = id ? Number(id) : undefined;
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
 
   const property = useOwnerProperty(propertyId);
 
-  const { windowStart, windowEnd, days } = useMemo(() => {
-    const ws = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: 1 });
-    const we = endOfWeek(endOfMonth(viewMonth), { weekStartsOn: 1 });
-    return { windowStart: ws, windowEnd: we, days: eachDayOfInterval({ start: ws, end: we }) };
-  }, [viewMonth]);
-
-  const from = format(windowStart, "yyyy-MM-dd");
-  const to = format(windowEnd, "yyyy-MM-dd");
+  const { viewMonth, days, from, to, isCurrentMonth, goToPreviousMonth, goToNextMonth, goToToday } =
+    useMonthGrid();
   const calendar = useOwnerPropertyCalendar(propertyId, from, to);
 
-  const cellByIso = useMemo(() => {
-    const map = new Map<string, OwnerCalendarCell>();
-    for (const cell of calendar.data?.cells ?? []) map.set(cell.date, cell);
-    return map;
-  }, [calendar.data]);
+  const cellByIso = useMemo(
+    () => cellsByDate<OwnerCalendarCell>(calendar.data?.cells),
+    [calendar.data],
+  );
 
   const title = property.data?.display_name || property.data?.name || t("calendar.title");
 
@@ -145,7 +127,7 @@ export function OwnerPropertyCalendarPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setViewMonth((m) => subMonths(m, 1))}
+            onClick={goToPreviousMonth}
             aria-label={t("calendar.prev_month")}
           >
             &#x25C0;
@@ -156,12 +138,12 @@ export function OwnerPropertyCalendarPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setViewMonth((m) => addMonths(m, 1))}
+            onClick={goToNextMonth}
             aria-label={t("calendar.next_month")}
           >
             &#x25B6;
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setViewMonth(startOfMonth(new Date()))}>
+          <Button variant="ghost" size="sm" onClick={goToToday}>
             {t("calendar.today")}
           </Button>
         </div>
@@ -191,15 +173,10 @@ export function OwnerPropertyCalendarPage() {
             ))}
             {days.map((day) => {
               const iso = format(day, "yyyy-MM-dd");
-              const inMonth = isSameMonth(day, viewMonth);
               const dayNum = format(day, "d");
-              if (!inMonth) {
-                return (
-                  <div key={iso} className={`${CELL_BASE} text-muted-foreground/40`}>
-                    {dayNum}
-                  </div>
-                );
-              }
+              // Adjacent-month days render with real availability state (the
+              // query window is week-aligned), just dimmed.
+              const base = isCurrentMonth(day) ? CELL_BASE : `${CELL_BASE} opacity-40`;
               const cell = cellByIso.get(iso);
               const dateLabel = format(day, "d MMMM");
               if (cell?.segments) {
@@ -208,7 +185,7 @@ export function OwnerPropertyCalendarPage() {
                 return (
                   <div
                     key={iso}
-                    className={`${CELL_BASE} relative overflow-hidden p-0`}
+                    className={`${base} relative overflow-hidden p-0`}
                     aria-label={t("calendar.cell_aria_split", {
                       date: dateLabel,
                       am: t(`calendar.legend.${am}`),
@@ -225,7 +202,7 @@ export function OwnerPropertyCalendarPage() {
               return (
                 <div
                   key={iso}
-                  className={`${CELL_BASE} ${kindClasses(kind)}`}
+                  className={`${base} ${kindClasses(kind)}`}
                   aria-label={t("calendar.cell_aria", {
                     date: dateLabel,
                     status: t(`calendar.legend.${kind}`),

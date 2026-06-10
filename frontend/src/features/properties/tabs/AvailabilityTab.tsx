@@ -1,18 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useOutletContext } from "react-router-dom";
-import {
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  eachDayOfInterval,
-  addMonths,
-  subMonths,
-  format,
-  isSameMonth,
-  parseISO,
-} from "date-fns";
+import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { cellsByDate, useMonthGrid, WEEKDAYS } from "@/lib/monthGrid";
 import {
   usePropertyAvailabilityCalendar,
   usePropertyBookingsForRange,
@@ -41,8 +31,6 @@ import {
 interface AvailabilityContext {
   property: PropertyDetail;
 }
-
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 // Reasons that carry an operator-editable block (the server only sets
 // block_id for these).
@@ -87,19 +75,12 @@ export function AvailabilityTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<AvailabilityContext>();
   const canWrite = useHasReservationsRole();
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<EditableBlock | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const { windowStart, windowEnd, days } = useMemo(() => {
-    const ws = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: 1 });
-    const we = endOfWeek(endOfMonth(viewMonth), { weekStartsOn: 1 });
-    return { windowStart: ws, windowEnd: we, days: eachDayOfInterval({ start: ws, end: we }) };
-  }, [viewMonth]);
-
-  const from = format(windowStart, "yyyy-MM-dd");
-  const to = format(windowEnd, "yyyy-MM-dd");
+  const { viewMonth, days, from, to, isCurrentMonth, goToPreviousMonth, goToNextMonth, goToToday } =
+    useMonthGrid();
 
   const calendar = usePropertyAvailabilityCalendar(property.id, from, to);
   const bookings = usePropertyBookingsForRange(property.id, from, to);
@@ -109,11 +90,10 @@ export function AvailabilityTab() {
   const holds = usePropertyHolds(canWrite ? property.id : undefined, from, to);
   const deleteMutation = useDeletePropertyBlock(property.id);
 
-  const cellByIso = useMemo(() => {
-    const map = new Map<string, AvailabilityCell>();
-    for (const cell of calendar.data?.cells ?? []) map.set(cell.date, cell);
-    return map;
-  }, [calendar.data]);
+  const cellByIso = useMemo(
+    () => cellsByDate<AvailabilityCell>(calendar.data?.cells),
+    [calendar.data],
+  );
 
   const bookingIdByIso = useMemo(() => {
     const map = new Map<string, number>();
@@ -181,7 +161,7 @@ export function AvailabilityTab() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setViewMonth((m) => subMonths(m, 1))}
+            onClick={goToPreviousMonth}
             aria-label={t("availability.prev_month")}
           >
             &#x25C0;
@@ -192,12 +172,12 @@ export function AvailabilityTab() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setViewMonth((m) => addMonths(m, 1))}
+            onClick={goToNextMonth}
             aria-label={t("availability.next_month")}
           >
             &#x25B6;
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setViewMonth(startOfMonth(new Date()))}>
+          <Button variant="ghost" size="sm" onClick={goToToday}>
             {t("availability.today")}
           </Button>
         </div>
@@ -233,16 +213,10 @@ export function AvailabilityTab() {
           ))}
           {days.map((day) => {
             const iso = format(day, "yyyy-MM-dd");
-            const inMonth = isSameMonth(day, viewMonth);
             const dayNum = format(day, "d");
-
-            if (!inMonth) {
-              return (
-                <div key={iso} className={`${CELL_BASE} text-muted-foreground/40`}>
-                  {dayNum}
-                </div>
-              );
-            }
+            // Adjacent-month days render with real availability state (the
+            // query window is week-aligned), just dimmed.
+            const base = isCurrentMonth(day) ? CELL_BASE : `${CELL_BASE} opacity-40`;
 
             const cell = cellByIso.get(iso);
             const reason = cell && !cell.available ? cell.reason : "";
@@ -253,7 +227,7 @@ export function AvailabilityTab() {
               return (
                 <div
                   key={iso}
-                  className={`${CELL_BASE} relative overflow-hidden p-0`}
+                  className={`${base} relative overflow-hidden p-0`}
                   aria-label={t("availability.cell_aria_split", {
                     date: dateLabel,
                     am: reasonLabel(am.reason),
@@ -276,7 +250,7 @@ export function AvailabilityTab() {
                   <Link
                     key={iso}
                     to={`/bookings/${bookingId}`}
-                    className={`${CELL_BASE} ${reasonClasses("booked")}`}
+                    className={`${base} ${reasonClasses("booked")}`}
                     title={t("availability.booked_title")}
                   >
                     {dayNum}
@@ -286,7 +260,7 @@ export function AvailabilityTab() {
               return (
                 <div
                   key={iso}
-                  className={`${CELL_BASE} ${reasonClasses("booked")}`}
+                  className={`${base} ${reasonClasses("booked")}`}
                   aria-label={t("availability.cell_aria", {
                     date: dateLabel,
                     status: reasonLabel("booked"),
@@ -299,7 +273,7 @@ export function AvailabilityTab() {
 
             if (reason === "") {
               return (
-                <div key={iso} className={`${CELL_BASE} text-foreground`}>
+                <div key={iso} className={`${base} text-foreground`}>
                   {dayNum}
                 </div>
               );
@@ -310,7 +284,7 @@ export function AvailabilityTab() {
               canWrite && blockId != null && EDITABLE_REASONS.has(reason)
                 ? holdById.get(blockId)
                 : undefined;
-            const cellClassName = `${CELL_BASE} ${reasonClasses(reason)}${
+            const cellClassName = `${base} ${reasonClasses(reason)}${
               block ? " cursor-pointer" : ""
             }`;
             const cellAria = t("availability.cell_aria", {

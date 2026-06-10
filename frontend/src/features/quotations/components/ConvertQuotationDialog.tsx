@@ -112,7 +112,7 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
                 {t("detail.dialogs.convert.no_lines")}
               </p>
             ) : (
-              <div className="space-y-2" role="radiogroup">
+              <div className="max-h-[40dvh] space-y-2 overflow-y-auto pr-1" role="radiogroup">
                 {(lines ?? []).map((line) => {
                   const inputId = `convert-line-${line.id}`;
                   return (

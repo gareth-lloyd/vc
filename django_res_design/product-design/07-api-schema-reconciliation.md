@@ -41,10 +41,10 @@ Status legend:
 - **Decision (Option C — middle ground):**
   1. Adopt a **three-level** model: **`RatePlan` (= Season) → `RateCard` → `RateRule`**.
   2. `RateCard` is added as the operator-mental unit (name, min/max nights, changeover, sort order). It has no prices of its own.
-  3. `RateRule` is the price row (date range, party range, nightly/weekly, priority). One per (date sub-range × party-size band) inside a card. Sibling rules sharing a date range with disjoint `(min_party, max_party)` express occupancy bands; sibling rules sharing party range with disjoint dates express multi-range cards.
+  3. `RateRule` is the price row (date range, party range, nightly/weekly). One per (date sub-range × party-size band) inside a card. Sibling rules sharing a date range with disjoint `(min_party, max_party)` express occupancy bands; sibling rules sharing party range with disjoint dates express multi-range cards.
   4. `SeasonDateRange` is **not** a separate table/resource — vestigial in production.
   5. `OccupancyBand` is **not** a separate table/resource — vestigial in production.
-  6. The `EXCLUDE` GIST constraint on `RateRule` is scoped to `card_id` instead of `plan_id`. Cross-card overlap is allowed and resolved by `priority` in `PricingEngine.quote()`.
+  6. The `EXCLUDE` GIST constraint on `RateRule` is scoped to `card_id` instead of `plan_id`. Cross-card overlap is allowed and resolved by card order (`RateCard.sort_order`) in `PricingEngine.quote()` — the per-rule `priority` field was deleted (2026-06-10, `10-decisions.md`).
   7. `Discount` FK moves from `RatePlan` to `RateCard` (with property-level fallback when `card` is null for property-wide promo codes). Adds `rule_kind` TextChoices (`LENGTH_OF_STAY`, `EARLY_BIRD`, `LAST_MINUTE`, `REPEAT_GUEST`, `PROMO_CODE`) and `threshold_days`.
   8. **API renames:**
      - Keep `/properties/{id}/seasons`, `/seasons/{id}` — operator-facing term.

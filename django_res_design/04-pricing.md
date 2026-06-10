@@ -95,7 +95,6 @@ The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` �
 - `date_to` — DateField
 - `min_party` — PositiveSmallInteger(default=1)
 - `max_party` — PositiveSmallInteger
-- `priority` — PositiveSmallInteger(default=0) — higher wins on overlap
 - `nightly` — Decimal(12, 2, null=True, blank=True)
 - `weekly` — Decimal(12, 2, null=True, blank=True)
 - `is_poa` — BooleanField(default=False)
@@ -114,9 +113,9 @@ Constraints (Postgres):
 - `CheckConstraint(date_from <= date_to)`
 - `CheckConstraint(min_party <= max_party)`
 - `CheckConstraint(nightly IS NOT NULL OR weekly IS NOT NULL OR is_poa)` — must have a price or be POA
-- `EXCLUDE USING gist (card_id WITH =, daterange(date_from, date_to, '[]') WITH &&, int4range(min_party, max_party, '[]') WITH &&, priority WITH =)` — prevents accidental same-tier overlap within a card; different priorities are allowed and disambiguated by the engine. Cross-card overlap is allowed (and resolved by `priority` at quote time, walking through all cards in the plan).
+- `EXCLUDE USING gist (card_id WITH =, daterange(date_from, date_to, '[]') WITH &&, int4range(min_party, max_party, '[]') WITH &&)` (`raterule_no_overlap`) — within-card overlap (inclusive dates × party brackets) is forbidden unconditionally; disjoint occupancy bands on the same dates remain legal siblings. Cross-card overlap is allowed and resolved by **card order** (`sort_order`, then `pk`) at quote time — the first card with a covering rule wins. There is no per-rule precedence field: legacy had no precedence concept to mirror (its overlap winner was an unordered `TOP 1`), and the data-migration loader resolves legacy overlaps at load time (`data_migration/CUTOVER.md` "Rate rule overlap resolution").
 
-Index: `(card, date_from, date_to)`, `(card, priority DESC)`.
+Index: `(card, date_from, date_to)`.
 
 `RateRuleSerializer.validate()` mirrors all of the above (including the
 EXCLUDE overlap, with inclusive-range semantics) so API writes that would
@@ -400,7 +399,7 @@ Steps:
    we don't). The original arrival is surfaced as `Quote.changeover_shifted_from`
    (`None` when no shift). An off-changeover arrival is **never rejected** — it is
    always shifted and surfaced; there is no override flag and no hard-reject gate.
-2. Resolve the pricing context: `_load_real_context` returns the (plan, cards, rules) triple from a real plan covering the whole stay, or `None`. On `None` (and unless `allow_projection=False`), fall through to `RateProjectionService.project()`, which returns an equivalent in-memory triple synthesized from the anchor year with `Quote.is_projected=True`; if that is also `None`, raise `NoRateAvailable`. Because a real plan must span the whole stay, real always beats projected. Then for each night in range: walk all `RateCard`s in the (real or projected) plan; within each card, filter `RateRule`s by `is_approved=True`, then pick the highest-priority rule matching date + party. **Tie-break:** equal `priority` is resolved by the most-specific date range (narrowest `date_to - date_from`), then by `id` descending. The card whose rule has the highest priority wins overall (cross-card ties broken by `card.sort_order`). Validate the resulting card's `min_nights` / `max_nights` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` if the matched card's length-of-stay constraints fail. (Changeover is handled entirely in step 1a — cards carry no changeover constraint.)
+2. Resolve the pricing context: `_load_real_context` returns the (plan, cards, rules) triple from a real plan covering the whole stay, or `None`. On `None` (and unless `allow_projection=False`), fall through to `RateProjectionService.project()`, which returns an equivalent in-memory triple synthesized from the anchor year with `Quote.is_projected=True`; if that is also `None`, raise `NoRateAvailable`. Because a real plan must span the whole stay, real always beats projected. Then for each night in range: walk all `RateCard`s in the (real or projected) plan in `(sort_order, pk)` order; within each card, filter `RateRule`s by `is_approved=True`. The **first card** with a rule covering both the night and the party wins — later cards never override it, however narrow their rules. Within-card duplicates are impossible in the DB (`raterule_no_overlap`); in-memory projected rules can collide after Feb-29 date mapping and resolve to the lowest `pk`. Validate the resulting card's `min_nights` / `max_nights` against the stay. Raise `NoRateAvailable` if no card matches; raise `MinNightsNotMet` if the matched card's length-of-stay constraints fail. (Changeover is handled entirely in step 1a — cards carry no changeover constraint.)
    - **No-coverage fallback (GAP-008):** if no rule covers a night at all
      (`NoCoverage`) and the plan sets `RatePlan.fallback_nightly`, the night is
      priced at that opt-in rate via a synthetic `QuoteLine` with

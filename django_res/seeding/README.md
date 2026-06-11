@@ -65,6 +65,34 @@ in `ChangeoverService.effective_day`, so an `ANY` rule would silently
 un-constrain the villa. `happy` leaves the dial empty: no changeover days, all
 cards stay `min_nights=1`.
 
+## Realistic pricing (mixed / chaos)
+
+`realistic_pricing` (helpers in `seeding/_pricing_helpers.py`, calibrated
+from the April-2025 legacy snapshot) replaces the factory's flat 250/400/650
+rule with the legacy book's shape:
+
+- **Price levels**: per-currency log-normal nightly draws (EUR median ~2,100,
+  GBP ~1,220, USD ~3,825) clamped to the observed extremes.
+- **Seasonal structure**: three `Low`/`Mid`/`Peak` cards (×0.7 / ×1.0 / ×1.5;
+  a few villas widen to ×0.3 / ×3.0) with month-run rules partitioning the
+  whole plan window gap-free — no stay the booking stages generate can hit
+  `NoRateAvailable`.
+- **Occupancy bands** (`pct_occupancy_bands`): a few villas get contiguous
+  party brackets (1–8 / 9–12 / 13–capacity, capacity bumped to 10–16) as
+  sibling rules per segment, always starting at 1 so the seeder's party of 3
+  matches.
+- **Commission**: ~97% of villas PERCENT 12–25 (legacy avg 18.8), ~3% FIXED —
+  overriding the narrower `with_owner_contact` factory values.
+- **Discounts** (`pct_discount`): rare, mirroring the effectively-dead legacy
+  discounts; `happy` keeps 1.0 (every villa).
+- **Second currency** (`pct_second_currency`): ~13% of villas get a second
+  plan in another currency, dated one day earlier than the primary so
+  `pick_preferred_plan` keeps currency-less quotes on the primary plan.
+
+Showcase villas minted by `dashboard_activity` reuse the same helpers (flat
+brackets, no bands) so they price like the rest of the portfolio. `happy`
+keeps the legacy one-card / one-rule / universal-discount shape.
+
 ## Dashboard activity (all profiles)
 
 The dense calendar almost never lands a stay exactly on today, never *rests* a

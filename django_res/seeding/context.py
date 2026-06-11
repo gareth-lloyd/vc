@@ -131,6 +131,20 @@ class ProfileKnobs:
     # villas with a specific changeover day. Legacy resolves to 7 virtually
     # everywhere.
     constrained_min_nights: int = 7
+    # When True, villas price like the legacy book: per-currency log-normal
+    # price levels, Low/Mid/Peak seasonal cards, near-universal percentage
+    # commission, and the fractions below. False keeps the legacy factory
+    # shape (one card, one flat 250/400/650 rule).
+    realistic_pricing: bool = False
+    # Fraction of villas with a second RatePlan in another currency (legacy:
+    # ~13% of villas price in 2+ currencies).
+    pct_second_currency: float = 0.0
+    # Fraction of villas whose cards use occupancy-band sibling rules
+    # (legacy: ~4% of rates; bumped a little so small runs reliably get one).
+    pct_occupancy_bands: float = 0.0
+    # Fraction of villas that get a Discount row. 1.0 = legacy seeder shape
+    # (every villa); discounts are effectively dead in the legacy book.
+    pct_discount: float = 1.0
 
 
 _PROFILES: dict[Profile, ProfileKnobs] = {
@@ -182,6 +196,10 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
             ("fri", 0.02),
             ("any", 0.12),
         ),
+        realistic_pricing=True,
+        pct_second_currency=0.13,
+        pct_occupancy_bands=0.12,
+        pct_discount=0.15,
     ),
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
@@ -224,6 +242,10 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
             ("fri", 0.02),
             ("any", 0.12),
         ),
+        realistic_pricing=True,
+        pct_second_currency=0.13,
+        pct_occupancy_bands=0.12,
+        pct_discount=0.15,
     ),
 }
 

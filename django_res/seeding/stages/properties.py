@@ -34,6 +34,13 @@ from properties.factories import (
 )
 from properties.models import Country
 from properties.services.changeover import ChangeoverService
+from seeding._pricing_helpers import (
+    _FLAT_BRACKETS,
+    assign_commission,
+    build_seasonal_cards,
+    draw_base_nightly,
+    party_brackets,
+)
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -156,13 +163,52 @@ def _run(ctx: SeedContext) -> int:
             dirty_settings += ["changeover_day", "min_nights_rental"]
         if dirty_settings:
             prop.settings.save(update_fields=dirty_settings)
-        card_kwargs: dict[str, Any] = (
-            {"min_nights": ctx.knobs.constrained_min_nights} if constrained else {}
-        )
+        min_nights = ctx.knobs.constrained_min_nights if constrained else 1
         plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
-        card = RateCardFactory(plan=plan, **card_kwargs)
-        RateRuleFactory(card=card, **rule_kwargs)
-        DiscountFactory(property=prop, **discount_kwargs)
+        if ctx.knobs.realistic_pricing:
+            brackets = _FLAT_BRACKETS
+            if ctx.rng.random() < ctx.knobs.pct_occupancy_bands:
+                # The factory hardcodes guests=8, which would collapse the
+                # natural 1-8 / 9-12 / 13+ brackets to a single band — bump
+                # capacity so the bands are real.
+                capacity = prop.capacity
+                capacity.guests = ctx.rng.randint(10, 16)
+                capacity.save(update_fields=["guests"])
+                brackets = party_brackets(capacity.guests)
+            build_seasonal_cards(
+                plan,
+                draw_base_nightly(ctx.rng, currency.code),
+                min_nights=min_nights,
+                brackets=brackets,
+                wide_spread=ctx.rng.random() < 0.08,
+            )
+            assign_commission(ctx.rng, prop)
+            if ctx.rng.random() < ctx.knobs.pct_second_currency and len(currency_pool) > 1:
+                # Legacy: ~13% of villas price in 2+ currencies (by design —
+                # the quote builder handles a mixed-currency list). Dated one
+                # day earlier than the primary plan so `pick_preferred_plan`
+                # (most recent effective_from wins) keeps currency-less
+                # quotes — and therefore the booking stages — on the primary.
+                alt = currency_pool[(i + 1) % len(currency_pool)]
+                alt_plan = RatePlanFactory(
+                    property=prop,
+                    currency=alt,
+                    effective_from=plan.effective_from - timedelta(days=1),
+                    effective_to=plan.effective_to,
+                )
+                build_seasonal_cards(
+                    alt_plan,
+                    draw_base_nightly(ctx.rng, alt.code),
+                    min_nights=min_nights,
+                    brackets=brackets,
+                )
+        else:
+            card = RateCardFactory(plan=plan, min_nights=min_nights)
+            RateRuleFactory(card=card, **rule_kwargs)
+        # Legacy discounts are effectively dead — gate behind the knob. The
+        # >= 1.0 short-circuit keeps happy off the rng (byte-for-byte output).
+        if ctx.knobs.pct_discount >= 1.0 or ctx.rng.random() < ctx.knobs.pct_discount:
+            DiscountFactory(property=prop, **discount_kwargs)
         ExtraFactory(property=prop, currency=currency)
         # Drop a ChangeOverRule on every third property so the model isn't
         # permanently empty in dev. The rule's day MUST match the villa's

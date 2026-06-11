@@ -519,38 +519,37 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 ---
 
-## 11. Multi-Villa Timeline View
+## 11. Multi-Villa Timeline View (shipped)
+
+**As built — definitive; supersedes the earlier drag-heavy sketch.** Full screen spec: `02-frontend-design.md` §3.5.
 
 **Entry points:**
-- Main nav "Timeline" (`/timeline`).
-- Region/group detail → "Timeline of these properties".
-- Cmd-K → "Timeline".
+- Main nav "Availability" (`/availability`, staff-only).
 
 **Steps:**
 
-1. **Screen: Timeline, full page.** Top filter bar: region multi-select, site, feature filter, party-size filter, date range, sort (name / occupancy % desc / region). Below: gantt-style rows, one per villa, with horizontal axis = dates. Each row shows colored bars for bookings (green), holds (yellow), unavailables (grey/purple).
+1. **Filter first.** With no filter set, the page shows a prompt empty-state and fires no data requests — the portfolio is too large for a show-all wall. Setting any filter (search, country, region, collection, min bedrooms, lifecycle status) enables the two reads: one page of `GET /properties` for the rows, `GET /availability?property_ids=…` for the bands. More than 50 matches → "refine your filters" notice + pager.
 
-2. **Interaction.**
-   - Click bar → booking drawer (flow 5).
-   - Click empty area → "Create booking" with property + dates pre-filled (deep links flow 4).
-   - Drag a booking bar end → "Modify dates" (flow 5).
-   - Hover → tooltip (guest, party size, total).
+2. **Screen.** Gantt-style rows, one per villa, over a fixed 35-day Monday-aligned window (`Today` / ±1-week paging, `?start=` bookmarkable). Bands are range intervals: Booked (booking bands, half-cell offset so turnovers kiss), On hold, Stop sale; available is blank. Overlapping bands (legacy DRAFT imports) stack into sub-lanes.
 
-3. **Density / zoom.** Pinch / +/− zoom from week-grain to month-grain to quarter-grain. Compact rows show only color; comfortable rows show guest initials in bar.
+3. **Interaction — read + click only.**
+   - Click a booking band → popover with guest / status / dates → link to the booking detail (flow 5 actions live there).
+   - Click a hold band → popover with reason / notes → link to the villa calendar tab (flow 10 edits live there).
+   - Villa name → `/properties/:id/availability`.
 
-4. **Highlights.** A "Show gaps ≥ N nights" toggle highlights empty space between bookings — useful for filling short gaps. A "Show changeovers" toggle highlights same-day arrivals/departures (cleaning crew planning).
+4. **Filters and window persist** in URL for sharable views.
 
-5. **Filters persist** in URL for sharable views.
-
-**States affected:** None — read-only view. Drag-to-modify edits route through flow 5.
+**States affected:** None — read-only view; all writes route through the linked pages.
 
 **Side effects:** None.
 
-**Failure & recovery:** Read-only; reload on error.
+**Failure & recovery:** Per-query error states with retry; skeleton until rows *and* bands have both arrived (rows alone would read as fully-available inventory).
 
-**Permissions:** Operator+ (can drag-edit subject to flow 5 permissions); Viewer (read-only).
+**Permissions:** Staff-only (owners use the owner portal).
 
-**Departures from original:** (a) Drag bars to modify (was view-only). (b) Gap highlighting. (c) Cmd-K integration. (d) URL-shareable filtered views. (e) Single timeline across regions (original was per-region).
+**Departures from original:** (a) The legacy calendar never shipped — this is net-new. (b) Filter-gated rather than show-all. (c) URL-shareable filtered views. (d) Single timeline across regions.
+
+**Extensions (sensible, not built):** Week/Month zoom; click-a-gap "Add block"; gap-≥-N-nights and changeover highlighting; Booked-VC split once a trustworthy booking-origin signal exists. Drag-resize/drag-move of bands is deliberately dropped — date and villa changes carry pricing implications that need the booking detail.
 
 ---
 

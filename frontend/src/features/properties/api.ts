@@ -6,6 +6,8 @@ import {
   availabilityHoldSchema,
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
+  collectionsResponseSchema,
+  regionsResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
@@ -36,6 +38,7 @@ import {
   type AvailabilityHold,
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
+  type Collection,
   type DescriptionSection,
   type Discount,
   type Extra,
@@ -56,6 +59,7 @@ import {
   type PropertyListItem,
   type PropertyLocation,
   type PropertyLocationWriteInput,
+  type Region,
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
   type PropertyRoom,
@@ -77,6 +81,9 @@ function toQuery(filters: PropertyFilters): QueryParams {
   return {
     q: filters.q || undefined,
     country: filters.country || undefined,
+    region: filters.region || undefined,
+    collection: filters.collection || undefined,
+    min_bedrooms: filters.min_bedrooms || undefined,
     status: filters.status || undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
@@ -317,6 +324,24 @@ export async function fetchPropertyContacts(
 ): Promise<Paginated<PropertyContactAssignment>> {
   const data = await apiGet<unknown>(`/properties/${idOrSlug}/contacts`);
   return propertyContactsResponseSchema.parse(data);
+}
+
+// Filter dropdowns need every row in one request — the default page size of
+// 50 would silently truncate the lists as the portfolio grows.
+const TAXONOMY_PAGE_SIZE = 500;
+
+export async function fetchRegions(): Promise<Paginated<Region>> {
+  const data = await apiGet<unknown>("/regions", {
+    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return regionsResponseSchema.parse(data);
+}
+
+export async function fetchCollections(): Promise<Paginated<Collection>> {
+  const data = await apiGet<unknown>("/collections", {
+    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return collectionsResponseSchema.parse(data);
 }
 
 export async function fetchPropertyHolds(

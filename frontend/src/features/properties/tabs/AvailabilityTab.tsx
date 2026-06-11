@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { cellsByDate, useMonthGrid, WEEKDAYS } from "@/lib/monthGrid";
+import { reasonClasses } from "../availabilityTokens";
 import {
   usePropertyAvailabilityCalendar,
   usePropertyBookingsForRange,
@@ -45,23 +46,6 @@ const LEGEND_REASONS = [
   "manual",
   "changeover",
 ] as const;
-
-function reasonClasses(reason: string): string {
-  switch (reason) {
-    case "booked":
-      return "bg-primary text-primary-foreground font-medium";
-    case "quotation":
-      return "bg-warning/25 text-warning";
-    case "owner_block":
-      return "bg-hold/35 text-hold";
-    case "maintenance":
-      return "bg-status-neutral/35 text-status-neutral";
-    case "manual":
-      return "bg-info/30 text-info";
-    default:
-      return "text-foreground";
-  }
-}
 
 function legendSwatchClass(reason: string): string {
   if (reason === "available") return "border-border border";

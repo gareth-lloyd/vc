@@ -37,7 +37,7 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 ## 6. Calendar: single-villa only → multi-villa timeline as primary
 
 **Was**: A single-villa month-grid calendar. To see the whole region you opened each villa in turn.
-**Now**: A Gantt-style multi-villa timeline (`/availability`) is the default. Rows are villas, X-axis is dates, coloured bars are bookings/holds/blocks. Click a bar to open the booking drawer. Drag bar edges to modify dates. Drag a bar vertically to move to another villa. The single-villa month-grid is still available (`/availability/property/:id`) for the cases where it's the right view.
+**Now (shipped)**: A Gantt-style multi-villa timeline (`/availability`). Rows are villas, X-axis is dates, coloured bands are bookings/holds. Filter-first: nothing renders (and nothing is fetched) until at least one filter is set — the portfolio is too large for show-all. Click a band for a summary popover that deep-links to the booking detail or the villa calendar; the timeline itself is read-only (drag-to-modify was dropped — date/villa changes carry pricing implications that belong on the booking detail). The single-villa month-grid is still available (`/properties/:id/availability`) for the cases where it's the right view.
 **Why**: Ops people work at portfolio level — "what's happening across all my villas next week" is the high-frequency question.
 
 ## 7. Quote building → first-class multi-villa cart

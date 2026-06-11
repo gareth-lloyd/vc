@@ -9,7 +9,11 @@ from rest_framework import generics, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.api import AllowAnyReadStaffWrite, IsReservationsWriter
+from core.api import (
+    AllowAnyReadStaffWrite,
+    ConfigurablePageSizePagination,
+    IsReservationsWriter,
+)
 from properties.models import Collection, CollectionMembership, Property
 from properties.serializers import (
     CollectionMembershipSerializer,
@@ -26,6 +30,9 @@ class CollectionViewSet(viewsets.ModelViewSet):
     queryset = Collection.objects.all()
     serializer_class = CollectionSerializer
     permission_classes = [AllowAnyReadStaffWrite]
+    # Filter dropdowns need the full list in one request (same rationale as
+    # CountryViewSet).
+    pagination_class = ConfigurablePageSizePagination
     lookup_field = "slug"
 
 

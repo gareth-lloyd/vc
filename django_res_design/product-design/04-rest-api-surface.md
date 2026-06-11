@@ -26,7 +26,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Site context derived from token claims; `X-Site` header may override for staff impersonating site context.
 
 ### Pagination
-- Cursor pagination by default for endpoints expected to grow unbounded (`bookings`, `enquiries`, `email-logs`, `audit-log`, `payments`, `availability`).
+- Cursor pagination by default for endpoints expected to grow unbounded (`bookings`, `enquiries`, `email-logs`, `audit-log`, `payments`). (`GET /availability` is deliberately unpaginated: it returns raw band arrays bounded by the ≤50-property cap and the date window.)
 - Page-number pagination for small bounded lists (`regions`, `countries`, `features`, `currencies`, `roles`).
 - Standard query params: `?cursor=`, `?limit=` (cursor); `?page=`, `?page_size=` (page). `limit` capped server-side.
 - All list responses include `next` / `previous` and a `count` for page-number style.
@@ -386,7 +386,7 @@ Calendar reads are the highest-RPS endpoint group; expect heavy caching.
 | POST | `/properties/{id}/availability` | Write block(s) — manual block, hold, owner-stay | accepts single or range |
 | PATCH | `/availability/{id}` | Update one record | |
 | DELETE | `/availability/{id}` | Clear block | |
-| GET | `/availability` | Multi-villa availability lookup | `?property_ids=&from=&to=` |
+| GET | `/availability` | Multi-villa timeline bands (shipped) | `?property_ids=&from=&to=` all required; ≤50 ids (mirrors the property page size) else 400; staff-only. Returns `{records, bookings}`: `records` = live operator holds (expiry-checked, booking-linked holds excluded), `bookings` = occupying bookings incl. resting legacy DRAFT rows, with `guest_name`/`reference`/`status`. Range bands, not per-day cells — the frontend derives display status. |
 | POST | `/availability:search` | Find villas matching date + guest criteria — **availability only, no prices** | Body: `{date_from, date_to, adults, children, filters: {region?, country?, min_bedrooms?, features?, ...}}`. Response is a property list with available/blocked status per villa for the given window. **Distinct from** `/pricing:quote-bulk` (which computes prices) and `/quotations:search-villas` (which creates/updates a Quotation draft). See reconciliation issue #44. |
 | POST | `/availability:bulk-block` | Block range across many villas | admin |
 | POST | `/availability/{id}:extend-hold` | Extend a hold's expiration | |

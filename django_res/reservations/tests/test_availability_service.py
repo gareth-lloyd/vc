@@ -646,3 +646,167 @@ def test_calendar_query_count_with_lone_checkout(
     with assert_max_queries(4):
         cal = AvailabilityService.calendar(property_, date(2026, 6, 1), date(2026, 6, 30))
     assert cal[date(2026, 6, 8)].segments is not None
+
+
+# ----------------------------------------------------------------------
+# 12. multi() — cross-property range bands for the combined timeline
+# ----------------------------------------------------------------------
+@pytest.fixture
+def other_property(property_: Property) -> Property:
+    from properties.models import Property as PropertyModel
+
+    return PropertyModel.objects.create(
+        name="Other Villa",
+        display_name="Other Villa",
+        slug="other-villa",
+        category=property_.category,
+        group=property_.group,
+        region=property_.region,
+    )
+
+
+def test_multi_returns_live_holds_and_occupying_bookings(
+    property_: Property,
+    other_property: Property,
+    gbp: Currency,
+    guest: Guest,
+    terms: TermsVersion,
+) -> None:
+    hold = _hold(property=property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17))
+    booking = _make_booking(
+        property=other_property,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 20),
+        date_to=date(2026, 6, 27),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    holds, bookings = AvailabilityService.multi(
+        [property_.pk, other_property.pk], date(2026, 6, 1), date(2026, 7, 1)
+    )
+    assert [h.pk for h in holds] == [hold.pk]
+    assert [b.pk for b in bookings] == [booking.pk]
+
+
+def test_multi_includes_resting_draft_booking(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    booking = _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 8, 10),
+        date_to=date(2026, 8, 17),
+        status=BookingStatus.DRAFT.value,
+    )
+    _, bookings = AvailabilityService.multi([property_.pk], date(2026, 8, 1), date(2026, 9, 1))
+    assert [b.pk for b in bookings] == [booking.pk]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [BookingStatus.CANCELLED.value, BookingStatus.CHECKED_OUT.value],
+)
+def test_multi_excludes_terminal_bookings(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion, status: str
+) -> None:
+    _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        status=status,
+    )
+    _, bookings = AvailabilityService.multi([property_.pk], date(2026, 7, 1), date(2026, 8, 1))
+    assert list(bookings) == []
+
+
+def test_multi_excludes_released_and_expired_holds(property_: Property) -> None:
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        released=True,
+    )
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expired=True,
+    )
+    holds, _ = AvailabilityService.multi([property_.pk], date(2026, 6, 1), date(2026, 7, 1))
+    assert list(holds) == []
+
+
+def test_multi_includes_null_expiry_hold(property_: Property) -> None:
+    hold = BookingHold.objects.create(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=None,
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+    )
+    holds, _ = AvailabilityService.multi([property_.pk], date(2026, 6, 1), date(2026, 7, 1))
+    assert [h.pk for h in holds] == [hold.pk]
+
+
+def test_multi_excludes_booking_linked_holds(
+    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+) -> None:
+    """A deposit-pending booking has both a live hold and an occupying booking
+    row — the hold is excluded so the timeline paints one band per stay."""
+    booking = _make_booking(
+        property=property_,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    BookingHold.objects.create(
+        property=property_,
+        booking=booking,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(days=30),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+    )
+    holds, bookings = AvailabilityService.multi([property_.pk], date(2026, 6, 1), date(2026, 7, 1))
+    assert list(holds) == []
+    assert [b.pk for b in bookings] == [booking.pk]
+
+
+def test_multi_scopes_to_ids_and_window(
+    property_: Property,
+    other_property: Property,
+    gbp: Currency,
+    guest: Guest,
+    terms: TermsVersion,
+) -> None:
+    # Other property's rows must not appear when only `property_` is asked for.
+    _hold(property=other_property, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17))
+    _make_booking(
+        property=other_property,
+        currency=gbp,
+        guest=guest,
+        terms=terms,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    # Out-of-window rows on the requested property must not appear either.
+    _hold(property=property_, date_from=date(2026, 9, 1), date_to=date(2026, 9, 8))
+    holds, bookings = AvailabilityService.multi([property_.pk], date(2026, 6, 1), date(2026, 7, 1))
+    assert list(holds) == []
+    assert list(bookings) == []
+
+
+def test_multi_includes_band_overhanging_window(property_: Property) -> None:
+    hold = _hold(property=property_, date_from=date(2026, 5, 20), date_to=date(2026, 7, 10))
+    holds, _ = AvailabilityService.multi([property_.pk], date(2026, 6, 1), date(2026, 7, 1))
+    assert [h.pk for h in holds] == [hold.pk]

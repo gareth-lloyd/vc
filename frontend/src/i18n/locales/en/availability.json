@@ -1,0 +1,65 @@
+{
+  "page": {
+    "title": "Availability",
+    "breadcrumb_operations": "Operations"
+  },
+  "filters": {
+    "search_placeholder": "Search villas…",
+    "search_aria": "Search villas",
+    "country_aria": "Filter by country",
+    "region_aria": "Filter by region",
+    "collection_aria": "Filter by collection",
+    "bedrooms_aria": "Filter by bedrooms",
+    "status_aria": "Filter by status",
+    "any_region": "Any region",
+    "any_collection": "Any collection",
+    "any_bedrooms": "Any bedrooms",
+    "min_bedrooms": "{{count}}+ bedrooms"
+  },
+  "window": {
+    "prev": "Previous week",
+    "next": "Next week",
+    "today": "Today"
+  },
+  "legend": {
+    "available": "Available",
+    "booked": "Booked",
+    "on_hold": "On hold",
+    "stop_sale": "Stop sale"
+  },
+  "gate": {
+    "title": "Filter to see availability",
+    "description": "Pick a country, region or collection — or search by name — to load villas. The full portfolio is too large to show at once."
+  },
+  "empty": {
+    "title": "No villas match",
+    "description": "Try widening your filters."
+  },
+  "refine": {
+    "notice": "Showing the first {{pageSize}} of {{count}} villas — refine your filters or page through.",
+    "prev": "Previous page",
+    "next": "Next page"
+  },
+  "errors": {
+    "properties_failed": "Couldn't load villas.",
+    "availability_failed": "Couldn't load availability for these villas."
+  },
+  "band": {
+    "booking_aria": "Booking {{reference}} — {{guest}}",
+    "hold_aria": "{{reason}}: {{from}} – {{to}}",
+    "no_guest": "No guest"
+  },
+  "popover": {
+    "status": "Status",
+    "dates": "Dates",
+    "notes": "Notes",
+    "open_booking": "Open booking",
+    "open_calendar": "Open villa calendar"
+  },
+  "reason_labels": {
+    "owner_block": "Owner block",
+    "maintenance": "Maintenance",
+    "manual": "Manual block",
+    "quotation_open": "Quotation hold"
+  }
+}

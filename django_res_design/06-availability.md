@@ -42,7 +42,16 @@ class AvailabilityService:
 
     @classmethod
     def calendar(cls, property, range_start, range_end) -> dict[date, CellStatus]: ...
+
+    @classmethod
+    def multi(cls, property_ids, date_from, date_to) -> tuple[holds_qs, bookings_qs]: ...
 ```
+
+`multi()` (shipped) feeds the multi-villa timeline (`GET /availability`): raw overlapping
+**range bands** across up to 50 properties — live holds via `BookingHold.live_overlapping`
+(booking-linked holds excluded as a one-band-per-stay guard) and occupying bookings via
+`Booking.objects.occupying` (so resting legacy `DRAFT` rows show). No per-day cells: the
+frontend derives display status and geometry from the intervals.
 
 Implementation of `is_available`:
 1. Check no Booking *occupies* the range (`Booking.objects.occupying` — any status **not** in `TERMINAL_BOOKING_STATUSES`). This is deliberately broader than the DB `OVERLAP_BLOCKING` write-constraint set: it also catches resting `DRAFT` rows (see below) that the constraint lets overlap.
@@ -69,6 +78,8 @@ class CellStatus(models.TextChoices):
 Derivation precedence: an active `Booking` wins (→ `BOOKED` / `BOOKED_VC`); otherwise a live persistent block hold (`OWNER_BLOCK` / `MAINTENANCE` / `STOP_SALE`) → `STOP_SALE`; otherwise a live short-term hold (`QUOTATION_OPEN` / `BOOKING_DEPOSIT_PENDING` / `MANUAL`) → `ON_HOLD`; otherwise `AVAILABLE`.
 
 `BOOKED_VC` is a presentation distinction drawn from a Booking's origin (`site_source` / VC-internal), **not** a separate model — there is no `Booking.status` value for it. `STOP_SALE` is likewise a presentation reconciliation over the persistent block reasons rather than a new hold mechanism; the only model-level addition is the optional `STOP_SALE` `reason` value (above), used when a Stop Sale must be distinguished from an internal owner-block/maintenance in reporting.
+
+> **Timeline note.** The shipped multi-villa timeline (`02-frontend-design.md` §3.5) renders **three** of these statuses — Booked / On hold / Stop sale (available is blank) — derived client-side from the `multi()` bands. `BOOKED_VC` is deferred there: the legacy loader never set `site_source`, so every migrated booking reads as `main_website` and the split would mislabel the whole historical portfolio. Reintroduce it when a trustworthy origin signal exists.
 
 > **Implementation note.** The shipped `CellStatus` (`reservations/services/availability.py`) is a `@dataclass`, not a `TextChoices` — it carries `available: bool`, a `reason` string (`booked` / `owner_block` / `maintenance` / `manual` / `quotation`), an optional `block_id` (the originating editable `BookingHold` pk), and the optional `segments` split described next. The five-word vocabulary above is the operator-facing *labelling* that the frontend derives from these fields; treat the dataclass as the wire shape.
 

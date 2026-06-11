@@ -378,6 +378,9 @@ function invalidateAvailability(queryClient: QueryClient, propertyId: number) {
   queryClient.invalidateQueries({
     queryKey: queryKeys.properties.holdsRoot(propertyId),
   });
+  // The multi-villa timeline reads the same holds through its own key —
+  // without this, a block write shows up there only after the staleTime.
+  queryClient.invalidateQueries({ queryKey: queryKeys.availability.all() });
 }
 
 export function useCreatePropertyBlock(propertyId: number) {

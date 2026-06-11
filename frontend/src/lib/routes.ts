@@ -4,3 +4,8 @@
 export function propertyDetailsPath(idOrSlug: number | string): string {
   return `/properties/${idOrSlug}/details`;
 }
+
+/** The single-villa availability calendar tab. */
+export function propertyAvailabilityPath(idOrSlug: number | string): string {
+  return `/properties/${idOrSlug}/availability`;
+}

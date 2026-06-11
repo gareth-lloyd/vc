@@ -98,8 +98,7 @@ React Router v6+ with data routes. URLs are the source of truth for which tab is
 /bookings/:id/comms
 /bookings/:id/owner
 /bookings/:id/timeline
-/availability                       (multi-villa timeline; default)
-/availability/property/:id          (single villa calendar)
+/availability                       (multi-villa timeline; filter-gated)
 /payments                           (cross-booking view)
 /concierge                          (cross-booking list)
 /properties                         (list)
@@ -273,37 +272,42 @@ Key behaviours:
 - Empty state: "No seasons configured yet. Start with a year template?" with `Copy from another property` and `Use VC default annual template` buttons.
 - Permissions: owners see-only; operators edit; admins also edit commission/tax (operators can be locked out of those fields via a feature flag).
 
-### 3.5 Availability — Multi-Villa Timeline (the improved view)
+### 3.5 Availability — Multi-Villa Timeline (shipped)
 
-The headline new screen. Replaces the single-villa-only calendar with a Gantt-style tape: one row per villa, horizontal time axis. Date granularity is days; resolution toggles between **Day** (default), **Week**, **Month**.
+The headline new screen. A Gantt-style tape at `/availability` (staff-only): one row per villa, horizontal day axis. **As built — this section is definitive; the original drag-heavy spec is superseded.**
 
 ```
 +----------------------------------------------------------------+
-| Availability                       [Day][Week][Month]  May 2026|
-| Filters: [Country ▾][Tags ▾][Bedrooms ▾][Site ▾][Status ▾]     |
-| [Today]  [◂]  May 2026  [▸]                       [+ Block]   |
+| Availability                                                    |
+| [Search…] [Country ▾][Region ▾][Collection ▾][Beds ▾][Status ▾]|
+| [◂ Prev]  [Today]  [Next ▸]                8 Jun – 12 Jul 2026 |
 +----------------------------------------------------------------+
-|              | 12| 13| 14| 15| 16| 17| 18| 19| 20| 21| 22| 23  |
-| Casa Norte   |░░░|███|███|███|███|███|███|   |   |   |   |▒▒▒  |
-| Villa Azul   |   |   |   |▓▓▓|▓▓▓|▓▓▓|▓▓▓|▓▓▓|▓▓▓|███|███|███  |
-| Casa Sur     |▒▒▒|▒▒▒|   |   |   |   |   |   |█▌ |███|███|███  |
-| ...                                                            |
+|              | 8| 9|10|11|12|13|14|15|16|17|18|19|20|21| ...   |
+| Casa Norte   |  |░░░░░░░░░░░|  |  |▐██████ Ada Lovelace ██▌    |
+| Villa Azul   |▐████ Tan ███▌▐███ Bell ████▌ |  |▓▓▓▓▓▓▓|       |
+| Casa Sur     |  |▐██ legacy draft ██▌                          |
+|              |  |      ▐██ legacy draft ██▌   (stacked lane)   |
 +----------------------------------------------------------------+
-| Legend: █ Booked  ▓ Hold  ▒ VC-Booked  ░ Unavailable  ▌ half  |
+| Legend: (blank) Available  █ Booked  ▓ On hold  ░ Stop sale    |
 +----------------------------------------------------------------+
 ```
 
-- Sticky left column with villa name and tiny thumbnail. Sticky top date axis.
-- Cells are bands that span their actual duration; status colours match the original (available is shown as blank for density). Half-day morning/afternoon variants render as left/right half-fills.
-- Click a band → drawer with booking summary + actions (open, edit, cancel).
-- Click an empty range (drag to select multiple days) → "Create booking" / "Add block" popover.
-- Drag-resize a band edge to change check-in/check-out (optimistic; rollback toast on server reject).
-- Drag a whole band vertically to move to another villa (operator confirms; useful for rebookings).
-- Keyboard: arrow keys move focused range; `[` and `]` shift visible window.
-- Performance: virtualize rows (only render visible villas) and columns when in Day view across >120 days.
-- Filters and date window persist in URL.
-- Loading: shimmer rows; data fetches per visible date window (request cancellation when scrolling fast).
-- Owners only see their own villas; operators see all.
+**Filter-first (no show-all).** The portfolio is too large for an unfiltered wall of rows. With no filter set the page renders a prompt empty-state and fires **zero** data requests; setting any filter enables the queries. There are deliberately no default filters (a default `status=ACTIVE` would silently satisfy the gate). Filters: debounced search, country, region, collection, min bedrooms, property lifecycle status. Filters, page, and window `start` all persist in the URL.
+
+**Data flow — two queries, no bespoke endpoint.** `GET /properties` (the standard filtered list, one page of 50) supplies the rows; `GET /availability?property_ids=…&from=&to=` returns `{records, bookings}` — raw hold and booking **range bands**, not per-day cells — for those ids. More than 50 matches → a "refine your filters" notice plus a pager; the cap is shared with the backend's `MAX_PROPERTY_IDS`.
+
+**Window.** Fixed 35 days, Monday-aligned, day grain only. `Today` / ±1-week paging; `?start=` makes any window bookmarkable.
+
+**Bands.**
+- Status vocabulary is frontend-derived (see `06-availability.md`): booking → **Booked**; hold `owner_block`/`maintenance` → **Stop sale**; other live holds → **On hold**; available is blank for density. The Booked/Booked-VC split is deferred — legacy data has no trustworthy origin signal.
+- Half-day turnover is approximated, not modelled: booking bands render offset half a cell (mid-check-in-cell → mid-checkout-cell), so back-to-back stays read as kissing bands. Hold bands sit on whole-cell boundaries.
+- Overlapping bands stack into greedy sub-lanes (legacy-migrated DRAFT bookings genuinely overlap); the row grows per lane and every band stays clickable. Lane assignment uses *rendered* edges so the booking half-cell shift counts.
+- Click a band → popover: bookings show guest / status / dates and link to the booking detail; holds show reason / notes and link to the villa's calendar tab. All write actions live on those target pages — the timeline is read-only.
+- Sticky left villa-name column (links to `/properties/:id/availability`), sticky date axis with weekend tint and today marker.
+
+**Loading.** Skeleton until *both* responses arrive — rows must never paint before their bands (it reads as fully-available inventory). Block writes elsewhere invalidate the timeline's query cache.
+
+**Extensions (sensible, not yet built):** Week/Month zoom for longer horizons; click-a-gap "Add block" creation; gap-≥-N-nights and changeover highlighting; AM/PM segment fidelity; the Booked-VC split once bookings carry a trustworthy origin signal; row virtualization if a page of 50 ever feels slow. Dropped as speculative: drag-resize/drag-move of bands (date and villa changes route through the booking detail, where pricing implications surface), keyboard band navigation, per-row thumbnails, owner-scoped visibility (owners have their own portal).
 
 ### 3.6 Availability — Single Villa Calendar (familiar)
 
@@ -789,7 +793,7 @@ Primary breakpoint: ≥1280px (operator at desk). Lay out for that.
 
 ### 8.2 Tablet
 
-≥768px: sidebar collapses to icon-rail by default; right rail becomes a toggleable drawer instead of always-on; data tables become horizontal-scroll containers with sticky first column. The multi-villa timeline is usable at tablet width but only at Week or Month resolution.
+≥768px: sidebar collapses to icon-rail by default; right rail becomes a toggleable drawer instead of always-on; data tables become horizontal-scroll containers with sticky first column. The multi-villa timeline is a horizontal-scroll container with a sticky villa-name column, so it degrades acceptably at tablet width.
 
 ### 8.3 Phone
 

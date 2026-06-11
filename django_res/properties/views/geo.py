@@ -44,6 +44,9 @@ class RegionViewSet(viewsets.ModelViewSet):
     queryset = Region.objects.all().select_related("country")
     serializer_class = RegionSerializer
     permission_classes = [AllowAnyReadStaffWrite]
+    # Filter dropdowns need the full list in one request (same rationale as
+    # CountryViewSet above).
+    pagination_class = ConfigurablePageSizePagination
     lookup_field = "slug"
 
 

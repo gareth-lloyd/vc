@@ -12,7 +12,7 @@ from typing import Any
 from rest_framework import serializers
 
 from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS, BookingHoldReason
-from reservations.models.booking import BookingHold
+from reservations.models.booking import Booking, BookingHold
 
 _EDITABLE_CHOICES = [
     choice for choice in BookingHoldReason.choices if choice[0] in OPERATOR_EDITABLE_HOLD_REASONS
@@ -54,6 +54,34 @@ class AvailabilityRecordSerializer(serializers.ModelSerializer[BookingHold]):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class AvailabilityBookingSerializer(serializers.ModelSerializer["Booking"]):
+    """Booking band for the multi-villa timeline (`GET /availability`).
+
+    Deliberately light: enough to paint a band and label its popover. The
+    booking detail endpoint carries the rest.
+    """
+
+    guest_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id",
+            "property",
+            "date_from",
+            "date_to",
+            "status",
+            "reference",
+            "guest_name",
+        ]
+
+    def get_guest_name(self, obj: Booking) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return f"{guest.first_name} {guest.last_name}".strip() or None
 
 
 class AvailabilitySearchSerializer(serializers.Serializer[None]):

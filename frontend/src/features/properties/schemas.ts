@@ -223,10 +223,33 @@ export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema
 export interface PropertyFilters {
   q?: string;
   country?: string;
+  region?: string;
+  collection?: string;
+  min_bedrooms?: number;
   status?: string;
   ordering?: string;
   page?: number;
 }
+
+// Minimal taxonomy rows for filter dropdowns (`GET /regions`, `/collections`).
+export const regionSchema = z.object({
+  id: z.number(),
+  country: z.number().nullable().optional(),
+  name: z.string(),
+  slug: z.string(),
+});
+export type Region = z.infer<typeof regionSchema>;
+
+export const regionsResponseSchema = paginated(regionSchema);
+
+export const collectionSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  slug: z.string(),
+});
+export type Collection = z.infer<typeof collectionSchema>;
+
+export const collectionsResponseSchema = paginated(collectionSchema);
 
 export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 

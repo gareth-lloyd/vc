@@ -10,6 +10,7 @@ tests), so the per-run distribution can be asserted directly.
 
 from __future__ import annotations
 
+import random
 from io import StringIO
 
 import pytest
@@ -19,6 +20,7 @@ from pricing.models.rate import RateCard
 from properties.models import Property
 from reservations.models.booking import Booking
 from reservations.models.quotation import QuotationLine
+from seeding.context import ProfileKnobs, SeedContext
 
 # PrefilledChangeOverDay code -> date.weekday() for the *specific* days.
 _DAY_WEEKDAY = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
@@ -78,6 +80,29 @@ def test_seed_dev_mixed_assigns_stay_rules_and_conforms_stays() -> None:
             assert date_from.weekday() == weekday, (prop.settings.changeover_day, date_from)
             nights = (date_to - date_from).days
             assert nights >= 7 and nights % 7 == 0, (date_from, date_to)
+
+
+def _ctx(weights: tuple[tuple[str, float], ...], n_properties: int) -> SeedContext:
+    return SeedContext(
+        rng=random.Random(1),
+        knobs=ProfileKnobs(name="test", changeover_day_weights=weights),
+        n_properties=n_properties,
+        n_bookings=0,
+        n_users=0,
+    )
+
+
+def test_changeover_day_plan_floor_follows_the_any_weight() -> None:
+    """The unconstrained floor is derived from the knob's "any" weight (so
+    editing the knob actually moves the distribution), with a hard minimum of
+    2 — dashboard_activity's host guarantee — even at weight 0."""
+    from seeding.stages.properties import _changeover_day_plan
+
+    plan = _changeover_day_plan(_ctx((("sat", 0.7), ("any", 0.3)), 20))
+    assert plan.count("any") >= 6  # floor = round(0.3 * 20)
+    plan = _changeover_day_plan(_ctx((("sat", 1.0),), 20))
+    assert plan.count("any") == 2  # no "any" weight -> hard minimum only
+    assert _changeover_day_plan(_ctx((), 20)) == []  # knob off (happy)
 
 
 @pytest.mark.django_db(transaction=True)

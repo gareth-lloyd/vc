@@ -53,18 +53,22 @@ def _parse_hhmm(value: str) -> time:
 def _changeover_day_plan(ctx: SeedContext) -> list[str]:
     """Pre-draw each villa's changeover day from the weighted knob.
 
-    A deterministic floor of `max(2, round(0.12 * n))` villas is reserved as
-    unconstrained ("any") before the weighted draw fills the rest — mirroring
-    the `_partition_tiers` floor pattern. Without it a small run can leave 0
-    unconstrained villas, and dashboard_activity (which needs villas that can
-    host today-anchored short stays) would mint a showcase villa for every
-    cohort, ballooning the portfolio.
+    A deterministic floor of unconstrained ("any") villas — the knob's "any"
+    weight as a guaranteed share, never below 2 — is reserved before the
+    weighted draw fills the rest, mirroring the `_partition_tiers` floor
+    pattern. Without it a small run can leave 0 unconstrained villas, and
+    dashboard_activity (which needs villas that can host today-anchored short
+    stays) would mint a showcase villa for every cohort, ballooning the
+    portfolio. The hard minimum of 2 holds even when the knob's "any" weight
+    is lowered to 0 — that guarantee is dashboard_activity's, not the
+    distribution's.
     """
     weights = ctx.knobs.changeover_day_weights
     if not weights:
         return []
     n = ctx.n_properties
-    floor = min(n, max(2, round(0.12 * n)))
+    any_weight = dict(weights).get(PrefilledChangeOverDay.ANY.value, 0.0)
+    floor = min(n, max(2, round(any_weight * n)))
     days = [day for day, _ in weights]
     day_weights = [w for _, w in weights]
     plan = [PrefilledChangeOverDay.ANY.value] * floor + [

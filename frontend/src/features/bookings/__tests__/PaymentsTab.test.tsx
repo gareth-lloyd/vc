@@ -158,6 +158,33 @@ describe("PaymentsTab", () => {
     await waitFor(() => expect(screen.getByText(/£0\.00 of £1,500\.00 paid/i)).toBeInTheDocument());
   });
 
+  it("keys the track badge styling on the raw status while showing the label", async () => {
+    grantWriterRole();
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/security`, () =>
+        HttpResponse.json(
+          track({
+            purpose: "security_deposit",
+            scheduled_amount: "300.00",
+            paid_amount: "0.00",
+            status: "failed",
+            due_at: null,
+          }),
+        ),
+      ),
+    );
+    setup();
+    // Deposit (succeeded) renders the humanised label with success styling.
+    const depositSection = (await screen.findByText("Deposit")).closest("section")!;
+    const paid = await within(depositSection).findByText("Paid");
+    expect(paid.closest('[data-slot="badge"]')).toHaveClass("text-success");
+    // Security (failed) renders its label with error styling — STATUS_TO_KIND
+    // keys on the raw status, not the display text.
+    const securitySection = screen.getByText("Security deposit").closest("section")!;
+    const failed = await within(securitySection).findByText("Failed");
+    expect(failed.closest('[data-slot="badge"]')).toHaveClass("text-danger");
+  });
+
   it("disables actions when the user lacks the role", async () => {
     clearRole();
     setup();

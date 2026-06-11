@@ -41,8 +41,10 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
   deposit_paid: "active",
   checked_in: "active",
   checked_out: "active",
+  succeeded: "active",
   draft: "draft",
   archived: "archived",
+  waived: "archived",
   pending: "pending",
   pending_owner_approval: "pending",
   awaiting: "pending",
@@ -53,6 +55,7 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
   canceled: "error",
   declined: "error",
   expired: "error",
+  failed: "error",
   overdue: "error",
 };
 

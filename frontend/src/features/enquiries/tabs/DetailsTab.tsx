@@ -74,7 +74,9 @@ export function DetailsTab({ enquiry }: { enquiry: EnquiryDetail }) {
           />
           <FactRow
             label={t("details_tab.fields.status")}
-            value={<StatusBadge status={enquiryStatusLabel(enquiry.status)} />}
+            value={
+              <StatusBadge status={enquiry.status} label={enquiryStatusLabel(enquiry.status)} />
+            }
           />
           <FactRow
             label={t("details_tab.fields.from")}

@@ -158,7 +158,7 @@ export function PaymentTrack({
             })}
           </p>
         </div>
-        <StatusBadge status={paymentTrackStatusLabel(data.status) ?? data.status} />
+        <StatusBadge status={data.status} label={paymentTrackStatusLabel(data.status)} />
       </div>
 
       <div className="flex items-center justify-between gap-3">

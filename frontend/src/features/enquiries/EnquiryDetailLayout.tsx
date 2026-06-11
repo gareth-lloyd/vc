@@ -96,7 +96,7 @@ function RailSummary({
         <h2 className="text-foreground font-serif text-lg font-semibold">{guestName(enquiry)}</h2>
         <p className="text-muted-foreground font-mono text-xs">{enquiry.reference}</p>
       </div>
-      <StatusBadge status={enquiryStatusLabel(enquiry.status)} />
+      <StatusBadge status={enquiry.status} label={enquiryStatusLabel(enquiry.status)} />
       <FactList>
         <FactRow
           label={t("detail.rail.dates")}

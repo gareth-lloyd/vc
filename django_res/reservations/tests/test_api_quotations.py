@@ -982,6 +982,87 @@ def test_convert_releases_manual_hold(
 
 
 @pytest.mark.django_db
+def test_convert_refused_over_foreign_live_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """With quoting no longer auto-holding its dates, another party may have
+    held the villa between quote and accept — convert must refuse rather
+    than book straight over a live hold, and the acceptance must roll back."""
+    from reservations.services.holds import HoldService
+
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    quotation.send()
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 12),
+        date_to=date(2026, 6, 15),
+        never_expires=True,
+    )
+
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+    assert convert.status_code == 409, convert.data
+    assert convert.data["code"] == "hold_unavailable"
+    assert Booking.objects.count() == 0
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.SENT.value
+
+
+@pytest.mark.django_db
+def test_convert_succeeds_over_own_quotation_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """The quotation's own line hold must never block its own conversion."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    QuotationService.hold_line(line)
+    quotation.send()
+
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+
+
+@pytest.mark.django_db
 def test_convert_creates_booking(
     api_client: APIClient,
     staff: User,

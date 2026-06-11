@@ -182,13 +182,16 @@ describe("BookingDetailLayout", () => {
     expect(activityCalls).toBe(0);
   });
 
-  it("links guest names to the contact and property names to the property", async () => {
+  it("renders guest names as plain text and links property names to the property", async () => {
+    // booking.guest is a reservations.Guest id, NOT an accounts.Contact id —
+    // linking /contacts/{guest} opened a stranger's record. No Guests page
+    // yet, so the name renders unlinked.
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)));
     setup("/bookings/51/overview");
-    const guestLinks = await screen.findAllByRole("link", { name: "Ada Lovelace" });
-    expect(guestLinks.length).toBeGreaterThan(0);
-    for (const link of guestLinks) {
-      expect(link).toHaveAttribute("href", "/contacts/99");
+    const guestNames = await screen.findAllByText("Ada Lovelace");
+    expect(guestNames.length).toBeGreaterThan(0);
+    for (const name of guestNames) {
+      expect(name.closest("a")).toBeNull();
     }
     const propertyLinks = screen.getAllByRole("link", { name: "Casa Norte" });
     expect(propertyLinks.length).toBeGreaterThan(0);

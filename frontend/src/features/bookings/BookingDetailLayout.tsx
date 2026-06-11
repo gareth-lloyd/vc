@@ -52,13 +52,11 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
           label={t("detail.rail.dates")}
           value={`${formatDate(booking.date_from)} – ${formatDate(booking.date_to)}`}
         />
+        {/* booking.guest is a reservations.Guest id, not a Contact id — no
+            Guests page exists yet, so the name renders unlinked. */}
         <FactRow
           label={t("detail.rail.guest")}
-          value={
-            <Link to={`/contacts/${booking.guest}`} className="hover:underline">
-              {booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
-            </Link>
-          }
+          value={booking.guest_name ?? t("detail.fallback.guest_with_id", { id: booking.guest })}
         />
       </FactList>
       <BookingActions booking={booking} />

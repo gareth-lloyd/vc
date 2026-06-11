@@ -41,7 +41,12 @@ import {
   useQuotationLines,
   useQuotationPreview,
 } from "./hooks";
-import { TERMINAL_QUOTATION_STATUSES, type QuotationDetail, type QuotationLine } from "./schemas";
+import {
+  TERMINAL_QUOTATION_STATUSES,
+  quotationStatusLabel,
+  type QuotationDetail,
+  type QuotationLine,
+} from "./schemas";
 
 type DialogKind = "send" | "withdraw" | "convert" | "delete-line" | "edit-line" | null;
 
@@ -219,7 +224,7 @@ function RailSummary({
         <h2 className="text-foreground font-serif text-lg font-semibold">{quotation.reference}</h2>
         <p className="text-muted-foreground text-sm">{t("detail.summary.title")}</p>
       </div>
-      <StatusBadge status={quotation.status} />
+      <StatusBadge status={quotation.status} label={quotationStatusLabel(quotation.status)} />
       <FactList>
         <FactRow
           label={t("detail.summary.enquiry")}

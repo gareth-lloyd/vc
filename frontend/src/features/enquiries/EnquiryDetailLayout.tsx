@@ -26,17 +26,12 @@ import { NotesTab } from "./tabs/NotesTab";
 import {
   enquirySourceLabel,
   enquiryStatusLabel,
+  guestName,
   isFinalStatus,
   type EnquiryDetail,
 } from "./schemas";
 
 type DialogKind = "assign" | "close" | "reopen" | null;
-
-function guestName(enq: EnquiryDetail): string {
-  if (enq.guest_name) return enq.guest_name;
-  const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
-  return denorm || enq.email || enq.reference;
-}
 
 interface EnquiryActionsProps {
   enquiry: EnquiryDetail;
@@ -101,7 +96,7 @@ function RailSummary({
         <h2 className="text-foreground font-serif text-lg font-semibold">{guestName(enquiry)}</h2>
         <p className="text-muted-foreground font-mono text-xs">{enquiry.reference}</p>
       </div>
-      <StatusBadge status={enquiryStatusLabel(enquiry.status)} />
+      <StatusBadge status={enquiry.status} label={enquiryStatusLabel(enquiry.status)} />
       <FactList>
         <FactRow
           label={t("detail.rail.dates")}

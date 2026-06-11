@@ -118,7 +118,7 @@ describe("QuoteBuilder", () => {
       queryClient,
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /add to quote/i }));
     await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
@@ -155,7 +155,7 @@ describe("QuoteBuilder", () => {
     // No forced currency selection anywhere in the criteria pane (GAP-014).
     expect(screen.queryByRole("combobox", { name: /currency/i })).not.toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
     // Currency is an output of pricing, never an input to the search.
     await waitFor(() => expect(bulkBody).not.toBeNull());
@@ -176,7 +176,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     // One results list freely mixes currencies — each row prices in its own.
     expect(await screen.findByText("£4,500.00")).toBeInTheDocument();
     expect(screen.getByText("€5,200.00")).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe("QuoteBuilder", () => {
     server.use(...mockSearch());
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
 
     // The cart starts empty, then carries the added villa.
@@ -219,7 +219,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
     // One of two matching villas priced so far.
     expect(screen.getByText(/checked 1 of 2 matching villas/i)).toBeInTheDocument();
@@ -251,7 +251,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
 
     expect(await screen.findByText(/1 villa unavailable for these dates/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add to quote/i })).not.toBeInTheDocument();
@@ -277,7 +277,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
 
     // Extend the stay and re-search → the re-price 500s, leaving the original
@@ -285,7 +285,7 @@ describe("QuoteBuilder", () => {
     const to = screen.getByLabelText(/^to$/i);
     await userEvent.clear(to);
     await userEvent.type(to, "2026-07-22");
-    await userEvent.click(screen.getByRole("button", { name: /search options/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
     // Adding the stale option must record the ORIGINAL Jul 1–8 stay (7 nights),
     // not the failed 21-night criteria — the price was computed for July.
@@ -322,7 +322,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     // Flagged in the main list with the manual-add affordance.
     expect(await screen.findByText(/incomplete pricing/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /add manually/i }));
@@ -360,7 +360,7 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /add to quote/i }));
 
     // Send to guest → persists first via the save dialog…

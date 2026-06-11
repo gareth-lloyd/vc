@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -158,6 +158,33 @@ describe("PaymentsTab", () => {
     await waitFor(() => expect(screen.getByText(/£0\.00 of £1,500\.00 paid/i)).toBeInTheDocument());
   });
 
+  it("keys the track badge styling on the raw status while showing the label", async () => {
+    grantWriterRole();
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/security`, () =>
+        HttpResponse.json(
+          track({
+            purpose: "security_deposit",
+            scheduled_amount: "300.00",
+            paid_amount: "0.00",
+            status: "failed",
+            due_at: null,
+          }),
+        ),
+      ),
+    );
+    setup();
+    // Deposit (succeeded) renders the humanised label with success styling.
+    const depositSection = (await screen.findByText("Deposit")).closest("section")!;
+    const paid = await within(depositSection).findByText("Paid");
+    expect(paid.closest('[data-slot="badge"]')).toHaveClass("text-success");
+    // Security (failed) renders its label with error styling — STATUS_TO_KIND
+    // keys on the raw status, not the display text.
+    const securitySection = screen.getByText("Security deposit").closest("section")!;
+    const failed = await within(securitySection).findByText("Failed");
+    expect(failed.closest('[data-slot="badge"]')).toHaveClass("text-danger");
+  });
+
   it("disables actions when the user lacks the role", async () => {
     clearRole();
     setup();
@@ -167,6 +194,32 @@ describe("PaymentsTab", () => {
     for (const btn of markReceived) {
       expect(btn).toBeDisabled();
     }
+  });
+
+  it("disables the payment request when the scheduled amount is zero", async () => {
+    // A £0.00 security deposit: there is nothing to request, so the button
+    // must not offer to send a reminder for it.
+    grantWriterRole();
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/security`, () =>
+        HttpResponse.json(
+          track({
+            purpose: "security_deposit",
+            scheduled_amount: "0.00",
+            paid_amount: "0.00",
+            status: "pending",
+            due_at: null,
+          }),
+        ),
+      ),
+    );
+    setup();
+    await screen.findByText("Security deposit");
+    const securitySection = screen.getByText("Security deposit").closest("section")!;
+    expect(within(securitySection).getByRole("button", { name: /send reminder/i })).toBeDisabled();
+    // A non-zero pending track keeps its request button live.
+    const balanceSection = screen.getByText("Balance").closest("section")!;
+    expect(within(balanceSection).getByRole("button", { name: /send reminder/i })).toBeEnabled();
   });
 
   it("opens the mark-paid dialog when Mark received is clicked", async () => {

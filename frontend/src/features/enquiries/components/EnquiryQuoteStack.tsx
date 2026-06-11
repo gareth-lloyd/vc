@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatMoney, parseMoney } from "@/lib/format/money";
-import type { QuotationDetail } from "@/features/quotations/schemas";
+import { quotationStatusLabel, type QuotationDetail } from "@/features/quotations/schemas";
 
 // A quotation's lines are alternative *options*, not a basket — so the headline
 // figure is the price range across them (min–max), never a sum. Each line is
@@ -51,7 +51,7 @@ function QuoteCard({ quote }: { quote: QuotationDetail }) {
         <span className="text-foreground text-sm tabular-nums">
           {priceRange(quote, t("quotes_section.no_price"))}
         </span>
-        <StatusBadge status={quote.status} />
+        <StatusBadge status={quote.status} label={quotationStatusLabel(quote.status)} />
       </div>
     </li>
   );

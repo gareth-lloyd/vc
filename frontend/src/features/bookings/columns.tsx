@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { cn } from "@/lib/cn";
 import { bookingFinance, isBalanceOverdue } from "./finance";
-import type { BookingListItem } from "./schemas";
+import { bookingStatusLabel, type BookingListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 
@@ -81,7 +81,10 @@ export function useBookingColumns(): ColumnDef<BookingListItem>[] {
         cell: ({ row }) => (
           <div className="space-y-1">
             <StagePips status={row.original.status} />
-            <StatusBadge status={row.original.status} />
+            <StatusBadge
+              status={row.original.status}
+              label={bookingStatusLabel(row.original.status)}
+            />
           </div>
         ),
       },

@@ -230,7 +230,7 @@
       "max_bedrooms": "Max bedrooms",
       "q": "Name search",
       "q_placeholder": "e.g. Villa Sol",
-      "search": "Search options",
+      "search": "Search",
       "searching": "Searching…"
     },
     "results": {
@@ -306,7 +306,7 @@
       "description_one": "Persist this quote with {{count}} line. The server will re-price each line.",
       "description_other": "Persist this quote with {{count}} lines. The server will re-price each line.",
       "expires_at": "Expires at",
-      "expires_hint": "After this date the quote stops being honourable.",
+      "expires_hint": "After this date the quote is no longer honoured.",
       "cancel": "Cancel",
       "confirm": "Save quote",
       "saving": "Saving…",

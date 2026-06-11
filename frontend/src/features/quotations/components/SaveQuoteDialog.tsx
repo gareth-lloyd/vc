@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { apiErrorMessage } from "@/lib/api/forms";
+import { toDatetimeLocal } from "@/lib/format/date";
 import { toDecimalString } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
 import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
@@ -31,10 +32,11 @@ interface Props {
 }
 
 function defaultExpiresAt(): string {
-  // 7 days from now, ISO-8601 with time-of-day.
+  // 7 days from now at LOCAL end-of-day — expiry is local wall-clock
+  // semantics; only the wire format is UTC ISO.
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 7);
-  d.setUTCHours(23, 59, 59, 0);
+  d.setDate(d.getDate() + 7);
+  d.setHours(23, 59, 59, 0);
   return d.toISOString();
 }
 
@@ -201,7 +203,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
             <Input
               id="qs-expires"
               type="datetime-local"
-              value={expiresAt.slice(0, 16)}
+              value={toDatetimeLocal(expiresAt)}
               onChange={(e) => {
                 const v = e.target.value;
                 setExpiresAt(v ? new Date(v).toISOString() : defaultExpiresAt());

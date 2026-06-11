@@ -84,6 +84,42 @@ def test_list_enquiries__staff_sees_all(
 
 
 @pytest.mark.django_db
+def test_enquiry_exposes_guest_contact_fields(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """Guest-linked enquiries often have blank denormalised contact fields;
+    the API exposes read-only `guest_email` / `guest_phone` /
+    `guest_contact_method` sourced from the linked Guest (mirroring the
+    `guest_name` fallback) so the FE Guest panel isn't all em-dashes."""
+    guest.phone = "+447700900123"
+    guest.contact_method = "phone"
+    guest.save()
+    enquiry = Enquiry.objects.create(guest=guest, adults=2)
+    api_client.force_login(staff)
+
+    for payload in (
+        api_client.get("/api/v1/enquiries").data["results"][0],
+        api_client.get(f"/api/v1/enquiries/{enquiry.pk}").data,
+    ):
+        assert payload["guest_email"] == "ada@example.com"
+        assert payload["guest_phone"] == "+447700900123"
+        assert payload["guest_contact_method"] == "phone"
+
+
+@pytest.mark.django_db
+def test_enquiry_guest_contact_fields_null_without_guest(
+    api_client: APIClient, staff: User
+) -> None:
+    Enquiry.objects.create(first_name="Solo", last_name="Lead", email="solo@example.com", adults=1)
+    api_client.force_login(staff)
+    row = api_client.get("/api/v1/enquiries").data["results"][0]
+
+    assert row["guest_email"] is None
+    assert row["guest_phone"] is None
+    assert row["guest_contact_method"] is None
+
+
+@pytest.mark.django_db
 def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, guest: Guest) -> None:
     Enquiry.objects.create(guest=guest, first_name="A", last_name="B", email="a@b.com")
     lost = Enquiry.objects.create(

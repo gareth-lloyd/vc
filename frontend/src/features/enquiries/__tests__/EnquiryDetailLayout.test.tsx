@@ -181,7 +181,7 @@ describe("EnquiryDetailLayout", () => {
     setup("/enquiries/7");
     // No quotes → empty state + builder expanded (the search button is visible).
     expect(await screen.findByText(/no quotes for this enquiry/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /search options/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^search$/i })).toBeInTheDocument();
   });
 
   it("renders existing quotes and keeps the builder collapsed until invoked", async () => {
@@ -194,10 +194,10 @@ describe("EnquiryDetailLayout", () => {
       "/enquiries/quotes/50",
     );
     // Builder collapsed → no search button yet.
-    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /build another quote/i }));
-    expect(await screen.findByRole("button", { name: /search options/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^search$/i })).toBeInTheDocument();
   });
 
   it("does not fetch the activity timeline until the rail panel is expanded", async () => {
@@ -245,7 +245,7 @@ describe("EnquiryDetailLayout", () => {
     // Builder must not auto-open for a final enquiry (no search button), and the
     // build toggle is disabled — quoting a lost enquiry is blocked.
     await screen.findByRole("button", { name: /assign/i });
-    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /build a quote/i })).toBeDisabled();
   });
 
@@ -273,13 +273,13 @@ describe("EnquiryDetailLayout", () => {
     );
 
     // Enquiry 7 has no quotes → builder auto-opens.
-    expect(await screen.findByRole("button", { name: /search options/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^search$/i })).toBeInTheDocument();
 
     // Navigate to enquiry 8 (already quoted): the section remounts on the new
     // id, so the builder must be collapsed — not carried open from enquiry 7.
     await userEvent.click(screen.getByRole("button", { name: /go-8/i }));
     await screen.findByRole("link", { name: /QVC50/ });
-    expect(screen.queryByRole("button", { name: /search options/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
   });
 
   it("redirects the legacy /details deep link to the unified workspace", async () => {

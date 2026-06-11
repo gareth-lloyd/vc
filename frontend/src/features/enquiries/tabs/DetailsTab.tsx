@@ -9,6 +9,7 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
 import {
   contactMethodLabel,
+  guestName,
   enquiryRequestTypeLabel,
   enquirySourceLabel,
   enquiryStatusLabel,
@@ -29,7 +30,11 @@ export function DetailsTab({ enquiry }: { enquiry: EnquiryDetail }) {
   const hasRole = useHasReservationsRole();
   const [editOpen, setEditOpen] = useState(false);
 
-  const fullName = `${enquiry.first_name ?? ""} ${enquiry.last_name ?? ""}`.trim() || "—";
+  // Guest-linked enquiries leave the denormalised contact fields blank —
+  // fall back to the guest_* fields the API sources from the linked Guest.
+  const email = enquiry.email || enquiry.guest_email;
+  const phone = enquiry.phone || enquiry.guest_phone;
+  const contactMethod = enquiry.contact_method ?? enquiry.guest_contact_method;
 
   const partyText = (() => {
     const adults = enquiry.adults;
@@ -69,7 +74,9 @@ export function DetailsTab({ enquiry }: { enquiry: EnquiryDetail }) {
           />
           <FactRow
             label={t("details_tab.fields.status")}
-            value={<StatusBadge status={enquiryStatusLabel(enquiry.status)} />}
+            value={
+              <StatusBadge status={enquiry.status} label={enquiryStatusLabel(enquiry.status)} />
+            }
           />
           <FactRow
             label={t("details_tab.fields.from")}
@@ -89,12 +96,12 @@ export function DetailsTab({ enquiry }: { enquiry: EnquiryDetail }) {
 
       <Section title={t("details_tab.sections.guest")}>
         <FactList>
-          <FactRow label={t("details_tab.fields.name")} value={fullName} />
-          <FactRow label={t("details_tab.fields.email")} value={enquiry.email || "—"} />
-          <FactRow label={t("details_tab.fields.phone")} value={enquiry.phone || "—"} />
+          <FactRow label={t("details_tab.fields.name")} value={guestName(enquiry)} />
+          <FactRow label={t("details_tab.fields.email")} value={email || "—"} />
+          <FactRow label={t("details_tab.fields.phone")} value={phone || "—"} />
           <FactRow
             label={t("details_tab.fields.contact_method")}
-            value={enquiry.contact_method ? contactMethodLabel(enquiry.contact_method) : "—"}
+            value={contactMethod ? contactMethodLabel(contactMethod) : "—"}
           />
           <FactRow label={t("details_tab.fields.party")} value={partyText} />
           <FactRow

@@ -41,6 +41,12 @@ export const enquiryListItemSchema = z.object({
   status: enquiryStatusSchema,
   guest: z.number().nullable().optional(),
   guest_name: z.string().nullable().optional(),
+  // Read-only contact details sourced from the linked Guest — the
+  // denormalised email/phone/contact_method below are blank for
+  // guest-linked enquiries.
+  guest_email: z.string().nullable().optional(),
+  guest_phone: z.string().nullable().optional(),
+  guest_contact_method: contactMethodSchema.nullable().optional(),
   first_name: z.string().optional().default(""),
   last_name: z.string().optional().default(""),
   email: z.string().optional().default(""),
@@ -75,6 +81,14 @@ export const enquiryDetailSchema = enquiryListItemSchema.extend({
   quotations: z.array(quotationDetailSchema).optional().default([]),
 });
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>;
+
+/** Display name for an enquiry: linked-guest name, then the denormalised
+ * lead-capture name, then email, then the reference as a last resort. */
+export function guestName(enq: EnquiryDetail): string {
+  if (enq.guest_name) return enq.guest_name;
+  const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
+  return denorm || enq.email || enq.reference;
+}
 
 export const enquiryListResponseSchema = paginated(enquiryListItemSchema);
 

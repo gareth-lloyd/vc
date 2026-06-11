@@ -158,7 +158,7 @@ export function PaymentTrack({
             })}
           </p>
         </div>
-        <StatusBadge status={paymentTrackStatusLabel(data.status) ?? data.status} />
+        <StatusBadge status={data.status} label={paymentTrackStatusLabel(data.status)} />
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -186,7 +186,12 @@ export function PaymentTrack({
           size="sm"
           onClick={handleRequest}
           disabled={
-            requestMutation.isPending || data.status === "succeeded" || data.status === "waived"
+            requestMutation.isPending ||
+            data.status === "succeeded" ||
+            data.status === "waived" ||
+            // Nothing to request on a zero-amount track (e.g. a £0.00
+            // security deposit).
+            !(Number.isFinite(scheduled) && scheduled > 0)
           }
         >
           {data.status === "pending"

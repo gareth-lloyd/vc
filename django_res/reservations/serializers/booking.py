@@ -18,6 +18,8 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
 
     property_name = serializers.SerializerMethodField()
     guest_name = serializers.SerializerMethodField()
+    guest_email = serializers.SerializerMethodField()
+    night_count = serializers.SerializerMethodField()
     currency_code = serializers.CharField(source="currency.code", read_only=True)
     # `balance_due` holds the denormalised engine-gross total (07-payments.md)
     # — it is *not* decremented as payments settle, and a re-price rewrites it
@@ -38,10 +40,12 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "property_name",
             "guest",
             "guest_name",
+            "guest_email",
             "agent",
             "assigned_to",
             "date_from",
             "date_to",
+            "night_count",
             "adults",
             "children",
             "currency",
@@ -63,6 +67,8 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "status",
             "property_name",
             "guest_name",
+            "guest_email",
+            "night_count",
             "is_archived",
             "archived_at",
             "created_at",
@@ -80,6 +86,15 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
         if guest is None:
             return None
         return f"{guest.first_name} {guest.last_name}".strip() or None
+
+    def get_guest_email(self, obj: Booking) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return guest.email or None
+
+    def get_night_count(self, obj: Booking) -> int:
+        return (obj.date_to - obj.date_from).days
 
     @staticmethod
     def _charges_total(obj: Booking) -> Decimal:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysIso, formatDate, formatNightRange } from "./date";
+import { addDaysIso, formatDate, formatNightRange, toDatetimeLocal } from "./date";
 
 describe("formatDate", () => {
   it("formats an ISO string", () => {
@@ -34,6 +34,21 @@ describe("formatNightRange", () => {
   it("keeps both years when the range crosses a year boundary", () => {
     expect(formatNightRange(new Date(2026, 11, 30), new Date(2027, 0, 1))).toBe(
       "30 Dec 2026 – 1 Jan 2027",
+    );
+  });
+});
+
+describe("toDatetimeLocal", () => {
+  it("renders a Date as the local datetime-local input shape", () => {
+    expect(toDatetimeLocal(new Date(2026, 5, 11, 9, 5))).toBe("2026-06-11T09:05");
+  });
+
+  it("converts a UTC ISO string to local wall-clock", () => {
+    const iso = "2026-06-18T20:59:59Z";
+    const expected = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    expect(toDatetimeLocal(iso)).toBe(
+      `${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}T${pad(expected.getHours())}:${pad(expected.getMinutes())}`,
     );
   });
 });

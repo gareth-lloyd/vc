@@ -94,6 +94,12 @@ interface PricingBulkResponse {
     hero_image_url?: string | null;
     date_from?: string;
     date_to?: string;
+    inclusion?: string;
+    occupancy_pricing?: boolean;
+    changeover_day?: string | null;
+    min_nights?: number | null;
+    max_nights?: number | null;
+    is_projected?: boolean;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -265,6 +271,12 @@ export async function searchQuoteOptions(
       date_to: q.date_to ?? null,
       error_code: datesUnavailable ? "dates_unavailable" : (q.error_code ?? null),
       error_detail: datesUnavailable ? null : (q.error_detail ?? null),
+      inclusion: q.inclusion ?? null,
+      occupancy_pricing: q.occupancy_pricing ?? null,
+      changeover_day: q.changeover_day ?? null,
+      min_nights: q.min_nights ?? null,
+      max_nights: q.max_nights ?? null,
+      is_projected: q.is_projected ?? null,
       breakdown: q,
     });
   });

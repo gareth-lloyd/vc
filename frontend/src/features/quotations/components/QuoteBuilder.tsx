@@ -155,7 +155,10 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         currency: option.currency ?? null,
         total: option.total ?? null,
         discount: "0",
-        inclusions: "",
+        // Seed from the winning plan's inclusion text (legacy parity —
+        // ResService.cs:1241). Display-only convenience pre-save: the backend
+        // seeds authoritatively at line creation; still editable in the cart.
+        inclusions: option.inclusion ?? "",
         price_override_reason: "",
         is_manual: manualOnly,
         manual_only: manualOnly,

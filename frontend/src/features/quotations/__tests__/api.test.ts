@@ -134,6 +134,71 @@ describe("searchQuoteOptions", () => {
     expect(result.options[0].sleeps).toBe(8);
   });
 
+  it("carries the plan/card enrichment fields through to the option", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 19, name: "Villa Sol", display_name: "Villa Sol", slug: null, status: "active" },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 19,
+              available: true,
+              total: "1710.00",
+              currency_code: "GBP",
+              inclusion: "Daily maid service",
+              occupancy_pricing: true,
+              changeover_day: "sat",
+              min_nights: 7,
+              max_nights: 14,
+              is_projected: false,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0]).toMatchObject({
+      inclusion: "Daily maid service",
+      occupancy_pricing: true,
+      changeover_day: "sat",
+      min_nights: 7,
+      max_nights: 14,
+      is_projected: false,
+    });
+  });
+
+  it("defaults the enrichment fields to null on an enrichment-less response", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 9, name: "Villa Mar", display_name: "Villa Mar", slug: null, status: "active" },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 9, available: true, total: "900.00", currency_code: "EUR" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].inclusion).toBeNull();
+    expect(result.options[0].occupancy_pricing).toBeNull();
+    expect(result.options[0].changeover_day).toBeNull();
+    expect(result.options[0].min_nights).toBeNull();
+  });
+
   it("leaves the option disambiguators null when the row has no capacity", async () => {
     server.use(
       http.get("/api/v1/properties", () =>

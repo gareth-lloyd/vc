@@ -205,6 +205,35 @@ describe("QuoteBuilder", () => {
     expect(screen.getByText(/7 nights/i)).toBeInTheDocument();
   });
 
+  it("seeds the staged line's inclusions from the winning plan", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              inclusion: "Daily maid service",
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    // The result line surfaces the plan's inclusions…
+    expect(await screen.findByText(/Daily maid service/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+    // …and the staged cart line is pre-seeded with them (still editable).
+    await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
+    expect(screen.getByLabelText(/inclusions/i)).toHaveValue("Daily maid service");
+  });
+
   it("loads and appends the next page of priced options on Load more", async () => {
     server.use(
       http.get("/api/v1/properties", ({ request }) => {

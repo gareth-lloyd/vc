@@ -122,6 +122,16 @@ export const quoteOptionSchema = z.object({
   date_to: z.string().nullable().optional(),
   error_code: z.string().nullable().optional(),
   error_detail: z.string().nullable().optional(),
+  // Plan/card metadata the engine breakdown carries (all optional so older
+  // responses still parse): the winning plan's inclusion text, whether the
+  // price moves with party size, the fixed changeover day code (null = any),
+  // the winning card's stay-length bounds, and the projected-rates flag.
+  inclusion: z.string().nullable().optional(),
+  occupancy_pricing: z.boolean().nullable().optional(),
+  changeover_day: z.string().nullable().optional(),
+  min_nights: z.number().nullable().optional(),
+  max_nights: z.number().nullable().optional(),
+  is_projected: z.boolean().nullable().optional(),
   breakdown: z.unknown().optional(),
 });
 export type QuoteOption = z.infer<typeof quoteOptionSchema>;

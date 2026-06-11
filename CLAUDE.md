@@ -2,100 +2,71 @@
 
 Rebuild of the legacy `ResSystem/` (.NET 7 + Blazor + SQL Server) villa-rental
 reservation platform as a **Django REST API + React (Vite + TypeScript) SPA**.
-
-This file is the project's north star for agentic work. Per-stack details live
-in `django_res/CLAUDE.md` and the frontend's `CLAUDE.md` (created when those
-trees are scaffolded). Keep this file principles-only.
+Per-stack details live in `django_res/CLAUDE.md` and `frontend/CLAUDE.md`;
+this file stays principles-only.
 
 ## Principles
 
-1. **TDD — red / green / refactor.** Write the failing test first, make it
-   pass with the simplest thing that works, then refactor. We are *not*
-   chasing 100% line coverage; we are chasing 100% of *important* logic.
-   That's a judgement call — when in doubt, write the test. TDD is how we
-   advance carefully and reliably, one small increment at a time.
+1. **TDD — red / green / refactor.** Failing test first, simplest pass, then
+   refactor. Not chasing line coverage — chasing 100% of _important_ logic;
+   when in doubt, write the test.
 
-2. **Off-the-shelf over bespoke.** Reach for established libraries (DRF,
-   `django-filter`, `dj-rest-auth` / `django-allauth`, `factory-boy`,
-   `React Query`, `Zod`, `react-hook-form`, etc.) before writing custom
-   abstractions. If you find yourself writing a framework, stop. This is a
-   simple project that benefits from simple, well-trodden libraries.
+2. **Off-the-shelf over bespoke.** Established libraries (DRF, `django-filter`,
+   `factory-boy`, `React Query`, `Zod`, `react-hook-form`, …) before custom
+   abstractions. If you find yourself writing a framework, stop.
 
-3. **KISS.** Excessive cleverness is actively discouraged. Simple solutions
-   for simple problems. Prefer boring. Three duplicated lines beats a
-   premature abstraction; a flat function beats a class hierarchy; an
-   explicit `if` beats a strategy pattern.
+3. **KISS.** Prefer boring. Three duplicated lines beats a premature
+   abstraction; an explicit `if` beats a strategy pattern.
 
-4. **Linting from day one.** No "we'll add it later."
-   - **Backend:** `ruff` (format + lint) and `mypy` configured in
-     `pyproject.toml` before the first real commit of Django code.
-   - **Frontend:** `eslint` + `prettier` + `tsc --noEmit` configured before
-     the first real commit of React code.
+4. **Linting from day one.** Backend: `ruff` (format + lint) + `mypy`;
+   frontend: `eslint` + `prettier` + `tsc --noEmit`. No "we'll add it later."
 
-5. **No soft delete.** No `SoftDeleteModel` / `deleted_at` columns.
-   Express lifecycle via a `status` enum (`DRAFT` / `ACTIVE` / `ARCHIVED`),
-   an `is_active` bool, an `archived_at` timestamp, or a hard delete with
-   an `AuditLog` trail. See `accounts.Contact.merge` for the canonical
-   hard-delete pattern.
+5. **No soft delete.** No `SoftDeleteModel` / `deleted_at`. Lifecycle via a
+   `status` enum, an `is_active` bool, an `archived_at` timestamp, or a hard
+   delete with an `AuditLog` trail (canonical pattern:
+   `accounts.Contact.merge`).
 
 ## Quality gate (non-negotiable)
 
-Before any commit:
-
-- All backend tests pass (`pytest`).
-- All frontend tests pass (`vitest`).
-- All backend lint + typecheck pass (`ruff check`, `ruff format --check`, `mypy`).
-- All frontend lint + typecheck pass (`eslint`, `prettier --check`, `tsc --noEmit`).
-
-Enforced locally by:
-
-- **Python side:** `pre-commit` hooks (`.pre-commit-config.yaml`).
-- **JS side:** `husky` + `lint-staged` on the `pre-commit` git hook.
-
-Never bypass with `--no-verify` unless explicitly authorised by a human in
-the loop. If a hook fails, fix the underlying problem.
+Before any commit: backend tests (`pytest`) + lint/typecheck (`ruff check`,
+`ruff format --check`, `mypy`); frontend tests (`vitest`) + lint/typecheck
+(`eslint`, `prettier --check`, `tsc --noEmit`). Enforced by `pre-commit`
+hooks (Python) and `husky` + `lint-staged` (JS). Never bypass with
+`--no-verify` unless explicitly authorised by a human; if a hook fails, fix
+the underlying problem.
 
 ## Repo layout
 
-- `django_res/` — Django REST API. Models, services, DRF surface, and the
-  `data_migration/` package that ports the legacy SQL Server dump into
-  Postgres. See `django_res/CLAUDE.md` for backend specifics and
-  `django_res/data_migration/CUTOVER.md` for the legacy-cutover playbook.
+- `django_res/` — Django REST API, including the `data_migration/` package
+  that ports the legacy SQL Server dump into Postgres. See
+  `django_res/CLAUDE.md` and `django_res/data_migration/CUTOVER.md`.
 - `frontend/` — Vite + React + TypeScript SPA.
-- `django_res_design/` — Detailed design specs for the rebuild: models,
-  conventions, REST surface, workflows, departures from legacy. Start at
-  `django_res_design/INDEX.md`.
-- `ResSystem/` — **Read-only** legacy .NET app. Reference only; do not
-  modify. Source of truth for behaviour we're reproducing.
+- `django_res_design/` — detailed design specs (models, REST surface,
+  workflows). Start at `django_res_design/INDEX.md`.
+- `ResSystem/` — **read-only** legacy .NET app; source of truth for behaviour
+  we're reproducing. Do not modify.
 - `investigation/` — ad-hoc investigation notes.
 
 ## Tooling
 
-- **Python:** managed by `uv` (`uv sync`, `uv run …`, `uv add …`).
-- **Node:** npm (or pnpm) for the frontend.
-- **DB:** PostgreSQL, run locally via `docker compose`.
-- **MCP servers wired for this project** (see `.claude/settings.json`):
-  `context7` (library docs), `postgres` (schema introspection),
-  `playwright` (browser-driven FE checks).
-- **Git worktrees** live in a **sibling** directory, never nested inside the
-  repo: `../villacollective-worktrees/<slug>/`, where `<slug>` is the branch
-  name minus any `feat/`-style prefix. Create with
-  `git worktree add -b feat/<slug> ../villacollective-worktrees/<slug> HEAD`.
-  Sibling (not in-repo) keeps the second checkout out of the file tree that
-  `ruff`/`mypy`/`pytest`/`tsc`/`eslint` walk and out of the parent's
-  `git status`. **Always edit through the worktree path** — editing the same
-  file via the main-repo path lands the change on the wrong branch.
+- **Python:** `uv` (`uv sync`, `uv run …`, `uv add …`). **Node:** npm.
+  **DB:** PostgreSQL via `docker compose`.
+- **MCP servers** (`.claude/settings.json`): `context7` (library docs),
+  `postgres` (schema introspection), `playwright` (browser FE checks).
+- **Git worktrees** live in a sibling directory, never nested in the repo:
+  `git worktree add -b feat/<slug> ../villacollective-worktrees/<slug> HEAD`
+  (keeps the second checkout out of lint/test walks and `git status`).
+  **Always edit through the worktree path** — main-repo paths land changes on
+  the wrong branch.
 
 ## Working principles for agents
 
 - Read `django_res_design/INDEX.md` before designing new backend models or
   endpoints — the spec is detailed and authoritative.
-- Before changing anything in `django_res/data_migration/` or adding new
-  loaders, read `django_res/data_migration/CUTOVER.md` and the
-  conventions in `django_res/CLAUDE.md`. The package is the executable
-  spec for the legacy → Postgres shape and must stay idempotent.
-- When the spec and code disagree, surface the disagreement to the user;
-  do not silently choose one side.
+- Before touching `django_res/data_migration/`, read its `CUTOVER.md`; the
+  package is the executable legacy → Postgres spec and must stay idempotent.
+- When the spec and code disagree, surface the disagreement to the user; do
+  not silently choose one side.
 - Prefer small, incremental, test-backed commits over large landings.
-- If a task seems to require breaking the quality gate (e.g. skipping
-  tests, disabling a lint rule), stop and ask.
+- If a task seems to require breaking the quality gate (skipping tests,
+  disabling a lint rule), stop and ask.

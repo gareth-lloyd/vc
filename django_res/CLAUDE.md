@@ -2,107 +2,63 @@
 
 ## Local setup
 
-1. `docker compose up -d` (from repo root) — starts Postgres at `localhost:55432`.
+1. `docker compose up -d` (repo root) — Postgres at `localhost:55432`.
 2. `cp .env.example .env` (or export `DATABASE_URL` directly).
-3. `uv sync`
-4. `uv run python manage.py migrate`
-5. `uv run pytest` — tests run against the same Postgres instance
-   (pytest-django creates `test_villacollective` automatically).
+3. `uv sync && uv run python manage.py migrate`
+4. `uv run pytest` (pytest-django creates the test DB automatically).
 
 From the repo root, `make test-backend` runs the backend suite and `make test`
 runs backend + frontend together.
 
 ## Background tasks (Celery)
 
-Async work runs on Celery with a Redis broker (the `redis` service in
-`docker-compose.yml`; Render Key Value in prod). No result backend — tasks are
-fire-and-forget (`CELERY_TASK_IGNORE_RESULT = True`). The app object lives in
-`villacollective/celery.py` and auto-discovers each app's `tasks.py`.
+Redis broker (`redis` service in `docker-compose.yml`; Render Key Value in
+prod); no result backend — tasks are fire-and-forget. App object in
+`villacollective/celery.py`. Run locally (after `docker compose up -d`):
+`uv run celery -A villacollective worker -l info` (+ `beat` for the scheduler).
 
-Run the worker and the beat scheduler in separate processes (after
-`docker compose up -d` so Redis is up):
+- Tasks live in `<app>/tasks.py` under `@shared_task` (autodiscovered; stay
+  plain callables).
+- Periodic schedule is static in `settings/base.py` (`CELERY_BEAT_SCHEDULE`,
+  UTC). Schedule only *implemented* tasks — a scheduled stub errors every
+  beat tick.
+- Tests run eager (`CELERY_TASK_ALWAYS_EAGER`). Service-layer dispatch goes
+  through `transaction.on_commit`, so a test asserting a synchronous send needs
+  `pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")`
+  (fixture in `django_res/conftest.py`).
 
-```
-uv run celery -A villacollective worker -l info
-uv run celery -A villacollective beat -l info     # periodic scheduler
-```
+## Tests
 
-- **Tasks live in `<app>/tasks.py`** under `@shared_task` so autodiscovery
-  finds them; they stay plain callables (directly invokable from the shell /
-  management commands / tests).
-- **Periodic schedule** is static in `settings/base.py` (`CELERY_BEAT_SCHEDULE`,
-  UTC). Only *implemented* tasks are scheduled; the `integrations.tasks` stubs
-  and `payments.tasks.process_sd_refunds` are decorated but deliberately left
-  out until implemented (beat would otherwise error every tick).
-- **Tests run eager** (`CELERY_TASK_ALWAYS_EAGER` in `settings/test.py`), so
-  `.delay(...)` executes inline. Service-layer dispatch is enqueued via
-  `transaction.on_commit`, so a test asserting on a synchronous send must opt
-  into `pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")`
-  (fixture in `django_res/conftest.py`) to run the commit hooks immediately.
-
-### Parallel by default
-
-The suite runs in parallel via `pytest-xdist` (`-n auto` in `addopts`), so
-`uv run pytest`, `make test-backend`, the pre-push hook, and CI all parallelize
-automatically — there is one source of truth for the flag.
-pytest-django gives each worker its own `test_villacollective_gw{n}` test DB, so
-isolation is identical to a serial run — every worker rolls back its own
-transactions and the `transaction=True` seeding tests flush only their own DB.
-
-For the **single-test TDD inner loop**, pass `-n0` to run serially — readable
-output, live per-test progress, and clean `-x` (stop-on-first-failure)
-behaviour, without the worker-spawn overhead:
-
-```
-uv run pytest reservations/tests/test_references.py -n0
-```
-
-The local Postgres also runs with `fsync=off` (see `docker-compose.yml`) — pure
-test-speed convenience on a disposable DB. Never copy those flags to a database
-you can't recreate.
-
-### Running tests from multiple worktrees
-
-The test DB lives on the one shared Postgres container, so concurrent
-worktrees would otherwise collide on `test_villacollective`. Two guards:
-
+- Parallel by default (`pytest-xdist`, `-n auto` in `addopts`); each worker
+  gets its own `test_villacollective_gw{n}` DB, so isolation matches a serial
+  run. Pass `-n0` for the single-test TDD inner loop (readable output, live
+  progress, clean `-x`).
+- `--reuse-db` is on by default; pass `--create-db` after changing migrations.
 - A checkout under `.claude/worktrees/` automatically gets its own
-  `test_villacollective_<hash>` database (suffix derived from the checkout
-  path, in `settings/test.py`). The main checkout and CI keep the plain name.
-  Set `PYTEST_DB_SUFFIX` to override the suffix manually.
-- `--reuse-db` is on by default (`addopts`), so each worktree creates its DB
-  once and reuses it — no CREATE/DROP churn between runs. Pass `--create-db`
-  after changing migrations to rebuild it.
+  `test_villacollective_<hash>` DB (`settings/test.py`; override with
+  `PYTEST_DB_SUFFIX`), so concurrent worktrees don't collide on the shared
+  Postgres container.
+- Local Postgres runs `fsync=off` (test-speed convenience) — never copy those
+  flags to a database you can't recreate.
 
 ## Environments
 
-Settings modules in `villacollective/settings/`:
-
-- `base` — shared; `SEED_DEV_ALLOWED = False`.
-- `dev` / `test` — local + CI; `SEED_DEV_ALLOWED = True`.
-- `production` — real production; inherits `base` (seeding stays blocked).
-- `staging` — **Render**. Inherits `production` (so `DEBUG=False`, SSL
-  redirect, secure cookies, env-driven secrets all hold), but sets
-  `SEED_DEV_ALLOWED = True` so the Render demo DB can be populated with
-  `seed_dev`. The Render `villacollective-api` service runs this module
-  (`DJANGO_SETTINGS_MODULE` in `render.yaml`).
+Settings modules in `villacollective/settings/`: `base` (shared,
+`SEED_DEV_ALLOWED = False`), `dev` / `test` (local + CI, seeding allowed),
+`production`, and `staging` (Render — inherits `production` so all hardening
+holds, but allows `seed_dev`; wired via `DJANGO_SETTINGS_MODULE` in
+`render.yaml`).
 
 ## Legacy data migration
 
-The `data_migration/` app ports the legacy SQL Server dump into the new
-Postgres schema. Loaders are idempotent (upserts keyed on `legacy_id`).
+`data_migration/` ports the legacy SQL Server dump into Postgres; loaders are
+idempotent upserts keyed on `legacy_id`. `LEGACY_DATABASE_URL` (`mssql://…`)
+must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
 
-- `./manage.py loadlegacy --all` — run every registered loader in
-  dependency order. `--since '<iso-8601>'` filters by legacy `UpdatedAt`
-  for cutover delta loads.
-- `./manage.py reconcile_legacy` — prints a legacy-vs-loaded row-count
-  table; documented gaps live in `data_migration/CUTOVER.md`.
-- `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>` —
-  rewrites FK references via `_meta.related_objects` (same pattern as
-  `Contact.merge`) and hard-deletes the source row.
-
-`LEGACY_DATABASE_URL` (`mssql://…`) must be set when running any loader.
-See `data_migration/CUTOVER.md` for the full playbook.
+- `./manage.py loadlegacy --all` — every loader in dependency order
+  (`--since '<iso-8601>'` for cutover delta loads).
+- `./manage.py reconcile_legacy` — legacy-vs-loaded row-count table.
+- `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>`.
 
 ## Conventions
 
@@ -110,390 +66,190 @@ Patterns already in the code. New work should mirror them.
 
 ### `legacy_id` on every importable model
 
-`legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)`
-on any model with a legacy origin. It is migration metadata only —
-never the natural key for application lookups. Use `iso2` for Country,
-`code` for Currency, `slug` for Region, etc. Existing examples live on
-`accounts.Contact`, `properties.Country`/`Region`, and
-`pricing.Currency`.
+`legacy_id = CharField(max_length=64, null=True, blank=True, db_index=True)`
+on any model with a legacy origin. Migration metadata only — never the
+application lookup key (use `iso2` for Country, `code` for Currency, `slug`
+for Region, …). Examples: `accounts.Contact`, `properties.Country`.
 
 ### Loaders are idempotent upserts keyed on `legacy_id`
 
 Subclass `BaseLoader` (custom transform) or `DeclarativeLoader` (simple
-field-rename) in `data_migration/loaders/`. One legacy row → one upsert
-via `update_or_create(legacy_id=..., defaults=…)`. Multi-row writes per
-legacy row override `_process_row` — see `PropertyLoader` (Property + 4
-child writes) and `RoomLoader` (Room + RoomBeds). Register new loaders
-in `data_migration/registry.py`.
+rename) in `data_migration/loaders/`; one legacy row →
+`update_or_create(legacy_id=…, defaults=…)`. Multi-row writes override
+`_process_row` (see `PropertyLoader`, `RoomLoader`). Register in
+`data_migration/registry.py`.
 
 ### Sentinel fallback over silent skip
 
-When a legacy FK can't resolve, fall back to a sentinel rather than
-returning `None` and dropping the row. Helpers live in
-`data_migration/loaders/sentinels.py`: `unknown_country()`,
-`unknown_region()`, `unknown_group()`. Property and Region loaders use
-this; new loaders touching geo or group FKs should too.
+When a legacy FK can't resolve, fall back to a sentinel rather than dropping
+the row — helpers in `data_migration/loaders/sentinels.py`
+(`unknown_country()`, `unknown_region()`, `unknown_group()`).
 
 ### Inheritance — call `effective(field)`
 
-`PropertySettings.effective(attr)` and `PropertyFinance.effective(field)`
-are the canonical property-→-group resolvers. Don't hand-roll the
-chain — wrap them when an outer fallback is needed (see
-`_resolve_property_currency` in `data_migration/loaders/pricing.py`).
+`PropertySettings.effective(attr)` / `PropertyFinance.effective(field)` are
+the canonical property→group resolvers. Don't hand-roll the chain — wrap them
+(see `_resolve_property_currency` in `data_migration/loaders/pricing.py`).
 
 ### FK rewrite + hard-delete merge
 
-The `_meta.related_objects` walk is the canonical way to rewrite FKs
-across the schema before hard-deleting a row. References:
-`accounts.Contact.merge`, `reservations.Guest.merge`, and the
-`merge_country` management command. Always inside
-`transaction.atomic()`. Skip `rel.many_to_many` — the through-model FK
-shows up separately and gets rewritten there.
+The `_meta.related_objects` walk, always inside `transaction.atomic()`,
+skipping `rel.many_to_many` (the through-model FK is rewritten separately).
+References: `accounts.Contact.merge`, `reservations.Guest.merge`,
+`merge_country`.
 
 ### Synthesised rows must not leak into public APIs
 
-`BookingLoader` creates Quotation + QuotationLine rows with `legacy_id`
-prefixed `booking-` so legacy bookings can satisfy the PROTECT FK
-chain. Any viewset surfacing Quotation/QuotationLine must
-`.exclude(legacy_id__startswith="booking-")` in `get_queryset()` — see
-`QuotationViewSet` in `reservations/views/quotation.py`.
+`BookingLoader` synthesises Quotation/QuotationLine rows with `legacy_id`
+prefixed `booking-` (to satisfy the PROTECT FK chain). Any viewset surfacing
+those models must `.exclude(legacy_id__startswith="booking-")` in
+`get_queryset()` — see `QuotationViewSet`.
 
 ### Reference numbers — `db_default` sequence, not a `save()` override
 
-Customer-facing reference fields (`reference` on Enquiry / Payment / Refund /
-SecurityDeposit) are allocated by the **database**, not Python. The field
-carries `db_default=reference_db_default("P", sequence="payment_reference_seq")`
-(`core/refs.py`), and the backing Postgres sequence is created in the app's
-migration (inline `CREATE SEQUENCE … OWNED BY` — migrations must not import
-runtime code). The DB stamps `{prefix}-{year}-{nextval}` on *every* insert path
-— `save()`, `bulk_create`, raw SQL — which is the whole point: a `save()`
-override (the old pattern) is silently skipped by `bulk_create`, leaving a
-blank `reference` that collides on the unique constraint (BUG-007).
-
-Consequences to mirror on any new reference-bearing model:
-
-- **Don't** re-add a `save()`/`pre_save` allocator — signals are skipped by
-  `bulk_create` too. Add the `db_default` + a sequence migration instead.
-- An explicit value still wins (legacy loaders preserve old refs); the default
-  only fills an *unset* field — an explicit `""` is inserted verbatim.
-- On Postgres the generated value comes back via `INSERT … RETURNING`, so a
-  freshly created/`bulk_create`d instance has `.reference` populated in memory
-  with no `refresh_from_db`.
-- A high-water `setval` sync after a legacy import is only needed when the
-  imported format collides with the organic `{prefix}-{year}-{n}` shape — see
-  `sync_quotation_sequence` (Quotation's `QVC{n}` shares the legacy format).
-  The `db_default` series stay disjoint, so they need no sync.
-
-Quotation/Booking use a related but distinct mechanism (a shared `number` from
-`quotation_number_seq` for `QVC`/`VC` legacy parity); `generate_reference`
-survives only as Booking's interim fallback for a numberless quotation.
+Customer-facing `reference` fields (Enquiry / Payment / Refund /
+SecurityDeposit) are allocated by the **database**:
+`db_default=reference_db_default(...)` (`core/refs.py`) plus a Postgres
+sequence created inline in the app's migration. Never a `save()` / `pre_save`
+allocator — `bulk_create` skips both, leaving blank references that collide on
+the unique constraint (BUG-007). An explicit value still wins (loaders
+preserve legacy refs). Full detail — `RETURNING` behaviour, `setval` sync,
+the Quotation/Booking `number` mechanism — in the `core/refs.py` docstring.
 
 ### State-mutating services accept `idempotency_key`
 
-Any service that *creates* a row in response to an external trigger
-(webhook, scheduled job, operator UI submit) takes an optional
-`idempotency_key: str | None` and short-circuits the second call.
-Webhooks retry, operators double-click — the second call must be a
-no-op that returns the original row, not a duplicate write.
-
-Implementation lives in `core/idempotency.py`:
-
-- `find_by_meta_key(queryset, key)` looks up an existing row keyed by
-  `meta["idempotency_key"]`. Scope the queryset before calling (one
-  booking, one provider — not the whole table).
-- `stamp_meta(meta, key)` returns a fresh `meta` dict with the key
-  stamped on it; pass straight to `.create()`.
-
-`None` means "no idempotency requested" — internal callers (tests,
-management commands, ad-hoc shell) stay ceremony-free.
-
-Some entry points have a natural idempotency key already: a `Booking`
-is uniquely tied to a `QuotationLine`, so
-`BookingService.create_from_quotation_line` checks for an existing
-booking by FK before opening a new one. Prefer the natural key when it
-exists; fall back to the `meta` key otherwise.
-
-Reference implementations: `RefundService.request`,
-`RefundService.execute`, `BookingService.create_from_quotation_line`.
+Services that create rows from external triggers (webhook, scheduled job,
+operator submit) take `idempotency_key: str | None` and return the original
+row on a repeat call; `None` means "not requested" (internal callers stay
+ceremony-free). Helpers in `core/idempotency.py` (`find_by_meta_key` on a
+*scoped* queryset, `stamp_meta`). Prefer a natural key when one exists — a
+Booking is uniquely tied to its QuotationLine, so
+`BookingService.create_from_quotation_line` checks the FK first. References:
+`RefundService.request` / `execute`.
 
 ### Service-layer permission checks
 
 State-mutating services take an `actor` kwarg and call
-`actor_has_perm(actor, perm)` (from `core.api.permissions`) for every
-transition. `actor=None` is the documented sentinel for system callers
-(tests, management commands, background workers) and is granted
-unconditionally.
-
-Reference implementation: `payments/services/refund.py`.
+`actor_has_perm(actor, perm)` (`core.api.permissions`) for every transition;
+`actor=None` is the documented system-caller sentinel, granted
+unconditionally. Reference: `payments/services/refund.py`.
 
 ### Booking creation must create the LEAD `BookingGuest`
 
-`Booking.guest` is a denormalised pointer to the LEAD `BookingGuest` row,
-kept in sync by `_booking_guest_post_save`. The denorm is for read-side
-performance only — the canonical source of truth is the `BookingGuest`
-table, which encodes the full multi-contact set (LEAD, CO_TRAVELLER,
-PAYER, CC_ONLY).
-
-Any code path that creates a `Booking` must also create a matching
-`BookingGuest(role=LEAD)` row inside the same `transaction.atomic` —
-otherwise the LEAD invariant is inert and `booking.booking_guests.filter(
-role=LEAD)` returns empty even though `Booking.guest` is populated. The
-`_booking_guest_pre_delete` orphan guard raises `LeadGuestProtectedError`
-if you try to delete a LEAD row while its booking still exists; the
-canonical "swap LEAD" pattern is to demote the old LEAD to `CO_TRAVELLER`
-and create the new LEAD row inside one atomic block.
-
-Reference implementations: `BookingService.create_from_quotation_line`,
-`data_migration/loaders/bookings.py` `BookingLoader._process_row` (uses
-idempotent `get_or_create` so re-runs don't double up), and
-`reservations.factories.make_occupying_booking` (the shared fabricator for an
-*occupying* booking — bypasses the service lifecycle for conflict/ingest
-scenarios but still stamps the LEAD row; used by the iCal demo command and the
-ingest tests).
+`Booking.guest` is a denormalised pointer to the LEAD `BookingGuest` row; the
+`BookingGuest` table is the source of truth. Any path creating a `Booking`
+must create the matching `BookingGuest(role=LEAD)` row inside the same
+`transaction.atomic`. Deleting a LEAD while its booking exists raises
+`LeadGuestProtectedError`; to swap LEAD, demote the old one to `CO_TRAVELLER`
+and create the new LEAD atomically. References:
+`BookingService.create_from_quotation_line`, `BookingLoader._process_row`,
+`reservations.factories.make_occupying_booking`.
 
 ### AuditLog registration is part of model definition
 
-Any model whose business-logic docstring or anonymisation flow claims an
-AuditLog trail — and any PII-bearing or money-bearing model — must be
-registered via `core.audit.track(Model, fields=[...], sensitive=[...])`
-in its app's `AppConfig.ready()`. Treat registration as load-bearing
-alongside the migration that creates the model.
+Any PII- or money-bearing model (and any model whose docs claim an audit
+trail) must be registered via `core.audit.track(Model, fields=[...],
+sensitive=[...])` in its app's `AppConfig.ready()`. Track lifecycle, PII, and
+money columns; skip chatty timestamps and free-form JSON blobs.
+`core/tests/test_audit_registry.py` pins the registered set — update
+`EXPECTED_TRACKED_MODELS` in the same commit when deregistering.
 
-Field lists stay tight: track lifecycle, PII, and money columns; skip
-chatty timestamps (Django's `auto_now` already noises every save) and
-free-form JSON blobs whose internal shape isn't actionable in an audit
-review (e.g. `Booking.pricing_snapshot`).
+### Structured logging — `structlog`, event-style
 
-`core/tests/test_audit_registry.py` pins the registered set. To
-deregister, update `EXPECTED_TRACKED_MODELS` in the same commit and
-explain the call in this file.
+Full guide: `core/logging/README.md`. Must-knows:
 
-### Structured logging — `structlog`, event-style, auto-context
-
-Logging is `structlog` end to end (config in `core/logging/`, wired from
-`settings/base.py`). It ships JSON to stdout in staging/production (→ Render
-log drain → Datadog) and a pretty console line in dev/test.
-
-- **Get a logger** with `logger = structlog.get_logger(__name__)` — never
-  `logging.getLogger`. Plain stdlib `logging` still routes through the same
-  pipeline, but the convention is structlog, and it's **enforced**: ruff's
-  `TID251` ban (`[tool.ruff.lint.flake8-tidy-imports.banned-api]` in
-  `pyproject.toml`) fails the build on `logging.getLogger` in app code
-  (`core/logging/config.py`, which wires the stdlib `LOGGING` dict, is exempt).
-- **Events are dotted `domain.action`**, lowercase, with structured kwargs —
-  not interpolated sentences:
-  `logger.info("booking.created", booking_id=…, reference=…)`. Money as
-  `str(Decimal)`. Two shapes, by intent:
-  - **Facts already true / deliberate skips** → a single past-tense event:
-    `booking.created`, `comms.email_skipped`, `payment.schedule_skipped`,
-    `payment.reminder_skipped`/`payment.reminder_failed`, `ical.feed_failed`,
-    `encrypted_field.decrypt_failed`.
-  - **Fallible operations (verbs that can fail)** → the operation triple via
-    `log_operation` (next bullet), not a hand-rolled single event.
-- **Wrap fallible operations** with `core.logging.operations.log_operation` —
-  a context manager that times the block and emits `<event>.succeeded`
-  (`info`, with `duration_ms`) or `<event>.failed` (`error` + traceback, with
-  `duration_ms`, then **re-raises** — it never swallows). Pass the operation's
-  entity ids as kwargs (they bind into contextvars so *nested* lines inherit
-  them); mutate the yielded `ctx` dict to attach ids found mid-operation:
-
-  ```python
-  with log_operation("refund.request", logger=logger, booking_id=booking.pk) as ctx:
-      refund = Refund.objects.create(...)
-      ctx["refund_id"] = refund.pk          # rides on refund.request.succeeded
-      return refund
-  ```
-
-  `logger=logger` is required, so the event keeps its module logger name.
-  Put input/permission validation *above* the block — a rejected call is not an
-  operation failure and shouldn't log as `.failed` with a traceback. Reference:
-  `RefundService.request`/`execute` (`refund.request.*` / `refund.execute.*`).
-  Don't force a *fact* (`booking.created`) into the triple.
-- **Celery tasks** get their lifecycle for free: django-structlog already emits
-  `task_succeeded`/`task_failed`/`task_retrying` with `task_id`, and
-  `core/logging/celery.py` enriches every one with `task_name`. **Don't** wrap
-  a task in `log_operation` — add only a domain *summary* line for the outcome
-  (`hold.expired_batch released=…`, `booking.auto_checked_out_batch count=…`).
-- **Context is automatic.** `django_structlog.middlewares.RequestMiddleware`
-  binds `request_id` + `user_id`, and `core.middleware.AuditMiddleware` adopts
-  that `request_id` as the audit `correlation_id` — so a log line joins to the
-  `AuditLog` rows from the same request by id. Service code adds only its own
-  domain kwargs. Request start/finish are logged automatically; health-check and
-  static/media paths are dropped (`core.logging.processors.drop_noisy_requests`).
-- **Reserved keys — do not use as event kwargs:** `message`, `level`, `status`
-  (the JSON stage maps `event`→`message` and `level`→`status` for Datadog),
-  plus the auto-bound `request_id`/`user_id`/`correlation_id` and the static
-  `service`/`env`/`release`. Name domain fields around them (e.g.
-  `booking_status`, not `status`).
-- **Canonical field names** — spell entity keys the same everywhere so log
-  searches are uniform: `booking_id`, `property_id`, `refund_id`, `payment_id`,
-  `quotation_line_id`, `feed_id`, `guest_id`; `amount` = `str(Decimal)`;
-  `currency` = ISO code; `reason` = a short skip/failure code; `duration_ms` is
-  reserved for the operation triple. Use `<entity>_id` (the pk), not the ORM
-  object.
-- **PII never lands in logs.** `core.logging.redaction.redact_sensitive`
-  scrubs denylisted keys (passwords, tokens, secrets, card data, `body`) and
-  PAN/`Bearer` value patterns — recursively, including nested dicts — replacing
-  them with the shared `core.audit.REDACTED` sentinel. It's a backstop, not a
-  licence to log secrets.
-- **Testing:** don't write tests that merely re-assert a log line fired — that
-  restates the implementation and rots. Test logging only where it *earns* it:
-  the redaction/noise-drop processors directly (`core/tests/test_log_redaction.py`,
-  `test_log_processors.py`), the behaviour of `log_operation` (re-raises,
-  unbinds contextvars — `core/tests/test_operations.py`, *not* its output), or a
-  high-value observability guarantee on a money path
-  (`test_refund_service_emits_structured_events`). When you do assert on events,
-  use `structlog.testing.capture_logs()` on the event name + key fields (not the
-  rendered string); it bypasses the configured processors, and test settings set
-  `cache_logger_on_first_use=False` so it intercepts module-level loggers.
+- `logger = structlog.get_logger(__name__)` — never `logging.getLogger`
+  (ruff TID251 fails the build on it).
+- Events are dotted lowercase `domain.action` with structured kwargs
+  (`logger.info("booking.created", booking_id=…)`); money as `str(Decimal)`.
+- Fallible operations get the triple via
+  `core.logging.operations.log_operation` (times the block, emits
+  `.succeeded`/`.failed`, re-raises); facts and deliberate skips get a single
+  past-tense event. Don't wrap Celery tasks — django-structlog covers them.
+- Reserved keys, never as kwargs: `message`, `level`, `status`, `request_id`,
+  `user_id`, `correlation_id`, `service`, `env`, `release`.
+- Canonical field names: `<entity>_id` pks (`booking_id`, `property_id`, …),
+  `amount` = `str(Decimal)`, `currency` = ISO code, `reason` = short code;
+  `duration_ms` is reserved for the triple.
+- PII never lands in logs — `redact_sensitive` is a backstop, not a licence.
 
 ### Viewset querysets declare their FK reads
 
-Every `ViewSet.get_queryset()` must `select_related()` the FKs the serializer
-walks and `prefetch_related()` the reverses / m2m it walks. The list endpoint
-must serve a single row and a hundred rows in the same constant query count.
-A bare `Model.objects.all()` is a bug even when the current serializer
-returns FKs as PKs — the moment someone adds a nested representation or a
-`SerializerMethodField` the N+1 lurks.
-
-Pin the bound with `core.tests.assert_max_queries` in a regression test
-on at least one list endpoint per app:
-
-    from core.tests import assert_max_queries
-
-    with assert_max_queries(10):
-        api_client.get("/api/v1/payments")
-
-Annotations that join a **multi-valued** relation (e.g. a `Sum` over a
-reverse FK) must be **gated by `self.action`** to the actions whose
-serializer actually reads them. The LEFT JOIN survives even when the
-annotation is pruned from the SELECT, so an ungated annotation leaks into
-`StatusCountsMixin` — its `Count("id")` then counts parent x child rows
-and inflates the status badges — and into the paginator's COUNT. Coalesce
-the annotation to a real zero so the serializer's per-instance fallback
-can tell "annotated as 0" from "not annotated" (a NULL looks un-annotated
-and re-triggers the fallback per row). Reference: `_with_amount_paid` in
+Every `get_queryset()` must `select_related()` / `prefetch_related()` whatever
+the serializer walks — a bare `Model.objects.all()` is a bug even while FKs
+serialize as PKs (the N+1 lurks for the first nested field). Pin at least one
+list endpoint per app with `core.tests.assert_max_queries`. Annotations that
+join a **multi-valued** relation must be gated by `self.action` and coalesced
+to a real zero — an ungated one leaks its LEFT JOIN into `StatusCountsMixin`
+and the paginator COUNT. Reference: `_with_amount_paid` in
 `reservations/views/booking.py` and
 `test_status_counts__not_inflated_by_payment_rows`.
 
-Reference: `payments/views/payment.py`, `payments/views/refund.py`, and the
-existing `select_related` discipline in `reservations/views/booking.py`,
-`properties/views/property.py`, `pricing/views/rate.py`.
-
 ### Test fixtures — `get_or_create` for canonical countries
 
-Migration `properties.0009` pre-seeds 249 ISO-3166 countries with
-`legacy_id=NULL`. Test fixtures must use
-`Country.objects.get_or_create(iso2='GB', defaults=…)` — never
-`.create(iso2='GB', …)`, which violates the iso2 unique constraint
-against the seed. Reference fixtures in `properties/tests/conftest.py`,
-`reservations/tests/conftest.py`, `payments/tests/conftest.py`,
-`pricing/tests/conftest.py`.
+Migration `properties.0009` pre-seeds 249 ISO-3166 countries. Fixtures must
+use `Country.objects.get_or_create(iso2=…, defaults=…)` — never `.create`,
+which violates the iso2 unique constraint against the seed.
 
 ### Realistic test data — `factory-boy` factories + `seed_dev`
 
-Each app owns a `factories.py` of `factory-boy` factories
-(`properties/`, `pricing/`, `accounts/`, `reservations/`). They are the
-single source of test-data builders: pytest fixtures and the `seed_dev`
-command both compose them, so a builder is exercised the same way in
-tests and in a populated dev DB. `seed_dev` is **additive** (never
-truncates), builds the Enquiry → Quotation → Booking → Payment graph
-through the real service layer, and is guarded by
-`settings.SEED_DEV_ALLOWED` (False in `base`/production).
-
-New factories must mirror two invariants: combine the per-process
-`RUN_TOKEN` (`core/factories.py`) into unique fields so additive runs
-never collide, and use `django_get_or_create` for migration-seeded /
-canonical models so they reuse the seeded row.
-
-Full reference — command flags, density-tier calendars, and the
-manifest-driven villa image pool — lives in `seeding/README.md`.
+Each app owns a `factories.py`; pytest fixtures and `seed_dev` both compose
+the same builders. `seed_dev` is **additive** (never truncates), drives the
+real service layer, and is guarded by `settings.SEED_DEV_ALLOWED`. New
+factories: fold the per-process `RUN_TOKEN` (`core/factories.py`) into unique
+fields, and use `django_get_or_create` for migration-seeded models. Full
+reference: `seeding/README.md`.
 
 ### Validate data-migration changes via `reconcile_legacy`
 
-After changes to loaders or to legacy-importable models, run
-`./manage.py reconcile_legacy` and check the gaps against the
-documented expected losses in `data_migration/CUTOVER.md`. Unexplained
-gaps are a blocker.
+After changes to loaders or legacy-importable models, run
+`./manage.py reconcile_legacy` and check gaps against the documented expected
+losses in `data_migration/CUTOVER.md`. Unexplained gaps are a blocker.
 
 ### Loader-transform tests prefer hand-rolled dict fixtures
 
 The transform layer is pure (legacy dict → kwargs); test it with dict
-fixtures rather than the legacy DB. Reference style:
-`data_migration/tests/test_country_loader.py`,
-`test_rate_rule_loader.py`, `test_property_loader.py`. Mark
-`@pytest.mark.django_db` only when the test exercises the new Postgres
-schema (sentinel rows, `get_or_create` semantics).
+fixtures, not the legacy DB. Mark `@pytest.mark.django_db` only when the test
+exercises the Postgres schema. Style reference:
+`data_migration/tests/test_country_loader.py`.
 
 ### API versioning
 
-v1 is mutable while the only consumer is the in-house SPA. Breaking
-changes (renamed/removed fields, changed status codes, changed error
-shapes) require a note in the commit message and a corresponding
-frontend PR landing in the same window. The trigger to fork `/api/v2/`
-is *"the API gets a second consumer we don't control"* — until then,
-edit v1 in place rather than versioning forward.
+v1 is mutable while the in-house SPA is the only consumer — breaking changes
+need a commit-message note and a same-window frontend PR. Fork `/api/v2/` only
+when the API gains a second consumer we don't control.
 
 ### List / detail / write serializer split
 
-Prefer separate serializers when the read response would otherwise carry
-write-only fields, when nested reads are heavier than the write payload,
-or when list and detail want different depth (e.g., list shows guest
-name; detail nests full guest). Reuse a single serializer only when read
-and write shapes are identical. Reference:
-`reservations/views/booking.py` (`BookingListSerializer` /
-`BookingDetailSerializer` / `BookingWriteSerializer`).
+Separate serializers when read/write shapes or list/detail depth differ;
+a single serializer only when they're identical. Reference:
+`reservations/views/booking.py`.
 
 ## Principles
 
-The project-wide principles (TDD, off-the-shelf over bespoke, KISS, no soft
-delete) live in the root `CLAUDE.md`. Backend-specific structure follows.
+Project-wide principles (TDD, off-the-shelf over bespoke, KISS, no soft
+delete) live in the root `CLAUDE.md`. Backend-specific structure:
 
-1. Layered architecture:
+1. Layered architecture.
 
-- DRF handles serialization and deserialization from HTTP
-- ALL business logic needs to be OUTSIDE of the view code, in its own service layer
+   **Vertical** (within an app, enforced by directory shape
+   `<app>/{models,services,views,tests}/`): DRF handles (de)serialization
+   only; ALL business logic lives in the service layer, never in views.
 
-django_res
-./<app>
-./services/<service name>
-./models/<model name>
-./views/<view name>
-./tests/
+   **Horizontal** (which app may import which), enforced by `import-linter`
+   (`uv run lint-imports`, in pre-commit + CI):
 
-The above is the **vertical** layering (within an app: view → service →
-model), enforced by directory structure. There is also a **horizontal**
-layering — which app may import which — enforced by `import-linter`
-(`[tool.importlinter]` in `pyproject.toml`; run `uv run lint-imports`, wired
-into pre-commit and CI next to `mypy`). Two contracts:
+   - **`core` is the foundation.** Cross-cutting primitives only; `core`
+     imports **no** domain app, ever. This is the crown-jewel invariant.
+   - **Spine points down** — a layer may import those below it:
 
-- **`core` is the foundation.** `core` holds cross-cutting primitives
-  (`enums`, `exceptions`, `models/base`, `api/permissions`, `factories`,
-  `console`, `refs`) and may import **no** domain app. Everything imports
-  *down* into `core`; `core` imports nothing back. This is the crown-jewel
-  invariant — keep it pristine.
+     ```
+     comms > payments > reservations > pricing > properties > integrations > accounts
+     ```
 
-- **Spine layers point down.** App imports flow high → low:
+     The few sanctioned back-edges are commented `ignore_imports` lines in
+     `pyproject.toml`; a genuinely new seam gets added there with a one-line
+     justification, never silently. `seeding` and `data_migration` sit outside
+     the layers contract but still obey the `core` rule.
 
-  ```
-  comms  >  payments  >  reservations  >  pricing  >  properties  >  integrations  >  accounts
-  ```
-
-  A layer may import those below it; a lower layer importing a higher one is a
-  violation. `integrations` (outbound third-party sync) sits low: domain apps
-  reach *down* into it to enqueue a push, and it reaches *down* into `accounts`
-  for the identity it syncs — both clean downward edges. The handful of
-  sanctioned back-edges are listed as commented `ignore_imports` lines — one per
-  deliberate seam — namely catalogue availability search
-  (`properties → reservations`, a single lazy filter that routes through the
-  canonical `Booking.objects.occupying` / `BookingHold.live_overlapping`
-  predicates) and notification edges into `comms` (the cross-cutting email sink
-  that every domain app may send into). `seeding` and `data_migration` are
-  top-of-stack orchestrators, deliberately outside the layers contract, but
-  still bound by the `core`-foundation rule.
-
-  Adding a new cross-app import that isn't one of these makes CI fail. If you
-  genuinely need a new seam, add it as a commented `ignore_imports` line with a
-  one-line justification — don't reach across apps silently.
-
-2. One model per file in <app>/models/\*
+2. One model per file in `<app>/models/*`.

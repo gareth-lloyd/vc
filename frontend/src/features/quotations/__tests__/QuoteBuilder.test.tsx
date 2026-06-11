@@ -270,11 +270,21 @@ describe("QuoteBuilder", () => {
     });
   });
 
-  it("stages the picked block's dates and repriced total", async () => {
+  it("stages and saves the picked block's dates and repriced total", async () => {
     // Wed 1 Jul → Wed 8 Jul ± 2 at a Sat-changeover villa: the backend offers
     // two Saturday blocks; the operator picks the later one, which reprices.
+    // The save must persist the picked block's dates — even though both
+    // blocks are the same length as the criteria stay.
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
       http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { flex_days: number };
         if (body.flex_days === 0) {
@@ -336,6 +346,68 @@ describe("QuoteBuilder", () => {
     expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
     expect(screen.getAllByText("$5,200.00").length).toBeGreaterThan(0);
+
+    // The saved line persists the picked block's dates, not just the display.
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+    });
+  });
+
+  it("keeps the criteria dates when the default block is the same-length shifted stay", async () => {
+    // The engine shifted Wed 1 Jul → Sat 4 Jul (GAP-007) but the stay length
+    // is unchanged: the backend stays the single source of the shift, so the
+    // saved line posts the criteria dates and lets the server re-shift.
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-01",
+      date_to: "2026-07-08",
+    });
   });
 
   it("loads and appends the next page of priced options on Load more", async () => {

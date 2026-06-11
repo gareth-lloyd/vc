@@ -181,6 +181,9 @@ export type StayReprice = z.infer<typeof stayRepriceSchema>;
 export interface ChosenStay {
   date_from: string;
   date_to: string;
+  // Whether this is the search's default block (vs an explicitly picked
+  // alternative) — the builder posts a picked block's dates verbatim.
+  is_default: boolean;
   priced_date_from: string;
   priced_date_to: string;
   total: string | number | null;

@@ -172,6 +172,7 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
         ? {
             date_from: selected.date_from,
             date_to: selected.date_to,
+            is_default: isDefaultSelected,
             priced_date_from: resolved.pricedFrom || selected.date_from,
             priced_date_to: resolved.pricedTo || selected.date_to,
             total: resolved.total,

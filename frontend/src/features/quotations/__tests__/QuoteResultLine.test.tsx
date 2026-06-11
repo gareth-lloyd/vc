@@ -143,7 +143,8 @@ describe("QuoteResultLine", () => {
   });
 
   describe("stay-option picker", () => {
-    it("renders no picker for a single stay option", () => {
+    it("renders no picker for a single stay option and hands it to onAdd as the default", async () => {
+      const onAdd = vi.fn();
       renderLine(
         option({
           stay_options: [
@@ -156,9 +157,15 @@ describe("QuoteResultLine", () => {
             },
           ],
         }),
+        { onAdd },
       );
 
       expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ property_id: 1 }),
+        expect.objectContaining({ date_from: "2026-07-04", is_default: true }),
+      );
     });
 
     it("preselects the default block and shows its up-front price", () => {
@@ -218,6 +225,7 @@ describe("QuoteResultLine", () => {
         expect.objectContaining({
           date_from: "2026-07-11",
           date_to: "2026-07-18",
+          is_default: false,
           total: "5200.00",
           currency: "USD",
           inclusion: "Pool heating",

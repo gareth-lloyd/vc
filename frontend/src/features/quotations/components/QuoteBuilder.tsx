@@ -137,16 +137,16 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   const handleAdd = (option: QuoteOption, stay?: ChosenStay) => {
     if (!lastCriteria) return;
     // The chosen stay's dates become the line's requested dates when the stay
-    // is a real alternative — a different night count means the search rounded
-    // the stay to a whole changeover block (or the operator picked one), and
-    // saving the criteria dates would reprice a different stay than was shown.
-    // With the SAME night count the stay is the preferred dates (possibly
-    // changeover-shifted): keep posting the criteria dates so the backend
-    // stays the single source of the shift (GAP-007) and records it.
+    // is a real alternative: an explicitly picked non-default block, or a
+    // default block the search rounded to a different length than requested.
+    // A default block with the SAME night count is the preferred stay
+    // (possibly changeover-shifted): keep posting the criteria dates so the
+    // backend stays the single source of the shift (GAP-007) and records it.
     const useStayDates =
       stay != null &&
-      nightsCount(stay.date_from, stay.date_to) !==
-        nightsCount(lastCriteria.date_from, lastCriteria.date_to);
+      (!stay.is_default ||
+        nightsCount(stay.date_from, stay.date_to) !==
+          nightsCount(lastCriteria.date_from, lastCriteria.date_to));
     setStaged((prev) => {
       if (prev.some((line) => line.property_id === option.property_id)) return prev;
       // Q-013: a no-rate villa stages straight onto the manual path — there is

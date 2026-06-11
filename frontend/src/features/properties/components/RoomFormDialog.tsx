@@ -27,6 +27,7 @@ import {
   type PropertyRoomWriteInput,
   type RoomPlacement,
 } from "../schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   propertyId: number;
@@ -150,7 +151,7 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
             />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.name.message)}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>

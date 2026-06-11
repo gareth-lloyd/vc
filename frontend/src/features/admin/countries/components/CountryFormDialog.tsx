@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/errors";
 import { countryWriteInputSchema, type Country, type CountryWriteInput } from "../schemas";
 import { useCreateCountry, useUpdateCountry } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   open: boolean;
@@ -117,7 +118,7 @@ export function CountryFormDialog(props: Props) {
               />
               {form.formState.errors.iso2 ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.iso2.message}
+                  {fieldErrorText(t, form.formState.errors.iso2.message)}
                 </p>
               ) : null}
             </div>
@@ -132,7 +133,7 @@ export function CountryFormDialog(props: Props) {
             <Input id="country-name" {...form.register("name")} />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.name.message}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>

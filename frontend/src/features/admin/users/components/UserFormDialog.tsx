@@ -29,6 +29,7 @@ import {
   type UserSummary,
   type UserUpdateInput,
 } from "@/features/users/schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   open: boolean;
@@ -131,7 +132,7 @@ export function UserFormDialog(props: UserFormDialogProps) {
             <Input id="user-email" type="email" {...form.register("email")} />
             {form.formState.errors.email ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.email.message}
+                {fieldErrorText(t, form.formState.errors.email.message)}
               </p>
             ) : null}
           </div>
@@ -166,7 +167,7 @@ export function UserFormDialog(props: UserFormDialogProps) {
             </Select>
             {form.formState.errors.role ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.role.message}
+                {fieldErrorText(t, form.formState.errors.role.message)}
               </p>
             ) : null}
           </div>
@@ -185,7 +186,10 @@ export function UserFormDialog(props: UserFormDialogProps) {
               </p>
               {"password" in form.formState.errors && form.formState.errors.password ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {(form.formState.errors.password as { message?: string }).message}
+                  {fieldErrorText(
+                    t,
+                    (form.formState.errors.password as { message?: string }).message,
+                  )}
                 </p>
               ) : null}
             </div>

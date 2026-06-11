@@ -27,6 +27,7 @@ import {
 } from "../schemas";
 import { CurrencyPicker } from "./CurrencyPicker";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   propertyId: number;
@@ -150,7 +151,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
             />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.name.message)}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>
@@ -166,7 +167,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
               />
               {form.formState.errors.currency ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.currency.message)}
+                  {fieldErrorText(t, form.formState.errors.currency.message)}
                 </p>
               ) : null}
             </div>
@@ -203,7 +204,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
               <Input id="season-effective-from" type="date" {...form.register("effective_from")} />
               {form.formState.errors.effective_from ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.effective_from.message)}
+                  {fieldErrorText(t, form.formState.errors.effective_from.message)}
                 </p>
               ) : null}
             </div>
@@ -215,7 +216,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
               <Input id="season-effective-to" type="date" {...form.register("effective_to")} />
               {form.formState.errors.effective_to ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.effective_to.message)}
+                  {fieldErrorText(t, form.formState.errors.effective_to.message)}
                 </p>
               ) : null}
             </div>

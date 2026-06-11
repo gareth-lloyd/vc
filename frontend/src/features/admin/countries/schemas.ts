@@ -16,11 +16,7 @@ export type Country = z.infer<typeof countrySchema>;
 export const countriesListResponseSchema = paginated(countrySchema);
 
 export const countryWriteInputSchema = z.object({
-  iso2: z
-    .string()
-    .trim()
-    .min(2, { message: "common:zod.too_small" })
-    .max(2, { message: "common:zod.too_big" }),
+  iso2: z.string().trim().min(2).max(2),
   name: z.string().trim().min(1).max(120),
   iso3: z.string().trim().max(3).optional(),
   dial_code: z.string().trim().max(8).optional(),

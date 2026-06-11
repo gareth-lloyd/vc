@@ -14,11 +14,7 @@ export type Currency = z.infer<typeof currencySchema>;
 export const currenciesListResponseSchema = paginated(currencySchema);
 
 export const currencyWriteInputSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(3, { message: "common:zod.too_small" })
-    .max(3, { message: "common:zod.too_big" }),
+  code: z.string().trim().min(3).max(3),
   name: z.string().trim().min(1).max(120),
   symbol: z.string().trim().max(8).optional(),
   decimal_places: z.number().int().min(0).max(8).optional(),

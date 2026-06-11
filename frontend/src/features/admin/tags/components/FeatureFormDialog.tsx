@@ -29,6 +29,7 @@ import {
 import { useCreateFeature, useUpdateFeature } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { IconPicker } from "@/components/data/IconPicker";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   open: boolean;
@@ -142,7 +143,7 @@ export function FeatureFormDialog(props: Props) {
             <Input id="f-name" {...form.register("name")} />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.name.message}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>
@@ -152,7 +153,7 @@ export function FeatureFormDialog(props: Props) {
             <Input id="f-slug" {...form.register("slug")} />
             {form.formState.errors.slug ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.slug.message}
+                {fieldErrorText(t, form.formState.errors.slug.message)}
               </p>
             ) : null}
           </div>

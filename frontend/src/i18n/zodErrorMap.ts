@@ -21,10 +21,23 @@ export const zodErrorMap: z.core.$ZodErrorMap = (issue) => {
       }
       return { message: t("zod.invalid_string") };
     case "too_small":
+      if (issue.origin === "number" || issue.origin === "int") {
+        return {
+          message: t("zod.number_too_small", { minimum: String(issue.minimum) }),
+        };
+      }
+      if (issue.minimum === 1) {
+        return { message: t("zod.required") };
+      }
       return {
         message: t("zod.too_small", { minimum: String(issue.minimum) }),
       };
     case "too_big":
+      if (issue.origin === "number" || issue.origin === "int") {
+        return {
+          message: t("zod.number_too_big", { maximum: String(issue.maximum) }),
+        };
+      }
       return {
         message: t("zod.too_big", { maximum: String(issue.maximum) }),
       };

@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/errors";
 import { currencyWriteInputSchema, type Currency, type CurrencyWriteInput } from "../schemas";
 import { useCreateCurrency, useUpdateCurrency } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   open: boolean;
@@ -115,7 +116,7 @@ export function CurrencyFormDialog(props: Props) {
               />
               {form.formState.errors.code ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.code.message}
+                  {fieldErrorText(t, form.formState.errors.code.message)}
                 </p>
               ) : null}
             </div>
@@ -130,7 +131,7 @@ export function CurrencyFormDialog(props: Props) {
             <Input id="currency-name" {...form.register("name")} />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.name.message}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>
@@ -146,6 +147,11 @@ export function CurrencyFormDialog(props: Props) {
               max={8}
               {...form.register("decimal_places", { valueAsNumber: true })}
             />
+            {form.formState.errors.decimal_places ? (
+              <p className="text-destructive text-sm" role="alert">
+                {fieldErrorText(t, form.formState.errors.decimal_places.message)}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">

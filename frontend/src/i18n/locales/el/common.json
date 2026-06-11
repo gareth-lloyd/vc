@@ -102,8 +102,11 @@
   "zod": {
     "invalid_type": "Υποχρεωτικό",
     "invalid_email": "Εισαγάγετε έγκυρο email",
+    "required": "Υποχρεωτικό",
     "too_small": "Πρέπει να είναι τουλάχιστον {{minimum}} χαρακτήρες",
     "too_big": "Πρέπει να είναι έως {{maximum}} χαρακτήρες",
+    "number_too_small": "Πρέπει να είναι τουλάχιστον {{minimum}}",
+    "number_too_big": "Πρέπει να είναι έως {{maximum}}",
     "invalid_string": "Μη έγκυρη τιμή",
     "custom": "Μη έγκυρη τιμή"
   }

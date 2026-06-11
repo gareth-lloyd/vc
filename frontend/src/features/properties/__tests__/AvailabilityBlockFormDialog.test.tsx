@@ -162,7 +162,7 @@ describe("AvailabilityBlockFormDialog", () => {
     await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-05");
     await userEvent.click(screen.getByRole("button", { name: /save block/i }));
     await waitFor(() =>
-      expect(screen.getByText("properties:errors.block_to_before_from")).toBeInTheDocument(),
+      expect(screen.getByText("To date must be after From date")).toBeInTheDocument(),
     );
     useAuthStore.getState().clear();
   });

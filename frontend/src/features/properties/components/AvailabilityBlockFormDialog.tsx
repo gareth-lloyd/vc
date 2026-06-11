@@ -31,6 +31,7 @@ import {
   availabilityBlockWriteInputSchema,
   type AvailabilityBlockWriteInput,
 } from "../schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 export interface EditableBlock {
   id: number;
@@ -186,12 +187,12 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
             onPickerOpenChange={(open) => open && setPickerOpened(true)}
             fromError={
               form.formState.errors.date_from
-                ? String(form.formState.errors.date_from.message)
+                ? fieldErrorText(t, form.formState.errors.date_from.message)
                 : undefined
             }
             toError={
               form.formState.errors.date_to
-                ? String(form.formState.errors.date_to.message)
+                ? fieldErrorText(t, form.formState.errors.date_to.message)
                 : undefined
             }
           />

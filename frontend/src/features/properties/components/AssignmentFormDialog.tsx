@@ -30,6 +30,7 @@ import {
 import type { Contact } from "@/features/contacts/schemas";
 import { ContactPicker } from "@/features/contacts/components/ContactPicker";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   propertyId: PropertyId;
@@ -158,7 +159,7 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
               />
               {form.formState.errors.contact ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.contact.message}
+                  {fieldErrorText(t, form.formState.errors.contact.message)}
                 </p>
               ) : null}
             </div>
@@ -186,7 +187,7 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
             </Select>
             {form.formState.errors.role ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.role.message}
+                {fieldErrorText(t, form.formState.errors.role.message)}
               </p>
             ) : null}
           </div>

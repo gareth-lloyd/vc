@@ -102,8 +102,11 @@
   "zod": {
     "invalid_type": "Required",
     "invalid_email": "Enter a valid email",
+    "required": "Required",
     "too_small": "Must be at least {{minimum}} characters",
     "too_big": "Must be at most {{maximum}} characters",
+    "number_too_small": "Must be at least {{minimum}}",
+    "number_too_big": "Must be at most {{maximum}}",
     "invalid_string": "Invalid value",
     "custom": "Invalid value"
   }

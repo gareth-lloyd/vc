@@ -22,6 +22,7 @@ import {
   type EmailTemplateCreateInput,
   type EmailTemplateDetail,
 } from "../schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 type Props = { mode: "create" } | { mode: "edit"; template: EmailTemplateDetail };
 
@@ -140,7 +141,7 @@ export function TemplateEditorForm(props: Props) {
             <p className="text-muted-foreground text-xs">{t("email_templates.form.key_help")}</p>
             {form.formState.errors.key ? (
               <p className="text-destructive text-sm" role="alert">
-                {form.formState.errors.key.message}
+                {fieldErrorText(t, form.formState.errors.key.message)}
               </p>
             ) : null}
           </div>
@@ -151,7 +152,7 @@ export function TemplateEditorForm(props: Props) {
           <Input id="tmpl-title" {...form.register("title")} />
           {form.formState.errors.title ? (
             <p className="text-destructive text-sm" role="alert">
-              {form.formState.errors.title.message}
+              {fieldErrorText(t, form.formState.errors.title.message)}
             </p>
           ) : null}
         </div>
@@ -161,7 +162,7 @@ export function TemplateEditorForm(props: Props) {
           <Input id="tmpl-subject" {...form.register("subject_template")} />
           {form.formState.errors.subject_template ? (
             <p className="text-destructive text-sm" role="alert">
-              {form.formState.errors.subject_template.message}
+              {fieldErrorText(t, form.formState.errors.subject_template.message)}
             </p>
           ) : null}
         </div>
@@ -183,7 +184,7 @@ export function TemplateEditorForm(props: Props) {
           <p className="text-muted-foreground text-xs">{t("email_templates.form.mjml_help")}</p>
           {form.formState.errors.body_template_mjml ? (
             <p className="text-destructive text-sm" role="alert">
-              {form.formState.errors.body_template_mjml.message}
+              {fieldErrorText(t, form.formState.errors.body_template_mjml.message)}
             </p>
           ) : null}
         </div>

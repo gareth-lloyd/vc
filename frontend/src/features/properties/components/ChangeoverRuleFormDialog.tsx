@@ -25,6 +25,7 @@ import {
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
 } from "../schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   propertyId: number;
@@ -145,7 +146,7 @@ export function ChangeoverRuleFormDialog(props: ChangeoverRuleFormDialogProps) {
               <Input id="changeover-from" type="date" {...form.register("effective_from")} />
               {form.formState.errors.effective_from ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.effective_from.message)}
+                  {fieldErrorText(t, form.formState.errors.effective_from.message)}
                 </p>
               ) : null}
             </div>
@@ -154,7 +155,7 @@ export function ChangeoverRuleFormDialog(props: ChangeoverRuleFormDialogProps) {
               <Input id="changeover-to" type="date" {...form.register("effective_to")} />
               {form.formState.errors.effective_to ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {String(form.formState.errors.effective_to.message)}
+                  {fieldErrorText(t, form.formState.errors.effective_to.message)}
                 </p>
               ) : null}
             </div>

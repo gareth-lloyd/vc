@@ -28,6 +28,7 @@ import {
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
 } from "../schemas";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 
 interface CommonProps {
   propertyId: number;
@@ -142,7 +143,7 @@ export function NearbyPlaceFormDialog(props: NearbyPlaceFormDialogProps) {
             </Select>
             {form.formState.errors.place_type ? (
               <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.place_type.message)}
+                {fieldErrorText(t, form.formState.errors.place_type.message)}
               </p>
             ) : null}
           </div>
@@ -156,7 +157,7 @@ export function NearbyPlaceFormDialog(props: NearbyPlaceFormDialogProps) {
             />
             {form.formState.errors.name ? (
               <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.name.message)}
+                {fieldErrorText(t, form.formState.errors.name.message)}
               </p>
             ) : null}
           </div>
@@ -173,7 +174,7 @@ export function NearbyPlaceFormDialog(props: NearbyPlaceFormDialogProps) {
             />
             {form.formState.errors.distance_km ? (
               <p className="text-destructive text-sm" role="alert">
-                {String(form.formState.errors.distance_km.message)}
+                {fieldErrorText(t, form.formState.errors.distance_km.message)}
               </p>
             ) : null}
           </div>

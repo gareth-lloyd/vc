@@ -186,7 +186,12 @@ export function PaymentTrack({
           size="sm"
           onClick={handleRequest}
           disabled={
-            requestMutation.isPending || data.status === "succeeded" || data.status === "waived"
+            requestMutation.isPending ||
+            data.status === "succeeded" ||
+            data.status === "waived" ||
+            // Nothing to request on a zero-amount track (e.g. a £0.00
+            // security deposit).
+            !(Number.isFinite(scheduled) && scheduled > 0)
           }
         >
           {data.status === "pending"

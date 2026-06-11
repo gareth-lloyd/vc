@@ -14,6 +14,9 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
     """Light representation for collection responses."""
 
     guest_name = serializers.SerializerMethodField()
+    guest_email = serializers.SerializerMethodField()
+    guest_phone = serializers.SerializerMethodField()
+    guest_contact_method = serializers.SerializerMethodField()
     property_name = serializers.SerializerMethodField()
     region_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
@@ -27,6 +30,9 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "status",
             "guest",
             "guest_name",
+            "guest_email",
+            "guest_phone",
+            "guest_contact_method",
             "first_name",
             "last_name",
             "email",
@@ -53,6 +59,9 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "id",
             "reference",
             "guest_name",
+            "guest_email",
+            "guest_phone",
+            "guest_contact_method",
             "property_name",
             "region_name",
             "assigned_to_name",
@@ -73,6 +82,24 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         if denorm:
             return denorm
         return obj.email or None
+
+    def get_guest_email(self, obj: Enquiry) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return guest.email or None
+
+    def get_guest_phone(self, obj: Enquiry) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return guest.phone or None
+
+    def get_guest_contact_method(self, obj: Enquiry) -> str | None:
+        guest = obj.guest
+        if guest is None:
+            return None
+        return guest.contact_method or None
 
     def get_property_name(self, obj: Enquiry) -> str | None:
         prop = obj.property

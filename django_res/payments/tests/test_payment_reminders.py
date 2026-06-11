@@ -776,3 +776,30 @@ def test_one_failing_row_does_not_abort_the_batch(
     assert not EmailLog.objects.filter(
         correlation__payment_id=bad_payment.pk,
     ).exists()
+
+
+def test_reminder_context_formats_dates_for_customers() -> None:
+    """Stay dates and due_on are long-form ("8 July 2025"), never ISO."""
+    from types import SimpleNamespace
+
+    from payments.tasks import _reminder_context
+
+    booking = SimpleNamespace(
+        reference="VC-1",
+        guest=SimpleNamespace(first_name="Ada"),
+        property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
+        date_from=date(2025, 7, 8),
+        date_to=date(2025, 7, 14),
+    )
+
+    ctx = _reminder_context(
+        booking=booking,  # type: ignore[arg-type]
+        amount=Decimal("100.00"),
+        currency_code="GBP",
+        due_at=datetime(2025, 7, 1, 12, 0, tzinfo=UTC),
+        payment=None,
+    )
+
+    assert ctx["date_from"] == "8 July 2025"
+    assert ctx["date_to"] == "14 July 2025"
+    assert ctx["due_on"] == "1 July 2025"

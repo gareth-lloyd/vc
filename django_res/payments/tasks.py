@@ -14,6 +14,7 @@ import structlog
 from celery import shared_task
 from django.utils import timezone
 
+from core.formats import format_date
 from payments.enums import (
     PaymentMethod,
     PaymentPurpose,
@@ -372,11 +373,11 @@ def _reminder_context(
         "booking_reference": booking.reference,
         "guest_first_name": booking.guest.first_name,
         "property_name": booking.property.display_name or booking.property.name,
-        "date_from": booking.date_from.isoformat(),
-        "date_to": booking.date_to.isoformat(),
+        "date_from": format_date(booking.date_from),
+        "date_to": format_date(booking.date_to),
         "amount": f"{amount:.2f}",
         "currency": currency_code,
-        "due_on": due_at.date().isoformat() if due_at else "",
+        "due_on": format_date(due_at) if due_at else "",
         "payment_reference": payment.reference if payment is not None else "",
     }
 

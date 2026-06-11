@@ -116,10 +116,11 @@
     "detail.lines.actions.book",
     "detail.lines.actions.hold",
     "detail.lines.actions.release_hold",
-    "detail.lines.columns.discount",
-    "detail.lines.columns.hold",
-    "detail.lines.columns.inclusions",
+    "detail.lines.discount_label",
     "detail.lines.hold_until",
+    "detail.lines.party_format",
+    "detail.lines.party_format_with_children",
+    "detail.lines.selected_badge",
     "detail.lines.thumbnail_alt"
   ],
   "admin": [

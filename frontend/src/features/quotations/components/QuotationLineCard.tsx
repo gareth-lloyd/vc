@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, parseMoney } from "@/lib/format/money";
 import { propertyDetailsPath } from "@/lib/routes";
 import type { QuotationLine } from "../schemas";
 import { PropertyThumbnail } from "./PropertyThumbnail";
@@ -34,7 +34,7 @@ export function QuotationLineCard({
 }: Props) {
   const { t } = useTranslation("quotations");
   const displayName = line.property_name ?? (line.property != null ? `#${line.property}` : "—");
-  const discount = line.discount == null ? 0 : Number(line.discount);
+  const discount = parseMoney(line.discount);
   const inclusions = line.inclusions?.trim();
 
   return (
@@ -69,12 +69,18 @@ export function QuotationLineCard({
           </p>
           <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
           <p className="text-muted-foreground text-xs">
-            {line.adults}A{line.children ? ` · ${line.children}C` : ""} ·{" "}
+            {line.children
+              ? t("detail.lines.party_format_with_children", {
+                  adults: line.adults,
+                  children: line.children,
+                })
+              : t("detail.lines.party_format", { adults: line.adults })}{" "}
+            ·{" "}
             <span className="text-foreground font-medium tabular-nums">
               {/* Each line is priced in its own currency (GAP-014). */}
               {formatMoney(line.total ?? null, line.currency ?? null)}
             </span>
-            {discount !== 0 ? (
+            {Number.isFinite(discount) && discount !== 0 ? (
               <>
                 {" "}
                 · {t("detail.lines.discount_label")}{" "}

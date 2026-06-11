@@ -131,8 +131,11 @@ describe("QuotationDetailLayout", () => {
       ]),
     );
     setup();
-    expect(await screen.findByText(/€150\.00/)).toBeInTheDocument();
-    expect(screen.getAllByText(/discount/i)).toHaveLength(1);
+    const discountedCard = (await screen.findByText("#34")).closest("li")!;
+    expect(within(discountedCard).getByText(/discount/i)).toBeInTheDocument();
+    expect(within(discountedCard).getByText(/€150\.00/)).toBeInTheDocument();
+    const zeroCard = screen.getByText("#33").closest("li")!;
+    expect(within(zeroCard).queryByText(/discount/i)).not.toBeInTheDocument();
   });
 
   it("renders mixed-currency lines each in their own currency", async () => {

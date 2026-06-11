@@ -64,7 +64,9 @@
       },
       "hold_until": "Held until {{date}}",
       "discount_label": "Discount",
-      "selected_badge": "Selected"
+      "selected_badge": "Selected",
+      "party_format": "{{adults}}A",
+      "party_format_with_children": "{{adults}}A · {{children}}C"
     },
     "errors": {
       "not_found": "Quotation not found",

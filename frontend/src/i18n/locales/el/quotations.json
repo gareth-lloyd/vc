@@ -64,7 +64,9 @@
       },
       "hold_until": "Δεσμευμένο έως {{date}}",
       "discount_label": "Έκπτωση",
-      "selected_badge": "Επιλεγμένη"
+      "selected_badge": "Επιλεγμένη",
+      "party_format": "{{adults}}Ε",
+      "party_format_with_children": "{{adults}}Ε · {{children}}Π"
     },
     "errors": {
       "not_found": "Η προσφορά δεν βρέθηκε",

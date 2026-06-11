@@ -325,14 +325,14 @@
       }
     },
     "cart": {
-      "heading": "Quote cart ({{count}})",
+      "heading": "Shortlist ({{count}})",
       "thumbnail_alt": "{{name}} thumbnail",
       "save_draft": "Save draft",
       "send_to_guest": "Send to guest",
       "edit": "Edit line",
       "collapse": "Collapse line",
       "empty": {
-        "title": "Your cart is empty",
+        "title": "Your shortlist is empty",
         "description": "Add priced villas from the results to build the quote."
       },
       "line": {
@@ -354,7 +354,7 @@
         "note": "Note for this villa option"
       },
       "disable_reasons": {
-        "no_lines": "Add at least one villa to the cart.",
+        "no_lines": "Add at least one villa to the shortlist.",
         "invalid_line": "Fix the highlighted line — a price, discount, or reason needs attention."
       }
     },

@@ -194,7 +194,7 @@ describe("QuoteBuilder", () => {
     const addButtons = screen.getAllByRole("button", { name: /add to quote/i });
     await userEvent.click(addButtons[0]);
     await userEvent.click(addButtons[1]);
-    expect(await screen.findByText(/quote cart \(2\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/shortlist \(2\)/i)).toBeInTheDocument();
     expect(screen.getAllByText("£4,500.00")).toHaveLength(2); // result row + cart line
     expect(screen.getAllByText("€5,200.00")).toHaveLength(2);
   });
@@ -207,9 +207,9 @@ describe("QuoteBuilder", () => {
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
 
     // The cart starts empty, then carries the added villa.
-    expect(screen.getByText(/your cart is empty/i)).toBeInTheDocument();
+    expect(screen.getByText(/your shortlist is empty/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
-    expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/7 nights/i)).toBeInTheDocument();
   });
 
@@ -371,7 +371,7 @@ describe("QuoteBuilder", () => {
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
 
     // The cart line carries the picked block, not the criteria dates.
-    expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
     expect(screen.getAllByText("$5,200.00").length).toBeGreaterThan(0);
 

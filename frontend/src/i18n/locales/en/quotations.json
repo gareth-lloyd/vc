@@ -240,7 +240,15 @@
       "q": "Name search",
       "q_placeholder": "e.g. Villa Sol",
       "search": "Search",
-      "searching": "Searching…"
+      "searching": "Searching…",
+      "flex": {
+        "label": "Flexible by",
+        "value_one": "± {{count}} day",
+        "value_other": "± {{count}} days",
+        "decrease_aria": "Decrease date flexibility",
+        "increase_aria": "Increase date flexibility",
+        "window_hint": "Search window: {{from}} → {{to}}. The requested dates stay the preferred stay."
+      }
     },
     "results": {
       "title": "Results",
@@ -292,7 +300,18 @@
         "sun": "Sun"
       },
       "load_more": "Load more",
-      "loading_more": "Loading…"
+      "loading_more": "Loading…",
+      "stay_options": {
+        "label": "Stay options",
+        "nights_one": "{{count}} night",
+        "nights_other": "{{count}} nights",
+        "available": "Available",
+        "held": "Held",
+        "repricing": "Repricing…",
+        "reprice_failed": "Couldn't price these dates",
+        "held_hint": "These dates are held or booked — pick another block.",
+        "shifted": "Priced as {{from}} → {{to}}"
+      }
     },
     "cart": {
       "heading": "Quote cart ({{count}})",

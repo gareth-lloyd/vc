@@ -8,13 +8,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { QuoteResultLine } from "./QuoteResultLine";
-import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
+import type { ChosenStay, HiddenCapacityProperty, QuoteOption } from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
   stagedPropertyIds: Set<number>;
-  onAdd: (option: QuoteOption) => void;
+  onAdd: (option: QuoteOption, stay?: ChosenStay) => void;
+  // Party the search ran with — block reprices keep the same party.
+  adults: number;
+  children: number;
+  // Identity of the current search (dates + flex). Rows key on it so a fresh
+  // search remounts picker/reprice state while Load-more appends preserve it.
+  searchKey: string;
   hiddenForCapacity?: HiddenCapacityProperty[];
   // There are more candidate pages to price (DRF `next`).
   hasMore: boolean;
@@ -74,6 +80,9 @@ export function QuoteResultsList({
   isLoading,
   stagedPropertyIds,
   onAdd,
+  adults,
+  children,
+  searchKey,
   hiddenForCapacity = [],
   hasMore,
   isLoadingMore,
@@ -127,9 +136,11 @@ export function QuoteResultsList({
       <CapacityHint properties={hiddenForCapacity} />
       {available.map((option) => (
         <QuoteResultLine
-          key={option.property_id}
+          key={`${option.property_id}:${searchKey}`}
           option={option}
           staged={stagedPropertyIds.has(option.property_id)}
+          adults={adults}
+          children={children}
           onAdd={onAdd}
         />
       ))}

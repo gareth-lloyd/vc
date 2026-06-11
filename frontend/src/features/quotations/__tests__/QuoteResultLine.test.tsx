@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
+import { server } from "@/test/msw/server";
 import { QuoteResultLine } from "../components/QuoteResultLine";
-import type { QuoteOption } from "../schemas";
+import type { QuoteOption, StayOption } from "../schemas";
+
+afterEach(() => server.resetHandlers());
 
 function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
   return {
@@ -17,11 +21,47 @@ function option(overrides: Partial<QuoteOption> = {}): QuoteOption {
   };
 }
 
+// Two Saturday blocks: the default (priced up front) and an alternative the
+// picker reprices on pick.
+function twoBlocks(overrides: [Partial<StayOption>?, Partial<StayOption>?] = []): StayOption[] {
+  return [
+    {
+      date_from: "2026-07-04",
+      date_to: "2026-07-11",
+      nights: 7,
+      is_default: true,
+      is_available: true,
+      ...overrides[0],
+    },
+    {
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      nights: 7,
+      is_default: false,
+      is_available: true,
+      ...overrides[1],
+    },
+  ];
+}
+
+function mockReprice(quote: Record<string, unknown>) {
+  const bodies: unknown[] = [];
+  server.use(
+    http.post("/api/v1/quotations:search-options", async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ quotes: [{ property_id: 1, ...quote }] });
+    }),
+  );
+  return bodies;
+}
+
 function renderLine(opt: QuoteOption, props: { staged?: boolean; onAdd?: () => void } = {}) {
   return renderWithProviders(
     <QuoteResultLine
       option={opt}
       staged={props.staged ?? false}
+      adults={2}
+      children={0}
       onAdd={props.onAdd ?? (() => {})}
     />,
   );
@@ -95,9 +135,163 @@ describe("QuoteResultLine", () => {
     const { rerender } = renderLine(opt, { onAdd });
 
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
-    expect(onAdd).toHaveBeenCalledWith(opt);
+    // Legacy-shaped option without stay_options — no chosen stay rides along.
+    expect(onAdd).toHaveBeenCalledWith(opt, undefined);
 
-    rerender(<QuoteResultLine option={opt} staged onAdd={onAdd} />);
+    rerender(<QuoteResultLine option={opt} staged adults={2} children={0} onAdd={onAdd} />);
     expect(screen.getByRole("button", { name: /added/i })).toBeDisabled();
+  });
+
+  describe("stay-option picker", () => {
+    it("renders no picker for a single stay option", () => {
+      renderLine(
+        option({
+          stay_options: [
+            {
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              nights: 7,
+              is_default: true,
+              is_available: true,
+            },
+          ],
+        }),
+      );
+
+      expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    });
+
+    it("preselects the default block and shows its up-front price", () => {
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      const chips = screen.getAllByRole("radio");
+      expect(chips).toHaveLength(2);
+      expect(chips[0]).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByText(/4,500\.00/)).toBeInTheDocument();
+    });
+
+    it("reprices a picked alternative block and shows its total", async () => {
+      const bodies = mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+      });
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      expect(bodies[0]).toEqual({
+        flex_days: 0,
+        requests: [
+          {
+            property_id: 1,
+            date_from: "2026-07-11",
+            date_to: "2026-07-18",
+            adults: 2,
+            children: 0,
+          },
+        ],
+      });
+    });
+
+    it("hands the chosen block's stay to onAdd after a reprice", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        inclusion: "Pool heating",
+      });
+      const onAdd = vi.fn();
+      renderLine(option({ stay_options: twoBlocks() }), { onAdd });
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ property_id: 1 }),
+        expect.objectContaining({
+          date_from: "2026-07-11",
+          date_to: "2026-07-18",
+          total: "5200.00",
+          currency: "USD",
+          inclusion: "Pool heating",
+        }),
+      );
+    });
+
+    it("disables Add with an inline error when the reprice fails", async () => {
+      server.use(
+        http.post("/api/v1/quotations:search-options", () =>
+          HttpResponse.json({ detail: "boom" }, { status: 500 }),
+        ),
+      );
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't price/i);
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("surfaces a domain error entry from the reprice inline", async () => {
+      mockReprice({
+        available: false,
+        error_code: "min_nights_not_met",
+        error_detail: "RateCard 3 requires min_nights=14, got 7",
+      });
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/min_nights=14/);
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("keeps a held block selectable but disables Add", async () => {
+      renderLine(option({ stay_options: twoBlocks([undefined, { is_available: false }]) }));
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+
+      // Held chip is selected, but the block can't be added.
+      expect(screen.getAllByRole("radio")[1]).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("preselects the first free block when the default is held, repricing it", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+      });
+      renderLine(option({ stay_options: twoBlocks([{ is_available: false }, undefined]) }));
+
+      expect(screen.getAllByRole("radio")[1]).toHaveAttribute("aria-checked", "true");
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+    });
+
+    it("flags a reprice whose engine dates differ from the clicked chip", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-12",
+        date_to: "2026-07-19",
+        changeover_shifted_from: "2026-07-11",
+      });
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+
+      expect(await screen.findByText(/Priced as 12 Jul 2026 → 19 Jul 2026/)).toBeInTheDocument();
+    });
   });
 });

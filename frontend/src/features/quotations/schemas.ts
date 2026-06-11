@@ -173,6 +173,21 @@ export const stayRepriceSchema = z.object({
 });
 export type StayReprice = z.infer<typeof stayRepriceSchema>;
 
+// The stay a result line hands to the builder on Add: the chosen block's
+// dates plus the pricing that block resolved to (the option's own price for
+// the default block, a reprice for a picked alternative). Absent on legacy
+// responses without stay_options — the builder then stages the criteria
+// dates as before.
+export interface ChosenStay {
+  date_from: string;
+  date_to: string;
+  priced_date_from: string;
+  priced_date_to: string;
+  total: string | number | null;
+  currency: string | null;
+  inclusion: string | null;
+}
+
 // A property that matched the operator's name search but is excluded from the
 // priced options because its capacity isn't set (no row, or guests === 0).
 // Surfaced as a hint so the operator learns why a known property is missing,

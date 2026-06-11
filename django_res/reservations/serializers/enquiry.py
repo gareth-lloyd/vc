@@ -142,6 +142,7 @@ class EnquiryDetailSerializer(EnquiryListSerializer):
         fields = [
             *EnquiryListSerializer.Meta.fields,
             "is_flexible",
+            "flexibility_days",
             "min_bedrooms",
             "referral_code",
             "inbound_message",
@@ -167,6 +168,7 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "date_from",
             "date_to",
             "is_flexible",
+            "flexibility_days",
             "adults",
             "children",
             "min_bedrooms",

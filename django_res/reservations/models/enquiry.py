@@ -6,6 +6,7 @@ import builtins
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator
 from django.db import models, transaction
 
 from core.exceptions import InvalidTransition
@@ -74,9 +75,16 @@ class Enquiry(AuditedModel):
         related_name="enquiries",
     )
 
+    # date_from / date_to are the client's TRUE requested dates;
+    # flexibility_days is the "± N days" spread the quote search widens by.
+    # The pair replaces the old destructive form behaviour where the spread
+    # was applied to the dates on submit and then discarded.
     date_from = models.DateField(null=True, blank=True)
     date_to = models.DateField(null=True, blank=True)
     is_flexible = models.BooleanField(default=False)
+    flexibility_days = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(3)]
+    )
     adults = models.PositiveSmallIntegerField(default=2)
     children = models.PositiveSmallIntegerField(default=0)
     min_bedrooms = models.PositiveSmallIntegerField(null=True, blank=True)

@@ -4,9 +4,10 @@ import { Link } from "react-router-dom";
 import { format, isToday, isWeekend, parseISO } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
+import { activeLocale } from "@/lib/format/date";
 import { propertyAvailabilityPath } from "@/lib/routes";
 import type { PropertyListItem } from "@/features/properties/schemas";
-import { assignLanes, bandGeometry } from "../geometry";
+import { assignLanes, bandEdges, bandGeometry } from "../geometry";
 import { holdDisplayStatus, bandStatusClasses } from "../status";
 import type { AvailabilityBookingBand, AvailabilityHold } from "../schemas";
 import { bandDates, type TimelineBand } from "../bands";
@@ -23,7 +24,7 @@ function villaCalendarPath(property: PropertyListItem): string {
   return propertyAvailabilityPath(slug && !slug.includes("/") ? slug : property.id);
 }
 
-const fmtShort = (iso: string) => format(parseISO(iso), "d MMM");
+const fmtShort = (iso: string) => format(parseISO(iso), "d MMM", { locale: activeLocale() });
 
 interface TimelineGridProps {
   days: Date[];
@@ -155,7 +156,7 @@ export function TimelineGrid({
               )}
             >
               <div className="text-muted-foreground text-[10px] leading-none">
-                {format(day, "EEEEE")}
+                {format(day, "EEEEE", { locale: activeLocale() })}
               </div>
               <div
                 className={cn(
@@ -172,7 +173,14 @@ export function TimelineGrid({
         {/* One row per villa */}
         {properties.map((property) => {
           const bands = bandsByProperty.get(property.id) ?? [];
-          const lanes = assignLanes(bands.map(bandDates));
+          const lanes = assignLanes(
+            bands.map((band) => {
+              const { date_from, date_to } = bandDates(band);
+              return bandEdges(date_from, date_to, windowStart, {
+                halfDayOffset: band.kind === "booking",
+              });
+            }),
+          );
           const laneCount = bands.length ? Math.max(...lanes) + 1 : 1;
           const rowHeight = laneCount * LANE_HEIGHT + ROW_PADDING;
           return (

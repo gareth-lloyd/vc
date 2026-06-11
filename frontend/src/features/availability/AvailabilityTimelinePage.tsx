@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
@@ -16,6 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
+import { activeLocale } from "@/lib/format/date";
+import { useListParams } from "@/lib/list/useListParams";
 import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
 import { useCollections, useMultiAvailability, useRegions, useTimelineProperties } from "./hooks";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
@@ -49,10 +50,9 @@ const LEGEND: BandDisplayStatus[] = ["booked", "on_hold", "stop_sale"];
 
 export function AvailabilityTimelinePage() {
   const { t } = useTranslation("availability");
-  const [params, setParams] = useSearchParams();
+  const { params, search, setSearch, updateParam, goToPage } = useListParams();
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [search, setSearch] = useState(filters.q ?? "");
   const filtered = hasAnyFilter(filters);
 
   const window = useTimelineWindow();
@@ -63,56 +63,11 @@ export function AvailabilityTimelinePage() {
   const regions = useRegions();
   const collections = useCollections();
 
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    const current = filters.q ?? "";
-    if (search === current) return;
-    const handle = setTimeout(() => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (search) next.set("q", search);
-          else next.delete("q");
-          next.delete("page");
-          return next;
-        },
-        { replace: true },
-      );
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [search, filters.q, setParams]);
-
-  const updateParam = (key: string, value: string | undefined) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value && value !== ALL_VALUE) next.set(key, value);
-        else next.delete(key);
-        next.delete("page");
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
-  const goToPage = (page: number) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (page <= 1) next.delete("page");
-        else next.set("page", String(page));
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
   const count = propertiesQuery.data?.count ?? 0;
   const page = filters.page ?? 1;
   const pageCount = Math.max(1, Math.ceil(count / PROPERTIES_PAGE_SIZE));
+  // useListParams' goToPage is zero-based; the pager reads 1-based.
+  const goToPageOneBased = (oneBased: number) => goToPage(oneBased - 1);
 
   const filterSelect = (
     key: "country" | "region" | "collection" | "min_bedrooms" | "status",
@@ -139,7 +94,7 @@ export function AvailabilityTimelinePage() {
       return <EmptyState title={t("gate.title")} description={t("gate.description")} />;
     }
     if (propertiesQuery.isLoading) {
-      return <Skeleton className="h-64 w-full" />;
+      return <Skeleton data-testid="timeline-skeleton" className="h-64 w-full" />;
     }
     if (propertiesQuery.isError) {
       return (
@@ -162,6 +117,12 @@ export function AvailabilityTimelinePage() {
         />
       );
     }
+    // Bands must arrive with the rows: rendering the grid before the
+    // availability response would paint every villa as fully available
+    // (and flash stale bands when the window pages).
+    if (availabilityQuery.isPending) {
+      return <Skeleton data-testid="timeline-skeleton" className="h-64 w-full" />;
+    }
     return (
       <>
         {count > PROPERTIES_PAGE_SIZE ? (
@@ -172,7 +133,7 @@ export function AvailabilityTimelinePage() {
                 variant="outline"
                 size="sm"
                 disabled={page <= 1}
-                onClick={() => goToPage(page - 1)}
+                onClick={() => goToPageOneBased(page - 1)}
               >
                 {t("refine.prev")}
               </Button>
@@ -180,7 +141,7 @@ export function AvailabilityTimelinePage() {
                 variant="outline"
                 size="sm"
                 disabled={page >= pageCount}
-                onClick={() => goToPage(page + 1)}
+                onClick={() => goToPageOneBased(page + 1)}
               >
                 {t("refine.next")}
               </Button>
@@ -280,8 +241,10 @@ export function AvailabilityTimelinePage() {
                 {t("window.next")}
               </Button>
               <span className="text-muted-foreground min-w-[150px] text-center text-sm">
-                {format(window.days[0], "d MMM")} –{" "}
-                {format(window.days[window.days.length - 1], "d MMM yyyy")}
+                {format(window.days[0], "d MMM", { locale: activeLocale() })} –{" "}
+                {format(window.days[window.days.length - 1], "d MMM yyyy", {
+                  locale: activeLocale(),
+                })}
               </span>
             </div>
           }

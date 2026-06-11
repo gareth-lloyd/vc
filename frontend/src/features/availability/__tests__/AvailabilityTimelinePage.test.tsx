@@ -109,7 +109,9 @@ describe("AvailabilityTimelinePage", () => {
       expect(params.get("date_from")).toBeNull();
       expect(params.get("date_to")).toBeNull();
       expect(params.get("country")).toBe("es");
-      expect(params.get("ordering")).toBe("name");
+      // No ordering override: the model's total Meta ordering ["name", "id"]
+      // must apply, or duplicate names paginate non-deterministically.
+      expect(params.get("ordering")).toBeNull();
     }
   });
 
@@ -189,6 +191,33 @@ describe("AvailabilityTimelinePage", () => {
     await userEvent.click(screen.getByRole("button", { name: /^today$/i }));
     const currentMonday = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     await waitFor(() => expect(windows).toContain(currentMonday));
+  });
+
+  it("shows a skeleton until bands arrive instead of an all-available grid", async () => {
+    let releaseAvailability!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseAvailability = resolve;
+    });
+    let availabilityRequested = false;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(villas)),
+      http.get("/api/v1/availability", async () => {
+        availabilityRequested = true;
+        await gate;
+        return HttpResponse.json(bands);
+      }),
+    );
+    renderPage(`/availability?country=es&start=${START}`);
+
+    // Properties have resolved (the availability fetch needs their ids), yet
+    // no villa rows may paint while the bands are still in flight.
+    await waitFor(() => expect(availabilityRequested).toBe(true));
+    expect(screen.getByTestId("timeline-skeleton")).toBeInTheDocument();
+    expect(screen.queryByText("Casa Norte")).not.toBeInTheDocument();
+
+    releaseAvailability();
+    expect(await screen.findByText("Casa Norte")).toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-skeleton")).not.toBeInTheDocument();
   });
 
   it("shows an error state with retry when availability fails", async () => {

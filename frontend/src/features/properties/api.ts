@@ -326,13 +326,21 @@ export async function fetchPropertyContacts(
   return propertyContactsResponseSchema.parse(data);
 }
 
+// Filter dropdowns need every row in one request — the default page size of
+// 50 would silently truncate the lists as the portfolio grows.
+const TAXONOMY_PAGE_SIZE = 500;
+
 export async function fetchRegions(): Promise<Paginated<Region>> {
-  const data = await apiGet<unknown>("/regions", { query: { ordering: "name" } });
+  const data = await apiGet<unknown>("/regions", {
+    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
+  });
   return regionsResponseSchema.parse(data);
 }
 
 export async function fetchCollections(): Promise<Paginated<Collection>> {
-  const data = await apiGet<unknown>("/collections", { query: { ordering: "name" } });
+  const data = await apiGet<unknown>("/collections", {
+    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
+  });
   return collectionsResponseSchema.parse(data);
 }
 

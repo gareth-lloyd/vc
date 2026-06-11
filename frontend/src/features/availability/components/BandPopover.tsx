@@ -1,9 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { format, parseISO } from "date-fns";
+import { formatDate } from "@/lib/format/date";
 import { bandDates, type TimelineBand } from "../bands";
-
-const fmt = (iso: string) => format(parseISO(iso), "d MMM yyyy");
 
 interface BandPopoverProps {
   band: TimelineBand;
@@ -14,7 +12,7 @@ interface BandPopoverProps {
 export function BandPopover({ band, villaCalendarPath }: BandPopoverProps) {
   const { t } = useTranslation("availability");
   const { date_from, date_to } = bandDates(band);
-  const dates = `${fmt(date_from)} – ${fmt(date_to)}`;
+  const dates = `${formatDate(date_from)} – ${formatDate(date_to)}`;
 
   if (band.kind === "booking") {
     const { booking } = band;

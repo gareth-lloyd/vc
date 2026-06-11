@@ -24,8 +24,10 @@ export function useTimelineProperties(filters: TimelineFilters) {
     min_bedrooms: filters.min_bedrooms,
     status: filters.status,
     page: filters.page,
-    // Stable pagination: the backend's default ordering is unspecified.
-    ordering: "name",
+    // No `ordering` param: the model's Meta ordering is already the total
+    // order ["name", "id"]. An explicit `ordering=name` would *replace* it
+    // wholesale and lose the id tiebreaker — duplicate names would then
+    // paginate non-deterministically across pages.
   };
   return useQuery({
     queryKey: queryKeys.properties.list(propertyFilters),

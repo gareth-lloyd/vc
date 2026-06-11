@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { parseISO } from "date-fns";
-import { assignLanes, bandGeometry } from "../geometry";
+import { assignLanes, bandEdges, bandGeometry } from "../geometry";
 
 const WINDOW_START = parseISO("2026-06-01"); // a Monday
 const DAYS = 35;
 
 const pct = (days: number) => (days / DAYS) * 100;
+
+/** Rendered edges for a hold (whole-cell) or booking (half-cell shifted). */
+const hold = (from: string, to: string) => bandEdges(from, to, WINDOW_START);
+const booking = (from: string, to: string) =>
+  bandEdges(from, to, WINDOW_START, { halfDayOffset: true });
 
 describe("bandGeometry", () => {
   it("places a hold band on whole-cell boundaries", () => {
@@ -58,36 +63,42 @@ describe("bandGeometry", () => {
 describe("assignLanes", () => {
   it("keeps non-overlapping bands in lane 0", () => {
     expect(
-      assignLanes([
-        { date_from: "2026-06-01", date_to: "2026-06-08" },
-        { date_from: "2026-06-10", date_to: "2026-06-14" },
-      ]),
+      assignLanes([hold("2026-06-01", "2026-06-08"), hold("2026-06-10", "2026-06-14")]),
     ).toEqual([0, 0]);
   });
 
-  it("keeps same-day turnover in one lane (exclusive checkout)", () => {
+  it("keeps same-day booking turnover in one lane (exclusive checkout)", () => {
     expect(
-      assignLanes([
-        { date_from: "2026-06-01", date_to: "2026-06-08" },
-        { date_from: "2026-06-08", date_to: "2026-06-14" },
-      ]),
+      assignLanes([booking("2026-06-01", "2026-06-08"), booking("2026-06-08", "2026-06-14")]),
     ).toEqual([0, 0]);
   });
 
   it("stacks genuinely overlapping bands into separate lanes", () => {
     expect(
-      assignLanes([
-        { date_from: "2026-06-01", date_to: "2026-06-10" },
-        { date_from: "2026-06-05", date_to: "2026-06-12" },
-      ]),
+      assignLanes([hold("2026-06-01", "2026-06-10"), hold("2026-06-05", "2026-06-12")]),
     ).toEqual([0, 1]);
+  });
+
+  it("stacks a hold starting on a booking's checkout day (the rendered bands overlap)", () => {
+    // The booking paints until mid-cell on 8 Jun; a hold covering 8 Jun from
+    // midnight overlaps that half-cell and must not share the lane.
+    expect(
+      assignLanes([booking("2026-06-01", "2026-06-08"), hold("2026-06-08", "2026-06-14")]),
+    ).toEqual([0, 1]);
+  });
+
+  it("keeps a hold ending on a booking's check-in day in one lane", () => {
+    // The hold ends at the cell edge; the booking starts mid-cell — no overlap.
+    expect(
+      assignLanes([hold("2026-06-01", "2026-06-08"), booking("2026-06-08", "2026-06-14")]),
+    ).toEqual([0, 0]);
   });
 
   it("reuses a freed lane and preserves input order", () => {
     const lanes = assignLanes([
-      { date_from: "2026-06-05", date_to: "2026-06-12" }, // overlaps first two
-      { date_from: "2026-06-01", date_to: "2026-06-08" },
-      { date_from: "2026-06-12", date_to: "2026-06-15" }, // fits after the first
+      hold("2026-06-05", "2026-06-12"), // overlaps first two
+      hold("2026-06-01", "2026-06-08"),
+      hold("2026-06-12", "2026-06-15"), // fits after the first
     ]);
     expect(lanes).toHaveLength(3);
     expect(lanes[0]).not.toBe(lanes[1]);

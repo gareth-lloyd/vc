@@ -121,6 +121,30 @@ class ProfileKnobs:
     # day on the availability calendar. (None, None) leaves the times null
     # (happy), so no changeover split is produced.
     changeover_times: tuple[str | None, str | None] = (None, None)
+    # Weighted (PrefilledChangeOverDay value, weight) distribution used to
+    # assign each villa a changeover day; villas drawing a specific day (not
+    # "any") also get the minimum-stay floor below. Mirrors the legacy prod
+    # snapshot (88% explicit, Saturday-heavy). Empty tuple disables (happy).
+    changeover_day_weights: tuple[tuple[str, float], ...] = ()
+    # Minimum stay (nights) written to RateCard.min_nights (engine-enforced)
+    # and PropertySettings.min_nights_rental (legacy-semantics field) on
+    # villas with a specific changeover day. Legacy resolves to 7 virtually
+    # everywhere.
+    constrained_min_nights: int = 7
+    # When True, villas price like the legacy book: per-currency log-normal
+    # price levels, Low/Mid/Peak seasonal cards, near-universal percentage
+    # commission, and the fractions below. False keeps the legacy factory
+    # shape (one card, one flat 250/400/650 rule).
+    realistic_pricing: bool = False
+    # Fraction of villas with a second RatePlan in another currency (legacy:
+    # ~13% of villas price in 2+ currencies).
+    pct_second_currency: float = 0.0
+    # Fraction of villas whose cards use occupancy-band sibling rules
+    # (legacy: ~4% of rates; bumped a little so small runs reliably get one).
+    pct_occupancy_bands: float = 0.0
+    # Fraction of villas that get a Discount row. 1.0 = legacy seeder shape
+    # (every villa); discounts are effectively dead in the legacy book.
+    pct_discount: float = 1.0
 
 
 _PROFILES: dict[Profile, ProfileKnobs] = {
@@ -165,6 +189,17 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         block_length_days=(2, 5),
         dense_calendar=True,
         changeover_times=("10:00", "16:00"),
+        changeover_day_weights=(
+            ("sat", 0.72),
+            ("mon", 0.10),
+            ("sun", 0.04),
+            ("fri", 0.02),
+            ("any", 0.12),
+        ),
+        realistic_pricing=True,
+        pct_second_currency=0.13,
+        pct_occupancy_bands=0.12,
+        pct_discount=0.15,
     ),
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
@@ -200,6 +235,17 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         block_length_days=(2, 7),
         dense_calendar=True,
         changeover_times=("10:00", "16:00"),
+        changeover_day_weights=(
+            ("sat", 0.72),
+            ("mon", 0.10),
+            ("sun", 0.04),
+            ("fri", 0.02),
+            ("any", 0.12),
+        ),
+        realistic_pricing=True,
+        pct_second_currency=0.13,
+        pct_occupancy_bands=0.12,
+        pct_discount=0.15,
     ),
 }
 
@@ -233,6 +279,12 @@ class SeedContext:
     # reruns must not silently mutate prior-run or fixture data.
     booking_pks: list[int] = field(default_factory=list)
     enquiry_pks: list[int] = field(default_factory=list)
+    # property pk -> (required changeover weekday per date.weekday() or None,
+    # min nights). Written by the `properties` stage from the rules it just
+    # seeded; booking-creating stages conform stays through it (see
+    # `conforming_stay`) instead of re-resolving settings from the DB.
+    # A missing pk means unconstrained.
+    property_stay_rules: dict[int, tuple[int | None, int]] = field(default_factory=dict)
     # Convenience accessor for the "primary" currency. Set by `system_setup`
     # (or by the legacy fallback in the seed command).
     default_currency: Any = None

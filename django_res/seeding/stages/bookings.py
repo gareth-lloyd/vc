@@ -26,7 +26,7 @@ from typing import Any
 from django.utils import timezone
 
 from reservations.factories import GuestFactory
-from seeding._booking_helpers import create_one_booking, next_stay_start
+from seeding._booking_helpers import conforming_stay, create_one_booking, next_stay_start
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -72,8 +72,9 @@ def _run_legacy(ctx: SeedContext) -> int:
     made = 0
     for i in range(ctx.n_bookings):
         prop = active_properties[i % len(active_properties)]
-        date_from = next_stay_start(prop, cursors, ctx)
-        date_to = date_from + timedelta(days=7)
+        # No-op for happy (the stay-rules map is empty); on constrained villas
+        # it aligns the start onto the changeover weekday before booking.
+        date_from, date_to = conforming_stay(ctx, prop, next_stay_start(prop, cursors, ctx), 7)
         cursors[prop.pk] = date_to + timedelta(days=7)
         create_one_booking(
             ctx,
@@ -106,7 +107,15 @@ def _run_dense(ctx: SeedContext) -> int:
             if count <= 0:
                 continue
             terms = _terms_for(prop, ctx)
-            for stay in _stay_plan(count, spread, ctx.rng, packed=(tier == "packed")):
+            stay_rule = ctx.property_stay_rules.get(prop.pk, (None, 1))
+            for stay in _stay_plan(
+                count,
+                spread,
+                ctx.rng,
+                packed=(tier == "packed"),
+                stay_rule=stay_rule,
+                today=ctx.today,
+            ):
                 create_one_booking(
                     ctx,
                     prop,
@@ -185,7 +194,15 @@ def _allocate_stays(tiers: dict[str, list[Any]], budget: int) -> dict[int, int]:
     return counts
 
 
-def _stay_plan(count: int, spread: int, rng: Any, *, packed: bool) -> list[dict[str, Any]]:
+def _stay_plan(
+    count: int,
+    spread: int,
+    rng: Any,
+    *,
+    packed: bool,
+    stay_rule: tuple[int | None, int] = (None, 1),
+    today: date | None = None,
+) -> list[dict[str, Any]]:
     """Lay `count` non-overlapping stays across [today-spread, today+spread].
 
     Each stay lives in its own equal-width bucket with ≥2-day gaps, so holds and
@@ -194,24 +211,40 @@ def _stay_plan(count: int, spread: int, rng: Any, *, packed: bool) -> list[dict[
     is populated. Packed villas additionally get 1-2 back-to-back changeover
     pairs (the second stay snapped onto the first's check-out day), both members
     forced non-terminal so the AM/PM changeover day survives.
+
+    On a constrained villa (`stay_rule` carries a required weekday) every stay
+    is exactly `min_nights` nights starting on the first occurrence of that
+    weekday inside its bucket — no random slack, because aligning *after*
+    adding slack could push a checkout into the next bucket and collide holds.
+    The alignment costs ≤6 days, so with the bucket floor raised to 16 the
+    next bucket keeps a ≥3-day gap (the k0 bucket may abut its successor
+    back-to-back, which is harmless: both stays start on the same weekday).
     """
     if count <= 0:
         return []
+    weekday, min_nights = stay_rule
     window = 2 * spread
-    bucket = max(12, window // count)
+    bucket = max(16 if weekday is not None else 12, window // count)
     k0 = max(0, min(count - 1, round(spread / bucket)))  # bucket containing today
     stays: list[dict[str, Any]] = []
     for k in range(count):
         base = -spread + k * bucket
-        nights = rng.randint(5, 9)
-        slack = max(0, bucket - nights - 2)
-        if k == k0:
-            lo, hi = max(base, 1), base + slack
-            start = rng.randint(lo, hi) if lo <= hi else base
-            force = True
+        if weekday is not None:
+            assert today is not None
+            nights = min_nights
+            lo = max(base, 1) if k == k0 else base
+            start = lo + (weekday - (today.weekday() + lo)) % 7
+            force = k == k0
         else:
-            start = base + (rng.randint(0, slack) if slack else 0)
-            force = False
+            nights = rng.randint(5, 9)
+            slack = max(0, bucket - nights - 2)
+            if k == k0:
+                lo, hi = max(base, 1), base + slack
+                start = rng.randint(lo, hi) if lo <= hi else base
+                force = True
+            else:
+                start = base + (rng.randint(0, slack) if slack else 0)
+                force = False
         stays.append(
             {"from_off": start, "to_off": start + nights, "nights": nights, "force": force}
         )

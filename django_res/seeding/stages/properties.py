@@ -33,6 +33,14 @@ from properties.factories import (
     villa_manifest,
 )
 from properties.models import Country
+from properties.services.changeover import ChangeoverService
+from seeding._pricing_helpers import (
+    _FLAT_BRACKETS,
+    assign_commission,
+    build_seasonal_cards,
+    draw_base_nightly,
+    party_brackets,
+)
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -40,6 +48,34 @@ from seeding.registry import Stage, register
 def _parse_hhmm(value: str) -> time:
     """Parse an "HH:MM" changeover-time knob into a `time`."""
     return datetime.strptime(value, "%H:%M").time()
+
+
+def _changeover_day_plan(ctx: SeedContext) -> list[str]:
+    """Pre-draw each villa's changeover day from the weighted knob.
+
+    A deterministic floor of unconstrained ("any") villas — the knob's "any"
+    weight as a guaranteed share, never below 2 — is reserved before the
+    weighted draw fills the rest, mirroring the `_partition_tiers` floor
+    pattern. Without it a small run can leave 0 unconstrained villas, and
+    dashboard_activity (which needs villas that can host today-anchored short
+    stays) would mint a showcase villa for every cohort, ballooning the
+    portfolio. The hard minimum of 2 holds even when the knob's "any" weight
+    is lowered to 0 — that guarantee is dashboard_activity's, not the
+    distribution's.
+    """
+    weights = ctx.knobs.changeover_day_weights
+    if not weights:
+        return []
+    n = ctx.n_properties
+    any_weight = dict(weights).get(PrefilledChangeOverDay.ANY.value, 0.0)
+    floor = min(n, max(2, round(any_weight * n)))
+    days = [day for day, _ in weights]
+    day_weights = [w for _, w in weights]
+    plan = [PrefilledChangeOverDay.ANY.value] * floor + [
+        ctx.rng.choices(days, weights=day_weights)[0] for _ in range(n - floor)
+    ]
+    ctx.rng.shuffle(plan)
+    return plan
 
 
 def _run(ctx: SeedContext) -> int:
@@ -71,6 +107,7 @@ def _run(ctx: SeedContext) -> int:
     # 20-entry manifest would repeat. Empty without the generated pool ->
     # properties keep the legacy random shape.
     villa_pool: list[dict[str, Any]] = villa_manifest()
+    day_plan = _changeover_day_plan(ctx)
 
     for i in range(ctx.n_properties):
         currency = currency_pool[i % len(currency_pool)]
@@ -118,22 +155,78 @@ def _run(ctx: SeedContext) -> int:
             prop.settings.check_out_time = _parse_hhmm(check_out)
             prop.settings.check_in_time = _parse_hhmm(check_in)
             dirty_settings += ["check_out_time", "check_in_time"]
+        # Mirror the legacy prod shape: most villas carry a specific
+        # changeover day plus a whole-week minimum stay, on both the
+        # legacy-semantics settings fields and the engine-enforced
+        # RateCard.min_nights (written below at card creation).
+        assigned_day = day_plan[i] if day_plan else PrefilledChangeOverDay.ANY.value
+        constrained = assigned_day != PrefilledChangeOverDay.ANY.value
+        if constrained:
+            prop.settings.changeover_day = assigned_day
+            prop.settings.min_nights_rental = ctx.knobs.constrained_min_nights
+            dirty_settings += ["changeover_day", "min_nights_rental"]
         if dirty_settings:
             prop.settings.save(update_fields=dirty_settings)
+        min_nights = ctx.knobs.constrained_min_nights if constrained else 1
         plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
-        card = RateCardFactory(plan=plan)
-        RateRuleFactory(card=card, **rule_kwargs)
-        DiscountFactory(property=prop, **discount_kwargs)
+        if ctx.knobs.realistic_pricing:
+            brackets = _FLAT_BRACKETS
+            if ctx.rng.random() < ctx.knobs.pct_occupancy_bands:
+                # The factory hardcodes guests=8, which would collapse the
+                # natural 1-8 / 9-12 / 13+ brackets to a single band — bump
+                # capacity so the bands are real.
+                capacity = prop.capacity
+                capacity.guests = ctx.rng.randint(10, 16)
+                capacity.save(update_fields=["guests"])
+                brackets = party_brackets(capacity.guests)
+            build_seasonal_cards(
+                plan,
+                draw_base_nightly(ctx.rng, currency.code),
+                min_nights=min_nights,
+                brackets=brackets,
+                wide_spread=ctx.rng.random() < 0.08,
+            )
+            assign_commission(ctx.rng, prop)
+            if ctx.rng.random() < ctx.knobs.pct_second_currency and len(currency_pool) > 1:
+                # Legacy: ~13% of villas price in 2+ currencies (by design —
+                # the quote builder handles a mixed-currency list). Dated one
+                # day earlier than the primary plan so `pick_preferred_plan`
+                # (most recent effective_from wins) keeps currency-less
+                # quotes — and therefore the booking stages — on the primary.
+                alt = currency_pool[(i + 1) % len(currency_pool)]
+                alt_plan = RatePlanFactory(
+                    property=prop,
+                    currency=alt,
+                    effective_from=plan.effective_from - timedelta(days=1),
+                    effective_to=plan.effective_to,
+                )
+                build_seasonal_cards(
+                    alt_plan,
+                    draw_base_nightly(ctx.rng, alt.code),
+                    min_nights=min_nights,
+                    brackets=brackets,
+                )
+        else:
+            card = RateCardFactory(plan=plan, min_nights=min_nights)
+            RateRuleFactory(card=card, **rule_kwargs)
+        # Legacy discounts are effectively dead — gate behind the knob. The
+        # >= 1.0 short-circuit keeps happy off the rng (byte-for-byte output).
+        if ctx.knobs.pct_discount >= 1.0 or ctx.rng.random() < ctx.knobs.pct_discount:
+            DiscountFactory(property=prop, **discount_kwargs)
         ExtraFactory(property=prop, currency=currency)
-        # Drop a permissive ChangeOverRule on every third property so the
-        # model isn't permanently empty in dev. `ANY` is unconstrained at
-        # quote time so the seeder's arbitrary stay starts are unaffected —
-        # operators can tighten the day in the admin to see the validation
-        # branch fire.
+        # Drop a ChangeOverRule on every third property so the model isn't
+        # permanently empty in dev. The rule's day MUST match the villa's
+        # assigned day: a rule window beats PropertySettings.changeover_day in
+        # ChangeoverService.effective_day, so an `ANY` rule on a Saturday
+        # villa would silently un-constrain it for the window.
         if i % 3 == 0:
-            ChangeOverRuleFactory(
-                property=prop,
-                day=PrefilledChangeOverDay.ANY,
+            ChangeOverRuleFactory(property=prop, day=assigned_day)
+        if day_plan:
+            # Recorded via the real resolver (not the assignment) so the map
+            # can never drift from what the engine will actually enforce.
+            ctx.property_stay_rules[prop.pk] = (
+                ChangeoverService.required_weekday(prop, ctx.today),
+                ctx.knobs.constrained_min_nights if constrained else 1,
             )
         ctx.properties.append(prop)
     return ctx.n_properties

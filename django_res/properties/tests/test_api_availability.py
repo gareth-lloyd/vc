@@ -59,6 +59,48 @@ def test_calendar_cell_includes_block_id_for_manual(
 
 
 @pytest.mark.django_db
+def test_calendar_cell_links_quotation_hold_to_its_quotation(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A quotation hold's cell carries `quotation_id` (read-only click-through)
+    while `block_id` stays null — no edit affordance on system holds."""
+    from datetime import UTC, datetime
+
+    from reservations.models import Guest, Quotation, TermsVersion
+
+    guest = Guest.objects.create(first_name="Cal", last_name="Endar", email="cal@example.com")
+    terms = TermsVersion.objects.create(
+        version="cal-test",
+        body_markdown="**T&Cs**",
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
+        is_current=True,
+    )
+    quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    BookingHold.objects.create(
+        property=property_,
+        quotation=quotation,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 12),
+        expires_at=timezone.now() + timedelta(days=30),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+    )
+    api_client.force_login(staff)
+    response = api_client.get(
+        f"/api/v1/properties/{property_.pk}/availability?from=2026-06-10&to=2026-06-11"
+    )
+    assert response.status_code == 200, response.content
+    cells = {c["date"]: c for c in response.json()["cells"]}
+    assert cells["2026-06-10"]["reason"] == "quotation"
+    assert cells["2026-06-10"]["block_id"] is None
+    assert cells["2026-06-10"]["quotation_id"] == quotation.pk
+
+
+@pytest.mark.django_db
 def test_calendar_cell_includes_segments_on_changeover(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

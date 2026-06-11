@@ -32,6 +32,7 @@ interface Cell {
   available: boolean;
   reason: string;
   block_id?: number | null;
+  quotation_id?: number | null;
   segments?: {
     am: { available: boolean; reason: string; block_id?: number | null };
     pm: { available: boolean; reason: string; block_id?: number | null };
@@ -139,6 +140,35 @@ describe("AvailabilityTab", () => {
     expect(cell10).toHaveAttribute("href", "/bookings/42");
     expect(screen.getByRole("link", { name: "12" })).toHaveAttribute("href", "/bookings/42");
     expect(screen.queryByRole("link", { name: "13" })).not.toBeInTheDocument();
+  });
+
+  it("renders a quotation hold cell that links to the quotation", async () => {
+    installBaseHandlers();
+    installCalendar([
+      {
+        date: "2026-05-18",
+        available: false,
+        reason: "quotation",
+        block_id: null,
+        quotation_id: 31,
+      },
+      {
+        date: "2026-05-19",
+        available: false,
+        reason: "quotation",
+        block_id: null,
+        quotation_id: 31,
+      },
+    ]);
+
+    setup();
+
+    const cell = await screen.findByRole("link", { name: /18 May: Quotation hold/i });
+    expect(cell).toHaveAttribute("href", "/enquiries/quotes/31");
+    expect(screen.getByRole("link", { name: /19 May: Quotation hold/i })).toHaveAttribute(
+      "href",
+      "/enquiries/quotes/31",
+    );
   });
 
   it("renders an owner block cell with its reason label", async () => {

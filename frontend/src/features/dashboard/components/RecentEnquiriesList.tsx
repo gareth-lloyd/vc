@@ -59,9 +59,10 @@ export function RecentEnquiriesList() {
   );
 }
 
+// Never fall back to the reference — it's already rendered alongside.
 function nameOf(row: EnquiryListItem): string {
   const full = `${row.first_name} ${row.last_name}`.trim();
-  return full || row.email || row.reference;
+  return row.guest_name || full || row.email || "—";
 }
 
 function partyAndDates(

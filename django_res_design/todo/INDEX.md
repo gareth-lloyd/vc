@@ -91,6 +91,10 @@ Status icons:
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
 | [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
+| [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ |
+| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ |
+| [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written (verify vs legacy site) | ⬜ |
+| [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults (30% deposit, SD required, 16:30/10:30) + curate feature taxonomy | ⬜ |
 
 Q-012 was resolved (Payment gateway → Flywire).
 
@@ -113,6 +117,12 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-014](gap-014-quote-currency-forced-selection.md) | Quote builder forces currency selection — legacy prices each villa in its rate card's currency (per-line) | ✅ resolved (per-line currency end-to-end; header field dropped; GAP-013 item 3 moot) |
 | [GAP-020](gap-020-direct-booking-creation.md) | Direct booking creation (legacy rate-lookup "book now") — synthetic-quotation design; resolves GAP-006's numbering sub-question; folds SMELL-014's `kind` fix | ⬜ design ready; implementation deferred |
 | [GAP-021](gap-021-audit-history-ui.md) | Per-entity "History" tab in the SPA (audit-log surface; backend filters already exist) | ⬜ blocked by Q-014 exposure decision |
+| [GAP-022](gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) — reinstate via through model | ⬜ spec-vs-reality disagreement |
+| [GAP-023](gap-023-owner-approval-preview-lifecycle.md) | `live_offline` replacement: `owner_approved_at` + draft preview link + sales-facing unapproved/unconfirmed badges | ⬜ |
+| [GAP-024](gap-024-incremental-loading-required-fields.md) | FE required-field posture fights incremental loading — relax room/capacity write schemas | ⬜ |
+| [GAP-025](gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ⬜ |
+| [GAP-026](gap-026-currency-display-money-fields.md) | Show property currency beside money fields (decision: single currency per property, no mixing) | ⬜ |
+| [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + record per-role primary convention | ⬜ |
 
 ## Investigations
 

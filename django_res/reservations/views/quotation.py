@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -17,7 +18,7 @@ from core.api.permissions import IsReservationsWriter
 from core.exceptions import InvalidTransition, QuotationLocked
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
-from reservations.models import Booking, Quotation, QuotationLine
+from reservations.models import Booking, BookingHold, Quotation, QuotationLine
 from reservations.serializers import (
     BookingDetailSerializer,
     QuotationDetailSerializer,
@@ -74,10 +75,20 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             "agent",
         )
         # The detail serializer nests `lines`, each of which derives a
-        # hero_image_url from its property's images and renders its own
-        # currency code (GAP-014) — prefetch the whole walk so a quotation
-        # with N lines stays at a constant query count.
-        .prefetch_related("lines__property__images", "lines__currency")
+        # hero_image_url from its property's images, renders its own
+        # currency code (GAP-014) and surfaces its live hold — prefetch the
+        # whole walk so a quotation with N lines stays at a constant query
+        # count. The hold prefetch filters released rows in SQL; liveness
+        # (expiry) is re-checked in the serializer.
+        .prefetch_related(
+            "lines__property__images",
+            "lines__currency",
+            Prefetch(
+                "lines__holds",
+                queryset=BookingHold.objects.filter(released_at__isnull=True),
+                to_attr="live_holds",
+            ),
+        )
     )
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = QuotationFilter
@@ -327,9 +338,17 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             QuotationLine.objects.filter(quotation_id=self.kwargs["quotation_pk"])
             .real()
             .select_related("property", "currency")
-            # The read serializer derives hero_image_url per line — prefetch
-            # the property's images so a list of N lines stays constant-query.
-            .prefetch_related("property__images")
+            # The read serializer derives hero_image_url per line and surfaces
+            # the line's live hold — prefetch both so a list of N lines stays
+            # constant-query.
+            .prefetch_related(
+                "property__images",
+                Prefetch(
+                    "holds",
+                    queryset=BookingHold.objects.filter(released_at__isnull=True),
+                    to_attr="live_holds",
+                ),
+            )
             .order_by("pk")
         )
 
@@ -433,6 +452,35 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         line.currency = locked.currency
         line.date_from = locked.date_from
         line.date_to = locked.date_to
+
+    @action(detail=True, methods=["post"], url_path="hold")
+    def hold(
+        self, request: Request, quotation_pk: str | None = None, pk: str | None = None
+    ) -> Response:
+        """Place the line's manual availability hold (idempotent).
+
+        Holds are significant — they block the villa's dates for everyone —
+        so they are never a side effect of quoting; this endpoint is the
+        operator's deliberate action. 409 `hold_unavailable` if another live
+        hold owns the dates; 409 `quotation_locked` past DRAFT/SENT.
+        """
+        line = self.get_object()
+        _assert_quotation_mutable(line.quotation)
+        QuotationService.hold_line(line, actor=request.user)
+        return Response(QuotationLineSerializer(self.get_object()).data)
+
+    @action(detail=True, methods=["post"], url_path="release-hold")
+    def release_hold(
+        self, request: Request, quotation_pk: str | None = None, pk: str | None = None
+    ) -> Response:
+        """Release the line's live hold (idempotent).
+
+        Deliberately NOT status-guarded: a hold has its own expiry and may
+        outlive its quotation — freeing inventory must always be possible.
+        """
+        line = self.get_object()
+        QuotationService.release_line_hold(line, actor=request.user)
+        return Response(QuotationLineSerializer(self.get_object()).data)
 
     @action(detail=False, methods=["post"], url_path="reorder")
     def reorder(self, request: Request, quotation_pk: str | None = None) -> Response:

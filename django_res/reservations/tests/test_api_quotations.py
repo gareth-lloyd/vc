@@ -778,6 +778,210 @@ def test_delete_line_releases_its_hold(
 
 
 @pytest.mark.django_db
+def test_hold_line_endpoint_places_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """POST :hold places a QUOTATION_OPEN hold on the line's dates and echoes
+    the line with its `hold` populated."""
+    from reservations.enums import BookingHoldReason
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+    assert response.status_code == 200, response.data
+
+    hold = BookingHold.objects.get(quotation_line=line)
+    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
+    assert hold.quotation_id == quotation.pk
+    assert hold.date_from == line.date_from
+    assert hold.date_to == line.date_to
+    assert hold.is_live() is True
+    # Expiry comes from the property's effective setting, not the quotation.
+    assert hold.expires_at is not None
+    assert hold.expires_at != quotation.expires_at
+
+    assert response.data["hold"] is not None
+    assert response.data["hold"]["id"] == hold.pk
+    assert response.data["hold"]["expires_at"] is not None
+
+
+@pytest.mark.django_db
+def test_hold_line_endpoint_is_idempotent(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+    second = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+
+    assert first.status_code == second.status_code == 200
+    assert first.data["hold"]["id"] == second.data["hold"]["id"]
+    assert BookingHold.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_hold_line_endpoint_conflict_is_409(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    property_: Property,
+) -> None:
+    """Held-by-someone-else dates 409 with the operator-facing message."""
+    from reservations.services.holds import HoldService
+
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 12),
+        date_to=date(2026, 6, 15),
+        never_expires=True,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "hold_unavailable"
+    assert "already held" in response.data["detail"]
+    assert not BookingHold.objects.filter(quotation_line=line).exists()
+
+
+@pytest.mark.django_db
+def test_hold_line_endpoint_locked_quotation_is_409(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """A cancelled/expired quote can't gain new holds."""
+    quotation.cancel(reason="guest went elsewhere")
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "quotation_locked"
+    assert BookingHold.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_release_hold_endpoint_releases_and_is_idempotent(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    api_client.force_login(staff)
+    QuotationService.hold_line(line)
+
+    release = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:release-hold")
+    assert release.status_code == 200, release.data
+    assert release.data["hold"] is None
+    hold = BookingHold.objects.get(quotation_line=line)
+    assert hold.released_at is not None
+
+    again = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:release-hold")
+    assert again.status_code == 200
+    assert again.data["hold"] is None
+
+
+@pytest.mark.django_db
+def test_release_hold_allowed_on_expired_quotation(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Releasing inventory must always be possible — a hold may outlive its
+    quotation (own expiry), so :release-hold is NOT status-guarded."""
+    QuotationService.hold_line(line)
+    quotation.send()
+    quotation.expire()
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:release-hold")
+    assert response.status_code == 200, response.data
+    assert not BookingHold.objects.filter(quotation_line=line, released_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_hold_endpoints_require_reservations_role(
+    api_client: APIClient,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    viewer = User.objects.create_user(
+        is_staff=True,
+        email="quo-viewer@example.com",
+        password="x",
+    )
+    api_client.force_login(viewer)
+
+    held = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:hold")
+    released = api_client.post(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}:release-hold")
+    assert held.status_code == 403
+    assert released.status_code == 403
+    assert BookingHold.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_line_serializer_hold_is_null_when_expired_but_unreaped(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """A hold past its expiry but not yet swept by the beat task must not
+    render a stale "Held until" in the UI."""
+    hold = QuotationService.hold_line(line)
+    hold.expires_at = timezone.now() - timedelta(minutes=1)
+    hold.save(update_fields=["expires_at"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}")
+    assert response.status_code == 200
+    assert response.data["hold"] is None
+
+
+@pytest.mark.django_db
+def test_convert_releases_manual_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Booking a line releases every hold on the quotation — the quote is
+    settled, the booking row itself now occupies the dates."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    QuotationService.hold_line(line)
+    quotation.send()
+
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+    assert not BookingHold.objects.filter(quotation=quotation, released_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
 def test_convert_creates_booking(
     api_client: APIClient,
     staff: User,
@@ -1137,11 +1341,16 @@ def test_lines_list_constant_query_count(
             adults=2,
             total=Decimal("1400.00"),
         )
+    # One held line — the `hold` field must come from the prefetch, not a
+    # per-row query.
+    QuotationService.hold_line(QuotationLine.objects.order_by("pk")[0])
     api_client.force_login(staff)
-    with assert_max_queries(12):
+    with assert_max_queries(13):
         response = api_client.get(f"/api/v1/quotations/{quotation.pk}/lines")
     assert response.status_code == 200
     assert response.data["count"] == 4
+    holds = [row["hold"] for row in response.data["results"]]
+    assert sum(1 for h in holds if h is not None) == 1
 
 
 @pytest.mark.django_db
@@ -1165,11 +1374,13 @@ def test_quotation_detail_constant_query_count(
             adults=2,
             total=Decimal("1400.00"),
         )
+    QuotationService.hold_line(QuotationLine.objects.order_by("pk")[0])
     api_client.force_login(staff)
-    with assert_max_queries(12):
+    with assert_max_queries(13):
         response = api_client.get(f"/api/v1/quotations/{quotation.pk}")
     assert response.status_code == 200
     assert len(response.data["lines"]) == 4
+    assert sum(1 for row in response.data["lines"] if row["hold"] is not None) == 1
 
 
 # ----------------------------------------------------------------------

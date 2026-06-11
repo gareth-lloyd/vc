@@ -142,7 +142,10 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         if enquiry.status == EnquiryStatus.CONVERTED.value:
             return Response(EnquiryDetailSerializer(enquiry).data)
         quotation_id = request.data.get("quotation")
-        quotation = get_object_or_404(Quotation, pk=quotation_id)
+        # Scoped to *this* enquiry's quotations — citing another enquiry's
+        # quote would mark this one converted with an audit pointer at an
+        # unrelated quotation.
+        quotation = get_object_or_404(Quotation, pk=quotation_id, enquiry=enquiry)
         enquiry.convert(quotation, actor=request.user)
         return Response(EnquiryDetailSerializer(enquiry).data)
 

@@ -7,6 +7,44 @@ from typing import Any
 
 from rest_framework import serializers
 
+from payments.enums import PaymentMethod, PaymentProvider
+
+
+class ManualPaymentCreateSerializer(serializers.Serializer[dict[str, Any]]):
+    """Body of `POST /bookings/{id}/{track}/payments`.
+
+    Manual rows are born PENDING — settlement goes through `:mark-paid` /
+    `:capture` so every status change carries a PaymentEvent and fires the
+    advance signals. A client-supplied `status` is rejected outright rather
+    than ignored: silently dropping it would let a caller believe they
+    recorded a settled payment.
+    """
+
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    due_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    provider = serializers.ChoiceField(
+        choices=PaymentProvider.choices, required=False, allow_blank=True, default=""
+    )
+    provider_reference = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=128
+    )
+    payment_method = serializers.ChoiceField(
+        choices=PaymentMethod.choices, required=False, allow_blank=True, default=""
+    )
+    meta = serializers.JSONField(required=False, default=dict)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if "status" in self.initial_data:
+            raise serializers.ValidationError(
+                {
+                    "status": [
+                        "status is server-managed — manual payments are created "
+                        "PENDING; settle them via :mark-paid or :capture."
+                    ]
+                }
+            )
+        return attrs
+
 
 class TrackSerializer(serializers.Serializer[dict[str, Any]]):
     """A flattened view of a deposit / balance / security track.

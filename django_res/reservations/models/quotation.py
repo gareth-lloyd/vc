@@ -10,6 +10,7 @@ from django.db import models, transaction
 from django.db.models import Q
 
 from core.exceptions import InvalidTransition
+from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import next_quotation_number, quotation_reference
 from reservations.enums import EnquiryStatus, QuotationStatus
@@ -154,6 +155,10 @@ class Quotation(AuditedModel):
         CONVERTED inside the same atomic block — conversion is measured
         per Enquiry (see `django_res_design/10-decisions.md`).
         """
+        # Lock + re-read before the guard: a stale instance (double-click,
+        # concurrent convert) must not re-accept — or re-point the accepted
+        # line — once the row has moved on.
+        refresh_locked(self)
         self._assert_from((QuotationStatus.SENT.value,), QuotationStatus.ACCEPTED.value)
         if line.quotation_id != self.pk:
             raise ValueError("Line does not belong to this quotation")
@@ -187,6 +192,7 @@ class Quotation(AuditedModel):
         have to leave un-sent drafts lingering (the time-based EXPIRED status
         keeps them distinct from an operator's DRAFT → CANCELLED).
         """
+        refresh_locked(self)
         self._assert_from(
             (QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
             QuotationStatus.EXPIRED.value,
@@ -198,6 +204,7 @@ class Quotation(AuditedModel):
     @transaction.atomic
     def cancel(self, reason: str = "") -> Quotation:
         """Any non-terminal → CANCELLED."""
+        refresh_locked(self)
         self._assert_from(
             (QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
             QuotationStatus.CANCELLED.value,

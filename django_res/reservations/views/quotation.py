@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -14,10 +14,10 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from core.exceptions import HoldUnavailable
+from core.exceptions import HoldUnavailable, InvalidTransition, QuotationLocked
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
-from reservations.models import Quotation, QuotationLine
+from reservations.models import Booking, Quotation, QuotationLine
 from reservations.serializers import (
     BookingDetailSerializer,
     QuotationDetailSerializer,
@@ -40,6 +40,23 @@ from reservations.services.quotations import QuotationService
 from reservations.views.status_counts import StatusCountsMixin
 
 logger = structlog.get_logger(__name__)
+
+
+# Statuses in which a quotation (header + lines) may still be edited. DRAFT is
+# obvious; SENT stays open because pre-acceptance renegotiation (edit, re-send)
+# is a real operator workflow. ACCEPTED/EXPIRED/CANCELLED are closed records.
+_MUTABLE_QUOTATION_STATUSES = (
+    QuotationStatus.DRAFT.value,
+    QuotationStatus.SENT.value,
+)
+
+
+def _assert_quotation_mutable(quotation: Quotation) -> None:
+    """409 (`quotation_locked`) when the quotation is past editing."""
+    if quotation.status not in _MUTABLE_QUOTATION_STATUSES:
+        raise QuotationLocked(
+            f"Quotation {quotation.reference} is {quotation.status} and can no longer be edited."
+        )
 
 
 class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
@@ -113,9 +130,24 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         always has an enquiry, so an explicit `{"enquiry": null}` body must keep
         the current one rather than 500 on the PROTECT/NOT-NULL column.
         """
+        _assert_quotation_mutable(serializer.instance)
         if serializer.validated_data.get("enquiry") is None:
             serializer.validated_data.pop("enquiry", None)
         serializer.save()
+
+    def perform_destroy(self, instance: Quotation) -> None:
+        """Hard-delete is for never-sent DRAFTs only.
+
+        A SENT quote is a customer-facing artefact (and ACCEPTED/EXPIRED/
+        CANCELLED are closed records) — `:withdraw` or the expiry sweeper are
+        the ways out, keeping the audit shape intact.
+        """
+        if instance.status != QuotationStatus.DRAFT.value:
+            raise QuotationLocked(
+                f"Quotation {instance.reference} is {instance.status} and can "
+                "no longer be deleted — withdraw it instead."
+            )
+        instance.delete()
 
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request: Request, pk: str | None = None) -> Response:
@@ -242,19 +274,45 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         line = get_object_or_404(QuotationLine, pk=line_id, quotation=quotation)
+        # Only a quote the guest actually received can convert. ACCEPTED is
+        # allowed solely as the double-click retry path — and only for the
+        # line that was accepted; converting a *different* line would mint a
+        # second booking off the same quote. DRAFT/EXPIRED/CANCELLED (holds
+        # released, price possibly stale) are refused outright.
+        if quotation.status == QuotationStatus.ACCEPTED:
+            if not line.is_selected:
+                raise QuotationLocked(
+                    f"Quotation {quotation.reference} was already accepted with a different line."
+                )
+        elif quotation.status != QuotationStatus.SENT:
+            raise InvalidTransition(
+                quotation.status,
+                QuotationStatus.ACCEPTED.value,
+                allowed=[QuotationStatus.SENT.value],
+            )
         # Accept + create must share a transaction so an `OverlappingBooking`
         # raised by the booking service rolls back the quotation acceptance,
         # otherwise the quotation gets stuck in ACCEPTED with no booking row.
-        with transaction.atomic():
-            if quotation.status == QuotationStatus.SENT:
-                quotation.accept(line, actor=request.user)
-            booking = BookingService.create_from_quotation_line(
-                line,
-                terms_version=quotation.terms_version,
-                payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
-                agent=quotation.agent,
-                actor=request.user,
-            )
+        try:
+            with transaction.atomic():
+                if quotation.status == QuotationStatus.SENT:
+                    quotation.accept(line, actor=request.user)
+                booking = BookingService.create_from_quotation_line(
+                    line,
+                    terms_version=quotation.terms_version,
+                    payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
+                    agent=quotation.agent,
+                    actor=request.user,
+                )
+        except IntegrityError:
+            # A concurrent convert won the race past the service's
+            # existing-booking pre-check and `booking_one_per_quotation_line`
+            # fired. Serve the winner's row — same contract as the
+            # sequential double-click retry.
+            winner = Booking.objects.filter(quotation_line=line).first()
+            if winner is None:
+                raise
+            booking = winner
         return Response(
             BookingDetailSerializer(booking).data,
             status=status.HTTP_201_CREATED,
@@ -320,6 +378,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         # pricing (pinned iff a currency was supplied), hold placement — inside
         # one transaction, shared with the atomic nested-lines create path.
         quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
+        _assert_quotation_mutable(quotation)
         serializer.instance = QuotationService.add_line(quotation, dict(serializer.validated_data))
 
     def perform_update(self, serializer: Any) -> None:
@@ -329,6 +388,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         # row. Then re-sync the hold so an edited date range relocates the
         # line's existing hold instead of leaving it on the old dates.
         with transaction.atomic():
+            _assert_quotation_mutable(serializer.instance.quotation)
             old_property_id = serializer.instance.property_id
             currency_supplied = serializer.validated_data.get("currency") is not None
             line = serializer.save()
@@ -348,8 +408,12 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             self._reprice(line, currency=pin)
             QuotationService.sync_line_hold(line)
 
-    # No perform_destroy override: the `QuotationLine` pre_delete signal
-    # releases the line's live holds on every delete path (API, ORM, cascade).
+    def perform_destroy(self, instance: QuotationLine) -> None:
+        # The lock guard is the only view-level concern here — hold release
+        # stays with the `QuotationLine` pre_delete signal, which covers every
+        # delete path (API, ORM, cascade).
+        _assert_quotation_mutable(instance.quotation)
+        instance.delete()
 
     def _reprice(self, line: QuotationLine, *, currency: Any = None) -> None:
         """Recompute a non-manual line's total + pricing_snapshot.

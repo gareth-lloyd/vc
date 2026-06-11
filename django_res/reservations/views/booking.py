@@ -99,12 +99,18 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
 class BookingViewSet(
     StatusCountsMixin,
     mixins.ListModelMixin,
-    mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """`/bookings` — no DELETE; lifecycle is action-driven."""
+    """`/bookings` — no DELETE, no POST; lifecycle is action-driven.
+
+    Bookings are created via `POST /quotations/{id}:convert` only, so every
+    one passes through `BookingService.create_from_quotation_line` (LEAD
+    guest, server-priced money, payment schedule, hold release, audit).
+    Direct creation returns when GAP-020's `create_direct` lands — routed
+    through the service, never a bare serializer save.
+    """
 
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = BookingFilter

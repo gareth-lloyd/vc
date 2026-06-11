@@ -62,6 +62,17 @@ class ReadOnlyHold(DomainError):
     code = "read_only_hold"
 
 
+class QuotationLocked(DomainError):
+    """The quotation is past the point where it can be edited or deleted.
+
+    ACCEPTED/EXPIRED/CANCELLED quotations are closed records — the terms the
+    guest accepted (or the dead quote's audit shape) must not drift after the
+    fact. DRAFT and SENT remain editable (pre-acceptance renegotiation).
+    """
+
+    code = "quotation_locked"
+
+
 class OverlappingBooking(DomainError):
     code = "overlapping_booking"
 
@@ -73,6 +84,16 @@ class OverlappingBooking(DomainError):
         """
         super().__init__(message)
         self.booking = booking
+
+
+class TerminalBookingExists(DomainError):
+    """The quotation line already produced a booking that has since closed.
+
+    Converting again must not resurface a CANCELLED/EXPIRED/DECLINED booking
+    as a fresh success — re-booking goes through a new quotation.
+    """
+
+    code = "terminal_booking_exists"
 
 
 class OAuthNotConnectedError(DomainError):

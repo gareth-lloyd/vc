@@ -135,11 +135,18 @@ def test_settlement_with_booking_already_advanced_is_idempotent_skip(
 def test_settlement_on_cancelled_booking_logs_and_does_not_raise(
     booking: Booking, gbp: Currency
 ) -> None:
-    payment = _payment(booking, gbp, PaymentPurpose.DEPOSIT.value)
+    """Cancel closes the PENDING schedule, but money already in flight at the
+    gateway (PROCESSING) still lands; the booking-advance is skip-logged."""
+    payment = _payment(
+        booking, gbp, PaymentPurpose.DEPOSIT.value, status=PaymentStatus.PROCESSING.value
+    )
     booking.cancel("guest withdrew")
 
     with structlog.testing.capture_logs() as logs:
-        _mark_paid(payment)
+        payment.transition_to(
+            PaymentStatus.SUCCEEDED.value,
+            source=EventSource.WEBHOOK.value,
+        )
 
     booking.refresh_from_db()
     assert booking.status == BookingStatus.CANCELLED.value

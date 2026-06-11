@@ -76,7 +76,12 @@ class HoldService:
             owner = f"booking {hold.booking.reference}"
         else:
             owner = f"a {hold.get_reason_display().lower()} hold"
-        expiry = f" until {hold.expires_at:%d %b %Y %H:%M %Z}" if hold.expires_at else ""
+        expiry = (
+            # localtime: the operator reads this in `TIME_ZONE`, not UTC.
+            f" until {timezone.localtime(hold.expires_at):%d %b %Y %H:%M %Z}"
+            if hold.expires_at
+            else ""
+        )
         raise HoldUnavailable(
             f"{property} is unavailable for {date_from}..{date_to} — "
             f"{hold.date_from}..{hold.date_to} is already held by {owner}{expiry}."

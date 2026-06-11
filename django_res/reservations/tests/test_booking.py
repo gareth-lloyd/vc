@@ -723,3 +723,55 @@ def test_lock_for_update_locks_and_reloads_in_one_query(booking: Booking) -> Non
     # SAVEPOINT statements to the captured query count).
     with assert_max_queries(1):
         booking._lock_for_update()
+
+
+@pytest.mark.django_db
+def test_second_booking_on_same_quotation_line_is_refused(
+    booking: Booking,
+    quotation_line: QuotationLine,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """A QuotationLine is a single guest commitment — exactly one Booking.
+
+    The service's idempotency pre-check (`filter(...).first()`) is not
+    race-proof on its own; this DB constraint is the backstop that makes a
+    concurrent double-convert lose loudly instead of double-booking.
+    """
+    from django.db import IntegrityError
+
+    with pytest.raises(IntegrityError, match="booking_one_per_quotation_line"):
+        Booking.objects.create(
+            quotation_line=quotation_line,
+            guest=guest,
+            property=property_,
+            date_from=quotation_line.date_from,
+            date_to=quotation_line.date_to,
+            adults=quotation_line.adults,
+            children=0,
+            currency=gbp,
+            terms_version=terms,
+            terms_accepted_at=timezone.now(),
+            payment_method=PaymentMethod.CARD.value,
+            rental_price=Decimal("1400.00"),
+            balance_due=Decimal("1400.00"),
+        )
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line_refuses_terminal_booking(
+    booking: Booking,
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A cancelled booking must not be served as a fresh 201 — re-booking a
+    closed commitment goes through a new quotation, not a convert retry."""
+    from core.exceptions import TerminalBookingExists
+    from reservations.services.bookings import BookingService
+
+    booking.cancel("guest changed plans")
+
+    with pytest.raises(TerminalBookingExists):
+        BookingService.create_from_quotation_line(quotation_line, terms_version=terms)

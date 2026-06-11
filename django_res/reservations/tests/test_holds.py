@@ -101,6 +101,30 @@ def test_overlap_error_names_block_reason_without_quotation(property_: Property)
 
 
 @pytest.mark.django_db
+def test_overlap_error_shows_expiry_in_local_time(property_: Property) -> None:
+    """The expiry in the conflict message is operator-local (`TIME_ZONE`), not UTC."""
+    from datetime import UTC, datetime
+
+    from django.test import override_settings
+
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        # 09:00 UTC == 11:00 EET in Athens (winter).
+        expires_at=datetime(2030, 1, 10, 9, 0, tzinfo=UTC),
+    )
+    with override_settings(TIME_ZONE="Europe/Athens"), pytest.raises(HoldUnavailable) as excinfo:
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 12),
+            date_to=date(2026, 6, 20),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+    assert "10 Jan 2030 11:00 EET" in str(excinfo.value)
+
+
+@pytest.mark.django_db
 def test_place_allows_overlap_when_prior_hold_released(property_: Property) -> None:
     expires = timezone.now() + timedelta(hours=1)
     first = HoldService.place(

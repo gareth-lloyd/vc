@@ -1757,3 +1757,327 @@ def test_patch_quotation_rejects_lines(
     )
     assert response.status_code == 400, response.data
     assert "lines" in response.data["field_errors"]
+
+
+# ----------------------------------------------------------------------
+# Lifecycle guards — :convert requires SENT; post-send writes are frozen
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_convert_draft_quotation_409s(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Converting a quote the guest never received must be refused.
+
+    The guard this pins: `:convert` used to skip `accept()` for any non-SENT
+    status but still create the booking — converting a DRAFT yielded a live
+    booking with the quotation stuck in DRAFT and the enquiry never CONVERTED.
+    """
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "invalid_transition"
+    assert Booking.objects.count() == 0
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.DRAFT.value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("kill", ["expire", "cancel"])
+def test_convert_dead_quotation_409s(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    kill: str,
+) -> None:
+    """EXPIRED/CANCELLED quotes (holds released, price stale) cannot convert."""
+    getattr(quotation, kill)()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk},
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert Booking.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_convert_retry_on_accepted_quotation_is_idempotent(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """A double-click retry (quotation now ACCEPTED, same line) returns the
+    original booking rather than 409ing — the retry contract `:convert` has
+    always had via the line-FK idempotency check."""
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+
+    second = api_client.post(url, {"line": line.pk}, format="json")
+
+    assert second.status_code == 201, second.data
+    assert second.data["id"] == first.data["id"]
+    assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_accepted_quotation_with_unselected_line_409s(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    property_: Property,
+    gbp: Currency,
+) -> None:
+    """Once a quote is ACCEPTED on one line, converting a *different* line
+    must be refused — it would mint a second booking off the same quote."""
+    other_line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        currency=gbp,
+        date_from=date(2026, 7, 10),
+        date_to=date(2026, 7, 17),
+        adults=2,
+        total=Decimal("900.00"),
+    )
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+
+    second = api_client.post(url, {"line": other_line.pk}, format="json")
+
+    assert second.status_code == 409, second.data
+    assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("freeze", ["accept", "expire", "cancel"])
+def test_patch_quotation_locked_once_closed(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    freeze: str,
+) -> None:
+    """ACCEPTED/EXPIRED/CANCELLED quotations refuse header edits — the terms
+    the guest accepted (or the dead quote's audit shape) must not drift."""
+    if freeze == "accept":
+        quotation.send()
+        quotation.accept(line)
+    else:
+        getattr(quotation, freeze)()
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}",
+        {"is_unbranded": True},
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "quotation_locked"
+    quotation.refresh_from_db()
+    assert quotation.is_unbranded is False
+
+
+@pytest.mark.django_db
+def test_patch_sent_quotation_still_allowed(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """SENT quotes stay editable — renegotiation before acceptance is a real
+    operator workflow (edit + re-send)."""
+    quotation.send()
+    api_client.force_login(staff)
+    new_expiry = (timezone.now() + timedelta(days=14)).isoformat()
+
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}",
+        {"expires_at": new_expiry},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+
+
+@pytest.mark.django_db
+def test_delete_quotation_only_when_draft(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """Hard-delete is for never-sent drafts only; a SENT quote is a
+    customer-facing artefact — withdraw or expire it instead."""
+    api_client.force_login(staff)
+
+    quotation.send()
+    response = api_client.delete(f"/api/v1/quotations/{quotation.pk}")
+    assert response.status_code == 409, response.data
+    assert Quotation.objects.filter(pk=quotation.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_draft_quotation_still_allowed(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/quotations/{quotation.pk}")
+
+    assert response.status_code == 204, response.data
+    assert not Quotation.objects.filter(pk=quotation.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("freeze", ["accept", "expire", "cancel"])
+def test_line_writes_locked_once_quotation_closed(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    property_: Property,
+    freeze: str,
+) -> None:
+    """Line create/update/delete are refused once the quotation is closed —
+    the price the guest accepted must not be editable after the fact."""
+    if freeze == "accept":
+        quotation.send()
+        quotation.accept(line)
+    else:
+        getattr(quotation, freeze)()
+    api_client.force_login(staff)
+    original_adults = line.adults
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-08-10",
+            "date_to": "2026-08-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 409, create.data
+    assert create.data["code"] == "quotation_locked"
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"adults": 6},
+        format="json",
+    )
+    assert patch.status_code == 409, patch.data
+    line.refresh_from_db()
+    assert line.adults == original_adults
+
+    delete = api_client.delete(f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}")
+    assert delete.status_code == 409, delete.data
+    assert QuotationLine.objects.filter(pk=line.pk).exists()
+
+
+@pytest.mark.django_db
+def test_line_writes_allowed_while_sent(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    rate_rule: object,
+) -> None:
+    """SENT lines stay editable — pre-acceptance renegotiation."""
+    quotation.send()
+    api_client.force_login(staff)
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"notes": "guest asked for late checkout"},
+        format="json",
+    )
+
+    assert patch.status_code == 200, patch.data
+
+
+@pytest.mark.django_db
+def test_convert_race_past_idempotency_precheck_recovers_winner(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two concurrent converts can both miss the service's existing-booking
+    pre-check; the loser hits `booking_one_per_quotation_line` and must serve
+    the winner's booking, not a 500."""
+    from django.db import IntegrityError
+
+    from reservations.services.bookings import BookingService
+
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+
+    # Simulate the loser of the race: its transaction sees no existing
+    # booking, inserts, and hits the unique constraint.
+    def raced(*args: object, **kwargs: object) -> None:
+        raise IntegrityError(
+            'duplicate key value violates unique constraint "booking_one_per_quotation_line"'
+        )
+
+    monkeypatch.setattr(BookingService, "create_from_quotation_line", raced)
+
+    second = api_client.post(url, {"line": line.pk}, format="json")
+
+    assert second.status_code == 201, second.data
+    assert second.data["id"] == first.data["id"]
+    assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_retry_after_booking_cancelled_is_409(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Once the converted booking is cancelled, a convert retry must not
+    resurface it as a fresh 201 — re-book via a new quotation."""
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+    Booking.objects.get(pk=first.data["id"]).cancel("guest changed plans")
+
+    second = api_client.post(url, {"line": line.pk}, format="json")
+
+    assert second.status_code == 409, second.data
+    assert second.data["code"] == "terminal_booking_exists"

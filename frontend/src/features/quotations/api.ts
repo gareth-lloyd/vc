@@ -12,6 +12,7 @@ import {
   quotationListResponseSchema,
   quotationPreviewSchema,
   quoteOptionSchema,
+  stayRepriceSchema,
   termsVersionSchema,
   type GuestSummary,
   type QuotationDetail,
@@ -25,6 +26,7 @@ import {
   type QuoteCriteriaInput,
   type QuoteSearchResult,
   type HiddenCapacityProperty,
+  type StayReprice,
   type TermsVersion,
 } from "./schemas";
 
@@ -82,7 +84,7 @@ interface PropertyCandidate {
   datesAvailable: boolean | null;
 }
 
-interface PricingBulkResponse {
+interface SearchOptionsResponse {
   quotes: Array<{
     property_id: number;
     available?: boolean;
@@ -100,6 +102,13 @@ interface PricingBulkResponse {
     min_nights?: number | null;
     max_nights?: number | null;
     is_projected?: boolean;
+    stay_options?: Array<{
+      date_from: string;
+      date_to: string;
+      nights: number;
+      is_default: boolean;
+      is_available: boolean;
+    }>;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -237,7 +246,11 @@ export async function searchQuoteOptions(
 
   // No `currency` on the request (GAP-014): each property is priced in its
   // own rate plan's currency, reported back per result as `currency_code`.
+  // Dates are the client's PREFERRED stay — the backend widens the search
+  // window by `flex_days` itself and reports the offerable blocks back as
+  // `stay_options`.
   const body = {
+    flex_days: criteria.flex_days,
     requests: candidates.map((p) => ({
       property_id: p.id,
       date_from: criteria.date_from,
@@ -246,15 +259,18 @@ export async function searchQuoteOptions(
       children: criteria.children,
     })),
   };
-  const bulk = await apiSend<PricingBulkResponse>("POST", "/pricing:quote-bulk", body);
+  const bulk = await apiSend<SearchOptionsResponse>("POST", "/quotations:search-options", body);
   const byId = new Map(candidates.map((p) => [p.id, p]));
 
   const options = bulk.quotes.map((q) => {
     const property = byId.get(q.property_id);
-    // The pricing engine knows nothing about holds/bookings — a date conflict
-    // on the candidate row trumps whatever the engine said, so a held villa
-    // can never present as addable (its save would fail on the hold anyway).
-    const datesUnavailable = property?.datesAvailable === false;
+    // A date conflict on the candidate row (requested dates held/booked)
+    // trumps a priced result, so a held villa can never present as addable —
+    // UNLESS the backend offered at least one available stay block: the
+    // per-block flags are more precise than the requested-range flag, and an
+    // alternate block is exactly what the flexibility window is for.
+    const datesUnavailable =
+      property?.datesAvailable === false && !q.stay_options?.some((o) => o.is_available);
     return quoteOptionSchema.parse({
       property_id: q.property_id,
       property_name: property?.name ?? `Property #${q.property_id}`,
@@ -277,10 +293,30 @@ export async function searchQuoteOptions(
       min_nights: q.min_nights ?? null,
       max_nights: q.max_nights ?? null,
       is_projected: q.is_projected ?? null,
+      stay_options: q.stay_options ?? null,
       breakdown: q,
     });
   });
   return { options, hiddenForCapacity, hasMore, totalMatched };
+}
+
+export interface StayRepriceInput {
+  property_id: number;
+  date_from: string;
+  date_to: string;
+  adults: number;
+  children: number;
+}
+
+// Reprice one chosen stay block: same endpoint, one request, no flexibility —
+// the block dates are already changeover-aligned, so the backend prices them
+// directly. One code path with the search keeps the two from drifting.
+export async function repriceStayOption(input: StayRepriceInput): Promise<StayReprice> {
+  const data = await apiSend<{ quotes: unknown[] }>("POST", "/quotations:search-options", {
+    flex_days: 0,
+    requests: [input],
+  });
+  return stayRepriceSchema.parse(data.quotes[0]);
 }
 
 export async function createQuotation(body: QuotationWriteInput): Promise<QuotationDetail> {

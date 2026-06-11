@@ -59,7 +59,7 @@ const villaTwo = {
 // Prices whatever property_ids the bulk request carries — lets a paged
 // /properties mock drive which villas come back available.
 function priceRequested() {
-  return http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+  return http.post("/api/v1/quotations:search-options", async ({ request }) => {
     const body = (await request.json()) as { requests: Array<{ property_id: number }> };
     return HttpResponse.json({
       quotes: body.requests.map((r) => ({
@@ -75,7 +75,7 @@ function priceRequested() {
 function mockSaveFlow() {
   return [
     http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-    http.post("/api/v1/pricing:quote-bulk", () =>
+    http.post("/api/v1/quotations:search-options", () =>
       HttpResponse.json({
         quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
       }),
@@ -92,7 +92,7 @@ function mockSaveFlow() {
 function mockSearch() {
   return [
     http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-    http.post("/api/v1/pricing:quote-bulk", () =>
+    http.post("/api/v1/quotations:search-options", () =>
       HttpResponse.json({
         quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
       }),
@@ -152,7 +152,7 @@ describe("QuoteBuilder", () => {
     let bulkBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
         bulkBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
@@ -174,7 +174,7 @@ describe("QuoteBuilder", () => {
   it("renders mixed-currency results and cart lines each in their own currency", async () => {
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty, villaTwo]))),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             { property_id: 7, available: true, total: "4500.00", currency_code: "GBP" },
@@ -216,7 +216,7 @@ describe("QuoteBuilder", () => {
   it("seeds the staged line's inclusions from the winning plan", async () => {
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             {
@@ -303,7 +303,7 @@ describe("QuoteBuilder", () => {
     // First search (Jul 1–8) succeeds; a re-search with an extended stay 500s.
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { requests: Array<{ date_to: string }> };
         if (body.requests[0]?.date_to !== "2026-07-08") {
           return new HttpResponse(null, { status: 500 });
@@ -336,7 +336,7 @@ describe("QuoteBuilder", () => {
     let quotationBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             {

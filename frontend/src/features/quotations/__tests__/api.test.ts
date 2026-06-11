@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { drfPage } from "@/test/drf";
-import { searchQuoteOptions } from "../api";
+import { repriceStayOption, searchQuoteOptions } from "../api";
 import type { QuoteCriteriaInput } from "../schemas";
 
 const criteria: QuoteCriteriaInput = {
@@ -15,7 +15,20 @@ const criteria: QuoteCriteriaInput = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
+  flex_days: 0,
 };
+
+// A candidate row whose requested dates are flagged unavailable.
+function heldCandidateRow(id: number) {
+  return {
+    id,
+    name: "Villa Sol",
+    display_name: "Villa Sol",
+    slug: "villa-sol",
+    status: "active",
+    available_for_range: false,
+  };
+}
 
 afterEach(() => server.resetHandlers());
 
@@ -41,7 +54,7 @@ describe("searchQuoteOptions", () => {
           ),
         );
       }),
-      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
         bulkBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
@@ -81,7 +94,7 @@ describe("searchQuoteOptions", () => {
           ),
         );
       }),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [{ property_id: 8, available: true, total: "5000.00", currency_code: "USD" }],
         }),
@@ -119,7 +132,7 @@ describe("searchQuoteOptions", () => {
           ]),
         ),
       ),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [{ property_id: 19, available: true, total: "1710.00", currency_code: "GBP" }],
         }),
@@ -143,7 +156,7 @@ describe("searchQuoteOptions", () => {
           ]),
         ),
       ),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             {
@@ -184,7 +197,7 @@ describe("searchQuoteOptions", () => {
           ]),
         ),
       ),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [{ property_id: 9, available: true, total: "900.00", currency_code: "EUR" }],
         }),
@@ -208,7 +221,7 @@ describe("searchQuoteOptions", () => {
           ]),
         ),
       ),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [{ property_id: 9, available: true, total: "900.00", currency_code: "EUR" }],
         }),
@@ -238,7 +251,7 @@ describe("searchQuoteOptions", () => {
         ),
       ),
       // An unpriceable result reports no currency_code.
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [{ property_id: 9, available: false, error_code: "no_rate_available" }],
         }),
@@ -250,11 +263,182 @@ describe("searchQuoteOptions", () => {
     expect(result.options[0].currency).toBeNull();
   });
 
+  it("sends flex_days with the preferred (unwidened) dates", async () => {
+    let body: Record<string, unknown> | null = null;
+    let candidateQuery: URLSearchParams | null = null;
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        candidateQuery = new URL(request.url).searchParams;
+        return HttpResponse.json(
+          drfPage([
+            { id: 7, name: "Villa Sol", display_name: "Villa Sol", slug: null, status: "active" },
+          ]),
+        );
+      }),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          quotes: [{ property_id: 7, available: true, total: "1400.00", currency_code: "GBP" }],
+        });
+      }),
+    );
+
+    await searchQuoteOptions({ ...criteria, flex_days: 2 });
+
+    expect(body).toMatchObject({
+      flex_days: 2,
+      requests: [
+        expect.objectContaining({ date_from: "2026-07-01", date_to: "2026-07-08" }) as unknown,
+      ],
+    });
+    // The candidate query keeps the requested dates too — the backend doesn't
+    // filter when include_unavailable is set, it only flags, so alternate-block
+    // villas still reach pricing and `available_for_range` keeps meaning
+    // "available on the requested dates".
+    expect(candidateQuery!.get("date_from")).toBe("2026-07-01");
+    expect(candidateQuery!.get("include_unavailable")).toBe("true");
+  });
+
+  it("maps stay_options through to the option", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 7, name: "Villa Sol", display_name: "Villa Sol", slug: null, status: "active" },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "1400.00",
+              currency_code: "GBP",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: false,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].stay_options).toHaveLength(2);
+    expect(result.options[0].stay_options?.[0].is_default).toBe(true);
+  });
+
+  it("keeps a held villa available when an alternate block is free", async () => {
+    // The requested dates are held (available_for_range=false), but the
+    // flexibility window offers a free block — that's exactly the case the
+    // picker exists for, so the row must NOT be trumped to dates_unavailable.
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([heldCandidateRow(7)]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "1400.00",
+              currency_code: "GBP",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: false,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].available).toBe(true);
+    expect(result.options[0].error_code).toBeNull();
+  });
+
+  it("still trumps to dates_unavailable when no offered block is free", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([heldCandidateRow(7)]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "1400.00",
+              currency_code: "GBP",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: false,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].available).toBe(false);
+    expect(result.options[0].error_code).toBe("dates_unavailable");
+  });
+
+  it("still trumps to dates_unavailable when the response has no stay_options", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([heldCandidateRow(7)]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 7, available: true, total: "1400.00", currency_code: "GBP" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].available).toBe(false);
+    expect(result.options[0].error_code).toBe("dates_unavailable");
+  });
+
   it("returns an empty page without pricing when no candidates match", async () => {
     let priced = false;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([]))),
-      http.post("/api/v1/pricing:quote-bulk", () => {
+      http.post("/api/v1/quotations:search-options", () => {
         priced = true;
         return HttpResponse.json({ quotes: [] });
       }),
@@ -265,5 +449,82 @@ describe("searchQuoteOptions", () => {
     expect(result.options).toEqual([]);
     expect(result.hasMore).toBe(false);
     expect(priced).toBe(false);
+  });
+});
+
+describe("repriceStayOption", () => {
+  it("sends one request with flex_days 0 and parses the pricing fields", async () => {
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "1400.00",
+              currency_code: "GBP",
+              date_from: "2026-07-11",
+              date_to: "2026-07-18",
+              changeover_shifted_from: null,
+              inclusion: "Daily maid service",
+            },
+          ],
+        });
+      }),
+    );
+
+    const result = await repriceStayOption({
+      property_id: 7,
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      adults: 2,
+      children: 0,
+    });
+
+    expect(body).toEqual({
+      flex_days: 0,
+      requests: [
+        {
+          property_id: 7,
+          date_from: "2026-07-11",
+          date_to: "2026-07-18",
+          adults: 2,
+          children: 0,
+        },
+      ],
+    });
+    expect(result.available).toBe(true);
+    expect(result.total).toBe("1400.00");
+    expect(result.inclusion).toBe("Daily maid service");
+  });
+
+  it("surfaces an error entry's code instead of throwing", async () => {
+    server.use(
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: false,
+              error_code: "min_nights_not_met",
+              error_detail: "RateCard 3 requires min_nights=14, got 7",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await repriceStayOption({
+      property_id: 7,
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      adults: 2,
+      children: 0,
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.error_code).toBe("min_nights_not_met");
   });
 });

@@ -15,6 +15,7 @@ import {
   fetchQuotations,
   quotationStatusCountsQuery,
   markQuotationManuallySent,
+  repriceStayOption,
   searchQuoteOptions,
   sendQuotation,
   updateQuotationLine,
@@ -96,6 +97,12 @@ export function useQuoteOptionsSearch() {
     mutationFn: ({ criteria, page }: { criteria: QuoteCriteriaInput; page: number }) =>
       searchQuoteOptions(criteria, page),
   });
+}
+
+// Reprices one picked stay block (StayOptionPicker). A plain mutation — the
+// picker caches per-block results in row-local state, so no query cache.
+export function useRepriceStayOption() {
+  return useMutation({ mutationFn: repriceStayOption });
 }
 
 export function useCreateQuotation() {

@@ -23,6 +23,7 @@ const DEFAULTS: QuoteCriteriaInput = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
+  flex_days: 0,
 };
 
 export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {

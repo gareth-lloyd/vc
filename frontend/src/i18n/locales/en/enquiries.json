@@ -106,45 +106,6 @@
       "error_message": "Couldn't reopen enquiry"
     }
   },
-  "details_tab": {
-    "heading": "Enquiry details",
-    "edit_button": "Edit details",
-    "sections": {
-      "status_and_dates": "Status & key dates",
-      "guest": "Guest",
-      "lead": "Lead",
-      "inbound_message": "Inbound message"
-    },
-    "fields": {
-      "reference": "Reference",
-      "status": "Status",
-      "from": "From",
-      "to": "To",
-      "flexible": "Flexible",
-      "created": "Created",
-      "name": "Name",
-      "email": "Email",
-      "party": "Party",
-      "min_bedrooms": "Min bedrooms",
-      "source": "Source",
-      "request_type": "Request type",
-      "property": "Property",
-      "region": "Region",
-      "agent": "Agent",
-      "referral_code": "Referral code",
-      "phone": "Phone",
-      "contact_method": "Preferred contact"
-    },
-    "values": {
-      "yes": "Yes",
-      "no": "No",
-      "id_ref": "#{{id}}",
-      "adults_one": "{{count}} adult",
-      "adults_other": "{{count}} adults",
-      "children_one": ", {{count}} child",
-      "children_other": ", {{count}} children"
-    }
-  },
   "quotes_section": {
     "heading": "Quotes",
     "empty": "No quotes for this enquiry yet.",

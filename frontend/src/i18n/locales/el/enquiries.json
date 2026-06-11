@@ -106,45 +106,6 @@
       "error_message": "Δεν ήταν δυνατό το επανάνοιγμα του αιτήματος"
     }
   },
-  "details_tab": {
-    "heading": "Στοιχεία αιτήματος",
-    "edit_button": "Επεξεργασία στοιχείων",
-    "sections": {
-      "status_and_dates": "Κατάσταση & βασικές ημερομηνίες",
-      "guest": "Επισκέπτης",
-      "lead": "Επαφή",
-      "inbound_message": "Εισερχόμενο μήνυμα"
-    },
-    "fields": {
-      "reference": "Αναφορά",
-      "status": "Κατάσταση",
-      "from": "Από",
-      "to": "Έως",
-      "flexible": "Ευέλικτο",
-      "created": "Δημιουργήθηκε",
-      "name": "Όνομα",
-      "email": "Email",
-      "party": "Παρέα",
-      "min_bedrooms": "Ελάχιστα υπνοδωμάτια",
-      "source": "Πηγή",
-      "request_type": "Τύπος αιτήματος",
-      "property": "Ακίνητο",
-      "region": "Περιοχή",
-      "agent": "Πράκτορας",
-      "referral_code": "Κωδικός παραπομπής",
-      "phone": "Τηλέφωνο",
-      "contact_method": "Προτιμώμενη επικοινωνία"
-    },
-    "values": {
-      "yes": "Ναι",
-      "no": "Όχι",
-      "id_ref": "#{{id}}",
-      "adults_one": "{{count}} ενήλικας",
-      "adults_other": "{{count}} ενήλικες",
-      "children_one": ", {{count}} παιδί",
-      "children_other": ", {{count}} παιδιά"
-    }
-  },
   "quotes_section": {
     "heading": "Προσφορές",
     "empty": "Δεν υπάρχουν προσφορές για αυτό το αίτημα ακόμη.",

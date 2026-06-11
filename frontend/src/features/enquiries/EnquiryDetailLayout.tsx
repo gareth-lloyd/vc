@@ -20,7 +20,6 @@ import { AssignDialog } from "./components/AssignDialog";
 import { CloseDialog } from "./components/CloseDialog";
 import { EnquiryQuoteStack } from "./components/EnquiryQuoteStack";
 import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
-import { DetailsTab } from "./tabs/DetailsTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { NotesTab } from "./tabs/NotesTab";
 import {
@@ -260,10 +259,7 @@ export function EnquiryDetailLayout() {
           </div>
         }
       >
-        <div className="space-y-10">
-          <QuotesSection key={enquiry.id} enquiry={enquiry} />
-          <DetailsTab enquiry={enquiry} />
-        </div>
+        <QuotesSection key={enquiry.id} enquiry={enquiry} />
       </TwoColumn>
 
       {dialog === "assign" && (

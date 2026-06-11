@@ -214,6 +214,12 @@ def _transition(self, allowed_from, to, *, actor=None, source="USER", reason="",
 - Booking creation: `BookingService.create_from_quotation_line` re-checks (the world may have changed since the quote).
 - Admin override: `Booking.cancel` and `Booking.check_in` don't re-check; only creation does. An admin "force" path passes `force=True` which writes a `BookingEvent` with `meta={"force": true, "actor_reason": ...}` for audit.
 
+## Stay-option search (`POST /quotations:search-options`, 2026-06 quote-builder rework)
+
+The quote builder's search lives in the **reservations** layer (`StayOptionsService` + `reservations/views/quote_options.py`) because it combines the pricing engine with the availability predicates, which pricing may not import. For each requested property it prices one stay and reports `stay_options`: the changeover-to-changeover blocks (whole-week multiples nearest the requested length, arriving on the property's changeover weekday) that fit the window `requested ± flex_days`. Only the default block (closest to the requested arrival) is priced; the frontend reprices alternatives through the same endpoint with `flex_days=0`.
+
+Per-block `is_available` flags come from **one batched fetch** of `Booking.objects.occupying` + `BookingHold.live_overlapping` across all requested properties, with in-memory half-open `[from, to)` overlap tests — so a block arriving the day another stay departs is available (back-to-back changeover). The flags are **advisory snapshots only**: the transactional `HoldUnavailable` raised when `QuotationService.add_line` places the line's hold remains the real guard.
+
 ## Owner block / maintenance
 
 Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `expires_at` (set to far future or special sentinel; or make `expires_at` nullable for these reasons specifically — choose at implementation time). They participate in the same `EXCLUDE` constraint, so no special-case query. `STOP_SALE` joins these as a persistent, no-auto-expiry block reason (the `expire_holds` task only touches rows with `expires_at < now()`); it is the model backing the operator-facing "Stop Sale" `CellStatus` — owner using the villa, blocked, not for rent, or booked by a competitor (see `10-decisions.md` "Stop Sale in the availability display vocabulary").

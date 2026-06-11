@@ -192,11 +192,19 @@ class AvailabilityMultiView(APIView):
 
     permission_classes = [IsStaff]
 
+    # Mirrors the property list's page size (DRF `PAGE_SIZE` /
+    # `PROPERTIES_PAGE_SIZE` in the SPA) — the timeline sends one page of ids.
+    # Raise them together or a full page of villas starts 400-ing here.
     MAX_PROPERTY_IDS = 50
 
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         ids_param = request.query_params.get("property_ids", "")
-        property_ids = [int(part) for part in ids_param.split(",") if part.strip().isdigit()]
+        # `str.isdigit` alone is unsafe: "²".isdigit() is True but int() raises.
+        property_ids = [
+            int(part)
+            for part in (raw.strip() for raw in ids_param.split(","))
+            if part.isascii() and part.isdigit()
+        ]
         range_start = _parse_date(request.query_params.get("from"))
         range_end = _parse_date(request.query_params.get("to"))
         if not property_ids or not range_start or not range_end:

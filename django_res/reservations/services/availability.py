@@ -148,9 +148,9 @@ class AvailabilityService:
 
         Returns the raw overlapping intervals (not per-day cells) across the
         requested properties, via the canonical predicates. Holds linked to a
-        booking are excluded — the deposit-pending state has both a live hold
-        and an occupying Booking row for the same stay, and the timeline must
-        paint one band, not two.
+        booking are excluded as a guard: a stay must paint one band, and the
+        occupying Booking row is the canonical one. (No production path
+        currently creates booking-linked holds, but the schema allows them.)
         """
         ids = list(property_ids)
         holds = BookingHold.live_overlapping(

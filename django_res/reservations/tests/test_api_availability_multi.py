@@ -155,6 +155,14 @@ def test_non_staff_is_rejected(api_client: APIClient) -> None:
     assert resp.status_code == 403
 
 
+def test_non_ascii_digits_are_rejected_not_500(api_client: APIClient, staff: User) -> None:
+    # "²" passes str.isdigit() but int() raises ValueError — must 400, not 500.
+    api_client.force_login(staff)
+    resp = _get(api_client, "²")
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "validation_error"
+
+
 def test_more_than_50_property_ids_returns_400(api_client: APIClient, staff: User) -> None:
     api_client.force_login(staff)
     ids = ",".join(str(n) for n in range(1, 52))

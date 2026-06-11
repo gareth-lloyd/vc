@@ -29,7 +29,7 @@ from reservations.services.stay_options import (
 )
 
 if TYPE_CHECKING:
-    from pricing.models import Currency, RateRule
+    from pricing.models import Currency, RatePlan, RateRule
     from properties.models import Property
     from reservations.models import Guest, TermsVersion
 
@@ -171,6 +171,30 @@ class TestStayOptionsSearch:
         ] == [
             ("2026-07-04", "2026-07-11", True),
             ("2026-07-11", "2026-07-18", False),
+        ]
+
+    def test_plan_boundary_inside_window_still_offers_blocks(
+        self, property_: Property, plan: RatePlan, rate_rule: RateRule
+    ) -> None:
+        # The plan covers the preferred dates but ends inside the widened
+        # window, so no single context covers the window: the bounds clamp is
+        # skipped and the quote loads its own context — blocks still come back
+        # and the default still prices.
+        _sat_changeover(property_)
+        plan.effective_to = date(2026, 7, 12)
+        plan.save(update_fields=["effective_to"])
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 5), date(2026, 7, 15))],
+            flex_days=3,
+        )
+
+        assert result["available"] is True
+        assert result["date_from"] == "2026-07-04"
+        assert result["total"] == "1400.00"
+        assert [(o["date_from"], o["is_default"]) for o in result["stay_options"]] == [
+            ("2026-07-04", True),
+            ("2026-07-11", False),
         ]
 
     def test_flex_zero_on_aligned_request_yields_single_block(
@@ -361,13 +385,14 @@ class TestSearchOptionsEndpoint:
         property_: Property,
         rate_rule: RateRule,
     ) -> None:
-        # Properties + availability are batched; the per-entry cost is the
-        # engine itself (15 queries for one entry today). Pin so a per-option or
-        # per-block query can't creep in unnoticed.
+        # Properties + availability are batched and the rate context loads
+        # once per entry, shared between the bounds clamp and the quote (12
+        # queries for one entry today). Pin so a per-option or per-block query
+        # can't creep in unnoticed.
         _sat_changeover(property_)
         api_client.force_authenticate(staff)
         body = self._body(property_)
         api_client.post(self.URL, body, format="json")  # warm content types etc.
-        with assert_max_queries(15):
+        with assert_max_queries(12):
             response = api_client.post(self.URL, body, format="json")
         assert response.status_code == 200

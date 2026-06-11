@@ -63,6 +63,7 @@ class PricingEngine:
         opt_in_extras: list[int] | None = None,
         as_of: date | None = None,
         allow_projection: bool = True,
+        context: PricingContext | None = None,
     ) -> Quote:
         if date_to <= date_from:
             raise NoRateAvailable("date_to must be strictly after date_from")
@@ -76,20 +77,23 @@ class PricingEngine:
         # the most recent year that has rates. `allow_projection=False` forces the
         # hard `NoRateAvailable` for callers that must not price on a guide (e.g. a
         # booking-time guard). See `04-pricing.md` "Projected pricing for future
-        # years".
-        context = cls._load_real_context(property, currency, date_from, date_to)
-        if context is None and allow_projection:
-            # `find_anchor_plan` is currency-keyed, so a currency-less quote
-            # resolves one first via the canonical chain — the most recent
-            # plan's currency, i.e. the villa's *current* currency after a
-            # switch, never a stale pre-switch one (GAP-014).
-            projection_currency = currency or resolve_property_currency(property)
-            if projection_currency is not None:
-                context = RateProjectionService.project(
-                    property=property,
-                    date_from=date_from,
-                    currency=projection_currency,
-                )
+        # years". A caller-supplied `context` (from `load_context`) skips the
+        # resolution entirely — the caller guarantees its plan covers the
+        # quoted dates (e.g. a context loaded for a wider window).
+        if context is None:
+            context = cls._load_real_context(property, currency, date_from, date_to)
+            if context is None and allow_projection:
+                # `find_anchor_plan` is currency-keyed, so a currency-less quote
+                # resolves one first via the canonical chain — the most recent
+                # plan's currency, i.e. the villa's *current* currency after a
+                # switch, never a stale pre-switch one (GAP-014).
+                projection_currency = currency or resolve_property_currency(property)
+                if projection_currency is not None:
+                    context = RateProjectionService.project(
+                        property=property,
+                        date_from=date_from,
+                        currency=projection_currency,
+                    )
         if context is None:
             raise NoRateAvailable(
                 f"No active RatePlan for property {getattr(property, 'pk', '?')} "
@@ -315,15 +319,30 @@ class PricingEngine:
         )
 
     @classmethod
-    def stay_length_bounds(
+    def load_context(
         cls,
         property: Any,
         *,
         date_from: date,
         date_to: date,
         currency: Currency | None = None,
-    ) -> tuple[int, int | None] | None:
-        """Aggregate (min_nights, max_nights) across the covering plan's active
+    ) -> PricingContext | None:
+        """Real-plan context covering ``[date_from, date_to)``, or ``None``
+        when no active plan covers the range (the projection path) or the
+        covering plan is misconfigured with no active cards.
+
+        Lets a caller load the context once and reuse it — feed it to
+        `stay_length_bounds` and back into `quote(context=...)` for any stay
+        the plan covers, instead of paying the plan/card/rule queries twice.
+        """
+        try:
+            return cls._load_real_context(property, currency, date_from, date_to)
+        except NoRateAvailable:
+            return None
+
+    @staticmethod
+    def stay_length_bounds(context: PricingContext) -> tuple[int, int | None]:
+        """Aggregate (min_nights, max_nights) across the context's active
         cards, without running a quote.
 
         A stay is valid when ANY card accepts it, so the bounds are the
@@ -331,17 +350,7 @@ class PricingEngine:
         by the reservations-layer stay-option search to pick a changeover
         block length before pricing; the eventual winning card may be
         stricter, in which case the quote itself raises (the loud guard).
-
-        Returns ``None`` when no real plan covers the range (the projection
-        path) or the plan is misconfigured with no active cards — callers
-        skip the clamp and leave validation to the engine.
         """
-        try:
-            context = cls._load_real_context(property, currency, date_from, date_to)
-        except NoRateAvailable:
-            return None
-        if context is None:
-            return None
         min_nights = min(card.min_nights for card in context.cards)
         maxes = [card.max_nights for card in context.cards]
         if any(m is None for m in maxes):

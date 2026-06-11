@@ -25,7 +25,7 @@ from typing import Any
 
 from core.exceptions import DomainError
 from pricing.models import Currency
-from pricing.services import PricingEngine
+from pricing.services import PricingContext, PricingEngine
 from pricing.services.currency import resolve_property_currency
 from properties.models import Property
 from properties.services.changeover import ChangeoverService
@@ -136,7 +136,7 @@ class StayOptionsService:
 
         preferred_from: date = entry["date_from"]
         preferred_to: date = entry["date_to"]
-        blocks, default_index = cls._plan_blocks(
+        blocks, default_index, context = cls._plan_blocks(
             property_obj,
             preferred_from=preferred_from,
             preferred_to=preferred_to,
@@ -152,6 +152,9 @@ class StayOptionsService:
                 date_to=price_to,
                 party=entry["adults"] + entry.get("children", 0),
                 currency=currency,
+                # The window context from block planning (covers any priced
+                # stay inside it) — None falls back to the engine's own load.
+                context=context,
             )
         except DomainError as exc:
             # Q-013 parity with /pricing:quote-bulk — no-rate entries feed the
@@ -207,22 +210,33 @@ class StayOptionsService:
         preferred_to: date,
         flex_days: int,
         currency: Currency | None,
-    ) -> tuple[list[_Interval], int]:
-        """Candidate changeover blocks for the window, with the default index.
+    ) -> tuple[list[_Interval], int, PricingContext | None]:
+        """Candidate changeover blocks for the window, the default index, and
+        the rate context the bounds came from (for the quote to reuse — it
+        covers the whole window, so it covers whichever block gets priced).
 
         Empty list → no fixed changeover day, or no whole-week block fits:
         price the preferred dates as-is (the engine's align-forward is the
         backstop, exactly as before this feature).
+
+        The bounds clamp needs one plan covering the whole window; when only
+        the preferred dates are covered (a plan boundary inside the window —
+        the same accepted v1 edge as a changeover-rule boundary) the context
+        is ``None``, the clamp is skipped, and the engine loads its own
+        context and stays the loud guard.
         """
         weekday = ChangeoverService.required_weekday(property_obj, preferred_from)
         if weekday is None:
-            return [], 0
-        bounds = PricingEngine.stay_length_bounds(
+            return [], 0, None
+        window_from = preferred_from - timedelta(days=flex_days)
+        window_to = preferred_to + timedelta(days=flex_days)
+        context = PricingEngine.load_context(
             property_obj,
-            date_from=preferred_from,
-            date_to=preferred_to,
+            date_from=window_from,
+            date_to=window_to,
             currency=currency,
         )
+        bounds = PricingEngine.stay_length_bounds(context) if context else None
         nights = block_nights(
             (preferred_to - preferred_from).days,
             (preferred_to - preferred_from).days + 2 * flex_days,
@@ -230,13 +244,11 @@ class StayOptionsService:
             max_nights=bounds[1] if bounds else None,
         )
         if nights is None:
-            return [], 0
-        window_from = preferred_from - timedelta(days=flex_days)
-        window_to = preferred_to + timedelta(days=flex_days)
+            return [], 0, context
         blocks = candidate_blocks(window_from, window_to, weekday, nights)
         if not blocks:
-            return [], 0
-        return blocks, pick_default(blocks, preferred_from)
+            return [], 0, context
+        return blocks, pick_default(blocks, preferred_from), context
 
     @staticmethod
     def _occupied_intervals(

@@ -8,9 +8,10 @@ from decimal import Decimal
 import pytest
 
 from core.exceptions import NoRateAvailable, PartyOutOfRange
+from core.tests import assert_max_queries
 from pricing.enums import ExtraCalc, ExtraKind
 from pricing.models import Currency, Extra, RateCard, RatePlan, RateRule
-from pricing.services import PricingEngine
+from pricing.services import PricingContext, PricingEngine
 from properties.models import Property
 
 
@@ -903,8 +904,15 @@ def test_breakdown_occupancy_pricing_false_for_same_band_split_dates(
 
 
 # ----------------------------------------------------------------------
-# stay_length_bounds — pre-pricing card aggregates for block selection
+# load_context / stay_length_bounds — pre-pricing card aggregates for
+# block selection, on a context the caller can feed back into quote()
 # ----------------------------------------------------------------------
+
+
+def _june_context(property_: Property) -> PricingContext | None:
+    return PricingEngine.load_context(
+        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    )
 
 
 @pytest.mark.django_db
@@ -915,11 +923,10 @@ def test_stay_length_bounds_single_card(
     card.max_nights = 14
     card.save(update_fields=["min_nights", "max_nights"])
 
-    bounds = PricingEngine.stay_length_bounds(
-        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
-    )
+    context = _june_context(property_)
+    assert context is not None
 
-    assert bounds == (5, 14)
+    assert PricingEngine.stay_length_bounds(context) == (5, 14)
 
 
 @pytest.mark.django_db
@@ -933,32 +940,54 @@ def test_stay_length_bounds_aggregates_across_cards(
     card.save(update_fields=["min_nights", "max_nights"])
     RateCard.objects.create(plan=plan, name="Long stay", sort_order=1, min_nights=3)
 
-    bounds = PricingEngine.stay_length_bounds(
-        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
-    )
+    context = _june_context(property_)
+    assert context is not None
 
-    assert bounds == (3, None)
+    assert PricingEngine.stay_length_bounds(context) == (3, None)
 
 
 @pytest.mark.django_db
-def test_stay_length_bounds_none_without_covering_plan(property_: Property, gbp: Currency) -> None:
+def test_load_context_none_without_covering_plan(property_: Property, gbp: Currency) -> None:
     """No real plan (the projection path) → None: callers skip the clamp and
     the engine remains the loud guard at pricing time."""
-    assert (
-        PricingEngine.stay_length_bounds(
-            property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
-        )
-        is None
-    )
+    assert _june_context(property_) is None
 
 
 @pytest.mark.django_db
-def test_stay_length_bounds_none_when_plan_has_no_active_cards(
+def test_load_context_none_when_plan_has_no_active_cards(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    assert (
-        PricingEngine.stay_length_bounds(
-            property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
-        )
-        is None
+    assert _june_context(property_) is None
+
+
+@pytest.mark.django_db
+def test_quote_reuses_a_preloaded_context_without_rate_queries(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+) -> None:
+    """A caller-supplied context skips the plan/card/rule loads entirely and
+    prices identically to a self-loading quote."""
+    baseline = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
     )
+    context = PricingEngine.load_context(
+        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17), currency=gbp
+    )
+    assert context is not None
+
+    # Changeover/extras/discounts still hit the DB; the rate triple must not.
+    with assert_max_queries(3):
+        reused = PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 17),
+            party=4,
+            currency=gbp,
+            context=context,
+        )
+
+    assert reused.total == baseline.total
+    assert reused.breakdown == baseline.breakdown

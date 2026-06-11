@@ -57,12 +57,9 @@ def test_create_from_enquiry_happy_path(
     assert line is not None
     assert line.pricing_snapshot["rate_subtotal"] == "1400.00"
 
-    # Hold placed for the line's dates and property.
-    holds = BookingHold.objects.filter(quotation=quotation)
-    assert holds.count() == 1
-    hold = holds.first()
-    assert hold is not None
-    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
+    # Quoting is the soft part of the sales process — no hold is placed
+    # automatically; holds are a separate, deliberate operator action.
+    assert BookingHold.objects.filter(quotation=quotation).count() == 0
 
     # Enquiry advanced to QUOTED.
     enquiry.refresh_from_db()
@@ -230,8 +227,9 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
 ) -> None:
     """An off-changeover arrival is never rejected: the engine nudges it
     forward to the property's changeover day and the shifted dates are
-    persisted onto the line *and* its hold, with the original arrival
-    surfaced on the snapshot for the "we moved your dates" note (GAP-007)."""
+    persisted onto the line, with the original arrival surfaced on the
+    snapshot for the "we moved your dates" note (GAP-007). A subsequent
+    manual hold then protects the shifted dates, not the raw request."""
     PropertySettings.objects.create(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
@@ -259,8 +257,10 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
     assert line.date_to == date(2026, 6, 20)
     assert line.pricing_snapshot["changeover_shifted_from"] == "2026-06-10"
 
-    # The hold was placed on the shifted dates, not the raw request.
-    hold = BookingHold.objects.get(quotation=quotation)
+    # No automatic hold — but a manual one holds the shifted dates the
+    # line was actually priced on, not the raw request.
+    assert BookingHold.objects.filter(quotation=quotation).count() == 0
+    hold = QuotationService.hold_line(line)
     assert hold.date_from == date(2026, 6, 13)
     assert hold.date_to == date(2026, 6, 20)
 

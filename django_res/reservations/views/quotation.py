@@ -14,7 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from core.exceptions import HoldUnavailable, InvalidTransition, QuotationLocked
+from core.exceptions import InvalidTransition, QuotationLocked
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Booking, Quotation, QuotationLine
@@ -116,7 +116,7 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         model related-name, so it must be popped before anything could reach
         `serializer.save()`. The service also mints the minimal AGENT_PORTAL
         enquiry for an agent-direct quote (no enquiry in the body), inside the
-        same transaction as the lines and their holds.
+        same transaction as the lines.
         """
         header = dict(serializer.validated_data)
         lines = header.pop("lines", [])
@@ -218,7 +218,7 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                 terms_version=quotation.terms_version,
             )
             for line in quotation.lines.all():
-                clone_line = QuotationLine.objects.create(
+                QuotationLine.objects.create(
                     quotation=clone,
                     property=line.property,
                     currency=line.currency,
@@ -235,22 +235,6 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                     price_override_reason=line.price_override_reason,
                     notes=line.notes,
                 )
-                # Protect the clone's dates like any other quotation line. If
-                # the *source* quote still holds them, the global one-hold-per-
-                # villa-range rule means we can't place a second hold — but the
-                # dates are already protected by that live hold, so skip rather
-                # than fail the duplicate. (If the source is later withdrawn,
-                # the clone's line should be re-touched to claim its own hold.)
-                try:
-                    QuotationService.sync_line_hold(clone_line)
-                except HoldUnavailable:
-                    logger.info(
-                        "quotation.duplicate_hold_skipped",
-                        quotation_id=clone.pk,
-                        quotation_line_id=clone_line.pk,
-                        property_id=clone_line.property_id,
-                        reason="dates_already_held",
-                    )
         return Response(
             QuotationDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,
@@ -375,8 +359,9 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer: Any) -> None:
         # `QuotationService.add_line` owns the whole recipe — currency default,
-        # pricing (pinned iff a currency was supplied), hold placement — inside
-        # one transaction, shared with the atomic nested-lines create path.
+        # pricing (pinned iff a currency was supplied) — inside one
+        # transaction, shared with the atomic nested-lines create path. No
+        # hold: holds are a separate manual operator action.
         quotation = get_object_or_404(Quotation, pk=self.kwargs["quotation_pk"])
         _assert_quotation_mutable(quotation)
         serializer.instance = QuotationService.add_line(quotation, dict(serializer.validated_data))
@@ -385,8 +370,8 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
         # Persist the edited fields (adults, discount, …) BEFORE repricing so
         # `_reprice` re-reads them off the row. Without the save the patched
         # values would never reach the DB and the engine would price the stale
-        # row. Then re-sync the hold so an edited date range relocates the
-        # line's existing hold instead of leaving it on the old dates.
+        # row. Then, iff the line carries a live manual hold, relocate it to
+        # the edited dates — an un-held line never gains a hold from an edit.
         with transaction.atomic():
             _assert_quotation_mutable(serializer.instance.quotation)
             old_property_id = serializer.instance.property_id
@@ -406,7 +391,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
             # the new villa's own plan currency should win.
             pin = None if (property_changed and not currency_supplied) else line.currency
             self._reprice(line, currency=pin)
-            QuotationService.sync_line_hold(line)
+            QuotationService.move_line_hold(line)
 
     def perform_destroy(self, instance: QuotationLine) -> None:
         # The lock guard is the only view-level concern here — hold release

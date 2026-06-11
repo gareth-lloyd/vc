@@ -15,7 +15,7 @@ from pricing.models import Currency, RateCard, RatePlan, RateRule
 from properties.enums import PrefilledChangeOverDay
 from properties.models import Property
 from properties.models.settings import PropertySettings
-from reservations.enums import BookingHoldReason, QuotationStatus
+from reservations.enums import QuotationStatus
 from reservations.models import (
     Booking,
     BookingHold,
@@ -24,6 +24,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.quotations import QuotationService
 
 
 @pytest.fixture
@@ -200,26 +201,21 @@ def test_duplicate_quotation_clones_lines(
 
 
 @pytest.mark.django_db
-def test_duplicate_quotation_places_holds_on_cloned_lines(
+def test_duplicate_quotation_places_no_holds(
     api_client: APIClient,
     staff: User,
     quotation: Quotation,
     line: QuotationLine,
 ) -> None:
-    """A duplicated quote's cloned lines must protect their dates too — without
-    this, a duplicate is invisible on the availability calendar (same bug class
-    as the direct-API line path). The source `line` fixture carries no hold, so
-    the clone's dates are free and a fresh QUOTATION_OPEN hold is placed."""
+    """Duplicating a quote never blocks availability — quotes are the soft
+    part of the sales process; a hold is a separate, deliberate operator
+    action on a line."""
     api_client.force_login(staff)
     response = api_client.post(f"/api/v1/quotations/{quotation.pk}:duplicate")
     assert response.status_code == 201
 
-    clone_line = QuotationLine.objects.get(quotation_id=response.data["id"])
-    hold = BookingHold.objects.get(quotation_line=clone_line)
-    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
-    assert hold.date_from == line.date_from
-    assert hold.date_to == line.date_to
-    assert hold.is_live() is True
+    assert QuotationLine.objects.filter(quotation_id=response.data["id"]).count() == 1
+    assert BookingHold.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -244,6 +240,8 @@ def test_withdraw_releases_holds(
         },
         format="json",
     )
+    # Holds are manual now — place one on the line the way an operator would.
+    QuotationService.hold_line(QuotationLine.objects.get(quotation=quotation))
     assert BookingHold.objects.filter(quotation=quotation, released_at__isnull=True).count() == 1
 
     withdraw = api_client.post(
@@ -598,17 +596,16 @@ def test_manual_line_is_not_repriced(
 
 
 @pytest.mark.django_db
-def test_create_line_places_hold(
+def test_create_line_places_no_hold(
     api_client: APIClient,
     staff: User,
     quotation: Quotation,
     property_: Property,
     rate_rule: object,
 ) -> None:
-    """A line built through the UI (POST /lines) must place a QUOTATION_OPEN
-    hold protecting its dates — the enquiry-driven path already did this; the
-    direct-API path used to leak (no hold, nothing on the availability calendar).
-    """
+    """A line built through the UI (POST /lines) never blocks availability —
+    quoting is the soft part of the sales process; holds are a separate,
+    deliberate operator action."""
     api_client.force_login(staff)
 
     create = api_client.post(
@@ -624,15 +621,43 @@ def test_create_line_places_hold(
     )
     assert create.status_code == 201, create.data
 
-    line = QuotationLine.objects.get()
-    hold = BookingHold.objects.get(quotation=quotation)
-    assert hold.quotation_line_id == line.pk
-    assert hold.property_id == property_.pk
-    assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
-    assert hold.date_from == date(2026, 6, 10)
-    assert hold.date_to == date(2026, 6, 17)
-    assert hold.expires_at == quotation.expires_at
-    assert hold.is_live() is True
+    assert QuotationLine.objects.count() == 1
+    assert BookingHold.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_line_succeeds_over_foreign_live_hold(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Quoting dates someone else holds is allowed — a quote is an offer, not
+    a claim on inventory. The conflict only surfaces if/when an operator
+    tries to HOLD or BOOK the line."""
+    from reservations.services.holds import HoldService
+
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 12),
+        date_to=date(2026, 6, 15),
+        never_expires=True,
+    )
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
 
 
 @pytest.mark.django_db
@@ -643,8 +668,52 @@ def test_update_line_moves_its_hold(
     property_: Property,
     rate_rule: object,
 ) -> None:
-    """PATCHing a line's dates moves its single hold rather than orphaning the
-    old one or creating a second."""
+    """PATCHing a held line's dates moves its single hold rather than
+    orphaning the old one or creating a second — and the operator-set expiry
+    survives the move."""
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    placed = QuotationService.hold_line(line)
+    original_expiry = placed.expires_at
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"date_from": "2026-06-12", "date_to": "2026-06-19"},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+
+    # Exactly one hold, relocated to the new range, expiry untouched.
+    hold = BookingHold.objects.get(quotation=quotation)
+    assert hold.quotation_line_id == line.pk
+    assert hold.date_from == date(2026, 6, 12)
+    assert hold.date_to == date(2026, 6, 19)
+    assert hold.expires_at == original_expiry
+    assert hold.is_live() is True
+
+
+@pytest.mark.django_db
+def test_update_unheld_line_stays_unheld(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Editing a line that has no hold must not conjure one up."""
     api_client.force_login(staff)
 
     create = api_client.post(
@@ -667,13 +736,7 @@ def test_update_line_moves_its_hold(
         format="json",
     )
     assert patch.status_code == 200, patch.data
-
-    # Exactly one hold, relocated to the new range.
-    hold = BookingHold.objects.get(quotation=quotation)
-    assert hold.quotation_line_id == line_pk
-    assert hold.date_from == date(2026, 6, 12)
-    assert hold.date_to == date(2026, 6, 19)
-    assert hold.is_live() is True
+    assert BookingHold.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -700,6 +763,7 @@ def test_delete_line_releases_its_hold(
     )
     assert create.status_code == 201, create.data
     line_pk = QuotationLine.objects.get().pk
+    QuotationService.hold_line(QuotationLine.objects.get())
 
     delete = api_client.delete(f"/api/v1/quotations/{quotation.pk}/lines/{line_pk}")
     assert delete.status_code == 204
@@ -1379,7 +1443,7 @@ def test_create_quotation_with_lines_atomic_happy_path(
     property_: Property,
     rate_rule: object,
 ) -> None:
-    """One POST creates header + a priced and a manual line + their holds, and
+    """One POST creates header + a priced and a manual line — no holds — and
     echoes the detail shape with the server-priced values."""
     api_client.force_login(staff)
     enquiry = guest.enquiries.create()
@@ -1431,13 +1495,8 @@ def test_create_quotation_with_lines_atomic_happy_path(
     # Manual line keeps the operator total and its pinned currency.
     assert Decimal(str(manual["total"])) == Decimal("5000.00")
     assert manual["currency"] == "GBP"
-    # Both lines hold their dates, expiring with the quotation.
-    holds = BookingHold.objects.filter(quotation=quotation)
-    assert holds.count() == 2
-    for hold in holds:
-        assert hold.reason == BookingHoldReason.QUOTATION_OPEN.value
-        assert hold.expires_at == quotation.expires_at
-        assert hold.is_live() is True
+    # Saving a quote never blocks availability — holds are manual.
+    assert BookingHold.objects.filter(quotation=quotation).count() == 0
     # Saving a draft is not sending: the enquiry must NOT advance to QUOTED
     # (that transition belongs to :send / :mark-manually-sent).
     enquiry.refresh_from_db()
@@ -1497,7 +1556,7 @@ def test_create_with_lines_invalid_line_is_nested_400_and_writes_nothing(
 
 
 @pytest.mark.django_db
-def test_create_with_lines_rolls_back_on_hold_unavailable(
+def test_create_with_lines_succeeds_over_foreign_live_hold(
     api_client: APIClient,
     staff: User,
     guest: Guest,
@@ -1505,8 +1564,8 @@ def test_create_with_lines_rolls_back_on_hold_unavailable(
     property_: Property,
     rate_rule: object,
 ) -> None:
-    """An unavailable line fails the WHOLE save: no header, no sibling lines,
-    no holds — never a half-populated draft."""
+    """A quote over dates someone else holds saves fine — quotes are offers,
+    not claims on inventory; the conflict surfaces only at hold/book time."""
     from reservations.services.holds import HoldService
 
     api_client.force_login(staff)
@@ -1551,11 +1610,9 @@ def test_create_with_lines_rolls_back_on_hold_unavailable(
         format="json",
     )
 
-    assert response.status_code == 409, response.data
-    assert response.data["code"] == "hold_unavailable"
-    assert Quotation.objects.count() == 0
-    assert QuotationLine.objects.count() == 0
-    # Only the pre-existing hold survives — line 1's hold rolled back too.
+    assert response.status_code == 201, response.data
+    assert QuotationLine.objects.count() == 2
+    # The pre-existing hold is untouched and no new ones appeared.
     assert BookingHold.objects.count() == 1
 
 
@@ -1569,17 +1626,13 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
     rate_rule: object,
 ) -> None:
     """The auto-minted enquiry (agent-direct: no `enquiry` in the body) is part
-    of the same transaction and must vanish with everything else."""
+    of the same transaction and must vanish with everything else. Trigger:
+    a priced line on a villa with no rates (`NoRateAvailable`)."""
     from reservations.models import Enquiry
-    from reservations.services.holds import HoldService
 
     api_client.force_login(staff)
-    HoldService.place(
-        property=property_,
-        date_from=date(2026, 6, 12),
-        date_to=date(2026, 6, 15),
-        never_expires=True,
-    )
+    # `_second_property` has no rate plan — pricing it raises NoRateAvailable.
+    unrated = _second_property(property_)
     enquiries_before = Enquiry.objects.count()
 
     response = api_client.post(
@@ -1590,11 +1643,14 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
             "terms_version": terms.pk,
             "lines": [
                 {
-                    "property": property_.pk,
+                    "property": unrated.pk,
                     "date_from": "2026-06-10",
                     "date_to": "2026-06-17",
                     "adults": 2,
                     "children": 0,
+                    # Explicit currency gets past currency resolution so the
+                    # engine itself raises (no rate plan on this villa).
+                    "currency": "GBP",
                 },
             ],
         },
@@ -1602,6 +1658,7 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
     )
 
     assert response.status_code == 409, response.data
+    assert response.data["code"] == "no_rate_available"
     assert Quotation.objects.count() == 0
     assert Enquiry.objects.count() == enquiries_before
 
@@ -1703,7 +1760,7 @@ def test_create_with_lines_records_changeover_shift(
     rate_rule: object,
 ) -> None:
     """A nested line off the changeover day is shifted exactly like the
-    per-line endpoint (GAP-007), and its hold spans the shifted dates."""
+    per-line endpoint (GAP-007)."""
     PropertySettings.objects.create(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
@@ -1736,9 +1793,7 @@ def test_create_with_lines_records_changeover_shift(
     assert row["date_from"] == "2026-06-13"  # next Saturday
     assert row["date_to"] == "2026-06-20"
     assert row["changeover_shifted_from"] == "2026-06-10"
-    hold = BookingHold.objects.get()
-    assert hold.date_from == date(2026, 6, 13)
-    assert hold.date_to == date(2026, 6, 20)
+    assert BookingHold.objects.count() == 0
 
 
 @pytest.mark.django_db

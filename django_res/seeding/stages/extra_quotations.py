@@ -58,6 +58,14 @@ def _run(ctx: SeedContext) -> int:
                 quotation.expire()
             elif outcome == "cancelled":
                 quotation.cancel("Guest never replied")
+            else:
+                # Holds are a manual operator action now — mirror an operator
+                # protecting a live SENT quote's dates, then stretch the
+                # expiry so quotation cells stay visible across the demo
+                # calendar window (the effective-setting default is ~48h).
+                hold = QuotationService.hold_line(quotation.lines.get())
+                hold.expires_at = expires_at
+                hold.save(update_fields=["expires_at", "updated_at"])
         made += 1
     return made
 

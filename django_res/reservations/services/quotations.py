@@ -1,4 +1,9 @@
-"""QuotationService — build a Quotation+lines from an Enquiry, place holds."""
+"""QuotationService — build a Quotation+lines from an Enquiry.
+
+Quotations never place availability holds automatically — quoting is the
+soft part of the sales process (legacy parity). Holds are a deliberate
+operator action via `hold_line` / `release_line_hold`.
+"""
 
 from __future__ import annotations
 
@@ -101,38 +106,6 @@ class QuotationService:
         return line
 
     @classmethod
-    def sync_line_hold(cls, line: QuotationLine) -> BookingHold:
-        """Place or move the QUOTATION_OPEN hold backing a quotation line.
-
-        The single source of truth for the line→hold link, shared by the
-        enquiry-driven `create_from_enquiry` and the API `QuotationLineViewSet`
-        so a line always holds the dates it was priced on, however it was
-        created — and so an edit relocates that one hold rather than leaking a
-        stale one. Holds the line's *persisted* dates: pricing may have nudged a
-        non-conforming arrival forward to the changeover day (GAP-007), so we
-        hold what we priced, not the raw request. Expiry tracks the quotation's
-        `expires_at`. Raises `HoldUnavailable` if the dates collide with another
-        live hold.
-        """
-        existing = line.holds.filter(released_at__isnull=True).first()
-        if existing is not None:
-            return HoldService.move(
-                existing,
-                date_from=line.date_from,
-                date_to=line.date_to,
-                expires_at=line.quotation.expires_at,
-            )
-        return HoldService.place(
-            property=line.property,
-            date_from=line.date_from,
-            date_to=line.date_to,
-            expires_at=line.quotation.expires_at,
-            reason=BookingHoldReason.QUOTATION_OPEN.value,
-            quotation=line.quotation,
-            quotation_line=line,
-        )
-
-    @classmethod
     @transaction.atomic
     def hold_line(cls, line: QuotationLine, *, actor: Any = None) -> BookingHold:
         """Place the operator-requested hold backing a quotation line.
@@ -219,14 +192,13 @@ class QuotationService:
 
     @classmethod
     def add_line(cls, quotation: Quotation, data: dict[str, Any]) -> QuotationLine:
-        """Create one line correctly: default currency, price, place its hold.
+        """Create one line correctly: default currency, then price it.
 
         The single source of truth for API-shaped line creation —
         `QuotationLineViewSet.perform_create` and `create_with_lines` both
         funnel through here. `data` is `QuotationLineWriteSerializer`
-        validated_data. Line + reprice + hold share one transaction: a
-        `HoldUnavailable` (dates already held by another live quote) rolls the
-        line back too, so we never persist a line without its protecting hold.
+        validated_data. No hold is placed — holds are a separate manual
+        operator action (`hold_line`).
 
         An explicitly supplied currency is pinned: the engine exact-matches it
         (loud `NoRateAvailable` on a plan-currency mismatch); a defaulted one
@@ -248,7 +220,6 @@ class QuotationService:
                 )
                 cls.price_line(quotation, locked, currency=supplied_currency)
                 line = locked
-            cls.sync_line_hold(line)
             return line
 
     @classmethod
@@ -289,7 +260,7 @@ class QuotationService:
         agent: Any | None = None,
         actor: Any = None,
     ) -> Quotation:
-        """Build Quotation + lines, run PricingEngine per line, place holds.
+        """Build Quotation + lines, run PricingEngine per line. No holds.
 
         Currency is per line (GAP-014): priced lines get the engine result's
         currency; a manual line takes the supplied one, defaulting via the
@@ -348,7 +319,6 @@ class QuotationService:
             # failure); a defaulted one lets the plan's currency win.
             if not is_manual:
                 cls.price_line(quotation, line, currency=supplied_currency)
-            cls.sync_line_hold(line)
 
         # Move the enquiry forward. The service-layer path is the in-app
         # SMTP flow — manual-mark goes via the dedicated endpoint, never

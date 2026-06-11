@@ -107,12 +107,15 @@ legacy output matters (e.g. exact booking-count tests).
 
 ## Villa image pool — manifest-driven seed imagery
 
-`seed_dev` draws property imagery *and* property identity from a committed pool
-of villa images under `core/seed_data/villa_images/`, so dev/staging
+`seed_dev` draws property imagery, location, and description from a committed
+pool of villa images under `core/seed_data/villa_images/`, so dev/staging
 catalogue/detail screens render real villas instead of grey 1×1 placeholders.
 `manifest.yaml` is the single source of truth: one entry per villa with `slug`,
-`display_name`, `location_tag`, `country_iso2`, `style_anchor`, and per-kind
-`prompts`. Each entry owns a subdirectory of `hero.jpg` / `interior.jpg` /
+`location_tag`, `country_iso2`, `style_anchor`, and per-kind `prompts` (plus a
+`display_name` used only as image-generation context). Property *names* do not
+come from the manifest — `properties.factories.villa_name` combines a
+deterministic component menu into 630 unique names, so seeded names never
+repeat the way the 20-entry manifest would. Each entry owns a subdirectory of `hero.jpg` / `interior.jpg` /
 `exterior.jpg` / `gallery.jpg` (no floor plans — the model produces poor ones,
 so the gallery stage skips `FLOOR_PLAN` entirely rather than seed a 1×1
 placeholder).
@@ -122,8 +125,8 @@ How it wires together (mirror this if you extend it):
 - `properties.factories.villa_manifest()` returns the manifest entries that
   have a `hero.jpg` on disk. The `properties` seed stage cycles that list,
   **exhausting every villa before any repeat**, and builds each property's
-  `display_name` / `region` / `country` (loud `Country.objects.get` on the
-  seeded ISO row) / description from the entry.
+  `region` / `country` (loud `Country.objects.get` on the seeded ISO row) /
+  description from the entry.
 - `PropertyFactory` writes the HERO via the `children__villa` post-gen kwarg;
   the `gallery` stage writes the non-HERO images from the *same* villa, tracked
   on `SeedContext.property_villa` (pk → slug). Image bytes are memoised per

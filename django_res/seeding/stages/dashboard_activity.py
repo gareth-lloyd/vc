@@ -106,7 +106,7 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
     """A fresh bookable villa for when no existing one is free.
 
     Mirrors the demo-visible essentials of the properties stage — manifest
-    villa identity (name / region / hero imagery), changeover times, and the
+    villa imagery / region / description, changeover times, and the
     pricing graph — because at small scale minting is the *common* path and
     these villas host the dashboard's hero-tile arrivals. Registered on
     `ctx.properties` so later stages (rooms runs after this one) furnish them
@@ -116,12 +116,12 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
     villa_pool = villa_manifest()
     if villa_pool:
         # Continue the properties stage's pool cycle (it seeded one villa per
-        # ctx.properties entry), so showcase villas exhaust fresh identities
-        # before any repeats.
+        # ctx.properties entry), so showcase villas exhaust fresh imagery
+        # before any repeats. The name comes from the factory's deterministic
+        # villa_name menu, not the manifest.
         villa = villa_pool[len(ctx.properties) % len(villa_pool)]
         country = Country.objects.get(iso2=villa["country_iso2"])
         locality = villa["location_tag"].rsplit(",", 1)[0].strip()
-        extra_kwargs["display_name"] = villa["display_name"]
         extra_kwargs["region"] = RegionFactory(country=country, name=locality)
         extra_kwargs["children__villa"] = villa
     prop = cast(Any, PropertyFactory(with_owner_contact=False, **extra_kwargs))

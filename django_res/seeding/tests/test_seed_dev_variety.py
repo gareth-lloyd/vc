@@ -20,7 +20,7 @@ from integrations.models.sync_run import SyncRun
 from payments.enums import RefundStatus
 from payments.models.refund import Refund
 from payments.models.webhook_delivery import WebhookDelivery
-from pricing.models import Currency, FxRate
+from pricing.models import Currency, FxRate, RatePlan
 from properties.enums import ImageKind, PropertyStatus
 from properties.models import (
     ChangeOverRule,
@@ -108,6 +108,12 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     assert CollectionMembership.objects.exists()
     assert PropertyContactAssignment.objects.exists()
     assert ChangeOverRule.objects.exists()
+
+    # ---- Rate-plan inclusions: every plan carries varied "what's included"
+    # copy (the quote builder hides the inclusions section on blank text) ----
+    inclusions = set(RatePlan.objects.values_list("inclusion", flat=True))
+    assert "" not in inclusions, "every seeded rate plan should carry inclusion text"
+    assert len(inclusions) >= 3, "inclusion copy should vary across villas"
 
     # ---- Notes ----
     assert BookingNote.objects.exists()

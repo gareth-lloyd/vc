@@ -48,7 +48,12 @@ from seeding._booking_helpers import (
     mark_payment_paid,
     pick_guest,
 )
-from seeding._pricing_helpers import assign_commission, build_seasonal_cards, draw_base_nightly
+from seeding._pricing_helpers import (
+    assign_commission,
+    build_seasonal_cards,
+    draw_base_nightly,
+    inclusion_for,
+)
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 from seeding.stages.owner_orgs import _ORG_NAME
@@ -149,7 +154,11 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
         prop.settings.check_out_time = _parse_hhmm(check_out)
         prop.settings.check_in_time = _parse_hhmm(check_in)
         prop.settings.save(update_fields=["check_out_time", "check_in_time"])
-    plan = RatePlanFactory(property=prop, currency=ctx.default_currency)
+    plan = RatePlanFactory(
+        property=prop,
+        currency=ctx.default_currency,
+        inclusion=inclusion_for(len(ctx.properties)),
+    )
     if ctx.knobs.realistic_pricing:
         # Same price shape + commission as the rest of the portfolio (flat
         # brackets, no occupancy bands — these villas host short stays).

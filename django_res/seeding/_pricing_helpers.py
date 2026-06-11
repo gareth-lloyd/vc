@@ -39,6 +39,27 @@ _WIDE_SEASON_MULTIPLIERS = (Decimal("0.3"), Decimal("1.0"), Decimal("3.0"))
 
 _FLAT_BRACKETS: tuple[tuple[int, int, Decimal], ...] = ((1, 30, Decimal("1.0")),)
 
+# Free-text "what's included" copy in the legacy VillaSeason.Inclusion style
+# ("Daily housekeeping, welcome basket"). Cycled by villa index — never the
+# rng — so the pool can grow without perturbing the seeded rng stream.
+_INCLUSIONS: tuple[str, ...] = (
+    "Daily housekeeping, welcome hamper on arrival",
+    "Daily maid service, pool heating, mid-stay linen change",
+    "Private chef for breakfast and dinner, daily housekeeping",
+    "Return airport transfers, daily housekeeping, concierge service",
+    "Welcome basket, twice-weekly linen and towel change, end-of-stay clean",
+    "Continental breakfast daily, pool and garden maintenance, Wi-Fi",
+    "Concierge service, daily housekeeping, all utilities included",
+    "Half-board chef service, airport meet-and-greet, daily maid service",
+    "Daily housekeeping, cot and high chair on request, welcome groceries",
+    "Pool heating (April-October), gardener, daily maid service",
+)
+
+
+def inclusion_for(index: int) -> str:
+    """The villa-index slot in the inclusion pool (wraps when exhausted)."""
+    return _INCLUSIONS[index % len(_INCLUSIONS)]
+
 
 def draw_base_nightly(rng: random.Random, currency_code: str) -> Decimal:
     """A villa's base (Mid-season) nightly price: log-normal in the legacy

@@ -82,6 +82,14 @@ export const enquiryDetailSchema = enquiryListItemSchema.extend({
 });
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>;
 
+/** Display name for an enquiry: linked-guest name, then the denormalised
+ * lead-capture name, then email, then the reference as a last resort. */
+export function guestName(enq: EnquiryDetail): string {
+  if (enq.guest_name) return enq.guest_name;
+  const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
+  return denorm || enq.email || enq.reference;
+}
+
 export const enquiryListResponseSchema = paginated(enquiryListItemSchema);
 
 export const enquiryEventKindSchema = z.enum([

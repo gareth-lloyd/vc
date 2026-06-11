@@ -26,17 +26,12 @@ import { NotesTab } from "./tabs/NotesTab";
 import {
   enquirySourceLabel,
   enquiryStatusLabel,
+  guestName,
   isFinalStatus,
   type EnquiryDetail,
 } from "./schemas";
 
 type DialogKind = "assign" | "close" | "reopen" | null;
-
-export function guestName(enq: EnquiryDetail): string {
-  if (enq.guest_name) return enq.guest_name;
-  const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
-  return denorm || enq.email || enq.reference;
-}
 
 interface EnquiryActionsProps {
   enquiry: EnquiryDetail;

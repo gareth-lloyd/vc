@@ -6,10 +6,10 @@ import { StatusBadge } from "@/components/data/StatusBadge";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { guestName } from "../EnquiryDetailLayout";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
 import {
   contactMethodLabel,
+  guestName,
   enquiryRequestTypeLabel,
   enquirySourceLabel,
   enquiryStatusLabel,

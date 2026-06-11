@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { drfPage } from "@/test/drf";
-import { searchQuoteOptions } from "../api";
+import { holdQuotationLine, releaseQuotationLineHold, searchQuoteOptions } from "../api";
 import type { QuoteCriteriaInput } from "../schemas";
 
 const criteria: QuoteCriteriaInput = {
@@ -200,5 +200,45 @@ describe("searchQuoteOptions", () => {
     expect(result.options).toEqual([]);
     expect(result.hasMore).toBe(false);
     expect(priced).toBe(false);
+  });
+});
+
+describe("line hold endpoints", () => {
+  it("holdQuotationLine POSTs to :hold and returns the parsed line", async () => {
+    let called = false;
+    server.use(
+      http.post("/api/v1/quotations/7/lines/33:hold", () => {
+        called = true;
+        return HttpResponse.json({
+          id: 33,
+          hold: {
+            id: 5,
+            date_from: "2026-06-10",
+            date_to: "2026-06-17",
+            expires_at: "2026-06-13T12:00:00Z",
+          },
+        });
+      }),
+    );
+
+    const line = await holdQuotationLine(7, 33);
+
+    expect(called).toBe(true);
+    expect(line.hold?.id).toBe(5);
+  });
+
+  it("releaseQuotationLineHold POSTs to :release-hold and returns the parsed line", async () => {
+    let called = false;
+    server.use(
+      http.post("/api/v1/quotations/7/lines/33:release-hold", () => {
+        called = true;
+        return HttpResponse.json({ id: 33, hold: null });
+      }),
+    );
+
+    const line = await releaseQuotationLineHold(7, 33);
+
+    expect(called).toBe(true);
+    expect(line.hold).toBeNull();
   });
 });

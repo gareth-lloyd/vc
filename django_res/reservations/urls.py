@@ -151,6 +151,16 @@ _quotation_actions: list[URLPattern | URLResolver] = [
         name="quotation-line-detail",
     ),
     path(
+        "quotations/<int:quotation_pk>/lines/<int:pk>:hold",
+        QuotationLineViewSet.as_view({"post": "hold"}),
+        name="quotation-line-hold",
+    ),
+    path(
+        "quotations/<int:quotation_pk>/lines/<int:pk>:release-hold",
+        QuotationLineViewSet.as_view({"post": "release_hold"}),
+        name="quotation-line-release-hold",
+    ),
+    path(
         "quotations/<int:quotation_pk>/lines:reorder",
         QuotationLineViewSet.as_view({"post": "reorder"}),
         name="quotation-lines-reorder",

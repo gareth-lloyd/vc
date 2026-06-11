@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from rest_framework import serializers
 
 from pricing.models import Currency
@@ -13,6 +15,10 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
 
     property_name = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
+    # The line's live manual hold, or null. Holds are a deliberate operator
+    # action (`:hold` / `:release-hold`) — the FE toggles its row action and
+    # renders "Held until {expires_at}" from this.
+    hold = serializers.SerializerMethodField()
     # Per-line currency as the ISO code (GAP-014) — the FE feeds it straight
     # into formatMoney(); a quotation's lines may mix currencies.
     currency: serializers.SlugRelatedField = serializers.SlugRelatedField(
@@ -35,6 +41,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "date_from",
             "date_to",
             "changeover_shifted_from",
+            "hold",
             "adults",
             "children",
             "pricing_snapshot",
@@ -55,6 +62,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "hero_image_url",
             "currency",
             "changeover_shifted_from",
+            "hold",
             "pricing_snapshot",
             "total",
             "discount",
@@ -64,6 +72,25 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "created_at",
             "updated_at",
         ]
+
+    def get_hold(self, obj: QuotationLine) -> dict[str, Any] | None:
+        # Prefer the viewset's `live_holds` prefetch (released-filtered);
+        # fall back to a query for single-line serialisation from the
+        # colon-verb actions. `is_live()` is re-checked in Python so a hold
+        # past its expiry but not yet swept by the beat task reads as null —
+        # never a stale "Held until" badge.
+        candidates = getattr(obj, "live_holds", None)
+        if candidates is None:
+            candidates = obj.holds.filter(released_at__isnull=True)
+        live = next((hold for hold in candidates if hold.is_live()), None)
+        if live is None:
+            return None
+        return {
+            "id": live.pk,
+            "date_from": live.date_from,
+            "date_to": live.date_to,
+            "expires_at": live.expires_at,
+        }
 
     def get_changeover_shifted_from(self, obj: QuotationLine) -> str | None:
         snapshot = obj.pricing_snapshot or {}

@@ -66,6 +66,23 @@ describe("quotation schemas", () => {
     expect(parsed.hero_image_url).toBe("https://cdn.example/villa.jpg");
   });
 
+  it("parses a line's live hold and tolerates null/absent", () => {
+    const held = quotationLineSchema.parse({
+      id: 12,
+      hold: {
+        id: 5,
+        date_from: "2026-06-10",
+        date_to: "2026-06-17",
+        expires_at: "2026-06-13T12:00:00Z",
+      },
+    });
+    expect(held.hold?.id).toBe(5);
+    expect(held.hold?.expires_at).toBe("2026-06-13T12:00:00Z");
+
+    expect(quotationLineSchema.parse({ id: 13, hold: null }).hold).toBeNull();
+    expect(quotationLineSchema.parse({ id: 14 }).hold).toBeUndefined();
+  });
+
   it("defaults inclusions/reason and tolerates a null hero image", () => {
     const parsed = quotationLineSchema.parse({ id: 11, hero_image_url: null });
     expect(parsed.inclusions).toBe("");

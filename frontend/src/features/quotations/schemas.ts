@@ -55,6 +55,17 @@ export const quotationLineSchema = z.object({
   // The original arrival when the engine nudged it forward to the property's
   // changeover day (GAP-007). Null/absent when the dates weren't moved.
   changeover_shifted_from: z.string().nullable().optional(),
+  // The line's live manual hold, or null. Holds are a deliberate operator
+  // action (:hold / :release-hold) — never a side effect of quoting.
+  hold: z
+    .object({
+      id: z.number(),
+      date_from: z.string().nullable().optional(),
+      date_to: z.string().nullable().optional(),
+      expires_at: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   adults: z.number().optional().default(0),
   children: z.number().optional().default(0),
   // ISO code the line was priced in (GAP-014) — currency lives per line, not

@@ -54,24 +54,19 @@
       "errors": {
         "load_failed": "Couldn't load lines."
       },
-      "columns": {
-        "id": "#",
-        "property": "Property",
-        "dates": "Dates",
-        "guests": "Guests",
-        "discount": "Discount",
-        "inclusions": "Inclusions",
-        "total": "Total",
-        "selected": "Selected",
-        "actions": "Actions"
-      },
       "thumbnail_alt": "{{name}} thumbnail",
-      "selected_yes": "Yes",
-      "selected_no": "No",
       "actions": {
         "edit": "Edit",
-        "remove": "Remove"
-      }
+        "remove": "Remove",
+        "hold": "Hold",
+        "release_hold": "Release hold",
+        "book": "Book"
+      },
+      "hold_until": "Held until {{date}}",
+      "discount_label": "Discount",
+      "selected_badge": "Selected",
+      "party_format": "{{adults}}A",
+      "party_format_with_children": "{{adults}}A · {{children}}C"
     },
     "errors": {
       "not_found": "Quotation not found",
@@ -87,15 +82,13 @@
       "copying": "Copying…",
       "duplicate": "Duplicate",
       "duplicating": "Duplicating…",
-      "convert": "Convert to booking",
       "withdraw": "Withdraw",
       "coming_soon": "Quote actions are coming in a future phase.",
       "disable_reasons": {
         "no_role": "Reservations role required.",
         "not_draft": "Only draft quotes can be sent.",
         "terminal": "Already accepted, cancelled, or expired.",
-        "not_sent": "Send the quote to the guest before converting.",
-        "no_lines": "Add at least one line before converting.",
+        "not_sent": "Send the quote to the guest before booking.",
         "preview_loading": "Preparing the quote — one moment."
       }
     },
@@ -207,6 +200,24 @@
         "toasts": {
           "success": "Line removed",
           "failed": "Couldn't remove line."
+        }
+      },
+      "line_hold": {
+        "title": "Hold these dates?",
+        "description": "Blocks {{property}} for {{from}} – {{to}} on the availability calendar for everyone. The hold expires automatically per the villa's hold duration unless released first.",
+        "confirm": "Place hold",
+        "toasts": {
+          "success": "Dates held.",
+          "failed": "Couldn't place the hold."
+        }
+      },
+      "line_release_hold": {
+        "title": "Release this hold?",
+        "description": "Frees {{property}} for {{from}} – {{to}} on the availability calendar. Anyone can then hold or book these dates.",
+        "confirm": "Release",
+        "toasts": {
+          "success": "Hold released.",
+          "failed": "Couldn't release the hold."
         }
       }
     }

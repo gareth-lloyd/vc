@@ -29,6 +29,22 @@ def next_stay_start(prop: Any, cursors: dict[int, date], ctx: SeedContext) -> da
     return cursors.get(prop.pk, ctx.today + timedelta(days=21))
 
 
+def conforming_stay(ctx: SeedContext, prop: Any, date_from: date, nights: int) -> tuple[date, date]:
+    """Snap a candidate stay to the property's seeded stay rules.
+
+    Advances `date_from` to the required changeover weekday (if any) and
+    raises `nights` to the villa's minimum, so the pricing engine never has to
+    silently `align_forward` a seeded stay or reject it with MinNightsNotMet.
+    Unconstrained villas (and every villa when the knob is off — the rules map
+    stays empty) pass through unchanged.
+    """
+    weekday, min_nights = ctx.property_stay_rules.get(prop.pk, (None, 1))
+    nights = max(nights, min_nights)
+    if weekday is not None:
+        date_from += timedelta(days=(weekday - date_from.weekday()) % 7)
+    return date_from, date_from + timedelta(days=nights)
+
+
 def pick_guest(ctx: SeedContext) -> Any:
     """Pick a guest from the repeat pool with high probability, otherwise a
     fresh one. Empty pool always returns fresh."""

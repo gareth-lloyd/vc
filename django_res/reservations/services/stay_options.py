@@ -11,8 +11,9 @@ changeover-to-changeover blocks the operator could offer instead:
   reprices alternatives on pick via the same endpoint with `flex_days=0`.
 
 Availability flags are advisory snapshots from the same half-open `[from, to)`
-overlap predicates the calendar uses — `QuotationService.add_line`'s
-transactional `HoldUnavailable` remains the real guard at save time.
+overlap predicates the calendar uses. Quoting never blocks availability —
+the transactional `HoldUnavailable` guard fires when the operator holds the
+line (`QuotationService.hold_line`) or converts it to a booking.
 
 This lives in the reservations layer because pricing may not import the
 availability models (spine: reservations > pricing > properties).

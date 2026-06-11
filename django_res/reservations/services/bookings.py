@@ -63,6 +63,18 @@ class BookingService:
         property_ = quotation_line.property
         snapshot = dict(quotation_line.pricing_snapshot or {})
 
+        # Quoting no longer auto-holds its dates, so another party may have
+        # held the villa between quote and accept. Refuse to book over a
+        # foreign live hold; the quotation's own line holds are excluded so
+        # they never block their own conversion. Booking-vs-booking overlap
+        # is still enforced by the Booking EXCLUDE constraint.
+        HoldService.assert_no_foreign_hold(
+            property=property_,
+            date_from=quotation_line.date_from,
+            date_to=quotation_line.date_to,
+            quotation=quotation,
+        )
+
         # The booking inherits the line's dates verbatim. Any changeover shift
         # already happened at pricing time and was persisted onto the line
         # (GAP-007), so there is nothing to re-validate or re-align here.

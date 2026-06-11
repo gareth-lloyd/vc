@@ -567,9 +567,15 @@ def test_enquiry_detail_quote_stack_constant_query_count(
                 adults=2,
                 total=Decimal("1400.00"),
             )
+    # One held line — its `hold` must resolve from the prefetch cache, not a
+    # per-line fallback query (the line serializer's `hold` field walks
+    # `live_holds`).
+    from reservations.services.quotations import QuotationService
+
+    QuotationService.hold_line(QuotationLine.objects.order_by("pk")[0])
     api_client.force_login(staff)
 
-    with assert_max_queries(12):
+    with assert_max_queries(9):
         response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
 
     assert response.status_code == 200
@@ -577,6 +583,13 @@ def test_enquiry_detail_quote_stack_constant_query_count(
     assert all(len(row["lines"]) == 2 for row in response.data["quotations"])
     # Hero image resolved from the prefetch cache, not a per-line query.
     assert response.data["quotations"][0]["lines"][0]["hero_image_url"] is not None
+    held = [
+        row["hold"]
+        for quotation_row in response.data["quotations"]
+        for row in quotation_row["lines"]
+        if row["hold"] is not None
+    ]
+    assert len(held) == 1
 
 
 @pytest.mark.django_db

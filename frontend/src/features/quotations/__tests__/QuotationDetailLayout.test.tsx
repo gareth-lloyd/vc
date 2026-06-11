@@ -8,6 +8,11 @@ import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import { QuotationDetailLayout } from "../QuotationDetailLayout";
 
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+import { toast } from "sonner";
+
 const baseQuotation = {
   id: 7,
   reference: "Q-2026-007",
@@ -113,6 +118,24 @@ describe("QuotationDetailLayout", () => {
     expect(
       screen.getByText(/arrival moved from .+ to the property's changeover day/i),
     ).toBeInTheDocument();
+    // is_selected renders as a badge, not a Yes/No column.
+    expect(screen.getByText("Selected")).toBeInTheDocument();
+  });
+
+  it("shows a discount only when it is non-zero", async () => {
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [
+        { ...baseLine, discount: "0.00" },
+        { ...baseLine, id: 34, property: 13, discount: "150.00" },
+      ]),
+    );
+    setup();
+    const discountedCard = (await screen.findByText("#34")).closest("li")!;
+    expect(within(discountedCard).getByText(/discount/i)).toBeInTheDocument();
+    expect(within(discountedCard).getByText(/€150\.00/)).toBeInTheDocument();
+    const zeroCard = screen.getByText("#33").closest("li")!;
+    expect(within(zeroCard).queryByText(/discount/i)).not.toBeInTheDocument();
   });
 
   it("renders mixed-currency lines each in their own currency", async () => {
@@ -146,29 +169,129 @@ describe("QuotationDetailLayout", () => {
     const sendBtn = await screen.findByRole("button", { name: /send to guest/i });
     expect(sendBtn).toBeDisabled();
     expect(screen.getByRole("button", { name: /^duplicate$/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /convert to booking/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /withdraw/i })).toBeDisabled();
+    // Converting moved to the per-row Book action — no rail button anymore.
+    expect(screen.queryByRole("button", { name: /convert to booking/i })).not.toBeInTheDocument();
   });
 
-  it("enables send/duplicate/withdraw with the reservations role; convert needs a sent quote with lines", async () => {
+  it("enables send/duplicate/withdraw with the reservations role", async () => {
     asReservationsUser();
     setup();
     expect(await screen.findByRole("button", { name: /send to guest/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /^duplicate$/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /withdraw/i })).toBeEnabled();
-    // Status=draft, so Convert is gated on "send the quote first".
-    expect(screen.getByRole("button", { name: /convert to booking/i })).toBeDisabled();
   });
 
-  it("enables convert once status is sent and lines exist", async () => {
+  it("row Book is disabled on a draft quote and enabled once sent", async () => {
     asReservationsUser();
+    server.resetHandlers();
+    server.use(...quotationHandlers(baseQuotation, [baseLine]));
+    const view = setup();
+    expect(await screen.findByRole("button", { name: /^book$/i })).toBeDisabled();
+
+    view.unmount();
     server.resetHandlers();
     server.use(...quotationHandlers({ ...baseQuotation, status: "sent" }, [baseLine]));
     setup();
-    // Wait for lines to load (button starts disabled with "no_lines" until
-    // the list resolves; once data lands the disable_reason clears).
+    await waitFor(() => expect(screen.getByRole("button", { name: /^book$/i })).toBeEnabled());
+  });
+
+  it("row Book opens the convert dialog preselected to that line", async () => {
+    asReservationsUser();
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers({ ...baseQuotation, status: "sent" }, [
+        { ...baseLine, is_selected: false },
+        { ...baseLine, id: 34, property: 13, is_selected: false },
+      ]),
+    );
+    setup();
+    const bookButtons = await screen.findAllByRole("button", { name: /^book$/i });
+    await userEvent.click(bookButtons[1]);
+    const dialog = await screen.findByRole("dialog");
+    // The second row's line (id 34) is the preselected radio — not line 33,
+    // which the default "first line" pick would have chosen.
+    await waitFor(() => expect(within(dialog).getByDisplayValue("34")).toBeChecked());
+    expect(within(dialog).getByDisplayValue("33")).not.toBeChecked();
+  });
+
+  it("places a hold from the row action after confirmation", async () => {
+    asReservationsUser();
+    server.resetHandlers();
+    let holdCalled = false;
+    server.use(
+      ...quotationHandlers(baseQuotation, [baseLine]),
+      http.post("/api/v1/quotations/7/lines/33:hold", () => {
+        holdCalled = true;
+        return HttpResponse.json({
+          ...baseLine,
+          hold: {
+            id: 5,
+            date_from: "2026-07-04",
+            date_to: "2026-07-11",
+            expires_at: "2026-07-06T12:00:00Z",
+          },
+        });
+      }),
+    );
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /^hold$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /place hold/i }));
+    await waitFor(() => expect(holdCalled).toBe(true));
+  });
+
+  it("shows the held badge and releases via the row action", async () => {
+    asReservationsUser();
+    server.resetHandlers();
+    let releaseCalled = false;
+    const heldLine = {
+      ...baseLine,
+      hold: {
+        id: 5,
+        date_from: "2026-07-04",
+        date_to: "2026-07-11",
+        expires_at: "2026-07-06T12:00:00Z",
+      },
+    };
+    server.use(
+      ...quotationHandlers(baseQuotation, [heldLine]),
+      http.post("/api/v1/quotations/7/lines/33:release-hold", () => {
+        releaseCalled = true;
+        return HttpResponse.json({ ...baseLine, hold: null });
+      }),
+    );
+    setup();
+    expect(await screen.findByText(/held until/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^hold$/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /release hold/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^release$/i }));
+    await waitFor(() => expect(releaseCalled).toBe(true));
+  });
+
+  it("surfaces the backend conflict detail when a hold 409s", async () => {
+    asReservationsUser();
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [baseLine]),
+      http.post("/api/v1/quotations/7/lines/33:hold", () =>
+        HttpResponse.json(
+          {
+            code: "hold_unavailable",
+            detail: "Villa Sol is unavailable for 2026-07-04..2026-07-11 — already held.",
+            field_errors: {},
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /^hold$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /place hold/i }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /convert to booking/i })).toBeEnabled(),
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/already held/i)),
     );
   });
 

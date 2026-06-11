@@ -337,6 +337,27 @@ export async function deleteQuotationLine(quotationId: QuotationId, lineId: numb
   await apiSend<void>("DELETE", `/quotations/${quotationId}/lines/${lineId}`);
 }
 
+// Manual availability holds — a deliberate operator action per line; the
+// backend 409s (hold_unavailable) when another live hold owns the dates.
+export async function holdQuotationLine(
+  quotationId: QuotationId,
+  lineId: number,
+): Promise<QuotationLine> {
+  const data = await apiSend<unknown>("POST", `/quotations/${quotationId}/lines/${lineId}:hold`);
+  return quotationLineSchema.parse(data);
+}
+
+export async function releaseQuotationLineHold(
+  quotationId: QuotationId,
+  lineId: number,
+): Promise<QuotationLine> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/quotations/${quotationId}/lines/${lineId}:release-hold`,
+  );
+  return quotationLineSchema.parse(data);
+}
+
 // Optional overrides (subject/intro/signoff) flow through as query params so
 // the returned html + fields reflect the operator's edits. Passing nothing
 // keeps the server's default render.

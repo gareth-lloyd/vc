@@ -88,6 +88,35 @@ class HoldService:
         )
 
     @classmethod
+    def assert_no_foreign_hold(
+        cls,
+        *,
+        property: Any,
+        date_from: date_type,
+        date_to: date_type,
+        quotation: Any,
+    ) -> None:
+        """Raise `HoldUnavailable` if a live hold NOT owned by `quotation` overlaps.
+
+        The convert-time guard: with quoting no longer auto-holding its dates,
+        another party may have held the villa between quote and accept. The
+        quotation's own line holds are excluded so they never block their own
+        conversion.
+        """
+        own_hold_ids = list(
+            BookingHold.objects.filter(
+                quotation=quotation,
+                released_at__isnull=True,
+            ).values_list("pk", flat=True)
+        )
+        cls._assert_no_overlap(
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=own_hold_ids or None,
+        )
+
+    @classmethod
     @transaction.atomic
     def place(
         cls,

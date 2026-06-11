@@ -13,8 +13,10 @@ import {
   fetchQuotationLines,
   fetchQuotationPreview,
   fetchQuotations,
+  holdQuotationLine,
   quotationStatusCountsQuery,
   markQuotationManuallySent,
+  releaseQuotationLineHold,
   repriceStayOption,
   searchQuoteOptions,
   sendQuotation,
@@ -222,5 +224,28 @@ export function useDeleteQuotationLine(quotationId: QuotationId) {
   return useMutation({
     mutationFn: (lineId: number) => deleteQuotationLine(quotationId, lineId),
     onSuccess: () => invalidateQuotationLines(qc, quotationId),
+  });
+}
+
+// Manual hold toggles. A hold blocks the villa's dates for everyone, so the
+// availability surfaces (calendar grid, multi-villa timeline) restain too.
+function invalidateAfterHoldChange(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+  invalidateQuotationLines(qc, id);
+  qc.invalidateQueries({ queryKey: queryKeys.availability.all() });
+}
+
+export function useHoldQuotationLine(quotationId: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lineId: number) => holdQuotationLine(quotationId, lineId),
+    onSuccess: () => invalidateAfterHoldChange(qc, quotationId),
+  });
+}
+
+export function useReleaseQuotationLineHold(quotationId: QuotationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lineId: number) => releaseQuotationLineHold(quotationId, lineId),
+    onSuccess: () => invalidateAfterHoldChange(qc, quotationId),
   });
 }

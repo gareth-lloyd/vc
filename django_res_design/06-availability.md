@@ -5,7 +5,9 @@ The legacy system stored availability as one row per villa per day in `VillaAvai
 ## Availability strategy: range queries, not a daily grid
 
 ### `BookingHold(AuditedModel)` (in `reservations.models.booking`)
-A soft reservation while a quotation is open or a booking awaits deposit. Replaces the legacy `OnHold` (status=40) rows in the daily grid.
+A soft reservation protecting a villa's dates. Replaces the legacy `OnHold` (status=40) rows in the daily grid.
+
+> **Holds are a manual operator action — quotations never place them automatically.** Quoting is the soft part of the sales process (legacy parity: the quote generator's explicit Hold / Remove-hold buttons): creating, duplicating, or editing a quotation line never blocks availability, and a quote may legitimately be saved over dates someone else holds. An operator places a line's hold deliberately via `POST /quotations/{qid}/lines/{id}:hold` (`QuotationService.hold_line` — idempotent, reason `QUOTATION_OPEN`, expiry from the property's effective `hold_duration_hours`, ~48h default) and releases it via `:release-hold` (never status-guarded — freeing inventory must always be possible). Editing a held line's dates *moves* the live hold (`move_line_hold`, preserving its expiry); editing an un-held line never conjures one.
 
 **Lifecycle is the `released_at` timestamp**, not a soft-delete flag. Live holds satisfy `released_at IS NULL AND expires_at > now()`; expired or manually released holds carry a `released_at` value and are visible to any query that wants them (the partial `EXCLUDE` index simply excludes them from the no-overlap rule). The Celery `expire_holds` beat task sets `released_at = now()` on expired rows — it does not delete them.
 
@@ -105,10 +107,20 @@ The search layer itself does not call `AvailabilityService.is_available()` per p
 ### Hold lifecycle
 
 ```
-created (QuotationService.create_from_enquiry)
-  → released_at set      (released by HoldService.release on quotation cancel/expire/booking)
+created (operator action: lines/{id}:hold → QuotationService.hold_line,
+         or an operator block via the availability endpoints)
+  → released_at set      (operator :release-hold; line delete signal;
+                          quotation :withdraw; booking conversion)
   → expires_at reached    (Celery beat task sets released_at = now())
 ```
+
+Quotation **expiry** does *not* release line holds: a hold carries its own
+`expires_at` (the property's effective `hold_duration_hours`) and is reaped by
+`expire_holds` independently. A hold may therefore outlive its quotation —
+deliberate, since the operator placed it as a significant action — and
+`:release-hold` works on a quotation in any status for exactly that reason.
+Withdrawal (`:withdraw`) and conversion to a booking still release every hold
+on the quotation immediately.
 
 A Celery beat task `reservations.tasks.expire_holds` runs every minute:
 
@@ -218,7 +230,7 @@ def _transition(self, allowed_from, to, *, actor=None, source="USER", reason="",
 
 The quote builder's search lives in the **reservations** layer (`StayOptionsService` + `reservations/views/quote_options.py`) because it combines the pricing engine with the availability predicates, which pricing may not import. For each requested property it prices one stay and reports `stay_options`: the changeover-to-changeover blocks (whole-week multiples nearest the requested length, arriving on the property's changeover weekday) that fit the window `requested ± flex_days`. Only the default block (closest to the requested arrival) is priced; the frontend reprices alternatives through the same endpoint with `flex_days=0`.
 
-Per-block `is_available` flags come from **one batched fetch** of `Booking.objects.occupying` + `BookingHold.live_overlapping` across all requested properties, with in-memory half-open `[from, to)` overlap tests — so a block arriving the day another stay departs is available (back-to-back changeover). The flags are **advisory snapshots only**: the transactional `HoldUnavailable` raised when `QuotationService.add_line` places the line's hold remains the real guard.
+Per-block `is_available` flags come from **one batched fetch** of `Booking.objects.occupying` + `BookingHold.live_overlapping` across all requested properties, with in-memory half-open `[from, to)` overlap tests — so a block arriving the day another stay departs is available (back-to-back changeover). The flags are **advisory snapshots only** — quoting never blocks availability (holds are a manual per-line operator action). The transactional `HoldUnavailable` guard fires when the operator holds the line (`QuotationService.hold_line`) or converts it to a booking.
 
 ## Owner block / maintenance
 

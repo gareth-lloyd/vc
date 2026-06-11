@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -9,37 +9,27 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ActionButton } from "@/components/feedback/ActionButton";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
-import { propertyDetailsPath } from "@/lib/routes";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
-import { PropertyThumbnail } from "./components/PropertyThumbnail";
-import { ChangeoverShiftedNote } from "./components/ChangeoverShiftedNote";
+import { QuotationLineCard } from "./components/QuotationLineCard";
 import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
 import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import {
   useDeleteQuotationLine,
   useDuplicateQuotation,
+  useHoldQuotationLine,
   useMarkQuotationManuallySent,
   useQuotation,
   useQuotationLines,
   useQuotationPreview,
+  useReleaseQuotationLineHold,
 } from "./hooks";
 import {
   TERMINAL_QUOTATION_STATUSES,
@@ -48,16 +38,35 @@ import {
   type QuotationLine,
 } from "./schemas";
 
-type DialogKind = "send" | "withdraw" | "convert" | "delete-line" | "edit-line" | null;
+type DialogKind =
+  | "send"
+  | "withdraw"
+  | "convert"
+  | "delete-line"
+  | "edit-line"
+  | "hold-line"
+  | "release-hold-line"
+  | null;
 
 interface LinesSectionProps {
   quotation: QuotationDetail;
   canWrite: boolean;
   onEdit: (line: QuotationLine) => void;
   onDelete: (line: QuotationLine) => void;
+  onHold: (line: QuotationLine) => void;
+  onReleaseHold: (line: QuotationLine) => void;
+  onBook: (line: QuotationLine) => void;
 }
 
-function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionProps) {
+function LinesSection({
+  quotation,
+  canWrite,
+  onEdit,
+  onDelete,
+  onHold,
+  onReleaseHold,
+  onBook,
+}: LinesSectionProps) {
   const { t } = useTranslation("quotations");
   const lines = useQuotationLines(quotation.id);
 
@@ -77,99 +86,34 @@ function LinesSection({ quotation, canWrite, onEdit, onDelete }: LinesSectionPro
   if (results.length === 0) {
     return <EmptyState title={t("detail.lines.empty")} />;
   }
+  // Holds may be placed while the quote is still being worked (draft/sent);
+  // releasing is always allowed — a hold can outlive its quotation. Booking
+  // requires the guest to have actually received the quote (sent).
+  const quoteEditable = quotation.status === "draft" || quotation.status === "sent";
+  const canBook = canWrite && quotation.status === "sent";
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("detail.lines.columns.id")}</TableHead>
-          <TableHead>{t("detail.lines.columns.property")}</TableHead>
-          <TableHead>{t("detail.lines.columns.dates")}</TableHead>
-          <TableHead>{t("detail.lines.columns.guests")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.discount")}</TableHead>
-          <TableHead>{t("detail.lines.columns.inclusions")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.total")}</TableHead>
-          <TableHead>{t("detail.lines.columns.selected")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.actions")}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {results.map((line: QuotationLine) => {
-          const displayName =
-            line.property_name ?? (line.property != null ? `#${line.property}` : "—");
-          return (
-            <TableRow key={line.id}>
-              <TableCell className="font-mono text-xs">#{line.id}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <PropertyThumbnail
-                    src={line.hero_image_url}
-                    fallbackText={line.property_name}
-                    alt={t("detail.lines.thumbnail_alt", { name: displayName })}
-                  />
-                  {line.property != null ? (
-                    <Link to={propertyDetailsPath(line.property)} className="hover:underline">
-                      {displayName}
-                    </Link>
-                  ) : (
-                    <span>{displayName}</span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
-                <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
-              </TableCell>
-              <TableCell>
-                {line.adults}A{line.children ? ` · ${line.children}C` : ""}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatMoney(line.discount ?? null, line.currency ?? null)}
-              </TableCell>
-              <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
-                {line.inclusions?.trim() || "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                {/* Each line is priced in its own currency (GAP-014). */}
-                {formatMoney(line.total ?? null, line.currency ?? null)}
-              </TableCell>
-              <TableCell>
-                {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onEdit(line)}
-                    disabled={!canWrite}
-                  >
-                    {t("detail.lines.actions.edit")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDelete(line)}
-                    disabled={!canWrite}
-                  >
-                    {t("detail.lines.actions.remove")}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <ul className="space-y-2">
+      {results.map((line: QuotationLine) => (
+        <QuotationLineCard
+          key={line.id}
+          line={line}
+          canWrite={canWrite}
+          quoteEditable={quoteEditable}
+          canBook={canBook}
+          onEdit={() => onEdit(line)}
+          onDelete={() => onDelete(line)}
+          onHold={() => onHold(line)}
+          onReleaseHold={() => onReleaseHold(line)}
+          onBook={() => onBook(line)}
+        />
+      ))}
+    </ul>
   );
 }
 
 interface RailSummaryProps {
   quotation: QuotationDetail;
   canWrite: boolean;
-  hasLines: boolean;
-  linesLoading: boolean;
   onOpen: (dialog: DialogKind) => void;
   onDuplicate: () => void;
   duplicating: boolean;
@@ -181,8 +125,6 @@ interface RailSummaryProps {
 function RailSummary({
   quotation,
   canWrite,
-  hasLines,
-  linesLoading,
   onOpen,
   onDuplicate,
   duplicating,
@@ -200,23 +142,6 @@ function RailSummary({
   const sendReason = roleReason ?? (isDraft ? null : t("detail.actions.disable_reasons.not_draft"));
   const withdrawReason =
     roleReason ?? (isTerminal ? t("detail.actions.disable_reasons.terminal") : null);
-  // Convert is offered once a quote has been sent and at least one line exists;
-  // it auto-accepts the quotation server-side as it opens the booking. Terms
-  // are required by the backend FK — but a quotation can't be created without
-  // one, so we don't surface a separate reason here. While `lines` is still
-  // loading we don't yet know whether `hasLines` is true, so the button stays
-  // disabled but we don't surface a misleading "no lines" reason — the
-  // disabled state with no tooltip reads correctly as "wait".
-  const convertReason =
-    roleReason ??
-    (isSent
-      ? linesLoading
-        ? null
-        : hasLines
-          ? null
-          : t("detail.actions.disable_reasons.no_lines")
-      : t("detail.actions.disable_reasons.not_sent"));
-  const convertDisabled = !canWrite || !isSent || linesLoading || !hasLines;
 
   return (
     <div className="space-y-4">
@@ -271,12 +196,6 @@ function RailSummary({
           disableReason={roleReason ?? (duplicating ? t("detail.actions.duplicating") : null)}
         />
         <ActionButton
-          label={t("detail.actions.convert")}
-          onClick={() => onOpen("convert")}
-          disableReason={convertReason}
-          disabled={convertDisabled}
-        />
-        <ActionButton
           label={t("detail.actions.withdraw")}
           onClick={() => onOpen("withdraw")}
           disableReason={withdrawReason}
@@ -295,8 +214,9 @@ export function QuotationDetailLayout() {
   const canWrite = useHasReservationsRole();
   const duplicate = useDuplicateQuotation(query.data?.id ?? 0);
   const deleteLineMut = useDeleteQuotationLine(query.data?.id ?? 0);
+  const holdLineMut = useHoldQuotationLine(query.data?.id ?? 0);
+  const releaseHoldMut = useReleaseQuotationLineHold(query.data?.id ?? 0);
   const markManuallySent = useMarkQuotationManuallySent(query.data?.id ?? 0);
-  const linesQuery = useQuotationLines(query.data?.id);
   const { copy } = useCopyToClipboard();
   // Prefetch the guest-facing preview so the rail "Copy" button can write to
   // the clipboard synchronously inside the click (no awaited fetch first,
@@ -381,6 +301,45 @@ export function QuotationDetailLayout() {
     }
   };
 
+  const closeLineDialog = () => {
+    setDialog(null);
+    setActiveLine(null);
+  };
+
+  const handleHoldLine = async () => {
+    if (!activeLine) return;
+    try {
+      await holdLineMut.mutateAsync(activeLine.id);
+      toast.success(t("detail.dialogs.line_hold.toasts.success"));
+      closeLineDialog();
+    } catch (error) {
+      // The 409 detail names the villa and whoever holds the dates — show it
+      // verbatim; anything else gets the generic failure copy.
+      const message =
+        error instanceof ApiError
+          ? error.detail || t("detail.dialogs.line_hold.toasts.failed")
+          : t("detail.dialogs.line_hold.toasts.failed");
+      toast.error(message);
+      closeLineDialog();
+    }
+  };
+
+  const handleReleaseHold = async () => {
+    if (!activeLine) return;
+    try {
+      await releaseHoldMut.mutateAsync(activeLine.id);
+      toast.success(t("detail.dialogs.line_release_hold.toasts.success"));
+      closeLineDialog();
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.detail || t("detail.dialogs.line_release_hold.toasts.failed")
+          : t("detail.dialogs.line_release_hold.toasts.failed");
+      toast.error(message);
+      closeLineDialog();
+    }
+  };
+
   const handleDeleteLine = async () => {
     if (!activeLine) return;
     try {
@@ -413,8 +372,6 @@ export function QuotationDetailLayout() {
           <RailSummary
             quotation={quotation}
             canWrite={canWrite}
-            hasLines={(linesQuery.data?.results?.length ?? 0) > 0}
-            linesLoading={linesQuery.isLoading}
             onOpen={setDialog}
             onDuplicate={handleDuplicate}
             duplicating={duplicate.isPending}
@@ -437,6 +394,18 @@ export function QuotationDetailLayout() {
               setActiveLine(line);
               setDialog("delete-line");
             }}
+            onHold={(line) => {
+              setActiveLine(line);
+              setDialog("hold-line");
+            }}
+            onReleaseHold={(line) => {
+              setActiveLine(line);
+              setDialog("release-hold-line");
+            }}
+            onBook={(line) => {
+              setActiveLine(line);
+              setDialog("convert");
+            }}
           />
         </section>
       </TwoColumn>
@@ -458,8 +427,14 @@ export function QuotationDetailLayout() {
       {dialog === "convert" ? (
         <ConvertQuotationDialog
           open
-          onOpenChange={(open) => !open && setDialog(null)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDialog(null);
+              setActiveLine(null);
+            }
+          }}
           quotation={quotation}
+          initialLineId={activeLine?.id ?? null}
         />
       ) : null}
       {dialog === "edit-line" && activeLine ? (
@@ -475,6 +450,32 @@ export function QuotationDetailLayout() {
           line={activeLine}
         />
       ) : null}
+      <ConfirmDialog
+        open={dialog === "hold-line"}
+        onOpenChange={(open) => !open && closeLineDialog()}
+        onConfirm={handleHoldLine}
+        title={t("detail.dialogs.line_hold.title")}
+        description={t("detail.dialogs.line_hold.description", {
+          property: activeLine?.property_name ?? `#${activeLine?.property ?? "—"}`,
+          from: formatDate(activeLine?.date_from ?? null),
+          to: formatDate(activeLine?.date_to ?? null),
+        })}
+        confirmLabel={t("detail.dialogs.line_hold.confirm")}
+        busy={holdLineMut.isPending}
+      />
+      <ConfirmDialog
+        open={dialog === "release-hold-line"}
+        onOpenChange={(open) => !open && closeLineDialog()}
+        onConfirm={handleReleaseHold}
+        title={t("detail.dialogs.line_release_hold.title")}
+        description={t("detail.dialogs.line_release_hold.description", {
+          property: activeLine?.property_name ?? `#${activeLine?.property ?? "—"}`,
+          from: formatDate(activeLine?.date_from ?? null),
+          to: formatDate(activeLine?.date_to ?? null),
+        })}
+        confirmLabel={t("detail.dialogs.line_release_hold.confirm")}
+        busy={releaseHoldMut.isPending}
+      />
       <ConfirmDialog
         open={dialog === "delete-line"}
         onOpenChange={(open) => {

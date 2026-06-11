@@ -23,18 +23,25 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotation: QuotationDetail;
+  /** Pin the initially-selected line (the per-row Book action); falls back
+   * to the accepted line, then the first. */
+  initialLineId?: number | null;
 }
 
 type PaymentMethod = "card" | "bank_transfer";
 
 const PAYMENT_METHODS: readonly PaymentMethod[] = ["card", "bank_transfer"] as const;
 
-function pickInitialLineId(lines: QuotationLine[] | undefined): number | null {
+function pickInitialLineId(
+  lines: QuotationLine[] | undefined,
+  preferred?: number | null,
+): number | null {
   if (!lines || lines.length === 0) return null;
+  if (preferred != null && lines.some((l) => l.id === preferred)) return preferred;
   return (lines.find((l) => l.is_selected) ?? lines[0]).id;
 }
 
-export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props) {
+export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialLineId }: Props) {
   const { t } = useTranslation("quotations");
   const navigate = useNavigate();
   const convert = useConvertQuotation(quotation.id);
@@ -60,9 +67,9 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation }: Props)
     // the operator's pick.
     if (!initialisedRef.current && lines) {
       initialisedRef.current = true;
-      setLineId(pickInitialLineId(lines));
+      setLineId(pickInitialLineId(lines, initialLineId));
     }
-  }, [open, lines]);
+  }, [open, lines, initialLineId]);
 
   const submit = async () => {
     if (lineId == null) return;

@@ -19,6 +19,7 @@ from comms.contexts import payment_context as _payment_context
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.recipients import agent_user_for, guest_email, primary_owner_email
 from comms.services import TEMPLATE_RENDER_ERRORS, EmailService
+from core.formats import format_date
 from reservations.enums import BookingStatus
 
 if TYPE_CHECKING:
@@ -276,8 +277,8 @@ def hold_expired_handler(
             or agent_user.email,
             "quotation_reference": quotation.reference,
             "property_name": hold.property.display_name or hold.property.name,
-            "date_from": hold.date_from.isoformat(),
-            "date_to": hold.date_to.isoformat(),
+            "date_from": format_date(hold.date_from),
+            "date_to": format_date(hold.date_to),
         },
         to=[agent_user.email],
         correlation={"quotation_id": quotation.pk, "hold_id": hold.pk},
@@ -305,8 +306,8 @@ def owner_block_contested_handler(
         template_key="owner_block.contested",
         context={
             "property_name": block.property.display_name or block.property.name,
-            "date_from": block.date_from.isoformat(),
-            "date_to": block.date_to.isoformat(),
+            "date_from": format_date(block.date_from),
+            "date_to": format_date(block.date_to),
             "reason": reason,
         },
         to=[recipient],
@@ -349,8 +350,8 @@ def ical_conflict_detected_handler(
         template_key="ical.conflict",
         context={
             "property_name": property.display_name or property.name,
-            "date_from": date_from.isoformat(),
-            "date_to": date_to.isoformat(),
+            "date_from": format_date(date_from),
+            "date_to": format_date(date_to),
             "feed_labels": feed_labels,
             "conflict_kind": kind,
             "conflict_reference": reference,

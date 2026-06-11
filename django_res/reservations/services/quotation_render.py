@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from django.conf import settings
 from django.template.loader import render_to_string
 
+from core.formats import format_date
 from core.text import render_markdown
 
 if TYPE_CHECKING:
@@ -103,8 +104,8 @@ def build_quotation_context(
         line_dicts.append(
             {
                 "property_name": line.property.display_name or line.property.name,
-                "date_from": line.date_from,
-                "date_to": line.date_to,
+                "date_from": format_date(line.date_from),
+                "date_to": format_date(line.date_to),
                 "nights": nights,
                 "adults": line.adults,
                 "children": line.children,
@@ -134,7 +135,9 @@ def build_quotation_context(
         "guest_full_name": f"{guest.first_name} {guest.last_name}".strip(),
         "agent_name": agent_name,
         "quotation_reference": quotation.reference,
-        "expires_at": quotation.expires_at,
+        # Customer-facing "valid until" — the stored UTC time would render
+        # misleadingly, so the date alone is shown; expiry stays server-enforced.
+        "expires_at": format_date(quotation.expires_at) if quotation.expires_at else None,
         "terms_html": terms_html,
         "subject": (subject or "").strip() or f"Your quotation {quotation.reference}",
         "intro": intro if intro is not None else DEFAULT_INTRO,

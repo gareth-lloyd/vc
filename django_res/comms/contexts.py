@@ -15,14 +15,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.formats import format_date
+
 
 def booking_context(booking: Any) -> dict[str, Any]:
     return {
         "booking_reference": booking.reference,
         "guest_first_name": booking.guest.first_name,
         "property_name": booking.property.display_name or booking.property.name,
-        "date_from": booking.date_from.isoformat(),
-        "date_to": booking.date_to.isoformat(),
+        "date_from": format_date(booking.date_from),
+        "date_to": format_date(booking.date_to),
     }
 
 

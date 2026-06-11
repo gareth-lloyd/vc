@@ -74,8 +74,21 @@ def test_build_quotation_context_includes_line_totals(
     assert line["children"] == 1
     # Formatted as a thousands-grouped 2-dp string.
     assert line["total"] == "1,234.00"
+    # Customer-facing long-form dates, never ISO (BUG: raw "2026-06-10").
+    assert line["date_from"] == "10 June 2026"
+    assert line["date_to"] == "17 June 2026"
 
     assert "terms_html" in ctx
+
+
+@pytest.mark.django_db
+def test_build_quotation_context_formats_expires_at(
+    priced_quotation: Quotation,
+) -> None:
+    ctx = build_quotation_context(priced_quotation)
+
+    expected = (timezone.now() + timedelta(days=7)).date()
+    assert ctx["expires_at"] == f"{expected.day} {expected.strftime('%B %Y')}"
 
 
 @pytest.mark.django_db

@@ -7,10 +7,28 @@ their fields). These tests cover only the resolver's dispatch logic.
 
 from __future__ import annotations
 
+from datetime import date
+from types import SimpleNamespace
+
 import pytest
 from django.http import Http404
 
-from comms.contexts import resolve_context
+from comms.contexts import booking_context, resolve_context
+
+
+def test_booking_context_formats_dates_for_customers() -> None:
+    booking = SimpleNamespace(
+        reference="VC-1",
+        guest=SimpleNamespace(first_name="Ada"),
+        property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
+        date_from=date(2025, 7, 8),
+        date_to=date(2025, 7, 14),
+    )
+
+    ctx = booking_context(booking)
+
+    assert ctx["date_from"] == "8 July 2025"
+    assert ctx["date_to"] == "14 July 2025"
 
 
 def test_explicit_context_wins_and_is_copied() -> None:

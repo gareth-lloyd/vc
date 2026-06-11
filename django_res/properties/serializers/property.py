@@ -26,6 +26,7 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
     """
 
     capacity = serializers.SerializerMethodField()
+    available_for_range = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -41,6 +42,7 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
             "group",
             "region",
             "capacity",
+            "available_for_range",
             "created_at",
             "updated_at",
         ]
@@ -58,6 +60,20 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
         # number here and drift from that contract.
         data["size_sqm"] = None if capacity.size_sqm is None else str(capacity.size_sqm)
         return data
+
+    def get_available_for_range(self, obj: Property) -> bool | None:
+        """Whether the row is free across the request's `date_from..date_to`.
+
+        Computed against the bulk unavailable-id set the view places in the
+        serializer context when the list request carries a date range; `None`
+        (no date range) means "availability undefined", never a misleading
+        `True`. Lets `include_unavailable=true` callers — the quote builder —
+        badge blocked villas instead of silently offering them.
+        """
+        unavailable_ids = self.context.get("unavailable_property_ids")
+        if unavailable_ids is None:
+            return None
+        return obj.pk not in unavailable_ids
 
 
 class PropertyDetailSerializer(serializers.ModelSerializer[Property]):

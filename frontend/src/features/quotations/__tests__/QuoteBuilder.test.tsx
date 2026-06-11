@@ -222,7 +222,7 @@ describe("QuoteBuilder", () => {
     await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
     // One of two matching villas priced so far.
-    expect(screen.getByText(/priced 1 of 2 matching villas/i)).toBeInTheDocument();
+    expect(screen.getByText(/checked 1 of 2 matching villas/i)).toBeInTheDocument();
 
     // Page 1 advertised more → Load more appends page 2 without dropping page 1.
     await userEvent.click(screen.getByRole("button", { name: /load more/i }));
@@ -230,6 +230,35 @@ describe("QuoteBuilder", () => {
     expect(screen.getByText("Villa Sol")).toBeInTheDocument();
     // Last page reached → the button is gone.
     expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it("flags a date-held villa as unavailable instead of offering it", async () => {
+    // The candidate search asks for the full set (include_unavailable) with the
+    // stay window; a villa whose dates are already held/booked must land in the
+    // unavailable bucket with no add affordance — even though the pricing
+    // engine (which knows nothing about holds) priced it happily.
+    // `null as …` keeps the declared union at the assertion sites — TS can't
+    // see the closure assignment, and a bare `null` initializer narrows the
+    // variable to `never` under `?.` access.
+    let candidateParams = null as URLSearchParams | null;
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        const url = new URL(request.url);
+        if (!url.searchParams.get("q")) candidateParams = url.searchParams;
+        return HttpResponse.json(drfPage([{ ...villaProperty, available_for_range: false }]));
+      }),
+      priceRequested(),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /search options/i }));
+
+    expect(await screen.findByText(/1 villa unavailable for these dates/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add to quote/i })).not.toBeInTheDocument();
+    // The stay window + include_unavailable rode on the candidate query.
+    expect(candidateParams?.get("date_from")).toBe("2026-07-01");
+    expect(candidateParams?.get("date_to")).toBe("2026-07-08");
+    expect(candidateParams?.get("include_unavailable")).toBe("true");
   });
 
   it("does not advance the priced criteria when a re-search fails", async () => {

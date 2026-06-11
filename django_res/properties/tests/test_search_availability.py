@@ -427,6 +427,74 @@ def test_search_include_unavailable_returns_all(
 
 
 @pytest.mark.django_db
+def test_include_unavailable_rows_carry_per_row_availability_flag(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    region: Region,
+) -> None:
+    """With a date range + `include_unavailable=true`, every row reports
+    `available_for_range` so callers (the quote builder) can badge blocked
+    villas instead of silently offering them."""
+    held = _make_property(
+        slug="held-villa-flag",
+        category=category,
+        region=region,
+        changeover_day=PrefilledChangeOverDay.ANY.value,
+    )
+    free = _make_property(
+        slug="free-villa-flag",
+        category=category,
+        region=region,
+        changeover_day=PrefilledChangeOverDay.ANY.value,
+    )
+    _make_live_hold(
+        property_=held,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(
+        "/api/v1/properties",
+        {
+            "date_from": "2026-07-03",
+            "date_to": "2026-07-05",
+            "include_unavailable": "true",
+        },
+    )
+
+    assert response.status_code == 200, response.content
+    by_slug = {row["slug"]: row for row in response.json()["results"]}
+    assert by_slug[held.slug]["available_for_range"] is False
+    assert by_slug[free.slug]["available_for_range"] is True
+
+
+@pytest.mark.django_db
+def test_no_date_range_availability_flag_is_null(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    region: Region,
+) -> None:
+    """Without a date range "available" is undefined — the flag is null, not a
+    misleading true."""
+    prop = _make_property(
+        slug="flagless-villa",
+        category=category,
+        region=region,
+        changeover_day=PrefilledChangeOverDay.ANY.value,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/properties")
+
+    assert response.status_code == 200, response.content
+    by_slug = {row["slug"]: row for row in response.json()["results"]}
+    assert by_slug[prop.slug]["available_for_range"] is None
+
+
+@pytest.mark.django_db
 def test_search_no_date_range_no_availability_filter(
     api_client: APIClient,
     staff: User,
@@ -459,6 +527,46 @@ def test_search_no_date_range_no_availability_filter(
     assert response.status_code == 200, response.content
     slugs = {row["slug"] for row in response.json()["results"]}
     assert booked.slug in slugs
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("include_unavailable", [None, "true"])
+def test_dated_search_runs_conflict_queries_once(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    region: Region,
+    include_unavailable: str | None,
+) -> None:
+    """The unavailable-id set is resolved once per request, whether it feeds
+    the row-exclusion filter (default) or the per-row flag
+    (`include_unavailable=true`) — never both."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    held = _make_property(
+        slug=f"once-villa-{include_unavailable or 'default'}",
+        category=category,
+        region=region,
+        changeover_day=PrefilledChangeOverDay.ANY.value,
+    )
+    _make_live_hold(
+        property_=held,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+    )
+    api_client.force_login(staff)
+
+    params = {"date_from": "2026-07-03", "date_to": "2026-07-05"}
+    if include_unavailable is not None:
+        params["include_unavailable"] = include_unavailable
+
+    with CaptureQueriesContext(connection) as ctx:
+        response = api_client.get("/api/v1/properties", params)
+
+    assert response.status_code == 200, response.content
+    hold_queries = [q for q in ctx.captured_queries if "bookinghold" in q["sql"].lower()]
+    assert len(hold_queries) == 1, [q["sql"] for q in hold_queries]
 
 
 @pytest.mark.django_db

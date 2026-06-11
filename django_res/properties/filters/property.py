@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 
 from django.db.models import F, Q, QuerySet
@@ -123,42 +124,51 @@ class PropertyFilter(filters.FilterSet):
         holds across the requested date range. No-op when either date is
         missing or `include_unavailable=true`.
         """
-        raw = self.data
-        date_from = self._parse_date(raw.get("date_from"))
-        date_to = self._parse_date(raw.get("date_to"))
-        if date_from is None or date_to is None or date_from >= date_to:
+        date_range = parse_availability_range(self.data)
+        if date_range is None or include_unavailable_requested(self.data):
             return queryset
 
-        include_unavailable = self._parse_bool(raw.get("include_unavailable"))
-        if include_unavailable:
-            return queryset
-
-        unavailable_ids = _unavailable_property_ids(date_from, date_to)
+        unavailable_ids = unavailable_property_ids(*date_range)
         if not unavailable_ids:
             return queryset
         return queryset.exclude(id__in=unavailable_ids)
 
-    @staticmethod
-    def _parse_date(value: object) -> date | None:
-        if value in (None, ""):
-            return None
-        if isinstance(value, date):
-            return value
-        try:
-            return date.fromisoformat(str(value))
-        except ValueError:
-            return None
 
-    @staticmethod
-    def _parse_bool(value: object) -> bool:
-        if isinstance(value, bool):
-            return value
-        if value in (None, ""):
-            return False
-        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+def parse_availability_range(params: Mapping[str, object]) -> tuple[date, date] | None:
+    """The single definition of "a valid availability date range".
+
+    Shared by `PropertyFilter._apply_availability_filter` (row exclusion) and
+    `PropertyViewSet.get_serializer_context` (per-row flag), so the two can
+    never disagree on whether a request carries a date range.
+    """
+    date_from = _parse_date(params.get("date_from"))
+    date_to = _parse_date(params.get("date_to"))
+    if date_from is None or date_to is None or date_from >= date_to:
+        return None
+    return date_from, date_to
 
 
-def _unavailable_property_ids(date_from: date, date_to: date) -> set[int]:
+def include_unavailable_requested(params: Mapping[str, object]) -> bool:
+    value = params.get("include_unavailable")
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def unavailable_property_ids(date_from: date, date_to: date) -> set[int]:
     """Bulk-query the unavailable property-id set for a date range.
 
     One query each for blocking bookings and live holds — both flat

@@ -57,6 +57,9 @@ export const propertyListItemSchema = z.object({
   group: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
   capacity: propertyListCapacitySchema.nullable().optional(),
+  // Whether the row is free across the request's date_from..date_to window;
+  // null when the request carried no date range (availability undefined).
+  available_for_range: z.boolean().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -445,6 +448,9 @@ export const availabilityCellSchema = z.object({
   available: z.boolean(),
   reason: z.string(),
   block_id: z.number().nullable().optional(),
+  // Owning quotation of a quotation hold — read-only click-through, never an
+  // edit affordance (that's what block_id signals).
+  quotation_id: z.number().nullable().optional(),
   segments: z
     .object({ am: availabilityCellSegmentSchema, pm: availabilityCellSegmentSchema })
     .nullable()

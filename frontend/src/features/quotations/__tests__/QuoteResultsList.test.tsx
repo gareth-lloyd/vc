@@ -50,6 +50,55 @@ describe("QuoteResultsList", () => {
     expect(screen.getByText("$4,500.00")).toBeInTheDocument();
   });
 
+  it("disambiguates same-named villas with internal name and capacity", () => {
+    // Distinct properties can share a guest-facing display name — the card
+    // must carry enough to tell them apart.
+    renderList([
+      option({ internal_name: "Mary Gardens", bedrooms: 4, sleeps: 8 }),
+      option({
+        property_id: 2,
+        internal_name: "Kelly Corner",
+        bedrooms: 6,
+        sleeps: 12,
+        total: "6100.00",
+      }),
+    ]);
+    expect(screen.getByText(/Mary Gardens/)).toBeInTheDocument();
+    expect(screen.getByText(/Kelly Corner/)).toBeInTheDocument();
+    expect(screen.getByText(/4 bedrooms · sleeps 8/)).toBeInTheDocument();
+    expect(screen.getByText(/6 bedrooms · sleeps 12/)).toBeInTheDocument();
+  });
+
+  it("omits the internal name when it matches the display name", () => {
+    renderList([option({ internal_name: "Villa Sol", bedrooms: 3, sleeps: 6 })]);
+    // The name renders once (as the title), not again in the meta line.
+    expect(screen.getAllByText(/Villa Sol/)).toHaveLength(1);
+    expect(screen.getByText(/3 bedrooms · sleeps 6/)).toBeInTheDocument();
+  });
+
+  it("renders no meta line when the option carries no disambiguators", () => {
+    renderList([option()]);
+    expect(screen.queryByText(/bedrooms/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sleeps/)).not.toBeInTheDocument();
+  });
+
+  it("shows the meta line on unavailable cards too", async () => {
+    renderList([
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        internal_name: "Thomas Brook",
+        bedrooms: 5,
+        sleeps: 10,
+        available: false,
+        total: null,
+      }),
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: /1 villa unavailable/i }));
+    expect(screen.getByText(/Thomas Brook/)).toBeInTheDocument();
+    expect(screen.getByText(/5 bedrooms · sleeps 10/)).toBeInTheDocument();
+  });
+
   it("renders mixed-currency results each in their own currency", () => {
     // No builder-level currency (GAP-014) — one list freely mixes £/€/$.
     renderList([
@@ -198,7 +247,7 @@ describe("QuoteResultsList", () => {
       { totalMatched: 120 },
     );
     // The flagged card is visible in the list but isn't "available".
-    expect(screen.getByText(/1 available · priced 2 of 120 matching villas/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 available · checked 2 of 120 matching villas/i)).toBeInTheDocument();
   });
 
   it("shows no unavailable toggle when every option is available", () => {
@@ -234,8 +283,10 @@ describe("QuoteResultsList", () => {
       [option(), option({ property_id: 2, property_name: "Villa Azul", available: false })],
       { totalMatched: 120 },
     );
-    // 1 available, 2 priced this far, of 120 matching candidates.
-    expect(screen.getByText(/1 available · priced 2 of 120 matching villas/i)).toBeInTheDocument();
+    // 1 available, 2 checked this far, of 120 matching candidates. "Checked"
+    // (not "priced") because the count includes unavailable villas the engine
+    // never priced.
+    expect(screen.getByText(/1 available · checked 2 of 120 matching villas/i)).toBeInTheDocument();
   });
 
   it("renders Load more only when there are more pages, and calls onLoadMore", async () => {

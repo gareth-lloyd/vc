@@ -95,6 +95,68 @@ describe("searchQuoteOptions", () => {
     expect(result.totalMatched).toBe(2);
   });
 
+  it("carries the internal name and capacity through to the option", async () => {
+    // Distinct villas can share a display_name — the row's internal `name`
+    // and capacity are the disambiguators the results list renders.
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 19,
+              name: "Mary Gardens",
+              display_name: "Villa Selene",
+              slug: "mary-gardens",
+              status: "active",
+              capacity: {
+                guests: 8,
+                additional_guests: 0,
+                bedrooms: 4,
+                ensuites: 2,
+                bathrooms: 3,
+              },
+            },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 19, available: true, total: "1710.00", currency_code: "GBP" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].property_name).toBe("Villa Selene");
+    expect(result.options[0].internal_name).toBe("Mary Gardens");
+    expect(result.options[0].bedrooms).toBe(4);
+    expect(result.options[0].sleeps).toBe(8);
+  });
+
+  it("leaves the option disambiguators null when the row has no capacity", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 9, name: "Villa Mar", display_name: "Villa Mar", slug: null, status: "active" },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/pricing:quote-bulk", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 9, available: true, total: "900.00", currency_code: "EUR" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].internal_name).toBe("Villa Mar");
+    expect(result.options[0].bedrooms).toBeNull();
+    expect(result.options[0].sleeps).toBeNull();
+  });
+
   it("leaves the option currency null when a result has no currency_code", async () => {
     server.use(
       http.get("/api/v1/properties", () =>

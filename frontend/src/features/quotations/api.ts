@@ -71,7 +71,15 @@ export async function fetchQuotationLines(id: QuotationId): Promise<Paginated<Qu
 interface PropertyCandidate {
   id: number;
   name: string;
+  // The row's internal `name` — distinct villas can share a display name, so
+  // the results card uses this (plus capacity) to tell them apart.
+  internalName: string;
+  bedrooms: number | null;
+  sleeps: number | null;
   slug: string | null | undefined;
+  // Per-row availability for the searched dates (`available_for_range` on the
+  // list row); null when the candidate query carried no date range.
+  datesAvailable: boolean | null;
 }
 
 interface PricingBulkResponse {
@@ -98,6 +106,11 @@ interface PropertySearchFilters {
   max_bedrooms?: number;
   min_guests?: number;
   q?: string;
+  // Searched stay window. Sent with `include_unavailable=true` so held/booked
+  // villas come back flagged (`available_for_range`) instead of being dropped —
+  // the builder shows them as unavailable rather than silently offering them.
+  date_from?: string;
+  date_to?: string;
 }
 
 // Customer-facing name: prefer the display name, fall back to the slug-ish name.
@@ -126,6 +139,11 @@ async function fetchCandidateProperties(
     max_bedrooms: filters.max_bedrooms,
     min_guests: filters.min_guests,
     q: filters.q || undefined,
+    date_from: filters.date_from || undefined,
+    date_to: filters.date_to || undefined,
+    // Keep held/booked villas in the page — each row carries
+    // `available_for_range` so the builder can badge them instead.
+    include_unavailable: filters.date_from && filters.date_to ? "true" : undefined,
     // Omit page=1 so the first request stays clean (mirrors `toQuery`).
     page: page > 1 ? page : undefined,
   };
@@ -135,7 +153,11 @@ async function fetchCandidateProperties(
     candidates: result.results.map((row) => ({
       id: row.id,
       name: propertyDisplayName(row),
+      internalName: row.name,
+      bedrooms: row.capacity?.bedrooms ?? null,
+      sleeps: row.capacity?.guests ?? null,
       slug: row.slug ?? null,
+      datesAvailable: row.available_for_range ?? null,
     })),
     hasMore: result.next != null,
     totalMatched: result.count,
@@ -175,6 +197,11 @@ export async function searchQuoteOptions(
     region: criteria.region || undefined,
     q: criteria.q || undefined,
   };
+  const datedFilters: PropertySearchFilters = {
+    ...searchFilters,
+    date_from: criteria.date_from,
+    date_to: criteria.date_to,
+  };
   // The strict (paged) candidate query and the lenient capacity-hint query are
   // independent requests, so run them concurrently. The hint is best-effort:
   // its failure must never sink the priced-results path, so swallow its error.
@@ -183,7 +210,7 @@ export async function searchQuoteOptions(
   const [candidatePage, capacityUnset] = await Promise.all([
     fetchCandidateProperties(
       {
-        ...searchFilters,
+        ...datedFilters,
         min_bedrooms: criteria.min_bedrooms ?? undefined,
         max_bedrooms: criteria.max_bedrooms ?? undefined,
         min_guests: criteria.adults + criteria.children,
@@ -218,19 +245,26 @@ export async function searchQuoteOptions(
 
   const options = bulk.quotes.map((q) => {
     const property = byId.get(q.property_id);
+    // The pricing engine knows nothing about holds/bookings — a date conflict
+    // on the candidate row trumps whatever the engine said, so a held villa
+    // can never present as addable (its save would fail on the hold anyway).
+    const datesUnavailable = property?.datesAvailable === false;
     return quoteOptionSchema.parse({
       property_id: q.property_id,
       property_name: property?.name ?? `Property #${q.property_id}`,
+      internal_name: property?.internalName ?? null,
+      bedrooms: property?.bedrooms ?? null,
+      sleeps: property?.sleeps ?? null,
       property_slug: property?.slug ?? null,
       hero_image_url: q.hero_image_url ?? null,
-      available: q.available !== false && !q.error_code,
+      available: !datesUnavailable && q.available !== false && !q.error_code,
       total: q.total ?? null,
       currency: q.currency_code ?? null,
       rate_subtotal: q.rate_subtotal ?? null,
       date_from: q.date_from ?? null,
       date_to: q.date_to ?? null,
-      error_code: q.error_code ?? null,
-      error_detail: q.error_detail ?? null,
+      error_code: datesUnavailable ? "dates_unavailable" : (q.error_code ?? null),
+      error_detail: datesUnavailable ? null : (q.error_detail ?? null),
       breakdown: q,
     });
   });

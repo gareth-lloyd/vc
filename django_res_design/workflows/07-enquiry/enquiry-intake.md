@@ -55,17 +55,18 @@ The two paths by which an enquiry enters the system. They share most of the code
 - Three of the field/column names have typos preserved (`EnquireSaurce`, `PlateFormId`, `EnquireArgs` itself). Rename in the redesign.
 - Zoho push **must** be retried on failure — push it through a Celery task with retry/back-off (specified in `ENQUIRY.INTAKE.ZOHO_PUSH`).
 
-### Django redesign — date-spread heuristic
+### Django redesign — structured date flexibility *(updated 2026-06, quote-builder rework)*
 
 The legacy `EnquireDateTypeString` enum (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded the inquiry-taker's date-flexibility preset at the column level. Per the 2026-05-26 scoping session with the site owner, this column carried no operator-meaningful information after capture — it was a UI selector that did not flow through to pricing or availability decisions.
 
-The Django redesign **drops the encoding** in favour of an open date range (`Enquiry.date_from` / `date_to`) plus a documented convention:
+The first redesign dropped the encoding entirely and let the operator widen `date_from`/`date_to` by hand (the intake form's "± n days" stepper shifted the dates **destructively** on submit). That lost the client's true dates, so the 2026-06 quote-builder rework replaced it with structured, non-destructive capture:
 
-- **Convention**: inquiry-takers widen the requested date range by one or two days either side of the client's stated dates, because most guests are flexible around changeover days (typically Saturday, sometimes Sunday or Monday). This is a judgement call by the operator, not a system rule.
-- **UI affordance**: the intake form makes it cheap to expand the captured range without re-typing — for example, a "± n days" stepper next to the date pickers, or quick-pick chips ("expand to weekend", "expand ± 3 days").
-- **When the client is genuinely flexible**: set `Enquiry.is_flexible = True`. The heuristic above is applied by the operator even when `is_flexible = False` — that boolean reflects the client's *stated* flexibility, not the operator's heuristic widening.
+- **`Enquiry.date_from` / `date_to` are the client's true requested dates** — the form never shifts them.
+- **`Enquiry.flexibility_days` (0–3)** records the "± n days" the operator judges the client flexible by (most guests bend around changeover days — typically Saturday, sometimes Sunday or Monday). The intake form's stepper writes this field; a preview line shows the resulting search window.
+- **The quote-builder search widens itself**: `POST /quotations:search-options` derives the window `requested ± flexibility_days` and, for fixed-changeover villas, offers the changeover-to-changeover stay blocks that fit it (default = closest to the requested arrival; alternatives reprice on pick).
+- **When the client is genuinely flexible**: set `Enquiry.is_flexible = True`. That boolean reflects the client's *stated* flexibility and is display-only — only `flexibility_days` widens the search.
 
-See `05-reservations.md` "Date-spread heuristic on intake" for the model-side note.
+See `05-reservations.md` "Date flexibility on intake" for the model-side note and the pre-migration data caveat.
 
 ---
 

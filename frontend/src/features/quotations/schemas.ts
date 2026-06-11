@@ -99,12 +99,31 @@ export const quoteCriteriaInputSchema = z
     min_bedrooms: z.number().int().min(0).nullable(),
     max_bedrooms: z.number().int().min(0).nullable(),
     q: z.string(),
+    // ± days around the preferred dates (seeded from the enquiry's
+    // flexibility_days). The backend derives the search window; the dates
+    // above stay the client's true requested stay.
+    flex_days: z.number().int().min(0).max(3),
   })
   .refine((v) => !v.date_from || !v.date_to || v.date_from < v.date_to, {
     path: ["date_to"],
     message: i18n.t("quotations:schema_errors.date_to_after_date_from"),
   });
 export type QuoteCriteriaInput = z.infer<typeof quoteCriteriaInputSchema>;
+
+// One offerable stay block for a result — always ≥1 on a priced result; >1
+// only when a fixed-changeover property's flexibility window admits several
+// changeover-to-changeover blocks. `is_available` is an advisory snapshot
+// (the manual line hold / booking conversion is the real guard); only the
+// default block is priced
+// up front — picking another fires a reprice.
+export const stayOptionSchema = z.object({
+  date_from: z.string(),
+  date_to: z.string(),
+  nights: z.number(),
+  is_default: z.boolean(),
+  is_available: z.boolean(),
+});
+export type StayOption = z.infer<typeof stayOptionSchema>;
 
 // One priced result row returned from the builder search. The server
 // pricing breakdown is opaque — we surface only the headline total +
@@ -133,9 +152,56 @@ export const quoteOptionSchema = z.object({
   date_to: z.string().nullable().optional(),
   error_code: z.string().nullable().optional(),
   error_detail: z.string().nullable().optional(),
+  // Plan/card metadata the engine breakdown carries (all optional so older
+  // responses still parse): the winning plan's inclusion text, whether the
+  // price moves with party size, the fixed changeover day code (null = any),
+  // the winning card's stay-length bounds, and the projected-rates flag.
+  inclusion: z.string().nullable().optional(),
+  occupancy_pricing: z.boolean().nullable().optional(),
+  changeover_day: z.string().nullable().optional(),
+  min_nights: z.number().nullable().optional(),
+  max_nights: z.number().nullable().optional(),
+  is_projected: z.boolean().nullable().optional(),
+  stay_options: z.array(stayOptionSchema).nullable().optional(),
   breakdown: z.unknown().optional(),
 });
 export type QuoteOption = z.infer<typeof quoteOptionSchema>;
+
+// What a block reprice returns — the same flattened quote-entry shape, but
+// the caller already holds the property context so only the pricing fields
+// are parsed. Error entries keep the bulk error_code shape.
+export const stayRepriceSchema = z.object({
+  available: z.boolean().optional().default(false),
+  total: z.union([z.string(), z.number()]).nullable().optional(),
+  currency_code: z.string().nullable().optional(),
+  date_from: z.string().nullable().optional(),
+  date_to: z.string().nullable().optional(),
+  // Set when the engine still nudged the arrival (GAP-007) — surfaced inline
+  // so the picker never silently shows different dates than were clicked.
+  changeover_shifted_from: z.string().nullable().optional(),
+  inclusion: z.string().nullable().optional(),
+  error_code: z.string().nullable().optional(),
+  error_detail: z.string().nullable().optional(),
+});
+export type StayReprice = z.infer<typeof stayRepriceSchema>;
+
+// The stay a result line hands to the builder on Add: the chosen block's
+// dates plus the pricing that block resolved to (the option's own price for
+// the default block, a reprice for a picked alternative). Absent on legacy
+// responses without stay_options — the builder then stages the criteria
+// dates as before.
+export interface ChosenStay {
+  date_from: string;
+  date_to: string;
+  // Whether this is the search's default block (vs an explicitly picked
+  // alternative) — the builder posts a picked block's dates verbatim.
+  is_default: boolean;
+  priced_date_from: string;
+  priced_date_to: string;
+  total: string | number | null;
+  currency: string | null;
+  inclusion: string | null;
+}
 
 // A property that matched the operator's name search but is excluded from the
 // priced options because its capacity isn't set (no row, or guests === 0).

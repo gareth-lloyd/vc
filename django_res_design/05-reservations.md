@@ -95,6 +95,7 @@ Anonymous / unstructured inquiry from website or agent. **Kept separate from Quo
 - `date_from` — DateField(null=True)
 - `date_to` — DateField(null=True)
 - `is_flexible` — BooleanField(default=False)
+- `flexibility_days` — PositiveSmallIntegerField(default=0, `MaxValueValidator(3)`) — structured "± n days" flexibility around the requested dates. `date_from`/`date_to` hold the client's **true requested stay**; the quote-builder search widens its window by this value (`POST /quotations:search-options`). Added in the 2026-06 quote-builder rework — see "Date flexibility on intake" below for the override of the earlier dropped-encoding decision.
 - `adults` — PositiveSmallInteger(default=2)
 - `children` — PositiveSmallInteger(default=0)
 - `min_bedrooms` — PositiveSmallInteger(null=True)
@@ -134,11 +135,13 @@ the transition methods below, driven by operator actions (contacting, sending a 
 converting, losing). Surfacing stage as a free dropdown was a res3-mockup affordance the
 stakeholder explicitly wanted replaced with action-driven transitions (`10-decisions.md`).
 
-#### Date-spread heuristic on intake
+#### Date flexibility on intake *(updated 2026-06, quote-builder rework)*
 
-Inquiry-takers routinely widen the requested date range by one or two days either side of the client's stated dates, because most guests are flexible around changeover days (typically Saturday, sometimes Sunday or Monday). This is a **judgement call** by the staff member, not a system rule — `Enquiry.date_from` / `date_to` capture whatever the operator chose to record. The intake UI should make it cheap to expand the captured range without re-typing (a "± n days" affordance on the form is the obvious shape). `Enquiry.is_flexible=True` is reserved for when the client *explicitly* said they are flexible; the heuristic above is applied by the operator even when `is_flexible=False`.
+Inquiry-takers routinely allow one to three days either side of the client's stated dates, because most guests are flexible around changeover days (typically Saturday, sometimes Sunday or Monday). The original design recorded this **destructively** — the intake form's "± n days" stepper shifted `date_from`/`date_to` themselves on submit and discarded the spread, losing the client's true dates. The user has **overridden** that: the spread is now the structured `Enquiry.flexibility_days` (0–3), `date_from`/`date_to` always hold the **true requested stay**, and the quote-builder search derives the window `requested ± flexibility_days` itself (offering changeover-to-changeover stay blocks inside it — see the `POST /quotations:search-options` notes in `04-pricing.md` and `06-availability.md`). `Enquiry.is_flexible=True` remains the client's *explicitly stated* flexibility — a display-only signal that never widens the search.
 
-The legacy `EnquireDateTypeString` field (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded this preset-style at the column level. The new design **drops the encoding** in favour of an open date range plus the heuristic above — the encoding never carried operator-meaningful information after capture. See `workflows/07-enquiry/enquiry-intake.md` for the operator-side detail.
+**Migration caveat:** enquiries captured before migration `reservations.0030` store already-widened dates (the destructive shift) with `flexibility_days=0`; the original requested dates are unrecoverable. The UI labels these widened dates "requested" — accepted, no special-casing.
+
+The legacy `EnquireDateTypeString` field (`SpecificDays` / `ThreeDays` / `SevenDays` / `WholeDays`) encoded a flexibility preset at the column level and was dropped as carrying no operator-meaningful information after capture. `flexibility_days` partially reinstates structured capture for the "± a few days" case that turned out to matter operationally. See `workflows/07-enquiry/enquiry-intake.md` for the operator-side detail.
 
 The single rule on these otherwise-free dates: when **both** are set, `date_to` must not precede `date_from` — enforced in `EnquiryWriteSerializer.validate` (a 400 keyed on `date_to`, mirrored client-side as a Zod refinement on the intake form). This is deliberately weaker than `Booking`/`QuotationLine`'s `CheckConstraint(date_from < date_to)`: there is **no DB constraint** (legacy rows may violate it, and a partial update that touches neither date is never re-judged), equal dates are allowed, and either date may still be set alone. Sending no date is `null`, not `""` — the intake form coerces an empty picker to `null` so it reads as "no date" rather than a malformed `DateField`.
 
@@ -146,14 +149,13 @@ The single rule on these otherwise-free dates: when **both** are set, `date_to` 
 demo surfaced cases the simple ±n-days spread does not represent well: a client
 who can travel *any week in June*, or *one week within a named three-week
 window*. The owner explicitly flagged this as an area with "problems around that
-with the current system." For v1 these still collapse to an open
+with the current system." `flexibility_days` (above) now covers the ±1–3-day
+case structurally; for anything wider these still collapse to an open
 `date_from`/`date_to` range plus `is_flexible=True` — the operator records the
 widest plausible window and narrows by conversation. This is accepted for v1 but
-**recognised as a rough edge**: the dropped `Enquiry.flexibility` 5-value enum
-(`±3d` / `±7d` / `month` / `any`, see `10-decisions.md` "Drops") has a real,
-owner-confirmed use case after all, and structured multi-week flexible capture
+**recognised as a rough edge**: structured multi-week flexible capture
 should be revisited if multi-week availability search becomes a quoting
-bottleneck. It is *not* re-introduced speculatively here.
+bottleneck. It is *not* introduced speculatively here.
 
 ### `EnquiryNote(TimestampedModel)`
 Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.

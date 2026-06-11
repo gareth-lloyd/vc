@@ -103,6 +103,7 @@ describe("enquiryWriteInputSchema", () => {
     date_from: "",
     date_to: "",
     is_flexible: false,
+    flexibility_days: 0,
     adults: 2,
     children: 0,
     min_bedrooms: null,
@@ -119,6 +120,16 @@ describe("enquiryWriteInputSchema", () => {
 
   it("requires at least one adult", () => {
     expect(enquiryWriteInputSchema.safeParse({ ...valid, adults: 0 }).success).toBe(false);
+  });
+
+  it("accepts flexibility_days in the 0–3 range and rejects outside it", () => {
+    expect(enquiryWriteInputSchema.safeParse({ ...valid, flexibility_days: 3 }).success).toBe(true);
+    expect(enquiryWriteInputSchema.safeParse({ ...valid, flexibility_days: 4 }).success).toBe(
+      false,
+    );
+    expect(enquiryWriteInputSchema.safeParse({ ...valid, flexibility_days: -1 }).success).toBe(
+      false,
+    );
   });
 
   it("accepts an empty email", () => {

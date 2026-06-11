@@ -551,3 +551,37 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     assert enquiry.status == EnquiryStatus.QUOTED.value
     # And conversion reporting sees it.
     assert quotation.lines.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_from_enquiry_seeds_line_inclusions_from_plan(
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateRule,
+) -> None:
+    """Service-path lines are seeded from the winning plan's inclusion text
+    too — parity with the API `add_line` path (legacy ResService.cs:1241)."""
+    plan = rate_rule.card.plan
+    plan.inclusion = "Daily maid service"
+    plan.save(update_fields=["inclusion"])
+    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        [
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+                "adults": 2,
+                "children": 0,
+            },
+        ],
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    line = quotation.lines.get()
+    assert line.inclusions == "Daily maid service"

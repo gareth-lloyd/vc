@@ -5,16 +5,22 @@ import { Collapsible } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatMoney } from "@/lib/format/money";
 import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
-import type { HiddenCapacityProperty, QuoteOption } from "../schemas";
+import { QuoteResultLine } from "./QuoteResultLine";
+import type { ChosenStay, HiddenCapacityProperty, QuoteOption } from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
   stagedPropertyIds: Set<number>;
-  onAdd: (option: QuoteOption) => void;
+  onAdd: (option: QuoteOption, stay?: ChosenStay) => void;
+  // Party the search ran with — block reprices keep the same party.
+  adults: number;
+  children: number;
+  // Identity of the current search (dates + flex). Rows key on it so a fresh
+  // search remounts picker/reprice state while Load-more appends preserve it.
+  searchKey: string;
   hiddenForCapacity?: HiddenCapacityProperty[];
   // There are more candidate pages to price (DRF `next`).
   hasMore: boolean;
@@ -74,6 +80,9 @@ export function QuoteResultsList({
   isLoading,
   stagedPropertyIds,
   onAdd,
+  adults,
+  children,
+  searchKey,
   hiddenForCapacity = [],
   hasMore,
   isLoadingMore,
@@ -126,40 +135,14 @@ export function QuoteResultsList({
     <div className="space-y-3">
       <CapacityHint properties={hiddenForCapacity} />
       {available.map((option) => (
-        <article
-          key={option.property_id}
-          className="border-border flex items-center justify-between gap-3 rounded-md border p-3"
-        >
-          <div className="flex items-center gap-3">
-            <PropertyThumbnail
-              src={option.hero_image_url}
-              fallbackText={option.property_name}
-              alt={t("builder.results.thumbnail_alt", { name: option.property_name })}
-            />
-            <div>
-              <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
-              <OptionMeta option={option} />
-              <p className="text-muted-foreground text-xs">
-                {t("builder.results.total")}:{" "}
-                <span className="text-foreground font-medium">
-                  {/* Per-result currency (GAP-014) — one list freely mixes £/€/$. */}
-                  {formatMoney(option.total ?? null, option.currency ?? null)}
-                </span>
-              </p>
-            </div>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant={stagedPropertyIds.has(option.property_id) ? "secondary" : "default"}
-            disabled={stagedPropertyIds.has(option.property_id)}
-            onClick={() => onAdd(option)}
-          >
-            {stagedPropertyIds.has(option.property_id)
-              ? t("builder.results.added")
-              : t("builder.results.add")}
-          </Button>
-        </article>
+        <QuoteResultLine
+          key={`${option.property_id}:${searchKey}`}
+          option={option}
+          staged={stagedPropertyIds.has(option.property_id)}
+          adults={adults}
+          children={children}
+          onAdd={onAdd}
+        />
       ))}
 
       {manualQuotable.map((option) => (

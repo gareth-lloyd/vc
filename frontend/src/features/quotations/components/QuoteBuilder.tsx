@@ -3,13 +3,16 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/errors";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
+import { EnquirySummaryHeader } from "./EnquirySummaryHeader";
 import { QuoteCriteriaForm } from "./QuoteCriteriaForm";
 import { QuoteResultsList } from "./QuoteResultsList";
 import { QuoteCart } from "./QuoteCart";
 import { SaveQuoteDialog } from "./SaveQuoteDialog";
 import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
+import { nightsCount } from "@/lib/nights";
 import type {
+  ChosenStay,
   HiddenCapacityProperty,
   QuotationDetail,
   QuoteCriteriaInput,
@@ -72,6 +75,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
       adults: enquiry.adults,
       children: enquiry.children ?? 0,
       min_bedrooms: enquiry.min_bedrooms ?? null,
+      // The enquiry's structured flexibility seeds the search window; the
+      // dates above stay the client's true requested stay.
+      flex_days: enquiry.flexibility_days ?? 0,
     }),
     [enquiry],
   );
@@ -128,8 +134,19 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     }
   };
 
-  const handleAdd = (option: QuoteOption) => {
+  const handleAdd = (option: QuoteOption, stay?: ChosenStay) => {
     if (!lastCriteria) return;
+    // The chosen stay's dates become the line's requested dates when the stay
+    // is a real alternative: an explicitly picked non-default block, or a
+    // default block the search rounded to a different length than requested.
+    // A default block with the SAME night count is the preferred stay
+    // (possibly changeover-shifted): keep posting the criteria dates so the
+    // backend stays the single source of the shift (GAP-007) and records it.
+    const useStayDates =
+      stay != null &&
+      (!stay.is_default ||
+        nightsCount(stay.date_from, stay.date_to) !==
+          nightsCount(lastCriteria.date_from, lastCriteria.date_to));
     setStaged((prev) => {
       if (prev.some((line) => line.property_id === option.property_id)) return prev;
       // Q-013: a no-rate villa stages straight onto the manual path — there is
@@ -139,23 +156,23 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         property_id: option.property_id,
         property_name: option.property_name,
         hero_image_url: option.hero_image_url ?? null,
-        // Persist the operator's requested stay; the backend shifts a
-        // non-conforming arrival to the changeover day on save and records the
-        // move (GAP-007), so it stays the single source of the shift.
-        date_from: lastCriteria.date_from,
-        date_to: lastCriteria.date_to,
+        date_from: useStayDates ? stay.date_from : lastCriteria.date_from,
+        date_to: useStayDates ? stay.date_to : lastCriteria.date_to,
         // Display the dates the engine actually priced — possibly shifted
         // forward. The note fires when they differ from the requested dates.
-        priced_date_from: option.date_from ?? lastCriteria.date_from,
-        priced_date_to: option.date_to ?? lastCriteria.date_to,
+        priced_date_from: stay?.priced_date_from ?? option.date_from ?? lastCriteria.date_from,
+        priced_date_to: stay?.priced_date_to ?? option.date_to ?? lastCriteria.date_to,
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         // The currency the engine priced this option in — carried per line
         // (GAP-014) so the cart and save path stay per-currency.
-        currency: option.currency ?? null,
-        total: option.total ?? null,
+        currency: stay ? stay.currency : (option.currency ?? null),
+        total: stay ? stay.total : (option.total ?? null),
         discount: "0",
-        inclusions: "",
+        // Seed from the winning plan's inclusion text (legacy parity —
+        // ResService.cs:1241). Display-only convenience pre-save: the backend
+        // seeds authoritatively at line creation; still editable in the cart.
+        inclusions: stay?.inclusion ?? option.inclusion ?? "",
         price_override_reason: "",
         is_manual: manualOnly,
         manual_only: manualOnly,
@@ -192,6 +209,8 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   return (
     <>
       <div className="space-y-6">
+        <EnquirySummaryHeader enquiry={enquiry} />
+
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
           <QuoteCriteriaForm
@@ -209,6 +228,13 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             isLoading={search.isPending && !isLoadingMore}
             stagedPropertyIds={stagedPropertyIds}
             onAdd={handleAdd}
+            adults={lastCriteria?.adults ?? enquiry.adults}
+            children={lastCriteria?.children ?? enquiry.children ?? 0}
+            searchKey={
+              lastCriteria
+                ? `${lastCriteria.date_from}:${lastCriteria.date_to}:${lastCriteria.flex_days}`
+                : ""
+            }
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             totalMatched={totalMatched}

@@ -226,6 +226,15 @@
     "errors": {
       "search_failed": "Δεν ήταν δυνατή η αναζήτηση επιλογών. Δοκιμάστε ξανά."
     },
+    "summary": {
+      "edit": "Επεξεργασία",
+      "flexible": "Ευέλικτες ημερομηνίες",
+      "flex_days_one": "· ± {{count}} ημέρα",
+      "flex_days_other": "· ± {{count}} ημέρες",
+      "party": "{{adults}} ενήλικες · {{children}} παιδιά",
+      "min_bedrooms_one": "ελάχ. {{count}} υπνοδωμάτιο",
+      "min_bedrooms_other": "ελάχ. {{count}} υπνοδωμάτια"
+    },
     "criteria": {
       "title": "Επιλογές αναζήτησης",
       "aria_label": "Κριτήρια αναζήτησης",
@@ -242,7 +251,15 @@
       "q": "Αναζήτηση ονόματος",
       "q_placeholder": "π.χ. Βίλα Ήλιος",
       "search": "Αναζήτηση",
-      "searching": "Αναζήτηση…"
+      "searching": "Αναζήτηση…",
+      "flex": {
+        "label": "Ευελιξία",
+        "value_one": "± {{count}} ημέρα",
+        "value_other": "± {{count}} ημέρες",
+        "decrease_aria": "Μείωση ευελιξίας ημερομηνιών",
+        "increase_aria": "Αύξηση ευελιξίας ημερομηνιών",
+        "window_hint": "Παράθυρο αναζήτησης: {{from}} → {{to}}. Οι ζητούμενες ημερομηνίες παραμένουν η προτιμώμενη διαμονή."
+      }
     },
     "results": {
       "title": "Αποτελέσματα",
@@ -275,8 +292,37 @@
       "bedrooms_one": "{{count}} υπνοδωμάτιο",
       "bedrooms_other": "{{count}} υπνοδωμάτια",
       "sleeps": "φιλοξενεί {{count}}",
+      "changeover_day": "Αλλαγή {{day}}",
+      "no_fixed_changeover": "χωρίς σταθερή ημέρα αλλαγής",
+      "min_nights_one": "ελάχ. {{count}} διανυκτέρευση",
+      "min_nights_other": "ελάχ. {{count}} διανυκτερεύσεις",
+      "occupancy_pricing": "Τιμολόγηση βάσει πληρότητας",
+      "projected": "Προβλεπόμενες τιμές",
+      "inclusions_label": "Περιλαμβάνει",
+      "inclusions_more": "Περισσότερα",
+      "inclusions_less": "Λιγότερα",
+      "days": {
+        "mon": "Δευ",
+        "tue": "Τρί",
+        "wed": "Τετ",
+        "thu": "Πέμ",
+        "fri": "Παρ",
+        "sat": "Σάβ",
+        "sun": "Κυρ"
+      },
       "load_more": "Φόρτωση περισσότερων",
-      "loading_more": "Φόρτωση…"
+      "loading_more": "Φόρτωση…",
+      "stay_options": {
+        "label": "Επιλογές διαμονής",
+        "nights_one": "{{count}} διανυκτέρευση",
+        "nights_other": "{{count}} διανυκτερεύσεις",
+        "available": "Διαθέσιμο",
+        "held": "Δεσμευμένο",
+        "repricing": "Επανατιμολόγηση…",
+        "reprice_failed": "Αδυναμία τιμολόγησης αυτών των ημερομηνιών",
+        "held_hint": "Οι ημερομηνίες είναι δεσμευμένες ή κλεισμένες — επιλέξτε άλλο μπλοκ.",
+        "shifted": "Τιμολογήθηκε ως {{from}} → {{to}}"
+      }
     },
     "cart": {
       "heading": "Καλάθι προσφοράς ({{count}})",

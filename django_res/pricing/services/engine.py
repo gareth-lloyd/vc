@@ -63,6 +63,7 @@ class PricingEngine:
         opt_in_extras: list[int] | None = None,
         as_of: date | None = None,
         allow_projection: bool = True,
+        context: PricingContext | None = None,
     ) -> Quote:
         if date_to <= date_from:
             raise NoRateAvailable("date_to must be strictly after date_from")
@@ -76,20 +77,23 @@ class PricingEngine:
         # the most recent year that has rates. `allow_projection=False` forces the
         # hard `NoRateAvailable` for callers that must not price on a guide (e.g. a
         # booking-time guard). See `04-pricing.md` "Projected pricing for future
-        # years".
-        context = cls._load_real_context(property, currency, date_from, date_to)
-        if context is None and allow_projection:
-            # `find_anchor_plan` is currency-keyed, so a currency-less quote
-            # resolves one first via the canonical chain — the most recent
-            # plan's currency, i.e. the villa's *current* currency after a
-            # switch, never a stale pre-switch one (GAP-014).
-            projection_currency = currency or resolve_property_currency(property)
-            if projection_currency is not None:
-                context = RateProjectionService.project(
-                    property=property,
-                    date_from=date_from,
-                    currency=projection_currency,
-                )
+        # years". A caller-supplied `context` (from `load_context`) skips the
+        # resolution entirely — the caller guarantees its plan covers the
+        # quoted dates (e.g. a context loaded for a wider window).
+        if context is None:
+            context = cls._load_real_context(property, currency, date_from, date_to)
+            if context is None and allow_projection:
+                # `find_anchor_plan` is currency-keyed, so a currency-less quote
+                # resolves one first via the canonical chain — the most recent
+                # plan's currency, i.e. the villa's *current* currency after a
+                # switch, never a stale pre-switch one (GAP-014).
+                projection_currency = currency or resolve_property_currency(property)
+                if projection_currency is not None:
+                    context = RateProjectionService.project(
+                        property=property,
+                        date_from=date_from,
+                        currency=projection_currency,
+                    )
         if context is None:
             raise NoRateAvailable(
                 f"No active RatePlan for property {getattr(property, 'pk', '?')} "
@@ -108,7 +112,8 @@ class PricingEngine:
         # rejecting it. The property's effective changeover day (a
         # ChangeOverRule window, else the settings chain) is the single source
         # of truth; `any` / unconstrained means no shift.
-        property_weekday = ChangeoverService.required_weekday(property, date_from)
+        changeover_day = ChangeoverService.effective_day(property, date_from)
+        property_weekday = ChangeoverService.weekday_for(changeover_day)
         allowed_weekdays = {property_weekday} if property_weekday is not None else set()
         date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
             allowed_weekdays, date_from, date_to
@@ -274,6 +279,23 @@ class PricingEngine:
             # into the booking snapshot.
             "is_projected": context.is_projected,
             "projection": context.projection,
+            # Plan/card metadata the quote builder renders on each result line.
+            # All in memory already — adding them costs no extra queries.
+            # `inclusion` also seeds staged-line inclusions at creation (legacy
+            # ResService.cs:1241 seeded them from the season).
+            "inclusion": plan.inclusion,
+            "changeover_day": changeover_day if property_weekday is not None else None,
+            "min_nights": winning_card.min_nights if winning_card is not None else None,
+            "max_nights": winning_card.max_nights if winning_card is not None else None,
+            # >1 distinct party band on the winning card means the price moves
+            # with the party size — surfaced as a badge on the result line.
+            "occupancy_pricing": (
+                winning_card is not None
+                and len(
+                    {(r.min_party, r.max_party) for r in rules_by_card.get(winning_card.pk, [])}
+                )
+                > 1
+            ),
         }
 
         return Quote(
@@ -295,6 +317,47 @@ class PricingEngine:
             is_projected=context.is_projected,
             breakdown=breakdown,
         )
+
+    @classmethod
+    def load_context(
+        cls,
+        property: Any,
+        *,
+        date_from: date,
+        date_to: date,
+        currency: Currency | None = None,
+    ) -> PricingContext | None:
+        """Real-plan context covering ``[date_from, date_to)``, or ``None``
+        when no active plan covers the range (the projection path) or the
+        covering plan is misconfigured with no active cards.
+
+        Lets a caller load the context once and reuse it — feed it to
+        `stay_length_bounds` and back into `quote(context=...)` for any stay
+        the plan covers, instead of paying the plan/card/rule queries twice.
+        """
+        try:
+            return cls._load_real_context(property, currency, date_from, date_to)
+        except NoRateAvailable:
+            return None
+
+    @staticmethod
+    def stay_length_bounds(context: PricingContext) -> tuple[int, int | None]:
+        """Aggregate (min_nights, max_nights) across the context's active
+        cards, without running a quote.
+
+        A stay is valid when ANY card accepts it, so the bounds are the
+        loosest across cards — and a single uncapped card means no cap. Used
+        by the reservations-layer stay-option search to pick a changeover
+        block length before pricing; the eventual winning card may be
+        stricter, in which case the quote itself raises (the loud guard).
+        """
+        min_nights = min(card.min_nights for card in context.cards)
+        maxes = [card.max_nights for card in context.cards]
+        if any(m is None for m in maxes):
+            max_nights: int | None = None
+        else:
+            max_nights = max(m for m in maxes if m is not None)
+        return (min_nights, max_nights)
 
     @staticmethod
     def _load_real_context(

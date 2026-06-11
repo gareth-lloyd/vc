@@ -106,6 +106,25 @@ class QuotationService:
         return line
 
     @classmethod
+    def seed_inclusions(cls, line: QuotationLine) -> QuotationLine:
+        """Seed a freshly created line's blank `inclusions` from the winning
+        plan's inclusion text (carried on the pricing snapshot).
+
+        Legacy parity: ResService.cs:1241 seeded line inclusions from the
+        season at item creation. Creation-time ONLY — never on reprice — so an
+        operator who deliberately blanks the field doesn't have text
+        resurrected by a date/party edit. Both creation paths (`add_line` and
+        `create_from_enquiry`) call this after the initial `price_line`.
+        """
+        if line.inclusions:
+            return line
+        seeded = line.pricing_snapshot.get("inclusion") or ""
+        if seeded:
+            line.inclusions = seeded
+            line.save(update_fields=["inclusions", "updated_at"])
+        return line
+
+    @classmethod
     @transaction.atomic
     def hold_line(cls, line: QuotationLine, *, actor: Any = None) -> BookingHold:
         """Place the operator-requested hold backing a quotation line.
@@ -219,6 +238,7 @@ class QuotationService:
                     .get(pk=line.pk)
                 )
                 cls.price_line(quotation, locked, currency=supplied_currency)
+                cls.seed_inclusions(locked)
                 line = locked
             return line
 
@@ -319,6 +339,7 @@ class QuotationService:
             # failure); a defaulted one lets the plan's currency win.
             if not is_manual:
                 cls.price_line(quotation, line, currency=supplied_currency)
+                cls.seed_inclusions(line)
 
         # Move the enquiry forward. The service-layer path is the in-app
         # SMTP flow — manual-mark goes via the dedicated endpoint, never

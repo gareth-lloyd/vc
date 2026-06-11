@@ -264,6 +264,101 @@ def test_create_enquiry__allows_start_date_without_end_date(
 
 
 @pytest.mark.django_db
+def test_create_enquiry__persists_flexibility_days(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """`flexibility_days` is the structured "± N days" spread captured on the
+    enquiry form. Dates stay the client's true requested dates; the quote
+    search widens by this value instead of destructively shifting them."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@flex.example.com",
+            "adults": 2,
+            "date_from": "2026-07-10",
+            "date_to": "2026-07-17",
+            "flexibility_days": 2,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    created = Enquiry.objects.get(email="ada@flex.example.com")
+    assert created.flexibility_days == 2
+    assert created.date_from == date(2026, 7, 10)
+    assert created.date_to == date(2026, 7, 17)
+    assert response.data["flexibility_days"] == 2
+
+
+@pytest.mark.django_db
+def test_create_enquiry__flexibility_days_defaults_to_zero(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@noflex.example.com",
+            "adults": 2,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    created = Enquiry.objects.get(email="ada@noflex.example.com")
+    assert created.flexibility_days == 0
+    assert response.data["flexibility_days"] == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [4, 99, -1])
+def test_create_enquiry__rejects_out_of_range_flexibility_days(
+    api_client: APIClient, staff: User, guest: Guest, value: int
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@badflex.example.com",
+            "adults": 2,
+            "flexibility_days": value,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "flexibility_days" in response.data["field_errors"]
+    assert not Enquiry.objects.filter(email="ada@badflex.example.com").exists()
+
+
+@pytest.mark.django_db
+def test_update_enquiry__flexibility_days_round_trips(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"flexibility_days": 3},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.flexibility_days == 3
+    assert response.data["flexibility_days"] == 3
+
+
+@pytest.mark.django_db
 def test_update_enquiry__rejects_end_before_existing_start(
     api_client: APIClient, staff: User, enquiry: Enquiry
 ) -> None:

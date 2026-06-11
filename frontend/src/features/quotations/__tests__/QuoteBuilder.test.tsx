@@ -33,6 +33,7 @@ const enquiry: EnquiryDetail = {
   created_at: "2026-05-01T10:00:00Z",
   updated_at: "2026-05-01T10:00:00Z",
   is_flexible: false,
+  flexibility_days: 0,
   min_bedrooms: null,
   referral_code: "",
   inbound_message: "",
@@ -58,7 +59,7 @@ const villaTwo = {
 // Prices whatever property_ids the bulk request carries — lets a paged
 // /properties mock drive which villas come back available.
 function priceRequested() {
-  return http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+  return http.post("/api/v1/quotations:search-options", async ({ request }) => {
     const body = (await request.json()) as { requests: Array<{ property_id: number }> };
     return HttpResponse.json({
       quotes: body.requests.map((r) => ({
@@ -74,7 +75,7 @@ function priceRequested() {
 function mockSaveFlow() {
   return [
     http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-    http.post("/api/v1/pricing:quote-bulk", () =>
+    http.post("/api/v1/quotations:search-options", () =>
       HttpResponse.json({
         quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
       }),
@@ -91,7 +92,7 @@ function mockSaveFlow() {
 function mockSearch() {
   return [
     http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-    http.post("/api/v1/pricing:quote-bulk", () =>
+    http.post("/api/v1/quotations:search-options", () =>
       HttpResponse.json({
         quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
       }),
@@ -131,6 +132,14 @@ describe("QuoteBuilder", () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ id: 50 }));
   });
 
+  it("shows the enquiry summary header at the top of the builder", () => {
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("ENQ-99")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
   it("prefills criteria from the enquiry", async () => {
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
@@ -143,7 +152,7 @@ describe("QuoteBuilder", () => {
     let bulkBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
         bulkBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
@@ -165,7 +174,7 @@ describe("QuoteBuilder", () => {
   it("renders mixed-currency results and cart lines each in their own currency", async () => {
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty, villaTwo]))),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             { property_id: 7, available: true, total: "4500.00", currency_code: "GBP" },
@@ -202,6 +211,203 @@ describe("QuoteBuilder", () => {
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
     expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/7 nights/i)).toBeInTheDocument();
+  });
+
+  it("seeds the staged line's inclusions from the winning plan", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              inclusion: "Daily maid service",
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    // The result line surfaces the plan's inclusions…
+    expect(await screen.findByText(/Daily maid service/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+    // …and the staged cart line is pre-seeded with them (still editable).
+    await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
+    expect(screen.getByLabelText(/inclusions/i)).toHaveValue("Daily maid service");
+  });
+
+  it("seeds the flexibility stepper from the enquiry and sends it on search", async () => {
+    let searchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        searchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    // The criteria form's stepper reflects the enquiry's structured flex…
+    expect(screen.getAllByText("± 2 days").length).toBeGreaterThan(0);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+
+    // …and the search posts it with the unwidened preferred dates.
+    expect(searchBody).toMatchObject({
+      flex_days: 2,
+      requests: [
+        expect.objectContaining({ date_from: "2026-07-01", date_to: "2026-07-08" }) as unknown,
+      ],
+    });
+  });
+
+  it("stages and saves the picked block's dates and repriced total", async () => {
+    // Wed 1 Jul → Wed 8 Jul ± 2 at a Sat-changeover villa: the backend offers
+    // two Saturday blocks; the operator picks the later one, which reprices.
+    // The save must persist the picked block's dates — even though both
+    // blocks are the same length as the criteria stay.
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        const body = (await request.json()) as { flex_days: number };
+        if (body.flex_days === 0) {
+          // The reprice for the picked block.
+          return HttpResponse.json({
+            quotes: [
+              {
+                property_id: 7,
+                available: true,
+                total: "5200.00",
+                currency_code: "USD",
+                date_from: "2026-07-11",
+                date_to: "2026-07-18",
+                inclusion: "Pool heating",
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+
+    await userEvent.click(screen.getAllByRole("radio")[1]);
+    await screen.findByText("$5,200.00");
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+    // The cart line carries the picked block, not the criteria dates.
+    expect(await screen.findByText(/quote cart \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
+    expect(screen.getAllByText("$5,200.00").length).toBeGreaterThan(0);
+
+    // The saved line persists the picked block's dates, not just the display.
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+    });
+  });
+
+  it("keeps the criteria dates when the default block is the same-length shifted stay", async () => {
+    // The engine shifted Wed 1 Jul → Sat 4 Jul (GAP-007) but the stay length
+    // is unchanged: the backend stays the single source of the shift, so the
+    // saved line posts the criteria dates and lets the server re-shift.
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-01",
+      date_to: "2026-07-08",
+    });
   });
 
   it("loads and appends the next page of priced options on Load more", async () => {
@@ -265,7 +471,7 @@ describe("QuoteBuilder", () => {
     // First search (Jul 1–8) succeeds; a re-search with an extended stay 500s.
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", async ({ request }) => {
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { requests: Array<{ date_to: string }> };
         if (body.requests[0]?.date_to !== "2026-07-08") {
           return new HttpResponse(null, { status: 500 });
@@ -298,7 +504,7 @@ describe("QuoteBuilder", () => {
     let quotationBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
-      http.post("/api/v1/pricing:quote-bulk", () =>
+      http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
           quotes: [
             {

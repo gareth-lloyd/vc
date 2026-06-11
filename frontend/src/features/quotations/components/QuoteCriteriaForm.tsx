@@ -1,11 +1,16 @@
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useMemo } from "react";
+import { useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
+import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { addDaysIso } from "@/lib/format/date";
 import { quoteCriteriaInputSchema, type QuoteCriteriaInput } from "../schemas";
+
+const MIN_FLEX = 0;
+const MAX_FLEX = 3;
 
 interface Props {
   initial: Partial<QuoteCriteriaInput>;
@@ -23,6 +28,7 @@ const DEFAULTS: QuoteCriteriaInput = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
+  flex_days: 0,
 };
 
 export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
@@ -37,6 +43,20 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
     form.reset({ ...DEFAULTS, ...initial });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
+
+  // ± flexibility stepper (mirrors the enquiry form's spread control). The
+  // dates stay the client's preferred stay — the backend widens the window.
+  const flexCtrl = useController({ control: form.control, name: "flex_days" });
+  const flex = flexCtrl.field.value ?? 0;
+  const watchedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
+  const watchedTo = useWatch({ control: form.control, name: "date_to" }) ?? "";
+  const window = useMemo(
+    () => ({
+      from: watchedFrom ? addDaysIso(watchedFrom, -flex) : "",
+      to: watchedTo ? addDaysIso(watchedTo, flex) : "",
+    }),
+    [watchedFrom, watchedTo, flex],
+  );
 
   return (
     <form
@@ -74,6 +94,42 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
             </p>
           ) : null}
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium">{t("builder.criteria.flex.label")}</span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("builder.criteria.flex.decrease_aria")}
+              disabled={flex <= MIN_FLEX}
+              onClick={() => flexCtrl.field.onChange(Math.max(MIN_FLEX, flex - 1))}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="min-w-[4.5rem] text-center text-sm tabular-nums" aria-live="polite">
+              {t("builder.criteria.flex.value", { count: flex })}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("builder.criteria.flex.increase_aria")}
+              disabled={flex >= MAX_FLEX}
+              onClick={() => flexCtrl.field.onChange(Math.min(MAX_FLEX, flex + 1))}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+        {window.from && window.to && flex > 0 ? (
+          <p className="text-muted-foreground text-xs">
+            {t("builder.criteria.flex.window_hint", { from: window.from, to: window.to })}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

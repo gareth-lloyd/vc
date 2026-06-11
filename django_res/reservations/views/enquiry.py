@@ -16,7 +16,7 @@ from accounts.models import User
 from core.api.permissions import IsReservationsWriter
 from reservations.enums import EnquiryStatus
 from reservations.filters import EnquiryFilter
-from reservations.models import Enquiry, EnquiryEvent, EnquiryNote, Quotation
+from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
     EnquiryDetailSerializer,
     EnquiryEventSerializer,
@@ -33,12 +33,22 @@ def _quotations_prefetch() -> Prefetch:
     Reach `lines__property__images` so each line's `property_name` /
     `hero_image_url` resolves from the prefetch cache — `hero_image_url()` walks
     `property.images` in Python, so without it every line fires a property +
-    images lookup (the same N+1 guard `QuotationViewSet` keeps)."""
+    images lookup (the same N+1 guard `QuotationViewSet` keeps). Same deal for
+    each line's `hold` field: it must serialise from the `live_holds` to_attr,
+    never a per-line fallback query."""
     return Prefetch(
         "quotations",
         queryset=Quotation.objects.real()
         .select_related("guest", "agent", "enquiry")
-        .prefetch_related("lines__property__images", "lines__currency"),
+        .prefetch_related(
+            "lines__property__images",
+            "lines__currency",
+            Prefetch(
+                "lines__holds",
+                queryset=BookingHold.objects.filter(released_at__isnull=True),
+                to_attr="live_holds",
+            ),
+        ),
     )
 
 

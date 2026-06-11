@@ -559,6 +559,151 @@ def test_patch_fails_loud_when_pinned_currency_no_longer_priceable(
     assert line.currency == gbp  # unchanged — the failed reprice rolled back
 
 
+# ---------------------------------------------------------------------------
+# Inclusion seeding — a created line with blank `inclusions` is seeded from
+# the winning plan's `inclusion` text (legacy ResService.cs:1241 seeded line
+# inclusions from the season). Seeding happens at CREATION only: an operator
+# who deliberately blanks the field must not have text resurrected by a
+# date/party edit's reprice.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_line_seeds_inclusions_from_winning_plan(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    plan: RatePlan,
+) -> None:
+    plan.inclusion = "Daily maid service, pool heating"
+    plan.save(update_fields=["inclusion"])
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    assert line.inclusions == "Daily maid service, pool heating"
+    assert create.data["inclusions"] == "Daily maid service, pool heating"
+
+
+@pytest.mark.django_db
+def test_create_line_keeps_operator_supplied_inclusions(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    plan: RatePlan,
+) -> None:
+    plan.inclusion = "Daily maid service"
+    plan.save(update_fields=["inclusion"])
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "inclusions": "Welcome hamper only",
+        },
+        format="json",
+    )
+
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    assert line.inclusions == "Welcome hamper only"
+
+
+@pytest.mark.django_db
+def test_reprice_does_not_resurrect_blanked_inclusions(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    plan: RatePlan,
+) -> None:
+    """An edit that triggers a reprice must not re-seed a deliberately
+    blanked `inclusions` from the plan."""
+    plan.inclusion = "Daily maid service"
+    plan.save(update_fields=["inclusion"])
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    assert line.inclusions == "Daily maid service"
+
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
+        {"inclusions": "", "adults": 3},
+        format="json",
+    )
+
+    assert patch.status_code == 200, patch.data
+    line.refresh_from_db()
+    assert line.inclusions == ""
+
+
+@pytest.mark.django_db
+def test_manual_line_inclusions_not_seeded(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+    plan: RatePlan,
+) -> None:
+    """Manual lines skip the engine, so there is no winning plan to seed from."""
+    plan.inclusion = "Daily maid service"
+    plan.save(update_fields=["inclusion"])
+    api_client.force_login(staff)
+
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "total": "750.00",
+            "price_override_reason": "Negotiated package rate",
+        },
+        format="json",
+    )
+
+    assert create.status_code == 201, create.data
+    line = QuotationLine.objects.get()
+    assert line.inclusions == ""
+
+
 @pytest.mark.django_db
 def test_manual_line_is_not_repriced(
     api_client: APIClient,

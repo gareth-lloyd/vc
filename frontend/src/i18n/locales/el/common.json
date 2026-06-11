@@ -66,12 +66,13 @@
   "nav": {
     "groups": {
       "operations": "Λειτουργίες",
-      "library": "Βιβλιοθήκη",
-      "admin": "Διαχείριση"
+      "admin": "Διαχείριση",
+      "experiments": "Πειράματα"
     },
     "enquiries_views": "Προβολές αιτημάτων",
     "dashboard": "Πίνακας ελέγχου",
     "enquiries": "Αιτήματα",
+    "quotes_and_enquiries": "Προσφορές και Αιτήματα",
     "quotes": "Προσφορές",
     "bookings": "Κρατήσεις",
     "availability": "Διαθεσιμότητα",

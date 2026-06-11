@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { format, parseISO } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,11 +32,19 @@ interface Props {
 }
 
 function defaultExpiresAt(): string {
-  // 7 days from now, ISO-8601 with time-of-day.
+  // 7 days from now at LOCAL end-of-day — expiry is local wall-clock
+  // semantics; only the wire format is UTC ISO.
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 7);
-  d.setUTCHours(23, 59, 59, 0);
+  d.setDate(d.getDate() + 7);
+  d.setHours(23, 59, 59, 0);
   return d.toISOString();
+}
+
+// ISO (UTC) → the local `yyyy-MM-dd'T'HH:mm` shape a datetime-local input
+// needs. Slicing the ISO string would render UTC wall-clock and shift the
+// displayed day in any non-UTC zone.
+function toLocalInputValue(iso: string): string {
+  return format(parseISO(iso), "yyyy-MM-dd'T'HH:mm");
 }
 
 // One staged cart line → the wire shape nested under the create body's
@@ -201,7 +210,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
             <Input
               id="qs-expires"
               type="datetime-local"
-              value={expiresAt.slice(0, 16)}
+              value={toLocalInputValue(expiresAt)}
               onChange={(e) => {
                 const v = e.target.value;
                 setExpiresAt(v ? new Date(v).toISOString() : defaultExpiresAt());

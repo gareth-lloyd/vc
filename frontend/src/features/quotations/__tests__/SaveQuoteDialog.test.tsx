@@ -1,7 +1,9 @@
+import { format } from "date-fns";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { formatDate } from "@/lib/format/date";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { SaveQuoteDialog } from "../components/SaveQuoteDialog";
@@ -559,5 +561,56 @@ describe("SaveQuoteDialog", () => {
     await waitFor(() => expect(guestBody).not.toBeNull());
     expect(guestBody).toMatchObject({ phone: "+447911123456" });
     expect(guestBody).not.toHaveProperty("contact_method");
+  });
+
+  // Expiry is LOCAL end-of-day semantics: the default and the input value are
+  // both local wall-clock; only the wire format is UTC ISO. The old setUTC*
+  // default + `.slice(0, 16)` display shifted the day in any non-UTC zone.
+  it("defaults expiry to today+7 at 23:59 local", async () => {
+    mockSaveEndpoints(() => undefined);
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine()]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 7);
+    expected.setHours(23, 59, 59, 0);
+    const input = await screen.findByLabelText<HTMLInputElement>(/expires/i);
+    expect(input.value).toBe(format(expected, "yyyy-MM-dd'T'HH:mm"));
+  });
+
+  it("round-trips a picked local expiry: display stays put, wire is UTC ISO", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine()]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    const input = await screen.findByLabelText<HTMLInputElement>(/expires/i);
+    fireEvent.change(input, { target: { value: "2026-06-25T23:59" } });
+    // The displayed value must not drift to another day after the ISO round-trip.
+    expect(input.value).toBe("2026-06-25T23:59");
+
+    await userEvent.click(screen.getByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const wire = (quotationBody as unknown as { expires_at: string }).expires_at;
+    expect(wire).toBe(new Date(2026, 5, 25, 23, 59).toISOString());
+    // What detail pages render via formatDate matches what was picked.
+    expect(formatDate(wire)).toBe("25 Jun 2026");
   });
 });

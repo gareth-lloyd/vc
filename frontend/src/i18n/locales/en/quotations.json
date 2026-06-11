@@ -54,21 +54,7 @@
       "errors": {
         "load_failed": "Couldn't load lines."
       },
-      "columns": {
-        "id": "#",
-        "property": "Property",
-        "dates": "Dates",
-        "guests": "Guests",
-        "discount": "Discount",
-        "inclusions": "Inclusions",
-        "total": "Total",
-        "selected": "Selected",
-        "actions": "Actions",
-        "hold": "Hold"
-      },
       "thumbnail_alt": "{{name}} thumbnail",
-      "selected_yes": "Yes",
-      "selected_no": "No",
       "actions": {
         "edit": "Edit",
         "remove": "Remove",
@@ -76,7 +62,9 @@
         "release_hold": "Release hold",
         "book": "Book"
       },
-      "hold_until": "Held until {{date}}"
+      "hold_until": "Held until {{date}}",
+      "discount_label": "Discount",
+      "selected_badge": "Selected"
     },
     "errors": {
       "not_found": "Quotation not found",

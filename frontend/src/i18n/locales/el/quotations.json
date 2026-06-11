@@ -54,21 +54,7 @@
       "errors": {
         "load_failed": "Δεν ήταν δυνατή η φόρτωση γραμμών."
       },
-      "columns": {
-        "id": "#",
-        "property": "Ακίνητο",
-        "dates": "Ημερομηνίες",
-        "guests": "Επισκέπτες",
-        "discount": "Έκπτωση",
-        "inclusions": "Παροχές",
-        "total": "Σύνολο",
-        "selected": "Επιλεγμένη",
-        "actions": "Ενέργειες",
-        "hold": "Κράτηση ημερομηνιών"
-      },
       "thumbnail_alt": "Μικρογραφία {{name}}",
-      "selected_yes": "Ναι",
-      "selected_no": "Όχι",
       "actions": {
         "edit": "Επεξεργασία",
         "remove": "Αφαίρεση",
@@ -76,7 +62,9 @@
         "release_hold": "Αποδέσμευση",
         "book": "Κράτηση"
       },
-      "hold_until": "Δεσμευμένο έως {{date}}"
+      "hold_until": "Δεσμευμένο έως {{date}}",
+      "discount_label": "Έκπτωση",
+      "selected_badge": "Επιλεγμένη"
     },
     "errors": {
       "not_found": "Η προσφορά δεν βρέθηκε",

@@ -118,6 +118,21 @@ describe("QuotationDetailLayout", () => {
     expect(
       screen.getByText(/arrival moved from .+ to the property's changeover day/i),
     ).toBeInTheDocument();
+    // is_selected renders as a badge, not a Yes/No column.
+    expect(screen.getByText("Selected")).toBeInTheDocument();
+  });
+
+  it("shows a discount only when it is non-zero", async () => {
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [
+        { ...baseLine, discount: "0.00" },
+        { ...baseLine, id: 34, property: 13, discount: "150.00" },
+      ]),
+    );
+    setup();
+    expect(await screen.findByText(/€150\.00/)).toBeInTheDocument();
+    expect(screen.getAllByText(/discount/i)).toHaveLength(1);
   });
 
   it("renders mixed-currency lines each in their own currency", async () => {

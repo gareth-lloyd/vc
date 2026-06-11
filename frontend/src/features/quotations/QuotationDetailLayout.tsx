@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -9,28 +9,16 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ActionButton } from "@/components/feedback/ActionButton";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
-import { propertyDetailsPath } from "@/lib/routes";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { SendPreviewDialog } from "./components/SendPreviewDialog";
 import { WithdrawQuotationDialog } from "./components/WithdrawQuotationDialog";
 import { ConvertQuotationDialog } from "./components/ConvertQuotationDialog";
 import { LineEditDialog } from "./components/LineEditDialog";
-import { PropertyThumbnail } from "./components/PropertyThumbnail";
-import { ChangeoverShiftedNote } from "./components/ChangeoverShiftedNote";
+import { QuotationLineCard } from "./components/QuotationLineCard";
 import { useCopyToClipboard } from "@/lib/clipboard/useCopyToClipboard";
 import { htmlToPlainText } from "@/lib/clipboard/htmlToPlainText";
 import {
@@ -104,132 +92,22 @@ function LinesSection({
   const quoteEditable = quotation.status === "draft" || quotation.status === "sent";
   const canBook = canWrite && quotation.status === "sent";
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("detail.lines.columns.id")}</TableHead>
-          <TableHead>{t("detail.lines.columns.property")}</TableHead>
-          <TableHead>{t("detail.lines.columns.dates")}</TableHead>
-          <TableHead>{t("detail.lines.columns.guests")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.discount")}</TableHead>
-          <TableHead>{t("detail.lines.columns.inclusions")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.total")}</TableHead>
-          <TableHead>{t("detail.lines.columns.hold")}</TableHead>
-          <TableHead>{t("detail.lines.columns.selected")}</TableHead>
-          <TableHead className="text-right">{t("detail.lines.columns.actions")}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {results.map((line: QuotationLine) => {
-          const displayName =
-            line.property_name ?? (line.property != null ? `#${line.property}` : "—");
-          return (
-            <TableRow key={line.id}>
-              <TableCell className="font-mono text-xs">#{line.id}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <PropertyThumbnail
-                    src={line.hero_image_url}
-                    fallbackText={line.property_name}
-                    alt={t("detail.lines.thumbnail_alt", { name: displayName })}
-                  />
-                  {line.property != null ? (
-                    <Link to={propertyDetailsPath(line.property)} className="hover:underline">
-                      {displayName}
-                    </Link>
-                  ) : (
-                    <span>{displayName}</span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {formatDate(line.date_from ?? null)} – {formatDate(line.date_to ?? null)}
-                <ChangeoverShiftedNote from={line.changeover_shifted_from} className="mt-0.5" />
-              </TableCell>
-              <TableCell>
-                {line.adults}A{line.children ? ` · ${line.children}C` : ""}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatMoney(line.discount ?? null, line.currency ?? null)}
-              </TableCell>
-              <TableCell className="text-muted-foreground max-w-40 truncate text-sm">
-                {line.inclusions?.trim() || "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                {/* Each line is priced in its own currency (GAP-014). */}
-                {formatMoney(line.total ?? null, line.currency ?? null)}
-              </TableCell>
-              <TableCell>
-                {line.hold ? (
-                  <span className="text-hold text-xs font-medium whitespace-nowrap">
-                    {t("detail.lines.hold_until", {
-                      date: formatDate(line.hold.expires_at ?? null),
-                    })}
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </TableCell>
-              <TableCell>
-                {line.is_selected ? t("detail.lines.selected_yes") : t("detail.lines.selected_no")}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  {line.hold ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onReleaseHold(line)}
-                      disabled={!canWrite}
-                    >
-                      {t("detail.lines.actions.release_hold")}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onHold(line)}
-                      disabled={!canWrite || !quoteEditable}
-                    >
-                      {t("detail.lines.actions.hold")}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onBook(line)}
-                    disabled={!canBook}
-                  >
-                    {t("detail.lines.actions.book")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onEdit(line)}
-                    disabled={!canWrite}
-                  >
-                    {t("detail.lines.actions.edit")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDelete(line)}
-                    disabled={!canWrite}
-                  >
-                    {t("detail.lines.actions.remove")}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <ul className="space-y-2">
+      {results.map((line: QuotationLine) => (
+        <QuotationLineCard
+          key={line.id}
+          line={line}
+          canWrite={canWrite}
+          quoteEditable={quoteEditable}
+          canBook={canBook}
+          onEdit={() => onEdit(line)}
+          onDelete={() => onDelete(line)}
+          onHold={() => onHold(line)}
+          onReleaseHold={() => onReleaseHold(line)}
+          onBook={() => onBook(line)}
+        />
+      ))}
+    </ul>
   );
 }
 

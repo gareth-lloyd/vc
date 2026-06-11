@@ -6,6 +6,7 @@ from datetime import date as date_type
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, TypedDict
 
+import structlog
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
@@ -19,6 +20,8 @@ from reservations.services.holds import HoldService
 if TYPE_CHECKING:
     from reservations.models.booking import BookingHold
     from reservations.models.enquiry import Enquiry
+
+logger = structlog.get_logger(__name__)
 
 
 class QuotationLineInput(TypedDict, total=False):
@@ -127,6 +130,76 @@ class QuotationService:
             reason=BookingHoldReason.QUOTATION_OPEN.value,
             quotation=line.quotation,
             quotation_line=line,
+        )
+
+    @classmethod
+    @transaction.atomic
+    def hold_line(cls, line: QuotationLine, *, actor: Any = None) -> BookingHold:
+        """Place the operator-requested hold backing a quotation line.
+
+        Holds are a deliberate, significant operator action — quotes alone
+        never block availability (legacy parity: quoting is the soft part of
+        the sales process). Idempotent: an already-held line returns its live
+        hold. Expiry is the property's effective `hold_duration_hours`
+        (`HoldService.place` default), deliberately decoupled from the
+        quotation's `expires_at`. Raises `HoldUnavailable` if the dates
+        collide with another live hold.
+        """
+        existing = line.holds.filter(released_at__isnull=True).first()
+        if existing is not None:
+            return existing
+        hold = HoldService.place(
+            property=line.property,
+            date_from=line.date_from,
+            date_to=line.date_to,
+            reason=BookingHoldReason.QUOTATION_OPEN.value,
+            quotation=line.quotation,
+            quotation_line=line,
+        )
+        logger.info(
+            "quotation_line.hold_placed",
+            quotation_id=line.quotation_id,
+            quotation_line_id=line.pk,
+            hold_id=hold.pk,
+            property_id=line.property_id,
+            expires_at=hold.expires_at.isoformat() if hold.expires_at else None,
+            actor_id=getattr(actor, "pk", None),
+        )
+        return hold
+
+    @classmethod
+    @transaction.atomic
+    def release_line_hold(cls, line: QuotationLine, *, actor: Any = None) -> int:
+        """Release a line's live hold(s); no-op (0) when none. Returns count."""
+        released = HoldService.release_for_line(line)
+        if released:
+            logger.info(
+                "quotation_line.hold_released",
+                quotation_id=line.quotation_id,
+                quotation_line_id=line.pk,
+                released_count=released,
+                actor_id=getattr(actor, "pk", None),
+            )
+        return released
+
+    @classmethod
+    @transaction.atomic
+    def move_line_hold(cls, line: QuotationLine) -> BookingHold | None:
+        """Relocate a held line's live hold to the line's current dates.
+
+        The edit-path counterpart to `hold_line`: a date edit moves an
+        existing hold (preserving its operator-set expiry) but NEVER places
+        one — an un-held line stays un-held. Returns the moved hold, or None
+        when the line has no live hold. Raises `HoldUnavailable` if the new
+        dates collide with another live hold.
+        """
+        existing = line.holds.filter(released_at__isnull=True).first()
+        if existing is None:
+            return None
+        return HoldService.move(
+            existing,
+            date_from=line.date_from,
+            date_to=line.date_to,
         )
 
     @classmethod

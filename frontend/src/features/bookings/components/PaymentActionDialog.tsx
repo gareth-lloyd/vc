@@ -23,6 +23,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { toDatetimeLocal } from "@/lib/format/date";
 import type { BookingId } from "@/lib/query/keys";
 import type { TrackName } from "../api";
 import { useMarkPaid, useWaiveTrack } from "../hooks";
@@ -46,17 +47,11 @@ interface CommonProps {
 
 type Props = (CommonProps & { action: "mark-paid" }) | (CommonProps & { action: "waive" });
 
-function todayLocalDatetime(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function MarkPaidForm({ bookingId, track, trackLabel, onOpenChange, defaultAmount }: CommonProps) {
   const { t } = useTranslation("bookings");
   const defaults: MarkPaidInput = {
     amount: defaultAmount ?? "",
-    paid_at: todayLocalDatetime(),
+    paid_at: toDatetimeLocal(new Date()),
     method: "bank_transfer",
     reference: "",
     notes: "",

@@ -32,6 +32,7 @@ from reservations.views import (
     OwnerPropertyCalendarView,
     PropertyAvailabilityView,
     QuotationLineViewSet,
+    QuotationSearchOptionsView,
     QuotationViewSet,
     TermsVersionCurrentView,
     TermsVersionDetailView,
@@ -108,6 +109,11 @@ _enquiry_actions: list[URLPattern | URLResolver] = [
 # Colon-verb action endpoints (Quotations)
 # ----------------------------------------------------------------------
 _quotation_actions: list[URLPattern | URLResolver] = [
+    path(
+        "quotations:search-options",
+        QuotationSearchOptionsView.as_view(),
+        name="quotation-search-options",
+    ),
     path(
         "quotations/<int:pk>:preview",
         QuotationViewSet.as_view({"get": "preview"}),

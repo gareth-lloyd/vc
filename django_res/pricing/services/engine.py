@@ -314,6 +314,42 @@ class PricingEngine:
             breakdown=breakdown,
         )
 
+    @classmethod
+    def stay_length_bounds(
+        cls,
+        property: Any,
+        *,
+        date_from: date,
+        date_to: date,
+        currency: Currency | None = None,
+    ) -> tuple[int, int | None] | None:
+        """Aggregate (min_nights, max_nights) across the covering plan's active
+        cards, without running a quote.
+
+        A stay is valid when ANY card accepts it, so the bounds are the
+        loosest across cards — and a single uncapped card means no cap. Used
+        by the reservations-layer stay-option search to pick a changeover
+        block length before pricing; the eventual winning card may be
+        stricter, in which case the quote itself raises (the loud guard).
+
+        Returns ``None`` when no real plan covers the range (the projection
+        path) or the plan is misconfigured with no active cards — callers
+        skip the clamp and leave validation to the engine.
+        """
+        try:
+            context = cls._load_real_context(property, currency, date_from, date_to)
+        except NoRateAvailable:
+            return None
+        if context is None:
+            return None
+        min_nights = min(card.min_nights for card in context.cards)
+        maxes = [card.max_nights for card in context.cards]
+        if any(m is None for m in maxes):
+            max_nights: int | None = None
+        else:
+            max_nights = max(m for m in maxes if m is not None)
+        return (min_nights, max_nights)
+
     @staticmethod
     def _load_real_context(
         property: Any,

@@ -23,9 +23,12 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
-def _resolve_currency(code: str) -> Currency | None:
+def resolve_currency_param(code: str) -> Currency | None:
     """An explicit currency code → Currency (404 on unknown); blank → None,
-    which lets the engine price in the rate plan's own currency (GAP-014)."""
+    which lets the engine price in the rate plan's own currency (GAP-014).
+
+    Shared with the reservations quote-options endpoint (Q-013 parity), so
+    every quote-shaped endpoint resolves a currency param identically."""
     if not code:
         return None
     return get_object_or_404(Currency, code=code.upper())
@@ -54,7 +57,7 @@ class PricingQuoteView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         property_obj = get_object_or_404(Property, pk=data["property_id"])
-        currency = _resolve_currency(data["currency"])
+        currency = resolve_currency_param(data["currency"])
         breakdown = _run_quote(property=property_obj, currency=currency, data=data)
         return Response(breakdown)
 
@@ -66,7 +69,7 @@ class PricingQuoteBulkView(APIView):
         serializer = PricingQuoteBulkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        currency = _resolve_currency(data["currency"])
+        currency = resolve_currency_param(data["currency"])
         # Batch-load every requested property (with its images) up front so the
         # per-entry hero_image_url lookup doesn't fire a query per row.
         property_ids = [entry["property_id"] for entry in data["requests"]]

@@ -900,3 +900,65 @@ def test_breakdown_occupancy_pricing_false_for_same_band_split_dates(
     )
 
     assert quote.breakdown["occupancy_pricing"] is False
+
+
+# ----------------------------------------------------------------------
+# stay_length_bounds — pre-pricing card aggregates for block selection
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_stay_length_bounds_single_card(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    card.min_nights = 5
+    card.max_nights = 14
+    card.save(update_fields=["min_nights", "max_nights"])
+
+    bounds = PricingEngine.stay_length_bounds(
+        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    )
+
+    assert bounds == (5, 14)
+
+
+@pytest.mark.django_db
+def test_stay_length_bounds_aggregates_across_cards(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    """A stay is valid if ANY card accepts it, so the bounds are the loosest
+    across the plan's active cards — and an uncapped card uncaps the lot."""
+    card.min_nights = 7
+    card.max_nights = 14
+    card.save(update_fields=["min_nights", "max_nights"])
+    RateCard.objects.create(plan=plan, name="Long stay", sort_order=1, min_nights=3)
+
+    bounds = PricingEngine.stay_length_bounds(
+        property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    )
+
+    assert bounds == (3, None)
+
+
+@pytest.mark.django_db
+def test_stay_length_bounds_none_without_covering_plan(property_: Property, gbp: Currency) -> None:
+    """No real plan (the projection path) → None: callers skip the clamp and
+    the engine remains the loud guard at pricing time."""
+    assert (
+        PricingEngine.stay_length_bounds(
+            property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+        )
+        is None
+    )
+
+
+@pytest.mark.django_db
+def test_stay_length_bounds_none_when_plan_has_no_active_cards(
+    property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    assert (
+        PricingEngine.stay_length_bounds(
+            property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+        )
+        is None
+    )

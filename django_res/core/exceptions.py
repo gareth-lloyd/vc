@@ -86,6 +86,16 @@ class OverlappingBooking(DomainError):
         self.booking = booking
 
 
+class TerminalBookingExists(DomainError):
+    """The quotation line already produced a booking that has since closed.
+
+    Converting again must not resurface a CANCELLED/EXPIRED/DECLINED booking
+    as a fresh success — re-booking goes through a new quotation.
+    """
+
+    code = "terminal_booking_exists"
+
+
 class OAuthNotConnectedError(DomainError):
     code = "oauth_not_connected"
 

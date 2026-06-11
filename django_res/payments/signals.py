@@ -141,26 +141,44 @@ def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) 
         )
 
 
-def _expire_payments_on_booking_expired(
+def _close_money_on_booking_closed(
     sender: Any,
     *,
     booking: Any,
     **_: Any,
 ) -> None:
-    """Expire a booking's leftover PENDING payments when the booking expires.
+    """Bookkeep a booking's open money when it closes without completing.
 
-    `reservations.tasks.expire_bookings` ages out AWAITING_DEPOSIT bookings;
-    their unpaid DEPOSIT/BALANCE rows must follow, both to keep the ledger
-    honest and to free the active-per-purpose constraint slots. Lives here
-    (not in reservations) because the spine forbids reservations → payments.
+    On EXPIRED / CANCELLED / DECLINED the unpaid PENDING DEPOSIT/BALANCE rows
+    follow the booking into a matching terminal status — both to keep the
+    ledger honest and to free the active-per-purpose constraint slots. The
+    spec's refund-on-cancel policy is deliberately undefined (the legacy app
+    had none), so settled money is never touched here: refunds stay a manual
+    operator workflow. A SecurityDeposit holding no money yet (AWAITING_*)
+    closes as FAILED; one holding real money (PRE_AUTHED/HELD) is flagged for
+    ops review, never auto-released. Lives here (not in reservations) because
+    the spine forbids reservations → payments.
     """
+    from payments.enums import (
+        TERMINAL_SD_STATUSES,
+        EventSource,
+        PaymentPurpose,
+        PaymentStatus,
+        SecurityDepositStatus,
+    )
+    from payments.models.payment import Payment
+    from payments.models.security_deposit import SecurityDeposit
     from reservations.enums import BookingStatus
 
-    if booking.status != BookingStatus.EXPIRED.value:
+    closures: dict[str, tuple[str, str]] = {
+        BookingStatus.EXPIRED.value: (PaymentStatus.EXPIRED.value, "BOOKING_EXPIRED"),
+        BookingStatus.CANCELLED.value: (PaymentStatus.CANCELLED.value, "BOOKING_CANCELLED"),
+        BookingStatus.DECLINED.value: (PaymentStatus.CANCELLED.value, "BOOKING_DECLINED"),
+    }
+    closure = closures.get(booking.status)
+    if closure is None:
         return
-
-    from payments.enums import EventSource, PaymentPurpose, PaymentStatus
-    from payments.models.payment import Payment
+    to_status, kind = closure
 
     pending = Payment.objects.filter(
         booking=booking,
@@ -172,9 +190,31 @@ def _expire_payments_on_booking_expired(
     )
     for payment in pending:
         payment.transition_to(
-            PaymentStatus.EXPIRED.value,
+            to_status,
             source=EventSource.SYSTEM.value,
-            kind="BOOKING_EXPIRED",
+            kind=kind,
+        )
+
+    sd = (
+        SecurityDeposit.objects.filter(booking=booking)
+        .exclude(status__in=TERMINAL_SD_STATUSES)
+        .first()
+    )
+    if sd is None:
+        return
+    if sd.status in (
+        SecurityDepositStatus.AWAITING_DETAILS.value,
+        SecurityDepositStatus.AWAITING_BT.value,
+    ):
+        sd.transition_to_failed(reason=f"Booking {booking.status}")
+    else:
+        logger.warning(
+            "payment.sd_review_required",
+            booking_id=booking.pk,
+            security_deposit_id=sd.pk,
+            sd_status=sd.status,
+            booking_status=booking.status,
+            reason="booking_closed_with_money_held",
         )
 
 
@@ -216,8 +256,8 @@ def _register() -> None:
         dispatch_uid="payments.resync_on_booking_total_changed",
     )
     booking_transitioned.connect(
-        _expire_payments_on_booking_expired,
-        dispatch_uid="payments.expire_payments_on_booking_expired",
+        _close_money_on_booking_closed,
+        dispatch_uid="payments.close_money_on_booking_closed",
     )
     payment_succeeded.connect(
         _advance_booking_on_payment_settled,

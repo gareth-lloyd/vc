@@ -758,3 +758,20 @@ def test_second_booking_on_same_quotation_line_is_refused(
             rental_price=Decimal("1400.00"),
             balance_due=Decimal("1400.00"),
         )
+
+
+@pytest.mark.django_db
+def test_create_from_quotation_line_refuses_terminal_booking(
+    booking: Booking,
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    """A cancelled booking must not be served as a fresh 201 — re-booking a
+    closed commitment goes through a new quotation, not a convert retry."""
+    from core.exceptions import TerminalBookingExists
+    from reservations.services.bookings import BookingService
+
+    booking.cancel("guest changed plans")
+
+    with pytest.raises(TerminalBookingExists):
+        BookingService.create_from_quotation_line(quotation_line, terms_version=terms)

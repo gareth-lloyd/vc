@@ -1648,3 +1648,26 @@ def test_convert_race_past_idempotency_precheck_recovers_winner(
     assert second.status_code == 201, second.data
     assert second.data["id"] == first.data["id"]
     assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_retry_after_booking_cancelled_is_409(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Once the converted booking is cancelled, a convert retry must not
+    resurface it as a fresh 201 — re-book via a new quotation."""
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+    Booking.objects.get(pk=first.data["id"]).cancel("guest changed plans")
+
+    second = api_client.post(url, {"line": line.pk}, format="json")
+
+    assert second.status_code == 409, second.data
+    assert second.data["code"] == "terminal_booking_exists"

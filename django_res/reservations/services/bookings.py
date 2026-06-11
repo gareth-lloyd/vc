@@ -9,7 +9,8 @@ import structlog
 from django.db import transaction
 from django.utils import timezone
 
-from reservations.enums import BookingGuestRole, PaymentMethod
+from core.exceptions import TerminalBookingExists
+from reservations.enums import TERMINAL_BOOKING_STATUSES, BookingGuestRole, PaymentMethod
 from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
@@ -48,6 +49,14 @@ class BookingService:
         """
         existing = Booking.objects.filter(quotation_line=quotation_line).first()
         if existing is not None:
+            # The retry contract only covers a live booking. Serving a
+            # CANCELLED/EXPIRED/DECLINED one back as a fresh success would
+            # resurrect a closed commitment — re-book via a new quotation.
+            if existing.status in TERMINAL_BOOKING_STATUSES:
+                raise TerminalBookingExists(
+                    f"Booking {existing.reference} for this quotation line is "
+                    f"{existing.status}; re-book via a new quotation."
+                )
             return existing
 
         quotation = quotation_line.quotation

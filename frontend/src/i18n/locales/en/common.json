@@ -66,12 +66,13 @@
   "nav": {
     "groups": {
       "operations": "Operations",
-      "library": "Library",
-      "admin": "Admin"
+      "admin": "Admin",
+      "experiments": "Experiments"
     },
     "enquiries_views": "Enquiries views",
     "dashboard": "Dashboard",
     "enquiries": "Enquiries",
+    "quotes_and_enquiries": "Quotes and Enquiries",
     "quotes": "Quotes",
     "bookings": "Bookings",
     "availability": "Availability",

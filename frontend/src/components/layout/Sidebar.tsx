@@ -80,16 +80,10 @@ export function Sidebar() {
   const operations: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: Home },
     {
-      to: "/enquiries",
-      label: t("nav.enquiries"),
-      icon: MessageSquare,
-      prefetch: () => import("@/features/enquiries/EnquiriesListPage"),
-    },
-    {
-      to: "/bookings",
-      label: t("nav.bookings"),
-      icon: CalendarCheck,
-      prefetch: () => import("@/features/bookings/BookingsListPage"),
+      to: "/properties",
+      label: t("nav.properties"),
+      icon: Building2,
+      prefetch: () => import("@/features/properties/PropertiesListPage"),
     },
     {
       to: "/availability",
@@ -98,10 +92,22 @@ export function Sidebar() {
       prefetch: () => import("@/features/availability/AvailabilityTimelinePage"),
     },
     {
-      to: "/concierge",
-      label: t("nav.concierge"),
-      icon: ConciergeBell,
-      prefetch: () => import("@/features/concierge/ConciergeOverviewPage"),
+      to: "/contacts",
+      label: t("nav.contacts"),
+      icon: Users,
+      prefetch: () => import("@/features/contacts/ContactsListPage"),
+    },
+    {
+      to: "/bookings",
+      label: t("nav.bookings"),
+      icon: CalendarCheck,
+      prefetch: () => import("@/features/bookings/BookingsListPage"),
+    },
+    {
+      to: "/enquiries",
+      label: t("nav.quotes_and_enquiries"),
+      icon: MessageSquare,
+      prefetch: () => import("@/features/enquiries/EnquiriesListPage"),
     },
     {
       to: "/owner-blocks",
@@ -110,18 +116,12 @@ export function Sidebar() {
       prefetch: () => import("@/features/owner-block-updates/OwnerBlockUpdatesPage"),
     },
   ];
-  const library: NavItem[] = [
+  const experiments: NavItem[] = [
     {
-      to: "/properties",
-      label: t("nav.properties"),
-      icon: Building2,
-      prefetch: () => import("@/features/properties/PropertiesListPage"),
-    },
-    {
-      to: "/contacts",
-      label: t("nav.contacts"),
-      icon: Users,
-      prefetch: () => import("@/features/contacts/ContactsListPage"),
+      to: "/concierge",
+      label: t("nav.concierge"),
+      icon: ConciergeBell,
+      prefetch: () => import("@/features/concierge/ConciergeOverviewPage"),
     },
   ];
   const admin: NavItem[] = [
@@ -172,8 +172,8 @@ export function Sidebar() {
       </div>
 
       <NavSection heading={t("nav.groups.operations")} items={operations} />
-      <NavSection heading={t("nav.groups.library")} items={library} />
       {isAdmin && <NavSection heading={t("nav.groups.admin")} items={admin} />}
+      <NavSection heading={t("nav.groups.experiments")} items={experiments} />
     </nav>
   );
 }

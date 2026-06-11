@@ -8,7 +8,7 @@ type StatusKind = "active" | "draft" | "archived" | "pending" | "error" | "neutr
 
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
-const statusBadgeVariants = cva("gap-1 font-medium capitalize", {
+const statusBadgeVariants = cva("gap-1 font-medium", {
   variants: {
     kind: {
       active: "border-success/40 bg-success/10 text-success",
@@ -58,17 +58,21 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
 
 interface StatusBadgeProps {
   status: string;
+  /** Humanised display text; the visual kind still keys on the raw status. */
+  label?: string;
   kind?: StatusKind;
   className?: string;
 }
 
-export function StatusBadge({ status, kind, className }: StatusBadgeProps) {
+export function StatusBadge({ status, label, kind, className }: StatusBadgeProps) {
   const resolved = kind ?? STATUS_TO_KIND[status.toLowerCase()] ?? "neutral";
   const Icon = KIND_ICON[resolved];
   return (
     <Badge variant="outline" className={cn(statusBadgeVariants({ kind: resolved }), className)}>
       <Icon className="size-3.5" aria-hidden />
-      <span>{status}</span>
+      {/* A provided label renders verbatim; a raw status keeps the legacy
+          CSS capitalisation so unlabelled call sites don't regress. */}
+      <span className={label ? undefined : "capitalize"}>{label ?? status}</span>
     </Badge>
   );
 }

@@ -2,7 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
-import type { QuotationListItem } from "./schemas";
+import { quotationStatusLabel, type QuotationListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
 
@@ -22,9 +22,13 @@ export function buildQuotationColumns(t: TFunction<"quotations">): ColumnDef<Quo
       accessorKey: "status",
       header: () => t("detail.summary.status"),
       enableSorting: false,
-      cell: ({ getValue }) => {
-        const value = getValue<string | null | undefined>();
-        return value ? <StatusBadge status={value} /> : MUTED_DASH;
+      cell: ({ row }) => {
+        const value = row.original.status;
+        return value ? (
+          <StatusBadge status={value} label={quotationStatusLabel(value)} />
+        ) : (
+          MUTED_DASH
+        );
       },
     },
     {

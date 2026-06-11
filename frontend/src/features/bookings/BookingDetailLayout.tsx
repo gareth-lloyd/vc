@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/format/money";
 import { useBooking } from "./hooks";
 import { bookingFinance, dueTone } from "./finance";
 import { BookingActions } from "./components/BookingActions";
-import type { BookingDetail } from "./schemas";
+import { bookingStatusLabel, type BookingDetail } from "./schemas";
 import { BOOKING_TABS } from "./tabConfig";
 
 function RailSummary({ booking }: { booking: BookingDetail }) {
@@ -45,7 +45,7 @@ function RailSummary({ booking }: { booking: BookingDetail }) {
           </Link>
         </p>
       </div>
-      <StatusBadge status={booking.status} />
+      <StatusBadge status={booking.status} label={bookingStatusLabel(booking.status)} />
       <StatTiles tiles={tiles} />
       <FactList>
         <FactRow

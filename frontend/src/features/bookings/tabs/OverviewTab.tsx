@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format/date";
 import { propertyDetailsPath } from "@/lib/routes";
 import { formatMoney } from "@/lib/format/money";
 import { bookingFinance, dueTone } from "../finance";
+import { bookingStatusLabel } from "../schemas";
 import type { BookingOutletContext } from "../BookingDetailLayout";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -68,7 +69,9 @@ export function OverviewTab() {
           />
           <FactGridItem
             label={t("overview.fields.status")}
-            value={<StatusBadge status={booking.status} />}
+            value={
+              <StatusBadge status={booking.status} label={bookingStatusLabel(booking.status)} />
+            }
           />
           <FactGridItem
             label={t("overview.fields.check_in")}

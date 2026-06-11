@@ -70,6 +70,9 @@ describe("BookingsListPage", () => {
     expect(screen.getByText("Casa Norte")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("£2,500.00")).toBeInTheDocument();
+    // Stage badges render humanised labels, never raw enum values.
+    expect(screen.getAllByText("Deposit paid").length).toBeGreaterThan(0);
+    expect(screen.queryByText("deposit_paid")).not.toBeInTheDocument();
   });
 
   it("renders an empty state when no rows", async () => {

@@ -6,8 +6,10 @@ import { isPositiveMoney } from "@/lib/format/money";
 export const quotationStatusSchema = z.enum(["draft", "sent", "accepted", "expired", "cancelled"]);
 export type QuotationStatus = z.infer<typeof quotationStatusSchema>;
 
-export function quotationStatusLabel(status: QuotationStatus): string {
-  return i18n.t(`quotations:labels.status.${status}`);
+// Accepts plain strings because detail/list payloads keep `status` loose
+// (the backend's TextChoices may grow); unknown values render verbatim.
+export function quotationStatusLabel(status: QuotationStatus | string): string {
+  return i18n.t(`quotations:labels.status.${status}`, { defaultValue: status });
 }
 
 export const quotationStatusOptions = (): Array<{ value: QuotationStatus; label: string }> =>

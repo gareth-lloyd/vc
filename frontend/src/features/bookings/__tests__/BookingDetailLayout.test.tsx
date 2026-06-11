@@ -101,7 +101,7 @@ describe("BookingDetailLayout", () => {
     setup("/bookings/51/overview");
     await waitFor(() => expect(screen.getAllByText("B-AAA-001").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Casa Norte").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("deposit_paid").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Deposit paid").length).toBeGreaterThan(0);
     expect(screen.getAllByText("£2,500.00").length).toBeGreaterThan(0);
   });
 

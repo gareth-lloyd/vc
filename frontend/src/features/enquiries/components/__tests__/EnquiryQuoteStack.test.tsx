@@ -21,7 +21,7 @@ describe("EnquiryQuoteStack", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("renders one deep-linked card per quote with the raw status", () => {
+  it("renders one deep-linked card per quote with the humanised status", () => {
     renderWithProviders(
       <EnquiryQuoteStack
         quotations={[
@@ -38,8 +38,8 @@ describe("EnquiryQuoteStack", () => {
       "/enquiries/quotes/11",
     );
     // Raw enum surfaced (capitalisation is CSS) — matches the quotes list.
-    expect(screen.getByText("sent")).toBeInTheDocument();
-    expect(screen.getByText("draft")).toBeInTheDocument();
+    expect(screen.getByText("Sent")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
   });
 
   it("summarises the option count and price range across lines", () => {

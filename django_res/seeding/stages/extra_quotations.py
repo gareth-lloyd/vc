@@ -11,7 +11,7 @@ from django.utils import timezone
 from reservations.factories import EnquiryFactory
 from reservations.models.enquiry import Enquiry
 from reservations.services.quotations import QuotationService
-from seeding._booking_helpers import pick_guest
+from seeding._booking_helpers import conforming_stay, pick_guest
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -28,8 +28,10 @@ def _run(ctx: SeedContext) -> int:
     made = 0
     for i in range(target):
         prop = active_properties[i % len(active_properties)]
-        date_from = ctx.today + timedelta(days=30 + i * 11)
-        date_to = date_from + timedelta(days=5)
+        # 21-day stride: a constrained villa's stay conforms to 7 nights plus
+        # an up-to-6-day forward alignment (13 days end-to-end), so the old
+        # 11-day stride would collide consecutive holds on a small portfolio.
+        date_from, date_to = conforming_stay(ctx, prop, ctx.today + timedelta(days=30 + i * 21), 5)
         guest = pick_guest(ctx)
         terms = ctx.terms[0]
         enquiry = cast(

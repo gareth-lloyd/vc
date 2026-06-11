@@ -45,6 +45,26 @@ Note: nothing seeds a `BOOKING_DEPOSIT_PENDING` hold — that calendar state has
 no backend producer (the frontend renders a legend entry for it, but it is
 currently dead).
 
+## Changeover days & minimum stays (mixed / chaos)
+
+Mirroring the legacy prod snapshot (88% of villas carry an explicit changeover
+day — Saturday 72%, Monday/Sunday/Friday tail — and min stay resolves to 7
+nights virtually everywhere), `changeover_day_weights` assigns most villas a
+specific day; those villas also get `constrained_min_nights` (7) written to
+**both** `PropertySettings.min_nights_rental` (legacy-semantics, not
+engine-enforced) and `RateCard.min_nights` (engine-enforced). A deterministic
+floor of `max(2, round(0.12 × n))` villas stays unconstrained so
+`dashboard_activity` always has hosts for its today-anchored short stays.
+
+Every booking-creating stage conforms stays up-front via `conforming_stay`
+(align the start onto the changeover weekday, raise nights to the minimum)
+instead of letting the engine silently `align_forward` or reject with
+`MinNightsNotMet`. The every-3rd-villa `ChangeOverRule` is seeded with the
+villa's *assigned* day — a rule window beats `PropertySettings.changeover_day`
+in `ChangeoverService.effective_day`, so an `ANY` rule would silently
+un-constrain the villa. `happy` leaves the dial empty: no changeover days, all
+cards stay `min_nights=1`.
+
 ## Dashboard activity (all profiles)
 
 The dense calendar almost never lands a stay exactly on today, never *rests* a

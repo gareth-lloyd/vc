@@ -42,7 +42,12 @@ from properties.models import Country, Property
 from reservations.factories import EnquiryFactory
 from reservations.models.booking import Booking, BookingHold
 from reservations.models.enquiry import Enquiry
-from seeding._booking_helpers import create_one_booking, mark_payment_paid, pick_guest
+from seeding._booking_helpers import (
+    conforming_stay,
+    create_one_booking,
+    mark_payment_paid,
+    pick_guest,
+)
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 from seeding.stages.owner_orgs import _ORG_NAME
@@ -81,19 +86,30 @@ def _requires_pre_approval(prop: Any) -> bool:
 
 
 def _candidates(ctx: SeedContext) -> list[Any]:
-    """Active, auto-approving villas, shuffled then stable-sorted busy-first.
+    """Active, auto-approving, *unconstrained* villas, shuffled then
+    stable-sorted busy-first.
 
     Busy-first matters: empty-tier villas are by construction the most likely
     to be free around today, so a naive first-free pick would consume them and
     erase the deliberate density gradient. Statuses are re-read from the DB —
     property_lifecycle may have archived an in-memory instance.
+
+    Villas with a seeded changeover day are excluded: this stage's whole point
+    is short stays anchored exactly on today, which can't conform to a
+    changeover weekday or a 7-night minimum.
     """
     active_pks = set(
         Property.objects.filter(pk__in=[p.pk for p in ctx.properties], status="active").values_list(
             "pk", flat=True
         )
     )
-    candidates = [p for p in ctx.properties if p.pk in active_pks and not _requires_pre_approval(p)]
+    candidates = [
+        p
+        for p in ctx.properties
+        if p.pk in active_pks
+        and not _requires_pre_approval(p)
+        and ctx.property_stay_rules.get(p.pk, (None, 1))[0] is None
+    ]
     ctx.rng.shuffle(candidates)
     booked_pks = set(
         Booking.objects.filter(property__in=candidates).values_list("property_id", flat=True)
@@ -124,6 +140,8 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
         locality = villa["location_tag"].rsplit(",", 1)[0].strip()
         extra_kwargs["region"] = RegionFactory(country=country, name=locality)
         extra_kwargs["children__villa"] = villa
+    # Deliberately unconstrained (no changeover day / minimum stay): showcase
+    # villas exist to host today-anchored short stays, which can't conform.
     prop = cast(Any, PropertyFactory(with_owner_contact=False, **extra_kwargs))
     check_out, check_in = ctx.knobs.changeover_times
     if check_out is not None and check_in is not None:
@@ -276,8 +294,13 @@ def _seed_owner_upcoming(ctx: SeedContext, terms: Any, expires_at: Any, factor: 
         for prop in granted:
             if made >= target:
                 return made
-            start = ctx.today + timedelta(days=offset)
-            end = start + timedelta(days=_UPCOMING_NIGHTS)
+            # Granted villas aren't filtered for stay rules (the grant set is
+            # fixed by owner_orgs), so conform instead: an aligned start moves
+            # ≤6 days, keeping the latest offset (21 + 6 + 7 nights) inside
+            # the owner dashboard's 30-day arrival window.
+            start, end = conforming_stay(
+                ctx, prop, ctx.today + timedelta(days=offset), _UPCOMING_NIGHTS
+            )
             if not _is_free(prop, start, end):
                 continue
             booking = _open_stay(ctx, prop, start, end, terms, expires_at)

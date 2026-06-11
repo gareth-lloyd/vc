@@ -108,7 +108,8 @@ class PricingEngine:
         # rejecting it. The property's effective changeover day (a
         # ChangeOverRule window, else the settings chain) is the single source
         # of truth; `any` / unconstrained means no shift.
-        property_weekday = ChangeoverService.required_weekday(property, date_from)
+        changeover_day = ChangeoverService.effective_day(property, date_from)
+        property_weekday = ChangeoverService.weekday_for(changeover_day)
         allowed_weekdays = {property_weekday} if property_weekday is not None else set()
         date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
             allowed_weekdays, date_from, date_to
@@ -274,6 +275,23 @@ class PricingEngine:
             # into the booking snapshot.
             "is_projected": context.is_projected,
             "projection": context.projection,
+            # Plan/card metadata the quote builder renders on each result line.
+            # All in memory already — adding them costs no extra queries.
+            # `inclusion` also seeds staged-line inclusions at creation (legacy
+            # ResService.cs:1241 seeded them from the season).
+            "inclusion": plan.inclusion,
+            "changeover_day": changeover_day if property_weekday is not None else None,
+            "min_nights": winning_card.min_nights if winning_card is not None else None,
+            "max_nights": winning_card.max_nights if winning_card is not None else None,
+            # >1 distinct party band on the winning card means the price moves
+            # with the party size — surfaced as a badge on the result line.
+            "occupancy_pricing": (
+                winning_card is not None
+                and len(
+                    {(r.min_party, r.max_party) for r in rules_by_card.get(winning_card.pk, [])}
+                )
+                > 1
+            ),
         }
 
         return Quote(

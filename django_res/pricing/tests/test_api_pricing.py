@@ -93,6 +93,46 @@ def test_pricing_quote_bulk_returns_all_requests(
 
 
 @pytest.mark.django_db
+def test_pricing_quote_bulk_surfaces_plan_card_metadata(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateRule,
+) -> None:
+    """Priced bulk entries carry the breakdown's plan/card metadata so the
+    quote builder can render information-dense result lines."""
+    plan = rule.card.plan
+    plan.inclusion = "Daily maid service"
+    plan.save(update_fields=["inclusion"])
+
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "currency": "GBP",
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",
+                    "adults": 4,
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    entry = response.json()["quotes"][0]
+    assert entry["inclusion"] == "Daily maid service"
+    assert entry["changeover_day"] is None
+    assert entry["min_nights"] == 1
+    assert entry["max_nights"] is None
+    assert entry["occupancy_pricing"] is False
+
+
+@pytest.mark.django_db
 def test_pricing_quote_without_currency_prices_in_plan_currency(
     api_client: APIClient,
     staff: User,

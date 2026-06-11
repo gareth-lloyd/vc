@@ -730,3 +730,173 @@ def test_quote_allow_projection_false_raises_even_with_anchor(
             currency=gbp,
             allow_projection=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Breakdown enrichment — plan/card metadata the quote builder renders on each
+# result line (inclusion, changeover day, min/max nights, occupancy pricing).
+# All sourced from objects already in memory at quote time: zero extra queries.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_breakdown_carries_plan_inclusion(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """The winning plan's `inclusion` text rides on the breakdown so the
+    builder can seed staged-line inclusions from it (legacy ResService.cs:1241
+    seeded line inclusions from the season)."""
+    plan.inclusion = "Daily maid service, pool heating"
+    plan.save(update_fields=["inclusion"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["inclusion"] == "Daily maid service, pool heating"
+
+
+@pytest.mark.django_db
+def test_breakdown_changeover_day_code(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    _changeover_rule(property_, "SAT")
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 13),  # Saturday
+        date_to=date(2026, 6, 20),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["changeover_day"] == "sat"
+
+
+@pytest.mark.django_db
+def test_breakdown_changeover_day_null_when_unconstrained(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """`any` / no constraint serialises as null, not the literal "any" code."""
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["changeover_day"] is None
+
+
+@pytest.mark.django_db
+def test_breakdown_min_max_nights_from_winning_card(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+) -> None:
+    card.min_nights = 5
+    card.max_nights = 14
+    card.save(update_fields=["min_nights", "max_nights"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["min_nights"] == 5
+    assert quote.breakdown["max_nights"] == 14
+
+
+@pytest.mark.django_db
+def test_breakdown_min_max_nights_null_on_all_fallback_stay(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    """No winning card (all-fallback stay) → no card constraints to report."""
+    plan.fallback_nightly = Decimal("99.00")
+    plan.save(update_fields=["fallback_nightly"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 13),  # all uncovered by the (absent) rules
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["winning_card_id"] is None
+    assert quote.breakdown["min_nights"] is None
+    assert quote.breakdown["max_nights"] is None
+    assert quote.breakdown["occupancy_pricing"] is False
+
+
+@pytest.mark.django_db
+def test_breakdown_occupancy_pricing_false_for_single_band(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["occupancy_pricing"] is False
+
+
+@pytest.mark.django_db
+def test_breakdown_occupancy_pricing_true_for_multiple_party_bands(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+) -> None:
+    """>1 distinct (min_party, max_party) band on the winning card means the
+    price depends on the party size — the builder badges these results."""
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=9,
+        max_party=12,
+        nightly=Decimal("260.00"),
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["occupancy_pricing"] is True
+
+
+@pytest.mark.django_db
+def test_breakdown_occupancy_pricing_false_for_same_band_split_dates(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+) -> None:
+    """Seasonal date splits with the SAME party band are not occupancy pricing
+    — only distinct bands count."""
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 10, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("180.00"),
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.breakdown["occupancy_pricing"] is False

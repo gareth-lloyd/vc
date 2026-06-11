@@ -59,6 +59,12 @@ class ChangeoverService:
         except PropertySettings.DoesNotExist:
             return property.group.settings.changeover_day
 
+    @staticmethod
+    def weekday_for(day: str) -> int | None:
+        """Map a `PrefilledChangeOverDay` code to a `date.weekday()` int
+        (Mon=0..Sun=6); `None` for `any` / unconstrained."""
+        return _WEEKDAY.get(day)
+
     @classmethod
     def required_weekday(cls, property: Property, on_date: date) -> int | None:
         """The property's required changeover weekday on `on_date`.
@@ -66,7 +72,7 @@ class ChangeoverService:
         Returns a `date.weekday()` int (Mon=0..Sun=6), or `None` when the
         effective day is `any` / unconstrained.
         """
-        return _WEEKDAY.get(cls.effective_day(property, on_date))
+        return cls.weekday_for(cls.effective_day(property, on_date))
 
     @staticmethod
     def align_forward(

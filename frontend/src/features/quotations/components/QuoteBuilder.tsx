@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/errors";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
+import { EnquirySummaryHeader } from "./EnquirySummaryHeader";
 import { QuoteCriteriaForm } from "./QuoteCriteriaForm";
 import { QuoteResultsList } from "./QuoteResultsList";
 import { QuoteCart } from "./QuoteCart";
@@ -195,6 +196,8 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   return (
     <>
       <div className="space-y-6">
+        <EnquirySummaryHeader enquiry={enquiry} />
+
         <section className="space-y-3">
           <h3 className="text-foreground text-base font-semibold">{t("builder.criteria.title")}</h3>
           <QuoteCriteriaForm

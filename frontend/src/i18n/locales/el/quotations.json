@@ -215,6 +215,15 @@
     "errors": {
       "search_failed": "Δεν ήταν δυνατή η αναζήτηση επιλογών. Δοκιμάστε ξανά."
     },
+    "summary": {
+      "edit": "Επεξεργασία",
+      "flexible": "Ευέλικτες ημερομηνίες",
+      "flex_days_one": "· ± {{count}} ημέρα",
+      "flex_days_other": "· ± {{count}} ημέρες",
+      "party": "{{adults}} ενήλικες · {{children}} παιδιά",
+      "min_bedrooms_one": "ελάχ. {{count}} υπνοδωμάτιο",
+      "min_bedrooms_other": "ελάχ. {{count}} υπνοδωμάτια"
+    },
     "criteria": {
       "title": "Επιλογές αναζήτησης",
       "aria_label": "Κριτήρια αναζήτησης",

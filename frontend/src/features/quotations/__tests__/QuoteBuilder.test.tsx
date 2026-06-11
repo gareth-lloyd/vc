@@ -132,6 +132,14 @@ describe("QuoteBuilder", () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ id: 50 }));
   });
 
+  it("shows the enquiry summary header at the top of the builder", () => {
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("ENQ-99")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
   it("prefills criteria from the enquiry", async () => {
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 

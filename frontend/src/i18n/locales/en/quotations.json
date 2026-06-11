@@ -215,6 +215,15 @@
     "errors": {
       "search_failed": "Couldn't search options. Try again."
     },
+    "summary": {
+      "edit": "Edit",
+      "flexible": "Flexible dates",
+      "flex_days_one": "· ± {{count}} day",
+      "flex_days_other": "· ± {{count}} days",
+      "party": "{{adults}} adults · {{children}} children",
+      "min_bedrooms_one": "min {{count}} bedroom",
+      "min_bedrooms_other": "min {{count}} bedrooms"
+    },
     "criteria": {
       "title": "Search options",
       "aria_label": "Search criteria",

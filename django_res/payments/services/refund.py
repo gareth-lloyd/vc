@@ -25,6 +25,7 @@ from django.utils import timezone
 
 from core.api.permissions import actor_has_perm
 from core.idempotency import find_by_meta_key, stamp_meta
+from core.locking import refresh_locked
 from core.logging.operations import log_operation
 from payments.enums import (
     EventSource,
@@ -150,6 +151,9 @@ class RefundService:
         rule independently — service-layer checks fail fast with a
         readable error before the constraint trips.
         """
+        # Lock first: concurrent approvals serialise, and the loser's status
+        # check below sees the winner's committed state.
+        refresh_locked(refund)
         if refund.status != RefundStatus.PENDING.value:
             raise ValueError(f"Refund {refund.reference}: cannot :approve from {refund.status!r}")
         if not actor_has_perm(actor, PERM_APPROVE):
@@ -172,6 +176,7 @@ class RefundService:
     @classmethod
     @transaction.atomic
     def reject(cls, refund: Refund, *, actor: Any, reason: str) -> Refund:
+        refresh_locked(refund)
         if refund.status != RefundStatus.PENDING.value:
             raise ValueError(f"Refund {refund.reference}: cannot :reject from {refund.status!r}")
         if not actor_has_perm(actor, PERM_APPROVE):
@@ -196,6 +201,7 @@ class RefundService:
     @classmethod
     @transaction.atomic
     def cancel(cls, refund: Refund, *, actor: Any) -> Refund:
+        refresh_locked(refund)
         if refund.status not in (
             RefundStatus.PENDING.value,
             RefundStatus.APPROVED.value,
@@ -223,6 +229,10 @@ class RefundService:
         already exists for this refund, and short-circuits when the
         refund has already left APPROVED.
         """
+        # Lock before the idempotency check: a concurrent (or stale-instance)
+        # double-execute blocks here, re-reads the winner's state, and takes
+        # the short-circuit instead of minting a second outbound Payment.
+        refresh_locked(refund)
         if refund.status == RefundStatus.EXECUTING.value or (
             refund.status in (RefundStatus.SUCCEEDED.value, RefundStatus.FAILED.value)
             and refund.executed_at is not None

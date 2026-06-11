@@ -10,6 +10,7 @@ from django.db import models, transaction
 
 from core.exceptions import InvalidTransition
 from core.fields import CIEmailField
+from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import reference_db_default
 from reservations.enums import (
@@ -191,9 +192,13 @@ class Enquiry(AuditedModel):
         reason: str = "",
         meta: dict[str, Any] | None = None,
     ) -> None:
-        if self.status not in allowed_from:
-            raise InvalidTransition(self.status, to, allowed=list(allowed_from))
         with transaction.atomic():
+            # Guard against *locked, current* state — a stale instance's
+            # in-memory status would let a concurrent double-call both pass
+            # and write duplicate events (see core.locking).
+            refresh_locked(self)
+            if self.status not in allowed_from:
+                raise InvalidTransition(self.status, to, allowed=list(allowed_from))
             prev = self.status
             self.status = to
             self.save(update_fields=["status", "updated_at"])

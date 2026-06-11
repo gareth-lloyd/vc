@@ -187,8 +187,13 @@ class Payment(AuditedModel):
         the appropriate signal when the new status is terminal.
         """
         from core.exceptions import InvalidTransition
+        from core.locking import refresh_locked
         from payments.models.payment_event import PaymentEvent
 
+        # Guard against locked, current state: a stale instance (double-click
+        # capture, webhook retry racing a manual mark-paid) must lose with
+        # InvalidTransition, not double-fire `payment_succeeded`.
+        refresh_locked(self)
         allowed = PAYMENT_ALLOWED_TRANSITIONS.get(self.status, frozenset())
         if new_status not in allowed:
             raise InvalidTransition(self.status, new_status, allowed=sorted(allowed))

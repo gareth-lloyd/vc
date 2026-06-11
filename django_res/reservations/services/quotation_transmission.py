@@ -29,6 +29,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition
+from core.locking import refresh_locked
 from reservations.enums import (
     EnquiryEventKind,
     EnquiryStatus,
@@ -67,6 +68,10 @@ def record_quote_sent(
         raise ValueError(
             f"send_path must be one of {sorted(_VALID_SEND_PATHS)!r}, got {send_path!r}"
         )
+
+    # Lock + re-read so concurrent sends serialise: the loser re-reads SENT
+    # and takes the idempotency short-circuit instead of re-flipping state.
+    refresh_locked(quotation)
 
     # Idempotency short-circuit — re-POST on an already-SENT quote skips the
     # status flip and the Zoho push. The audit event, however, is gated by

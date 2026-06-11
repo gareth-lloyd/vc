@@ -112,6 +112,37 @@ TERMINAL_REFUND_STATUSES: tuple[str, ...] = (
 )
 
 
+# The Refund workflow's transition table, enforced centrally by
+# `Refund._transition` (mirrors `PAYMENT_ALLOWED_TRANSITIONS`). The service
+# layers policy (permissions, separation of duties) on top; this table is the
+# floor that direct model callers cannot bypass.
+REFUND_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    RefundStatus.PENDING.value: frozenset(
+        {
+            RefundStatus.APPROVED.value,
+            RefundStatus.REJECTED.value,
+            RefundStatus.CANCELLED.value,
+        }
+    ),
+    RefundStatus.APPROVED.value: frozenset(
+        {
+            RefundStatus.EXECUTING.value,
+            RefundStatus.CANCELLED.value,
+        }
+    ),
+    RefundStatus.EXECUTING.value: frozenset(
+        {
+            RefundStatus.SUCCEEDED.value,
+            RefundStatus.FAILED.value,
+        }
+    ),
+    RefundStatus.SUCCEEDED.value: frozenset(),
+    RefundStatus.FAILED.value: frozenset(),
+    RefundStatus.REJECTED.value: frozenset(),
+    RefundStatus.CANCELLED.value: frozenset(),
+}
+
+
 class RefundReasonCode(models.TextChoices):
     CANCELLATION = "cancellation", "Cancellation"
     OVERPAYMENT = "overpayment", "Overpayment"

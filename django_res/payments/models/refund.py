@@ -161,7 +161,18 @@ class Refund(AuditedModel):
         kind: str = "",
         **meta: Any,
     ) -> Refund:
+        from core.exceptions import InvalidTransition
+        from core.locking import refresh_locked
+        from payments.enums import REFUND_ALLOWED_TRANSITIONS
         from payments.models.payment_event import PaymentEvent
+
+        # Table-driven floor (mirrors `Payment.transition_to`): the service
+        # layers policy on top, but no caller can skip a workflow stage or
+        # transition a stale row.
+        refresh_locked(self)
+        allowed = REFUND_ALLOWED_TRANSITIONS.get(self.status, frozenset())
+        if new_status not in allowed:
+            raise InvalidTransition(self.status, new_status, allowed=sorted(allowed))
 
         old_status = self.status
         self.status = new_status

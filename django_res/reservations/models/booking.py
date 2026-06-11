@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
+from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import booking_reference, generate_reference
 from reservations.enums import (
@@ -253,18 +254,29 @@ class Booking(AuditedModel):
         extra_updates: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> Booking:
-        """Run a single state transition + audit event + signal."""
-        if self.status not in allowed_from:
-            raise InvalidTransition(self.status, to, allowed=list(allowed_from))
+        """Run a single state transition + audit event + signal.
+
+        The guard runs against *locked, current* DB state: a saved instance's
+        in-memory `status` may be stale (operator double-click, webhook retry
+        racing a manual action), and trusting it would double-fire the
+        transition. `refresh_locked` serialises concurrent callers; the loser
+        re-reads the winner's status and raises `InvalidTransition`.
+        """
         # Local import to avoid the signal module pulling Booking at import time.
         from reservations.signals import booking_transitioned
 
         prev = self.status
-        snapshot: dict[str, Any] = {"status": prev}
-        if extra_updates:
-            snapshot.update({f: getattr(self, f) for f in extra_updates})
+        snapshot: dict[str, Any] = {}
         try:
             with transaction.atomic():
+                if self.pk is not None:
+                    refresh_locked(self)
+                if self.status not in allowed_from:
+                    raise InvalidTransition(self.status, to, allowed=list(allowed_from))
+                prev = self.status
+                snapshot = {"status": prev}
+                if extra_updates:
+                    snapshot.update({f: getattr(self, f) for f in extra_updates})
                 self.status = to
                 update_fields = ["status", "updated_at"]
                 if extra_updates:

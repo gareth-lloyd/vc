@@ -86,6 +86,28 @@ describe("ConvertQuotationDialog", () => {
     expect(await screen.findByLabelText(/property #14/i)).toBeChecked();
   });
 
+  it("prefers an explicit initialLineId over the selected-line default", async () => {
+    renderWithProviders(
+      <Routes>
+        <Route
+          path="/enquiries/quotes/:id"
+          element={
+            <ConvertQuotationDialog
+              open
+              onOpenChange={() => undefined}
+              quotation={quotation}
+              initialLineId={31}
+            />
+          }
+        />
+      </Routes>,
+      { route: "/enquiries/quotes/7" },
+    );
+    // Line 32 is `is_selected`, but the per-row Book action pinned line 31.
+    expect(await screen.findByLabelText(/property #12/i)).toBeChecked();
+    expect(await screen.findByLabelText(/property #14/i)).not.toBeChecked();
+  });
+
   it("posts the chosen line + payment method and navigates to the new booking", async () => {
     let capturedBody: Record<string, unknown> | null = null;
     server.use(

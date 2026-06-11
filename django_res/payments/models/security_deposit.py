@@ -14,6 +14,7 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
 from payments import signals as payment_signals
@@ -122,6 +123,12 @@ class SecurityDeposit(AuditedModel):
 
     # ------------------------------------------------------------------
     # Transitions
+    #
+    # Each public `transition_to_*` is atomic and re-reads the row under
+    # lock (`refresh_locked`) before its status guard, so a stale instance
+    # (operator double-click, concurrent capture vs. release) loses with a
+    # ValueError instead of double-firing — and its field writes roll back
+    # with the failed transition rather than persisting on their own.
     # ------------------------------------------------------------------
     @transaction.atomic
     def _transition(
@@ -149,7 +156,9 @@ class SecurityDeposit(AuditedModel):
         )
         return self
 
+    @transaction.atomic
     def transition_to_pre_authed(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
+        refresh_locked(self)
         if self.status != SecurityDepositStatus.AWAITING_DETAILS.value:
             raise ValueError(f"SD {self.reference}: cannot :hold from status {self.status!r}")
         return self._transition(
@@ -159,7 +168,9 @@ class SecurityDeposit(AuditedModel):
             **meta,
         )
 
+    @transaction.atomic
     def transition_to_released(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
+        refresh_locked(self)
         if self.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
             if self.status != SecurityDepositStatus.PRE_AUTHED.value:
                 raise ValueError(
@@ -180,6 +191,7 @@ class SecurityDeposit(AuditedModel):
         payment_signals.security_deposit_released.send(sender=type(self), sd=sd)
         return sd
 
+    @transaction.atomic
     def transition_to_captured(
         self,
         *,
@@ -188,6 +200,7 @@ class SecurityDeposit(AuditedModel):
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
+        refresh_locked(self)
         if self.kind != SecurityDepositKind.PRE_AUTH_HOLD.value:
             raise ValueError(f"SD {self.reference}: :claim → CAPTURED only valid for PRE_AUTH_HOLD")
         if self.status != SecurityDepositStatus.PRE_AUTHED.value:
@@ -203,6 +216,7 @@ class SecurityDeposit(AuditedModel):
             **meta,
         )
 
+    @transaction.atomic
     def transition_to_partially_refunded(
         self,
         *,
@@ -211,6 +225,7 @@ class SecurityDeposit(AuditedModel):
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
+        refresh_locked(self)
         if self.kind != SecurityDepositKind.BT_REFUNDABLE.value:
             raise ValueError(
                 f"SD {self.reference}: PARTIALLY_REFUNDED only valid for BT_REFUNDABLE"
@@ -244,7 +259,9 @@ class SecurityDeposit(AuditedModel):
         payment_signals.security_deposit_released.send(sender=type(self), sd=sd)
         return sd
 
+    @transaction.atomic
     def transition_to_held(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
+        refresh_locked(self)
         if self.kind != SecurityDepositKind.BT_REFUNDABLE.value:
             raise ValueError(f"SD {self.reference}: HELD only valid for BT_REFUNDABLE")
         if self.status != SecurityDepositStatus.AWAITING_BT.value:
@@ -256,7 +273,9 @@ class SecurityDeposit(AuditedModel):
             **meta,
         )
 
+    @transaction.atomic
     def transition_to_expired(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
+        refresh_locked(self)
         if self.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
             if self.status != SecurityDepositStatus.PRE_AUTHED.value:
                 raise ValueError(f"SD {self.reference}: cannot expire from status {self.status!r}")
@@ -275,6 +294,7 @@ class SecurityDeposit(AuditedModel):
         payment_signals.security_deposit_expired.send(sender=type(self), sd=sd)
         return sd
 
+    @transaction.atomic
     def transition_to_failed(
         self,
         *,
@@ -282,6 +302,7 @@ class SecurityDeposit(AuditedModel):
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
+        refresh_locked(self)
         if self.status not in (
             SecurityDepositStatus.AWAITING_DETAILS.value,
             SecurityDepositStatus.PRE_AUTHED.value,

@@ -343,3 +343,37 @@ def test_sd_service_state_mismatch_is_409_not_500(
     )
 
     assert response.status_code == 409, response.data
+
+
+@pytest.mark.django_db
+def test_sd_double_hold_is_409_not_500(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+    gbp: Currency,
+) -> None:
+    """A second :hold races the one-active-SD-payment constraint — the
+    IntegrityError must surface as a conflict, not a 500."""
+    SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.PRE_AUTH_HOLD.value,
+        status=SecurityDepositStatus.AWAITING_DETAILS.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+    )
+    # FAILED so the URL anchor doesn't occupy the active-SD-payment slot.
+    sd_payment = Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+        status=PaymentStatus.FAILED.value,
+    )
+    api_client.force_login(accounts_user)
+    url = f"/api/v1/bookings/{booking.pk}/security/payments/{sd_payment.pk}:hold"
+
+    first = api_client.post(url, {"gateway_response": {}}, format="json")
+    assert first.status_code == 200, first.data
+
+    second = api_client.post(url, {"gateway_response": {}}, format="json")
+    assert second.status_code == 409, second.data

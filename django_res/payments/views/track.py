@@ -86,11 +86,18 @@ def _service_call[T](call: Callable[[], T]) -> T:
 
     Mirrors `RefundViewSet._run_service`: the SD/payment services guard their
     transitions with `ValueError`, which would otherwise surface as a 500.
+    IntegrityError is the concurrent twin — two racing requests both pass the
+    in-memory guards and the loser hits a one-active-row constraint; that's a
+    conflict, not a 500.
     """
     try:
         return call()
     except ValueError as exc:
         raise InvalidPaymentState(str(exc)) from exc
+    except IntegrityError as exc:
+        raise InvalidPaymentState(
+            "A conflicting payment row already exists for this booking."
+        ) from exc
 
 
 def _patch_pending_payment(request: Request, booking: Booking, purpose: str) -> None:
@@ -222,7 +229,6 @@ def security_track_action(request: Request, booking_pk: int, action: str) -> Res
                 actor=request.user,
             )
         )
-        sd.refresh_from_db()
         return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
     raise UnknownAction(f"Unknown action {action!r}")
 
@@ -261,7 +267,6 @@ def security_payment_action(
         )
     else:
         raise UnknownAction(f"Unknown action {action!r}")
-    sd.refresh_from_db()
     return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
 
 
@@ -301,7 +306,6 @@ def _payment_capture(request: Request, booking: Booking, payment_pk: int) -> Res
     if payment.status != PaymentStatus.PROCESSING.value:
         raise InvalidPaymentState(f"Cannot capture from status {payment.status!r}")
     payment.transition_to(PaymentStatus.SUCCEEDED.value, actor=request.user, kind="CAPTURE")
-    payment.refresh_from_db()
     return Response(PaymentSerializer(payment).data)
 
 
@@ -313,7 +317,6 @@ def _payment_void(request: Request, booking: Booking, payment_pk: int) -> Respon
     ):
         raise InvalidPaymentState(f"Cannot void from status {payment.status!r}")
     payment.transition_to(PaymentStatus.CANCELLED.value, actor=request.user, kind="VOID")
-    payment.refresh_from_db()
     return Response(PaymentSerializer(payment).data)
 
 
@@ -384,12 +387,10 @@ def _track_action(request: Request, booking: Booking, purpose: str, action: str)
                 actor=request.user,
             )
         )
-        pending.refresh_from_db()
         return _track_response(booking, purpose)
     if action == "waive":
         _service_call(
             lambda: pending.waive(reason=request.data.get("reason", ""), actor=request.user)
         )
-        pending.refresh_from_db()
         return _track_response(booking, purpose)
     raise UnknownAction(f"Unknown action {action!r}")

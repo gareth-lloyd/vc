@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -19,7 +19,7 @@ from core.exceptions import HoldUnavailable, InvalidTransition, QuotationLocked
 from pricing.services.currency import resolve_property_currency
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
-from reservations.models import Quotation, QuotationLine
+from reservations.models import Booking, Quotation, QuotationLine
 from reservations.serializers import (
     BookingDetailSerializer,
     QuotationDetailSerializer,
@@ -299,16 +299,26 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         # Accept + create must share a transaction so an `OverlappingBooking`
         # raised by the booking service rolls back the quotation acceptance,
         # otherwise the quotation gets stuck in ACCEPTED with no booking row.
-        with transaction.atomic():
-            if quotation.status == QuotationStatus.SENT:
-                quotation.accept(line, actor=request.user)
-            booking = BookingService.create_from_quotation_line(
-                line,
-                terms_version=quotation.terms_version,
-                payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
-                agent=quotation.agent,
-                actor=request.user,
-            )
+        try:
+            with transaction.atomic():
+                if quotation.status == QuotationStatus.SENT:
+                    quotation.accept(line, actor=request.user)
+                booking = BookingService.create_from_quotation_line(
+                    line,
+                    terms_version=quotation.terms_version,
+                    payment_method=request.data.get("payment_method", PaymentMethod.CARD.value),
+                    agent=quotation.agent,
+                    actor=request.user,
+                )
+        except IntegrityError:
+            # A concurrent convert won the race past the service's
+            # existing-booking pre-check and `booking_one_per_quotation_line`
+            # fired. Serve the winner's row — same contract as the
+            # sequential double-click retry.
+            winner = Booking.objects.filter(quotation_line=line).first()
+            if winner is None:
+                raise
+            booking = winner
         return Response(
             BookingDetailSerializer(booking).data,
             status=status.HTTP_201_CREATED,

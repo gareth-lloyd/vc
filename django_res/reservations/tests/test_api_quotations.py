@@ -1610,3 +1610,41 @@ def test_line_writes_allowed_while_sent(
     )
 
     assert patch.status_code == 200, patch.data
+
+
+@pytest.mark.django_db
+def test_convert_race_past_idempotency_precheck_recovers_winner(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two concurrent converts can both miss the service's existing-booking
+    pre-check; the loser hits `booking_one_per_quotation_line` and must serve
+    the winner's booking, not a 500."""
+    from django.db import IntegrityError
+
+    from reservations.services.bookings import BookingService
+
+    quotation.send()
+    api_client.force_login(staff)
+    url = f"/api/v1/quotations/{quotation.pk}:convert"
+
+    first = api_client.post(url, {"line": line.pk}, format="json")
+    assert first.status_code == 201, first.data
+
+    # Simulate the loser of the race: its transaction sees no existing
+    # booking, inserts, and hits the unique constraint.
+    def raced(*args: object, **kwargs: object) -> None:
+        raise IntegrityError(
+            'duplicate key value violates unique constraint "booking_one_per_quotation_line"'
+        )
+
+    monkeypatch.setattr(BookingService, "create_from_quotation_line", raced)
+
+    second = api_client.post(url, {"line": line.pk}, format="json")
+
+    assert second.status_code == 201, second.data
+    assert second.data["id"] == first.data["id"]
+    assert Booking.objects.count() == 1

@@ -14,8 +14,15 @@ import pytest
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition
-from payments.enums import PaymentPurpose, PaymentStatus, RefundMethod, RefundStatus
-from payments.models import Payment, PaymentEvent, Refund
+from payments.enums import (
+    PaymentPurpose,
+    PaymentStatus,
+    RefundMethod,
+    RefundStatus,
+    SecurityDepositKind,
+    SecurityDepositStatus,
+)
+from payments.models import Payment, PaymentEvent, Refund, SecurityDeposit
 from payments.services.refund import RefundService
 from pricing.models import Currency
 from reservations.models import Booking
@@ -103,3 +110,46 @@ def test_refund_execute_retry_with_stale_instance_is_idempotent(
         meta__refund_id=refund.pk,
     )
     assert outbound.count() == 1
+
+
+@pytest.fixture
+def pre_authed_sd(db: None, booking: Booking, gbp: Currency) -> SecurityDeposit:
+    return SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.PRE_AUTH_HOLD.value,
+        status=SecurityDepositStatus.PRE_AUTHED.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+    )
+
+
+@pytest.mark.django_db
+def test_sd_release_refuses_stale_instance(pre_authed_sd: SecurityDeposit) -> None:
+    """A stale double-release must lose under lock, not double-fire the
+    `security_deposit_released` signal / RELEASE event."""
+    stale = SecurityDeposit.objects.get(pk=pre_authed_sd.pk)
+    pre_authed_sd.transition_to_released()
+
+    with pytest.raises(ValueError, match="cannot :release"):
+        stale.transition_to_released()
+
+    release_events = PaymentEvent.objects.filter(security_deposit=pre_authed_sd, kind="RELEASE")
+    assert release_events.count() == 1
+
+
+@pytest.mark.django_db
+def test_sd_claim_on_released_sd_persists_no_field_writes(
+    pre_authed_sd: SecurityDeposit,
+) -> None:
+    """A stale claim after a release must not leave captured_amount /
+    damage_claim_id on the row — the guard has to fire before any save."""
+    stale = SecurityDeposit.objects.get(pk=pre_authed_sd.pk)
+    pre_authed_sd.transition_to_released()
+
+    with pytest.raises(ValueError, match="cannot :claim"):
+        stale.transition_to_captured(captured_amount=Decimal("100.00"), damage_claim=None)
+
+    pre_authed_sd.refresh_from_db()
+    assert pre_authed_sd.status == SecurityDepositStatus.RELEASED.value
+    assert pre_authed_sd.captured_amount is None
+    assert pre_authed_sd.damage_claim_id is None

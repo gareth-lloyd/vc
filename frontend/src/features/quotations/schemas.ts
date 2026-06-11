@@ -101,8 +101,10 @@ export const quoteCriteriaInputSchema = z
     q: z.string(),
     // ± days around the preferred dates (seeded from the enquiry's
     // flexibility_days). The backend derives the search window; the dates
-    // above stay the client's true requested stay.
-    flex_days: z.number().int().min(0).max(3),
+    // above stay the client's true requested stay. Mirrors the backend's
+    // SEARCH_FLEX_MAX of 21 — wide enough for a multi-week sweep ("any week
+    // in June") while intake's flexibility_days stays capped at 3.
+    flex_days: z.number().int().min(0).max(21),
   })
   .refine((v) => !v.date_from || !v.date_to || v.date_from < v.date_to, {
     path: ["date_to"],

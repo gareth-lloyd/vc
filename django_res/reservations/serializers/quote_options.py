@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-# The enquiry's flexibility_days is capped at 3; the search window honours
-# the same bound so the two never drift apart.
-SEARCH_FLEX_MAX = 3
+# Deliberately wider than the enquiry's flexibility_days cap (3): intake
+# records a tight ± spread, but the quote-builder search may sweep a
+# multi-week window ("any week in June") around the preferred stay. ±21 days
+# bounds the sweep at three weeks either side — wide enough for a month-long
+# window, small enough to keep the block list scannable.
+SEARCH_FLEX_MAX = 21
 
 
 class _StayOptionsRequestEntrySerializer(serializers.Serializer[None]):

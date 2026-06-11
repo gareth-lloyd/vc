@@ -9,8 +9,16 @@ import { Label } from "@/components/ui/label";
 import { addDaysIso } from "@/lib/format/date";
 import { quoteCriteriaInputSchema, type QuoteCriteriaInput } from "../schemas";
 
-const MIN_FLEX = 0;
-const MAX_FLEX = 3;
+// Stepper stops: day-level near the preferred dates, then whole weeks out to
+// ±21 days (the backend's SEARCH_FLEX_MAX) — wide enough for a multi-week
+// sweep ("any week in June") without 21 individual clicks.
+const FLEX_STEPS = [0, 1, 2, 3, 7, 14, 21];
+const MIN_FLEX = FLEX_STEPS[0];
+const MAX_FLEX = FLEX_STEPS[FLEX_STEPS.length - 1];
+
+const nextFlex = (value: number): number => FLEX_STEPS.find((s) => s > value) ?? MAX_FLEX;
+const prevFlex = (value: number): number =>
+  [...FLEX_STEPS].reverse().find((s) => s < value) ?? MIN_FLEX;
 
 interface Props {
   initial: Partial<QuoteCriteriaInput>;
@@ -106,7 +114,7 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
               size="icon-sm"
               aria-label={t("builder.criteria.flex.decrease_aria")}
               disabled={flex <= MIN_FLEX}
-              onClick={() => flexCtrl.field.onChange(Math.max(MIN_FLEX, flex - 1))}
+              onClick={() => flexCtrl.field.onChange(prevFlex(flex))}
             >
               <Minus className="h-3 w-3" />
             </Button>
@@ -119,7 +127,7 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
               size="icon-sm"
               aria-label={t("builder.criteria.flex.increase_aria")}
               disabled={flex >= MAX_FLEX}
-              onClick={() => flexCtrl.field.onChange(Math.min(MAX_FLEX, flex + 1))}
+              onClick={() => flexCtrl.field.onChange(nextFlex(flex))}
             >
               <Plus className="h-3 w-3" />
             </Button>

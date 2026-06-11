@@ -270,6 +270,34 @@ describe("QuoteBuilder", () => {
     });
   });
 
+  it("steps the flexibility window by whole weeks beyond ±3 days, up to ±21", async () => {
+    let searchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        searchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          quotes: [{ property_id: 7, available: true, total: "4500.00", currency_code: "USD" }],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 3 }} />);
+
+    // Past the day-level spread the stepper jumps in whole weeks…
+    const increase = screen.getByRole("button", { name: /increase date flexibility/i });
+    await userEvent.click(increase);
+    expect(screen.getAllByText("± 7 days").length).toBeGreaterThan(0);
+    await userEvent.click(increase);
+    await userEvent.click(increase);
+    expect(screen.getAllByText("± 21 days").length).toBeGreaterThan(0);
+    // …and ±21 is the ceiling.
+    expect(increase).toBeDisabled();
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+    expect(searchBody).toMatchObject({ flex_days: 21 });
+  });
+
   it("stages and saves the picked block's dates and repriced total", async () => {
     // Wed 1 Jul → Wed 8 Jul ± 2 at a Sat-changeover villa: the backend offers
     // two Saturday blocks; the operator picks the later one, which reprices.

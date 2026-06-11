@@ -209,6 +209,47 @@ class TestStayOptionsSearch:
         assert len(result["stay_options"]) == 1
         assert result["stay_options"][0]["is_default"] is True
 
+    def test_multi_week_window_offers_one_block_per_week(
+        self,
+        property_: Property,
+        rate_rule: RateRule,
+        guest: Guest,
+        gbp: Currency,
+        terms: TermsVersion,
+    ) -> None:
+        # "Any week around early July": Sat 4 Jul → Sat 11 Jul ± 21 days
+        # widens the window to Sat 13 Jun → Sat 1 Aug, which admits seven
+        # 7-night Saturday blocks. The preferred arrival stays the default,
+        # and each block carries its own availability flag.
+        _sat_changeover(property_)
+        make_occupying_booking(
+            property=property_,
+            guest=guest,
+            currency=gbp,
+            terms=terms,
+            date_from=date(2026, 6, 22),
+            date_to=date(2026, 6, 26),
+        )
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
+            flex_days=21,
+        )
+        assert result["available"] is True
+        assert result["date_from"] == "2026-07-04"
+        assert result["total"] == "1400.00"
+        assert [
+            (o["date_from"], o["is_default"], o["is_available"]) for o in result["stay_options"]
+        ] == [
+            ("2026-06-13", False, True),
+            ("2026-06-20", False, False),
+            ("2026-06-27", False, True),
+            ("2026-07-04", True, True),
+            ("2026-07-11", False, True),
+            ("2026-07-18", False, True),
+            ("2026-07-25", False, True),
+        ]
+        assert all(o["nights"] == 7 for o in result["stay_options"])
+
     def test_no_fitting_block_falls_back_to_preferred_dates(
         self, property_: Property, rate_rule: RateRule
     ) -> None:
@@ -363,11 +404,28 @@ class TestSearchOptionsEndpoint:
         assert quote["changeover_day"] == "sat"
         assert quote["inclusion"] == ""
 
+    def test_multi_week_flex_accepted(
+        self,
+        api_client: APIClient,
+        staff: User,
+        property_: Property,
+        rate_rule: RateRule,
+    ) -> None:
+        # The widest window (±21 days) round-trips: seven Saturday blocks.
+        _sat_changeover(property_)
+        api_client.force_authenticate(staff)
+        body = self._body(property_, flex_days=21)
+        body["requests"][0].update({"date_from": "2026-07-04", "date_to": "2026-07-11"})  # type: ignore[index]
+        response = api_client.post(self.URL, body, format="json")
+        assert response.status_code == 200
+        [quote] = response.data["quotes"]
+        assert len(quote["stay_options"]) == 7
+
     def test_flex_days_out_of_range_rejected(
         self, api_client: APIClient, staff: User, property_: Property
     ) -> None:
         api_client.force_authenticate(staff)
-        response = api_client.post(self.URL, self._body(property_, flex_days=4), format="json")
+        response = api_client.post(self.URL, self._body(property_, flex_days=22), format="json")
         assert response.status_code == 400
 
     def test_unknown_currency_is_a_404(

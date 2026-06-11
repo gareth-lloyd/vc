@@ -2,11 +2,12 @@
 
 **Severity:** gap (blocks any non-toy image use on staging/prod).
 
-**Status:** 🟨 in progress — **PR-A built** (storage settings, multipart
+**Status:** 🟨 code complete — **PR-A merged** (storage settings, multipart
 upload, `image_url` read path, `UploadTicket` dropped, `post_delete` cleanup,
-FE file picker) on branch `feat/s3-image-hosting` (worktree
-`../villacollective-worktrees/s3-image-hosting/`). Bucket created. Remaining:
-PR-B (legacy import + prod cutover) and the ops prerequisites below.
+FE file picker) and **PR-B built** (`import_legacy_images` command + tests +
+this runbook, branch `feat/legacy-image-import`, 2026-06-11). Bucket created.
+Remaining: the ops prerequisites below, then executing the cutover runbook
+(the actual staging/prod import runs).
 
 **Source:** ad-hoc request 2026-06-08 ("proper S3-bucket-based image hosting
 for staging and prod"). An earlier revision of this doc specced **Cloudflare
@@ -190,6 +191,43 @@ set its keys as Render env vars per service. Do not ship the
 2. App-scoped IAM user; keys into Render env vars (staging + prod services).
 3. Source export of the ~13k legacy binaries for `import_legacy_images
    --source` (`CUTOVER.md §8` — update it to point here).
+
+## Cutover runbook (PR-B)
+
+0. **The flip is not a separate deploy.** `settings/production.py` on main
+   already selects S3 storage, so the **next prod push of main flips prod,
+   whatever its motivation**. First confirm the prod service's current deploy
+   state; until step 2 has run, pushing main to the prod Render service is
+   gated on it (and on the AWS env vars being set) — fold this into the
+   existing "check Render env vars before pushing" habit.
+1. **Prereqs** (above): app-scoped IAM user (`villacollective-app`,
+   put/get/delete/list on `villacollective-images` only) with keys in Render
+   env vars for staging + prod; ops export of the legacy `PropertyImages/`
+   tree onto the operator's machine. Never ship the `villacollective-cli`
+   user's keys to Render.
+2. **Import into `production/` before the flip-carrying push** — from the
+   operator's machine (the source dir is local, not on Render):
+
+   ```bash
+   export DJANGO_SETTINGS_MODULE=villacollective.settings.production
+   export DATABASE_URL=<Render prod external connection string>
+   export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
+   # plus whatever else production.py fails fast on — check the file at run
+   # time; real-or-dummy is fine, the command never touches them.
+   uv run python manage.py import_legacy_images --source /path/to/PropertyImages --dry-run
+   uv run python manage.py import_legacy_images --source /path/to/PropertyImages
+   ```
+
+   Record the uploaded / skipped / missing-at-source counts; missing-at-source
+   is the documented expected-loss bucket. A collision abort means the cutover
+   dump broke the GUID-uniqueness property — stop and investigate.
+3. **Push/deploy prod**; smoke-test one legacy `image_url` and one fresh FE
+   upload.
+4. **Staging hygiene** (resolved decision A): rows seeded before staging's
+   flip point at objects that never reached S3 —
+   `aws s3 rm --recursive s3://villacollective-images/staging/ --profile
+   villacollective-dev`, reset the staging DB, re-run `seed_dev`.
+5. Re-run the import any time for stragglers — it is idempotent.
 
 ## Suggested PR sequencing
 

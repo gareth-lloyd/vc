@@ -231,18 +231,26 @@ uv run python manage.py merge_country --from-legacy 24 --to-iso2 GB
 
 Output should report `Rewrote N rows and deleted source country.`
 
-## 8. Image files (out of scope here)
+## 8. Image files
 
-`properties_propertyimage` has ~13 000 filenames pointing at the legacy
-`/uploads/` tree; the actual files live wherever ops has them (S3, a
-backup tarball, etc.). Copy the binaries into the new storage backend
-according to the separate **Image migration workstream**, tracked as the
-legacy-import slice (§8 of "Proposed shape") in
-`django_res_design/todo/gap-012-s3-image-hosting.md` (the canonical
-home — note the loader flattens `PropertyImages/<VillaId>/<file>` to a flat
-`properties/legacy/<file>` key, so the copy must reconstruct the source
-subfolder from each row's `property.legacy_id`). The DB rows are already in
-place.
+The DB rows are already in place (~13 000 `properties/legacy/<file>` keys
+with no backing binaries). Upload the binaries with:
+
+```bash
+uv run python manage.py import_legacy_images --source <PropertyImages dir> --dry-run
+uv run python manage.py import_legacy_images --source <PropertyImages dir>
+```
+
+`--source` is the exported legacy `PropertyImages/` directory (per-villa-id
+subfolders); the command reconstructs each nested source path from
+`property.legacy_id` and uploads to the row's existing flat key. Idempotent;
+missing-at-source files are the documented expected-loss bucket.
+
+**Ordering:** the import must run into the `production/` prefix **before**
+the prod deploy that flips storage to S3 — `settings/production.py` on main
+already selects S3, so any prod push of main carries the flip. Full runbook
+(env vars, IAM prereqs, staging reset):
+`django_res_design/todo/gap-012-s3-image-hosting.md` §Cutover runbook.
 
 ## 9. Cut DNS / app config
 

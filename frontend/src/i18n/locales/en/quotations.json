@@ -255,11 +255,15 @@
       "unavailable_aria": "{{name}} — unavailable for these dates",
       "unavailable_count_one": "{{count}} villa unavailable for these dates",
       "unavailable_count_other": "{{count}} villas unavailable for these dates",
+      "dates_unavailable_hint": "Already on hold or booked for these dates.",
       "capacity_hint": {
         "intro": "Matched your search but hidden because capacity isn't set:",
         "suffix": "— set its capacity to quote it."
       },
-      "priced_count": "{{available}} available · priced {{priced}} of {{total}} matching villas",
+      "priced_count": "{{available}} available · checked {{priced}} of {{total}} matching villas",
+      "bedrooms_one": "{{count}} bedroom",
+      "bedrooms_other": "{{count}} bedrooms",
+      "sleeps": "sleeps {{count}}",
       "load_more": "Load more",
       "loading_more": "Loading…"
     },

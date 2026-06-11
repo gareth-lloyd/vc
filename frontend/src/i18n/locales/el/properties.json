@@ -120,6 +120,7 @@
     "load_failed_title": "Δεν ήταν δυνατή η φόρτωση διαθεσιμότητας",
     "load_failed_body": "Δοκιμάστε ξανά.",
     "booked_title": "Κρατημένο",
+    "quotation_title": "Προβολή προσφοράς",
     "hold_fallback": "Δέσμευση",
     "cell_aria": "{{date}}: {{status}}",
     "hold_reasons": {

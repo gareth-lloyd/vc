@@ -42,23 +42,6 @@ class HoldService:
     """Place / release / expire `BookingHold` rows."""
 
     @classmethod
-    def _has_overlapping_live_hold(
-        cls,
-        *,
-        property: Any,
-        date_from: date_type,
-        date_to: date_type,
-        exclude_hold_ids: list[int] | None = None,
-    ) -> bool:
-        """Check Python-side whether any live hold overlaps the requested range."""
-        return BookingHold.live_overlapping(
-            property=property,
-            date_from=date_from,
-            date_to=date_to,
-            exclude_ids=exclude_hold_ids,
-        ).exists()
-
-    @classmethod
     def _assert_no_overlap(
         cls,
         *,
@@ -71,18 +54,33 @@ class HoldService:
 
         The shared conflict guard for `place` (new hold) and `move`/
         `update_block` (relocate, excluding the hold itself) — one predicate so
-        the overlap rule can't drift between create and edit.
+        the overlap rule can't drift between create and edit. The error message
+        is operator-facing (the SPA toasts it verbatim), so it names the villa
+        and whoever owns the blocking hold rather than bare pks.
         """
-        if cls._has_overlapping_live_hold(
-            property=property,
-            date_from=date_from,
-            date_to=date_to,
-            exclude_hold_ids=exclude_hold_ids,
-        ):
-            raise HoldUnavailable(
-                f"An overlapping live hold already exists for property "
-                f"{property.pk} on {date_from}..{date_to}"
+        hold = (
+            BookingHold.live_overlapping(
+                property=property,
+                date_from=date_from,
+                date_to=date_to,
+                exclude_ids=exclude_hold_ids,
             )
+            .select_related("quotation", "booking")
+            .first()
+        )
+        if hold is None:
+            return
+        if hold.quotation_id:
+            owner = f"quotation {hold.quotation.reference}"
+        elif hold.booking_id:
+            owner = f"booking {hold.booking.reference}"
+        else:
+            owner = f"a {hold.get_reason_display().lower()} hold"
+        expiry = f" until {hold.expires_at:%d %b %Y %H:%M %Z}" if hold.expires_at else ""
+        raise HoldUnavailable(
+            f"{property} is unavailable for {date_from}..{date_to} — "
+            f"{hold.date_from}..{hold.date_to} is already held by {owner}{expiry}."
+        )
 
     @classmethod
     @transaction.atomic

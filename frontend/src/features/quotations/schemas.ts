@@ -99,6 +99,12 @@ export type QuoteCriteriaInput = z.infer<typeof quoteCriteriaInputSchema>;
 export const quoteOptionSchema = z.object({
   property_id: z.number(),
   property_name: z.string(),
+  // Disambiguators for the results card: distinct villas can share a
+  // guest-facing display name, so the card also shows the internal name
+  // (when it differs) and the capacity headline.
+  internal_name: z.string().nullable().optional(),
+  bedrooms: z.number().nullable().optional(),
+  sleeps: z.number().nullable().optional(),
   property_slug: z.string().nullable().optional(),
   hero_image_url: z.string().nullable().optional(),
   available: z.boolean(),

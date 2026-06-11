@@ -271,6 +271,25 @@ export function AvailabilityTab() {
               );
             }
 
+            // A quotation hold links through to its owning quotation — read
+            // only; editing stays with the quotation itself.
+            if (reason === "quotation" && cell?.quotation_id != null) {
+              return (
+                <Link
+                  key={iso}
+                  to={`/enquiries/quotes/${cell.quotation_id}`}
+                  className={`${base} ${reasonClasses("quotation")}`}
+                  title={t("availability.quotation_title")}
+                  aria-label={t("availability.cell_aria", {
+                    date: dateLabel,
+                    status: reasonLabel("quotation"),
+                  })}
+                >
+                  {dayNum}
+                </Link>
+              );
+            }
+
             if (reason === "") {
               return (
                 <div key={iso} className={`${base} text-foreground`}>

@@ -349,6 +349,20 @@ def test_quotation_hold_maps_to_quotation_reason_no_block_id(
     cal = AvailabilityService.calendar(property_, date(2026, 6, 9), date(2026, 6, 18))
     assert cal[date(2026, 6, 12)].reason == "quotation"
     assert cal[date(2026, 6, 12)].block_id is None
+    # No edit affordance (block_id stays None) but a read-only link to the
+    # owning quotation so the operator can click through from the calendar.
+    assert cal[date(2026, 6, 12)].quotation_id == quotation.pk
+
+
+def test_operator_block_has_no_quotation_id(property_: Property) -> None:
+    _hold(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.MANUAL.value,
+    )
+    cal = AvailabilityService.calendar(property_, date(2026, 6, 9), date(2026, 6, 18))
+    assert cal[date(2026, 6, 12)].quotation_id is None
 
 
 def test_booking_cell_has_no_block_id_and_booked_outranks_manual(

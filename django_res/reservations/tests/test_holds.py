@@ -52,6 +52,55 @@ def test_place_refuses_overlapping_live_hold(property_: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_overlap_error_names_property_and_owning_quotation(
+    property_: Property, quotation_line: QuotationLine
+) -> None:
+    """The conflict message is operator-readable: villa name + blocking quote ref."""
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+        quotation=quotation_line.quotation,
+        quotation_line=quotation_line,
+    )
+    with pytest.raises(HoldUnavailable) as excinfo:
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 12),
+            date_to=date(2026, 6, 20),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+    message = str(excinfo.value)
+    assert str(property_) in message
+    assert quotation_line.quotation.reference in message
+    assert "2026-06-12" in message and "2026-06-20" in message
+
+
+@pytest.mark.django_db
+def test_overlap_error_names_block_reason_without_quotation(property_: Property) -> None:
+    """A plain operator block reports its reason rather than a bare property pk."""
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+        never_expires=True,
+    )
+    with pytest.raises(HoldUnavailable) as excinfo:
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 12),
+            date_to=date(2026, 6, 20),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+    message = str(excinfo.value)
+    assert str(property_) in message
+    assert "owner block" in message.lower()
+
+
+@pytest.mark.django_db
 def test_place_allows_overlap_when_prior_hold_released(property_: Property) -> None:
     expires = timezone.now() + timedelta(hours=1)
     first = HoldService.place(

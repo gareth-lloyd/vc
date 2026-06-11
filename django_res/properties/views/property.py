@@ -17,6 +17,11 @@ from rest_framework.response import Response
 
 from core.api import IsReservationsWriter, IsStaff, not_implemented_response
 from properties.filters import PropertyFilter
+from properties.filters.property import (
+    include_unavailable_requested,
+    parse_availability_range,
+    unavailable_property_ids,
+)
 from properties.models import Property
 from properties.serializers import (
     PropertyDetailSerializer,
@@ -56,6 +61,28 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if self.action in {"create", "update", "partial_update"}:
             return PropertyWriteSerializer
         return PropertyDetailSerializer
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        """List requests with a date range get the bulk unavailable-id set.
+
+        `PropertyListSerializer.available_for_range` reads it. The shared
+        `parse_availability_range` keeps the per-row flag and the
+        row-exclusion filter agreeing on what "a date range" is.
+        """
+        context = super().get_serializer_context()
+        if self.action != "list":
+            return context
+        params = self.request.query_params
+        date_range = parse_availability_range(params)
+        if date_range is None:
+            return context
+        if include_unavailable_requested(params):
+            context["unavailable_property_ids"] = unavailable_property_ids(*date_range)
+        else:
+            # The availability filter already excluded unavailable rows, so
+            # every surviving row is available — no second conflict query.
+            context["unavailable_property_ids"] = frozenset()
+        return context
 
     def get_object(self) -> Property:
         """Look up by numeric pk or slug. Mirrors the spec's dual-key shape."""

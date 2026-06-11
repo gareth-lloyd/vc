@@ -45,6 +45,7 @@ def _serialize_segment(cell: Any) -> dict[str, Any]:
         "available": cell.available,
         "reason": cell.reason,
         "block_id": cell.block_id,
+        "quotation_id": cell.quotation_id,
     }
 
 
@@ -54,6 +55,7 @@ def _serialize_cell(day: date, cell: Any) -> dict[str, Any]:
         "available": cell.available,
         "reason": cell.reason,
         "block_id": cell.block_id,
+        "quotation_id": cell.quotation_id,
     }
     if cell.segments is not None:
         payload["segments"] = {

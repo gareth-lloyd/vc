@@ -120,6 +120,7 @@
     "load_failed_title": "Couldn't load availability",
     "load_failed_body": "Try again.",
     "booked_title": "Booked",
+    "quotation_title": "View quotation",
     "hold_fallback": "Hold",
     "cell_aria": "{{date}}: {{status}}",
     "hold_reasons": {

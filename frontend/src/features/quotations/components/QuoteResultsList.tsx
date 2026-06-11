@@ -50,6 +50,25 @@ function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) 
   );
 }
 
+// Distinct villas can share a guest-facing display name (the card title), so
+// the meta line carries the internal name (when it differs) and the capacity
+// headline to tell same-named results apart.
+function OptionMeta({ option }: { option: QuoteOption }) {
+  const { t } = useTranslation("quotations");
+  const parts: string[] = [];
+  if (option.internal_name && option.internal_name !== option.property_name) {
+    parts.push(option.internal_name);
+  }
+  if (option.bedrooms != null) {
+    parts.push(t("builder.results.bedrooms", { count: option.bedrooms }));
+  }
+  if (option.sleeps != null) {
+    parts.push(t("builder.results.sleeps", { count: option.sleeps }));
+  }
+  if (parts.length === 0) return null;
+  return <p className="text-muted-foreground text-xs">{parts.join(" · ")}</p>;
+}
+
 export function QuoteResultsList({
   options,
   isLoading,
@@ -119,6 +138,7 @@ export function QuoteResultsList({
             />
             <div>
               <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
+              <OptionMeta option={option} />
               <p className="text-muted-foreground text-xs">
                 {t("builder.results.total")}:{" "}
                 <span className="text-foreground font-medium">
@@ -158,6 +178,7 @@ export function QuoteResultsList({
             />
             <div>
               <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
+              <OptionMeta option={option} />
               <Tooltip>
                 <TooltipTrigger asChild>
                   {/* tabIndex makes the badge keyboard-focusable so the tooltip
@@ -214,6 +235,7 @@ export function QuoteResultsList({
                         <h4 className="text-foreground text-sm font-semibold">
                           {option.property_name}
                         </h4>
+                        <OptionMeta option={option} />
                         <p className="text-muted-foreground text-xs">
                           {t("builder.results.unavailable")}
                         </p>
@@ -222,7 +244,11 @@ export function QuoteResultsList({
                   </article>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {option.error_detail ?? option.error_code ?? t("builder.results.unavailable")}
+                  {option.error_code === "dates_unavailable"
+                    ? t("builder.results.dates_unavailable_hint")
+                    : (option.error_detail ??
+                      option.error_code ??
+                      t("builder.results.unavailable"))}
                 </TooltipContent>
               </Tooltip>
             ))}

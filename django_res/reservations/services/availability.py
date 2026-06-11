@@ -53,6 +53,10 @@ class CellStatus:
     ``None`` for bookings and for system holds (quotation / booking deposit)
     so the UI never offers an edit affordance on read-only state.
 
+    ``quotation_id`` is the owning quotation of a quotation hold — a read-only
+    click-through to the quotation page, deliberately separate from
+    ``block_id`` so linking never doubles as an edit affordance.
+
     ``segments`` carries an AM/PM split, set by ``_apply_changeover_segments``
     on two kinds of day: a *true changeover* (one stay departs the morning,
     another arrives the afternoon — both halves occupied, ``available=False``)
@@ -63,6 +67,7 @@ class CellStatus:
     available: bool
     reason: str = ""
     block_id: int | None = None
+    quotation_id: int | None = None
     segments: dict[str, CellStatus] | None = None
 
 
@@ -200,7 +205,13 @@ class AvailabilityService:
             result[cursor] = CellStatus(available=True)
             cursor += timedelta(days=1)
 
-        def _mark(start: date, end: date, reason: str, block_id: int | None) -> None:
+        def _mark(
+            start: date,
+            end: date,
+            reason: str,
+            block_id: int | None,
+            quotation_id: int | None = None,
+        ) -> None:
             day = max(start, range_start)
             stop = min(end - timedelta(days=1), range_end)
             while day <= stop:
@@ -208,7 +219,12 @@ class AvailabilityService:
                 if cell.available or _REASON_PRIORITY[reason] > _REASON_PRIORITY.get(
                     cell.reason, -1
                 ):
-                    result[day] = CellStatus(available=False, reason=reason, block_id=block_id)
+                    result[day] = CellStatus(
+                        available=False,
+                        reason=reason,
+                        block_id=block_id,
+                        quotation_id=quotation_id,
+                    )
                 day += timedelta(days=1)
 
         for hold in holds:
@@ -218,6 +234,7 @@ class AvailabilityService:
                 hold.date_to,
                 kind,
                 hold.pk if kind in _EDITABLE_KINDS else None,
+                hold.quotation_id if kind == "quotation" else None,
             )
         for booking in bookings:
             _mark(booking.date_from, booking.date_to, "booked", None)
@@ -270,6 +287,7 @@ class AvailabilityService:
                     available=False,
                     reason=kind,
                     block_id=hold.pk if kind in _EDITABLE_KINDS else None,
+                    quotation_id=hold.quotation_id if kind == "quotation" else None,
                 ),
             )
         for booking in bookings:
@@ -310,6 +328,7 @@ class AvailabilityService:
                 available=False,
                 reason=rollup.reason,
                 block_id=rollup.block_id,
+                quotation_id=rollup.quotation_id,
                 segments={"am": am, "pm": pm},
             )
 

@@ -260,6 +260,33 @@ def test_list_exposes_total_and_amount_paid(
 
 
 @pytest.mark.django_db
+def test_list_exposes_night_count_and_guest_email(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """The FE booking schema reads `night_count` and `guest_email` on both
+    list and detail payloads — derived fields, never stored."""
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/bookings")
+
+    assert response.status_code == 200
+    row = response.data["results"][0]
+    assert row["night_count"] == 7
+    assert row["guest_email"] == "ada@example.com"
+
+
+@pytest.mark.django_db
+def test_detail_exposes_night_count_and_guest_email(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["night_count"] == 7
+    assert response.data["guest_email"] == "ada@example.com"
+
+
+@pytest.mark.django_db
 def test_amount_paid_sums_settled_rental_payments_only(
     api_client: APIClient, staff: User, booking: Booking, gbp: Currency
 ) -> None:

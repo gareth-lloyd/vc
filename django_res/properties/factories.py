@@ -64,6 +64,47 @@ _CATEGORIES = [
 
 _faker = Faker("en_GB")
 
+# Deterministic villa-name menu. Component lengths (7, 9, 10) are pairwise
+# coprime, so indexing each list with the same `n` enumerates every
+# combination — 630 distinct names — before any repeat. The RUN_TOKEN-derived
+# offset rotates the start point per process, so additive `seed_dev` re-runs
+# (which restart `factory.Sequence` at 0) don't replay the same window.
+_VILLA_KINDS = ("Villa", "Casa", "Finca", "Quinta", "Chalet", "Mas", "Domaine")
+_VILLA_FIRST = (
+    "Azure",
+    "Saffron",
+    "Cypress",
+    "Juniper",
+    "Coral",
+    "Indigo",
+    "Amber",
+    "Pearl",
+    "Olive",
+)
+_VILLA_SECOND = (
+    "Cove",
+    "Ridge",
+    "Tides",
+    "Grove",
+    "Bluff",
+    "Lagoon",
+    "Terrace",
+    "Point",
+    "Hollow",
+    "Crest",
+)
+_VILLA_NAME_CYCLE = len(_VILLA_KINDS) * len(_VILLA_FIRST) * len(_VILLA_SECOND)
+_VILLA_NAME_OFFSET = int(RUN_TOKEN, 16) % _VILLA_NAME_CYCLE
+
+
+def villa_name(n: int) -> str:
+    """Deterministic, evocative villa name — distinct for 630 consecutive `n`."""
+    return (
+        f"{_VILLA_KINDS[n % len(_VILLA_KINDS)]}"
+        f" {_VILLA_FIRST[n % len(_VILLA_FIRST)]}"
+        f" {_VILLA_SECOND[n % len(_VILLA_SECOND)]}"
+    )
+
 
 def _tiny_png() -> ContentFile:
     """A 1x1 PNG so `PropertyImage.image` (a required ImageField) is valid
@@ -89,8 +130,9 @@ def villa_manifest() -> list[dict[str, Any]]:
 
     Each entry is one "available image option": the `properties` seed stage
     cycles through this list, exhausting every villa before repeating, and uses
-    each entry's `display_name` / `location_tag` / `country_iso2` /
-    `style_anchor` to build a property coherent with its imagery.
+    each entry's `location_tag` / `country_iso2` / `style_anchor` to build a
+    property coherent with its imagery. Names are not drawn from the manifest;
+    `villa_name` generates them so they stay unique past 20 properties.
 
     Empty on a checkout without the generated pool, so the seeder falls back to
     random property data and tests are unaffected.
@@ -190,8 +232,8 @@ class PropertyFactory(DjangoModelFactory):
         model = models.Property
         skip_postgeneration_save = True
 
-    name = factory.Faker("street_name")
-    display_name = factory.LazyAttribute(lambda o: f"Villa {o.name}")
+    name = factory.Sequence(lambda n: villa_name(n + _VILLA_NAME_OFFSET))
+    display_name = factory.SelfAttribute("name")
     slug = factory.Sequence(lambda n: f"villa-{RUN_TOKEN}-{n}")
     status = PropertyStatus.ACTIVE
     channel = PropertyChannel.DIRECT

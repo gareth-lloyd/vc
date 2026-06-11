@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+import math
 from typing import cast
 
 import pytest
@@ -48,16 +50,41 @@ def test_property_slug_unique_across_runs() -> None:
     assert factories.PropertyFactory().slug != factories.PropertyFactory().slug
 
 
+def test_villa_name_is_deterministic_and_maximally_unique() -> None:
+    """`villa_name` must enumerate every kind/first/second combination before
+    repeating — which holds only while the component lengths stay pairwise
+    coprime. Guard both so a word-list edit can't silently shrink the cycle."""
+    lengths = [
+        len(factories._VILLA_KINDS),
+        len(factories._VILLA_FIRST),
+        len(factories._VILLA_SECOND),
+    ]
+    for a, b in itertools.combinations(lengths, 2):
+        assert math.gcd(a, b) == 1
+    cycle = math.prod(lengths)
+    names = [factories.villa_name(n) for n in range(cycle)]
+    assert len(set(names)) == cycle
+    assert factories.villa_name(cycle) == names[0]  # wraps, doesn't drift
+
+
+def test_property_factory_names_unique_within_run() -> None:
+    props = factories.PropertyFactory.build_batch(50)
+    names = [p.name for p in props]
+    assert len(set(names)) == len(names)
+    assert all(p.display_name == p.name for p in props)
+
+
 def test_villa_manifest_lists_only_entries_with_imagery() -> None:
     """The committed pool drives manifest-coherent seeding; every returned
-    entry must have the keys the `properties` stage reads and a `hero.jpg`.
+    entry must have the keys the seed stages and `PropertyFactory` read
+    (names come from `villa_name`, not the manifest) and a `hero.jpg`.
 
     Skips when the (optional) pool is absent — the seeder falls back to random
     data without it, so a checkout that has removed seed_data/ stays green."""
     villas = factories.villa_manifest()
     if not villas:
         pytest.skip("villa image pool not present (core/seed_data/villa_images)")
-    required = {"slug", "display_name", "location_tag", "country_iso2", "style_anchor"}
+    required = {"slug", "location_tag", "country_iso2", "style_anchor"}
     for villa in villas:
         assert required <= villa.keys()
         assert (factories._SEED_IMAGE_ROOT / villa["slug"] / "hero.jpg").is_file()

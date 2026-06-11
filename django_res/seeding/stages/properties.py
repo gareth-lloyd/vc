@@ -65,9 +65,11 @@ def _run(ctx: SeedContext) -> int:
     currency_pool: list[Any] = list(ctx.currencies.values()) or [ctx.default_currency]
     group_pool: list[Any] = list(ctx.groups)
     # Villa entries with generated imagery. Cycling this list assigns each
-    # property a real villa identity (name/location/description) coherent with
-    # its imagery, exhausting every villa before any repeats. Empty without the
-    # generated pool -> properties keep the legacy random shape.
+    # property imagery plus a coherent location/description, exhausting every
+    # villa before any repeats. Names are NOT taken from the manifest — the
+    # factory's deterministic villa_name menu keeps them unique where the
+    # 20-entry manifest would repeat. Empty without the generated pool ->
+    # properties keep the legacy random shape.
     villa_pool: list[dict[str, Any]] = villa_manifest()
 
     for i in range(ctx.n_properties):
@@ -84,7 +86,6 @@ def _run(ctx: SeedContext) -> int:
             # malformed Country row.
             country = Country.objects.get(iso2=villa["country_iso2"])
             locality = villa["location_tag"].rsplit(",", 1)[0].strip()
-            extra_kwargs["display_name"] = villa["display_name"]
             extra_kwargs["region"] = RegionFactory(country=country, name=locality)
             extra_kwargs["children__villa"] = villa
         # Pre-approval is meaningless without an owner to approve, so a

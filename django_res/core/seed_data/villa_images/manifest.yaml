@@ -11,7 +11,8 @@
 #
 # Seeding (`core/seed/stages/properties.py`) cycles these entries, exhausting
 # every villa before repeating, and builds each property from the entry:
-#   display_name  -> Property.display_name
+#   display_name  -> image-generation context only; property names come from
+#                    the deterministic menu in `properties.factories.villa_name`
 #   location_tag  -> Region name / locality (text before the last comma)
 #   country_iso2  -> Country (reuses the migration-seeded ISO-3166 row)
 #   style_anchor  -> PropertyDescription body

@@ -31,6 +31,7 @@ const enquiryFixture = {
   created_at: "2026-05-01T00:00:00Z",
   updated_at: "2026-05-02T00:00:00Z",
   is_flexible: false,
+  flexibility_days: 0,
   min_bedrooms: null,
   referral_code: "",
   inbound_message: "",

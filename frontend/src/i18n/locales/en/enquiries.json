@@ -216,12 +216,12 @@
       "guest_hint": "Link an existing guest to reuse their details, or leave blank to capture a new one below."
     },
     "date_spread": {
-      "label": "Widen range",
+      "label": "Flexible by",
       "value_one": "± {{count}} day",
       "value_other": "± {{count}} days",
       "hint": "Guests are often flexible around changeover days.",
-      "preview_zero": "Submitting requested dates unchanged.",
-      "preview_widened": "Widened to {{from}} → {{to}}.",
+      "preview_zero": "Quote search will use the requested dates.",
+      "preview_widened": "Quote search window: {{from}} → {{to}}. Requested dates are stored unchanged.",
       "increase_aria": "Increase date spread",
       "decrease_aria": "Decrease date spread"
     },

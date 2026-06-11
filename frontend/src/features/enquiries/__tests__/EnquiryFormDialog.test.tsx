@@ -63,6 +63,7 @@ describe("EnquiryFormDialog date-spread stepper", () => {
             request_type: "quote",
             site_source: "main_website",
             is_flexible: false,
+            flexibility_days: 0,
             min_bedrooms: null,
             referral_code: "",
             inbound_message: "",
@@ -85,7 +86,11 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     await userEvent.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => expect(payload).not.toBeNull());
-    expect(payload).toMatchObject({ date_from: "2026-06-10", date_to: "2026-06-17" });
+    expect(payload).toMatchObject({
+      date_from: "2026-06-10",
+      date_to: "2026-06-17",
+      flexibility_days: 0,
+    });
   });
 
   it("navigates to the new enquiry's detail page after creating it", async () => {
@@ -171,7 +176,7 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     expect(posted).toBe(false);
   });
 
-  it("widens date_from / date_to by the configured spread", async () => {
+  it("submits unshifted dates plus flexibility_days — never widened dates", async () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
       http.post("/api/v1/enquiries", async ({ request }) => {
@@ -184,6 +189,7 @@ describe("EnquiryFormDialog date-spread stepper", () => {
             ...VALID_GUEST,
             date_from: payload.date_from,
             date_to: payload.date_to,
+            flexibility_days: payload.flexibility_days,
             adults: 2,
             children: 0,
             request_type: "quote",
@@ -208,19 +214,81 @@ describe("EnquiryFormDialog date-spread stepper", () => {
     await userEvent.clear(screen.getByLabelText(/^to$/i));
     await userEvent.type(screen.getByLabelText(/^to$/i), "2026-06-17");
 
-    // Click the "+" stepper twice to widen by ±2 days.
+    // Click the "+" stepper twice for ±2 days of flexibility.
     const increment = screen.getByRole("button", { name: /increase date spread/i });
     await userEvent.click(increment);
     await userEvent.click(increment);
 
-    // Widened preview reflects the new range.
+    // Preview shows the widened SEARCH window, but the stored dates stay true.
     expect(screen.getByText(/2026-06-08/)).toBeInTheDocument();
     expect(screen.getByText(/2026-06-19/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => expect(payload).not.toBeNull());
-    expect(payload).toMatchObject({ date_from: "2026-06-08", date_to: "2026-06-19" });
+    expect(payload).toMatchObject({
+      date_from: "2026-06-10",
+      date_to: "2026-06-17",
+      flexibility_days: 2,
+    });
+  });
+
+  it("seeds the stepper from the enquiry's flexibility_days in edit mode", async () => {
+    let payload: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/enquiries/31", async ({ request }) => {
+        payload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          id: 31,
+          reference: "E-031",
+          status: "new",
+          ...VALID_GUEST,
+          ...payload,
+          referral_code: "",
+          quotations: [],
+        });
+      }),
+    );
+
+    const enquiry = {
+      id: 31,
+      reference: "E-031",
+      status: "new" as const,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.com",
+      phone: "",
+      contact_method: null,
+      date_from: "2026-06-10",
+      date_to: "2026-06-17",
+      adults: 2,
+      children: 0,
+      request_type: "quote" as const,
+      site_source: "main_website" as const,
+      is_flexible: false,
+      flexibility_days: 3,
+      min_bedrooms: null,
+      referral_code: "",
+      inbound_message: "",
+      quotations: [],
+    };
+
+    renderWithProviders(
+      <EnquiryFormDialog mode="edit" enquiry={enquiry} open onOpenChange={() => {}} />,
+    );
+
+    // Stepper hydrated to ±3 — increment is pegged at the cap.
+    expect(screen.getByText(/±\s*3\s*days/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /increase date spread/i })).toBeDisabled();
+
+    // Saving without touching it round-trips the stored value.
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({
+      date_from: "2026-06-10",
+      date_to: "2026-06-17",
+      flexibility_days: 3,
+    });
   });
 
   it("shows preview_zero text when both dates are set and spread is 0", async () => {
@@ -233,7 +301,7 @@ describe("EnquiryFormDialog date-spread stepper", () => {
 
     // Spread stays at 0 by default — the more-informative preview_zero copy
     // should appear instead of the generic flexibility hint.
-    expect(screen.getByText(/submitting requested dates unchanged/i)).toBeInTheDocument();
+    expect(screen.getByText(/search will use the requested dates/i)).toBeInTheDocument();
     expect(
       screen.queryByText(/guests are often flexible around changeover/i),
     ).not.toBeInTheDocument();
@@ -323,6 +391,7 @@ describe("EnquiryFormDialog phone + contact_method capture", () => {
       request_type: "quote" as const,
       site_source: "main_website" as const,
       is_flexible: false,
+      flexibility_days: 0,
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
@@ -357,6 +426,7 @@ describe("EnquiryFormDialog server-side field errors", () => {
     request_type: "quote" as const,
     site_source: "main_website" as const,
     is_flexible: false,
+    flexibility_days: 0,
     min_bedrooms: null,
     referral_code: "",
     inbound_message: "",
@@ -496,6 +566,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
       request_type: "quote" as const,
       site_source: "main_website" as const,
       is_flexible: false,
+      flexibility_days: 0,
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
@@ -533,6 +604,7 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
       request_type: "quote" as const,
       site_source: "main_website" as const,
       is_flexible: false,
+      flexibility_days: 0,
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",

@@ -73,6 +73,9 @@ export type EnquiryListItem = z.infer<typeof enquiryListItemSchema>;
 
 export const enquiryDetailSchema = enquiryListItemSchema.extend({
   is_flexible: z.boolean().optional().default(false),
+  // Structured "± N days" spread; dates stay the client's true requested
+  // dates and the quote search widens by this value.
+  flexibility_days: z.number().int().optional().default(0),
   min_bedrooms: z.number().nullable().optional(),
   referral_code: z.string().optional().default(""),
   inbound_message: z.string().optional().default(""),
@@ -163,6 +166,7 @@ export const enquiryWriteInputSchema = z
     date_from: z.string().nullable(),
     date_to: z.string().nullable(),
     is_flexible: z.boolean(),
+    flexibility_days: z.number().int().min(0).max(3),
     adults: z.number().int().min(1, i18n.t("enquiries:schema_errors.at_least_one_adult")),
     children: z.number().int().min(0),
     min_bedrooms: z.number().int().min(0).nullable(),

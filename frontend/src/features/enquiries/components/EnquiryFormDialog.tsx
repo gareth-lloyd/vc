@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { addDaysIso } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
 import { GuestPicker } from "@/features/guests/components/GuestPicker";
 import { GuestEnquiryHistory } from "@/features/guests/components/GuestEnquiryHistory";
@@ -65,20 +66,6 @@ type EnquiryFormDialogProps = CreateProps | EditProps;
 const MIN_SPREAD = 0;
 const MAX_SPREAD = 3;
 
-// Shift an ISO `YYYY-MM-DD` date by `delta` days. Returns the original string
-// when it isn't parseable so we never mangle empty fields.
-function shiftIsoDate(iso: string, delta: number): string {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-  const [year, month, day] = iso.split("-").map((n) => Number.parseInt(n, 10));
-  // Use UTC to avoid local-tz boundary surprises on day arithmetic.
-  const ms = Date.UTC(year, month - 1, day) + delta * 24 * 60 * 60 * 1000;
-  const d = new Date(ms);
-  const yyyy = d.getUTCFullYear().toString().padStart(4, "0");
-  const mm = (d.getUTCMonth() + 1).toString().padStart(2, "0");
-  const dd = d.getUTCDate().toString().padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 const CREATE_DEFAULTS: EnquiryWriteInput = {
   guest: null,
   first_name: "",
@@ -88,6 +75,7 @@ const CREATE_DEFAULTS: EnquiryWriteInput = {
   date_from: "",
   date_to: "",
   is_flexible: false,
+  flexibility_days: 0,
   adults: 2,
   children: 0,
   min_bedrooms: null,
@@ -107,6 +95,7 @@ function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
     date_from: enq.date_from ?? "",
     date_to: enq.date_to ?? "",
     is_flexible: enq.is_flexible ?? false,
+    flexibility_days: enq.flexibility_days ?? 0,
     adults: enq.adults,
     children: enq.children ?? 0,
     min_bedrooms: enq.min_bedrooms ?? null,
@@ -128,12 +117,6 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
-  // Operator convention: widen the captured date range by ±N days around the
-  // client's requested dates. See
-  // django_res_design/workflows/07-enquiry/enquiry-intake.md "Django redesign
-  // — date-spread heuristic". Local-only UI state; submitted as the resolved
-  // `date_from` / `date_to` on the existing fields.
-  const [spread, setSpread] = useState<number>(MIN_SPREAD);
 
   const createMutation = useCreateEnquiry();
   const updateMutation = useUpdateEnquiry(isCreate ? 0 : props.enquiry.id);
@@ -155,7 +138,6 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     if (open) {
       form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry));
       setTopLevelError(null);
-      setSpread(MIN_SPREAD);
       setSelectedGuest(null);
       didHydrateRef.current = false;
     }
@@ -192,13 +174,18 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const sourceCtrl = useController({ control: form.control, name: "site_source" });
   const flexibleCtrl = useController({ control: form.control, name: "is_flexible" });
   const contactMethodCtrl = useController({ control: form.control, name: "contact_method" });
+  // The "± N days" spread is a real form field now (Enquiry.flexibility_days):
+  // dates submit unchanged and the quote search widens by this value.
+  const spreadCtrl = useController({ control: form.control, name: "flexibility_days" });
+  const spread = spreadCtrl.field.value ?? 0;
 
-  // Watch the typed dates so the widened preview updates as the operator types.
+  // Watch the typed dates so the search-window preview updates as the
+  // operator types. Display-only — the submitted dates are never shifted.
   const requestedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
   const requestedTo = useWatch({ control: form.control, name: "date_to" }) ?? "";
   const widened = useMemo(() => {
-    const from = requestedFrom ? shiftIsoDate(requestedFrom, -spread) : "";
-    const to = requestedTo ? shiftIsoDate(requestedTo, spread) : "";
+    const from = requestedFrom ? addDaysIso(requestedFrom, -spread) : "";
+    const to = requestedTo ? addDaysIso(requestedTo, spread) : "";
     return { from, to };
   }, [requestedFrom, requestedTo, spread]);
 
@@ -210,8 +197,8 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
       ...values,
       // An unset <input type="date"> reads "", which DRF's DateField rejects as
       // a malformed date. Dates are optional, so send null for "no date".
-      date_from: values.date_from ? shiftIsoDate(values.date_from, -spread) : null,
-      date_to: values.date_to ? shiftIsoDate(values.date_to, spread) : null,
+      date_from: values.date_from || null,
+      date_to: values.date_to || null,
     };
     try {
       if (isCreate) {
@@ -375,7 +362,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
                   size="icon-sm"
                   aria-label={t("form_dialog.date_spread.decrease_aria")}
                   disabled={spread <= MIN_SPREAD}
-                  onClick={() => setSpread((s) => Math.max(MIN_SPREAD, s - 1))}
+                  onClick={() => spreadCtrl.field.onChange(Math.max(MIN_SPREAD, spread - 1))}
                 >
                   <Minus className="h-3 w-3" />
                 </Button>
@@ -391,7 +378,7 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
                   size="icon-sm"
                   aria-label={t("form_dialog.date_spread.increase_aria")}
                   disabled={spread >= MAX_SPREAD}
-                  onClick={() => setSpread((s) => Math.min(MAX_SPREAD, s + 1))}
+                  onClick={() => spreadCtrl.field.onChange(Math.min(MAX_SPREAD, spread + 1))}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>

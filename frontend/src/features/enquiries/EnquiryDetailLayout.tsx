@@ -32,7 +32,7 @@ import {
 
 type DialogKind = "assign" | "close" | "reopen" | null;
 
-function guestName(enq: EnquiryDetail): string {
+export function guestName(enq: EnquiryDetail): string {
   if (enq.guest_name) return enq.guest_name;
   const denorm = `${enq.first_name ?? ""} ${enq.last_name ?? ""}`.trim();
   return denorm || enq.email || enq.reference;

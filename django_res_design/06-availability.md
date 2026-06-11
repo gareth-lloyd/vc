@@ -5,7 +5,9 @@ The legacy system stored availability as one row per villa per day in `VillaAvai
 ## Availability strategy: range queries, not a daily grid
 
 ### `BookingHold(AuditedModel)` (in `reservations.models.booking`)
-A soft reservation while a quotation is open or a booking awaits deposit. Replaces the legacy `OnHold` (status=40) rows in the daily grid.
+A soft reservation protecting a villa's dates. Replaces the legacy `OnHold` (status=40) rows in the daily grid.
+
+> **Holds are a manual operator action — quotations never place them automatically.** Quoting is the soft part of the sales process (legacy parity: the quote generator's explicit Hold / Remove-hold buttons): creating, duplicating, or editing a quotation line never blocks availability, and a quote may legitimately be saved over dates someone else holds. An operator places a line's hold deliberately via `POST /quotations/{qid}/lines/{id}:hold` (`QuotationService.hold_line` — idempotent, reason `QUOTATION_OPEN`, expiry from the property's effective `hold_duration_hours`, ~48h default) and releases it via `:release-hold` (never status-guarded — freeing inventory must always be possible). Editing a held line's dates *moves* the live hold (`move_line_hold`, preserving its expiry); editing an un-held line never conjures one.
 
 **Lifecycle is the `released_at` timestamp**, not a soft-delete flag. Live holds satisfy `released_at IS NULL AND expires_at > now()`; expired or manually released holds carry a `released_at` value and are visible to any query that wants them (the partial `EXCLUDE` index simply excludes them from the no-overlap rule). The Celery `expire_holds` beat task sets `released_at = now()` on expired rows — it does not delete them.
 
@@ -105,10 +107,20 @@ The search layer itself does not call `AvailabilityService.is_available()` per p
 ### Hold lifecycle
 
 ```
-created (QuotationService.create_from_enquiry)
-  → released_at set      (released by HoldService.release on quotation cancel/expire/booking)
+created (operator action: lines/{id}:hold → QuotationService.hold_line,
+         or an operator block via the availability endpoints)
+  → released_at set      (operator :release-hold; line delete signal;
+                          quotation :withdraw; booking conversion)
   → expires_at reached    (Celery beat task sets released_at = now())
 ```
+
+Quotation **expiry** does *not* release line holds: a hold carries its own
+`expires_at` (the property's effective `hold_duration_hours`) and is reaped by
+`expire_holds` independently. A hold may therefore outlive its quotation —
+deliberate, since the operator placed it as a significant action — and
+`:release-hold` works on a quotation in any status for exactly that reason.
+Withdrawal (`:withdraw`) and conversion to a booking still release every hold
+on the quotation immediately.
 
 A Celery beat task `reservations.tasks.expire_holds` runs every minute:
 

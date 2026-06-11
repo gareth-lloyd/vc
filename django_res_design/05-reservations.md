@@ -410,7 +410,8 @@ Both `Quotation.terms_version` and `Booking.terms_version` snapshot the version 
 
 ## Services
 
-- `QuotationService.create_from_enquiry(enquiry, lines: list[dict]) -> Quotation` — builds Quotation + QuotationLines, runs PricingEngine per line, snapshots, places a `BookingHold` for each villa+date pair while quotation is open (`expires_at = quotation.expires_at`).
+- `QuotationService.create_from_enquiry(enquiry, lines: list[dict]) -> Quotation` — builds Quotation + QuotationLines, runs PricingEngine per line, snapshots. Places **no** holds — quoting never blocks availability.
+- `QuotationService.hold_line(line, *, actor=None) -> BookingHold` / `release_line_hold(line, *, actor=None)` / `move_line_hold(line)` — the manual per-line hold lifecycle (operator-driven via `lines/{id}:hold` / `:release-hold`); expiry from the property's effective `hold_duration_hours`. See 06.
 - `BookingService.create_from_quotation_line(quotation_line, terms_version, payment_method, ...) -> Booking` — copies `pricing_snapshot`, computes `balance_due` and `balance_due_at` via effective PaymentSchedule, sets initial status `PENDING_OWNER_APPROVAL` or `AWAITING_DEPOSIT` per property config, releases competing holds, writes `BookingEvent`.
 - `HoldService` — see 06.
 - All transition methods on Booking (`submit`, `owner_approve`, `owner_decline`, `record_deposit`, `arm_balance`, `record_balance`, `check_in`, `check_out`, `cancel`, `expire`) wrap state mutation + event row + signal in `transaction.atomic`.

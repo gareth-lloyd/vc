@@ -85,8 +85,10 @@ def _parse_datetime(value: Any, *, field: str = "due_at") -> datetime:
 def _service_call[T](call: Callable[[], T]) -> T:
     """Translate service-layer `ValueError`s (state-machine misuse) to 409.
 
-    Mirrors `RefundViewSet._run_service`: the SD/payment services guard their
-    transitions with `ValueError`, which would otherwise surface as a 500.
+    Mirrors `RefundViewSet._run_service`: the SD/payment *status* guards still
+    raise `ValueError` (SMELL-010), which would otherwise surface as a 500.
+    Typed `DomainError`s (e.g. `InvalidSecurityDepositKind`, BUG-011) pass
+    through untouched — the canonical exception handler maps them itself.
     IntegrityError is the concurrent twin — two racing requests both pass the
     in-memory guards and the loser hits a one-active-row constraint; that's a
     conflict, not a 500.

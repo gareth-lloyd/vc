@@ -43,3 +43,34 @@ invisible in logs, unlike the sibling `refund.py`.
 ## Dependencies
 
 Implements the SD slice of SMELL-010 (error-signalling convergence).
+
+## Resolution (2026-06-12)
+
+Note on staleness: by the time this landed, the "no `except` → 500" half was
+already partially mitigated — FG-012 introduced `_service_call` in
+`payments/views/track.py`, which maps service `ValueError`s to a 409
+`invalid_state`. The remaining problems (bare `ValueError`s in the service,
+no kind-specific stable code, zero log events) were real and are fixed:
+
+- New `core.exceptions.InvalidSecurityDepositKind(DomainError)`
+  (`code="invalid_sd_kind"`, 409). The two kind guards in
+  `SecurityDepositService.hold` / `mark_paid` raise it; the canonical
+  exception handler maps it directly, so operators get a stable
+  kind-specific code instead of the generic `invalid_state`. The *status*
+  guards on the `SecurityDeposit` model transitions still raise
+  `ValueError` (caught by `_service_call`) — converging those is
+  SMELL-010's scope.
+- The SD money path now logs: `security_deposit.created` (fact event in
+  `create_for_booking`) and `log_operation` triples
+  `security_deposit.{hold,mark_paid,release,claim,expire}` carrying
+  `security_deposit_id` / `booking_id` / `amount` / `currency` (+
+  `captured_amount`, `kind`, `method` where relevant). Kind guards sit
+  above the `log_operation` block per convention — an expected rejection
+  is not a `.failed` traceback.
+
+Tests (written red first): wrong-kind API tests pin 409 +
+`code == "invalid_sd_kind"` for `:mark-paid` on PRE_AUTH_HOLD and `:hold`
+on BT_REFUNDABLE (`payments/tests/test_api_security_track.py`);
+service-level typed-error tests and two `capture_logs()` event tests
+mirroring `test_refund_service_emits_structured_events`
+(`payments/tests/test_security_deposit.py`).

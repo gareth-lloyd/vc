@@ -123,6 +123,18 @@ class NoActiveSecurityDeposit(DomainError):
     code = "no_active_sd"
 
 
+class InvalidSecurityDepositKind(DomainError):
+    """An SD action was invoked against the wrong `SecurityDepositKind`.
+
+    Distinct from `InvalidPaymentState`: the *kind* (pre-auth hold vs.
+    BT-refundable), not the status, is what refuses the operation —
+    `:hold` only applies to PRE_AUTH_HOLD, `:mark-paid` only to
+    BT_REFUNDABLE (BUG-011).
+    """
+
+    code = "invalid_sd_kind"
+
+
 class UnknownAction(DomainError):
     code = "unknown_action"
     status_code = 400

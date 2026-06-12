@@ -75,6 +75,38 @@ def test_record_idempotency_is_scoped_to_booking_and_purpose(booking: Booking) -
 
 
 @pytest.mark.django_db
+def test_duplicate_key_same_booking_and_purpose_hits_db_backstop(booking: Booking) -> None:
+    """FG-010: the service's check-then-create is not race-proof on its own.
+
+    Two concurrent `record(...)` calls with the same key both pass
+    `find_by_meta_key` under READ COMMITTED; the partial unique index on
+    `(booking, purpose, meta->>'idempotency_key')` is the DB floor that
+    makes the loser fail loudly. Simulated by writing the duplicate row
+    directly, bypassing the pre-check. Uses CONCIERGE (many-per-booking, no
+    active-row constraint) so the only constraint in play is the key one.
+    """
+    from django.db import IntegrityError
+
+    Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.CONCIERGE.value,
+        status=PaymentStatus.PENDING.value,
+        amount=Decimal("100.00"),
+        currency=booking.currency,
+        meta={IDEMPOTENCY_META_KEY: "op-click-1"},
+    )
+    with pytest.raises(IntegrityError, match="payment_idempotency_key_unique"):
+        Payment.objects.create(
+            booking=booking,
+            purpose=PaymentPurpose.CONCIERGE.value,
+            status=PaymentStatus.PENDING.value,
+            amount=Decimal("100.00"),
+            currency=booking.currency,
+            meta={IDEMPOTENCY_META_KEY: "op-click-1"},
+        )
+
+
+@pytest.mark.django_db
 def test_record_without_key_does_not_stamp_meta(booking: Booking) -> None:
     payment = ManualPaymentService.record(
         booking=booking,

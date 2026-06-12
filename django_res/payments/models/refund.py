@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
+from core.idempotency import IDEMPOTENCY_META_KEY
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
 from payments.enums import (
@@ -142,6 +144,18 @@ class Refund(AuditedModel):
             models.CheckConstraint(
                 condition=Q(approved_by__isnull=True) | ~Q(approved_by=F("requested_by")),
                 name="refund_separation_of_duties",
+            ),
+            # FG-010: DB backstop for `RefundService.request`'s idempotency.
+            # The service's `find_by_meta_key` pre-check is check-then-create
+            # and not race-proof under READ COMMITTED — this partial unique
+            # index makes the losing concurrent retry fail loudly instead of
+            # double-opening a refund. Scope mirrors the service's queryset
+            # (`Refund.objects.filter(booking=booking)`).
+            models.UniqueConstraint(
+                F("booking"),
+                KeyTextTransform(IDEMPOTENCY_META_KEY, "meta"),
+                condition=Q(**{f"meta__{IDEMPOTENCY_META_KEY}__isnull": False}),
+                name="refund_idempotency_key_unique_per_booking",
             ),
         ]
 

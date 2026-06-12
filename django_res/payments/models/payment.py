@@ -17,8 +17,10 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import F, Q
+from django.db.models.fields.json import KeyTextTransform
 
+from core.idempotency import IDEMPOTENCY_META_KEY
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
 from payments import signals as payment_signals
@@ -162,6 +164,21 @@ class Payment(AuditedModel):
             models.CheckConstraint(
                 condition=Q(amount__gte=0),
                 name="payment_amount_non_negative",
+            ),
+            # FG-010: DB backstop for `ManualPaymentService.record`'s
+            # idempotency. The service's `find_by_meta_key` pre-check is
+            # check-then-create and not race-proof under READ COMMITTED —
+            # this partial unique index makes the losing concurrent retry
+            # fail loudly instead of minting a duplicate row. Scope mirrors
+            # the service's queryset (`filter(booking=booking,
+            # purpose=purpose)`): the same key string on another purpose is
+            # a different logical operation and stays legal.
+            models.UniqueConstraint(
+                F("booking"),
+                F("purpose"),
+                KeyTextTransform(IDEMPOTENCY_META_KEY, "meta"),
+                condition=Q(**{f"meta__{IDEMPOTENCY_META_KEY}__isnull": False}),
+                name="payment_idempotency_key_unique_per_booking_purpose",
             ),
         ]
 

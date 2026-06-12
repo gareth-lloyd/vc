@@ -100,6 +100,12 @@ class RefundService:
             raise ValueError("Refund amount must be positive")
 
         if against_payment is not None:
+            # FG-010: lock the source payment before the aggregate. Under
+            # READ COMMITTED two concurrent partial refunds would both read
+            # the same Sum() and jointly exceed the original amount; the row
+            # lock serialises the second request behind the first's commit,
+            # so its aggregate sees the first refund and the check rejects it.
+            against_payment = Payment.objects.select_for_update().get(pk=against_payment.pk)
             already_refunded = Refund.objects.filter(
                 against_payment=against_payment,
             ).exclude(

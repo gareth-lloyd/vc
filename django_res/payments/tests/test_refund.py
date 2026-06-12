@@ -279,6 +279,80 @@ def test_request__is_idempotent_when_same_key_supplied(
 
 
 @pytest.mark.django_db
+def test_request__duplicate_idempotency_key_hits_db_backstop(
+    booking: Any,
+    gbp: Any,
+) -> None:
+    """FG-010: the service's check-then-create is not race-proof on its own.
+
+    Two concurrent `request(...)` calls with the same key both pass
+    `find_by_meta_key` under READ COMMITTED; the partial unique index on
+    `(booking, meta->>'idempotency_key')` is the DB floor that makes the
+    loser fail loudly instead of double-opening the refund. Simulated here
+    by writing the duplicate row directly, bypassing the pre-check.
+    """
+    Refund.objects.create(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        status=RefundStatus.PENDING.value,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        meta={"idempotency_key": "evt_dup"},
+    )
+    with pytest.raises(IntegrityError, match="refund_idempotency_key_unique_per_booking"):
+        Refund.objects.create(
+            booking=booking,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            status=RefundStatus.PENDING.value,
+            purpose_track=RefundPurposeTrack.DEPOSIT.value,
+            reason_code=RefundReasonCode.OVERPAYMENT.value,
+            meta={"idempotency_key": "evt_dup"},
+        )
+
+
+@pytest.mark.django_db
+def test_request__locks_against_payment_before_over_refund_check(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+) -> None:
+    """FG-010: the over-refund aggregate must run under a row lock.
+
+    Two concurrent partial refunds against the same payment both read the
+    same `Sum("amount")` under READ COMMITTED and jointly exceed the
+    original amount. `SELECT ... FOR UPDATE` on `against_payment`
+    serialises the second `request()` behind the first's commit, so its
+    aggregate sees the first refund and the cumulative check rejects it.
+    """
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    with CaptureQueriesContext(connection) as ctx:
+        RefundService.request(
+            booking=booking,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            purpose_track=RefundPurposeTrack.DEPOSIT.value,
+            reason_code=RefundReasonCode.OVERPAYMENT.value,
+            against_payment=paid_deposit,
+        )
+
+    aggregate_index = next(
+        i
+        for i, q in enumerate(ctx.captured_queries)
+        if 'SUM("payments_refund"."amount")' in q["sql"]
+    )
+    lock_index = next(
+        i
+        for i, q in enumerate(ctx.captured_queries)
+        if "payments_payment" in q["sql"] and "FOR UPDATE" in q["sql"]
+    )
+    assert lock_index < aggregate_index, "against_payment must be locked before the aggregate"
+
+
+@pytest.mark.django_db
 def test_request__no_key_means_no_idempotency(
     booking: Any,
     gbp: Any,

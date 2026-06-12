@@ -59,3 +59,10 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      # S3 media (villacollective-images bucket, gap-012). Currently the
+      # villacollective-cli user's keys; swap for an app-scoped IAM user
+      # when one exists.
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false

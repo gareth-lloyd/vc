@@ -1,5 +1,10 @@
 # Q-016 — Is `Payment` a generic ledger, or the customer-facing money request?
 
+- **Status:** ✅ Resolved 2026-06-12 — **Lane A** (Payment-as-ledger).
+  `SECURITY_DEPOSIT` stays in `PaymentPurpose`; cardinality enforced via the
+  three per-purpose `UniqueConstraint`s on `Payment` (per the BUG-006
+  resolution); `SecurityDeposit` remains the post-capture lifecycle record,
+  not a parallel ledger. Recorded in `10-decisions.md` (Live decisions).
 - **Severity:** ❓ Open decision (architecture). Upstream of three open tickets.
 - **Source:** the 2026-05-26 data-model survey §6.1 (the only survey
   "what could be better" item not yet captured as a ticket).

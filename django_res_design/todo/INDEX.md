@@ -90,7 +90,7 @@ Status icons:
 | [Q-013](q-013-rate-card-incomplete-pricing.md) | Rate-card "incomplete pricing" behaviour | ✅ resolved — flag + manual quote per legacy NO RATE; builder affordance built (no-rate cards stage manual lines) |
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ recommendation recorded: keep-forever + BUG-012 scrub; exposure half blocks GAP-021 |
 | [Q-015](q-015-owner-financial-visibility.md) | Owner financial visibility defaults | ✅ resolved — `OwnerOrgProperty.view_full_money`/`view_guest_details` default hidden, per-property; redaction wired |
-| [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✏️ Lane A taken implicitly in code (Payment-as-ledger; 3 per-purpose constraints) — record in `10-decisions.md`; no longer blocks |
+| [Q-016](q-016-payment-ledger-vs-dedicated-models.md) | `Payment` ledger vs dedicated `SecurityDeposit` — pick a lane | ✅ resolved — Lane A (Payment-as-ledger; 3 per-purpose constraints); recorded in `10-decisions.md` 2026-06-12 |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ |
 | [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ |
@@ -161,4 +161,4 @@ Highest-leverage unanswered Qs (block lots of downstream work):
 Recently unblocked / resolved (was on this list): **Q-002** owner SLA
 (partially built), **Q-013** incomplete pricing (flag + manual quote,
 built), **Q-015** owner financial visibility (resolved), **Q-016**
-ledger lane (taken in code — just needs recording).
+ledger lane (Lane A recorded in `10-decisions.md`).

@@ -110,6 +110,37 @@ def test_refund_approve__rejects_self_approval_without_permission(
 
 
 @pytest.mark.django_db
+def test_refund_approve__rejects_self_approval_even_with_self_approve_perm(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+) -> None:
+    """BUG-010: `self_approve_refund` must not bypass approval SoD.
+
+    The DB CheckConstraint unconditionally forbids `approved_by ==
+    requested_by`, so a permission bypass at :approve could only ever end
+    in an IntegrityError 500. The service must reject with a clean
+    PermissionError instead; the perm's bypass applies to :execute only.
+    """
+    _grant(user, "approve_refund", "self_approve_refund")
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("50.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    with pytest.raises(PermissionError):
+        RefundService.approve(refund, actor=user)
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.PENDING.value
+    assert refund.approved_by_id is None
+
+
+@pytest.mark.django_db
 def test_refund_db_constraint__separation_of_duties_floor(
     booking: Any,
     gbp: Any,

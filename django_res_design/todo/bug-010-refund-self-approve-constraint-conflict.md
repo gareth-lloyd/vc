@@ -1,5 +1,6 @@
 # BUG-010 — Refund self-approve permission conflicts with the SoD constraint
 
+- **Status:** ✅ resolved (2026-06-12)
 - **Severity:** 🔴 Bug
 - **Source:** the 2026-06-10 backend general review (consistency / architecture / stability)
 - **Files:** `payments/services/refund.py:156–169`,
@@ -51,6 +52,27 @@ Either way, delete or correct the misleading comment block on the constraint.
   successfully APPROVED refund (option 2) — never an `IntegrityError`/500.
 - Existing SoD tests (distinct approver OK, plain self-approve rejected)
   still pass.
+
+## Resolution (2026-06-12)
+
+Took option 1 (recommended). `RefundService.approve` now rejects the
+requester unconditionally — `PERM_SELF_APPROVE` no longer enters the check,
+so a permitted requester gets a clean `PermissionError` instead of tripping
+the `refund_separation_of_duties` constraint into an IntegrityError 500.
+The perm's bypass survives only in `execute()` (approver-may-execute),
+where the DB deliberately doesn't constrain the executor.
+
+The misleading comment block on the constraint (`payments/models/refund.py`)
+and the stale `payments.refund.self_approve` perm strings in the service
+docstrings were corrected to match. No schema change.
+
+Test: `test_refund_approve__rejects_self_approval_even_with_self_approve_perm`
+(`payments/tests/test_refund.py`) — written red (reproduced the
+IntegrityError) before the fix. Existing SoD tests (distinct approver OK,
+plain self-approve rejected, DB floor, execute bypass) unchanged and green.
+
+Error typing stays bare `PermissionError` deliberately — that's SMELL-010's
+scope.
 
 ## Dependencies
 

@@ -134,11 +134,11 @@ class Refund(AuditedModel):
                 condition=Q(amount__gt=0),
                 name="refund_amount_positive",
             ),
-            # Separation of duties: requester cannot self-approve (DB floor).
-            # Service layer may grant `payments.refund.self_approve` to bypass
-            # for low-risk cases, but those rows must still land with
-            # `approved_by IS NULL` until a distinct approver acts, or be
-            # rejected by this constraint.
+            # Separation of duties: requester cannot self-approve (DB floor,
+            # no permission escape hatch — `RefundService.approve` mirrors
+            # this unconditionally). `payments.self_approve_refund` relaxes
+            # only the approver/executor split in `RefundService.execute`,
+            # which this constraint deliberately doesn't cover.
             models.CheckConstraint(
                 condition=Q(approved_by__isnull=True) | ~Q(approved_by=F("requested_by")),
                 name="refund_separation_of_duties",

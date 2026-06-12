@@ -24,7 +24,7 @@ Status icons:
 | [BUG-007](bug-007-reference-generation-races.md) | Reference generation races + `bulk_create` bypass | ✅ resolved (sequence + `db_default` on E/P/R/SD; race + retry + bulk_create bypass gone) |
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ (decision-blocked) |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ (spec done; code deferred to finance rewrite) |
-| [BUG-010](bug-010-refund-self-approve-constraint-conflict.md) | Refund self-approve permission conflicts with the SoD constraint → IntegrityError 500 | ⬜ |
+| [BUG-010](bug-010-refund-self-approve-constraint-conflict.md) | Refund self-approve permission conflicts with the SoD constraint → IntegrityError 500 | ✅ resolved (option 1: bypass dropped from `approve()`, kept on `execute()`) |
 | [BUG-011](bug-011-security-deposit-bare-valueerror-500s.md) | SD service raises bare `ValueError` → 500s; zero log events on the SD money path | ⬜ |
 | [BUG-012](bug-012-auditlog-retains-pii-after-anonymize.md) | `AuditLog` retains cleartext PII after `anonymize()`/`merge()` — GDPR erasure hole | ⬜ |
 

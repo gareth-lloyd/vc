@@ -1119,7 +1119,7 @@ def test_convert_releases_manual_hold(
 
     convert = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
     assert convert.status_code == 201, convert.data
@@ -1163,7 +1163,7 @@ def test_convert_refused_over_foreign_live_hold(
 
     convert = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
     assert convert.status_code == 409, convert.data
@@ -1201,7 +1201,7 @@ def test_convert_succeeds_over_own_quotation_hold(
 
     convert = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
     assert convert.status_code == 201, convert.data
@@ -1219,12 +1219,64 @@ def test_convert_creates_booking(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
 
     assert response.status_code == 201, response.data
     assert Booking.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_without_terms_accepted_400s(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    """Converting requires the explicit `terms_accepted: true` signal (SMELL-006).
+
+    `terms_accepted_at` is stamped server-side from that signal — a request
+    that omits it (or sends false) must fail with a domain-meaningful error,
+    not mint a booking.
+    """
+    quotation.send()
+    api_client.force_login(staff)
+
+    for body in ({"line": line.pk}, {"line": line.pk, "terms_accepted": False}):
+        response = api_client.post(
+            f"/api/v1/quotations/{quotation.pk}:convert",
+            body,
+            format="json",
+        )
+        assert response.status_code == 400, response.data
+        assert response.data["code"] == "terms_not_accepted"
+
+    assert Booking.objects.count() == 0
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.SENT
+
+
+@pytest.mark.django_db
+def test_convert_stamps_terms_accepted_at_server_side(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    quotation.send()
+    api_client.force_login(staff)
+    before = timezone.now()
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk, "terms_accepted": True},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    booking = Booking.objects.get()
+    assert before <= booking.terms_accepted_at <= timezone.now()
 
 
 @pytest.mark.django_db
@@ -1248,7 +1300,7 @@ def test_convert_schedules_payments_on_booking(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
 
@@ -1301,7 +1353,7 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
     assert response.status_code == 201, response.data
@@ -1334,7 +1386,7 @@ def test_convert_never_rejects_off_changeover_arrival(
     # its dates stand and the booking copies them.
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
     assert response.status_code == 201, response.data
@@ -1400,7 +1452,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
 
@@ -2273,7 +2325,7 @@ def test_convert_draft_quotation_409s(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
 
@@ -2299,7 +2351,7 @@ def test_convert_dead_quotation_409s(
 
     response = api_client.post(
         f"/api/v1/quotations/{quotation.pk}:convert",
-        {"line": line.pk},
+        {"line": line.pk, "terms_accepted": True},
         format="json",
     )
 
@@ -2321,10 +2373,10 @@ def test_convert_retry_on_accepted_quotation_is_idempotent(
     api_client.force_login(staff)
     url = f"/api/v1/quotations/{quotation.pk}:convert"
 
-    first = api_client.post(url, {"line": line.pk}, format="json")
+    first = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
     assert first.status_code == 201, first.data
 
-    second = api_client.post(url, {"line": line.pk}, format="json")
+    second = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
 
     assert second.status_code == 201, second.data
     assert second.data["id"] == first.data["id"]
@@ -2355,10 +2407,10 @@ def test_convert_accepted_quotation_with_unselected_line_409s(
     api_client.force_login(staff)
     url = f"/api/v1/quotations/{quotation.pk}:convert"
 
-    first = api_client.post(url, {"line": line.pk}, format="json")
+    first = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
     assert first.status_code == 201, first.data
 
-    second = api_client.post(url, {"line": other_line.pk}, format="json")
+    second = api_client.post(url, {"line": other_line.pk, "terms_accepted": True}, format="json")
 
     assert second.status_code == 409, second.data
     assert Booking.objects.count() == 1
@@ -2533,7 +2585,7 @@ def test_convert_race_past_idempotency_precheck_recovers_winner(
     api_client.force_login(staff)
     url = f"/api/v1/quotations/{quotation.pk}:convert"
 
-    first = api_client.post(url, {"line": line.pk}, format="json")
+    first = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
     assert first.status_code == 201, first.data
 
     # Simulate the loser of the race: its transaction sees no existing
@@ -2545,7 +2597,7 @@ def test_convert_race_past_idempotency_precheck_recovers_winner(
 
     monkeypatch.setattr(BookingService, "create_from_quotation_line", raced)
 
-    second = api_client.post(url, {"line": line.pk}, format="json")
+    second = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
 
     assert second.status_code == 201, second.data
     assert second.data["id"] == first.data["id"]
@@ -2565,11 +2617,11 @@ def test_convert_retry_after_booking_cancelled_is_409(
     api_client.force_login(staff)
     url = f"/api/v1/quotations/{quotation.pk}:convert"
 
-    first = api_client.post(url, {"line": line.pk}, format="json")
+    first = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
     assert first.status_code == 201, first.data
     Booking.objects.get(pk=first.data["id"]).cancel("guest changed plans")
 
-    second = api_client.post(url, {"line": line.pk}, format="json")
+    second = api_client.post(url, {"line": line.pk, "terms_accepted": True}, format="json")
 
     assert second.status_code == 409, second.data
     assert second.data["code"] == "terminal_booking_exists"

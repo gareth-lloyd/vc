@@ -96,6 +96,17 @@ class TerminalBookingExists(DomainError):
     code = "terminal_booking_exists"
 
 
+class TermsNotAccepted(DomainError):
+    """A booking-creating request arrived without the explicit acceptance flag.
+
+    `Booking.terms_accepted_at` is stamped server-side; the API must receive
+    `terms_accepted: true` as the acceptance signal (SMELL-006).
+    """
+
+    code = "terms_not_accepted"
+    status_code = 400
+
+
 class OAuthNotConnectedError(DomainError):
     code = "oauth_not_connected"
 

@@ -142,6 +142,7 @@ describe("ConvertQuotationDialog", () => {
     await waitFor(() => expect(capturedBody).not.toBeNull());
     expect(capturedBody).toEqual({
       line: 31,
+      terms_accepted: true,
       payment_method: "card",
     });
     expect(await screen.findByTestId("booking-page")).toBeInTheDocument();

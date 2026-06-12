@@ -29,3 +29,21 @@ acceptance signal; the column then becomes derived rather than user-supplied.
 ## Dependencies
 
 None.
+
+## Resolution (2026-06-12)
+
+Implemented option 2. By the time of the fix the service layer
+(`BookingService.create_from_quotation_line`) already auto-stamped
+`terms_accepted_at = timezone.now()`, so the remaining gap was the
+explicit acceptance signal at the API surface:
+
+- `POST /quotations/{id}:convert` now requires `terms_accepted: true` in
+  the body; missing/false → 400 with the new typed
+  `core.exceptions.TermsNotAccepted` (`code: terms_not_accepted`).
+- `terms_accepted_at` stays derived/server-stamped — never user-supplied.
+- Frontend `ConvertQuotationDialog` sends `terms_accepted: true`
+  (`ConvertQuotationInput` requires it).
+
+Tests: `test_convert_without_terms_accepted_400s`,
+`test_convert_stamps_terms_accepted_at_server_side`
+(`reservations/tests/test_api_quotations.py`).

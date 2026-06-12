@@ -59,7 +59,7 @@ Status icons:
 | [SMELL-003](smell-003-currency-decimal-places-unenforced.md) | `Currency.decimal_places` informational only | ⬜ |
 | [SMELL-004](smell-004-emaillog-content-hash-scope.md) | `EmailLog` content hash dedupe scope ambiguous | ✅ resolved (documented + pinning test) |
 | [SMELL-005](smell-005-residual-property-country-charfield.md) | Verify no residual `Property.country` free-text | ❌ DROPPED — verified clean |
-| [SMELL-006](smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default | ⬜ (**upgrade to 🟠 footgun**) |
+| [SMELL-006](smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default | ✅ resolved (convert API requires `terms_accepted: true`; stamped server-side) |
 | [SMELL-007](smell-007-occupancy-fallback-doc-claim.md) | Spec misstates legacy occupancy fallback (not "highest bracket") | ✅ resolved (doc-only) |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) fully implemented in one file | ⬜ |
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |

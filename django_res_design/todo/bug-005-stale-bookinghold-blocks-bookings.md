@@ -40,6 +40,27 @@ burden of option 2 is forever.
 
 None.
 
+## Resolution (2026-06-12)
+
+Implemented the agreed direction (sweeper + opportunistic expire — not the
+trigger from option 1):
+
+- **Sweeper** already existed: `reservations.tasks.expire_holds`, scheduled
+  every minute via `CELERY_BEAT_SCHEDULE` (`settings/base.py`). Unchanged.
+- **Opportunistic expire** — new
+  `HoldService.expire_overlapping_stale(property, date_from, date_to,
+  exclude_hold_ids)` releases expired-but-unswept holds overlapping the
+  range and fires `hold_expired` per row (same comms fan-out as the
+  sweeper). Called at the top of `place`, `update_block` and `move`, so a
+  stale hold never blocks a valid mutation even with beat paused.
+- **IntegrityError → 500 window closed** — `place` / `update_block` / `move`
+  wrap their INSERT/UPDATE in `_translate_overlap_violation`, which
+  re-raises a `bookinghold_no_overlap_live` EXCLUDE violation as
+  `HoldUnavailable` (409). Other `IntegrityError`s propagate untouched.
+- Acceptance covered in `reservations/tests/test_holds.py`
+  (`test_place_succeeds_over_expired_unswept_hold` and friends, plus a
+  Postgres-only race test for the constraint translation).
+
 ## Addendum (2026-06-10)
 
 From the 2026-06-10 backend general review: there is also an

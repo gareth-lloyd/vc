@@ -308,3 +308,124 @@ def test_indefinite_hold_survives_expire_holds(property_: Property) -> None:
         .filter(pk=hold.pk)
         .exists()
     )
+
+
+# ---------------------------------------------------------------------------
+# BUG-005 — stale (expired-but-unswept) holds must not block valid mutations,
+# and the Postgres EXCLUDE backstop must surface as `HoldUnavailable`, not 500.
+# ---------------------------------------------------------------------------
+
+
+def _stale_hold(property_: Property) -> BookingHold:
+    """An expired hold the sweeper hasn't released yet (sweeper paused)."""
+    return BookingHold.objects.create(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() - timedelta(minutes=5),
+    )
+
+
+@pytest.mark.django_db
+def test_place_succeeds_over_expired_unswept_hold(property_: Property) -> None:
+    """Acceptance: an expired-but-unreleased hold must not block a new one."""
+    stale = _stale_hold(property_)
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    assert hold.is_live() is True
+    stale.refresh_from_db()
+    assert stale.released_at is not None
+
+
+@pytest.mark.django_db
+def test_place_opportunistic_expiry_fires_hold_expired_signal(property_: Property) -> None:
+    """Opportunistic expiry fans out `hold_expired` exactly like the sweeper."""
+    from reservations.signals import hold_expired
+
+    stale = _stale_hold(property_)
+    seen: list[BookingHold] = []
+
+    def receiver(sender: object, hold: BookingHold, **kwargs: object) -> None:
+        seen.append(hold)
+
+    hold_expired.connect(receiver)
+    try:
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 17),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+    finally:
+        hold_expired.disconnect(receiver)
+    assert [h.pk for h in seen] == [stale.pk]
+    assert seen[0].released_at is not None
+
+
+@pytest.mark.django_db
+def test_move_succeeds_over_expired_unswept_hold(property_: Property) -> None:
+    stale = _stale_hold(property_)
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    moved = HoldService.move(hold, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17))
+    assert moved.date_from == date(2026, 6, 10)
+    stale.refresh_from_db()
+    assert stale.released_at is not None
+
+
+@pytest.mark.django_db
+def test_update_block_succeeds_over_expired_unswept_hold(property_: Property) -> None:
+    stale = _stale_hold(property_)
+    block = HoldService.place(
+        property=property_,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        reason=BookingHoldReason.MAINTENANCE.value,
+        never_expires=True,
+    )
+    updated = HoldService.update_block(
+        block,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.MAINTENANCE.value,
+        notes="repainting",
+    )
+    assert updated.date_from == date(2026, 6, 10)
+    stale.refresh_from_db()
+    assert stale.released_at is not None
+
+
+@pytest.mark.django_db
+def test_place_race_raises_hold_unavailable_not_integrity_error(
+    property_: Property, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If a competing hold lands between the Python check and the INSERT, the
+    Postgres EXCLUDE violation must surface as `HoldUnavailable` (409), not a
+    raw `IntegrityError` (500)."""
+    from django.db import connection
+
+    if connection.vendor != "postgresql":
+        pytest.skip("EXCLUDE constraint is Postgres-only")
+    HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    # Simulate the race: the Python liveness check sees no conflict.
+    monkeypatch.setattr(HoldService, "_assert_no_overlap", classmethod(lambda cls, **kw: None))
+    with pytest.raises(HoldUnavailable):
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 12),
+            date_to=date(2026, 6, 20),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )

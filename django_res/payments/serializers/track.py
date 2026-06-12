@@ -32,6 +32,11 @@ class ManualPaymentCreateSerializer(serializers.Serializer[dict[str, Any]]):
         choices=PaymentMethod.choices, required=False, allow_blank=True, default=""
     )
     meta = serializers.JSONField(required=False, default=dict)
+    # Operator UIs that may retry (double-click, flaky network) send a key;
+    # a repeat POST with the same key returns the original row (FG-012).
+    idempotency_key = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=128
+    )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if "status" in self.initial_data:

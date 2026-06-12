@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -43,6 +43,7 @@ from payments.serializers import (
     PaymentSerializer,
     TrackSerializer,
 )
+from payments.services.manual_payment import ManualPaymentService
 from payments.services.security_deposit import SecurityDepositService
 from reservations.models import Booking
 
@@ -333,26 +334,22 @@ def _track_payments(request: Request, booking: Booking, purpose: str) -> Respons
     serializer = ManualPaymentCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
-    try:
-        with transaction.atomic():
-            payment = Payment.objects.create(
-                booking=booking,
-                purpose=purpose,
-                status=PaymentStatus.PENDING.value,
-                amount=data["amount"],
-                currency=booking.currency,
-                provider=data["provider"],
-                provider_reference=data["provider_reference"],
-                payment_method=data["payment_method"],
-                due_at=data["due_at"],
-                meta=data["meta"],
-            )
-    except IntegrityError as exc:
-        # The one-active-row-per-purpose constraint: surface as a conflict,
-        # not a 500. Void or settle the existing row first.
-        raise InvalidPaymentState(
-            f"An active {purpose} payment already exists for this booking."
-        ) from exc
+    # _service_call surfaces the one-active-row-per-purpose IntegrityError as
+    # a 409 conflict (void or settle the existing row first), not a 500.
+    payment = _service_call(
+        lambda: ManualPaymentService.record(
+            booking=booking,
+            purpose=purpose,
+            amount=data["amount"],
+            provider=data["provider"],
+            provider_reference=data["provider_reference"],
+            payment_method=data["payment_method"],
+            due_at=data["due_at"],
+            meta=data["meta"],
+            actor=request.user,
+            idempotency_key=data["idempotency_key"] or None,
+        )
+    )
     return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
 

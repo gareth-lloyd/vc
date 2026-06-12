@@ -39,6 +39,9 @@ dependencies = [
     # backend — tasks are fire-and-forget (CELERY_TASK_IGNORE_RESULT=True).
     "celery[redis]>=5.4",
     "django-storages[s3]>=1.14.6",
+    # Runtime (not dev-only): staging runs `seed_dev`, which drives the
+    # factory-boy builders.
+    "factory-boy>=3.3",
 ]
 
 [dependency-groups]
@@ -49,7 +52,6 @@ dev = [
     "djangorestframework-stubs[compatible-mypy]>=3.15",
     "pytest>=8.3",
     "pytest-django>=4.9",
-    "factory-boy>=3.3",
     "types-markdown>=3.10.2.20260518",
     "import-linter>=2.0",
     "pytest-xdist>=3.8.0",

@@ -1577,6 +1577,7 @@ dependencies = [
     { name = "django-storages", extra = ["s3"] },
     { name = "django-structlog" },
     { name = "djangorestframework" },
+    { name = "factory-boy" },
     { name = "gunicorn" },
     { name = "html2text" },
     { name = "httpx" },
@@ -1599,7 +1600,6 @@ dependencies = [
 dev = [
     { name = "django-stubs", extra = ["compatible-mypy"] },
     { name = "djangorestframework-stubs", extra = ["compatible-mypy"] },
-    { name = "factory-boy" },
     { name = "import-linter" },
     { name = "mypy" },
     { name = "pytest" },
@@ -1622,6 +1622,7 @@ requires-dist = [
     { name = "django-storages", extras = ["s3"], specifier = ">=1.14.6" },
     { name = "django-structlog", specifier = ">=8.0" },
     { name = "djangorestframework", specifier = ">=3.16" },
+    { name = "factory-boy", specifier = ">=3.3" },
     { name = "gunicorn", specifier = ">=23.0" },
     { name = "html2text", specifier = ">=2025.4.15" },
     { name = "httpx", specifier = ">=0.28" },
@@ -1644,7 +1645,6 @@ requires-dist = [
 dev = [
     { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=5.1" },
     { name = "djangorestframework-stubs", extras = ["compatible-mypy"], specifier = ">=3.15" },
-    { name = "factory-boy", specifier = ">=3.3" },
     { name = "import-linter", specifier = ">=2.0" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pytest", specifier = ">=8.3" },

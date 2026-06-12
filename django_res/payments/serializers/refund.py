@@ -77,3 +77,8 @@ class RefundRequestSerializer(serializers.Serializer[None]):
     reason_notes = serializers.CharField(required=False, allow_blank=True)
     method = serializers.CharField(required=False)
     against_payment = serializers.IntegerField(required=False, allow_null=True)
+    # Operator UIs that may retry (double-click, flaky network) send a key;
+    # a repeat POST with the same key returns the original row (FG-010).
+    idempotency_key = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=128
+    )

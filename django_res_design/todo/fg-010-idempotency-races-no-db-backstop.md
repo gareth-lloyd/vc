@@ -86,3 +86,16 @@ model and points at the three reference constraints. Tests:
 (`payments/tests/test_refund.py`),
 `test_duplicate_key_same_booking_and_purpose_hits_db_backstop`
 (`payments/tests/test_manual_payment_service.py`).
+
+**Post-resolution review follow-up (2026-06-12):** a code review found the
+refund API surface had not been wired to the fix —
+`RefundRequestSerializer` didn't accept `idempotency_key` (making the
+service's idempotency support dead code on `POST /bookings/{id}/refunds`),
+and the view let the backstop's `IntegrityError` surface as a 500. Closed by
+exposing an optional `idempotency_key` on the serializer (mirroring
+`ManualPaymentCreateSerializer`) and mapping the race `IntegrityError` to a
+409 `invalid_state` DomainError in `request_refund_for_booking`, matching
+`_service_call` in `payments/views/track.py`. Tests:
+`test_request_refund__retry_with_same_idempotency_key_returns_original`,
+`test_request_refund__idempotency_race_returns_409_not_500`
+(`payments/tests/test_api_refunds.py`).

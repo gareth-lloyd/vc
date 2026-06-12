@@ -1,5 +1,21 @@
 # FG-015 — `Booking.cancel` leaves PENDING Payment rows live
 
+> **Resolved (2026-06-12).** Landed as `_close_money_on_booking_closed` in
+> `payments/signals.py` (commit `0f39bfb`), registered in `_register()` with
+> `dispatch_uid="payments.close_money_on_booking_closed"` on
+> `booking_transitioned`. CANCELLED / DECLINED close PENDING DEPOSIT/BALANCE
+> rows as CANCELLED, EXPIRED as EXPIRED, each with a `BOOKING_*`
+> `PaymentEvent`; settled money is never touched (refunds stay a manual
+> operator workflow). PROCESSING rows are left to resolve via webhook — the
+> warning fires later as `payment.booking_advance_skipped` when the settle
+> lands on the closed booking, rather than at cancel time as proposed here.
+> A money-holding SecurityDeposit is flagged via `payment.sd_review_required`
+> instead of auto-released; an empty one (AWAITING_*) closes as FAILED.
+> Acceptance pinned by `payments/tests/test_booking_terminal_money.py`
+> (including `test_cancel_frees_per_purpose_constraint_slot` for the freed
+> per-purpose slot) and
+> `test_payment_reminders.py::test_terminal_booking_does_not_get_reminder`.
+
 - **Severity:** 🟠 Footgun
 - **Source:** the 2026-06-10 backend general review (consistency / architecture / stability)
 - **Files:** `reservations/models/booking.py:426–443`, `payments/signals.py`

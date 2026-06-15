@@ -6,6 +6,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
+from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,6 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsAccountsWriter
+from core.exceptions import InvalidPaymentState
 from payments.filters import RefundFilter
 from payments.models import Payment, Refund
 from payments.serializers import RefundRequestSerializer, RefundSerializer
@@ -129,17 +131,25 @@ def request_refund_for_booking(request: Request, booking_pk: int) -> Response:
             booking=booking,
         )
     currency = data.get("currency") or booking.currency
-    refund = RefundService.request(
-        booking=booking,
-        amount=Decimal(str(data["amount"])),
-        currency=currency,
-        purpose_track=data["purpose_track"],
-        reason_code=data["reason_code"],
-        reason_notes=data.get("reason_notes", ""),
-        method=data.get("method", "online_gateway"),
-        against_payment=against_payment,
-        requested_by=request.user,
-    )
+    try:
+        refund = RefundService.request(
+            booking=booking,
+            amount=Decimal(str(data["amount"])),
+            currency=currency,
+            purpose_track=data["purpose_track"],
+            reason_code=data["reason_code"],
+            reason_notes=data.get("reason_notes", ""),
+            method=data.get("method", "online_gateway"),
+            against_payment=against_payment,
+            requested_by=request.user,
+            idempotency_key=data["idempotency_key"] or None,
+        )
+    except IntegrityError as exc:
+        # FG-010: two racing requests with the same key both pass the
+        # service's `find_by_meta_key` pre-check under READ COMMITTED; the
+        # loser hits `refund_idempotency_key_unique_per_booking`. That's a
+        # conflict, not a 500 — mirrors `_service_call` in views/track.py.
+        raise InvalidPaymentState("A conflicting refund already exists for this booking.") from exc
     return Response(RefundSerializer(refund).data, status=status.HTTP_201_CREATED)
 
 

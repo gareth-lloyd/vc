@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from core.exceptions import InvalidTransition, QuotationLocked
+from core.exceptions import InvalidTransition, QuotationLocked, TermsNotAccepted
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Booking, BookingHold, Quotation, QuotationLine
@@ -255,7 +255,12 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     def convert(self, request: Request, pk: str | None = None) -> Response:
         """Convert the selected line into a Booking.
 
-        Body: `{"line": <id>, "payment_method"?: "card"|"bank_transfer"}`.
+        Body: `{"line": <id>, "terms_accepted": true,
+        "payment_method"?: "card"|"bank_transfer"}`.
+
+        `terms_accepted` is the explicit acceptance signal (SMELL-006):
+        `Booking.terms_accepted_at` is stamped server-side from it, never
+        supplied by the client.
         """
         quotation = self.get_object()
         line_id = request.data.get("line")
@@ -267,6 +272,11 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
                     "field_errors": {"line": ["This field is required."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if request.data.get("terms_accepted") is not True:
+            raise TermsNotAccepted(
+                "Converting a quotation requires `terms_accepted: true` — the "
+                "guest's acceptance of the terms must be recorded explicitly."
             )
         line = get_object_or_404(QuotationLine, pk=line_id, quotation=quotation)
         # Only a quote the guest actually received can convert. ACCEPTED is

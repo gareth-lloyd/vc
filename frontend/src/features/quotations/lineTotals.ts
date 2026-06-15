@@ -1,7 +1,7 @@
 import { isNonNegativeMoney, isPositiveMoney, parseMoney } from "@/lib/format/money";
 import type { StagedLine } from "./schemas";
 
-// The net total a staged line contributes to the cart. Replicates the server's
+// The net total a staged line contributes to the shortlist. Replicates the server's
 // `QuotationService.price_line`: a manual line uses the operator-typed total; a
 // priced line nets its discount off the engine gross and is floored at zero (a
 // discount larger than the gross renders 0, never negative).
@@ -21,9 +21,9 @@ export function lineEffectiveTotal(line: StagedLine): number | null {
   return Math.max(net, 0);
 }
 
-// Per-field validity for a staged line, keyed by i18n message so the cart can
+// Per-field validity for a staged line, keyed by i18n message so the shortlist can
 // surface inline errors AND gate Save from one definition. The single source of
-// truth for staged-line validation — mirrors the server's rules so the cart
+// truth for staged-line validation — mirrors the server's rules so the shortlist
 // blocks before the parallel line-POST fan-out rather than 400-ing mid-flight:
 //   - a discount, when present, must parse to a non-negative amount (closes the
 //     "garbage discount POSTed → 400" hole);

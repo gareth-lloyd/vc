@@ -6,7 +6,7 @@ import type { EnquiryDetail } from "@/features/enquiries/schemas";
 import { EnquirySummaryHeader } from "./EnquirySummaryHeader";
 import { QuoteCriteriaForm } from "./QuoteCriteriaForm";
 import { QuoteResultsList } from "./QuoteResultsList";
-import { QuoteCart } from "./QuoteCart";
+import { QuoteShortlist } from "./QuoteShortlist";
 import { SaveQuoteDialog } from "./SaveQuoteDialog";
 import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
@@ -165,13 +165,13 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         // The currency the engine priced this option in — carried per line
-        // (GAP-014) so the cart and save path stay per-currency.
+        // (GAP-014) so the shortlist and save path stay per-currency.
         currency: stay ? stay.currency : (option.currency ?? null),
         total: stay ? stay.total : (option.total ?? null),
         discount: "0",
         // Seed from the winning plan's inclusion text (legacy parity —
         // ResService.cs:1241). Display-only convenience pre-save: the backend
-        // seeds authoritatively at line creation; still editable in the cart.
+        // seeds authoritatively at line creation; still editable in the shortlist.
         inclusions: stay?.inclusion ?? option.inclusion ?? "",
         price_override_reason: "",
         is_manual: manualOnly,
@@ -242,12 +242,12 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
           />
         </section>
 
-        {/* Cart sits at the foot as a full-width block in normal flow. The
-            builder is plain vertical flow (criteria → results → cart) and lets
+        {/* Shortlist sits at the foot as a full-width block in normal flow. The
+            builder is plain vertical flow (criteria → results → shortlist) and lets
             its host own the column layout, so it reads the same scrolled
             top-to-bottom whatever pane it's mounted in — ending on Save draft /
             Send to guest. */}
-        <QuoteCart
+        <QuoteShortlist
           lines={staged}
           onUpdateLine={handleUpdateLine}
           onRemove={handleRemove}

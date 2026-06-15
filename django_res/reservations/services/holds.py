@@ -1,7 +1,14 @@
 """HoldService — Python-level lifecycle for `BookingHold` rows.
 
-The DB-level `EXCLUDE` constraint is Postgres-only. On SQLite (used by
-the test suite) we fall back to a Python overlap check before insert.
+The DB-level `EXCLUDE` constraint (`bookinghold_no_overlap_live`,
+migration 0002) gates on `released_at IS NULL` only — Postgres rejects
+`now()` in an index predicate — so an expired-but-unswept hold still
+blocks at the DB level (BUG-005). Mutating paths therefore
+opportunistically release stale overlapping holds first
+(`expire_overlapping_stale`), with the beat sweeper
+(`tasks.expire_holds`) as the background pass, and translate any
+residual EXCLUDE violation (a true concurrent race) into
+`HoldUnavailable` so the API contract holds.
 
 All mutations run inside `transaction.atomic` so the place/release
 operations remain consistent even if a later step in the calling service
@@ -10,10 +17,12 @@ fails.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from django.db import transaction
+import structlog
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from core.exceptions import HoldUnavailable
@@ -22,6 +31,8 @@ from reservations.models.booking import BookingHold
 
 if TYPE_CHECKING:
     from datetime import date as date_type
+
+logger = structlog.get_logger(__name__)
 
 
 def _resolve_default_expiry(property: Any) -> datetime:
@@ -38,8 +49,71 @@ def _resolve_default_expiry(property: Any) -> datetime:
     return timezone.now() + timedelta(hours=hours)
 
 
+@contextmanager
+def _translate_overlap_violation(property: Any, date_from: date_type, date_to: date_type) -> Any:
+    """Re-raise a `bookinghold_no_overlap_live` violation as `HoldUnavailable`.
+
+    The EXCLUDE constraint is the concurrency backstop: when a competing hold
+    commits between `_assert_no_overlap` and the INSERT/UPDATE, the violation
+    must surface as the documented 409, not a raw 500. Any other
+    `IntegrityError` propagates untouched. No queries run between catching and
+    re-raising, so the aborted transaction state is never touched.
+    """
+    try:
+        yield
+    except IntegrityError as exc:
+        if "bookinghold_no_overlap_live" not in str(exc):
+            raise
+        raise HoldUnavailable(
+            f"{property} is unavailable for {date_from}..{date_to} — "
+            "another hold was placed on these dates concurrently."
+        ) from exc
+
+
 class HoldService:
     """Place / release / expire `BookingHold` rows."""
+
+    @classmethod
+    def expire_overlapping_stale(
+        cls,
+        *,
+        property: Any,
+        date_from: date_type,
+        date_to: date_type,
+        exclude_hold_ids: list[int] | None = None,
+    ) -> list[BookingHold]:
+        """Release expired-but-unswept holds overlapping the range; return them.
+
+        The opportunistic counterpart to `tasks.expire_holds` (BUG-005): the
+        EXCLUDE constraint can't see `expires_at`, so if the beat sweeper is
+        paused an expired hold would still block the INSERT at the DB level.
+        Mutating paths call this first so a stale hold never blocks a valid
+        booking. Fires `hold_expired` per row, exactly like the sweeper, so
+        comms fan-out is identical whichever path releases the hold.
+        """
+        from reservations.signals import hold_expired
+
+        now = timezone.now()
+        qs = BookingHold.objects.filter(
+            property=property,
+            released_at__isnull=True,
+            expires_at__isnull=False,
+            expires_at__lt=now,
+            date_from__lt=date_to,
+            date_to__gt=date_from,
+        )
+        if exclude_hold_ids:
+            qs = qs.exclude(pk__in=exclude_hold_ids)
+        due = list(qs)
+        if not due:
+            return []
+        BookingHold.objects.filter(pk__in=[hold.pk for hold in due]).update(released_at=now)
+        for hold in due:
+            # Refresh the in-memory copy so signal handlers see post-update state.
+            hold.released_at = now
+            hold_expired.send(sender=BookingHold, hold=hold)
+        logger.info("hold.expired_opportunistic", released=len(due), property_id=property.pk)
+        return due
 
     @classmethod
     def _assert_no_overlap(
@@ -143,23 +217,25 @@ class HoldService:
         never reaps it. `never_expires` and an explicit `expires_at` are
         mutually exclusive.
         """
+        cls.expire_overlapping_stale(property=property, date_from=date_from, date_to=date_to)
         cls._assert_no_overlap(property=property, date_from=date_from, date_to=date_to)
         if never_expires:
             if expires_at is not None:
                 raise ValueError("`never_expires=True` cannot be combined with `expires_at`")
         elif expires_at is None:
             expires_at = _resolve_default_expiry(property)
-        return BookingHold.objects.create(
-            property=property,
-            quotation=quotation,
-            quotation_line=quotation_line,
-            booking=booking,
-            date_from=date_from,
-            date_to=date_to,
-            expires_at=expires_at,
-            reason=reason,
-            notes=notes,
-        )
+        with _translate_overlap_violation(property, date_from, date_to):
+            return BookingHold.objects.create(
+                property=property,
+                quotation=quotation,
+                quotation_line=quotation_line,
+                booking=booking,
+                date_from=date_from,
+                date_to=date_to,
+                expires_at=expires_at,
+                reason=reason,
+                notes=notes,
+            )
 
     @classmethod
     @transaction.atomic
@@ -177,6 +253,12 @@ class HoldService:
         Raises `HoldUnavailable` if the new range collides with another live
         hold (the editing hold is excluded so a no-op save is allowed).
         """
+        cls.expire_overlapping_stale(
+            property=hold.property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=[hold.pk],
+        )
         cls._assert_no_overlap(
             property=hold.property,
             date_from=date_from,
@@ -187,7 +269,8 @@ class HoldService:
         hold.date_to = date_to
         hold.reason = reason
         hold.notes = notes
-        hold.save(update_fields=["date_from", "date_to", "reason", "notes", "updated_at"])
+        with _translate_overlap_violation(hold.property, date_from, date_to):
+            hold.save(update_fields=["date_from", "date_to", "reason", "notes", "updated_at"])
         return hold
 
     @classmethod
@@ -208,6 +291,12 @@ class HoldService:
         (e.g. a changeover-shifted arrival). Distinct from `update_block`, which
         is the operator-block editor and rewrites reason/notes instead.
         """
+        cls.expire_overlapping_stale(
+            property=hold.property,
+            date_from=date_from,
+            date_to=date_to,
+            exclude_hold_ids=[hold.pk],
+        )
         cls._assert_no_overlap(
             property=hold.property,
             date_from=date_from,
@@ -220,7 +309,8 @@ class HoldService:
         if expires_at is not None:
             hold.expires_at = expires_at
             update_fields.append("expires_at")
-        hold.save(update_fields=update_fields)
+        with _translate_overlap_violation(hold.property, date_from, date_to):
+            hold.save(update_fields=update_fields)
         return hold
 
     @classmethod

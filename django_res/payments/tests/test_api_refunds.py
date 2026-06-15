@@ -193,3 +193,73 @@ def test_list_refunds_for_booking(
     response = api_client.get(f"/api/v1/bookings/{booking.pk}/refunds")
     assert response.status_code == 200
     assert len(response.data) == 1
+
+
+@pytest.mark.django_db
+def test_request_refund__retry_with_same_idempotency_key_returns_original(
+    api_client: APIClient,
+    requester: User,
+    booking: Booking,
+    succeeded_deposit: Payment,
+    gbp: Currency,
+) -> None:
+    """A retried POST with the same `idempotency_key` returns the first Refund.
+
+    The service has supported `idempotency_key` since FG-010/FG-012, but the
+    API surface never exposed it — operator double-clicks and flaky-network
+    retries would double-open refunds. Mirrors the manual-payment pattern
+    (`ManualPaymentCreateSerializer`).
+    """
+    api_client.force_login(requester)
+    body = {
+        "amount": "120.00",
+        "currency": gbp.pk,
+        "purpose_track": RefundPurposeTrack.DEPOSIT.value,
+        "reason_code": RefundReasonCode.OVERPAYMENT.value,
+        "against_payment": succeeded_deposit.pk,
+        "idempotency_key": "op-refund-click-1",
+    }
+    first = api_client.post(f"/api/v1/bookings/{booking.pk}/refunds", body, format="json")
+    second = api_client.post(f"/api/v1/bookings/{booking.pk}/refunds", body, format="json")
+    assert first.status_code == 201, first.data
+    assert second.status_code == 201, second.data
+    assert second.data["id"] == first.data["id"]
+    assert Refund.objects.filter(booking=booking).count() == 1
+
+
+@pytest.mark.django_db
+def test_request_refund__idempotency_race_returns_409_not_500(
+    api_client: APIClient,
+    requester: User,
+    booking: Booking,
+    succeeded_deposit: Payment,
+    gbp: Currency,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The FG-010 DB backstop must surface as a 409 conflict, not a 500.
+
+    Two concurrent requests with the same key both pass `find_by_meta_key`
+    under READ COMMITTED; the loser hits the
+    `refund_idempotency_key_unique_per_booking` partial unique index.
+    Simulated by patching the pre-check to miss, as the service-level
+    backstop test does by bypassing it.
+    """
+    monkeypatch.setattr(
+        "payments.services.refund.find_by_meta_key",
+        lambda queryset, key: None,
+    )
+    api_client.force_login(requester)
+    body = {
+        "amount": "120.00",
+        "currency": gbp.pk,
+        "purpose_track": RefundPurposeTrack.DEPOSIT.value,
+        "reason_code": RefundReasonCode.OVERPAYMENT.value,
+        "against_payment": succeeded_deposit.pk,
+        "idempotency_key": "op-refund-race-1",
+    }
+    first = api_client.post(f"/api/v1/bookings/{booking.pk}/refunds", body, format="json")
+    assert first.status_code == 201, first.data
+    second = api_client.post(f"/api/v1/bookings/{booking.pk}/refunds", body, format="json")
+    assert second.status_code == 409, getattr(second, "data", second)
+    assert second.data["code"] == "invalid_state"
+    assert Refund.objects.filter(booking=booking).count() == 1

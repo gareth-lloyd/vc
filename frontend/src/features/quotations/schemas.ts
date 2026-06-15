@@ -252,10 +252,10 @@ export interface StagedLine {
   // canonically.
   currency: string | null;
   // The engine gross for a priced line, or the operator-typed total for a
-  // manual line. The cart's effective total nets `discount` off this (priced
+  // manual line. The shortlist's effective total nets `discount` off this (priced
   // lines only), floored at zero — see `lineEffectiveTotal`.
   total: string | number | null;
-  // Per-line edits the cart exposes; mirror the fields the backend already
+  // Per-line edits the shortlist exposes; mirror the fields the backend already
   // supports (GAP-005 #5–#7). Decimal `discount` travels as a string.
   discount: string;
   inclusions: string;
@@ -263,7 +263,7 @@ export interface StagedLine {
   is_manual: boolean;
   // True when the engine couldn't price this villa at all (Q-013 no-rate):
   // there is no engine total to fall back to, so `is_manual` can't be
-  // un-ticked — the cart disables the checkbox.
+  // un-ticked — the shortlist disables the checkbox.
   manual_only: boolean;
   notes: string;
 }
@@ -302,7 +302,7 @@ export const quotationLineWriteInputSchema = z
   })
   // Mirror the server's manual-total rule: a manual line needs a non-empty
   // total that parses to a number > 0. Uses the same comma-tolerant parser as
-  // the cart (`isPositiveMoney`); the server's 400 on `total` still surfaces
+  // the shortlist (`isPositiveMoney`); the server's 400 on `total` still surfaces
   // inline as a belt-and-suspenders if this slips through.
   .refine((v) => !v.is_manual || isPositiveMoney(v.total ?? ""), {
     path: ["total"],

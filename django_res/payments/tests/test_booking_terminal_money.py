@@ -67,6 +67,21 @@ def test_decline_booking_cancels_pending_payments(booking: Booking, gbp: Currenc
 
 
 @pytest.mark.django_db
+def test_cancel_frees_per_purpose_constraint_slot(booking: Booking, gbp: Currency) -> None:
+    """FG-015 acceptance: the CANCELLED rows vacate the one-active-row-per-
+    purpose slots, so a re-booked line can schedule fresh payments."""
+    _pending(booking, gbp, PaymentPurpose.DEPOSIT.value, "420.00")
+    _pending(booking, gbp, PaymentPurpose.BALANCE.value, "980.00")
+
+    booking.cancel("guest changed plans")
+
+    fresh_deposit = _pending(booking, gbp, PaymentPurpose.DEPOSIT.value, "420.00")
+    fresh_balance = _pending(booking, gbp, PaymentPurpose.BALANCE.value, "980.00")
+    assert fresh_deposit.pk is not None
+    assert fresh_balance.pk is not None
+
+
+@pytest.mark.django_db
 def test_cancel_booking_leaves_settled_payments_untouched(booking: Booking, gbp: Currency) -> None:
     """No automatic refunds — settled money is an operator decision."""
     paid = Payment.objects.create(

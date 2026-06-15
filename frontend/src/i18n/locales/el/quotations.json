@@ -324,7 +324,7 @@
         "shifted": "Τιμολογήθηκε ως {{from}} → {{to}}"
       }
     },
-    "cart": {
+    "shortlist": {
       "heading": "Λίστα επιλογών ({{count}})",
       "thumbnail_alt": "Μικρογραφία {{name}}",
       "save_draft": "Αποθήκευση πρόχειρου",

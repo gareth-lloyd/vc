@@ -63,6 +63,75 @@ def test_create_for_booking__creates_deposit_balance_and_security_deposit(
 
 
 @pytest.mark.django_db
+def test_create_for_booking__deposit_plus_balance_conserves_total(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """deposit_saved + balance_saved == total for a percentage-split deposit.
+
+    Regression for the SMELL-003 follow-up: the BALANCE row must subtract the
+    *quantised* deposit, so money is conserved by construction. For a 2dp
+    currency (GBP, 30% of 1400) this is a no-op — the existing 420/980 split
+    already conserves — but it pins the invariant.
+    """
+    _ensure_finance(property_)
+    from reservations.models import Booking
+
+    booking = Booking.objects.get(pk=booking.pk)
+
+    created = PaymentScheduler.create_for_booking(booking)
+    total = booking.balance_due
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+
+    assert deposit.amount + balance.amount == total
+    assert deposit.amount == Decimal("420.00")
+    assert balance.amount == Decimal("980.00")
+
+
+@pytest.mark.django_db
+def test_create_for_booking__conserves_total_for_zero_dp_currency(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """A 0dp currency at an exact-half split still conserves the total.
+
+    Total 1 JPY, 50% deposit → 0.5 rounds HALF_EVEN to 0; the balance must
+    derive from the quantised 0 (→ 1), so deposit + balance == 1. The pre-fix
+    code subtracted the *unquantised* 0.5, quantising 0.5 → 0 and losing the
+    whole total.
+    """
+    from pricing.models import Currency
+    from reservations.models import Booking
+
+    jpy = Currency.objects.create(code="JPY", name="Japanese yen", symbol="¥", decimal_places=0)
+    gf = _ensure_finance(property_)
+    gf.deposit_required = True
+    gf.deposit_calculation_type = "percent"
+    gf.deposit_amount = Decimal("50")
+    gf.save(
+        update_fields=[
+            "deposit_required",
+            "deposit_calculation_type",
+            "deposit_amount",
+        ]
+    )
+
+    booking = Booking.objects.get(pk=booking.pk)
+    booking.currency = jpy
+    booking.balance_due = Decimal("1")
+    booking.rental_price = Decimal("1")
+    booking.pricing_snapshot = {"total": "1"}
+    booking.save(update_fields=["currency", "balance_due", "rental_price", "pricing_snapshot"])
+
+    created = PaymentScheduler.create_for_booking(booking)
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+
+    assert deposit.amount + balance.amount == Decimal("1")
+
+
+@pytest.mark.django_db
 def test_create_for_booking__skips_security_deposit_when_not_required(
     booking: Any,
     property_: Property,

@@ -154,6 +154,17 @@ money columns; skip chatty timestamps and free-form JSON blobs.
 `core/tests/test_audit_registry.py` pins the registered set — update
 `EXPECTED_TRACKED_MODELS` in the same commit when deregistering.
 
+The trail rides `pre_save` / `post_delete`, so **bulk writes bypass it
+silently**: `queryset.update()`, `bulk_create()`, `bulk_update()` and
+`queryset.delete()` fire no signals. A bulk write to a *tracked* model must
+either go through a `.save()` loop or write an explicit audit row. The merge
+FK rewrites (`Contact.merge` / `Guest.merge`) use `.update()` by design and
+summarise what moved onto the deletion row via `core.audit.record_merge`
+(destination pk + per-relation counts, FG-016) rather than auditing each row.
+If bulk paths on tracked models ever proliferate, the structural fix is
+trigger-based capture (`django-pghistory`), not more signal plumbing — don't
+build that now.
+
 ### Structured logging — `structlog`, event-style
 
 Full guide: `core/logging/README.md`. Must-knows:
@@ -244,7 +255,7 @@ delete) live in the root `CLAUDE.md`. Backend-specific structure:
    - **Spine points down** — a layer may import those below it:
 
      ```
-     comms > payments > reservations > pricing > properties > integrations > accounts
+     comms > payments > reservations > owners > pricing > properties > integrations > accounts
      ```
 
      The few sanctioned back-edges are commented `ignore_imports` lines in

@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 
+from core.audit import record_merge, scrub_pii
 from core.fields import CIEmailField
 from core.models.base import AuditedModel
 from reservations.enums import ContactMethod, GuestStatus
@@ -59,6 +60,21 @@ class Guest(AuditedModel):
     )
 
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
+    # Audit-tracked columns carrying cleartext PII. Erasure flows scrub these
+    # from the AuditLog trail (BUG-012); the non-PII tracked columns
+    # (status, contact_method, marketing_consent, anonymized_at) stay readable.
+    _AUDIT_PII_FIELDS = (
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "address_line_1",
+        "address_line_2",
+        "town",
+        "post_code",
+        "notes",
+    )
 
     class Meta:
         indexes = [
@@ -161,6 +177,9 @@ class Guest(AuditedModel):
                 "updated_at",
             ]
         )
+        # Scrub *after* the save so the freshly written [old, sentinel] row is
+        # caught alongside the historical trail (BUG-012).
+        scrub_pii(self, self._AUDIT_PII_FIELDS)
 
     @transaction.atomic
     def merge(self, target: Guest) -> None:
@@ -170,6 +189,9 @@ class Guest(AuditedModel):
         """
         if target.pk == self.pk:
             raise ValueError("Cannot merge a guest into itself")
+        # The .update() rewrites bypass the audit signals, so record a summary
+        # of what moved (per-relation counts) onto the deletion row (FG-016).
+        rewrites: dict[str, int] = {}
         for rel in self._meta.related_objects:
             related_model = rel.related_model
             if related_model is None or isinstance(related_model, str):
@@ -177,7 +199,18 @@ class Guest(AuditedModel):
             if rel.many_to_many:
                 continue
             field_name = rel.field.name
-            related_model._default_manager.filter(**{field_name: self}).update(
+            count = related_model._default_manager.filter(**{field_name: self}).update(
                 **{field_name: target}
             )
+            if count:
+                rewrites[f"{related_model._meta.label}.{field_name}"] = count
+        dead_pk = self.pk
+        target_pk = target.pk
         self.delete()
+        # Scrub by the now-dead pk so the deletion row's [old_PII, None] pairs
+        # are redacted while __deleted__/actor/timestamps survive (BUG-012).
+        self.pk = dead_pk
+        # Stamp merge summary onto the deletion row *before* scrubbing so the
+        # augmented row is scrubbed too (FG-016).
+        record_merge(self, target_pk, rewrites)
+        scrub_pii(self, self._AUDIT_PII_FIELDS)

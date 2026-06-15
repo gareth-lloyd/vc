@@ -1,4 +1,4 @@
-"""Project middleware: audit threadlocal + WhiteNoise media serving."""
+"""Project middleware: audit request context + WhiteNoise media serving."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import structlog
 from django.conf import settings as django_settings
 from whitenoise.middleware import WhiteNoiseMiddleware
 
-from core.threadlocal import (
+from core.request_context import (
     clear_current_user,
     correlation,
     set_current_user,

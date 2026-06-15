@@ -67,7 +67,7 @@
     "errors.image_file_required"
   ],
   "quotations": [
-    "builder.cart.line.manual_locked_hint",
+    "builder.shortlist.line.manual_locked_hint",
     "builder.results.add_manual",
     "builder.results.incomplete_pricing",
     "builder.results.incomplete_pricing_aria",

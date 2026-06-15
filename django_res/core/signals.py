@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 
-from core.threadlocal import get_current_user
+from core.request_context import get_current_user
 
 
 @receiver(pre_save, dispatch_uid="core.audit.populate_user_fields")

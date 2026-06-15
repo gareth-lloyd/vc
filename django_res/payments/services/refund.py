@@ -8,9 +8,11 @@ and how a refund derives from a cancellation.
 Permission shape: each transition consults `actor.has_perm(...)` for the
 relevant Django permission code. Tests skip permission scaffolding by
 passing `actor=None`, in which case the service grants the action (system
-flow). The separation-of-duties guardrail is enforced both in this service
-(`payments.refund.self_approve`) and at the DB (`CheckConstraint` on
-`refund_separation_of_duties`).
+flow). The separation-of-duties guardrail on approval is enforced both in
+this service and at the DB (`CheckConstraint` on
+`refund_separation_of_duties`); neither offers a permission bypass.
+`payments.self_approve_refund` relaxes only the approver/executor split
+in `execute()`.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from payments.enums import (
 )
 from payments.models.payment import Payment
 from payments.models.refund import Refund
+from pricing.services.currency import quantise_money
 
 if TYPE_CHECKING:
     from payments.models.security_deposit import SecurityDeposit
@@ -98,6 +101,12 @@ class RefundService:
             raise ValueError("Refund amount must be positive")
 
         if against_payment is not None:
+            # FG-010: lock the source payment before the aggregate. Under
+            # READ COMMITTED two concurrent partial refunds would both read
+            # the same Sum() and jointly exceed the original amount; the row
+            # lock serialises the second request behind the first's commit,
+            # so its aggregate sees the first refund and the check rejects it.
+            against_payment = Payment.objects.select_for_update().get(pk=against_payment.pk)
             already_refunded = Refund.objects.filter(
                 against_payment=against_payment,
             ).exclude(
@@ -123,7 +132,7 @@ class RefundService:
                 booking=booking,
                 against_payment=against_payment,
                 purpose_track=purpose_track,
-                amount=Decimal(str(amount)),
+                amount=quantise_money(Decimal(str(amount)), currency),
                 currency=currency,
                 status=RefundStatus.PENDING.value,
                 reason_code=reason_code,
@@ -146,10 +155,13 @@ class RefundService:
     def approve(cls, refund: Refund, *, actor: Any) -> Refund:
         """PENDING → APPROVED.
 
-        Asserts `actor != refund.requested_by` unless the actor carries
-        `payments.refund.self_approve`. The DB `CheckConstraint` floors the
-        rule independently — service-layer checks fail fast with a
-        readable error before the constraint trips.
+        Asserts `actor != refund.requested_by` — unconditionally. The DB
+        `CheckConstraint` (`refund_separation_of_duties`) floors the rule
+        with no permission escape hatch, so the service offers none either
+        (BUG-010): `PERM_SELF_APPROVE` relaxes the approver/executor split
+        in `execute()` only, where the DB deliberately doesn't constrain
+        the executor. Service-layer checks fail fast with a readable error
+        before the constraint trips.
         """
         # Lock first: concurrent approvals serialise, and the loser's status
         # check below sees the winner's committed state.
@@ -162,11 +174,8 @@ class RefundService:
             actor is not None
             and refund.requested_by_id is not None
             and getattr(actor, "pk", None) == refund.requested_by_id
-            and not actor_has_perm(actor, PERM_SELF_APPROVE)
         ):
-            raise PermissionError(
-                f"Requester cannot self-approve a refund without {PERM_SELF_APPROVE!r}",
-            )
+            raise PermissionError("Requester cannot approve their own refund")
 
         refund.approved_by = actor
         refund.approved_at = timezone.now()
@@ -251,7 +260,7 @@ class RefundService:
         if not actor_has_perm(actor, PERM_EXECUTE):
             raise PermissionError(f"actor {actor!r} missing {PERM_EXECUTE!r} permission")
         # High-risk org policy: executor must differ from approver unless
-        # the actor carries `payments.refund.self_approve`. Service-layer
+        # the actor carries `payments.self_approve_refund`. Service-layer
         # only — the DB doesn't enforce executor distinction.
         if (
             actor is not None

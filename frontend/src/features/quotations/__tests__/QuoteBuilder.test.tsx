@@ -171,7 +171,7 @@ describe("QuoteBuilder", () => {
     expect(bulkBody).not.toHaveProperty("currency");
   });
 
-  it("renders mixed-currency results and cart lines each in their own currency", async () => {
+  it("renders mixed-currency results and shortlist lines each in their own currency", async () => {
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty, villaTwo]))),
       http.post("/api/v1/quotations:search-options", () =>
@@ -190,23 +190,23 @@ describe("QuoteBuilder", () => {
     expect(await screen.findByText("£4,500.00")).toBeInTheDocument();
     expect(screen.getByText("€5,200.00")).toBeInTheDocument();
 
-    // Staged lines carry their own currency into the cart.
+    // Staged lines carry their own currency into the shortlist.
     const addButtons = screen.getAllByRole("button", { name: /add to quote/i });
     await userEvent.click(addButtons[0]);
     await userEvent.click(addButtons[1]);
     expect(await screen.findByText(/shortlist \(2\)/i)).toBeInTheDocument();
-    expect(screen.getAllByText("£4,500.00")).toHaveLength(2); // result row + cart line
+    expect(screen.getAllByText("£4,500.00")).toHaveLength(2); // result row + shortlist line
     expect(screen.getAllByText("€5,200.00")).toHaveLength(2);
   });
 
-  it("adds a priced option into the cart", async () => {
+  it("adds a priced option into the shortlist", async () => {
     server.use(...mockSearch());
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
 
-    // The cart starts empty, then carries the added villa.
+    // The shortlist starts empty, then carries the added villa.
     expect(screen.getByText(/your shortlist is empty/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
     expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("QuoteBuilder", () => {
     expect(await screen.findByText(/Daily maid service/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
-    // …and the staged cart line is pre-seeded with them (still editable).
+    // …and the staged shortlist line is pre-seeded with them (still editable).
     await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
     expect(screen.getByLabelText(/inclusions/i)).toHaveValue("Daily maid service");
   });
@@ -370,7 +370,7 @@ describe("QuoteBuilder", () => {
     await screen.findByText("$5,200.00");
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
 
-    // The cart line carries the picked block, not the criteria dates.
+    // The shortlist line carries the picked block, not the criteria dates.
     expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
     expect(screen.getAllByText("$5,200.00").length).toBeGreaterThan(0);

@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
 
 from accounts.enums import ContactStatus
 from accounts.models import Contact, ContactEmail, ContactPhone
+from core.audit import REDACTED
+from core.models import AuditLog
 
 
 @pytest.fixture
@@ -66,3 +69,65 @@ def test_merge_rewrites_fks_and_deletes_source() -> None:
 
     assert not Contact.objects.filter(pk=duplicate.pk).exists()
     assert keep.emails.filter(email="dup@example.com").exists()
+
+
+@pytest.mark.django_db
+def test_merge_deletion_row_records_merged_into_and_rewrite_counts() -> None:
+    """FG-016: the bulk FK rewrites bypass the audit signals, so merge must
+    stamp the destination pk and per-relation rewrite counts onto the
+    deletion row rather than leaving them silently unaudited."""
+    keep = Contact.objects.create(first_name="Keep", last_name="Me")
+    duplicate = Contact.objects.create(first_name="Dup", last_name="Me")
+    ContactEmail.objects.create(contact=duplicate, email="a@example.com")
+    ContactEmail.objects.create(contact=duplicate, email="b@example.com")
+
+    duplicate.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Contact)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(duplicate.pk)))
+    deletion_rows = [r for r in rows if r.field_diffs.get("__deleted__")]
+    assert deletion_rows
+    row = deletion_rows[-1]
+    assert row.field_diffs["__merged_into__"] == str(keep.pk)
+    rewrites = row.field_diffs["__rewrites__"]
+    assert rewrites["accounts.ContactEmail.contact"] == 2
+    assert all(count > 0 for count in rewrites.values())
+
+
+@pytest.mark.django_db
+def test_anonymize_scrubs_pii_from_audit_log(contact: Contact) -> None:
+    """GDPR erasure: anonymize must redact cleartext PII across the
+    contact's whole AuditLog trail (BUG-012)."""
+    contact.last_name = "Leaky"
+    contact.notes = "secret note"
+    contact.save(update_fields=["last_name", "notes"])
+
+    ct = ContentType.objects.get_for_model(Contact)
+    pre_rows = AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk))
+    assert any("Leaky" in str(r.field_diffs) for r in pre_rows)
+
+    contact.anonymize()
+
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk)))
+    for r in rows:
+        blob = str(r.field_diffs)
+        assert "Leaky" not in blob
+        assert "secret note" not in blob
+
+
+@pytest.mark.django_db
+def test_merge_scrubs_deletion_row_pii_but_keeps_structure() -> None:
+    """merge() deletion row keeps __deleted__/structure, redacts PII (BUG-012)."""
+    keep = Contact.objects.create(first_name="Keep", last_name="Me")
+    duplicate = Contact.objects.create(first_name="Dup", last_name="Leaky")
+
+    duplicate.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Contact)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(duplicate.pk)))
+    deletion_rows = [r for r in rows if r.field_diffs.get("__deleted__")]
+    assert deletion_rows
+    for r in deletion_rows:
+        assert "Leaky" not in str(r.field_diffs)
+        assert r.field_diffs["__deleted__"] is True
+        assert r.field_diffs["last_name"][0] == REDACTED

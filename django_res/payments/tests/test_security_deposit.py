@@ -206,3 +206,99 @@ def test_bt_path__mark_paid_then_release(
     bt_sd.refresh_from_db()
     assert bt_sd.status == SecurityDepositStatus.REFUNDED.value
     assert bt_sd.refunded_amount == Decimal("500.00")
+
+
+# ----------------------------------------------------------------------
+# Kind guards — typed domain errors, not bare ValueError (BUG-011)
+# ----------------------------------------------------------------------
+@pytest.mark.django_db
+def test_hold__wrong_kind_raises_typed_domain_error(bt_sd: SecurityDeposit) -> None:
+    from core.exceptions import InvalidSecurityDepositKind
+
+    with pytest.raises(InvalidSecurityDepositKind):
+        SecurityDepositService.hold(bt_sd, gateway_response={}, actor=None)
+    bt_sd.refresh_from_db()
+    assert bt_sd.status == SecurityDepositStatus.AWAITING_BT.value
+
+
+@pytest.mark.django_db
+def test_mark_paid__wrong_kind_raises_typed_domain_error(
+    pre_auth_sd: SecurityDeposit,
+) -> None:
+    from core.exceptions import InvalidSecurityDepositKind
+
+    with pytest.raises(InvalidSecurityDepositKind):
+        SecurityDepositService.mark_paid(
+            pre_auth_sd,
+            amount=Decimal("500.00"),
+            paid_at=datetime(2026, 4, 1, 12, 0, tzinfo=UTC),
+            method=PaymentMethod.BANK_TRANSFER.value,
+            reference="wire-001",
+            actor=None,
+        )
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.status == SecurityDepositStatus.AWAITING_DETAILS.value
+
+
+# ----------------------------------------------------------------------
+# Structured logging — the SD money path emits the op triples (BUG-011)
+# ----------------------------------------------------------------------
+@pytest.mark.django_db
+def test_security_deposit_service_emits_structured_events(
+    pre_auth_sd: SecurityDeposit,
+    booking: Any,
+) -> None:
+    """hold/release emit the `security_deposit.*` op triples.
+
+    The SD state machine is money movement — losing its structured
+    observability would be a silent regression, so we pin the success lines
+    and the key fields (security_deposit_id / amount / currency) riding on
+    them. Mirrors `test_refund_service_emits_structured_events`.
+    """
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        SecurityDepositService.hold(
+            pre_auth_sd,
+            gateway_response={"provider": "flywire", "provider_reference": "flw-1"},
+            actor=None,
+        )
+        SecurityDepositService.release(pre_auth_sd, actor=None)
+
+    held = next(e for e in logs if e["event"] == "security_deposit.hold.succeeded")
+    assert held["security_deposit_id"] == pre_auth_sd.pk
+    assert held["booking_id"] == booking.pk
+    assert held["amount"] == "500.00"
+    assert held["currency"] == "GBP"
+
+    released = next(e for e in logs if e["event"] == "security_deposit.release.succeeded")
+    assert released["security_deposit_id"] == pre_auth_sd.pk
+
+
+@pytest.mark.django_db
+def test_bt_mark_paid_and_claim_emit_structured_events(bt_sd: SecurityDeposit) -> None:
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        SecurityDepositService.mark_paid(
+            bt_sd,
+            amount=Decimal("500.00"),
+            paid_at=datetime(2026, 4, 1, 12, 0, tzinfo=UTC),
+            method=PaymentMethod.BANK_TRANSFER.value,
+            reference="wire-001",
+            actor=None,
+        )
+        SecurityDepositService.claim(
+            bt_sd,
+            damage_claim=42,
+            captured_amount=Decimal("150.00"),
+            actor=None,
+        )
+
+    paid = next(e for e in logs if e["event"] == "security_deposit.mark_paid.succeeded")
+    assert paid["security_deposit_id"] == bt_sd.pk
+    assert paid["amount"] == "500.00"
+
+    claimed = next(e for e in logs if e["event"] == "security_deposit.claim.succeeded")
+    assert claimed["security_deposit_id"] == bt_sd.pk
+    assert claimed["captured_amount"] == "150.00"

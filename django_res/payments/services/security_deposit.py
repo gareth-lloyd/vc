@@ -11,9 +11,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.db import transaction
 from django.utils import timezone
 
+from core.exceptions import InvalidSecurityDepositKind
+from core.logging.operations import log_operation
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
     EventSource,
@@ -26,7 +29,10 @@ from payments.enums import (
 )
 from payments.models.payment import Payment
 from payments.models.security_deposit import SecurityDeposit
+from pricing.services.currency import quantise_money
 from properties.enums import SecurityDepositCalcType, SecurityDepositPaymentMethod
+
+logger = structlog.get_logger(__name__)
 
 
 class SecurityDepositService:
@@ -81,12 +87,20 @@ class SecurityDepositService:
         sd = SecurityDeposit.objects.create(
             booking=booking,
             kind=kind,
-            amount=amount,
+            amount=quantise_money(amount, booking.currency),
             currency=booking.currency,
             status=initial_status,
             due_at=due_at,
             release_after_departure_days=release_after,
             release_scheduled_for=release_for,
+        )
+        logger.info(
+            "security_deposit.created",
+            security_deposit_id=sd.pk,
+            booking_id=booking.pk,
+            kind=kind,
+            amount=str(amount),
+            currency=booking.currency.code,
         )
         return sd
 
@@ -107,30 +121,43 @@ class SecurityDepositService:
         Creates a `Payment(purpose=SECURITY_DEPOSIT, status=SUCCEEDED)`
         recording the pre-auth charge.
         """
+        # Kind guard above the log_operation block — a wrong-kind call is an
+        # expected rejection (→ 409 via the canonical handler), not an
+        # operation failure worth a `.failed` traceback (BUG-011).
         if sd.kind != SecurityDepositKind.PRE_AUTH_HOLD.value:
-            raise ValueError(f"SD {sd.reference}: :hold only valid for PRE_AUTH_HOLD kind")
+            raise InvalidSecurityDepositKind(
+                f"SD {sd.reference}: :hold only valid for PRE_AUTH_HOLD kind"
+            )
         hold_expires_at = gateway_response.get("hold_expires_at")
         provider = gateway_response.get("provider", PaymentProvider.FLYWIRE.value)
         provider_reference = gateway_response.get("provider_reference", "")
 
-        Payment.objects.create(
-            booking=sd.booking,
-            purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-            status=PaymentStatus.SUCCEEDED.value,
-            amount=sd.amount,
-            currency=sd.currency,
-            provider=provider,
-            provider_reference=provider_reference,
-            payment_method=PaymentMethod.CARD.value,
-            settled_at=timezone.now(),
-            meta={"security_deposit_id": sd.pk, "kind": "PRE_AUTH_HOLD"},
-        )
+        with log_operation(
+            "security_deposit.hold",
+            logger=logger,
+            security_deposit_id=sd.pk,
+            booking_id=sd.booking_id,
+            amount=str(sd.amount),
+            currency=sd.currency.code,
+        ):
+            Payment.objects.create(
+                booking=sd.booking,
+                purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                status=PaymentStatus.SUCCEEDED.value,
+                amount=sd.amount,
+                currency=sd.currency,
+                provider=provider,
+                provider_reference=provider_reference,
+                payment_method=PaymentMethod.CARD.value,
+                settled_at=timezone.now(),
+                meta={"security_deposit_id": sd.pk, "kind": "PRE_AUTH_HOLD"},
+            )
 
-        if hold_expires_at:
-            sd.hold_expires_at = hold_expires_at
-            sd.save(update_fields=["hold_expires_at", "updated_at"])
+            if hold_expires_at:
+                sd.hold_expires_at = hold_expires_at
+                sd.save(update_fields=["hold_expires_at", "updated_at"])
 
-        return sd.transition_to_pre_authed(actor=actor)
+            return sd.transition_to_pre_authed(actor=actor)
 
     @classmethod
     @transaction.atomic
@@ -150,22 +177,33 @@ class SecurityDepositService:
         `Payment(provider=MANUAL_BANK_TRANSFER, status=SUCCEEDED)`.
         """
         if sd.kind != SecurityDepositKind.BT_REFUNDABLE.value:
-            raise ValueError(f"SD {sd.reference}: :mark-paid only valid for BT_REFUNDABLE kind")
+            raise InvalidSecurityDepositKind(
+                f"SD {sd.reference}: :mark-paid only valid for BT_REFUNDABLE kind"
+            )
 
-        Payment.objects.create(
-            booking=sd.booking,
-            purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-            status=PaymentStatus.SUCCEEDED.value,
-            amount=amount,
-            currency=sd.currency,
-            provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
-            provider_reference=reference,
-            payment_method=method,
-            settled_at=paid_at,
-            meta={"security_deposit_id": sd.pk, "kind": "BT_HELD"},
-        )
+        with log_operation(
+            "security_deposit.mark_paid",
+            logger=logger,
+            security_deposit_id=sd.pk,
+            booking_id=sd.booking_id,
+            amount=str(amount),
+            currency=sd.currency.code,
+            method=method,
+        ):
+            Payment.objects.create(
+                booking=sd.booking,
+                purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                status=PaymentStatus.SUCCEEDED.value,
+                amount=quantise_money(amount, sd.currency),
+                currency=sd.currency,
+                provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
+                provider_reference=reference,
+                payment_method=method,
+                settled_at=paid_at,
+                meta={"security_deposit_id": sd.pk, "kind": "BT_HELD"},
+            )
 
-        return sd.transition_to_held(actor=actor)
+            return sd.transition_to_held(actor=actor)
 
     @classmethod
     @transaction.atomic
@@ -173,43 +211,53 @@ class SecurityDepositService:
         """PRE_AUTHED → RELEASED   (void hold via gateway)
         HELD       → REFUNDED   (open & execute Refund)
         """
-        if sd.kind == SecurityDepositKind.BT_REFUNDABLE.value:
-            # BT release delegates to the Refund workflow so separation of
-            # duties applies uniformly. We open the Refund here; in
-            # production the operator-facing flow would `:approve` and
-            # `:execute` separately.
-            from payments.enums import (
-                RefundMethod,
-                RefundPurposeTrack,
-                RefundReasonCode,
-            )
-            from payments.services.refund import RefundService
-
-            inbound_payment = (
-                Payment.objects.filter(
-                    booking=sd.booking,
-                    purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-                    status=PaymentStatus.SUCCEEDED.value,
-                    provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
+        with log_operation(
+            "security_deposit.release",
+            logger=logger,
+            security_deposit_id=sd.pk,
+            booking_id=sd.booking_id,
+            amount=str(sd.amount),
+            currency=sd.currency.code,
+            kind=sd.kind,
+        ):
+            if sd.kind == SecurityDepositKind.BT_REFUNDABLE.value:
+                # BT release delegates to the Refund workflow so separation of
+                # duties applies uniformly. We open the Refund here; in
+                # production the operator-facing flow would `:approve` and
+                # `:execute` separately.
+                from payments.enums import (
+                    RefundMethod,
+                    RefundPurposeTrack,
+                    RefundReasonCode,
                 )
-                .order_by("-settled_at")
-                .first()
-            )
-            RefundService.request(
-                booking=sd.booking,
-                amount=sd.amount,
-                currency=sd.currency,
-                purpose_track=RefundPurposeTrack.SECURITY_DEPOSIT.value,
-                reason_code=RefundReasonCode.SECURITY_DEPOSIT_RELEASE.value,
-                method=RefundMethod.MANUAL_BANK_TRANSFER.value,
-                against_payment=inbound_payment,
-                requested_by=actor,
-                security_deposit=sd,
-            )
-            # No approve/execute step here — the calling task or operator
-            # workflow drives those (and bears the audit). We surface the
-            # transition on the SD itself so callers can observe the lifecycle.
-        return sd.transition_to_released(actor=actor)
+                from payments.services.refund import RefundService
+
+                inbound_payment = (
+                    Payment.objects.filter(
+                        booking=sd.booking,
+                        purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                        status=PaymentStatus.SUCCEEDED.value,
+                        provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
+                    )
+                    .order_by("-settled_at")
+                    .first()
+                )
+                RefundService.request(
+                    booking=sd.booking,
+                    amount=sd.amount,
+                    currency=sd.currency,
+                    purpose_track=RefundPurposeTrack.SECURITY_DEPOSIT.value,
+                    reason_code=RefundReasonCode.SECURITY_DEPOSIT_RELEASE.value,
+                    method=RefundMethod.MANUAL_BANK_TRANSFER.value,
+                    against_payment=inbound_payment,
+                    requested_by=actor,
+                    security_deposit=sd,
+                )
+                # No approve/execute step here — the calling task or operator
+                # workflow drives those (and bears the audit). We surface the
+                # transition on the SD itself so callers can observe the
+                # lifecycle.
+            return sd.transition_to_released(actor=actor)
 
     @classmethod
     @transaction.atomic
@@ -224,34 +272,45 @@ class SecurityDepositService:
         """PRE_AUTHED → CAPTURED          (gateway capture)
         HELD       → PARTIALLY_REFUNDED (Refund for the residual)
         """
-        if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
-            # The capture supersedes the pre-auth hold: settle the held
-            # authorisation into a captured charge. Retire the still-active
-            # hold Payment first so only the capture occupies the
-            # one-active-SECURITY_DEPOSIT-per-booking slot (BUG-006) — leaving
-            # both SUCCEEDED would double-count the deposit on the ledger.
-            cls._supersede_active_hold(sd, actor=actor)
-            Payment.objects.create(
-                booking=sd.booking,
-                purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-                status=PaymentStatus.SUCCEEDED.value,
-                amount=captured_amount,
-                currency=sd.currency,
-                provider=PaymentProvider.FLYWIRE.value,
-                payment_method=PaymentMethod.CARD.value,
-                settled_at=timezone.now(),
-                meta={"security_deposit_id": sd.pk, "kind": "CAPTURE"},
-            )
-            return sd.transition_to_captured(
+        with log_operation(
+            "security_deposit.claim",
+            logger=logger,
+            security_deposit_id=sd.pk,
+            booking_id=sd.booking_id,
+            amount=str(sd.amount),
+            captured_amount=str(captured_amount),
+            currency=sd.currency.code,
+            kind=sd.kind,
+        ):
+            if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
+                # The capture supersedes the pre-auth hold: settle the held
+                # authorisation into a captured charge. Retire the still-active
+                # hold Payment first so only the capture occupies the
+                # one-active-SECURITY_DEPOSIT-per-booking slot (BUG-006) —
+                # leaving both SUCCEEDED would double-count the deposit on the
+                # ledger.
+                cls._supersede_active_hold(sd, actor=actor)
+                Payment.objects.create(
+                    booking=sd.booking,
+                    purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
+                    status=PaymentStatus.SUCCEEDED.value,
+                    amount=captured_amount,
+                    currency=sd.currency,
+                    provider=PaymentProvider.FLYWIRE.value,
+                    payment_method=PaymentMethod.CARD.value,
+                    settled_at=timezone.now(),
+                    meta={"security_deposit_id": sd.pk, "kind": "CAPTURE"},
+                )
+                return sd.transition_to_captured(
+                    captured_amount=captured_amount,
+                    damage_claim=damage_claim,
+                    actor=actor,
+                )
+            return sd.transition_to_partially_refunded(
                 captured_amount=captured_amount,
                 damage_claim=damage_claim,
                 actor=actor,
             )
-        return sd.transition_to_partially_refunded(
-            captured_amount=captured_amount,
-            damage_claim=damage_claim,
-            actor=actor,
-        )
 
     @classmethod
     @transaction.atomic
@@ -259,7 +318,14 @@ class SecurityDepositService:
         """PRE_AUTHED → EXPIRED   (system: gateway voided hold)
         AWAITING_BT → FAILED    (system: BT never arrived by due_at)
         """
-        return sd.transition_to_expired(actor=actor)
+        with log_operation(
+            "security_deposit.expire",
+            logger=logger,
+            security_deposit_id=sd.pk,
+            booking_id=sd.booking_id,
+            kind=sd.kind,
+        ):
+            return sd.transition_to_expired(actor=actor)
 
     # ------------------------------------------------------------------
     # Helpers

@@ -136,6 +136,27 @@ def test_manual_payment_rejects_unknown_provider_and_method(
 
 
 @pytest.mark.django_db
+def test_manual_payment_post_retry_with_idempotency_key_returns_original(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+) -> None:
+    """An operator double-click retries the POST with the same key — the
+    second call must return the original row, not race the one-active-row
+    constraint into a 409 or mint a duplicate."""
+    api_client.force_login(accounts_user)
+    body = {"amount": "100.00", "idempotency_key": "op-double-click"}
+
+    first = api_client.post(f"/api/v1/bookings/{booking.pk}/deposit/payments", body, format="json")
+    second = api_client.post(f"/api/v1/bookings/{booking.pk}/deposit/payments", body, format="json")
+
+    assert first.status_code == 201, first.data
+    assert second.status_code == 201, second.data
+    assert second.data["id"] == first.data["id"]
+    assert Payment.objects.filter(booking=booking).count() == 1
+
+
+@pytest.mark.django_db
 def test_second_active_payment_is_409_not_500(
     api_client: APIClient,
     accounts_user: User,

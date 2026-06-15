@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
+from core.idempotency import IDEMPOTENCY_META_KEY
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
 from payments.enums import (
@@ -134,14 +136,26 @@ class Refund(AuditedModel):
                 condition=Q(amount__gt=0),
                 name="refund_amount_positive",
             ),
-            # Separation of duties: requester cannot self-approve (DB floor).
-            # Service layer may grant `payments.refund.self_approve` to bypass
-            # for low-risk cases, but those rows must still land with
-            # `approved_by IS NULL` until a distinct approver acts, or be
-            # rejected by this constraint.
+            # Separation of duties: requester cannot self-approve (DB floor,
+            # no permission escape hatch — `RefundService.approve` mirrors
+            # this unconditionally). `payments.self_approve_refund` relaxes
+            # only the approver/executor split in `RefundService.execute`,
+            # which this constraint deliberately doesn't cover.
             models.CheckConstraint(
                 condition=Q(approved_by__isnull=True) | ~Q(approved_by=F("requested_by")),
                 name="refund_separation_of_duties",
+            ),
+            # FG-010: DB backstop for `RefundService.request`'s idempotency.
+            # The service's `find_by_meta_key` pre-check is check-then-create
+            # and not race-proof under READ COMMITTED — this partial unique
+            # index makes the losing concurrent retry fail loudly instead of
+            # double-opening a refund. Scope mirrors the service's queryset
+            # (`Refund.objects.filter(booking=booking)`).
+            models.UniqueConstraint(
+                F("booking"),
+                KeyTextTransform(IDEMPOTENCY_META_KEY, "meta"),
+                condition=Q(**{f"meta__{IDEMPOTENCY_META_KEY}__isnull": False}),
+                name="refund_idempotency_key_unique_per_booking",
             ),
         ]
 

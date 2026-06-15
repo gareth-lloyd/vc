@@ -12,6 +12,21 @@ from core.exceptions import NoRateAvailable
 from pricing.models import Currency, FxRate, RatePlan
 
 
+def quantise_money(amount: Decimal, currency: Currency) -> Decimal:
+    """Round `amount` to `currency.decimal_places` (SMELL-003).
+
+    The single chokepoint that makes money amounts honour their currency's
+    minor-unit precision before they are persisted: a JPY (0 dp) amount loses
+    any cents, a BHD (3 dp) amount keeps its third place. Uses Decimal's
+    default rounding (ROUND_HALF_EVEN), matching the hand-rolled
+    `.quantize(Decimal("0.01"))` calls scattered through the pricing/payments
+    services. Service write paths call this on every money field that carries
+    a currency.
+    """
+    quantum = Decimal(10) ** -currency.decimal_places
+    return amount.quantize(quantum)
+
+
 def default_currency() -> Currency | None:
     """The system default currency — EUR, resolved by code.
 
@@ -110,4 +125,4 @@ class FxConverter:
             raise NoRateAvailable(
                 f"No FxRate available for {from_ccy.code}->{to_ccy.code} on/before {cutoff}"
             )
-        return (amount * rate.rate).quantize(Decimal("0.01"))
+        return quantise_money(amount * rate.rate, to_ccy)

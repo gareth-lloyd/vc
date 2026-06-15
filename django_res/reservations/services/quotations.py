@@ -17,7 +17,7 @@ from rest_framework.exceptions import ValidationError
 
 from pricing.models import Currency
 from pricing.services import PricingEngine
-from pricing.services.currency import resolve_property_currency
+from pricing.services.currency import quantise_money, resolve_property_currency
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
@@ -74,8 +74,8 @@ class QuotationService:
             party=party,
             currency=currency,
         )
-        gross = quote.total.quantize(Decimal("0.01"))
         line.currency = Currency.objects.get(code=quote.currency_code)
+        gross = quantise_money(quote.total, line.currency)
         # Annotate the snapshot so the gross (pre-discount engine figure) and
         # the applied discount survive alongside the engine breakdown — the
         # stored `total` is the net the guest pays.
@@ -85,7 +85,7 @@ class QuotationService:
         line.pricing_snapshot = snapshot
         # Net the operator discount; never let a large discount drive the
         # quoted price negative (mirrors Booking's non-negative money intent).
-        line.total = max(gross - line.discount, Decimal("0"))
+        line.total = quantise_money(max(gross - line.discount, Decimal("0")), line.currency)
         # The engine may have nudged the arrival forward to the property's
         # changeover day (GAP-007). Persist the dates it actually priced so the
         # line, its hold, and any downstream booking stay coherent with the

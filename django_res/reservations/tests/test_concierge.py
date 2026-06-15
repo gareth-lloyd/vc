@@ -16,6 +16,7 @@ from reservations.models import (
     Quotation,
     QuotationLine,
 )
+from reservations.services.concierge import ConciergeService
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -118,3 +119,55 @@ def test_concierge_item_delete_recomputes(booking: Booking, gbp: Currency) -> No
     item.delete()
     booking.refresh_from_db()
     assert booking.adjustment == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_bulk_update_desyncs_until_service_recompute(booking: Booking, gbp: Currency) -> None:
+    """A queryset .update() fires no signal, so the denorm goes stale until the
+    service-layer recompute corrects it (FG-011)."""
+    item = BookingConciergeItem.objects.create(
+        booking=booking,
+        tier=ConciergeTier.SIGNATURE.value,
+        name="Private chef",
+        quantity=1,
+        unit=ConciergeUnit.EVENT.value,
+        unit_price=Decimal("300.00"),
+        currency=gbp,
+    )
+    booking.refresh_from_db()
+    assert booking.adjustment == Decimal("300.00")
+
+    # Bulk write — no post_save fires, so the denorm is now stale.
+    BookingConciergeItem.objects.filter(pk=item.pk).update(unit_price=Decimal("500.00"))
+    booking.refresh_from_db()
+    assert booking.adjustment == Decimal("300.00")  # still stale
+
+    # The service entry point re-derives it from the rows.
+    ConciergeService.recompute_adjustment(booking.pk)
+    booking.refresh_from_db()
+    assert booking.adjustment == Decimal("500.00")
+
+
+@pytest.mark.django_db
+def test_recompute_for_bookings_handles_multiple(booking: Booking, gbp: Currency) -> None:
+    """The batch entry point recomputes every supplied booking id (FG-011)."""
+    BookingConciergeItem.objects.bulk_create(
+        [
+            BookingConciergeItem(
+                booking=booking,
+                tier=ConciergeTier.SIGNATURE.value,
+                name="Driver",
+                quantity=2,
+                unit=ConciergeUnit.DAY.value,
+                unit_price=Decimal("120.00"),
+                currency=gbp,
+            ),
+        ]
+    )
+    # bulk_create fires no post_save — denorm untouched.
+    booking.refresh_from_db()
+    assert booking.adjustment == Decimal("0.00")
+
+    ConciergeService.recompute_for_bookings([booking.pk])
+    booking.refresh_from_db()
+    assert booking.adjustment == Decimal("240.00")

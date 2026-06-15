@@ -8,14 +8,23 @@ The contract:
 
 - Callers pass an optional `idempotency_key: str | None`.
 - When provided, the service looks for an existing row keyed by
-  `(scope, idempotency_key)` *before* the write — under the same
-  transaction so we collapse concurrent retries.
+  `(scope, idempotency_key)` *before* the write.
 - If a match is found, return it untouched. Otherwise create the row
   with the key stamped on it.
 
+The pre-check alone is check-then-create and NOT race-proof: under READ
+COMMITTED, two concurrent calls can both see no row and both create. Every
+adopting model therefore needs a DB backstop — a partial unique index over
+the same scope the service queries — so the losing racer fails loudly with
+`IntegrityError` instead of silently duplicating (FG-010). References:
+`refund_idempotency_key_unique_per_booking`,
+`payment_idempotency_key_unique_per_booking_purpose`,
+`booking_one_per_quotation_line` (natural-key variant).
+
 For models with a `meta` JSONField (`Payment`, `Refund`, `SecurityDeposit`)
 the key lives in `meta["idempotency_key"]`. For models without one,
-add a dedicated column.
+add a dedicated column + `UniqueConstraint` (see
+`reservations.OwnerBlock.idempotency_key`).
 
 `None` means "no idempotency requested" — proceed unconditionally. This
 keeps internal callers (tests, management commands, scheduled jobs)

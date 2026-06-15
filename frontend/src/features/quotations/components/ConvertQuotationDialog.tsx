@@ -77,6 +77,7 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialL
     try {
       const booking = await convert.mutateAsync({
         line: lineId,
+        terms_accepted: true,
         payment_method: paymentMethod,
       });
       toast.success(t("detail.dialogs.convert.toasts.success"));

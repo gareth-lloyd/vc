@@ -11,7 +11,13 @@ class PropertiesConfig(AppConfig):
         from core import audit
         from properties import signals  # noqa: F401
         from properties.models.calendar_feed import PropertyCalendarFeed
+        from properties.models.changeover import ChangeOverRule
+        from properties.models.contacts import PropertyContactAssignment
         from properties.models.finance import GroupFinance, PropertyFinance
+        from properties.models.geo import PropertyNearbyPlace
+        from properties.models.images import PropertyImage
+        from properties.models.property import Property
+        from properties.models.rooms import Room
 
         audit.track(
             PropertyCalendarFeed,
@@ -71,4 +77,58 @@ class PropertiesConfig(AppConfig):
             GroupFinance,
             fields=_AUDITED_FINANCE_FIELDS,
             sensitive=_SENSITIVE_BANK_FIELDS,
+        )
+
+        # Property master record: lifecycle/identity columns only — the chatty
+        # description/content fields live on child models and are deliberately
+        # excluded (FG-017). Edits to a property's name, status, channel, or its
+        # category/group/region placement are the staff actions that leave no
+        # trail today.
+        audit.track(
+            Property,
+            fields=(
+                "name",
+                "display_name",
+                "slug",
+                "licence_number",
+                "status",
+                "channel",
+                "category_id",
+                "group_id",
+                "region_id",
+            ),
+        )
+
+        # Property children: register the few identity fields so a hard delete
+        # (via the Destroy views) leaves a `__deleted__` tombstone naming what
+        # vanished — the goal of the FG-017 second tier. `track()` gives the
+        # post_delete capture for free; the per-edit diffs on these identity
+        # fields are a low-noise bonus. None carry denormalised PII (the
+        # contact/related identities sit behind FKs).
+        audit.track(
+            Room,
+            fields=("property_id", "name", "placement", "is_ensuite", "sort_order"),
+        )
+        audit.track(
+            PropertyImage,
+            fields=("property_id", "kind", "name", "is_active", "sort_order"),
+        )
+        audit.track(
+            PropertyNearbyPlace,
+            fields=("property_id", "place_type_id", "name", "distance_km", "sort_order"),
+        )
+        audit.track(
+            ChangeOverRule,
+            fields=("property_id", "day", "starts_on", "ends_on"),
+        )
+        audit.track(
+            PropertyContactAssignment,
+            fields=(
+                "property_id",
+                "contact_id",
+                "role",
+                "start_date",
+                "end_date",
+                "is_primary",
+            ),
         )

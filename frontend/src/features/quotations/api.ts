@@ -405,6 +405,9 @@ export async function withdrawQuotation(id: QuotationId, reason: string): Promis
 
 export interface ConvertQuotationInput {
   line: number;
+  /** Explicit acceptance signal — the API refuses to convert without it and
+   *  stamps `terms_accepted_at` server-side (SMELL-006). */
+  terms_accepted: true;
   payment_method?: "card" | "bank_transfer";
 }
 

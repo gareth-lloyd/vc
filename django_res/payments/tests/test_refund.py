@@ -89,6 +89,34 @@ def test_refund_state_machine__request_approve_execute_creates_payment(
 
 
 @pytest.mark.django_db
+def test_refund_request__quantises_amount_to_currency_decimal_places(
+    booking: Any,
+    user: Any,
+) -> None:
+    """SMELL-003: a refund in a 0-dp currency must not persist minor units."""
+    from pricing.models import Currency
+
+    jpy = Currency.objects.create(code="JPY", name="Japanese yen", decimal_places=0)
+    paid = Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.DEPOSIT.value,
+        status=PaymentStatus.SUCCEEDED.value,
+        amount=Decimal("5000"),
+        currency=jpy,
+    )
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.49"),
+        currency=jpy,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid,
+        requested_by=user,
+    )
+    assert refund.amount == Decimal("100")
+
+
+@pytest.mark.django_db
 def test_refund_approve__rejects_self_approval_without_permission(
     booking: Any,
     gbp: Any,
@@ -107,6 +135,37 @@ def test_refund_approve__rejects_self_approval_without_permission(
     )
     with pytest.raises(PermissionError):
         RefundService.approve(refund, actor=user)
+
+
+@pytest.mark.django_db
+def test_refund_approve__rejects_self_approval_even_with_self_approve_perm(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+    user: Any,
+) -> None:
+    """BUG-010: `self_approve_refund` must not bypass approval SoD.
+
+    The DB CheckConstraint unconditionally forbids `approved_by ==
+    requested_by`, so a permission bypass at :approve could only ever end
+    in an IntegrityError 500. The service must reject with a clean
+    PermissionError instead; the perm's bypass applies to :execute only.
+    """
+    _grant(user, "approve_refund", "self_approve_refund")
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("50.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    with pytest.raises(PermissionError):
+        RefundService.approve(refund, actor=user)
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.PENDING.value
+    assert refund.approved_by_id is None
 
 
 @pytest.mark.django_db
@@ -245,6 +304,80 @@ def test_request__is_idempotent_when_same_key_supplied(
     assert second.pk == first.pk
     assert Refund.objects.filter(booking=booking).count() == 1
     assert first.meta["idempotency_key"] == key
+
+
+@pytest.mark.django_db
+def test_request__duplicate_idempotency_key_hits_db_backstop(
+    booking: Any,
+    gbp: Any,
+) -> None:
+    """FG-010: the service's check-then-create is not race-proof on its own.
+
+    Two concurrent `request(...)` calls with the same key both pass
+    `find_by_meta_key` under READ COMMITTED; the partial unique index on
+    `(booking, meta->>'idempotency_key')` is the DB floor that makes the
+    loser fail loudly instead of double-opening the refund. Simulated here
+    by writing the duplicate row directly, bypassing the pre-check.
+    """
+    Refund.objects.create(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        status=RefundStatus.PENDING.value,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        meta={"idempotency_key": "evt_dup"},
+    )
+    with pytest.raises(IntegrityError, match="refund_idempotency_key_unique_per_booking"):
+        Refund.objects.create(
+            booking=booking,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            status=RefundStatus.PENDING.value,
+            purpose_track=RefundPurposeTrack.DEPOSIT.value,
+            reason_code=RefundReasonCode.OVERPAYMENT.value,
+            meta={"idempotency_key": "evt_dup"},
+        )
+
+
+@pytest.mark.django_db
+def test_request__locks_against_payment_before_over_refund_check(
+    booking: Any,
+    gbp: Any,
+    paid_deposit: Payment,
+) -> None:
+    """FG-010: the over-refund aggregate must run under a row lock.
+
+    Two concurrent partial refunds against the same payment both read the
+    same `Sum("amount")` under READ COMMITTED and jointly exceed the
+    original amount. `SELECT ... FOR UPDATE` on `against_payment`
+    serialises the second `request()` behind the first's commit, so its
+    aggregate sees the first refund and the cumulative check rejects it.
+    """
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    with CaptureQueriesContext(connection) as ctx:
+        RefundService.request(
+            booking=booking,
+            amount=Decimal("100.00"),
+            currency=gbp,
+            purpose_track=RefundPurposeTrack.DEPOSIT.value,
+            reason_code=RefundReasonCode.OVERPAYMENT.value,
+            against_payment=paid_deposit,
+        )
+
+    aggregate_index = next(
+        i
+        for i, q in enumerate(ctx.captured_queries)
+        if 'SUM("payments_refund"."amount")' in q["sql"]
+    )
+    lock_index = next(
+        i
+        for i, q in enumerate(ctx.captured_queries)
+        if "payments_payment" in q["sql"] and "FOR UPDATE" in q["sql"]
+    )
+    assert lock_index < aggregate_index, "against_payment must be locked before the aggregate"
 
 
 @pytest.mark.django_db

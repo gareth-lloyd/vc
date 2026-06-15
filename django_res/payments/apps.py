@@ -10,7 +10,7 @@ class PaymentsConfig(AppConfig):
     def ready(self) -> None:
         from core.audit import track
         from payments import signals
-        from payments.models import Payment, Refund
+        from payments.models import Payment, Refund, SecurityDeposit
 
         signals._register()
 
@@ -47,6 +47,29 @@ class PaymentsConfig(AppConfig):
                 "executed_at",
                 "cancelled_at",
                 "settled_at",
+                "failure_reason",
+            ],
+        )
+        # SecurityDeposit: the full SD money lifecycle (pre-auth, capture,
+        # claim, release), mirroring its `Payment`/`Refund` siblings. Track
+        # status, the money columns, and the lifecycle stamps an auditor needs
+        # to reconstruct a held/captured/released deposit; skip the chatty
+        # `meta` JSON. No PII columns.
+        track(
+            SecurityDeposit,
+            fields=[
+                "status",
+                "kind",
+                "amount",
+                "currency_id",
+                "captured_amount",
+                "refunded_amount",
+                "damage_claim_id",
+                "due_at",
+                "hold_expires_at",
+                "release_scheduled_for",
+                "released_at",
+                "requested_by_id",
                 "failure_reason",
             ],
         )

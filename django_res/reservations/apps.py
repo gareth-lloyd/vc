@@ -15,8 +15,10 @@ class ReservationsConfig(AppConfig):
             BookingChargeItem,
             BookingGuest,
             BookingServiceCoverage,
+            Enquiry,
             Guest,
             OwnerBlock,
+            Quotation,
             QuotationLine,
         )
 
@@ -63,6 +65,47 @@ class ReservationsConfig(AppConfig):
                 "cancelled_at",
                 "is_archived",
                 "archived_at",
+            ],
+        )
+        # Enquiry: the lead-capture surface carrying denormalised PII before a
+        # Guest is captured (first/last name, email, phone), plus the status
+        # lifecycle and the routing/assignment columns. Unlike `Guest` — which
+        # has an `anonymize()` flow that runs `scrub_pii` over its trail — the
+        # Enquiry has no erasure path, so its PII is registered `sensitive=` and
+        # recorded as the `[REDACTED]` sentinel: cleartext never lands in the
+        # AuditLog, so nothing needs scrubbing later. Skip the chatty
+        # `inbound_message` free text and `auto_now` stamps.
+        track(
+            Enquiry,
+            fields=[
+                "status",
+                "first_name",
+                "last_name",
+                "email",
+                "phone",
+                "contact_method",
+                "guest_id",
+                "property_id",
+                "agent_id",
+                "assigned_to_id",
+                "request_type",
+            ],
+            sensitive=["first_name", "last_name", "email", "phone"],
+        )
+        # Quotation header: the issue/accept/expire/cancel state machine plus
+        # the expiry and cancellation columns. Lines carry the money and are
+        # tracked via `QuotationLine`; the header has no currency (per-line,
+        # GAP-014). No PII — guest/agent identity lives behind FKs.
+        track(
+            Quotation,
+            fields=[
+                "status",
+                "expires_at",
+                "cancel_reason",
+                "is_unbranded",
+                "agent_id",
+                "guest_id",
+                "enquiry_id",
             ],
         )
         # BookingChargeItem: staff-entered money on the guest total. Every

@@ -29,6 +29,7 @@ EXPECTED_TRACKED_MODELS = {
     "owners.OwnerOrganisation",
     "payments.Payment",
     "payments.Refund",
+    "payments.SecurityDeposit",
     "pricing.Discount",
     "pricing.Extra",
     "pricing.FxRate",
@@ -42,8 +43,10 @@ EXPECTED_TRACKED_MODELS = {
     "reservations.BookingChargeItem",
     "reservations.BookingGuest",
     "reservations.BookingServiceCoverage",
+    "reservations.Enquiry",
     "reservations.Guest",
     "reservations.OwnerBlock",
+    "reservations.Quotation",
     "reservations.QuotationLine",
 }
 

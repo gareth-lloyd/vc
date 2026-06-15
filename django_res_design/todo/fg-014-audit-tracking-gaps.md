@@ -42,3 +42,34 @@ same commit.
 Related: Q-014 (audit-log retention window — more tracked models means the
 retention answer matters sooner). Pricing-model registration lands on the
 feat/backend-review-fixes branch.
+
+## Resolution (✅)
+
+Registered all three via `core.audit.track(...)` in the relevant
+`AppConfig.ready()`:
+
+- `payments.SecurityDeposit` (`payments/apps.py`) — status, kind, money
+  columns (`amount`, `captured_amount`, `refunded_amount`), `damage_claim_id`,
+  the lifecycle stamps (`due_at`, `hold_expires_at`, `release_scheduled_for`,
+  `released_at`), `requested_by_id`, `failure_reason`. No PII; the chatty
+  `meta` JSON is skipped.
+- `reservations.Enquiry` (`reservations/apps.py`) — status + denormalised PII
+  (`first_name`, `last_name`, `email`, `phone`) registered `sensitive=`, plus
+  routing/assignment FKs (`guest_id`, `property_id`, `agent_id`,
+  `assigned_to_id`) and `contact_method` / `request_type`. **PII handling:**
+  unlike `Guest`, the Enquiry has *no* `anonymize()`/`scrub_pii` erasure path,
+  so its PII is recorded as the `[REDACTED]` sentinel at write time — cleartext
+  never reaches the AuditLog, so no retro-scrub wiring is needed. `legacy_id`,
+  `inbound_message` free text and `auto_now` stamps are skipped.
+- `reservations.Quotation` header (`reservations/apps.py`) — status,
+  `expires_at`, `cancel_reason`, `is_unbranded`, and the
+  guest/agent/enquiry FKs. No header currency (per-line, GAP-014); money lives
+  on `QuotationLine`, already tracked.
+
+`EXPECTED_TRACKED_MODELS` in `core/tests/test_audit_registry.py` updated to pin
+the three. Integration tests assert a status transition lands an AuditLog row
+for each model, plus an Enquiry test pinning that a PII edit is stored as the
+`[REDACTED]` sentinel (not cleartext):
+`payments/tests/test_audit_security_deposit.py`,
+`reservations/tests/test_audit_enquiry_quotation.py`. No migration required —
+audit registration is signal-only. Full `pytest`, `ruff`, `mypy` green.

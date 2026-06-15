@@ -75,3 +75,17 @@ Notes:
 
 - Informs **Q-014** (with scrubbing in place, keep-forever retention
   becomes defensible) and **Q-010** (guest data retention).
+
+## Follow-up: BookingGuest.email_override (deferred, 2026-06-15)
+
+Post-resolution review noted `BookingGuest.email_override` is an audit-tracked
+field (`reservations/apps.py` `track(BookingGuest, …)`) that the BUG-012 scrub
+does **not** cover — `Guest.anonymize()`/`merge()` only scrub the Guest's own
+audit rows, not related `BookingGuest` rows. Verified **dormant, not an active
+leak**: the field is empty by default and never assigned guest PII in non-test
+code, and per spec (`05-reservations.md`) it holds an optional *per-trip*
+alternative contact (a planner/assistant address — a third party's data), not
+the guest's own email. If `email_override` ever becomes actively populated, add
+`for bg in guest.booking_guests.all(): scrub_pii(bg, ["email_override"])` to the
+erasure flows — `scrub_pii(obj, fields)` already takes any model instance, so
+this is a trivial extension. Folded into the FG-014 audit-coverage programme.

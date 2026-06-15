@@ -15,9 +15,16 @@ the villa, creates the contact in global Contacts (with a forced "NA"
 company), assigns the villa, saves, re-opens to set the Owner role
 (a legacy bug loses it on first save), then returns to the property to
 verify. The new system already fixes the role bug (role is part of the
-assignment) and makes company optional — but **inline creation is still
-missing**: `ContactPicker` exposes an `onCreateNew` callback that is not
-wired in `AssignmentFormDialog`, so the leave-and-return dance survives.
+assignment) and makes company optional. **Inline creation is also already
+in place**: `PeopleTab.tsx` (~548-569) wires the full inline-create flow
+using the existing reusable `ContactFormDialog`, so the leave-and-return
+dance is gone. Two genuine defects remain, however:
+
+- The newly created contact is **not auto-selected** back into the picker.
+  `onCreated` (`PeopleTab.tsx:565-567`) only re-opens the assignment dialog,
+  so the user must re-find the contact they just made.
+- The per-role-primary convention is enforced in code but **not documented**
+  anywhere in the specs.
 
 Separately, the transcript surfaced that "primary contact" is
 **per-purpose, not per-villa**: her primary is the owner (commercial),
@@ -28,22 +35,35 @@ manager to coexist.
 
 ## Proposed fix
 
-1. Wire `onCreateNew` in `AssignmentFormDialog`: create a minimal contact
-   (name + email/phone) in a nested dialog and select it into the
-   assignment without leaving the property.
+1. **Auto-select the new contact.** Fix `onCreated`
+   (`PeopleTab.tsx:565-567`) so that, after the contact is created, it is
+   selected into the picker rather than only re-opening the assignment
+   dialog. Reuse the existing `ContactFormDialog` — do **not** build a new
+   minimal-contact dialog; the inline-create flow already works.
 2. **Record the convention** (in `10-decisions.md` and the contacts spec):
    there is no single property-wide primary contact. Consumers resolve by
    purpose — commercial/sales → primary OWNER; operations/concierge →
    primary MANAGER (falling back to HOUSEKEEPER); finance → primary OWNER
    unless an OWNERS_REPRESENTATIVE is primary. Do not add a global
-   `is_primary` at the property level.
+   `is_primary` at the property level. Note the `one_primary_per_role`
+   constraint **already exists** in code
+   (`properties/models/contacts.py:43-47`), so this is documentation only —
+   no new enforcement.
+
+> **Out of scope:** a separate FE/BE required-field divergence — the FE
+> allows company-only contacts while the backend `Contact` requires
+> `first_name` + `last_name` — is spun out to **gap-029**. Do not solve it
+> here. The 2026-06-11 email confirmed both contacts-from-the-villa-page and
+> company-not-required are wanted, which informs gap-029's direction toward
+> loosening the backend.
 
 ## Acceptance
 
-- A contact can be created and assigned with a role in one flow from the
-  People tab.
+- After a contact is created inline from the People tab, it is
+  auto-selected into the picker (no need to re-find it).
 - Convention recorded; any existing "primary contact" display in the UI
-  labels which role it is showing.
+  labels which role it is showing. No new constraint added —
+  `one_primary_per_role` already enforces it.
 
 ## Dependencies
 

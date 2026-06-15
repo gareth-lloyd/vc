@@ -37,6 +37,12 @@ accessibility feature from any accessible room instead of relying on
 double entry. `website_description` stays for prose; `vc_notes` stays
 internal.
 
+This must be decided **jointly with GAP-024** — both touch the same `Room`
+model and `RoomFormDialog`, and the incremental-loading required-field
+posture (which room fields are optional) should be set once across both.
+The 2026-06-11 email ("save sections with just the available data") supports
+making these new structured attribute fields all-optional/nullable.
+
 ## Open questions (for the loader / product)
 
 1. Is the transcript's list the complete attribute vocabulary, or are
@@ -54,4 +60,9 @@ internal.
 
 ## Dependencies
 
-Q-021 (taxonomy curation) for the property-level feature vocabulary.
+- **GAP-024 — decide jointly.** Both tickets touch the same `Room` model and
+  `RoomFormDialog`. The incremental-loading required-field posture (which room
+  fields are optional/nullable) must be set once across both; the 2026-06-11
+  email ("save sections with just the available data") supports making these
+  new structured attribute fields all-optional/nullable.
+- Q-021 (taxonomy curation) for the property-level feature vocabulary.

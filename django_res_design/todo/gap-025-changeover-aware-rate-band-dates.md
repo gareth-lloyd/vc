@@ -2,6 +2,12 @@
 
 - **Severity:** Gap (UX; the loader's single most-repeated irritation)
 - **Source:** 2026-06-11 new-villa setup transcript review
+- **Status:** Pulled into the **add-property-flow** cluster — cheap,
+  pure-frontend, zero migration, and shares the rate-entry surface with the
+  rest of that work.
+- **Confirmed:** The 2026-06-11 email thread confirmed this is wanted — "rate
+  band dates will follow the changeover pattern, so a Saturday-arrival villa
+  suggests Saturday-to-Friday automatically", welcomed by the customer.
 - **Files:**
   `frontend/src/features/properties/components/RateRuleFormDialog.tsx`
   (~line 117, "Save and Add Another" date_from auto-fill),

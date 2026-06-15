@@ -52,3 +52,33 @@ Update `EXPECTED_TRACKED_MODELS` in the same commit.
 
 - After FG-014 (same mechanical pattern; FG-014 first — higher stakes).
 - More tracked models → Q-014 retention answer matters sooner.
+
+## Resolution (2026-06-15)
+
+Registered the second-tier surfaces via `core.audit.track(...)` in each app's
+`ready()` and pinned them in `EXPECTED_TRACKED_MODELS`:
+
+- **`reservations.BookingHold`** (`reservations/apps.py`) —
+  `property_id, quotation_id, quotation_line_id, booking_id, date_from,
+  date_to, expires_at, released_at, reason`. The ticket's proposed `status`
+  field does not exist on the model: the hold lifecycle is carried by
+  `released_at` (release) and `expires_at` (reap), so those are the transition
+  columns tracked. No PII. Caveat documented inline: the bulk release/expire
+  paths (`HoldService.release_for_*`, `expire_holds`) use `queryset.update()`
+  and bypass the pre_save trail by design (CLAUDE.md "bulk writes bypass it
+  silently"); the per-instance `place`/`move`/`release` paths are captured.
+- **`properties.Property`** (`properties/apps.py`) — lifecycle/identity only
+  (`name, display_name, slug, licence_number, status, channel, category_id,
+  group_id, region_id`); chatty description/content fields excluded per ticket.
+- **Property children** (`properties/apps.py`) — `Room`, `PropertyImage`,
+  `PropertyNearbyPlace`, `ChangeOverRule`, `PropertyContactAssignment` each
+  registered with a few identity fields, so a hard delete via the Destroy
+  views leaves a `__deleted__` tombstone. None carry denormalised PII (contact
+  identity sits behind the FK), so no `sensitive=` / BUG-012 scrub needed.
+
+Tests: registry rows pinned (`core/tests/test_audit_registry.py`); integration
+tests cover Property rename + status change, Room/NearbyPlace/ChangeOverRule
+hard-delete tombstones (`properties/tests/test_audit_property_children.py`), and
+hold release + hard-delete tombstone (`reservations/tests/test_audit_booking_hold.py`).
+No migration — audit tracking is signal-based, no schema change. Final ticket
+in the audit cluster.

@@ -14,6 +14,7 @@ class ReservationsConfig(AppConfig):
             Booking,
             BookingChargeItem,
             BookingGuest,
+            BookingHold,
             BookingServiceCoverage,
             Enquiry,
             Guest,
@@ -175,5 +176,28 @@ class ReservationsConfig(AppConfig):
                 "resulting_hold_id",
                 "contested_at",
                 "contested_by_id",
+            ],
+        )
+        # BookingHold: the availability-blocking lifecycle (place → release /
+        # expire). The model has no `status` column — lifecycle is carried by
+        # `released_at` (release) and `expires_at` (reap), so those are the
+        # transition fields an inventory-dispute reconstruction needs, alongside
+        # the date window and the hold's source FKs. No PII. NB: the bulk
+        # release/expire paths (`HoldService.release_for_*`, `expire_holds`,
+        # `tasks`) use `queryset.update()` and so bypass the pre_save trail by
+        # design (CLAUDE.md "bulk writes bypass it silently"); the per-instance
+        # `HoldService.place`/`move`/`release` paths are captured.
+        track(
+            BookingHold,
+            fields=[
+                "property_id",
+                "quotation_id",
+                "quotation_line_id",
+                "booking_id",
+                "date_from",
+                "date_to",
+                "expires_at",
+                "released_at",
+                "reason",
             ],
         )

@@ -255,7 +255,7 @@ delete) live in the root `CLAUDE.md`. Backend-specific structure:
    - **Spine points down** — a layer may import those below it:
 
      ```
-     comms > payments > reservations > pricing > properties > integrations > accounts
+     comms > payments > reservations > owners > pricing > properties > integrations > accounts
      ```
 
      The few sanctioned back-edges are commented `ignore_imports` lines in

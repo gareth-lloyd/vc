@@ -185,10 +185,18 @@ type = "layers"
 # (`integrations → accounts`). Both are clean downward edges, so it needs no
 # blessed exception — but it MUST be listed, or its position is unconstrained
 # and a future upward edge (e.g. `integrations → reservations`) goes uncaught.
+#
+# `owners` (owner-organisation membership + owner-facing property/booking
+# surface) sits below `reservations`: it reads property and account data
+# (`owners → properties`, `owners → accounts`), and `reservations` reaches
+# *down* into it for owner scoping/permissions (`reservations.views.owner →
+# owners`). Clean downward edges, no blessed exception needed — listed so the
+# slot is pinned before owner-approval flows grow more edges (FG-013).
 layers = [
     "comms",
     "payments",
     "reservations",
+    "owners",
     "pricing",
     "properties",
     "integrations",

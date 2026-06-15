@@ -42,3 +42,24 @@ surfaced (none expected today).
 ## Dependencies
 
 None. Related: Q-017 also touches the layers list (comms position).
+
+## Resolution (2026-06-15)
+
+`owners` added to the spine `layers` list **between `reservations` and
+`pricing`**, exactly as proposed. Position confirmed from its actual edges:
+
+- `owners` imports **down** only — `owners → properties`
+  (`serializers/property.py`, `views/properties.py`) and `owners → accounts`
+  (`scoping.py`, `permissions.py`, `views/me.py`, `factories.py`).
+- `reservations` imports **down** into `owners` — `reservations.views.owner →
+  owners.{permissions,scoping}`, plus the `demo_ical` management command.
+
+So `owners` must sit below `reservations` and above `properties`/`accounts`;
+the reservations/pricing slot satisfies both. `uv run lint-imports` passes
+with **2 kept, 0 broken** and **no source imports needed fixing** (all edges
+were already clean downward edges). Added an explanatory comment block above
+the `layers` list mirroring the `integrations` rationale, and updated the
+spine diagram in `django_res/CLAUDE.md`.
+
+Full gate green: `pytest` (1706 passed), `ruff check`, `ruff format --check`,
+`mypy` (no issues), import-linter.

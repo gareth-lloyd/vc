@@ -44,7 +44,7 @@ Status icons:
 | [FG-010](fg-010-idempotency-races-no-db-backstop.md) | Idempotency is check-then-create with no DB backstop (meta key, `Booking.quotation_line`, over-refund aggregate) | ✅ resolved |
 | [FG-011](fg-011-adjustment-recompute-skips-bulk-paths.md) | `Booking.adjustment` recompute rides signals; bulk writes desync it | ✅ |
 | [FG-012](fg-012-track-payments-view-bypasses-ledger.md) | Track-payments POST creates ledger rows straight from `request.data` (mintable SUCCEEDED, 500 on bad amount) | ✅ |
-| [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ⬜ |
+| [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ✅ |
 | [FG-014](fg-014-audit-tracking-gaps.md) | Audit-tracking gaps: SecurityDeposit, Enquiry, Quotation untracked | ✅ |
 | [FG-015](fg-015-booking-cancel-leaves-pending-payments.md) | `Booking.cancel` leaves PENDING Payment rows live | ✅ resolved |
 | [FG-016](fg-016-audit-signals-skip-bulk-writes.md) | Audit signals skip bulk writes; merge FK rewrites unaudited (spec claims otherwise) | ✅ |

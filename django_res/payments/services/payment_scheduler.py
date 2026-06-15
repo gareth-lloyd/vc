@@ -92,13 +92,20 @@ class PaymentScheduler:
             amount=schedule.get("deposit_amount"),
             base=total,
         )
+        # Quantise once and derive the balance from the quantised value, so
+        # `deposit_saved + balance_saved == total` holds by construction even
+        # for non-2dp currencies at exact-half splits. The balance subtracts
+        # this UNCONDITIONALLY (matching prior behaviour) — even when no deposit
+        # row is created (deposit_required False / deposit_amount 0), the same
+        # quantised value is subtracted as before, only now quantised.
+        quantised_deposit = quantise_money(deposit_amount, currency)
         if schedule.get("deposit_required") and deposit_amount > 0:
             to_create.append(
                 Payment(
                     booking=booking,
                     purpose=PaymentPurpose.DEPOSIT.value,
                     status=PaymentStatus.PENDING.value,
-                    amount=quantise_money(deposit_amount, currency),
+                    amount=quantised_deposit,
                     currency=currency,
                     due_at=timezone.now(),
                 )
@@ -119,7 +126,7 @@ class PaymentScheduler:
         # Until INTERIM is its own purpose, the full remaining balance owes on
         # the BALANCE row regardless of whether the schedule split it.
         balance_amount = quantise_money(
-            max(Decimal("0"), total - deposit_amount),
+            max(Decimal("0"), total - quantised_deposit),
             currency,
         )
         to_create.append(
@@ -216,9 +223,10 @@ class PaymentScheduler:
                 balance.save(update_fields=["amount", "updated_at"])
                 remaining = Decimal("0")
 
-            residual = (
-                total - committed - sum((r.amount for r in pending), Decimal("0"))
-            ).quantize(Decimal("0.01"))
+            residual = quantise_money(
+                total - committed - sum((r.amount for r in pending), Decimal("0")),
+                booking.currency,
+            )
             if residual:
                 ctx["residual"] = str(residual)
                 # `payments > reservations` is a clean downward edge, so the

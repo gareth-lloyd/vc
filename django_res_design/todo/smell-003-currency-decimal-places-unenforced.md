@@ -63,3 +63,16 @@ Tests: `pricing/tests/test_quantise_money.py` (helper, incl. 0/2/3-dp and
 half-even rounding) and a JPY end-to-end case in
 `payments/tests/test_refund.py`. Full gate green
 (pytest 1721 passed, ruff, ruff format, mypy, lint-imports).
+
+### Review follow-up (2026-06-15)
+
+Two behaviour-preserving hardening fixes from code review: (1) `create_for_booking`
+now derives the BALANCE amount from the *quantised* deposit (computed once) so
+`deposit_saved + balance_saved == total` holds by construction for non-2dp
+currencies at exact-half splits — a no-op for the live 2dp currencies; (2)
+`resync_for_booking`'s residual now uses `quantise_money(..., booking.currency)`
+instead of a hard-coded `.quantize(Decimal("0.01"))`, for consistency with the
+centralisation above. Pinned by two new cases in
+`payments/tests/test_payment_scheduler.py` (a 2dp no-regression assertion and a
+JPY 0dp conservation case). Review nits #3 (`quantise_money` None-handling) and #4
+(TransientEmailError observability) deferred as low-priority.

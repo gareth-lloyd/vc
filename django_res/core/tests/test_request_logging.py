@@ -13,7 +13,7 @@ from django.http import HttpResponse
 from structlog.testing import capture_logs
 
 from core.middleware import AuditMiddleware
-from core.threadlocal import get_correlation_id
+from core.request_context import get_correlation_id
 
 
 @pytest.fixture(autouse=True)

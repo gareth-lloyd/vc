@@ -29,7 +29,7 @@ from comms.exceptions import (
 )
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from comms.recipient_allowlist import filter_recipients
-from core.threadlocal import current_user_as
+from core.request_context import current_user_as
 
 if TYPE_CHECKING:
     from accounts.models import User

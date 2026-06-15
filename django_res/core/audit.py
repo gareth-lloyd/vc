@@ -149,7 +149,7 @@ def _pre_save_handler(sender: type[models.Model], instance: models.Model, **_: A
     from django.contrib.contenttypes.models import ContentType
 
     from core.models import AuditLog  # local import to avoid cycle
-    from core.threadlocal import get_correlation_id, get_current_user
+    from core.request_context import get_correlation_id, get_current_user
 
     if instance.pk is None:
         diffs = {
@@ -189,7 +189,7 @@ def _post_delete_handler(sender: type[models.Model], instance: models.Model, **_
     from django.contrib.contenttypes.models import ContentType
 
     from core.models import AuditLog
-    from core.threadlocal import get_correlation_id, get_current_user
+    from core.request_context import get_correlation_id, get_current_user
 
     diffs = {
         f: [_redact(getattr(instance, f), f in spec.sensitive_fields), None] for f in spec.fields

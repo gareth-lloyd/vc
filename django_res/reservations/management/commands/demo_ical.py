@@ -15,6 +15,7 @@ poll.
     manage.py demo_ical --reset
     manage.py demo_ical --setup --owner-email demo.owner@example.com --owner-password demopass123
     manage.py demo_ical --add-feed --platform google --label "Owner cal" --feed-url "https://…/basic.ics"
+    manage.py demo_ical --add-feed --platform google --label "Owner cal"  # uses DEMO_ICAL_FEED_URL
     manage.py demo_ical --poll
     manage.py demo_ical --inject-conflict quotation
 """
@@ -37,6 +38,10 @@ if TYPE_CHECKING:
 
 # Stable handles so every action finds the same demo objects on re-run.
 ORG_NAME = "iCal Demo Org"
+# Stable slug for the demo property. `seed_dev` pre-seeds a property under this
+# slug (the `ical_demo` stage) so the demo runs against realistic data on a
+# seeded DB; on an empty DB (tests) `_demo_property` falls back to creating a
+# minimal property under the same slug.
 PROPERTY_SLUG = "ical-demo-villa"
 REGION_SLUG = "ical-demo-region"
 CATEGORY_SLUG = "ical-demo-category"
@@ -64,7 +69,10 @@ class Command(BaseCommand):
             action="store_true",
             help="Attach an iCal feed to the demo property (needs --feed-url).",
         )
-        parser.add_argument("--feed-url", help="The iCal feed URL for --add-feed.")
+        parser.add_argument(
+            "--feed-url",
+            help="The iCal feed URL for --add-feed (defaults to settings.DEMO_ICAL_FEED_URL).",
+        )
         parser.add_argument(
             "--platform",
             choices=_PLATFORMS,
@@ -114,7 +122,8 @@ class Command(BaseCommand):
             self._setup(options["owner_email"], options["owner_password"])
             did_action = True
         if options["add_feed"]:
-            self._add_feed(options.get("feed_url"), options["platform"], options["label"])
+            feed_url = options.get("feed_url") or settings.DEMO_ICAL_FEED_URL
+            self._add_feed(feed_url, options["platform"], options["label"])
             did_action = True
         if options["inject_conflict"]:
             self._inject_conflict(options["inject_conflict"])
@@ -152,7 +161,9 @@ class Command(BaseCommand):
         from properties.models import PropertyCalendarFeed
 
         if not feed_url:
-            raise CommandError("--add-feed requires --feed-url.")
+            raise CommandError(
+                "--add-feed requires --feed-url (or set DEMO_ICAL_FEED_URL in the environment)."
+            )
         prop = _require_demo_property()
         feed, created = PropertyCalendarFeed.objects.get_or_create(
             property=prop,
@@ -310,7 +321,12 @@ def _nights_between(date_from: date, date_to: date) -> int:
 
 
 def _demo_property() -> Property:
-    """Get-or-create the demo property and its minimal geo/group graph."""
+    """Return the property at PROPERTY_SLUG, creating a minimal one if absent.
+
+    On a seeded DB the slug points at the `ical_demo` seed_dev property, so the
+    demo runs against realistic data; on an empty DB (tests) this builds a
+    self-contained property + geo/group graph under the same slug.
+    """
     from properties.models import (
         Country,
         Property,
@@ -463,6 +479,7 @@ def _delete_demo_data() -> int:
     )
     from reservations.models import (
         Booking,
+        BookingHold,
         Enquiry,
         EnquiryEvent,
         Guest,
@@ -477,19 +494,41 @@ def _delete_demo_data() -> int:
     with transaction.atomic():
         prop = Property.objects.filter(slug=PROPERTY_SLUG).first()
         if prop is not None:
+            # When the demo runs against a pre-existing (seeded) property, only
+            # the demo's own attachments are unwound; the property and its real
+            # bookings/quotations/rate plans are left untouched. The aggressive
+            # by-property teardown below only applies to a property this
+            # command created itself.
+            created_by_demo = prop.name == "iCal Demo Villa"
+
+            from reservations.enums import OwnerBlockSource
+
+            blocks = OwnerBlock.objects.filter(property=prop)
+            if not created_by_demo:
+                blocks = blocks.filter(source=OwnerBlockSource.ICAL.value)
             # OwnerBlock.property is PROTECT, and OwnerBlockUpdate.block PROTECTs
             # the block — so unwind updates (and their per-user seen rows) first.
-            block_ids = list(OwnerBlock.objects.filter(property=prop).values_list("pk", flat=True))
+            block_ids = list(blocks.values_list("pk", flat=True))
+            # Each block's availability is enforced by its resulting BookingHold,
+            # so the hold must go too or the dates stay blocked. (On the
+            # created_by_demo path the property delete CASCADEs holds anyway.)
+            hold_ids = [
+                hid for hid in blocks.values_list("resulting_hold_id", flat=True) if hid is not None
+            ]
             OwnerBlockUpdateSeen.objects.filter(update__block_id__in=block_ids).delete()
             OwnerBlockUpdate.objects.filter(block_id__in=block_ids).delete()
             total += OwnerBlock.objects.filter(pk__in=block_ids).delete()[0]
+            total += BookingHold.objects.filter(pk__in=hold_ids).delete()[0]
             # Payment / Refund / SecurityDeposit / BookingEvent all PROTECT the
             # Booking, so clear them first — we don't care about any data on this
             # demo property. Reach them via Booking's reverse relations rather
             # than importing payments (reservations sits below payments in the
             # layering contract). Refund/SecurityDeposit SET_NULL each other and
             # against_payment, so deletion order among the money rows is free.
-            for booking in Booking.objects.filter(property=prop):
+            demo_bookings = Booking.objects.filter(property=prop)
+            if not created_by_demo:
+                demo_bookings = demo_bookings.filter(guest__email=GUEST_EMAIL)
+            for booking in demo_bookings:
                 booking.refunds.all().delete()
                 booking.security_deposits.all().delete()
                 booking.payments.all().delete()
@@ -497,17 +536,22 @@ def _delete_demo_data() -> int:
             # A booking-clash booking PROTECTs its quotation_line, property and
             # guest, so it must go after; deleting the Booking CASCADEs its
             # BookingGuest rows (the LEAD guard permits the cascade path).
-            total += Booking.objects.filter(property=prop).delete()[0]
-            # RatePlan PROTECTs the property (and CASCADEs its RateCards).
-            total += RatePlan.objects.filter(property=prop).delete()[0]
-            # QuotationLine PROTECTs the property too. Delete every quotation
-            # with a line on this property — not just the demo guest's — since we
-            # don't care about any data on this property; deleting the quotation
-            # CASCADEs its lines + holds. Demo-guest quotations may have no line
-            # on the property yet, so union them in.
-            quotation_ids = set(
-                QuotationLine.objects.filter(property=prop).values_list("quotation_id", flat=True)
-            )
+            total += demo_bookings.delete()[0]
+            if created_by_demo:
+                # RatePlan PROTECTs the property (and CASCADEs its RateCards).
+                total += RatePlan.objects.filter(property=prop).delete()[0]
+            # QuotationLine PROTECTs the property too. When tearing down a
+            # demo-created property, delete every quotation with a line on it —
+            # not just the demo guest's — since the property itself is going;
+            # deleting the quotation CASCADEs its lines + holds. Demo-guest
+            # quotations may have no line on the property yet, so union them in.
+            quotation_ids: set[int] = set()
+            if created_by_demo:
+                quotation_ids.update(
+                    QuotationLine.objects.filter(property=prop).values_list(
+                        "quotation_id", flat=True
+                    )
+                )
             quotation_ids.update(
                 Quotation.objects.filter(guest__email=GUEST_EMAIL).values_list("pk", flat=True)
             )
@@ -534,8 +578,15 @@ def _delete_demo_data() -> int:
             EnquiryEvent.objects.filter(enquiry_id__in=orphan_enquiry_ids).delete()
             total += Enquiry.objects.filter(pk__in=orphan_enquiry_ids).delete()[0]
             OwnerOrgProperty.objects.filter(property=prop).delete()
-            # Property CASCADEs its holds and calendar feeds.
-            total += prop.delete()[0]
+            if created_by_demo:
+                # The command created this property — delete it outright
+                # (CASCADEs its holds and calendar feeds).
+                total += prop.delete()[0]
+            else:
+                # A pre-existing (seeded) property: strip only the demo feeds
+                # and leave the property itself alone (demo holds went with
+                # their quotations above).
+                total += prop.calendar_feeds.all().delete()[0]
 
         total += Guest.objects.filter(email=GUEST_EMAIL).delete()[0]
 

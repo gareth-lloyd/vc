@@ -22,6 +22,7 @@ from seeding.stages import (
     gallery,  # noqa: F401
     groups,  # noqa: F401
     guest_preferences,  # noqa: F401
+    ical_demo,  # noqa: F401
     integrations,  # noqa: F401
     nearby_places,  # noqa: F401
     notes,  # noqa: F401

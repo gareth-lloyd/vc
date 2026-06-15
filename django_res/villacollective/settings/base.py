@@ -227,6 +227,12 @@ EMAIL_RECIPIENT_ALLOWLIST: list[str] = []
 
 OPEN_AI_API_KEY = env.str("OPEN_AI_API_KEY", default="")
 
+# Authed iCal feed URL used as the default for `manage.py demo_ical --add-feed`.
+# It's a bearer credential (a private calendar share link), so it lives in the
+# environment, never in source. Empty when unset — the command then requires an
+# explicit --feed-url.
+DEMO_ICAL_FEED_URL = env.str("DEMO_ICAL_FEED_URL", default="")
+
 # ---------------------------------------------------------------------------
 # Structured logging — structlog → JSON on stdout → Render log drain → Datadog.
 #

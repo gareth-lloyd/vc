@@ -40,11 +40,11 @@ function defaultExpiresAt(): string {
   return d.toISOString();
 }
 
-// One staged cart line → the wire shape nested under the create body's
+// One staged shortlist line → the wire shape nested under the create body's
 // `lines`. `total`/`price_override_reason` ride only on the manual path
 // (decimal fields can't take an empty string); the server prices non-manual
 // lines and nets the discount. A manual line never carries a discount: the
-// field is disabled in the cart and the server skips re-pricing manual lines,
+// field is disabled in the shortlist and the server skips re-pricing manual lines,
 // so a stale discount would be stored yet never applied — send "0". Money is
 // normalised to canonical 2-dp decimals ("1,000" → "1000.00").
 function toLineWriteBody(line: StagedLine): QuotationLineWriteInput {
@@ -111,7 +111,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
     }
     // The save is atomic server-side, so an invalid line can no longer leave
     // a half-populated quotation — this gate is pure UX: an instant banner
-    // instead of a round-trip 400. The cart already blocks Save; guard again.
+    // instead of a round-trip 400. The shortlist already blocks Save; guard again.
     if (!lines.every(isStagedLineValid)) {
       setTopLevelError(t("builder.save.errors.invalid_line"));
       return;

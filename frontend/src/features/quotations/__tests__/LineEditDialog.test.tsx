@@ -149,7 +149,7 @@ describe("LineEditDialog", () => {
     );
     const dialog = screen.getByRole("dialog");
     // The server never applies a discount to a manual line, so the field is
-    // inert — mirror the cart: disabled input, "0" on the wire.
+    // inert — mirror the shortlist: disabled input, "0" on the wire.
     expect(within(dialog).getByLabelText(/discount/i)).toBeDisabled();
     await within(dialog).findByLabelText(/manual total/i);
     await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));

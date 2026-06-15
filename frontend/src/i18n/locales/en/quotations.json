@@ -324,7 +324,7 @@
         "shifted": "Priced as {{from}} → {{to}}"
       }
     },
-    "cart": {
+    "shortlist": {
       "heading": "Shortlist ({{count}})",
       "thumbnail_alt": "{{name}} thumbnail",
       "save_draft": "Save draft",

@@ -45,3 +45,30 @@ Mechanical rename, one commit, no behaviour change:
   `inclusions_placeholder` is unrelated and stays).
 - Full frontend quality gate passes (`eslint`, `prettier`, `tsc`,
   `vitest`).
+
+## Resolution (2026-06-15)
+
+Mechanical rename, one commit, **internal code only** — no wire contract
+touched. The audit confirmed every `cart` hit was an internal identifier,
+an i18n key, or a comment; none were serializer keys, API fields, or DB
+columns, so the request/response shape is unchanged.
+
+Done:
+
+- Components: `QuoteCart` → `QuoteShortlist`, `QuoteCartLine` →
+  `QuoteShortlistLine`, `CartActions` → `ShortlistActions` (files renamed
+  via `git mv`, plus imports, props interfaces, and test descriptions).
+- i18n: `builder.cart.*` → `builder.shortlist.*` in `en` + `el`
+  `quotations.json` (key block renamed) and the
+  `el/_machine_translated.json` entry; every `t()` call site updated.
+- Swept "cart" comments → "shortlist" across `features/quotations/`,
+  `lib/format/money.ts`, `reservations/tests/test_quotation_render.py`,
+  and the comment-only docstring in
+  `comms/migrations/0013_drop_quotation_grand_total.py` (migration logic
+  untouched).
+
+Acceptance grep is clean (the Greek `καλάθι υποδοχής` welcome-hamper
+string is unrelated and left in place). Gates green: frontend `vitest`
+(169 passed), `eslint`, `tsc`, `prettier`; backend `pytest`
+(`test_quotation_render`, 14 passed), `ruff check`, `ruff format`,
+`mypy`.

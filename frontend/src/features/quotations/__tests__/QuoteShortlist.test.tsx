@@ -4,7 +4,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
-import { QuoteCart } from "../components/QuoteCart";
+import { QuoteShortlist } from "../components/QuoteShortlist";
 import type { StagedLine } from "../schemas";
 
 function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
@@ -42,12 +42,12 @@ function noRateLine(overrides: Partial<StagedLine> = {}): StagedLine {
   });
 }
 
-// Controlled wrapper: the page owns the staged lines, so the cart only edits
+// Controlled wrapper: the page owns the staged lines, so the shortlist only edits
 // via callbacks. Mirror that here so discount edits actually re-render.
 function Harness({ initial }: { initial: StagedLine[] }) {
   const [lines, setLines] = useState(initial);
   return (
-    <QuoteCart
+    <QuoteShortlist
       lines={lines}
       onUpdateLine={(id, patch) =>
         setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
@@ -66,8 +66,8 @@ afterEach(() => {
   useAuthStore.getState().clear();
 });
 
-describe("QuoteCart", () => {
-  it("lists the staged lines with their own totals and never sums a cart-level total", () => {
+describe("QuoteShortlist", () => {
+  it("lists the staged lines with their own totals and never sums a shortlist-level total", () => {
     renderWithProviders(
       <Harness
         initial={[
@@ -78,7 +78,7 @@ describe("QuoteCart", () => {
     );
     expect(screen.getByText("Villa Sol")).toBeInTheDocument();
     expect(screen.getByText("Villa Azul")).toBeInTheDocument();
-    // Each line carries its own price; the cart never sums them, because the
+    // Each line carries its own price; the shortlist never sums them, because the
     // guest picks one villa from the shortlist — not all of them.
     expect(screen.getByText("$4,500.00")).toBeInTheDocument();
     expect(screen.getByText("$7,200.00")).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("QuoteCart", () => {
   });
 
   it("renders mixed-currency lines each in their own currency", () => {
-    // Currency travels per line (GAP-014) — a cart can mix £/€ side by side.
+    // Currency travels per line (GAP-014) — a shortlist can mix £/€ side by side.
     renderWithProviders(
       <Harness
         initial={[
@@ -200,7 +200,7 @@ describe("QuoteCart", () => {
           <button type="button" onClick={() => setLines([noRateLine()])}>
             restage
           </button>
-          <QuoteCart
+          <QuoteShortlist
             lines={lines}
             onUpdateLine={(id, patch) =>
               setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))

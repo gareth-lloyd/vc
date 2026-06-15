@@ -1,7 +1,7 @@
 """Re-sync `quotation.sent` to drop the summed grand-total footer.
 
 Quotation lines are alternative villa options the guest picks ONE of, so a
-combined "Total" across them is misleading — the quote-builder cart dropped
+combined "Total" across them is misleading — the quote-builder shortlist dropped
 its equivalent "Subtotal" for the same reason. `sync_templates` versions the
 template (deactivates the old row, activates the new), so this is a pure
 content bump; reverse is a no-op — the superseded version stays inactive.

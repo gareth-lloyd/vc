@@ -37,7 +37,7 @@ export function toDecimalString(value: string | number | null | undefined): stri
 
 // True when `value` parses to a finite money amount strictly greater than zero
 // — e.g. a manual line's total. Pure (no schema import), so schemas.ts and the
-// cart can share one definition without an import cycle.
+// shortlist can share one definition without an import cycle.
 export function isPositiveMoney(value: string | number | null | undefined): boolean {
   const parsed = parseMoney(value);
   return Number.isFinite(parsed) && parsed > 0;

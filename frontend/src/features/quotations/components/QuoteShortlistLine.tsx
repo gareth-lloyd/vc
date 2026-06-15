@@ -29,7 +29,7 @@ function nightCount(line: StagedLine): number {
   return Number.isFinite(nights) && nights > 0 ? nights : 0;
 }
 
-export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: Props) {
+export function QuoteShortlistLine({ line, expanded, onToggle, onUpdate, onRemove }: Props) {
   const { t } = useTranslation("quotations");
   const nights = nightCount(line);
   const effective = lineEffectiveTotal(line);
@@ -46,7 +46,7 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
         <PropertyThumbnail
           src={line.hero_image_url}
           fallbackText={line.property_name}
-          alt={t("builder.cart.thumbnail_alt", { name: line.property_name })}
+          alt={t("builder.shortlist.thumbnail_alt", { name: line.property_name })}
         />
         <div className="min-w-0 flex-1">
           <h4 className="text-foreground truncate text-sm font-semibold">{line.property_name}</h4>
@@ -54,8 +54,8 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
             {formatDate(line.priced_date_from)} – {formatDate(line.priced_date_to)}
           </p>
           <p className="text-muted-foreground text-xs">
-            {t("builder.cart.line.nights", { count: nights })} ·{" "}
-            {t("builder.cart.line.guests", { adults: line.adults, children: line.children })} ·{" "}
+            {t("builder.shortlist.line.nights", { count: nights })} ·{" "}
+            {t("builder.shortlist.line.guests", { adults: line.adults, children: line.children })} ·{" "}
             <span className="text-foreground font-medium">
               {/* Each line formats in its own priced currency (GAP-014). */}
               {effective == null ? "—" : formatMoney(effective, line.currency)}
@@ -76,14 +76,14 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
             type="button"
             size="icon"
             variant="ghost"
-            aria-label={expanded ? t("builder.cart.collapse") : t("builder.cart.edit")}
+            aria-label={expanded ? t("builder.shortlist.collapse") : t("builder.shortlist.edit")}
             aria-expanded={expanded}
             onClick={onToggle}
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
-            {t("builder.cart.line.remove")}
+            {t("builder.shortlist.line.remove")}
           </Button>
         </div>
       </div>
@@ -91,7 +91,7 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
       {expanded ? (
         <div className="border-border space-y-4 border-t p-3">
           <div className="space-y-2">
-            <Label htmlFor={fieldId("discount")}>{t("builder.cart.line.discount")}</Label>
+            <Label htmlFor={fieldId("discount")}>{t("builder.shortlist.line.discount")}</Label>
             <Input
               id={fieldId("discount")}
               type="text"
@@ -108,18 +108,18 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
             ) : (
               <p className="text-muted-foreground text-xs">
                 {line.is_manual
-                  ? t("builder.cart.line.discount_manual_hint")
-                  : t("builder.cart.line.discount_hint")}
+                  ? t("builder.shortlist.line.discount_manual_hint")
+                  : t("builder.shortlist.line.discount_hint")}
               </p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={fieldId("inclusions")}>{t("builder.cart.line.inclusions")}</Label>
+            <Label htmlFor={fieldId("inclusions")}>{t("builder.shortlist.line.inclusions")}</Label>
             <Textarea
               id={fieldId("inclusions")}
               rows={2}
-              placeholder={t("builder.cart.line.inclusions_placeholder")}
+              placeholder={t("builder.shortlist.line.inclusions_placeholder")}
               value={line.inclusions}
               onChange={(e) => onUpdate({ inclusions: e.target.value })}
             />
@@ -134,19 +134,19 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
                 disabled={line.manual_only}
                 onCheckedChange={(v) => onUpdate({ is_manual: v === true })}
               />
-              <span>{t("builder.cart.line.manual")}</span>
+              <span>{t("builder.shortlist.line.manual")}</span>
             </CheckboxLabel>
             <p className="text-muted-foreground text-xs">
               {line.manual_only
-                ? t("builder.cart.line.manual_locked_hint")
-                : t("builder.cart.line.manual_hint")}
+                ? t("builder.shortlist.line.manual_locked_hint")
+                : t("builder.shortlist.line.manual_hint")}
             </p>
           </div>
 
           {line.is_manual ? (
             <>
               <div className="space-y-2">
-                <Label htmlFor={fieldId("total")}>{t("builder.cart.line.total")}</Label>
+                <Label htmlFor={fieldId("total")}>{t("builder.shortlist.line.total")}</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id={fieldId("total")}
@@ -167,11 +167,11 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
                 ) : null}
               </div>
               <div className="space-y-2">
-                <Label htmlFor={fieldId("reason")}>{t("builder.cart.line.reason")}</Label>
+                <Label htmlFor={fieldId("reason")}>{t("builder.shortlist.line.reason")}</Label>
                 <Textarea
                   id={fieldId("reason")}
                   rows={2}
-                  placeholder={t("builder.cart.line.reason_placeholder")}
+                  placeholder={t("builder.shortlist.line.reason_placeholder")}
                   value={line.price_override_reason}
                   aria-invalid={errors.reason != null}
                   onChange={(e) => onUpdate({ price_override_reason: e.target.value })}
@@ -186,7 +186,7 @@ export function QuoteCartLine({ line, expanded, onToggle, onUpdate, onRemove }: 
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor={fieldId("note")}>{t("builder.cart.line.note")}</Label>
+            <Label htmlFor={fieldId("note")}>{t("builder.shortlist.line.note")}</Label>
             <Textarea
               id={fieldId("note")}
               rows={2}

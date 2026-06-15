@@ -98,7 +98,7 @@ def test_build_quotation_context_has_no_summed_total(
     gbp: Currency,
 ) -> None:
     """Lines are alternative villa options the guest picks ONE of, so a
-    combined total across them is misleading. Mirrors the quote-builder cart,
+    combined total across them is misleading. Mirrors the quote-builder shortlist,
     which dropped its summed "Subtotal" for the same reason."""
     QuotationLine.objects.create(
         quotation=priced_quotation,

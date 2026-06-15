@@ -70,7 +70,7 @@ Status icons:
 | [SMELL-014](smell-014-quotation-synthesised-row-guard-structural.md) | Synthesised `booking-` quotation rows: make the exclusion structural | ⬜ |
 | [SMELL-015](smell-015-comms-smtp-no-transient-retry.md) | Email send marks FAILED on any SMTP error; no transient retry | ⬜ |
 | [SMELL-016](smell-016-audit-actor-threadlocal-not-asgi-safe.md) | Audit actor capture rides `threading.local`; breaks silently under ASGI | ✅ |
-| [SMELL-017](smell-017-cart-naming-vs-shortlist-copy.md) | Quote-builder code still says "cart"; user copy now says "Shortlist" | ⬜ |
+| [SMELL-017](smell-017-cart-naming-vs-shortlist-copy.md) | Quote-builder code still says "cart"; user copy now says "Shortlist" | ✅ |
 
 ## Open product questions
 

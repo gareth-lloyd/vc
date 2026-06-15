@@ -104,7 +104,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | Id | Title | Status |
 |---|---|---|
 | [GAP-001](gap-001-comms-empty-url-surface.md) | `comms/urls.py` empty | ✅ resolved (slice 1: EmailLog list+detail) |
-| [GAP-002](gap-002-integrations-empty-url-surface.md) | `integrations/urls.py` empty | ⬜ **highest-leverage gap** (Flywire webhook) |
+| [GAP-002](gap-002-integrations-empty-url-surface.md) | `integrations/urls.py` empty | ✅ slice 1 (Flywire webhook) pre-existing in `payments/` (layering-mandated); slice 2 Zoho blocked on Q-003; slice 3 admin surface → GAP-028 |
 | [GAP-003](gap-003-endpoint-coverage-gap.md) | Endpoint coverage gap vs. designed surface | ❌ DROPPED — framing only |
 | [GAP-004](gap-004-frontend-coming-soon-tabs.md) | Frontend "Coming Soon" tabs | ✅ resolved — stale; all configured tabs built, placeholder mechanism dormant |
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy + spine UX overhaul | ⬜ (tracker) |
@@ -124,6 +124,7 @@ Q-012 was resolved (Payment gateway → Flywire).
 | [GAP-025](gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ⬜ |
 | [GAP-026](gap-026-currency-display-money-fields.md) | Show property currency beside money fields (decision: single currency per property, no mixing) | ⬜ |
 | [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + record per-role primary convention | ⬜ |
+| [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` list endpoints (split from GAP-002 slice 3) | ⬜ |
 
 ## Investigations
 

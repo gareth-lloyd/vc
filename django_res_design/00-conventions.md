@@ -65,6 +65,8 @@ Indexes: `(content_type, object_id, created_at)`, `(actor, created_at)`.
 
 The signal handler reads `pre_save` for any model that registers itself with `core.audit.track(Commission, fields=[...])`. Models don't grow a per-model history table; they emit diffs into the shared `AuditLog` keyed by content type.
 
+**GDPR erasure (BUG-012):** PII columns on `Guest`/`Contact` are tracked *without* `sensitive=` so the live audit trail stays useful, which means historical diffs hold cleartext PII. Every erasure flow (`anonymize()`, `merge()`) **must** call `core.audit.scrub_pii(obj, fields)` — after the model write, so the freshly-written redaction/deletion row is caught too — to rewrite both sides of each named field's diff to `[REDACTED]` across the whole `(content_type, object_id)` trail. This is the sanctioned carve-out from the append-only contract: row identity, `actor`, timestamps, the `__deleted__` tombstone, and *which* fields changed all survive; only the cleartext values are tombstoned. Retention is otherwise keep-forever (Q-014) — the scrub handles GDPR at the subject level rather than via a time window.
+
 ## Audit middleware
 
 Populate `created_by`/`updated_by` automatically. Threadlocal pattern:

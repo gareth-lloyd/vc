@@ -11,6 +11,7 @@ from accounts.enums import (
     EmailLabel,
     PhoneLabel,
 )
+from core.audit import scrub_pii
 from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
 
@@ -49,6 +50,18 @@ class Contact(AuditedModel):
         related_name="contact",
     )
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
+    # Audit-tracked columns carrying cleartext PII. Erasure flows scrub these
+    # from the AuditLog trail (BUG-012); non-PII tracked columns (status) stay.
+    _AUDIT_PII_FIELDS = (
+        "title",
+        "first_name",
+        "last_name",
+        "company",
+        "address_line_1",
+        "address_line_2",
+        "notes",
+    )
 
     class Meta:
         indexes = [
@@ -95,6 +108,9 @@ class Contact(AuditedModel):
         for phone in self.phones.all():
             phone.number = ""
             phone.save(update_fields=["number", "updated_at"])
+        # Scrub *after* the save so the freshly written [old, sentinel] row is
+        # caught alongside the historical trail (BUG-012).
+        scrub_pii(self, self._AUDIT_PII_FIELDS)
 
     @transaction.atomic
     def merge(self, target: Contact) -> None:
@@ -123,7 +139,12 @@ class Contact(AuditedModel):
             related_model._default_manager.filter(**{field_name: self}).update(
                 **{field_name: target}
             )
+        dead_pk = self.pk
         self.delete()
+        # Scrub by the now-dead pk so the deletion row's [old_PII, None] pairs
+        # are redacted while __deleted__/actor/timestamps survive (BUG-012).
+        self.pk = dead_pk
+        scrub_pii(self, self._AUDIT_PII_FIELDS)
 
 
 class ContactEmail(TimestampedModel):

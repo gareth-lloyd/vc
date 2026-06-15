@@ -1,5 +1,22 @@
 # BUG-012 — AuditLog retains cleartext PII after `anonymize()` / `merge()`
 
+> **✅ Resolved (2026-06-15).** Added `core.audit.scrub_pii(obj, fields)`: an
+> `@transaction.atomic` helper that `select_for_update()`-loads every `AuditLog`
+> row for `(content_type, object_id)` of the subject and rewrites both sides of
+> each named field's diff pair to `REDACTED` (empty/`None` sides left as-is),
+> preserving row identity, `actor`, timestamps, the `__deleted__` tombstone, and
+> *which* fields changed. Emits a `audit.pii_scrubbed` structlog event with the
+> row count. Each model declares its PII column tuple (`Guest._AUDIT_PII_FIELDS`,
+> `Contact._AUDIT_PII_FIELDS`); `anonymize()` calls scrub *after* the save (so
+> the fresh `[old, sentinel]` row is caught), and `merge()` calls it *after* the
+> hard delete using the now-dead pk (so the `[old_PII, None]` deletion row is
+> caught), both inside the existing `transaction.atomic`. Convention documented
+> in `00-conventions.md` §AuditLog. Tests:
+> `reservations/tests/test_guest.py::{test_anonymize_scrubs_pii_from_audit_log,
+> test_merge_scrubs_deletion_row_pii_but_keeps_structure}` and the matching pair
+> in `accounts/tests/test_contact.py`. No migration required (data-only rewrite).
+> Unblocks Q-014's keep-forever recommendation.
+
 - **Severity:** 🔴 Bug (GDPR Art. 17 erasure defect)
 - **Source:** the 2026-06-11 audit-logging review
 - **Files:** `reservations/models/guest.py:131` (`anonymize`),

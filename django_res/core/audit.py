@@ -13,8 +13,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from django.db import models
+import structlog
+from django.db import models, transaction
 from django.db.models.signals import post_delete, pre_save
+
+logger = structlog.get_logger(__name__)
 
 REDACTED = "[REDACTED]"
 
@@ -50,6 +53,51 @@ def track(
 
 def get_spec(model: type[models.Model]) -> TrackSpec | None:
     return _registry.get(model)
+
+
+@transaction.atomic
+def scrub_pii(obj: models.Model, fields: Iterable[str]) -> int:
+    """Redact cleartext PII from a subject's whole AuditLog trail (GDPR Art. 17).
+
+    Rewrites both sides of every diff pair for the named `fields` to `REDACTED`
+    across all AuditLog rows for `(content_type, object_id)` of `obj`. This is
+    the standard GDPR carve-out from the table's append-only contract: row
+    identity, actor, timestamps, the `__deleted__` tombstone, and *which* fields
+    changed all survive — only the cleartext values are tombstoned.
+
+    Call this from erasure flows (anonymize / merge) *after* the model write, so
+    the freshly written `[old, sentinel]` (or deletion) row is caught too.
+    Returns the number of rows rewritten.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+
+    field_set = frozenset(fields)
+    ct = ContentType.objects.get_for_model(obj.__class__)
+    rows = AuditLog.objects.select_for_update().filter(content_type=ct, object_id=str(obj.pk))
+    scrubbed = 0
+    for row in rows:
+        changed = False
+        diffs = row.field_diffs
+        for name in field_set & diffs.keys():
+            pair = diffs[name]
+            if not isinstance(pair, list):
+                continue
+            redacted = [None if side in (None, "", b"") else REDACTED for side in pair]
+            if redacted != pair:
+                diffs[name] = redacted
+                changed = True
+        if changed:
+            row.save(update_fields=["field_diffs"])
+            scrubbed += 1
+    logger.info(
+        "audit.pii_scrubbed",
+        model=obj._meta.label,
+        object_id=str(obj.pk),
+        rows_scrubbed=scrubbed,
+    )
+    return scrubbed
 
 
 def _redact(value: Any, is_sensitive: bool) -> Any:

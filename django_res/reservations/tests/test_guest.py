@@ -112,6 +112,67 @@ def test_merge_into_self_raises(guest: Guest) -> None:
 
 
 @pytest.mark.django_db
+def test_anonymize_scrubs_pii_from_audit_log(guest: Guest) -> None:
+    """GDPR erasure: after anonymize, no AuditLog row for the guest may
+    retain cleartext PII — including the anonymize-save row itself (BUG-012)."""
+    from core.audit import REDACTED
+
+    old_email = "leaky@example.com"
+    guest.email = old_email
+    guest.last_name = "Sensitive"
+    guest.save(update_fields=["email", "last_name"])
+
+    ct = ContentType.objects.get_for_model(Guest)
+    pre_rows = AuditLog.objects.filter(content_type=ct, object_id=str(guest.pk))
+    # Sanity: the pre-scrub trail leaked the cleartext.
+    assert any(old_email in str(r.field_diffs) for r in pre_rows)
+
+    guest.anonymize()
+
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(guest.pk)))
+    for r in rows:
+        blob = str(r.field_diffs)
+        assert old_email not in blob, f"leaked email in {r.field_diffs}"
+        assert "Sensitive" not in blob, f"leaked last_name in {r.field_diffs}"
+    # The anonymize-save row survives structurally, values tombstoned.
+    pii_rows = [r for r in rows if "email" in r.field_diffs]
+    assert pii_rows
+    for r in pii_rows:
+        for side in r.field_diffs["email"]:
+            assert side in (None, REDACTED)
+
+
+@pytest.mark.django_db
+def test_merge_scrubs_deletion_row_pii_but_keeps_structure(
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """The hard-delete row from merge() must keep who/when/__deleted__ but
+    redact the PII values (BUG-012)."""
+    from core.audit import REDACTED
+
+    keep = Guest.objects.create(first_name="Keep", last_name="Me", email="keep@x.com")
+    duplicate = Guest.objects.create(first_name="Dup", last_name="Leaky", email="dup@x.com")
+
+    duplicate.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Guest)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(duplicate.pk)))
+    deletion_rows = [r for r in rows if r.field_diffs.get("__deleted__")]
+    assert deletion_rows, "expected a deletion audit row"
+    for r in deletion_rows:
+        blob = str(r.field_diffs)
+        assert "Leaky" not in blob
+        assert "dup@x.com" not in blob
+        # Structure preserved: the tombstone marker and field keys survive.
+        assert r.field_diffs["__deleted__"] is True
+        assert r.field_diffs["last_name"][0] == REDACTED
+        # Non-PII fields untouched.
+        assert r.field_diffs["status"][0] == GuestStatus.ACTIVE.value
+
+
+@pytest.mark.django_db
 def test_changing_contact_method_writes_audit_row(guest: Guest) -> None:
     """The preferred-channel change must be captured in the AuditLog trail,
     not just registered in the audit registry."""

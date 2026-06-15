@@ -42,3 +42,32 @@ optional belt-and-braces.
 ## Dependencies
 
 None.
+
+## Resolution (2026-06-15)
+
+✅ Fixed. The recompute is now a service entry point rather than a private
+signal helper:
+
+- `ConciergeService.recompute_adjustment(booking_id)` — re-derives
+  `Booking.adjustment` from the booking's non-cancelled concierge lines (the
+  logic moved out of `signals._recompute_booking_adjustment`, which is gone).
+- `ConciergeService.recompute_for_bookings(booking_ids)` — batch entry point
+  for bulk mutations spanning multiple bookings (dedupes ids).
+- The `_concierge_item_changed` signal receiver now delegates to
+  `recompute_adjustment` and carries a comment naming the bulk-path
+  limitation: any `queryset.update()` / `bulk_create` / `bulk_update` on
+  `BookingConciergeItem` must call the service explicitly because no signal
+  fires for it.
+
+KISS / matching FG-016: an explicit call at the bulk site, not a new
+bulk-signal framework. No periodic reconciler was added — there are currently
+no production bulk concierge write paths to drift against; the service entry
+point is the cheap primary fix the ticket prescribes, and the reconciler is
+flagged optional. If bulk concierge writers proliferate, revisit.
+
+Tests (`reservations/tests/test_concierge.py`):
+`test_bulk_update_desyncs_until_service_recompute` (a `.update()` leaves the
+denorm stale, then the service recompute corrects it) and
+`test_recompute_for_bookings_handles_multiple` (a `bulk_create` corrected via
+the batch entry point). Signal-driven paths behave identically (existing tests
+unchanged). No migration (denorm column already exists).

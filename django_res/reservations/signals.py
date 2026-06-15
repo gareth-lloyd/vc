@@ -13,7 +13,6 @@ Wires up:
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from django.db.models import ProtectedError
@@ -22,7 +21,6 @@ from django.dispatch import Signal
 
 from reservations.enums import (
     BookingGuestRole,
-    ConciergeStatus,
     EnquiryEventKind,
     EventSource,
 )
@@ -132,27 +130,15 @@ def _enquiry_note_post_save(
 # ---------------------------------------------------------------------------
 
 
-def _recompute_booking_adjustment(booking_id: int) -> None:
-    from reservations.models.booking import Booking
-    from reservations.models.concierge import BookingConciergeItem
-
-    # Iterate in Python — concierge lines per booking are bounded (<~50) and
-    # this keeps the multiplication portable across SQLite (tests) and
-    # Postgres (prod) without resorting to F-expressions with explicit casts.
-    items = (
-        BookingConciergeItem.objects.filter(booking_id=booking_id)
-        .exclude(status=ConciergeStatus.CANCELLED.value)
-        .values("unit_price", "quantity")
-    )
-    total = Decimal("0")
-    for item in items:
-        total += Decimal(item["unit_price"]) * Decimal(item["quantity"])
-    total = total.quantize(Decimal("0.01"))
-    Booking.objects.filter(pk=booking_id).update(adjustment=total)
-
-
 def _concierge_item_changed(sender: type, instance: Any, **_: Any) -> None:
-    _recompute_booking_adjustment(instance.booking_id)
+    # Single-row save/delete only. Bulk concierge writes (queryset.update(),
+    # bulk_create, bulk_update) fire no signal and so silently desync
+    # Booking.adjustment — they must call ConciergeService.recompute_adjustment
+    # (or .recompute_for_bookings) explicitly (FG-011; same bulk-write/signal
+    # blind spot as the AuditLog convention in django_res/CLAUDE.md).
+    from reservations.services.concierge import ConciergeService
+
+    ConciergeService.recompute_adjustment(instance.booking_id)
 
 
 # ---------------------------------------------------------------------------

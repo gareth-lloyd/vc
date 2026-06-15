@@ -42,7 +42,7 @@ Status icons:
 | [FG-008](fg-008-property-timezone.md) | Property has no timezone | ✅ resolved — `PropertyLocation.timezone` + `services/timing.py` seam + REST/FE surface |
 | [FG-009](fg-009-csrf-prime-coupled-to-shell-server.md) | CSRF priming coupled to HTML-shell server — recurring dev double-login | ⬜ (low priority — not vital) |
 | [FG-010](fg-010-idempotency-races-no-db-backstop.md) | Idempotency is check-then-create with no DB backstop (meta key, `Booking.quotation_line`, over-refund aggregate) | ✅ resolved |
-| [FG-011](fg-011-adjustment-recompute-skips-bulk-paths.md) | `Booking.adjustment` recompute rides signals; bulk writes desync it | ⬜ |
+| [FG-011](fg-011-adjustment-recompute-skips-bulk-paths.md) | `Booking.adjustment` recompute rides signals; bulk writes desync it | ✅ |
 | [FG-012](fg-012-track-payments-view-bypasses-ledger.md) | Track-payments POST creates ledger rows straight from `request.data` (mintable SUCCEEDED, 500 on bad amount) | ✅ |
 | [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ⬜ |
 | [FG-014](fg-014-audit-tracking-gaps.md) | Audit-tracking gaps: SecurityDeposit, Enquiry, Quotation untracked | ✅ |

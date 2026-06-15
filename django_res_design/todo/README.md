@@ -17,24 +17,22 @@ file is one ticket. Filenames encode `<bucket>-<id>-<short-slug>.md`.
 - **`inv-*`** — investigations the audit flagged as "noticed but didn't
   fully chase". Each becomes a ticket if it turns up a real issue.
 
-## Priority order (from audit's "What to fix first")
+## Layout & status
 
-The audit's recommended sequence — all are 🔴 unless noted:
+- **Open tickets** live flat in this directory.
+- **Resolved / dropped tickets** live in [`done/`](done/); each carries a
+  top-of-file `✅ RESOLVED` / `❌ DROPPED` banner stating the problem, the
+  fix, and the commit. The detailed original body is preserved below the
+  banner for context.
+- [`INDEX.md`](INDEX.md) is the live dashboard — open work at the top, a
+  resolved/dropped reference at the bottom. It is the source of truth for
+  status; the per-file banners record *how* each ticket was closed.
 
-1. `bug-004-owner-approval-race.md` — was B4; **already resolved**, kept as a
-   reference of the fix shape.
-2. `bug-007-reference-generation-races.md` — B7. Bulk-create bypass is a
-   ticking bomb for the cutover.
-3. `bug-006-payment-active-purpose-uniqueness.md` — B6. Security deposits
-   are real money.
-4. `fg-001-booking-quotation-currency-drift.md` — F1.
-5. `fg-006-modify-without-select-for-update.md` — F6.
-6. `bug-001-cancelled-status-requires-cancelled-at.md`,
-   `bug-002-raterule-zero-length-range.md`,
-   `bug-003-raterule-poa-vs-price-contradiction.md` — three-line constraint
-   fixes; cheap.
-
-After that, the rest are handled the next time their app is touched.
+The original audit's "fix first" sequence (the cheap constraint bugs, the
+reference-generation races, the booking row-lock work) is now entirely in
+`done/`. Remaining open work has no strict order — start from the
+"Decisions blocking implementation" list in `INDEX.md`, then the hygiene
+tier; the rest are handled the next time their app is touched.
 
 ## Conventions
 
@@ -48,5 +46,5 @@ Each ticket has:
 - **Acceptance** — how we'll know it's done (tests, constraints, etc.).
 - **Dependencies** — other tickets this blocks or is blocked by.
 
-Pick tickets in priority order unless a dependency forces a different
-sequence. Move a ticket to `done/` once merged and link the commit.
+When a ticket is merged, prepend a `✅ RESOLVED` banner (problem / fix /
+commit), `git mv` the file into `done/`, and update its row in `INDEX.md`.

@@ -15,24 +15,39 @@ In legacy she satisfies required fields by inventing data — "NA" company,
 relies on memory to fix later.
 
 The new backend mostly got this right (nullable OneToOne children,
-group-inheritance defaults, all-optional finance). But the **frontend Zod
-schemas re-impose strictness**: the room form requires every field
-including `website_description` and `vc_notes`; capacity requires all
-counts. That recreates the type-junk-to-save problem for the exact
-sections she fills incrementally.
+group-inheritance defaults, all-optional finance). The original premise of
+this gap — that the **frontend Zod schemas re-impose strictness**, e.g. the
+room form "requires every field including `website_description` and
+`vc_notes`" — is **refuted on inspection**: in `schemas.ts` those text
+fields are `z.string().trim()` with **no `.min(1)`**, so an empty value
+already validates today. The FE text fields are *not* over-strict.
+
+The one field genuinely stricter than the backend is **`beds`**: it is
+required in the Zod room write schema, whereas the serializer declares it
+`required=False` (`room.py:29`). So the actual incremental-loading friction
+narrows to (a) confirming the specific failing write reported in the
+transcript, and (b) this `beds` divergence — not a blanket
+type-junk-to-save problem across the room form.
 
 ## Proposed fix
 
-- Audit the property write schemas in `schemas.ts` against the backend's
-  `blank=True`/`null=True` posture and relax FE-only requirements: for
-  rooms, require `name` only (placement defaults, descriptions/notes
-  optional, bed counts default 0); for capacity keep the fields but allow
-  partial save (the guests==0 hidden-from-quotes warning already exists —
-  warnings over walls).
+- **First, confirm the actual reported failing write** from the transcript
+  before changing anything. The 2026-06-11 email confirmed the desire to
+  "save sections with just the available data rather than using
+  placeholders", so reproduce the specific save that failed and verify what
+  the schema actually rejects.
+- If the goal is incremental room creation, **relax `beds` to optional in
+  the room write schema** (+ test) to match the serializer's
+  `required=False`.
+- **WARNING — do NOT make `website_description`/`vc_notes` `.optional()`.**
+  Today edit-mode PATCH sends `""` to clear a value (the model fields are
+  `blank=True`); making them `.optional()` would emit `undefined`, omit them
+  from the PATCH, and silently stop clearing the field. Keep the `""`
+  defaults.
+- Leave capacity/finance/settings/descriptions alone — they already match
+  the backend posture. Avoid needless churn.
 - Prefer explicit emptiness over placeholder text everywhere: optional
   fields render as "not set", and lists/detail views tolerate missing data.
-- Sweep the remaining property tabs for the same pattern while in there
-  (finance is already all-optional — that's the model to match).
 
 ## Acceptance
 
@@ -44,5 +59,9 @@ sections she fills incrementally.
 
 ## Dependencies
 
-None. Complements GAP-023 (a property stays DRAFT/unapproved while
-incomplete, so loose validation is safe).
+Complements GAP-023 (a property stays DRAFT/unapproved while incomplete, so
+loose validation is safe).
+
+Must be decided **jointly with Q-019**: structured room attributes touch the
+same `Room` model and `RoomFormDialog`, so the incremental-loading posture
+should be set once across both tickets rather than twice.

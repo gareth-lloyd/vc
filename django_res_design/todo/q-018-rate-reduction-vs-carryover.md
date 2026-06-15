@@ -26,16 +26,24 @@ per-rate-rule price reduction, so it doesn't cover this as-is.
 ## Proposed direction
 
 Model the reduction on `RateRule`: keep `nightly`/`weekly` as the **base**
-price and add reduction fields (e.g. `reduction_percent` or
-`reduction_amount`, `reduced_at`, optional reason). The pricing engine
+price and add reduction fields — support **both** a `reduction_percent`
+**and** a `reduction_amount` (fixed new amount), plus `reduced_at` and an
+optional reason. The pricing engine
 quotes the reduced price; carry-over copies the base and drops the
 reduction. The free-text `notes` ritual disappears.
 
 ## Open questions (for the loader / product)
 
-1. Is a reduction always a % off the whole band, or sometimes a fixed
+1. ~~Is a reduction always a % off the whole band, or sometimes a fixed
    amount or specific weeks only? (Specific weeks → split the band rather
-   than complicate the model.)
+   than complicate the model.)~~ **Answered** (Nick/Bryony, 2026-06-11
+   email): a reduction is *usually* a % off certain still-available weeks,
+   but *sometimes* a fixed (new) amount — "both options please" (Nick wants
+   maximum pricing flexibility). So the model must support **both** a
+   percentage reduction and a fixed-amount reduction, scoped to specific
+   weeks/bands; for specific weeks → split the band. The customer also
+   confirmed the base-price + reduction approach (so carry-over copies the
+   base) is correct.
 2. Does a reduction apply to new bookings only from its date? (Engine
    quotes are point-in-time, so probably yes by construction — confirm.)
 3. Should sales see "reduced from X" in the quote builder, or just the

@@ -9,6 +9,18 @@
 
 ## Problem
 
+> **Villa Groups stay.** Nick (owner, 2026-06-11 email) proposed doing away
+> with Villa Groups, but this was assessed as **premature** — he is reasoning
+> from the legacy system where groups were unused. In the rebuild,
+> `PropertyGroup` is the inheritance backbone: `GroupFinance`/`GroupSettings`
+> are exactly where the seeded defaults in this ticket live (deposit 30%, SD
+> required, 16:30 / 10:30, etc.), and `PropertySettings`/`PropertyFinance`
+> inherit from them via `effective()`. Q-021 therefore remains valid as
+> written — do **not** rearchitect away from groups.
+>
+> Note the adjacent 2026-06-11 decision that seasons should be defined by
+> rental rates (not services) — tracked separately as q-022.
+
 The transcript is a catalogue of de-facto defaults and vocabulary the
 loader re-enters per villa or improvises:
 
@@ -53,4 +65,6 @@ to curate the taxonomy.
 ## Dependencies
 
 GAP-022 (per-property ordering) and Q-019 (room-derived features) shape
-the same `Feature` surface — coordinate the seed list.
+the same `Feature` surface — coordinate the seed list. The Feature seed
+list should be curated alongside **GAP-022**: the through-model + loader
+rewrite is the cheapest moment to settle the taxonomy.

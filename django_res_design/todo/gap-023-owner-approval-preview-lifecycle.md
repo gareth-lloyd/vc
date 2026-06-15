@@ -1,6 +1,6 @@
 # GAP-023 — `live_offline` replacement: owner approval, preview link, sales-facing badges
 
-- **Severity:** Gap (legacy-parity regression + workflow safety)
+- **Severity:** Gap (legacy-parity regression + workflow safety) — **DEFERRED post-v1 per 2026-06-11 email**
 - **Source:** 2026-06-11 new-villa setup transcript review
 - **Files:** `properties/models/property.py` (status enum),
   `django_res_design/02-properties.md` (reconciliation issue #23),
@@ -26,10 +26,22 @@ Her stated unease is not that sales can see unapproved villas — it's that
 problem: `RateRule.is_approved` exists in the backend (bulk imports land
 `False`) but has no UI toggle and is invisible in the quote builder.
 
-## Proposed fix
+## Decision (2026-06-11 email)
 
-Keep the three-state enum; add an orthogonal approval axis instead of a
-fourth status:
+**DEFERRED.** Nick (owner) decided owner approval is "best to introduce
+further down the line." v1 ships **no approval gating**: sales offer villas
+freely, there is no "awaiting approval" hold, and no badges are built now.
+Bryony noted that offerable-while-awaiting is fine, and that a new enquiry
+can usefully push the owner to respond faster. The audit-trail-on-sign-off
+idea is a later Zoho/Res automation, not v1.
+
+The design below is retained as the **eventual** shape for when this is
+picked up; it is the future target, not current scope.
+
+## Proposed fix (future target — not current scope)
+
+When this is eventually built, keep the three-state enum and add an
+orthogonal approval axis instead of a fourth status:
 
 - `Property.owner_approved_at` (nullable timestamp; cleared on material
   content edits is a follow-up question — start with manual set/clear).
@@ -41,7 +53,7 @@ fourth status:
   properties so sales offer them knowingly.
 - Expose `RateRule.is_approved` (read + toggle) in the PricingTab.
 
-## Acceptance
+## Acceptance (future target — not current scope)
 
 - Approval state settable from the property UI and visible in list/detail.
 - Preview link works for a DRAFT property without staff auth.

@@ -47,6 +47,32 @@ of "this booking's agent changed" is simply missing for merges.
   `__merged_into__` + rewrite counts.
 - CLAUDE.md convention paragraph exists.
 
+## Resolution
+
+✅ Took the cheap, recommended path (option 1 — summary on the deletion row).
+
+- New `core.audit.record_merge(obj, target_pk, rewrites)`: atomic, row-locking
+  helper that folds `__merged_into__` (destination pk) and `__rewrites__`
+  (`{"<model>.<field>": count}`) into the `__deleted__` AuditLog row that
+  `post_delete` already wrote. No O(n) per-row saves; no new bulk-signal
+  framework (only two merge sites exist).
+- `Contact.merge` and `Guest.merge` now capture the `.update()` row count per
+  reverse relation (zero-count relations omitted) and call `record_merge`
+  *before* `scrub_pii`, so the augmented row is PII-scrubbed too (BUG-012
+  ordering preserved).
+- Spec drift resolved: `00-conventions.md` row 47 corrected (the old "one
+  AuditLog row per rewrite" claim was never true — `.update()` fires no
+  signals).
+- Blind-spot convention added to `django_res/CLAUDE.md` §AuditLog: bulk writes
+  to tracked models bypass the signals; use `.save()` loops or an explicit
+  audit row; `django-pghistory` is the escape hatch if bulk paths proliferate
+  (not built now).
+- Tests: `test_merge_deletion_row_records_merged_into_and_rewrite_counts` in
+  both `accounts/tests/test_contact.py` and `reservations/tests/test_guest.py`.
+
+FG-017 (BookingHold/Property tier) and SMELL-016 (threadlocal actor) remain
+for follow-up tickets.
+
 ## Dependencies
 
 - Related: FG-011 (same signals-skip-bulk family), BUG-012 (merge deletion

@@ -47,7 +47,7 @@ Status icons:
 | [FG-013](fg-013-owners-app-outside-layers-contract.md) | `owners` app sits outside the import-linter layers contract | ⬜ |
 | [FG-014](fg-014-audit-tracking-gaps.md) | Audit-tracking gaps: SecurityDeposit, Enquiry, Quotation untracked | ✅ |
 | [FG-015](fg-015-booking-cancel-leaves-pending-payments.md) | `Booking.cancel` leaves PENDING Payment rows live | ✅ resolved |
-| [FG-016](fg-016-audit-signals-skip-bulk-writes.md) | Audit signals skip bulk writes; merge FK rewrites unaudited (spec claims otherwise) | ⬜ |
+| [FG-016](fg-016-audit-signals-skip-bulk-writes.md) | Audit signals skip bulk writes; merge FK rewrites unaudited (spec claims otherwise) | ✅ |
 | [FG-017](fg-017-audit-coverage-second-tier.md) | Audit-coverage second tier: BookingHold, Property, property-child hard deletes | ⬜ (after FG-014) |
 
 ## 🟡 Smells

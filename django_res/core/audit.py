@@ -100,6 +100,42 @@ def scrub_pii(obj: models.Model, fields: Iterable[str]) -> int:
     return scrubbed
 
 
+@transaction.atomic
+def record_merge(obj: models.Model, target_pk: Any, rewrites: dict[str, int]) -> None:
+    """Stamp merge metadata onto a hard-delete subject's deletion AuditLog row.
+
+    The merge() FK rewrites go through `queryset.update()`, which bypasses the
+    pre_save/post_delete signals — so the "this row's FK moved to target" facts
+    never reach the audit trail on their own (FG-016). Rather than emit O(n)
+    per-row saves, we summarise: the destination pk plus a per-relation rewrite
+    count (`{"reservations.Booking.guest": 3, ...}`) is folded into the
+    `__deleted__` row that post_delete already wrote for `obj`.
+
+    Call *after* `obj.delete()` (so the deletion row exists) and, for PII
+    subjects, *before* `scrub_pii` (so the augmented row is scrubbed too). The
+    `obj.pk` must still hold the dead pk. No-op for a subject with no tracked
+    deletion row (untracked model) — the merge summary then has nowhere to live.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+
+    if not rewrites and target_pk is None:
+        return
+    ct = ContentType.objects.get_for_model(obj.__class__)
+    rows = (
+        AuditLog.objects.select_for_update()
+        .filter(content_type=ct, object_id=str(obj.pk))
+        .order_by("-created_at")
+    )
+    row = next((r for r in rows if r.field_diffs.get("__deleted__")), None)
+    if row is None:
+        return
+    row.field_diffs["__merged_into__"] = str(target_pk)
+    row.field_diffs["__rewrites__"] = rewrites
+    row.save(update_fields=["field_diffs"])
+
+
 def _redact(value: Any, is_sensitive: bool) -> Any:
     if is_sensitive and value not in (None, "", b""):
         return REDACTED

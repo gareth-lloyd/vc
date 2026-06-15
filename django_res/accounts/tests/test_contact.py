@@ -72,6 +72,29 @@ def test_merge_rewrites_fks_and_deletes_source() -> None:
 
 
 @pytest.mark.django_db
+def test_merge_deletion_row_records_merged_into_and_rewrite_counts() -> None:
+    """FG-016: the bulk FK rewrites bypass the audit signals, so merge must
+    stamp the destination pk and per-relation rewrite counts onto the
+    deletion row rather than leaving them silently unaudited."""
+    keep = Contact.objects.create(first_name="Keep", last_name="Me")
+    duplicate = Contact.objects.create(first_name="Dup", last_name="Me")
+    ContactEmail.objects.create(contact=duplicate, email="a@example.com")
+    ContactEmail.objects.create(contact=duplicate, email="b@example.com")
+
+    duplicate.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Contact)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(duplicate.pk)))
+    deletion_rows = [r for r in rows if r.field_diffs.get("__deleted__")]
+    assert deletion_rows
+    row = deletion_rows[-1]
+    assert row.field_diffs["__merged_into__"] == str(keep.pk)
+    rewrites = row.field_diffs["__rewrites__"]
+    assert rewrites["accounts.ContactEmail.contact"] == 2
+    assert all(count > 0 for count in rewrites.values())
+
+
+@pytest.mark.django_db
 def test_anonymize_scrubs_pii_from_audit_log(contact: Contact) -> None:
     """GDPR erasure: anonymize must redact cleartext PII across the
     contact's whole AuditLog trail (BUG-012)."""

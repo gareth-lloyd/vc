@@ -173,6 +173,34 @@ def test_merge_scrubs_deletion_row_pii_but_keeps_structure(
 
 
 @pytest.mark.django_db
+def test_merge_deletion_row_records_merged_into_and_rewrite_counts(
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """FG-016: bulk FK rewrites bypass the audit signals, so the merge must
+    stamp the destination pk and per-relation rewrite counts onto the
+    deletion row instead of leaving them silently unaudited."""
+    keep = Guest.objects.create(first_name="Keep", last_name="Me", email="keep@x.com")
+    duplicate = Guest.objects.create(first_name="Dup", last_name="Me", email="dup@x.com")
+    _make_booking(guest=duplicate, property_=property_, gbp=gbp, terms=terms)
+
+    duplicate.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Guest)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(duplicate.pk)))
+    deletion_rows = [r for r in rows if r.field_diffs.get("__deleted__")]
+    assert deletion_rows, "expected a deletion audit row"
+    row = deletion_rows[-1]
+    assert row.field_diffs["__merged_into__"] == str(keep.pk)
+    rewrites = row.field_diffs["__rewrites__"]
+    # The booking's guest FK was rewritten exactly once.
+    assert rewrites["reservations.Booking.guest"] == 1
+    # Zero-count relations are not recorded.
+    assert all(count > 0 for count in rewrites.values())
+
+
+@pytest.mark.django_db
 def test_changing_contact_method_writes_audit_row(guest: Guest) -> None:
     """The preferred-channel change must be captured in the AuditLog trail,
     not just registered in the audit registry."""

@@ -43,3 +43,35 @@ idempotency (a `SENT` log is not re-sent) already makes retries safe.
 ## Dependencies
 
 None. Related: Q-017 (comms architecture — doesn't block this fix).
+
+## Resolution (2026-06-15)
+
+✅ Done. `comms/tasks.py`:
+
+- Added `_is_transient_smtp_error(exc)` to classify the exception raised by
+  `message.send()`. **Transient** (retryable): `SMTPServerDisconnected`,
+  `SMTPConnectError`, any `OSError` (covers `ConnectionResetError`,
+  `TimeoutError`/`socket.timeout`, DNS/socket errors), and a
+  `SMTPResponseException` with a **4xx** `smtp_code` (greylisting, "try again
+  later"). **Permanent** (FAILED): `SMTPAuthenticationError`,
+  `SMTPRecipientsRefused`, `SMTPSenderRefused`, and any **5xx**
+  `SMTPResponseException`. (`SMTPResponseException` straddles both, so it's
+  classified by code, not type — the conventional choice the ticket
+  prescribes.)
+- `_send` now re-raises a new `TransientEmailError` on a transient failure,
+  leaving the row **QUEUED**; permanent failures keep the existing FAILED +
+  `failure_reason` path.
+- `send_email_log` is decorated with `autoretry_for=(TransientEmailError,),
+  retry_backoff=True, retry_backoff_max=600, retry_jitter=True,
+  max_retries=6` — mirrors `payments.tasks.process_webhook_delivery`. After
+  the retries exhaust, Celery surfaces the error (django-structlog
+  `task_failed` is the alert) and the existing `requeue_stuck_emails` beat
+  sweep re-dispatches anything left QUEUED past the grace window, so an
+  exhausted message lands QUEUED→retried, never stuck-PENDING-forever. The
+  row-level SENT idempotency guard already in `_send` keeps retries safe.
+
+Tests: `comms/tests/test_email_transient_retry.py` — parametrised transient
+errors re-raise `TransientEmailError` and leave the log QUEUED; parametrised
+permanent errors mark FAILED with a reason; the task carries the autoretry
+config. Full backend gate green (`pytest` 1716 passed, `ruff check`/`format`,
+`mypy` clean).

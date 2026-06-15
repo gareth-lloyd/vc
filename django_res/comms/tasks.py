@@ -9,6 +9,7 @@ restart can drop in-flight jobs; the persisted row is the source of truth).
 
 from __future__ import annotations
 
+import smtplib
 from datetime import timedelta
 
 from celery import shared_task
@@ -23,6 +24,42 @@ from comms.models import EmailLog
 # re-enqueued. Comfortably longer than a normal dispatch so the sweep never
 # races a job that's simply mid-flight.
 STUCK_EMAIL_GRACE = timedelta(minutes=10)
+
+# SMELL-015 — split transient SMTP failures (retry with backoff) from
+# permanent ones (FAILED). Transient: the connection dropped or the host was
+# briefly unreachable (`SMTPServerDisconnected`, `SMTPConnectError`,
+# socket/`OSError` timeouts), plus 4xx response codes (greylisting, "try
+# again later"). Permanent: refused recipient/sender, auth failures, and any
+# 5xx response — re-trying those just re-fails. `SMTPResponseException`
+# straddles both, so it's classified by its `smtp_code` (4xx vs 5xx) rather
+# than its type. The row-level SENT idempotency in `_send` keeps retries safe.
+_TRANSIENT_SMTP_EXCEPTIONS = (
+    smtplib.SMTPServerDisconnected,
+    smtplib.SMTPConnectError,
+    OSError,  # ConnectionResetError, TimeoutError, DNS/socket errors
+)
+
+
+def _is_transient_smtp_error(exc: BaseException) -> bool:
+    """True when ``exc`` is a retryable (not permanent) SMTP failure."""
+    # Auth and refused-address failures are permanent regardless of code.
+    if isinstance(
+        exc,
+        (
+            smtplib.SMTPAuthenticationError,
+            smtplib.SMTPRecipientsRefused,
+            smtplib.SMTPSenderRefused,
+        ),
+    ):
+        return False
+    # Any server response is transient only on a 4xx code; 5xx is permanent.
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return 400 <= exc.smtp_code < 500
+    return isinstance(exc, _TRANSIENT_SMTP_EXCEPTIONS)
+
+
+class TransientEmailError(Exception):
+    """Raised to trigger the ``send_email_log`` task's autoretry/backoff."""
 
 
 def _send(log_id: int) -> None:
@@ -81,6 +118,11 @@ def _send(log_id: int) -> None:
     try:
         message.send(fail_silently=False)
     except Exception as exc:
+        if _is_transient_smtp_error(exc):
+            # Leave the row QUEUED and re-raise so the task autoretries with
+            # backoff. A blip (greylist, dropped connection) must not burn the
+            # message — the SENT-row idempotency guard makes the retry safe.
+            raise TransientEmailError(str(exc)) from exc
         log.status = EmailLogStatus.FAILED
         log.failure_reason = str(exc)
         log.save(update_fields=["status", "failure_reason", "updated_at"])
@@ -91,13 +133,27 @@ def _send(log_id: int) -> None:
     log.save(update_fields=["status", "sent_at", "updated_at"])
 
 
-@shared_task
+@shared_task(
+    autoretry_for=(TransientEmailError,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=6,
+)
 def send_email_log(log_id: int) -> None:
     """Dispatch the persisted ``EmailLog`` via SMTP and update its status.
 
     Idempotent at the row level: a log already in ``SENT`` is not re-sent.
-    Transient SMTP failures are recorded as ``FAILED`` on the row (operator
-    resend is the recovery path), so the task itself does not retry.
+
+    Transient SMTP failures (dropped connection, host blip, 4xx greylisting —
+    see ``_is_transient_smtp_error``) leave the row ``QUEUED`` and re-raise as
+    ``TransientEmailError``, which this task autoretries with exponential
+    backoff (mirrors ``payments.tasks.process_webhook_delivery``). Permanent
+    failures (5xx, refused address, auth) are recorded as ``FAILED`` on the
+    row; the operator resend is the recovery path. After the retries exhaust,
+    Celery surfaces the final ``TransientEmailError`` (django-structlog's
+    ``task_failed`` is the alert) and ``requeue_stuck_emails`` re-dispatches
+    any row left ``QUEUED`` past the grace window.
     """
     _send(log_id)
 

@@ -29,6 +29,7 @@ from payments.enums import (
 )
 from payments.models.payment import Payment
 from payments.models.security_deposit import SecurityDeposit
+from pricing.services.currency import quantise_money
 from properties.enums import SecurityDepositCalcType, SecurityDepositPaymentMethod
 
 logger = structlog.get_logger(__name__)
@@ -86,7 +87,7 @@ class SecurityDepositService:
         sd = SecurityDeposit.objects.create(
             booking=booking,
             kind=kind,
-            amount=amount,
+            amount=quantise_money(amount, booking.currency),
             currency=booking.currency,
             status=initial_status,
             due_at=due_at,
@@ -193,7 +194,7 @@ class SecurityDepositService:
                 booking=sd.booking,
                 purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
                 status=PaymentStatus.SUCCEEDED.value,
-                amount=amount,
+                amount=quantise_money(amount, sd.currency),
                 currency=sd.currency,
                 provider=PaymentProvider.MANUAL_BANK_TRANSFER.value,
                 provider_reference=reference,

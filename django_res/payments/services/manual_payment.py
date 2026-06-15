@@ -18,6 +18,7 @@ from core.idempotency import find_by_meta_key, stamp_meta
 from core.logging.operations import log_operation
 from payments.enums import PaymentStatus
 from payments.models.payment import Payment
+from pricing.services.currency import quantise_money
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -79,7 +80,7 @@ class ManualPaymentService:
                 booking=booking,
                 purpose=purpose,
                 status=PaymentStatus.PENDING.value,
-                amount=amount,
+                amount=quantise_money(amount, booking.currency),
                 currency=booking.currency,
                 provider=provider,
                 provider_reference=provider_reference,

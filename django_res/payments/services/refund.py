@@ -40,6 +40,7 @@ from payments.enums import (
 )
 from payments.models.payment import Payment
 from payments.models.refund import Refund
+from pricing.services.currency import quantise_money
 
 if TYPE_CHECKING:
     from payments.models.security_deposit import SecurityDeposit
@@ -131,7 +132,7 @@ class RefundService:
                 booking=booking,
                 against_payment=against_payment,
                 purpose_track=purpose_track,
-                amount=Decimal(str(amount)),
+                amount=quantise_money(Decimal(str(amount)), currency),
                 currency=currency,
                 status=RefundStatus.PENDING.value,
                 reason_code=reason_code,

@@ -22,6 +22,7 @@ from django.utils import timezone
 from core.logging.operations import log_operation
 from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
+from pricing.services.currency import quantise_money
 from properties.enums import DepositCalcType
 
 logger = structlog.get_logger(__name__)
@@ -97,7 +98,7 @@ class PaymentScheduler:
                     booking=booking,
                     purpose=PaymentPurpose.DEPOSIT.value,
                     status=PaymentStatus.PENDING.value,
-                    amount=deposit_amount,
+                    amount=quantise_money(deposit_amount, currency),
                     currency=currency,
                     due_at=timezone.now(),
                 )
@@ -117,10 +118,10 @@ class PaymentScheduler:
 
         # Until INTERIM is its own purpose, the full remaining balance owes on
         # the BALANCE row regardless of whether the schedule split it.
-        balance_amount = max(
-            Decimal("0"),
-            total - deposit_amount,
-        ).quantize(Decimal("0.01"))
+        balance_amount = quantise_money(
+            max(Decimal("0"), total - deposit_amount),
+            currency,
+        )
         to_create.append(
             Payment(
                 booking=booking,
@@ -195,20 +196,23 @@ class PaymentScheduler:
             if deposit is not None:
                 finance = getattr(booking.property, "finance", None)
                 schedule = finance.effective_payment_schedule() if finance else {}
-                deposit.amount = min(
-                    remaining,
-                    cls._calc_amount(
-                        calculation_type=schedule.get("deposit_calculation_type"),
-                        amount=schedule.get("deposit_amount"),
-                        base=total,
+                deposit.amount = quantise_money(
+                    min(
+                        remaining,
+                        cls._calc_amount(
+                            calculation_type=schedule.get("deposit_calculation_type"),
+                            amount=schedule.get("deposit_amount"),
+                            base=total,
+                        ),
                     ),
-                ).quantize(Decimal("0.01"))
+                    booking.currency,
+                )
                 deposit.save(update_fields=["amount", "updated_at"])
                 remaining -= deposit.amount
 
             balance = next((r for r in pending if r.purpose == PaymentPurpose.BALANCE.value), None)
             if balance is not None:
-                balance.amount = remaining.quantize(Decimal("0.01"))
+                balance.amount = quantise_money(remaining, booking.currency)
                 balance.save(update_fields=["amount", "updated_at"])
                 remaining = Decimal("0")
 

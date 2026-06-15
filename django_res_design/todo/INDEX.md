@@ -56,7 +56,7 @@ Status icons:
 |---|---|---|
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-002](smell-002-quotation-expire-draft.md) | `Quotation.expire()` only handles `SENT → EXPIRED` | ✅ resolved (DRAFT/SENT → EXPIRED) |
-| [SMELL-003](smell-003-currency-decimal-places-unenforced.md) | `Currency.decimal_places` informational only | ⬜ |
+| [SMELL-003](smell-003-currency-decimal-places-unenforced.md) | `Currency.decimal_places` informational only | ✅ resolved (option 1: `quantise_money` helper at service write paths) |
 | [SMELL-004](smell-004-emaillog-content-hash-scope.md) | `EmailLog` content hash dedupe scope ambiguous | ✅ resolved (documented + pinning test) |
 | [SMELL-005](smell-005-residual-property-country-charfield.md) | Verify no residual `Property.country` free-text | ❌ DROPPED — verified clean |
 | [SMELL-006](smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default | ✅ resolved (convert API requires `terms_accepted: true`; stamped server-side) |

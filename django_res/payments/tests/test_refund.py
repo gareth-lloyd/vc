@@ -89,6 +89,34 @@ def test_refund_state_machine__request_approve_execute_creates_payment(
 
 
 @pytest.mark.django_db
+def test_refund_request__quantises_amount_to_currency_decimal_places(
+    booking: Any,
+    user: Any,
+) -> None:
+    """SMELL-003: a refund in a 0-dp currency must not persist minor units."""
+    from pricing.models import Currency
+
+    jpy = Currency.objects.create(code="JPY", name="Japanese yen", decimal_places=0)
+    paid = Payment.objects.create(
+        booking=booking,
+        purpose=PaymentPurpose.DEPOSIT.value,
+        status=PaymentStatus.SUCCEEDED.value,
+        amount=Decimal("5000"),
+        currency=jpy,
+    )
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.49"),
+        currency=jpy,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid,
+        requested_by=user,
+    )
+    assert refund.amount == Decimal("100")
+
+
+@pytest.mark.django_db
 def test_refund_approve__rejects_self_approval_without_permission(
     booking: Any,
     gbp: Any,

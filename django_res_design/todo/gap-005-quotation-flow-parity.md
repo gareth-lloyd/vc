@@ -29,6 +29,12 @@ That split is the root cause of most "missing" findings: several things
 the operator did *at quote time* in legacy now live one stage later, on
 the booking.
 
+> ℹ️ **Note (2026-06-18) — unified `Person` (GAP-045).** The planned
+> `GuestPicker` and the agent `ContactPicker` collapse into **one reusable
+> `Person` picker** (filtered by capacity), and the rich client detail (tags /
+> connected contacts / history, GAP-042) becomes reachable from the quote
+> builder — the owner's "same contact interface replicated across quoting" ask.
+
 ## Resolved by stakeholder decision (NOT gaps — record only)
 
 - **Payment schedule at quote time → keep deferred to booking.** Legacy
@@ -330,6 +336,25 @@ together** (preview modal + copy-to-clipboard share the server-side HTML
 render), since they're the highest operator-pain and one render path backs both
 the SMTP and manual paths. The **spine overhaul** track sequences separately as
 M1→M4 above.
+
+## Owner Loom follow-up (2026-06-17)
+
+A later owner walkthrough (Loom + the Ben/owner mockup at
+https://vc-new-res-system.netlify.app/) asks for a next wave on top of the
+shipped M1–M4. Spun out as focused tickets rather than reopening this tracker:
+
+- [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md) — stage-taxonomy
+  reconciliation + quotes-to-convert metric + per-quote status in the stack
+  (the stacking + `quote_count` foundation here is reused, not redone).
+- [GAP-039](gap-039-enquiry-dashboard-enrichment.md) — richer enquiry list.
+- [GAP-043](gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
+  (the concrete shape of the deferred #9 two-pane builder rework).
+- [GAP-044](gap-044-occupancy-band-fanout-builder.md) — occupancy-band fan-out.
+
+(Customer-profile asks — tags, linked contacts, profile view — are
+[GAP-040](gap-040-customer-tags-taxonomy.md) /
+[GAP-041](gap-041-standing-linked-contacts.md) /
+[GAP-042](gap-042-customer-360-profile-view.md).)
 
 ## Dependencies
 

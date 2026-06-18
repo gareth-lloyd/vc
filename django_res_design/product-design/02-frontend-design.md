@@ -463,6 +463,19 @@ Kanban + list views, toggle in the header. Kanban is the default because enquiri
 
 - Drag between columns to change status.
 - Card click → enquiry detail (`/enquiries/:id`) — full page because there's correspondence history.
+
+> **Owner Loom (2026-06-17) — enrich the list to the Ben/owner mockup.** The owner
+> finds this view "a little bit light" and points at the mockup
+> (https://vc-new-res-system.netlify.app/ → Quotes & Enquiries) as the target.
+> The **list** view needs the fuller column set — VC Ref, Name, Villa Name,
+> Region, Enq/Quote Date, Sales Person (inline assign), Holiday Dates (range),
+> Flex? (`Specific dates`/`+/- 3 days`/`+/- 7 days`/`Flexible`), Stage, Lead
+> Status (+reason when Dead) — plus stage tabs with counts and salesperson/
+> lead-status/date-range filters. The mockup's stage vocabulary (New Enquiry →
+> Progressing → Quote Sent → Follow-up; Dead+reason) must be reconciled with
+> `Enquiry.status`, and a **quotes-to-convert** metric surfaced. Tracked in
+> [`todo/gap-039-enquiry-dashboard-enrichment.md`](../todo/gap-039-enquiry-dashboard-enrichment.md)
+> and [`todo/gap-038-enquiry-quote-stacking-conversion-metric.md`](../todo/gap-038-enquiry-quote-stacking-conversion-metric.md).
 - A "Lost" lane is reachable via overflow column (`▸ Lost (28)`) so it doesn't clutter.
 - List view is for power users who want sortable columns.
 

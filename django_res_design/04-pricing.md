@@ -154,6 +154,18 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > matched-not-fallen-back engine behaviour is correct as designed; multi-bracket
 > display, where wanted, is composed by the builder calling the engine once per
 > party size.
+>
+> **Superseded by owner (Loom 2026-06-17) — default is now fan-out, not curate.**
+> The owner reversed the "salesperson curates / no automatic fan-out" *default*:
+> for an occupancy-priced property the quote builder should present **all**
+> covering bands as separate lines **checked by default** ("better to quote all
+> of the occupancy-based pricing to give them full visibility of what the price
+> could be if the group size changes"), and the agent *deselects* the ones not
+> wanted. The prior rationale is retained above for context — it was about the
+> *default*, and the new default inverts it. **Engine contract is unchanged:**
+> `PricingEngine.quote()` still resolves one bracket per call; the *builder*
+> drives the fan-out (call once per covering band, or a small `:bands` endpoint).
+> Tracked in [`todo/gap-044-occupancy-band-fanout-builder.md`](todo/gap-044-occupancy-band-fanout-builder.md).
 
 #### Disjoint date ranges within a card
 A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.

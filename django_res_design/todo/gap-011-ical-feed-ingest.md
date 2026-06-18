@@ -1,11 +1,26 @@
 # GAP-011 — iCal feed ingest from owners
 
-**Severity:** gap (designed-but-unbuilt; **explicitly deferred past v1**).
+**Severity:** gap (designed-but-unbuilt → **largely built**).
 
-**Status:** ⬜ deferred — tracker. No model or workflow in v1. This ticket is
-the single canonical home for the feature; `06-availability.md`,
-`08-integrations.md`, and `10-decisions.md` now point here instead of each
-carrying their own copy.
+**Status:** 🟨 partial — the ingest engine has since landed; UI/awareness work
+remains. This ticket is the single canonical home for the feature;
+`06-availability.md`, `08-integrations.md`, and `10-decisions.md` now point here
+instead of each carrying their own copy.
+
+> **Implemented vs residual (updated 2026-06-17 after the owner availability
+> Loom).** The header previously read "⬜ deferred — tracker", but the body and
+> the code have moved on — they now disagree, hence this status bump.
+> **Built:** `PropertyCalendarFeed` model (`properties/models/calendar_feed.py`),
+> `ICalIngestService` with cross-feed coalescing + stale-event reconciliation +
+> conflict signals (`reservations/services/ical_ingest.py`), `OwnerBlock`
+> (`source=ICAL`, `idempotency_key`), the `ingest_ical` command, the
+> beat-scheduled `ingest_ical_feeds` task (§3), `SyncProvider.ICAL`, and the
+> `demo_ical` seeder. **Residual (verify against code before scheduling):**
+> (a) staff-awareness UI / digest — §9 "staff notification shape" is still an
+> open decision and conflict *signals* fire but a digest/UI looks unbuilt;
+> (b) the sales-view source indicator (the "iCal" badge vs owner-calendar link),
+> now tracked separately by **GAP-034**; (c) confirm the feed `url` secret-handling
+> (§2) is enforced end-to-end (not serialized / not logged).
 
 **Source:** scoping-session **2026-05-26** with the site owner; **re-emphasised
 in the 2026-06-08 demo** ("incredibly useful", "a game changer", "a big problem
@@ -282,6 +297,9 @@ Open choices to settle at implementation time:
   scheduling half~~ — unblocked: Celery is wired and `ingest_ical_feeds` is
   beat-scheduled (§3). The data half (`SyncProvider.ICAL`, `PropertyCalendarFeed`)
   already landed.
+- **Residual UI tracked by:** GAP-034 (sales-view "iCal" badge vs owner-calendar
+  link) and GAP-033 (iCal-synced villas may derive availability freshness from
+  `PropertyCalendarFeed.last_polled_at`).
 - **Related:** `06-availability.md` (owner-block semantics, exclude
   constraints), `08-integrations.md` (`SyncRecord` framework), `10-comms.md` /
   `10-decisions.md` "Hold auto-expiry" (the signal→`EmailService` pattern reused

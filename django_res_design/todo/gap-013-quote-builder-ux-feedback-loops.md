@@ -92,6 +92,11 @@ Independent, individually shippable. Recommended order:
 
 - Sibling of **GAP-005** (flow tracker) — coordinate if that overhaul reshapes
   the builder layout.
+- **Coordinate with [GAP-043](gap-043-quote-builder-multi-week-range.md)
+  (multi-week range) and [GAP-044](gap-044-occupancy-band-fanout-builder.md)
+  (occupancy-band fan-out)** — both reshape the results/cart surface this ticket
+  polishes (owner Loom 2026-06-17). Land the structural rework before (or with)
+  these feedback-loop tweaks so the builder isn't reworked twice.
 - **Q-013** (rate-card incomplete-pricing behaviour) — resolved: no-rate
   results now surface as flagged manual-quote cards in the main list, staged
   `is_manual` with required total + reason. The engine's null-total contract

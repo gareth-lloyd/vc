@@ -1,8 +1,25 @@
 # People model cleanup — Enquiry / Guest / Contact
 
-**Status:** design decision record (2026-06-08). Amends `05-reservations.md`
-(Guest, Enquiry, Quotation) and references `01-accounts.md` (Contact). Decisions
-are recorded in `10-decisions.md`; this doc is the rationale + field-level spec.
+> ⚠️ **SUPERSEDED IN PART (2026-06-18) — unified `Person` identity model.**
+> The owner's 2026-06-17 Contacts review drove a domain re-assessment that
+> **overturns "Locked decision #1" below** (Guest kept distinct from Contact).
+> The new direction: a **single `Person` identity** absorbs both
+> `accounts.Contact` and `reservations.Guest`; capacity (traveller / agent /
+> owner / manager / …) is a **role/relationship, never a `kind` column**; a real
+> **`Organisation`** entity replaces the free-text `company`; **`User` stays
+> first-class** as a login `OneToOne → Person`. The owner's directories
+> (Clients / Villa Contacts / Companies) become **filtered views**. This also
+> **resolves** the "Guest channel richness" item under *Deferred* (Person carries
+> Contact's child email/phone tables). The dedup, contactability-CHECK, and
+> E.164 rationale below **still hold** — they move onto `Person`. Migration is
+> tracked by **`todo/gap-045`–`gap-048`**; the decision is logged in
+> `10-decisions.md` (2026-06-18). The section below is retained for its
+> field-level rationale, read through the lens of this banner.
+
+**Status:** design decision record (2026-06-08), **partly superseded 2026-06-18**
+(see banner). Amends `05-reservations.md` (Guest, Enquiry, Quotation) and
+references `01-accounts.md` (Contact). Decisions are recorded in
+`10-decisions.md`; this doc is the rationale + field-level spec.
 
 **Scope:** data model only. The enquiry→quote *UX* (merged workspace, nav
 consolidation, guest search, history) is the GAP-005 "spine UX overhaul" and

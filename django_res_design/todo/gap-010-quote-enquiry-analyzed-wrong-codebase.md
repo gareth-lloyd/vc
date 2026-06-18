@@ -208,6 +208,24 @@ could not write. **Legacy was a 4-screen flow**, not one screen:
 
 ---
 
+## 4a. Ben/owner mockup — the prospective target UX (2026-06-17)
+
+The owner's Loom walkthrough pointed at a clickable mockup —
+**https://vc-new-res-system.netlify.app/** ("the version that Ben and I
+designed") — as the authoritative target for the enquiry list, the customer
+profile, and the quote builder. It is **not** legacy source, but it
+independently reproduces the real 4-screen flow from §4 (its Quotes & Enquiries
+list columns — VC Ref / Name / Villa Name / Region / Enq/Quote Date / Sales
+Person / Holiday Dates / Flex? — match the legacy `/quote` grid; its New-Quote
+Overview mirrors the `ClientDetails` cards; its Rate Lookup mirrors the
+weeks/occupancy model). Use it as the **target** UX reference alongside the
+pinned legacy source. The screen/flow re-derivation called for in §5.2 is now
+ticketed: [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md),
+[GAP-039](gap-039-enquiry-dashboard-enrichment.md),
+[GAP-042](gap-042-customer-360-profile-view.md),
+[GAP-043](gap-043-quote-builder-multi-week-range.md),
+[GAP-044](gap-044-occupancy-band-fanout-builder.md).
+
 ## 5. Recommended follow-up
 
 1. **Trust the backend specs** (§2); do not re-derive enquiry intake, persistence, transmission

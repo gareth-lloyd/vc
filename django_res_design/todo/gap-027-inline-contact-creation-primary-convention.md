@@ -1,5 +1,10 @@
 # GAP-027 — Inline contact creation from the property + per-role primary convention
 
+> ℹ️ **Note (2026-06-18):** under the unified-`Person` model (GAP-045), the
+> picker + inline-create flow targets `Person` / `Organisation` rather than
+> `Contact`. The per-role-primary convention (`one_primary_per_role`) is
+> unaffected. No change to this ticket's substance.
+
 - **Severity:** Gap (UX quick win + decision to record)
 - **Source:** 2026-06-11 new-villa setup transcript review
 - **Files:**

@@ -24,6 +24,13 @@ reservations/
 ## Guest
 
 ### `Guest(AuditedModel)`
+
+> ⚠️ **Being folded into `accounts.Person` (2026-06-18).** Per the
+> `people-model-cleanup.md` banner + `10-decisions.md`, `Guest` merges with
+> `accounts.Contact` into one `Person` identity; `BookingGuest` survives
+> (repointed). Tracked by `todo/gap-045`. The fields/constraints below move onto
+> `Person`.
+
 Unified entity replacing the legacy `VillaEnquire` form fields + `VillaClientDetail`. Reused across enquiries, quotations, and bookings.
 
 - `first_name`, `last_name` — CharField
@@ -84,7 +91,7 @@ Constraints: `UniqueConstraint(guest, preference_type, quotation)`.
 ## Enquiry
 
 ### `Enquiry(AuditedModel)`
-Anonymous / unstructured inquiry from website or agent. **Kept separate from Quotation** — different shape, different audit needs, different lifecycle. Bridge is `Quotation.enquiry` nullable FK.
+Anonymous / unstructured inquiry from website or agent. **Kept separate from Quotation** — different shape, different audit needs, different lifecycle. Bridge is `Quotation.enquiry`, now a **non-null `PROTECT` FK** (agent-direct quotes auto-create a minimal enquiry — see the `Quotation` field spec below and `10-decisions.md`); the earlier nullable-bridge was reversed.
 
 - `reference` — CharField(unique=True) — short slug, e.g. `E-2026-000123`
 - `guest` — FK Guest SET_NULL, null=True (set once captured; for purely anonymous form submits, hold the form fields below)
@@ -156,6 +163,23 @@ widest plausible window and narrows by conversation. This is accepted for v1 but
 **recognised as a rough edge**: structured multi-week flexible capture
 should be revisited if multi-week availability search becomes a quoting
 bottleneck. It is *not* introduced speculatively here.
+
+**Owner direction (Loom 2026-06-17) — multi-week range quoting is now wanted.**
+The owner's walkthrough of the Ben/owner mockup (https://vc-new-res-system.netlify.app/)
+calls the fixed-date builder "not correct" and asks to quote a **date range** with
+**per-week selection** (tick every week to quote). This is the "rough edge" above
+graduating into a requirement, and it brings the date-range back that the rework
+deliberately removed — so it is recorded as a **tension, not yet a hard reversal**:
+the `flexibility_days` model (true requested dates, no destructive shift) still
+holds, and whether multi-week range *replaces* the ±n-day stepper or *coexists*
+with it is left open for the build. The mockup's Flex? values
+(`Specific dates` / `+/- 3 days` / `+/- 7 days` / `Flexible`) also reinstate the
+full legacy `EnquireDateTypeString` preset set (`SpecificDays` / `ThreeDays` /
+`SevenDays` / `WholeDays`) — wider than today's 0–3 cap, so `flexibility_days`
+needs widening plus an open "Flexible" mode. Tracked in
+[`todo/gap-043-quote-builder-multi-week-range.md`](todo/gap-043-quote-builder-multi-week-range.md)
+(builder) and [`todo/gap-039-enquiry-dashboard-enrichment.md`](todo/gap-039-enquiry-dashboard-enrichment.md)
+(the Flex? column).
 
 ### `EnquiryNote(TimestampedModel)`
 Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.

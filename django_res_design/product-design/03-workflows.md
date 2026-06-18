@@ -34,6 +34,18 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 1. **Screen: New Enquiry form, full page, single column ~720px wide.** The form is split into three collapsible sections, all expanded by default: *Guest*, *Trip*, *Notes & source*. A sticky right rail shows "What happens next: an acknowledgement email will be sent to the guest after save."
 
+> **Owner Loom (2026-06-17) — fuller customer profile for the sales team.** The
+> mockup's New-Quote **Overview** panel (https://vc-new-res-system.netlify.app/)
+> is the target client profile: identity, **collapsible/hideable address**,
+> rich-text notes, **operator tags** (VIP/Repeat/Trade/PA/Nick's friend/Nick's
+> network/Disability/Approach-with-care/Past-issues/Specific-preferences/
+> Time-waster), **linked contacts** (spouse/child/PA), and history accordions
+> (enquiries, quotes, previous bookings — "calls" has no backing model yet).
+> These are new CRM surfaces tracked in
+> [`todo/gap-040-customer-tags-taxonomy.md`](../todo/gap-040-customer-tags-taxonomy.md),
+> [`todo/gap-041-standing-linked-contacts.md`](../todo/gap-041-standing-linked-contacts.md),
+> [`todo/gap-042-customer-360-profile-view.md`](../todo/gap-042-customer-360-profile-view.md).
+
 2. **Guest section.** Fields: first name, last name, email (validated format, debounced duplicate-check that surfaces "We have an existing contact for jane@example.com — link?" with a *Link* / *Create new* choice), phone (libphonenumber formatted, country-inferred), preferred contact channel (email/phone/whatsapp). Linking to an existing contact is optimistic locally; saving the enquiry persists the link.
 
 3. **Trip section.** Fields: arrival date (date picker with `Flexible ±N days` toggle that adds a numeric stepper), departure date or "duration" (toggle between absolute departure date and nights count — picking one computes the other live), adults count, children count, infants count (each with age fields rendered inline when count > 0). Country and region — region is a dependent dropdown filtered by country; both support multi-select because guests often say "Mallorca or Ibiza". Features — chip multi-select (Pool, Sea view, Sleeps 10+, Pet friendly, etc.) drawn from a managed taxonomy. Budget — optional, currency-aware (currency comes from site context).
@@ -92,6 +104,19 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 3. **Right pane — results.** Each villa shown as a card: hero image, name, region, sleeps, bedrooms, features chips, **computed price for the requested dates** (with breakdown tooltip: nightly × nights + cleaning + tax − any season-specific discount), **availability badge** (Available / Hold-able / Partial conflict / Unavailable, with conflict dates listed). Cards have an "Add to quote" button and a star/save state.
 
 4. **Price computation.** Server computes per-villa price by walking season → rate card → occupancy band for each night in range. Result is cached client-side keyed by `(villa_id, from, to, party_size)` for the session. If a villa's rate card is incomplete for some nights, the card flags "Incomplete pricing — manual quote" and disables auto-add, requiring operator to type the price.
+
+> **Owner Loom (2026-06-17) — multi-week range + occupancy fan-out.** The owner
+> calls the fixed-date builder "not correct": search should accept a **date range**
+> and the results render **per-week boxes** the agent ticks (quote every wanted
+> week), and for occupancy-priced villas each week should show **all occupancy
+> bands as separate lines, checked by default** (full price-by-group-size
+> visibility; agent deselects). The latter reverses the prior "salesperson
+> curates / no auto fan-out" default in `04-pricing.md` (engine still resolves one
+> band per call; the builder fans out). Multi-week range is in tension with the
+> `flexibility_days` rework (`05-reservations.md`) — replace-vs-coexist left open.
+> See the mockup's Rate Lookup screen, and
+> [`todo/gap-043-quote-builder-multi-week-range.md`](../todo/gap-043-quote-builder-multi-week-range.md)
+> + [`todo/gap-044-occupancy-band-fanout-builder.md`](../todo/gap-044-occupancy-band-fanout-builder.md).
 
 5. **Add to quote.** Clicking "Add" opens a small inline editor under the card: dates (pre-filled), price (pre-filled, overridable with "Override" toggle that forces a reason field), currency (per-site default, switchable), notes shown to guest (optional, e.g. "Owner offering 10% off for direct booking"), internal notes (not shown to guest). Saving adds the line to the quote draft in the cart-style summary at the bottom of the page.
 

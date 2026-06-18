@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-17): **54 done** (51 resolved + 3 dropped), **63 open**
+Scoreboard (2026-06-17): **54 done** (51 resolved + 3 dropped), **67 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -71,7 +71,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-026](gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ⬜ backend no-mixing enforcement DROPPED (contradicts GAP-014); scope is FE adornment + soft warning; groups stay |
 | [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ⬜ inline-create already wired; real fix is picker auto-select + convention doc; required-field divergence spun out to GAP-029 |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
-| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ⬜ |
+| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ✏️ premise dissolves under GAP-045/046 — redirect & close |
 | [GAP-030](gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ⬜ reuses `StayOptionsService`; fixed-changeover only, variable/sub-week deferred |
 | [GAP-031](gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ⬜ FE-only polish, sibling of GAP-030 |
 | [GAP-032](gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ⬜ FE-only; no API change |
@@ -87,6 +87,10 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-042](gap-042-customer-360-profile-view.md) | Customer 360 profile for the sales team | ⬜ owner Loom 2026-06-17; consumes GAP-040/041; "calls" needs activity-log decision |
 | [GAP-043](gap-043-quote-builder-multi-week-range.md) | Quote builder: multi-week date-range selection | ⬜ owner Loom 2026-06-17; reverses the flexibility_days rework (replace-vs-coexist open) |
 | [GAP-044](gap-044-occupancy-band-fanout-builder.md) | Quote builder: occupancy-band fan-out (all bands, default-checked) | ⬜ owner Loom 2026-06-17; reverses 04-pricing "no auto fan-out" |
+| [GAP-045](gap-045-unify-person-identity.md) | **Unify human identity into one `Person`** (folds in `Guest`; agent off the supply-side bag) | ⬜ **foundational — blocks GAP-046/047/048**; overturns people-model-cleanup #1 (owner review 2026-06-17) |
+| [GAP-046](gap-046-organisation-and-agent-capacity.md) | `Organisation` entity + agent capacity (B2B Companies) | ⬜ after GAP-045; repoints `.agent` FKs; dissolves GAP-029 |
+| [GAP-047](gap-047-clients-directory-and-profile.md) | Clients (renter) directory: browsable list + direct/agent filter | ⬜ after GAP-045/046; list only (detail = GAP-042, tags = GAP-040, links = GAP-041) |
+| [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Villa Contacts directory + role taxonomy (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co) | ⬜ after GAP-045; allows `Organisation` assignees |
 
 ## Open product questions
 

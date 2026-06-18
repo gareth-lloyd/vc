@@ -25,6 +25,14 @@ Notes:
 - `IsLock` collapses into `is_active=False`.
 
 ### `Contact(AuditedModel)`
+
+> ⚠️ **Being unified into `Person` (2026-06-18).** Per the
+> `people-model-cleanup.md` banner + `10-decisions.md`, `Contact` and
+> `reservations.Guest` merge into a single `accounts.Person` identity (capacity
+> as role/relationship; `Organisation` replaces free-text `company`; `User`
+> stays `OneToOne`). Tracked by `todo/gap-045`–`gap-048`. The fields below describe
+> the pre-unification `Contact` and fold into `Person`.
+
 The villa owner, property manager, or external agent. Distinct from `User` because most contacts never log in. If they do, we link via the optional `user` OneToOne.
 
 - `title` — `CharField(max_length=16, blank=True)` (Mr / Mrs / Dr — free text)
@@ -56,6 +64,20 @@ Per `00-conventions.md` "Lifecycle, not soft delete":
 - **GDPR forget-me** — call `Contact.anonymize()`: overwrites `first_name`, `last_name`, `company`, `notes`, `address_line_1`, `address_line_2` with `"[REDACTED]"` or empty; cascades to `ContactEmail.email` (replaced with `"redacted-{id}@anonymized.local"`) and `ContactPhone.number` (replaced with empty string); sets `status=ANONYMIZED`, `anonymized_at=now()`. Row remains for FK integrity on historical assignments and quotations. Still searchable by ID.
 
 Sensitive field edits on `Contact` (PII, address, name) are tracked into `AuditLog` via the `core.audit.track(...)` registration in `accounts.apps.ready()`.
+
+> **Design intent — operator tags + standing linked contacts (owner Loom 2026-06-17).**
+> The sales team wants first-class **tags** on the customer (VIP / Repeat / Trade /
+> PA / Nick's friend / Nick's network / Disability / Approach-with-care /
+> Past-issues / Specific-preferences / Time-waster) and **standing person-to-person
+> links** (spouse / child / PA) that persist across bookings — distinct from the
+> per-booking `BookingGuest` roles in `05-reservations.md`. Neither exists in the
+> model yet; the entity that carries them is the unified **`accounts.Person`**
+> (GAP-045 — supersedes the earlier Guest-vs-Contact split), with the model shape
+> and the Repeat-is-derived / PA-overlaps-the-link-role reconciliation settled in
+> [`todo/gap-040-customer-tags-taxonomy.md`](todo/gap-040-customer-tags-taxonomy.md)
+> and [`todo/gap-041-standing-linked-contacts.md`](todo/gap-041-standing-linked-contacts.md).
+> Sensitive tags (Disability / Approach-with-care) may carry retention/consent
+> implications — cross-ref `todo/q-010-guest-data-retention.md`.
 
 ### `ContactEmail(TimestampedModel)`
 - `contact` — `ForeignKey(Contact, on_delete=CASCADE, related_name="emails")`

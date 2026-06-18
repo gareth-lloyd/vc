@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from accounts.models import User
 from core.api.permissions import IsReservationsWriter
-from reservations.enums import EnquiryStatus
+from reservations.enums import EnquiryLostReason, EnquiryStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
@@ -161,10 +161,21 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request: Request, pk: str | None = None) -> Response:
-        """Mark closed-lost. Body: `{"reason": "..."}`."""
+        """Mark closed-dead. Body: `{"reason": "...", "lost_reason": "..."}`.
+
+        `reason` is the free-text note; `lost_reason` is an optional structured
+        `EnquiryLostReason` (defaults to UNKNOWN). An unknown structured value
+        is rejected rather than silently coerced.
+        """
         enquiry = self.get_object()
         reason = request.data.get("reason", "")
-        enquiry.lose(reason=reason, actor=request.user)
+        lost_reason = request.data.get("lost_reason") or EnquiryLostReason.UNKNOWN.value
+        if lost_reason not in EnquiryLostReason.values:
+            return Response(
+                {"lost_reason": [f"'{lost_reason}' is not a valid lost reason."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        enquiry.lose(reason=reason, lost_reason=lost_reason, actor=request.user)
         return Response(EnquiryDetailSerializer(enquiry).data)
 
     @action(detail=True, methods=["post"], url_path="reopen")

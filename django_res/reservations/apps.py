@@ -80,6 +80,7 @@ class ReservationsConfig(AppConfig):
             Enquiry,
             fields=[
                 "status",
+                "lost_reason",
                 "first_name",
                 "last_name",
                 "email",

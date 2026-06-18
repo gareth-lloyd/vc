@@ -31,6 +31,17 @@ class EnquiryStatus(models.TextChoices):
     CONVERTED = "converted", "Converted"
 
 
+class EnquiryLostReason(models.TextChoices):
+    """Why a dead enquiry was lost. Required whenever status is DEAD; the
+    `enquiry_dead_requires_lost_reason` constraint enforces non-empty."""
+
+    FOUND_ALTERNATIVE = "found_alternative", "Found alternative"
+    AVAILABILITY = "availability", "Availability"
+    DIFFERENT_DESTINATION = "different_destination", "Different destination"
+    NO_GROUP_CONSENSUS = "no_group_consensus", "No group consensus"
+    UNKNOWN = "unknown", "Unknown"
+
+
 class EnquirySource(models.TextChoices):
     MAIN_WEBSITE = "main_website", "Main website"
     AGENT_PORTAL = "agent_portal", "Agent portal"

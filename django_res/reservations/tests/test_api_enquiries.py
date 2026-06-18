@@ -16,7 +16,7 @@ from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.enums import ImageKind
 from properties.models import Property, PropertyImage
-from reservations.enums import ContactMethod, EnquiryStatus
+from reservations.enums import ContactMethod, EnquiryLostReason, EnquiryStatus
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
@@ -128,6 +128,7 @@ def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, gu
         last_name="D",
         email="c@d.com",
         status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.UNKNOWN.value,
     )
     api_client.force_login(staff)
 
@@ -755,6 +756,43 @@ def test_close_enquiry__marks_lost(api_client: APIClient, staff: User, enquiry: 
     assert response.status_code == 200
     enquiry.refresh_from_db()
     assert enquiry.status == EnquiryStatus.DEAD.value
+    # No structured reason supplied → defaults to UNKNOWN (constraint-safe).
+    assert enquiry.lost_reason == EnquiryLostReason.UNKNOWN.value
+
+
+@pytest.mark.django_db
+def test_close_enquiry__stores_structured_lost_reason(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:close",
+        {"reason": "found a villa with a pool", "lost_reason": "found_alternative"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+    assert enquiry.lost_reason == EnquiryLostReason.FOUND_ALTERNATIVE.value
+
+
+@pytest.mark.django_db
+def test_close_enquiry__rejects_unknown_lost_reason(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:close",
+        {"lost_reason": "not_a_real_reason"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.NEW.value  # unchanged
 
 
 @pytest.mark.django_db
@@ -816,6 +854,7 @@ def test_enquiry_status_counts__groups_by_status(
         last_name="D",
         email="c@d.com",
         status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.UNKNOWN.value,
     )
     api_client.force_login(staff)
 

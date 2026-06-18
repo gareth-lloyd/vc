@@ -6,11 +6,13 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from reservations.enums import (
     EnquiryEventKind,
+    EnquiryLostReason,
     EnquiryNoteKind,
     EnquiryStatus,
 )
@@ -207,6 +209,57 @@ def test_lose_from_follow_up(enquiry: Enquiry, quotation: Quotation) -> None:
     enquiry.lose("no response")
     enquiry.refresh_from_db()
     assert enquiry.status == EnquiryStatus.DEAD.value
+
+
+# ---------------------------------------------------------------------------
+# Structured lost_reason (Unit 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_lose_stores_structured_lost_reason(enquiry: Enquiry) -> None:
+    enquiry.lose("client emailed", lost_reason=EnquiryLostReason.AVAILABILITY.value)
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+    assert enquiry.lost_reason == EnquiryLostReason.AVAILABILITY.value
+    # The free-text positional reason still lands on the event, unchanged.
+    event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.LOST.value)
+    assert event.reason == "client emailed"
+
+
+@pytest.mark.django_db
+def test_lose_defaults_lost_reason_to_unknown(enquiry: Enquiry) -> None:
+    enquiry.lose()
+    enquiry.refresh_from_db()
+    assert enquiry.lost_reason == EnquiryLostReason.UNKNOWN.value
+
+
+@pytest.mark.django_db
+def test_reopen_clears_lost_reason(enquiry: Enquiry) -> None:
+    enquiry.lose(lost_reason=EnquiryLostReason.NO_GROUP_CONSENSUS.value)
+    enquiry.reopen()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.NEW.value
+    assert enquiry.lost_reason == ""
+
+
+@pytest.mark.django_db
+def test_dead_requires_non_empty_lost_reason_constraint(guest: Guest) -> None:
+    """The DB constraint rejects a DEAD enquiry with an empty lost_reason."""
+    with pytest.raises(IntegrityError):
+        Enquiry.objects.create(
+            guest=guest,
+            email="x@example.com",
+            status=EnquiryStatus.DEAD.value,
+            lost_reason="",
+        )
+
+
+@pytest.mark.django_db
+def test_non_dead_enquiry_allows_empty_lost_reason(guest: Guest) -> None:
+    """A non-DEAD enquiry is unaffected — empty lost_reason is fine."""
+    e = Enquiry.objects.create(guest=guest, email="ok@example.com")
+    assert e.lost_reason == ""
 
 
 @pytest.mark.django_db

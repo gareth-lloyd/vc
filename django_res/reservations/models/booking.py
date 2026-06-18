@@ -113,6 +113,15 @@ class Booking(AuditedModel):
         on_delete=models.PROTECT,
         related_name="bookings",
     )
+    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
+    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    person = models.ForeignKey(
+        "accounts.Person",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="bookings_as_customer",
+    )
     property = models.ForeignKey(
         "properties.Property",
         on_delete=models.PROTECT,

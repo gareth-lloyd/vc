@@ -34,6 +34,7 @@ class EnquiryAdmin(admin.ModelAdmin):
     list_display = ("reference", "status", "property", "date_from", "date_to", "created_at")
     list_filter = ("status", "site_source")
     search_fields = ("reference", "email", "first_name", "last_name")
+    raw_id_fields = ("guest", "person", "agent")
 
 
 @admin.register(EnquiryNote)
@@ -53,6 +54,7 @@ class QuotationAdmin(admin.ModelAdmin):
     list_display = ("reference", "status", "expires_at")
     list_filter = ("status",)
     search_fields = ("reference",)
+    raw_id_fields = ("guest", "person", "agent")
 
 
 @admin.register(QuotationLine)
@@ -83,6 +85,7 @@ class BookingAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "is_archived", "payment_method")
     search_fields = ("reference",)
+    raw_id_fields = ("guest", "person", "agent")
 
 
 @admin.register(BookingHold)
@@ -116,7 +119,7 @@ class BookingGuestAdmin(admin.ModelAdmin):
     list_display = ("pk", "booking", "guest", "role", "email_override")
     list_filter = ("role",)
     search_fields = ("booking__reference", "guest__email", "guest__last_name")
-    raw_id_fields = ("booking", "guest")
+    raw_id_fields = ("booking", "guest", "person")
 
 
 @admin.register(BookingConciergeItem)

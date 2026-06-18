@@ -30,6 +30,15 @@ class GuestPreference(TimestampedModel):
         on_delete=models.CASCADE,
         related_name="preferences",
     )
+    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
+    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    person = models.ForeignKey(
+        "accounts.Person",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="travel_preferences",
+    )
     preference_type = models.ForeignKey(
         GuestPreferenceType,
         on_delete=models.PROTECT,

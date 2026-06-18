@@ -44,6 +44,15 @@ class Enquiry(AuditedModel):
         on_delete=models.SET_NULL,
         related_name="enquiries",
     )
+    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
+    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    person = models.ForeignKey(
+        "accounts.Person",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="enquiries_as_customer",
+    )
 
     # Denormalised for purely-anonymous submissions until a Guest is captured.
     first_name = models.CharField(max_length=128, blank=True)

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { fieldErrorText } from "@/lib/forms/fieldError";
 import { ApiError } from "@/lib/api/errors";
 import type { ContactId } from "@/lib/query/keys";
 import { useCreateContact, useUpdateContact } from "../hooks";
@@ -153,7 +154,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
               <Input id="contact-first-name" {...form.register("first_name")} />
               {form.formState.errors.first_name ? (
                 <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.first_name.message}
+                  {fieldErrorText(t, form.formState.errors.first_name.message)}
                 </p>
               ) : null}
             </div>
@@ -180,7 +181,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
                 />
                 {form.formState.errors.email ? (
                   <p className="text-destructive text-sm" role="alert">
-                    {form.formState.errors.email.message}
+                    {fieldErrorText(t, form.formState.errors.email.message)}
                   </p>
                 ) : null}
               </div>

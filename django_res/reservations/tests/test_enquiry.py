@@ -15,6 +15,7 @@ from reservations.enums import (
     EnquiryLostReason,
     EnquiryNoteKind,
     EnquiryStatus,
+    LeadStatus,
 )
 from reservations.models import (
     Enquiry,
@@ -310,6 +311,53 @@ def test_enquiry_note_post_save_emits_note_added_event(enquiry: Enquiry) -> None
 @pytest.mark.django_db
 def test_reference_auto_generated(enquiry: Enquiry) -> None:
     assert enquiry.reference.startswith("E-")
+
+
+# ---------------------------------------------------------------------------
+# lead_status — lead temperature, orthogonal to the workflow stage (Unit 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_lead_status_defaults_to_warm(enquiry: Enquiry) -> None:
+    assert enquiry.lead_status == LeadStatus.WARM.value
+
+
+@pytest.mark.django_db
+def test_set_lead_status_writes_non_transitional_event(enquiry: Enquiry) -> None:
+    enquiry.set_lead_status(LeadStatus.HOT.value)
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.HOT.value
+    # Workflow stage is untouched — lead temperature is orthogonal.
+    assert enquiry.status == EnquiryStatus.NEW.value
+    event = EnquiryEvent.objects.get(
+        enquiry=enquiry, kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value
+    )
+    assert event.from_status == event.to_status == EnquiryStatus.NEW.value
+    assert event.meta == {
+        "lead_status_from": LeadStatus.WARM.value,
+        "lead_status_to": LeadStatus.HOT.value,
+    }
+
+
+@pytest.mark.django_db
+def test_set_lead_status_to_same_value_is_noop(enquiry: Enquiry) -> None:
+    """Setting the temperature to its current value writes no timeline noise."""
+    enquiry.set_lead_status(LeadStatus.WARM.value)
+    assert not EnquiryEvent.objects.filter(
+        enquiry=enquiry, kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status_invalid_raises(enquiry: Enquiry) -> None:
+    with pytest.raises(ValueError):
+        enquiry.set_lead_status("lukewarm")
+
+
+def test_lead_status_status_index_present() -> None:
+    """The `(lead_status, status)` composite index backs the dashboard filters."""
+    assert any(idx.fields == ["lead_status", "status"] for idx in Enquiry._meta.indexes)
 
 
 # ---------------------------------------------------------------------------

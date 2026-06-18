@@ -31,6 +31,17 @@ class EnquiryStatus(models.TextChoices):
     CONVERTED = "converted", "Converted"
 
 
+class LeadStatus(models.TextChoices):
+    """Lead temperature — a subjective sales signal the operator sets directly,
+    orthogonal to the workflow `EnquiryStatus`. New in the rebuild (legacy had
+    no lead-quality field); pushed to Zoho as a CRM tag."""
+
+    HOT = "hot", "Hot"
+    WARM = "warm", "Warm"
+    COLD = "cold", "Cold"
+    DEAD = "dead", "Dead"
+
+
 class EnquiryLostReason(models.TextChoices):
     """Why a dead enquiry was lost. Required whenever status is DEAD; the
     `enquiry_dead_requires_lost_reason` constraint enforces non-empty."""
@@ -75,6 +86,7 @@ class EnquiryEventKind(models.TextChoices):
     LOST = "lost", "Lost"
     REOPENED = "reopened", "Reopened"
     NOTE_ADDED = "note_added", "Note added"
+    LEAD_STATUS_CHANGED = "lead_status_changed", "Lead status changed"
 
 
 class QuotationStatus(models.TextChoices):

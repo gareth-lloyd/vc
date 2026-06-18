@@ -29,6 +29,7 @@ from reservations.enums import (
     EnquiryNoteKind,
     EnquiryRequestType,
     EnquiryStatus,
+    LeadStatus,
     PaymentMethod,
     ServiceStatus,
 )
@@ -75,6 +76,7 @@ class EnquiryFactory(DjangoModelFactory):
     children = 0
     request_type = EnquiryRequestType.QUOTE
     status = EnquiryStatus.NEW
+    lead_status = LeadStatus.WARM
     inbound_message = factory.Faker("sentence")
 
 

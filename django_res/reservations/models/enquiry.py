@@ -23,6 +23,7 @@ from reservations.enums import (
     EnquirySource,
     EnquiryStatus,
     EventSource,
+    LeadStatus,
     QuotationStatus,
 )
 
@@ -133,6 +134,14 @@ class Enquiry(AuditedModel):
         blank=True,
         default="",
     )
+    # Lead temperature — a subjective sales signal, orthogonal to the workflow
+    # `status`. Operator-set via `set_lead_status()` (an inline dropdown in
+    # GAP-039); pushed to Zoho as a CRM tag.
+    lead_status = models.CharField(
+        max_length=8,
+        choices=LeadStatus.choices,
+        default=LeadStatus.WARM,
+    )
     inbound_message = models.TextField(blank=True)
 
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
@@ -142,6 +151,7 @@ class Enquiry(AuditedModel):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["email"]),
             models.Index(fields=["property", "date_from"]),
+            models.Index(fields=["lead_status", "status"]),
         ]
         constraints = [
             # A DEAD enquiry must carry a structured lost reason; every other
@@ -334,6 +344,31 @@ class Enquiry(AuditedModel):
                     "assignee_from": prev_assignee,
                     "assignee_to": user.pk if user is not None else None,
                 },
+            )
+        return self
+
+    def set_lead_status(self, lead_status: str, *, actor: Any = None) -> Enquiry:
+        """Set the lead temperature (HOT / WARM / COLD / DEAD).
+
+        Non-transitional: leaves `status` unchanged and writes a
+        LEAD_STATUS_CHANGED event (from_status == to_status) carrying the
+        temperature change in `meta`. A no-op when the value is unchanged, so
+        the activity timeline isn't padded with redundant rows.
+        """
+        if lead_status not in LeadStatus.values:
+            raise ValueError(f"Invalid lead status: {lead_status!r}")
+        prev = self.lead_status
+        if prev == lead_status:
+            return self
+        with transaction.atomic():
+            self.lead_status = lead_status
+            self.save(update_fields=["lead_status", "updated_at"])
+            self._write_event(
+                from_status=self.status,
+                to_status=self.status,
+                kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value,
+                actor=actor,
+                meta={"lead_status_from": prev, "lead_status_to": lead_status},
             )
         return self
 

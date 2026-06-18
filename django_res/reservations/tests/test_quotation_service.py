@@ -13,6 +13,7 @@ from properties.models.settings import PropertySettings
 from reservations.enums import (
     BookingHoldReason,
     ContactMethod,
+    EnquiryLostReason,
     EnquirySource,
     EnquiryStatus,
 )
@@ -143,7 +144,13 @@ def test_create_from_enquiry_rejects_final_enquiry(
     it with a 400-mapping ValidationError and writes nothing."""
     from rest_framework.exceptions import ValidationError
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "", status=final_status)
+    # A DEAD enquiry must carry a lost_reason (constraint); CONVERTED leaves it blank.
+    lost_reason = (
+        EnquiryLostReason.UNKNOWN.value if final_status == EnquiryStatus.DEAD.value else ""
+    )
+    enquiry = Enquiry.objects.create(
+        guest=guest, email=guest.email or "", status=final_status, lost_reason=lost_reason
+    )
 
     with pytest.raises(ValidationError):
         QuotationService.create_from_enquiry(

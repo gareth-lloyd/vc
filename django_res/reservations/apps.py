@@ -81,6 +81,7 @@ class ReservationsConfig(AppConfig):
             fields=[
                 "status",
                 "lost_reason",
+                "lead_status",
                 "first_name",
                 "last_name",
                 "email",

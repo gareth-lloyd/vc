@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from accounts.models import User
 from core.api.permissions import IsReservationsWriter
-from reservations.enums import EnquiryLostReason, EnquiryStatus
+from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
@@ -177,6 +177,26 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             )
         enquiry.lose(reason=reason, lost_reason=lost_reason, actor=request.user)
         return Response(EnquiryDetailSerializer(enquiry).data)
+
+    @action(detail=True, methods=["post"], url_path="set-lead-status")
+    def set_lead_status(self, request: Request, pk: str | None = None) -> Response:
+        """Set the lead temperature. Body: `{"lead_status": "hot|warm|cold|dead"}`.
+
+        Audited via the model's `set_lead_status` (writes a LEAD_STATUS_CHANGED
+        event; a no-op when unchanged). An unknown value is rejected with 400
+        rather than surfaced as the model's bare `ValueError` (a 500); validating
+        here also guarantees no mutation on a bad value. Returns the detail shape
+        (re-fetched through the prefetched queryset, mirroring `:close`).
+        """
+        enquiry = self.get_object()
+        lead_status = request.data.get("lead_status")
+        if lead_status not in LeadStatus.values:
+            return Response(
+                {"lead_status": [f"'{lead_status}' is not a valid lead status."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        enquiry.set_lead_status(lead_status, actor=request.user)
+        return self._detail_response(enquiry, status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="reopen")
     def reopen(self, request: Request, pk: str | None = None) -> Response:

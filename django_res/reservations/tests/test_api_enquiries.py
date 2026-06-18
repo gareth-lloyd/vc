@@ -877,6 +877,82 @@ def test_close_enquiry__rejects_unknown_lost_reason(
 
 
 @pytest.mark.django_db
+def test_set_lead_status__updates_field_and_writes_event(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """`:set-lead-status` mutates the temperature through the audited model
+    method (writing a LEAD_STATUS_CHANGED event) and returns the detail shape."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["lead_status"] == LeadStatus.HOT.value
+    assert "quotations" in response.data  # detail shape, not the bare instance
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.HOT.value
+    assert EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").count() == 1
+
+
+@pytest.mark.django_db
+def test_set_lead_status__rejects_invalid_value(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """An unknown value is rejected with 400 (not surfaced as the model's 500
+    ValueError); the row and timeline are untouched."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": "banana"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value  # unchanged default
+    assert not EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status__noop_when_unchanged(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """Re-setting the current value returns 200 without padding the timeline."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.WARM.value},  # already the model default
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert not EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status__requires_writer(
+    api_client: APIClient, viewer: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(viewer)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value
+
+
+@pytest.mark.django_db
 def test_activity_returns_event_timeline(
     api_client: APIClient, staff: User, enquiry: Enquiry
 ) -> None:

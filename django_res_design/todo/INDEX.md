@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-18): **62 done** (58 resolved + 4 dropped), **60 open**
+Scoreboard (2026-06-18): **62 done** (58 resolved + 4 dropped), **61 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -46,6 +46,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ doc-only |
+| [SMELL-018](smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ⬜ FE+BE; found via 2026-06-18 observability sweep |
 
 ## Surface gaps
 

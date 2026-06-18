@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-18): **58 done** (54 resolved + 4 dropped), **64 open**
+Scoreboard (2026-06-18): **59 done** (55 resolved + 4 dropped), **63 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -87,7 +87,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-046](gap-046-organisation-and-agent-capacity.md) | `Organisation` entity + agent capacity (B2B Companies) | ⬜ after GAP-045; repoints `.agent` FKs; dissolves GAP-029 |
 | [GAP-047](gap-047-clients-directory-and-profile.md) | Clients (renter) directory: browsable list + direct/agent filter | ⬜ after GAP-045/046; list only (detail = GAP-042, tags = GAP-040, links = GAP-041) |
 | [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Villa Contacts directory + role taxonomy (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co) | ⬜ after GAP-045; allows `Organisation` assignees |
-| [GAP-049](gap-049-create-property-ui.md) | No "create property" UI — create flow is API-only | ⬜ **FE-only** (backend `create()` shipped + tested, companion rows get-or-create on demand); minimal 6-field form + role-gated "New villa" button; needs category/group hooks + slugify (not yet built) |
+| [GAP-049](done/gap-049-create-property-ui.md) | No "create property" UI — create flow is API-only | ✅ resolved (2026-06-18) — `CreatePropertyDialog` (6-field form, slug auto-derive, category/group hooks + `useRegions`), role-gated "New villa" button (disabled-with-tooltip), `slugify` helper, en+el i18n, unit+component tests; no backend change |
 
 ## Open product questions
 

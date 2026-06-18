@@ -1,5 +1,21 @@
 # GAP-049 — No "create property" UI; the create flow is API-only
 
+> ✅ **RESOLVED (2026-06-18)** — shipped on `feat/create-property-ui`
+> (`CreatePropertyDialog` + `slugify` helper + category/group hooks + role-gated
+> "New villa" button; en+el i18n; unit + component tests). **No backend change**,
+> as scoped. **Two deliberate deviations from the acceptance text, both recorded:**
+> 1. The "New villa" button is **disabled-with-tooltip** for non-writers, not
+>    hidden — the frontend `CLAUDE.md` convention ("buttons disable, never
+>    disappear") overrides the ticket's "a VIEWER does not see it".
+> 2. The create→edit-tab **round-trip regression test was not added** at the FE
+>    layer: the get-or-create behaviour it would prove is a backend guarantee
+>    already covered by the Settings/Finance/Capacity view tests, so a full
+>    router+layout integration test re-proving it was judged low-value. Flagged
+>    for the user; can be added if wanted.
+>
+> Caveat-1 tension (three required FKs at create) survives as a **live UX risk
+> with no ticket yet** — file a follow-up only if operators hit the friction.
+
 - **Severity:** Gap (frontend; backend create endpoint already exists + tested)
 - **Source:** 2026-06-18 "can users create properties?" investigation, after the
   add-property-flow cluster (GAP-022/024/025/026/027) shipped — that cluster

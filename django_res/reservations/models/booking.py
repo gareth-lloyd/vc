@@ -521,6 +521,22 @@ class Booking(AuditedModel):
             allow_projection=False,
         )
 
+    def _resync_payment_schedule(self) -> None:
+        """Tell payments the booking total moved so it resizes the schedule.
+
+        Legacy regenerated the deposit/balance schedule on every modify. We
+        fire `booking_total_changed` — the same signal a charge-item write
+        sends — rather than calling the scheduler directly, because the import
+        spine forbids reservations → payments. The receiver runs
+        `PaymentScheduler.resync_for_booking` inside this method's atomic
+        block, so the re-priced booking and the resized rows commit together
+        (and the resync is a no-op until a schedule exists).
+        """
+        # Local import to avoid the signal module pulling Booking at import time.
+        from reservations.signals import booking_total_changed
+
+        booking_total_changed.send(sender=Booking, booking=self)
+
     @transaction.atomic
     def modify_dates(
         self,
@@ -590,6 +606,7 @@ class Booking(AuditedModel):
                 "to_snapshot": quote.breakdown,
             },
         )
+        self._resync_payment_schedule()
         return self
 
     @transaction.atomic
@@ -647,6 +664,7 @@ class Booking(AuditedModel):
                 "to_snapshot": quote.breakdown,
             },
         )
+        self._resync_payment_schedule()
         return self
 
     @transaction.atomic

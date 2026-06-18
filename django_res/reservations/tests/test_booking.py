@@ -308,6 +308,115 @@ def test_modify_guests_from_checked_in_raises(booking: Booking, rate_rule: RateR
 
 
 # ---------------------------------------------------------------------------
+# GAP-015 — modify_dates / modify_guests resync the payment schedule
+#
+# Legacy regenerated the schedule on every booking modify. The
+# `booking_total_changed` → `PaymentScheduler.resync_for_booking` chain
+# already exists for charge-item writes; these tests pin that the two modify
+# endpoints fire it too, so the deposit/balance rows track the new total.
+# ---------------------------------------------------------------------------
+
+
+def _with_schedule(booking: Booking) -> Booking:
+    """Give `booking` the default finance + a PENDING deposit/balance schedule."""
+    from payments.services import PaymentScheduler
+    from properties.models.finance import GroupFinance, PropertyFinance
+
+    GroupFinance.objects.get_or_create(group=booking.property.group)
+    PropertyFinance.objects.get_or_create(property=booking.property)
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    PaymentScheduler.create_for_booking(booking)
+    return booking
+
+
+def _schedule_row(booking: Booking, purpose: str) -> Any:
+    from payments.models import Payment
+
+    return Payment.objects.get(booking=booking, purpose=purpose)
+
+
+@pytest.mark.django_db
+def test_modify_dates_resizes_pending_schedule(booking: Booking, rate_rule: RateRule) -> None:
+    """A pricier range grows the total; the PENDING deposit/balance rows resize
+    to match — no explicit resync call, the modify fires the signal itself."""
+    from payments.enums import PaymentPurpose
+
+    _with_schedule(booking)
+    # 1400 total → default 30% deposit / 70% balance.
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("420.00")
+    assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("980.00")
+
+    # 14 nights * £200 = £2800.
+    booking.modify_dates(date(2026, 6, 10), date(2026, 6, 24))
+
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("840.00")
+    assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("1960.00")
+
+
+@pytest.mark.django_db
+def test_modify_dates_settled_deposit_only_balance_resizes(
+    booking: Booking, rate_rule: RateRule
+) -> None:
+    """A SUCCEEDED deposit is history — only the PENDING balance absorbs the
+    increase from a pricier range."""
+    from payments.enums import PaymentPurpose, PaymentStatus
+    from payments.models import Payment
+
+    _with_schedule(booking)
+    deposit = _schedule_row(booking, PaymentPurpose.DEPOSIT.value)
+    Payment.objects.filter(pk=deposit.pk).update(status=PaymentStatus.SUCCEEDED.value)
+
+    booking.modify_dates(date(2026, 6, 10), date(2026, 6, 24))  # → £2800
+
+    # Settled deposit keeps its 420; balance carries the rest: 2800 - 420.
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("420.00")
+    assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("2380.00")
+
+
+@pytest.mark.django_db
+def test_modify_dates_writes_residual_event_when_all_settled(
+    booking: Booking, rate_rule: RateRule
+) -> None:
+    """Nothing PENDING to resize: the uncollectable increase lands on the
+    Timeline as a residual event rather than silently vanishing."""
+    from payments.enums import PaymentStatus
+    from payments.models import Payment
+
+    _with_schedule(booking)
+    Payment.objects.filter(booking=booking).update(status=PaymentStatus.SUCCEEDED.value)
+
+    booking.modify_dates(date(2026, 6, 10), date(2026, 6, 24))  # 1400 → 2800
+
+    event = BookingEvent.objects.filter(booking=booking, reason="payment_schedule_residual").latest(
+        "created_at"
+    )
+    assert event.meta["residual"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_modify_guests_fires_booking_total_changed(booking: Booking, rate_rule: RateRule) -> None:
+    """modify_guests re-prices and so must trigger the resync chain, exactly
+    like modify_dates — flat-rate fixtures leave the total unchanged, so assert
+    the wiring (the signal) directly."""
+    from reservations.signals import booking_total_changed
+
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    seen: list[Booking] = []
+
+    def _receiver(sender: Any, *, booking: Booking, **__: Any) -> None:
+        seen.append(booking)
+
+    booking_total_changed.connect(_receiver, dispatch_uid="test.gap015_guests")
+    try:
+        booking.modify_guests(adults=4, children=1)
+    finally:
+        booking_total_changed.disconnect(dispatch_uid="test.gap015_guests")
+
+    assert len(seen) == 1
+    assert seen[0].pk == booking.pk
+
+
+# ---------------------------------------------------------------------------
 # archive / restore
 # ---------------------------------------------------------------------------
 

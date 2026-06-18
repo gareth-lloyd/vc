@@ -29,6 +29,7 @@ from reservations.models import Booking, OwnerBlock, Quotation
 from reservations.services.availability import AvailabilityService
 from reservations.services.holds import HoldService
 from reservations.services.ical_ingest import ICalIngestService
+from reservations.services.person_sync import person_for_guest
 from reservations.signals import ical_conflict_detected
 
 if TYPE_CHECKING:
@@ -368,6 +369,7 @@ def test_quotation_hold_clash_fires_conflict(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

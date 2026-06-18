@@ -51,6 +51,7 @@ def test_release_emits_security_deposit_released_email(
         )
     )
     assert len(logs) == 1
+    assert booking.guest is not None
     assert logs[0].to == [booking.guest.email]
 
 
@@ -62,6 +63,7 @@ def test_release_with_no_guest_email_does_not_crash(
     lifecycle_templates: None,
 ) -> None:
     # Phone-only guest: no email, still contactable (email="" → NULL on save).
+    assert booking.guest is not None
     booking.guest.email = ""
     booking.guest.phone = "+447911123456"
     booking.guest.save(update_fields=["email", "phone", "updated_at"])

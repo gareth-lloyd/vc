@@ -25,12 +25,14 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 
 def _make_quotation(guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -40,6 +42,7 @@ def _make_booking(line: QuotationLine, guest: Guest, gbp: Currency, terms: Terms
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person_for_guest(guest),
         property=line.property,
         date_from=line.date_from,
         date_to=line.date_to,

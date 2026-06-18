@@ -29,9 +29,13 @@ def _make_booking(
     gbp: Currency,
     terms: TermsVersion,
 ) -> Booking:
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -48,6 +52,7 @@ def _make_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),

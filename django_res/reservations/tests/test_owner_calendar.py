@@ -25,6 +25,7 @@ from properties.factories import PropertyFactory
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 pytestmark = pytest.mark.django_db
 
@@ -43,9 +44,11 @@ def _owner(org: OwnerOrganisation) -> User:
 def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: Guest) -> Booking:
     start = timezone.localdate() + timedelta(days=10)
     end = start + timedelta(days=7)
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -61,6 +64,7 @@ def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: 
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=start,
         date_to=end,

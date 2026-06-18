@@ -20,7 +20,7 @@ from django.apps import apps
 from accounts.models import Person, PersonEmail, PersonPhone
 from reservations.enums import BookingGuestRole, ContactMethod, GuestStatus
 from reservations.factories import EnquiryFactory, GuestFactory, make_occupying_booking
-from reservations.models import Enquiry, Guest, GuestPreference, GuestPreferenceType
+from reservations.models import Enquiry, Guest
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -141,18 +141,20 @@ def test_app_born_guest_with_null_legacy_id_still_gets_a_person() -> None:
 
 
 def test_links_parallel_person_fks() -> None:
+    # GAP-045 Unit 3d-A made `person` NOT NULL on the four always-customer models,
+    # so only Enquiry can still be born person-less and thus exercises the
+    # backfill's null→link path through the current model. The Booking/Quotation/
+    # BookingGuest links are covered by the test below (built person-set, the
+    # backfill is a no-op that must still leave them on the right Person).
     enquiry = cast(Enquiry, EnquiryFactory())
     guest = cast(Guest, enquiry.guest)
-    ptype = GuestPreferenceType.objects.create(name="Sea View")
-    pref = GuestPreference.objects.create(guest=guest, preference_type=ptype)
+    Enquiry.objects.filter(pk=enquiry.pk).update(person=None)
 
     _forward()
 
     person = _person_for(guest)
     enquiry.refresh_from_db()
-    pref.refresh_from_db()
     assert enquiry.person_id == person.pk
-    assert pref.person_id == person.pk
 
 
 def test_links_booking_quotation_and_bookingguest_to_one_person(

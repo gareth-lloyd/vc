@@ -14,6 +14,7 @@ from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import QuotationStatus
 from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -21,6 +22,7 @@ def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quo
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -54,12 +56,14 @@ def test_real_excludes_booking_synthesised_quotations(
     real = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         legacy_id="booking-999",
@@ -163,6 +167,7 @@ def test_accept_rejects_foreign_line(
     other = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

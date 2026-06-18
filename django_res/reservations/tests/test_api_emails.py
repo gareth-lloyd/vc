@@ -133,6 +133,7 @@ def booking_email(
     template: EmailTemplate,
     system_profile: SmtpProfile,
 ) -> EmailLog:
+    assert booking.guest is not None
     return EmailLog.objects.create(
         template_key=template.key,
         template_version=template.version,

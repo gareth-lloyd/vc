@@ -55,9 +55,11 @@ class GuestPreferenceLoader(BaseLoader):
             if row.get("QuotationMasterId")
             else None
         )
-        # The unique constraint covers (guest, preference_type, quotation).
-        # Duplicates (same triple) are collapsed to the first occurrence so
-        # the loader stays idempotent on re-runs.
+        # The unique constraint covers (person, preference_type, quotation) as of
+        # GAP-045 Unit 3d-A; this guest-keyed dedup stays correct because guest →
+        # person is 1:1, and `guest`/`person` are repointed together in 3d-B.
+        # Duplicates (same triple) are collapsed to the first occurrence so the
+        # loader stays idempotent on re-runs.
         existing = (
             GuestPreference.objects.filter(
                 guest=guest,

@@ -15,7 +15,6 @@ from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
-from reservations.services.person_sync import person_for_guest
 
 logger = structlog.get_logger(__name__)
 
@@ -83,10 +82,11 @@ class BookingService:
         balance_due_at = property_.balance_due_at(quotation_line.date_from)
         total = cls._decimal(snapshot.get("total", quotation_line.total))
 
-        # GAP-045 Unit 3c-1b: resolve the unified Person mirror once and set it
-        # on both the Booking and its LEAD BookingGuest below, in lockstep with
-        # the Guest FK.
-        person = person_for_guest(quotation.guest)
+        # GAP-045 Unit 3d-A: `Quotation.person` is now the authoritative,
+        # NOT-NULL customer FK, so read it directly (one fewer query than
+        # re-resolving from the now-nullable guest leg) and set it on both the
+        # Booking and its LEAD BookingGuest below, in lockstep with the Guest FK.
+        person = quotation.person
         booking = Booking.objects.create(
             quotation_line=quotation_line,
             guest=quotation.guest,

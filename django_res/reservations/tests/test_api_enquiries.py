@@ -502,12 +502,14 @@ def test_enquiry_detail_includes_nested_quotations(
     q1 = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     q2 = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=14),
         terms_version=terms,
     )
@@ -538,12 +540,14 @@ def test_enquiry_detail_excludes_synthetic_booking_quotations(
     real = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         legacy_id="booking-12345",
@@ -582,6 +586,7 @@ def test_enquiry_detail_quote_stack_constant_query_count(
         quotation = Quotation.objects.create(
             enquiry=enquiry,
             guest=guest,
+            person=person_for_guest(guest),
             expires_at=timezone.now() + timedelta(days=7 + q_offset),
             terms_version=terms,
         )
@@ -633,6 +638,7 @@ def test_enquiry_list_does_not_include_nested_quotations(
     Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -678,6 +684,7 @@ def test_convert_enquiry__transitions_to_converted(
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -714,6 +721,7 @@ def test_enquiry_convert_endpoint_idempotent_when_already_converted(
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -752,6 +760,7 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -870,6 +879,7 @@ def test_enquiry_convert_rejects_foreign_quotation(
     foreign_quotation = Quotation.objects.create(
         enquiry=other_enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

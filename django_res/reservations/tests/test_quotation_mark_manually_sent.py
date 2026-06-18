@@ -40,6 +40,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -92,6 +93,7 @@ def quotation(
     return Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

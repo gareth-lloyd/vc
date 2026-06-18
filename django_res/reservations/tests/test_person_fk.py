@@ -24,26 +24,31 @@ from reservations.models import (
     Quotation,
 )
 
-# (model, on_delete mirrored from guest, final reverse accessor on Person)
+# (model, on_delete mirrored from guest, final reverse accessor on Person,
+#  person_nullable). GAP-045 Unit 3d-A made `person` the authoritative NOT-NULL
+#  customer FK on the four always-customer models; only Enquiry stays nullable
+#  (anonymous enquiries have no customer).
 PERSON_FK_SPECS = [
-    (Enquiry, models.SET_NULL, "enquiries_as_customer"),
-    (Quotation, models.PROTECT, "quotations_as_customer"),
-    (Booking, models.PROTECT, "bookings_as_customer"),
-    (BookingGuest, models.PROTECT, "booking_guests"),
-    (GuestPreference, models.CASCADE, "travel_preferences"),
+    (Enquiry, models.SET_NULL, "enquiries_as_customer", True),
+    (Quotation, models.PROTECT, "quotations_as_customer", False),
+    (Booking, models.PROTECT, "bookings_as_customer", False),
+    (BookingGuest, models.PROTECT, "booking_guests", False),
+    (GuestPreference, models.CASCADE, "travel_preferences", False),
 ]
 
 
-@pytest.mark.parametrize(("model", "on_delete", "related_name"), PERSON_FK_SPECS)
-def test_person_fk_schema(model: type[models.Model], on_delete: Any, related_name: str) -> None:
+@pytest.mark.parametrize(("model", "on_delete", "related_name", "nullable"), PERSON_FK_SPECS)
+def test_person_fk_schema(
+    model: type[models.Model], on_delete: Any, related_name: str, nullable: bool
+) -> None:
     field = model._meta.get_field("person")
     assert isinstance(field, models.ForeignKey)
     related = cast("type[models.Model]", field.related_model)
     assert related._meta.label == "accounts.Person"
-    # Nullable everywhere during expand/contract, even where the parallel
-    # ``guest`` FK is non-null (Quotation/Booking/BookingGuest are PROTECT).
-    assert field.null is True
-    assert field.blank is True
+    # Enquiry.person is nullable; the four always-customer models are NOT NULL
+    # (Unit 3d-A — `person` is now authoritative, `guest` is the legacy leg).
+    assert field.null is nullable
+    assert field.blank is nullable
     # on_delete mirrors the guest FK it shadows.
     assert field.remote_field.on_delete is on_delete
     # Final (post-retirement) names chosen now so Unit 3d is a model removal,

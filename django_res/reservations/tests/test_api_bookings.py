@@ -190,9 +190,11 @@ def test_archived_listing_has_no_n_plus_one(
     """`BookingArchiveViewSet.get_queryset` must `select_related` the FKs the
     list serializer walks; without it, each archived row triggers an extra
     SELECT and the steady-state query count grows linearly with row count."""
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -209,6 +211,7 @@ def test_archived_listing_has_no_n_plus_one(
         archived = Booking.objects.create(
             quotation_line=line,
             guest=guest,
+            person=person,
             property=property_,
             date_from=line.date_from,
             date_to=line.date_to,

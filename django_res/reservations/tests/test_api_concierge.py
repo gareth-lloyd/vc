@@ -22,6 +22,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -47,9 +48,11 @@ def booking(
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -65,6 +68,7 @@ def booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=line.date_from,
         date_to=line.date_to,

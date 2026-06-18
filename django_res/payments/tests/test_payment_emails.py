@@ -51,6 +51,7 @@ def test_payment_succeeded_sends_receipt_to_guest(
         )
     )
     assert len(logs) == 1
+    assert booking.guest is not None
     assert logs[0].to == [booking.guest.email]
 
 
@@ -79,6 +80,7 @@ def test_payment_failed_sends_to_ops_and_guest(
     assert len(ops) == 1
     assert ops[0].to == ["ops@villa.test"]
     assert len(guest) == 1
+    assert booking.guest is not None
     assert guest[0].to == [booking.guest.email]
 
 
@@ -139,6 +141,7 @@ def test_payment_succeeded_with_no_guest_email_does_not_crash(
 ) -> None:
     # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
     # row) — email="" normalizes to NULL on save.
+    assert booking.guest is not None
     booking.guest.email = ""
     booking.guest.phone = "+447911123456"
     booking.guest.save(update_fields=["email", "phone", "updated_at"])
@@ -162,6 +165,7 @@ def test_payment_failed_still_emails_ops_when_guest_has_no_email(
 ) -> None:
     # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
     # row) — email="" normalizes to NULL on save.
+    assert booking.guest is not None
     booking.guest.email = ""
     booking.guest.phone = "+447911123456"
     booking.guest.save(update_fields=["email", "phone", "updated_at"])

@@ -22,7 +22,6 @@ from properties.models import Property
 from reservations.enums import BookingGuestRole
 from reservations.factories import make_occupying_booking
 from reservations.models import (
-    Booking,
     BookingGuest,
     Enquiry,
     Guest,
@@ -216,6 +215,7 @@ def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
     terms: TermsVersion,
 ) -> None:
     guest = quotation_line.quotation.guest
+    assert guest is not None
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
     expected = person_for_guest(guest)
@@ -394,36 +394,28 @@ def test_link_person_fks_links_null_rows_and_is_idempotent(
     terms: TermsVersion,
     guest: Guest,
 ) -> None:
+    # GAP-045 Unit 3d-A made `person` NOT NULL on Quotation/Booking/BookingGuest/
+    # GuestPreference, so only Enquiry can still carry a null person (anonymous
+    # leads). The delta linker therefore only has real work to do for Enquiry;
+    # the other four are no-ops it must not choke on.
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
     quotation = quotation_line.quotation
     enquiry = quotation.enquiry
-    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
-    pref_type = GuestPreferenceType.objects.create(name="Early checkin")
-    pref = GuestPreference.objects.create(guest=guest, preference_type=pref_type)
 
-    # Simulate rows written before the inline-setting code shipped: NULL out
-    # person via a bulk .update() (bypasses the inline write paths).
+    # Simulate a row written before the inline-setting code shipped: NULL out
+    # Enquiry.person via a bulk .update() (bypasses the inline write paths).
     Enquiry.objects.filter(pk=enquiry.pk).update(person=None)
-    Quotation.objects.filter(pk=quotation.pk).update(person=None)
-    Booking.objects.filter(pk=booking.pk).update(person=None)
-    BookingGuest.objects.filter(pk=lead.pk).update(person=None)
-    GuestPreference.objects.filter(pk=pref.pk).update(person=None)
 
     call_command("link_person_fks")
-
-    for obj in (enquiry, quotation, booking, lead, pref):
-        obj.refresh_from_db()
 
     expected = person_for_guest(guest)
+    enquiry.refresh_from_db()
     assert enquiry.person == expected
-    assert quotation.person == expected
+    # The always-customer models were already linked at write time and untouched.
+    booking.refresh_from_db()
     assert booking.person == expected
-    assert lead.person == expected
-    assert pref.person == expected
 
     # Second run is a no-op — nothing is NULL anymore.
-    second = person_for_guest(guest)
     call_command("link_person_fks")
-    for obj in (enquiry, quotation, booking, lead, pref):
-        obj.refresh_from_db()
-    assert booking.person == second
+    enquiry.refresh_from_db()
+    assert enquiry.person == expected

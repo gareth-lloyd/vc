@@ -39,6 +39,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 # ---------------------------------------------------------------------------
 # Local fixtures — kept private to this module so the test data shape is
@@ -132,6 +133,7 @@ def _make_active_booking(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=datetime(2027, 1, 1, tzinfo=UTC),
         terms_version=terms,
     )
@@ -147,6 +149,7 @@ def _make_active_booking(
     booking = Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person_for_guest(guest),
         property=property_,
         date_from=date_from,
         date_to=date_to,

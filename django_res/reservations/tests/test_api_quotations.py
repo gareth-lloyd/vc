@@ -99,9 +99,11 @@ def test_list_quotations_excludes_legacy_synthetic_quotations(
     BookingLoader's `booking-`-prefixed synthetic fill rows (internal artefacts
     that satisfy the QuotationLine PROTECT FK for imported bookings) must never
     reach the operator's list — the viewset routes through `.real()`."""
+    assert quotation.guest is not None
     synthetic = Quotation.objects.create(
         enquiry=quotation.guest.enquiries.create(),
         guest=quotation.guest,
+        person=person_for_guest(quotation.guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=quotation.terms_version,
         legacy_id="booking-9999",
@@ -1450,9 +1452,11 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
 
     # Pre-existing AWAITING_DEPOSIT booking holds 2026-06-10..06-17 on the
     # same property, so converting the overlapping quotation must fail.
+    person = person_for_guest(guest)
     other_quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -1468,6 +1472,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     existing = BookingModel.objects.create(
         quotation_line=other_line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),

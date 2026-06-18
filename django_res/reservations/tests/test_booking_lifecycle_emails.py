@@ -75,6 +75,7 @@ def test_auto_accept_dispatches_booking_confirmation(
     assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
     logs = _logs_for("booking.confirmation", booking)
     assert len(logs) == 1
+    assert quotation_line.quotation.guest is not None
     assert logs[0].to == [quotation_line.quotation.guest.email]
     assert logs[0].status == EmailLogStatus.SENT
 
@@ -116,6 +117,7 @@ def test_owner_approve_dispatches_booking_confirmation(
 
     confirmations = _logs_for("booking.confirmation", booking)
     assert len(confirmations) == 1
+    assert quotation_line.quotation.guest is not None
     assert confirmations[0].to == [quotation_line.quotation.guest.email]
 
 
@@ -135,6 +137,7 @@ def test_owner_decline_dispatches_booking_declined(
 
     declined = _logs_for("booking.declined", booking)
     assert len(declined) == 1
+    assert quotation_line.quotation.guest is not None
     assert declined[0].to == [quotation_line.quotation.guest.email]
 
 
@@ -151,6 +154,7 @@ def test_cancel_dispatches_booking_cancelled(
 
     cancelled = _logs_for("booking.cancelled", booking)
     assert len(cancelled) == 1
+    assert quotation_line.quotation.guest is not None
     assert cancelled[0].to == [quotation_line.quotation.guest.email]
 
 
@@ -277,6 +281,7 @@ def test_send_confirmation_email_falls_back_to_fresh_send(
 
     logs = _logs_for("booking.confirmation", booking)
     assert len(logs) == 1
+    assert quotation_line.quotation.guest is not None
     assert logs[0].to == [quotation_line.quotation.guest.email]
     assert "resent_from" not in (logs[0].correlation or {})
 

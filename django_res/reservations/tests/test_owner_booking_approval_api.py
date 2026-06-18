@@ -23,6 +23,7 @@ from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.services.person_sync import person_for_guest
 from reservations.signals import booking_transitioned
 
 pytestmark = pytest.mark.django_db
@@ -46,9 +47,11 @@ def _pending_booking(
 ) -> Booking:
     start = timezone.localdate() + timedelta(days=30)
     end = start + timedelta(days=7)
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -64,6 +67,7 @@ def _pending_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=start,
         date_to=end,

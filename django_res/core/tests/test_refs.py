@@ -14,6 +14,7 @@ from core.refs import (
     sync_quotation_sequence,
 )
 from reservations.models import Booking, Guest, Quotation, TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 
 def test_quotation_reference_uses_prefix(db: None) -> None:
@@ -37,6 +38,7 @@ def test_sync_quotation_sequence_advances_past_imported_max() -> None:
         reference="QVC5000",
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

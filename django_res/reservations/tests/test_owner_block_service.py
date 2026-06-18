@@ -29,6 +29,7 @@ from reservations.models import (
 )
 from reservations.services.holds import HoldService
 from reservations.services.owner_block import OwnerBlockService
+from reservations.services.person_sync import person_for_guest
 from reservations.signals import owner_block_contested
 
 if TYPE_CHECKING:
@@ -56,9 +57,11 @@ def _booking(
     date_to: date,
     status: str,
 ) -> Booking:
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -74,6 +77,7 @@ def _booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property,
         date_from=date_from,
         date_to=date_to,

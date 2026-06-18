@@ -17,6 +17,7 @@ from reservations.enums import (
     EnquiryStatus,
 )
 from reservations.models import BookingHold, Enquiry, Quotation
+from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 if TYPE_CHECKING:
@@ -209,6 +210,7 @@ def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: Terms
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -285,6 +287,7 @@ def test_backfill_links_orphaned_holds_to_their_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -325,6 +328,7 @@ def _quotation_with_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

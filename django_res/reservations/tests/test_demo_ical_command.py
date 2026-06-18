@@ -210,6 +210,7 @@ def test_reset_clears_protecting_rows_on_property() -> None:
         QuotationLine,
         TermsVersion,
     )
+    from reservations.services.person_sync import person_for_guest
 
     prop = Property.objects.get(slug=PROPERTY_SLUG)
     booking = Booking.objects.get(property=prop)
@@ -253,6 +254,7 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     quotation = Quotation.objects.create(
         enquiry=other_enquiry,
         guest=other_guest,
+        person=person_for_guest(other_guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

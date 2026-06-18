@@ -53,15 +53,15 @@ class Quotation(AuditedModel):
     )
     guest = models.ForeignKey(
         "reservations.Guest",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="quotations",
     )
-    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
-    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    # GAP-045 Unit 3d-A: `person` is now the authoritative customer FK; `guest`
+    # is the legacy leg, nullable during the contract phase and dropped in 3d-E.
     person = models.ForeignKey(
         "accounts.Person",
-        null=True,
-        blank=True,
         on_delete=models.PROTECT,
         related_name="quotations_as_customer",
     )

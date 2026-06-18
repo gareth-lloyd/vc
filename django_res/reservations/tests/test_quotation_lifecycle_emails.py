@@ -60,6 +60,7 @@ def test_quotation_send_dispatches_quotation_sent_email(
     assert quotation.status == QuotationStatus.SENT.value
     logs = _logs_for_quotation(quotation)
     assert len(logs) == 1
+    assert quotation.guest is not None
     assert logs[0].to == [quotation.guest.email]
     assert logs[0].status == EmailLogStatus.SENT
 
@@ -143,6 +144,7 @@ def test_quotation_send_with_no_guest_email_skips_dispatch(
 ) -> None:
     quotation = quotation_line.quotation
     # Phone-only guest: no email, still contactable (email="" → NULL on save).
+    assert quotation.guest is not None
     quotation.guest.email = ""
     quotation.guest.phone = "+447911123456"
     quotation.guest.save(update_fields=["email", "phone", "updated_at"])

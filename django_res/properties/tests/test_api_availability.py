@@ -12,6 +12,7 @@ from accounts.models import User
 from properties.models import Property
 from reservations.enums import BookingHoldReason
 from reservations.models.booking import BookingHold
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.mark.django_db
@@ -78,6 +79,7 @@ def test_calendar_cell_links_quotation_hold_to_its_quotation(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -253,6 +255,7 @@ def _system_quotation_hold(property_: Property) -> BookingHold:
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

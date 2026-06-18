@@ -27,15 +27,15 @@ class GuestPreferenceType(TimestampedModel):
 class GuestPreference(TimestampedModel):
     guest = models.ForeignKey(
         "reservations.Guest",
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name="preferences",
     )
-    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
-    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    # GAP-045 Unit 3d-A: `person` is now the authoritative customer FK; `guest`
+    # is the legacy leg, nullable during the contract phase and dropped in 3d-E.
     person = models.ForeignKey(
         "accounts.Person",
-        null=True,
-        blank=True,
         on_delete=models.CASCADE,
         related_name="travel_preferences",
     )
@@ -57,11 +57,11 @@ class GuestPreference(TimestampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["guest", "preference_type", "quotation"],
-                name="unique_guest_preference",
+                fields=["person", "preference_type", "quotation"],
+                name="unique_person_preference",
             ),
         ]
-        ordering = ["guest_id", "preference_type_id"]
+        ordering = ["person_id", "preference_type_id"]
 
     def __str__(self) -> str:
-        return f"{self.guest} → {self.preference_type}"
+        return f"{self.person} → {self.preference_type}"

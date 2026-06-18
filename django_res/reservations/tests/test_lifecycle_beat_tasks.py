@@ -17,15 +17,18 @@ from django.utils import timezone
 
 from reservations.enums import BookingStatus, PaymentMethod, QuotationStatus
 from reservations.models import Booking, Quotation, QuotationLine
+from reservations.services.person_sync import person_for_guest
 from reservations.tasks import arm_balances, expire_bookings, expire_quotations
 
 pytestmark = pytest.mark.django_db
 
 
 def _booking(quotation_line: QuotationLine, status: str, **kwargs: object) -> Booking:
+    assert quotation_line.quotation.guest is not None
     defaults: dict[str, object] = {
         "quotation_line": quotation_line,
         "guest": quotation_line.quotation.guest,
+        "person": person_for_guest(quotation_line.quotation.guest),
         "property": quotation_line.property,
         "date_from": quotation_line.date_from,
         "date_to": quotation_line.date_to,
@@ -89,9 +92,11 @@ def test_expire_quotations_skips_accepted_and_future_dated(
     accepted.expires_at = timezone.now() - timedelta(hours=1)
     accepted.save(update_fields=["status", "expires_at"])
 
+    assert accepted.guest is not None
     still_live = Quotation.objects.create(
         enquiry=accepted.guest.enquiries.create(),
         guest=accepted.guest,
+        person=person_for_guest(accepted.guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=accepted.terms_version,
         status=QuotationStatus.SENT.value,

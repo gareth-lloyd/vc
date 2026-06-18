@@ -31,15 +31,15 @@ class BookingGuest(AuditedModel):
     )
     guest = models.ForeignKey(
         "reservations.Guest",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="booking_guests",
     )
-    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
-    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    # GAP-045 Unit 3d-A: `person` is now the authoritative customer FK; `guest`
+    # is the legacy leg, nullable during the contract phase and dropped in 3d-E.
     person = models.ForeignKey(
         "accounts.Person",
-        null=True,
-        blank=True,
         on_delete=models.PROTECT,
         related_name="booking_guests",
     )
@@ -53,8 +53,8 @@ class BookingGuest(AuditedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["booking", "guest", "role"],
-                name="bookingguest_unique_booking_guest_role",
+                fields=["booking", "person", "role"],
+                name="bookingguest_unique_booking_person_role",
             ),
             models.UniqueConstraint(
                 fields=["booking"],
@@ -69,7 +69,7 @@ class BookingGuest(AuditedModel):
         ]
         indexes = [
             models.Index(fields=["booking", "role"]),
-            models.Index(fields=["guest", "role"]),
+            models.Index(fields=["person", "role"]),
         ]
         ordering = ["booking_id", "role", "id"]
 

@@ -63,17 +63,18 @@ class TermsVersionFactory(DjangoModelFactory):
     is_current = False
 
 
-def _person_for_enquiry_guest(enquiry: object) -> object | None:
-    """Resolve the unified Person mirror for an EnquiryFactory's guest.
+def _person_for_factory_guest(obj: object) -> object | None:
+    """Resolve the unified Person mirror for a factory's `guest` attribute.
 
-    GAP-045 Unit 3d-3: reads resolve customer data solely from `person`, so a
-    factory-built Enquiry must carry the mirror (production write paths already
-    set it). The Guest `post_save` signal has already minted the mirror by the
-    time this LazyAttribute runs; `person_for_guest` just fetches it.
+    GAP-045 Unit 3d-3 made `person` the sole read source; Unit 3d-A made it the
+    NOT-NULL authoritative customer FK on Booking/BookingGuest/Quotation/
+    GuestPreference. So a factory-built row must carry the mirror (production
+    write paths already set it). The Guest `post_save` signal has already minted
+    the mirror by the time this LazyAttribute runs; `person_for_guest` fetches it.
     """
     from reservations.services.person_sync import person_for_guest
 
-    guest = getattr(enquiry, "guest", None)
+    guest = getattr(obj, "guest", None)
     return person_for_guest(guest) if guest is not None else None
 
 
@@ -82,7 +83,7 @@ class EnquiryFactory(DjangoModelFactory):
         model = models.Enquiry
 
     guest = factory.SubFactory(GuestFactory)
-    person = factory.LazyAttribute(_person_for_enquiry_guest)
+    person = factory.LazyAttribute(_person_for_factory_guest)
     property = factory.SubFactory(PropertyFactory)
     date_from = factory.LazyFunction(lambda: date.today() + timedelta(days=30))
     date_to = factory.LazyFunction(lambda: date.today() + timedelta(days=37))
@@ -117,6 +118,10 @@ class BookingGuestFactory(DjangoModelFactory):
 
     booking = None  # required: provided by caller
     guest = None  # required: provided by caller
+    # GAP-045 Unit 3d-A: `person` is the NOT-NULL authoritative customer FK.
+    # Default it from the supplied `guest`'s mirror so callers that only pass
+    # `booking=`/`guest=` still satisfy the constraint (override with `person=`).
+    person = factory.LazyAttribute(_person_for_factory_guest)
     role = BookingGuestRole.CO_TRAVELLER
     email_override = ""
     notes = ""

@@ -25,6 +25,7 @@ from reservations.models import (
     TermsVersion,
 )
 from reservations.services import AvailabilityService
+from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -64,6 +65,7 @@ def _make_booking(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -79,6 +81,7 @@ def _make_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person_for_guest(guest),
         property=property,
         date_from=date_from,
         date_to=date_to,
@@ -307,6 +310,7 @@ def _quotation(guest: Guest, currency: Currency, terms: TermsVersion) -> Quotati
     return Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

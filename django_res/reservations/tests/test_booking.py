@@ -21,6 +21,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -34,6 +35,7 @@ def quotation_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -59,6 +61,7 @@ def booking(
     return Booking.objects.create(
         quotation_line=quotation_line,
         guest=guest,
+        person=person_for_guest(guest),
         property=property_,
         date_from=quotation_line.date_from,
         date_to=quotation_line.date_to,
@@ -610,6 +613,7 @@ def _second_quotation_line(
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -644,6 +648,7 @@ def _second_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person_for_guest(guest),
         property=property_,
         date_from=date_from,
         date_to=date_to,
@@ -894,6 +899,7 @@ def test_second_booking_on_same_quotation_line_is_refused(
         Booking.objects.create(
             quotation_line=quotation_line,
             guest=guest,
+            person=person_for_guest(guest),
             property=property_,
             date_from=quotation_line.date_from,
             date_to=quotation_line.date_to,

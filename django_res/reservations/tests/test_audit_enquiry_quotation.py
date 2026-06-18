@@ -18,6 +18,7 @@ from core.models import AuditLog
 from reservations.enums import EnquiryStatus, QuotationStatus
 from reservations.models import Booking, BookingGuest, Enquiry, Guest, Quotation
 from reservations.models.terms import TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.mark.django_db
@@ -70,6 +71,7 @@ def test_quotation_status_transition_writes_audit_row(guest: Guest) -> None:
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person_for_guest(guest),
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         status=QuotationStatus.SENT.value,
@@ -119,9 +121,11 @@ def test_quotation_person_reassignment_writes_audit_row(guest: Guest) -> None:
     terms = TermsVersion.objects.create(
         version="2026-10", body_markdown="x", published_at=timezone.now()
     )
+    original_person = person_for_guest(guest)
     quotation = Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=original_person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -134,7 +138,7 @@ def test_quotation_person_reassignment_writes_audit_row(guest: Guest) -> None:
     rows = AuditLog.objects.filter(content_type=ct, object_id=str(quotation.pk))
     person_rows = [r for r in rows if "person_id" in r.field_diffs]
     assert person_rows, "expected an AuditLog row capturing the quotation person_id change"
-    assert person_rows[-1].field_diffs["person_id"] == [None, person.pk]
+    assert person_rows[-1].field_diffs["person_id"] == [original_person.pk, person.pk]
 
 
 @pytest.mark.django_db

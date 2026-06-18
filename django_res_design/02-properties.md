@@ -217,7 +217,7 @@ Convenience: `Property.hero_image` as a method returning `images.filter(kind="HE
 - `name`, `slug`, `description`, `icon`, `sort_order`, `is_active`
 - `service_type` — TextChoices (`AMENITY`, `INCLUDED_SERVICE`, `PAID_ADDON`)
 
-Property ↔ Feature is plain `ManyToManyField` (auto-through). No per-link metadata in the legacy mapping table beyond audit; plain M2M wins.
+Property ↔ Feature uses an explicit `PropertyFeature` through model carrying `sort_order` — the legacy mapping table (`VillaFeaturesMappings`) **did** carry per-link metadata: `MappingOrder`, the operator-chosen per-villa display order. A plain auto-through M2M dropped that order (alphabetical/insertion only), regressing the public-site and editor render against legacy. `PropertyFeature` restores it (`Meta.ordering = ("sort_order", "id")`); the write serializer maps the ordered `feature_ids` list position → `sort_order` and the loader carries `MIN(MappingOrder)` across. See GAP-022.
 
 `service_type` segments the catalogue. The legacy `Tags.razor` admin page (mounted at `/tags`) was a `VillaFeatures` CRUD view filtered by a `ServiceType` enum — there is no separate `Tags` table in the legacy schema. The new design absorbs that admin surface into `/features` with a `?service_type=` filter; there is no `Tag` model, no `PropertyTag` junction, and no `/tags` API resource. See reconciliation issue #8 in `product-design/07-api-schema-reconciliation.md`.
 
@@ -254,6 +254,14 @@ Through model linking properties to `accounts.Contact`. Lifecycle is the `end_da
 Constraints:
 - `UniqueConstraint(property, contact, role, condition=Q(end_date__isnull=True), name="unique_active_role_assignment")` — same role for the same person can't be open twice.
 - `UniqueConstraint(property, role, condition=Q(is_primary=True, end_date__isnull=True), name="one_primary_per_role")`.
+
+**Primacy is per-role, never per-villa (GAP-027).** There is no single
+property-wide "primary contact": `one_primary_per_role` lets a primary OWNER and
+a primary MANAGER coexist. Consumers resolve "the" primary by purpose —
+commercial/sales → primary OWNER; operations/concierge → primary MANAGER
+(falling back to HOUSEKEEPER); finance → primary OWNER unless an OWNERS_REP is
+primary. Do **not** add a property-level `is_primary`; any UI that shows "the
+primary contact" must label which role it is resolving. See `10-decisions.md`.
 
 Surfaced on Property:
 ```python

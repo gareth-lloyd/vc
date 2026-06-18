@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -121,63 +121,96 @@ function setup() {
   );
 }
 
+function featureRow(id: number) {
+  return screen.getByTestId(`property-feature-row-${id}`);
+}
+
+afterEach(() => {
+  useAuthStore.getState().clear();
+});
+
 describe("FeaturesTab", () => {
-  it("renders features grouped by category with the initial selection checked", async () => {
+  it("renders the selected features as an ordered list; unselected stay out of it", async () => {
     setReservationsUser();
     installBaseHandlers();
     setup();
-    await waitFor(() => expect(screen.getByText("Outdoor")).toBeInTheDocument());
-    expect(screen.getByText("Indoor")).toBeInTheDocument();
-    const poolCheckbox = screen.getByLabelText("Pool");
-    expect(poolCheckbox).toBeChecked();
-    const bbqCheckbox = screen.getByLabelText("BBQ");
-    expect(bbqCheckbox).not.toBeChecked();
-    useAuthStore.getState().clear();
+    await waitFor(() => expect(featureRow(11)).toBeInTheDocument());
+    expect(within(featureRow(11)).getByText("Pool")).toBeInTheDocument();
+    // BBQ / Wi-Fi are unselected — not rendered as rows.
+    expect(screen.queryByTestId("property-feature-row-12")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("property-feature-row-13")).not.toBeInTheDocument();
   });
 
-  it("disables Save until a change has been made", async () => {
+  it("disables Save until the selection changes, then adds a feature via the Add menu", async () => {
     setReservationsUser();
     installBaseHandlers();
     setup();
     const save = await screen.findByRole("button", { name: /save changes/i });
     expect(save).toBeDisabled();
-    await userEvent.click(screen.getByLabelText("BBQ"));
+
+    await userEvent.click(screen.getByRole("button", { name: /add feature/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /bbq/i }));
+
+    expect(featureRow(12)).toBeInTheDocument();
     expect(save).toBeEnabled();
-    useAuthStore.getState().clear();
   });
 
-  it("PATCHes /properties/{id} with the full features array on Save", async () => {
+  it("PATCHes /properties/{id} with the features in LIST ORDER (not sorted)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    // Start with Wi-Fi(13) before Pool(11) so a naive sort would reorder them;
+    // the payload must preserve list order — the GAP-022 sort_order contract.
+    server.use(
+      http.get("/api/v1/properties/casa-sur", () =>
+        HttpResponse.json({ ...propertyFixture, feature_ids: [13, 11] }),
+      ),
+    );
+    let patchedBody: { features?: number[] } | null = null;
+    server.use(
+      http.patch("/api/v1/properties/7", async ({ request }) => {
+        patchedBody = (await request.json()) as { features?: number[] };
+        return HttpResponse.json({ ...propertyFixture, feature_ids: patchedBody?.features ?? [] });
+      }),
+    );
+    setup();
+
+    // Append BBQ(12) last — it must land at the end of the ordered payload.
+    await userEvent.click(await screen.findByRole("button", { name: /add feature/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /bbq/i }));
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(patchedBody).not.toBeNull());
+    expect(patchedBody!.features).toEqual([13, 11, 12]);
+  });
+
+  it("removes a feature from the selection", async () => {
     setReservationsUser();
     installBaseHandlers();
     let patchedBody: { features?: number[] } | null = null;
     server.use(
       http.patch("/api/v1/properties/7", async ({ request }) => {
         patchedBody = (await request.json()) as { features?: number[] };
-        return HttpResponse.json({
-          ...propertyFixture,
-          feature_ids: patchedBody?.features ?? [],
-        });
+        return HttpResponse.json({ ...propertyFixture, feature_ids: patchedBody?.features ?? [] });
       }),
     );
     setup();
-    await userEvent.click(await screen.findByLabelText("BBQ"));
-    await userEvent.click(await screen.findByLabelText("Wi-Fi"));
+    await userEvent.click(await screen.findByRole("button", { name: /remove pool/i }));
+    expect(screen.queryByTestId("property-feature-row-11")).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(patchedBody).not.toBeNull());
-    const ids = patchedBody!.features?.sort() ?? [];
-    expect(ids).toEqual([11, 12, 13]);
-    useAuthStore.getState().clear();
+    expect(patchedBody!.features).toEqual([]);
   });
 
-  it("resets local selection on Reset", async () => {
+  it("reverts local edits on Reset", async () => {
     setReservationsUser();
     installBaseHandlers();
     setup();
-    const bbq = await screen.findByLabelText("BBQ");
-    await userEvent.click(bbq);
-    expect(bbq).toBeChecked();
+    await userEvent.click(await screen.findByRole("button", { name: /add feature/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /bbq/i }));
+    expect(featureRow(12)).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("button", { name: /reset/i }));
-    expect(bbq).not.toBeChecked();
-    useAuthStore.getState().clear();
+    expect(screen.queryByTestId("property-feature-row-12")).not.toBeInTheDocument();
   });
 });

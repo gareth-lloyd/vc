@@ -53,6 +53,42 @@ class Feature(TimestampedModel):
         return self.name
 
 
+class PropertyFeature(models.Model):
+    """Through model linking `Property` to `Feature` with a per-villa display
+    order (`sort_order`, legacy `MappingOrder`). Reuses the original auto-M2M
+    join table (`properties_property_features`) so the retrofit preserves every
+    existing link without rebuilding the table — see migration 0017."""
+
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        # Reverse accessor `property.feature_links` lets the detail serializer
+        # prefetch the links ordered by per-villa `sort_order` (GAP-022 step 4).
+        related_name="feature_links",
+    )
+    feature = models.ForeignKey(
+        Feature,
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "properties_property_features"
+        # Mirror the auto-M2M's implicit uniqueness so the existing physical
+        # constraint matches model state (no DDL churn on the retrofit).
+        unique_together = (("property", "feature"),)
+        # NB: this orders direct `PropertyFeature.objects` / prefetch queries by
+        # per-villa order. It does NOT reorder `property.features.all()` — that
+        # M2M read still sorts by `Feature._meta.ordering` (a global rank). The
+        # read serializer (GAP-022 step 4) must walk `PropertyFeature` (or an
+        # ordered Prefetch), not `features.all()`, to surface per-villa order.
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.feature_id} on {self.property_id} (#{self.sort_order})"
+
+
 class Collection(AuditedModel):
     """A curated marketing collection of properties."""
 

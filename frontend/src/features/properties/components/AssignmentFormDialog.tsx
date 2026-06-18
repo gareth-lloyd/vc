@@ -41,6 +41,9 @@ interface CommonProps {
 
 interface CreateProps extends CommonProps {
   mode: "create";
+  /** Pre-select this contact (GAP-027): a contact just created inline lands
+   * selected in the picker instead of forcing the user to re-find it. */
+  initialContact?: Contact | null;
 }
 
 interface EditProps extends CommonProps {
@@ -69,6 +72,10 @@ const CREATE_DEFAULTS: PropertyContactAssignmentWriteInput = {
   is_primary: false,
 };
 
+function createDefaults(initialContact?: Contact | null): PropertyContactAssignmentWriteInput {
+  return { ...CREATE_DEFAULTS, contact: initialContact?.id ?? 0 };
+}
+
 function defaultsFromAssignment(a: PropertyContactAssignment): PropertyContactAssignmentWriteInput {
   return {
     contact: a.contact,
@@ -86,12 +93,14 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
 
   const form = useForm<PropertyContactAssignmentWriteInput>({
     resolver: zodResolver(propertyContactAssignmentWriteInputSchema),
-    defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromAssignment(props.assignment),
+    defaultValues: isCreate
+      ? createDefaults(props.initialContact)
+      : defaultsFromAssignment(props.assignment),
   });
   const roleCtrl = useController({ control: form.control, name: "role" });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(
-    isCreate ? null : props.contact,
+    isCreate ? (props.initialContact ?? null) : props.contact,
   );
 
   const createMutation = useCreatePropertyContact(propertyId);
@@ -100,12 +109,14 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromAssignment(props.assignment));
-      setSelectedContact(isCreate ? null : props.contact);
+      form.reset(
+        isCreate ? createDefaults(props.initialContact) : defaultsFromAssignment(props.assignment),
+      );
+      setSelectedContact(isCreate ? (props.initialContact ?? null) : props.contact);
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isCreate ? null : props.assignment.id]);
+  }, [open, isCreate ? props.initialContact?.id : props.assignment.id]);
 
   const handleContactSelect = (contact: Contact) => {
     setSelectedContact(contact);

@@ -160,8 +160,13 @@ class PropertyFeatureMappingLoader(BaseLoader):
 
     name = "property_feature"
     target_model = Feature  # placeholder; we override _process_row entirely
+    # `MIN(MappingOrder)` collapses any duplicate (FeatureId, VillaId) pairs in
+    # the legacy data to one row per pair (lowest display position wins) — the
+    # new PropertyFeature unique constraint would otherwise reject the dups. The
+    # existing GROUP BY already groups by the pair, so MIN is a free aggregate.
     legacy_query = (
-        "SELECT FeatureId, VillaId FROM VillaFeaturesMappings GROUP BY FeatureId, VillaId"
+        "SELECT FeatureId, VillaId, MIN(MappingOrder) AS MappingOrder "
+        "FROM VillaFeaturesMappings GROUP BY FeatureId, VillaId"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -173,10 +178,15 @@ class PropertyFeatureMappingLoader(BaseLoader):
         if prop is None or feature is None:
             report.skipped += 1
             return
+        # `update_or_create` converges `sort_order` on idempotent re-runs (a
+        # cutover-only loader, so no post-go-live user reorder exists to clobber)
+        # and is the residual-dup safety net — it updates rather than tripping
+        # the unique constraint if the in-SQL MIN dedup ever lets one slip.
         through = Property.features.through
-        _, created = through.objects.get_or_create(
+        _, created = through.objects.update_or_create(
             property_id=prop.pk,
             feature_id=feature.pk,
+            defaults={"sort_order": int(row.get("MappingOrder") or 0)},
         )
         if created:
             report.created += 1

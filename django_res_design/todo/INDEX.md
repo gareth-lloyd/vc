@@ -60,14 +60,14 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-018](gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ⬜ |
 | [GAP-020](gap-020-direct-booking-creation.md) | Direct booking creation (legacy "book now") — synthetic-quotation design | ⬜ design ready; implementation deferred |
 | [GAP-021](gap-021-audit-history-ui.md) | Per-entity "History" tab in the SPA (audit-log surface) | ⬜ blocked by Q-014 exposure decision |
-| [GAP-022](gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) | ⬜ rescoped (non-destructive migration + loader rewrite + serializer + tab rewrite + FG-017 audit registration); add-property-flow cluster |
+| [GAP-022](done/gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) | ✅ resolved (2026-06-18) — `PropertyFeature` through model w/ `sort_order` (non-destructive migration + FG-017 audit), ordered-`feature_ids` diff-write serializer, `MIN(MappingOrder)` loader, flat drag-drop FeaturesTab |
 | [GAP-023](gap-023-owner-approval-preview-lifecycle.md) | `live_offline` replacement: `owner_approved_at` + draft preview link + badges | ⬜ deferred per 2026-06-11 owner decision (no approval gating in v1) |
-| [GAP-024](gap-024-incremental-loading-required-fields.md) | FE required-field posture fights incremental loading — relax room/capacity write schemas | ⬜ premise corrected (FE text fields already lax; real divergence is the beds field); decide jointly with Q-019 |
-| [GAP-025](gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ⬜ add-property-flow cluster (customer-confirmed) |
-| [GAP-026](gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ⬜ backend no-mixing enforcement DROPPED (contradicts GAP-014); scope is FE adornment + soft warning; groups stay |
-| [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ⬜ inline-create already wired; real fix is picker auto-select + convention doc; required-field divergence spun out to GAP-029 |
+| [GAP-024](done/gap-024-incremental-loading-required-fields.md) | FE required-field posture fights incremental loading — relax room/capacity write schemas | ✅ `beds` relaxed to optional (matches `required=False` serializer); broader room-attribute posture stays open under Q-019 |
+| [GAP-025](done/gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ✅ resolved (2026-06-18) — `suggestRateBandEnd` helper + `RateRuleFormDialog` auto-fill |
+| [GAP-026](done/gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ✅ FE adornment + soft mismatch warning; PropertySettings exposes read-only group-resolved `currency_code`; multi-currency intentional (2026-06-18) |
+| [GAP-027](done/gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ✅ resolved (2026-06-18) — picker auto-select via `initialContact` + per-role-primary convention documented |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
-| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ✏️ premise dissolves under GAP-045/046 — redirect & close |
+| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ⏸️ deferred — blocked on GAP-045/046 (Person/Organisation); kept open. **Live bug:** company-only contact 400s until they land |
 | [GAP-030](gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ⬜ reuses `StayOptionsService`; fixed-changeover only, variable/sub-week deferred |
 | [GAP-031](gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ⬜ FE-only polish, sibling of GAP-030 |
 | [GAP-032](gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ⬜ FE-only; no API change |
@@ -102,7 +102,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ recommendation recorded (keep-forever + BUG-012 scrub); exposure half blocks GAP-021 |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ Q1 answered (both % and fixed reductions, specific weeks) |
-| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ decided jointly with GAP-024 |
+| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed; GAP-024's safe `beds` relaxation already shipped |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
 | [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ groups stay (owner removal deemed premature); coordinate seed list with GAP-022 |
 | [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); cross-villa reporting still open |

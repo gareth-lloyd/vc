@@ -268,6 +268,66 @@ describe("PeopleTab", () => {
     useAuthStore.getState().clear();
   });
 
+  it("auto-selects a contact created inline back into the assignment picker (GAP-027)", async () => {
+    useAuthStore.getState().setMe(
+      {
+        id: 1,
+        email: "a@test.com",
+        first_name: "A",
+        last_name: "T",
+        is_active: true,
+        is_staff: true,
+        is_superuser: false,
+        preferred_language: "en",
+        role: "RESERVATIONS",
+      },
+      { role: "RESERVATIONS", is_superuser: false, permissions: [] },
+    );
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))),
+      http.post("/api/v1/contacts", () =>
+        HttpResponse.json(
+          {
+            id: 500,
+            first_name: "Fresh",
+            last_name: "Owner",
+            company: "",
+            emails: [],
+            phones: [],
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    setup();
+
+    // Open the assignment dialog, then jump to inline contact creation. Two
+    // comboboxes exist — the contact picker (popup=dialog) and the role Select
+    // (popup=listbox) — so target the picker by its popup type.
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    const pickerTrigger = () =>
+      screen.getAllByRole("combobox").find((el) => el.getAttribute("aria-haspopup") === "dialog")!;
+    await userEvent.click(pickerTrigger());
+    await userEvent.click(await screen.findByRole("button", { name: /create new contact/i }));
+
+    // Fill the inline contact form and create.
+    await userEvent.type(await screen.findByLabelText(/first name/i), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: /^create contact$/i }));
+
+    // The assignment dialog re-opens with the new contact already selected:
+    // the picker trigger now shows its name instead of the placeholder.
+    await waitFor(() => expect(pickerTrigger()).toHaveTextContent("Fresh Owner"));
+
+    // Close the dialog and re-open it manually — the picker must start blank,
+    // not carry the just-created contact forward into an unrelated assignment.
+    await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    expect(pickerTrigger()).toHaveTextContent(/select a contact/i);
+    useAuthStore.getState().clear();
+  });
+
   it("falls back to Contact #id when no name or company is available", async () => {
     installBaseHandlers();
     server.use(

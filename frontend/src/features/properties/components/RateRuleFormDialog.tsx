@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -7,12 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
-import { addDaysIso } from "@/lib/format/date";
+import { addDaysIso, suggestRateBandEnd } from "@/lib/format/date";
+import { currencyAdornment } from "@/lib/format/money";
 import { useCreateRateRule, useUpdateRateRule } from "../hooks";
 import {
   rateRuleWriteInputSchema,
@@ -27,6 +29,13 @@ interface CommonProps {
   cardId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Property changeover settings (GAP-025) for the rate-band end-date
+   * suggestion. Both are optional — no fixed changeover means no suggestion. */
+  changeoverDay?: string | null;
+  minNightsRental?: number | null;
+  /** The rate plan's currency code (GAP-026), shown as an adornment beside the
+   * nightly/weekly inputs. Null when the season has no currency. */
+  currencyCode?: string | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -79,9 +88,11 @@ function toPayload(values: RateRuleWriteInput): RateRuleWritePayload {
 }
 
 export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
-  const { seasonId, cardId, open, onOpenChange } = props;
+  const { seasonId, cardId, open, onOpenChange, changeoverDay, minNightsRental, currencyCode } =
+    props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
+  const priceAdornment = currencyAdornment(currencyCode);
 
   const form = useForm<RateRuleWriteInput>({
     resolver: zodResolver(rateRuleWriteInputSchema),
@@ -100,6 +111,23 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.rule.id]);
+
+  // GAP-025: when the property changes over on a fixed weekday, suggest the
+  // band's end date as soon as `date_from` is known — but never clobber a value
+  // the user typed (only fill while `date_to` is empty or still holds our own
+  // last suggestion). Edit mode keeps the stored value untouched.
+  const dateFrom = form.watch("date_from");
+  const lastSuggestionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCreate || !dateFrom) return;
+    const currentTo = form.getValues("date_to");
+    if (currentTo && currentTo !== lastSuggestionRef.current) return;
+    const suggested = suggestRateBandEnd(dateFrom, changeoverDay, minNightsRental);
+    if (!suggested || suggested === currentTo) return;
+    lastSuggestionRef.current = suggested;
+    form.setValue("date_to", suggested, { shouldDirty: false, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, isCreate, changeoverDay, minNightsRental]);
 
   const submit = async (values: RateRuleWriteInput, andAddAnother: boolean) => {
     setTopLevelError(null);
@@ -233,10 +261,11 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="rate-rule-nightly">{t("pricing.rule.dialog.fields.nightly")}</Label>
-              <Input
+              <MoneyInput
                 id="rate-rule-nightly"
                 inputMode="decimal"
                 disabled={isPoa}
+                adornment={isPoa ? null : priceAdornment}
                 {...form.register("nightly")}
               />
               {form.formState.errors.nightly ? (
@@ -248,10 +277,11 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
 
             <div className="space-y-2">
               <Label htmlFor="rate-rule-weekly">{t("pricing.rule.dialog.fields.weekly")}</Label>
-              <Input
+              <MoneyInput
                 id="rate-rule-weekly"
                 inputMode="decimal"
                 disabled={isPoa}
+                adornment={isPoa ? null : priceAdornment}
                 {...form.register("weekly")}
               />
               {form.formState.errors.weekly ? (

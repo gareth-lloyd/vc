@@ -18,13 +18,22 @@ class PropertySettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsReservationsWriter]
 
     def get_object(self) -> PropertySettings:
-        # Join the reverse-OneToOne `location` up front: the serializer reads
-        # `property.location.timezone` on every GET/PATCH, which would otherwise
-        # fire one extra uncached SELECT per request.
+        # Join up front everything the serializer touches per GET/PATCH so no
+        # field read fires an extra uncached SELECT:
+        #   - `location` (reverse-OneToOne) for `property.location.timezone`;
+        #   - `group__settings__currency` for the group-fallback leg of
+        #     `effective("currency")` (GAP-026 `currency_code`).
         property_obj = get_object_or_404(
-            Property.objects.select_related("location"), pk=self.kwargs["property_id"]
+            Property.objects.select_related("location", "group__settings__currency"),
+            pk=self.kwargs["property_id"],
         )
-        instance, _ = PropertySettings.objects.get_or_create(property=property_obj)
+        # `select_related("currency")` loads the property-level leg of
+        # `effective("currency")`; reassigning `property` pins the prefetched
+        # chain above onto the instance so neither read round-trips.
+        instance, _ = PropertySettings.objects.select_related("currency").get_or_create(
+            property=property_obj
+        )
+        instance.property = property_obj
         return instance
 
 

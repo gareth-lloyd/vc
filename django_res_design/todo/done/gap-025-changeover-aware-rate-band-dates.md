@@ -1,3 +1,17 @@
+> **✅ RESOLVED (2026-06-18)** — Added a pure `suggestRateBandEnd(dateFromIso,
+> changeoverDay, minNights)` helper (`frontend/src/lib/format/date.ts`): the day
+> before the next changeover weekday at least `minNights` out, always strictly
+> after `date_from` (so it satisfies the rule's `date_to > date_from` check).
+> `RateRuleFormDialog` watches `date_from` and fills `date_to` while empty/unedited
+> — never clobbering a typed value, never in edit mode. `SeasonDetailPanel` sources
+> `changeover_day`/`min_nights_rental` via `usePropertySettings(propertyId)` (newly
+> threaded from `PricingTab`) and passes them to the create-mode dialog. No
+> suggestion when changeover is `"any"`/unset. Vitest covers the date maths
+> (week wrap, `minNights > 7`, `"any"`/unset, unparseable input) and the dialog
+> wiring (fills, no-clobber, `"any"`-skips).
+>
+> _Original ticket preserved below for context._
+
 # GAP-025 — Changeover-aware rate-band end-date suggestion
 
 - **Severity:** Gap (UX; the loader's single most-repeated irritation)

@@ -195,7 +195,8 @@
         "price_basis": "Price basis",
         "effective": "Effective",
         "status": "Status"
-      }
+      },
+      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}."
     },
     "active_badge": "Active",
     "inactive_badge": "Inactive",
@@ -740,10 +741,20 @@
       "title": "No features available",
       "description": "Ask an admin to seed the feature catalog before tagging this property."
     },
+    "none_selected": {
+      "title": "No features selected",
+      "description": "Use Add feature to build this property's feature list, then drag to reorder."
+    },
+    "row": {
+      "drag_handle_label": "Drag to reorder feature",
+      "remove_label": "Remove {{name}}",
+      "unknown_feature": "Unknown feature"
+    },
     "errors": {
       "load_failed": "Couldn't load features."
     },
     "actions": {
+      "add": "Add feature",
       "save": "Save changes",
       "saving": "Saving…",
       "reset": "Reset"
@@ -820,7 +831,8 @@
       "save": "Save finance",
       "saving": "Saving…",
       "saved": "Finance saved",
-      "save_failed": "Couldn't save finance"
+      "save_failed": "Couldn't save finance",
+      "no_currency_prompt": "No currency is set for this property yet — set one in Pricing so fixed amounts are labelled."
     },
     "lifecycle": {
       "title": "Lifecycle",

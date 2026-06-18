@@ -5,11 +5,12 @@ import { format, isToday, isWeekend, parseISO } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
+import { formatMoney } from "@/lib/format/money";
 import { propertyAvailabilityPath } from "@/lib/routes";
 import type { PropertyListItem } from "@/features/properties/schemas";
 import { assignLanes, bandEdges, bandGeometry } from "../geometry";
 import { holdDisplayStatus, bandStatusClasses } from "../status";
-import type { AvailabilityBookingBand, AvailabilityHold } from "../schemas";
+import type { AvailabilityBookingBand, AvailabilityHold, WeeklyPricesProperty } from "../schemas";
 import { bandDates, type TimelineBand } from "../bands";
 import { BandPopover } from "./BandPopover";
 
@@ -17,6 +18,7 @@ const NAME_COL = "220px";
 const LANE_HEIGHT = 28;
 const BAND_HEIGHT = 22;
 const ROW_PADDING = 6;
+const PRICE_STRIP_HEIGHT = 22;
 
 /** Slug-safe villa path (some legacy slugs are full URLs — fall back to id). */
 function villaCalendarPath(property: PropertyListItem): string {
@@ -32,6 +34,49 @@ interface TimelineGridProps {
   properties: PropertyListItem[];
   holds: AvailabilityHold[];
   bookings: AvailabilityBookingBand[];
+  // GAP-030 — per-week guide prices, loaded separately; undefined while the
+  // (independent) price query is still pending, so the strip just doesn't render.
+  weeklyPrices?: WeeklyPricesProperty[];
+}
+
+/** The price strip beneath a villa's bands — one cell per changeover week,
+ * aligned to the same day columns the bands use. */
+function PriceStrip({
+  entry,
+  windowStart,
+  dayCount,
+}: {
+  entry: WeeklyPricesProperty;
+  windowStart: Date;
+  dayCount: number;
+}) {
+  const { t } = useTranslation("availability");
+  return (
+    <div className="border-border/60 relative border-t" style={{ height: PRICE_STRIP_HEIGHT }}>
+      {entry.weeks.map((week) => {
+        const geometry = bandGeometry(week.week_start, week.week_end, windowStart, dayCount);
+        if (!geometry) return null;
+        const text = week.is_poa
+          ? t("price.poa")
+          : week.price
+            ? formatMoney(week.price, week.currency_code)
+            : t("price.none");
+        return (
+          <div
+            key={week.week_start}
+            className={cn(
+              "absolute inset-y-0 flex items-center justify-center truncate text-[11px] tabular-nums",
+              week.is_projected ? "text-muted-foreground" : "text-foreground",
+            )}
+            style={{ left: `${geometry.leftPct}%`, width: `${geometry.widthPct}%` }}
+            title={week.is_projected ? t("price.guide_title") : undefined}
+          >
+            {week.is_projected && week.price ? t("price.guide_value", { value: text }) : text}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function DayCells({ days }: { days: Date[] }) {
@@ -123,7 +168,9 @@ export function TimelineGrid({
   properties,
   holds,
   bookings,
+  weeklyPrices,
 }: TimelineGridProps) {
+  const { t } = useTranslation("availability");
   const bandsByProperty = useMemo(() => {
     const map = new Map<number, TimelineBand[]>();
     const push = (id: number, band: TimelineBand) => {
@@ -135,6 +182,12 @@ export function TimelineGrid({
     for (const booking of bookings) push(booking.property, { kind: "booking", booking });
     return map;
   }, [holds, bookings]);
+
+  const pricesByProperty = useMemo(() => {
+    const map = new Map<number, WeeklyPricesProperty>();
+    for (const entry of weeklyPrices ?? []) map.set(entry.property_id, entry);
+    return map;
+  }, [weeklyPrices]);
 
   const dayColumns = `repeat(${days.length}, minmax(28px, 1fr))`;
 
@@ -183,35 +236,53 @@ export function TimelineGrid({
           );
           const laneCount = bands.length ? Math.max(...lanes) + 1 : 1;
           const rowHeight = laneCount * LANE_HEIGHT + ROW_PADDING;
+          const priceEntry = pricesByProperty.get(property.id);
+          // The changeover weekday, shown once per row. Locale-formatted from
+          // the first priced week so it can't drift from the codes the prices
+          // are anchored on; absent for flexible-changeover villas (no strip).
+          const changeoverLabel =
+            priceEntry?.changeover_day && priceEntry.weeks[0]
+              ? format(parseISO(priceEntry.weeks[0].week_start), "EEE", { locale: activeLocale() })
+              : null;
           return (
             <div
               key={property.id}
               className="border-border/60 grid border-b last:border-b-0"
               style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}
             >
-              <div className="bg-card sticky left-0 z-10 flex items-center px-3 py-1.5">
+              <div className="bg-card sticky left-0 z-10 flex items-center gap-1 px-3 py-1.5">
                 <Link
                   to={villaCalendarPath(property)}
                   className="truncate text-sm font-medium hover:underline"
                 >
                   {property.display_name || property.name}
                 </Link>
+                {changeoverLabel ? (
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {t("price.changeover_label", { day: changeoverLabel })}
+                  </span>
+                ) : null}
               </div>
-              <div className="relative" style={{ height: rowHeight }}>
-                <div
-                  className="absolute inset-0 grid"
-                  style={{ gridTemplateColumns: dayColumns }}
-                  aria-hidden
-                >
-                  <DayCells days={days} />
+              <div>
+                <div className="relative" style={{ height: rowHeight }}>
+                  <div
+                    className="absolute inset-0 grid"
+                    style={{ gridTemplateColumns: dayColumns }}
+                    aria-hidden
+                  >
+                    <DayCells days={days} />
+                  </div>
+                  <RowBands
+                    property={property}
+                    bands={bands}
+                    lanes={lanes}
+                    days={days}
+                    windowStart={windowStart}
+                  />
                 </div>
-                <RowBands
-                  property={property}
-                  bands={bands}
-                  lanes={lanes}
-                  days={days}
-                  windowStart={windowStart}
-                />
+                {priceEntry && priceEntry.weeks.length > 0 ? (
+                  <PriceStrip entry={priceEntry} windowStart={windowStart} dayCount={days.length} />
+                ) : null}
               </div>
             </div>
           );

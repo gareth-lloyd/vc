@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +27,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ChangeoverRulesSection } from "../components/ChangeoverRulesSection";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { currencyAdornment } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useActivateProperty,
@@ -380,9 +382,32 @@ function FinanceForm({
   const depositType = form.watch("deposit_calculation_type") ?? null;
   const securityType = form.watch("security_deposit_calculation_type") ?? null;
 
+  // GAP-026: adorn each amount with the unit it's denominated in — the
+  // property's effective currency for a `fixed` amount, "%" for a `percent`
+  // one. An inherited (null) type resolves its basis from the group, which the
+  // client can't see here, so it stays unadorned rather than guess.
+  const settings = usePropertySettings(propertyId);
+  const currencyCode = settings.data?.currency_code ?? null;
+  const amountAdornment = (type: string | null): string | null =>
+    type === "fixed" ? currencyAdornment(currencyCode) : type === "percent" ? "%" : null;
+  // Prompt to set a currency only when a `fixed` amount is actually in play but
+  // no currency resolves — otherwise the amount renders with a blank prefix.
+  const showNoCurrencyPrompt =
+    !!settings.data &&
+    !currencyCode &&
+    [commissionType, depositType, securityType].includes("fixed");
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <p className="text-muted-foreground text-sm">{t("settings.finance.description")}</p>
+      {showNoCurrencyPrompt ? (
+        <p
+          role="status"
+          className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-sm"
+        >
+          {t("settings.finance.no_currency_prompt")}
+        </p>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
@@ -416,9 +441,10 @@ function FinanceForm({
           <Label htmlFor="prop-finance-commission-amount">
             {t("settings.finance.fields.commission_amount")}
           </Label>
-          <Input
+          <MoneyInput
             id="prop-finance-commission-amount"
             disabled={!canWrite}
+            adornment={amountAdornment(commissionType)}
             {...form.register("commission_amount")}
           />
         </div>
@@ -474,9 +500,10 @@ function FinanceForm({
           <Label htmlFor="prop-finance-deposit-amount">
             {t("settings.finance.fields.deposit_amount")}
           </Label>
-          <Input
+          <MoneyInput
             id="prop-finance-deposit-amount"
             disabled={!canWrite}
+            adornment={amountAdornment(depositType)}
             {...form.register("deposit_amount")}
           />
         </div>
@@ -527,9 +554,10 @@ function FinanceForm({
           <Label htmlFor="prop-finance-security-amount">
             {t("settings.finance.fields.security_deposit_amount")}
           </Label>
-          <Input
+          <MoneyInput
             id="prop-finance-security-amount"
             disabled={!canWrite}
+            adornment={amountAdornment(securityType)}
             {...form.register("security_deposit_amount")}
           />
         </div>

@@ -69,7 +69,6 @@ function makeFinance(overrides: Record<string, unknown> = {}) {
     security_deposit_required: false,
     security_deposit_calculation_type: null,
     security_deposit_amount: null,
-    security_deposit_calculate_from: null,
     security_deposit_days_due_before_arrival: null,
     security_deposit_days_refunded_after_departure: null,
     security_deposit_payment_method: null,
@@ -371,6 +370,63 @@ describe("SettingsTab", () => {
     await userEvent.click(save);
 
     expect(await screen.findByText("This field may not be null.")).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("adorns a fixed finance amount with the property's currency (GAP-026)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency_code: "GBP" })),
+      ),
+      http.get("/api/v1/properties/9/finance", () =>
+        HttpResponse.json(
+          makeFinance({ commission_calculation_type: "fixed", commission_amount: "150.00" }),
+        ),
+      ),
+    );
+
+    setup();
+    expect(await screen.findByDisplayValue("150.00")).toBeInTheDocument();
+    // The fixed commission amount is prefixed with the resolved currency symbol.
+    expect(screen.getAllByText("£").length).toBeGreaterThanOrEqual(1);
+    useAuthStore.getState().clear();
+  });
+
+  it("adorns a percent finance amount with % rather than a currency", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency_code: "GBP" })),
+      ),
+    );
+
+    setup();
+    // Default finance has commission + deposit on a `percent` basis.
+    await waitFor(() => expect(screen.getAllByText("%").length).toBeGreaterThanOrEqual(2));
+    // No currency symbol, since no amount is a fixed monetary value.
+    expect(screen.queryByText("£")).not.toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("prompts to set a currency when a fixed amount has none resolved", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency_code: null })),
+      ),
+      http.get("/api/v1/properties/9/finance", () =>
+        HttpResponse.json(
+          makeFinance({ commission_calculation_type: "fixed", commission_amount: "150.00" }),
+        ),
+      ),
+    );
+
+    setup();
+    expect(await screen.findByText(/No currency is set for this property/i)).toBeInTheDocument();
     useAuthStore.getState().clear();
   });
 });

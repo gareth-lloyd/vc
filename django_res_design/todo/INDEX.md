@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-18): **56 done** (53 resolved + 3 dropped), **65 open**
+Scoreboard (2026-06-18): **62 done** (58 resolved + 4 dropped), **61 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -46,6 +46,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ doc-only |
+| [SMELL-018](smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ⬜ FE+BE; found via 2026-06-18 observability sweep |
 
 ## Surface gaps
 
@@ -56,23 +57,21 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | 🟨 partial — ingest engine + feed model shipped; residual = staff-awareness UI + sales indicator (GAP-034) |
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
-| [GAP-016](gap-016-rental-price-override.md) | Rental-price override (legacy parity remainder) | ⬜ |
 | [GAP-017](gap-017-legacy-villabookingdetails-loader.md) | Data-migration loader for legacy `VillaBookingDetails` | ⬜ |
 | [GAP-018](gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ⬜ |
-| [GAP-019](gap-019-security-deposit-calculate-from.md) | SD sizing ignores `calculate_from`; no resync on charges | ⬜ |
 | [GAP-020](gap-020-direct-booking-creation.md) | Direct booking creation (legacy "book now") — synthetic-quotation design | ⬜ design ready; implementation deferred |
 | [GAP-021](gap-021-audit-history-ui.md) | Per-entity "History" tab in the SPA (audit-log surface) | ⬜ blocked by Q-014 exposure decision |
-| [GAP-022](gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) | ⬜ rescoped (non-destructive migration + loader rewrite + serializer + tab rewrite + FG-017 audit registration); add-property-flow cluster |
+| [GAP-022](done/gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) | ✅ resolved (2026-06-18) — `PropertyFeature` through model w/ `sort_order` (non-destructive migration + FG-017 audit), ordered-`feature_ids` diff-write serializer, `MIN(MappingOrder)` loader, flat drag-drop FeaturesTab |
 | [GAP-023](gap-023-owner-approval-preview-lifecycle.md) | `live_offline` replacement: `owner_approved_at` + draft preview link + badges | ⬜ deferred per 2026-06-11 owner decision (no approval gating in v1) |
-| [GAP-024](gap-024-incremental-loading-required-fields.md) | FE required-field posture fights incremental loading — relax room/capacity write schemas | ⬜ premise corrected (FE text fields already lax; real divergence is the beds field); decide jointly with Q-019 |
-| [GAP-025](gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ⬜ add-property-flow cluster (customer-confirmed) |
-| [GAP-026](gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ⬜ backend no-mixing enforcement DROPPED (contradicts GAP-014); scope is FE adornment + soft warning; groups stay |
-| [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ⬜ inline-create already wired; real fix is picker auto-select + convention doc; required-field divergence spun out to GAP-029 |
+| [GAP-024](done/gap-024-incremental-loading-required-fields.md) | FE required-field posture fights incremental loading — relax room/capacity write schemas | ✅ `beds` relaxed to optional (matches `required=False` serializer); broader room-attribute posture stays open under Q-019 |
+| [GAP-025](done/gap-025-changeover-aware-rate-band-dates.md) | Changeover-aware rate-band end-date suggestion (Sat→Fri auto-fill) | ✅ resolved (2026-06-18) — `suggestRateBandEnd` helper + `RateRuleFormDialog` auto-fill |
+| [GAP-026](done/gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ✅ FE adornment + soft mismatch warning; PropertySettings exposes read-only group-resolved `currency_code`; multi-currency intentional (2026-06-18) |
+| [GAP-027](done/gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ✅ resolved (2026-06-18) — picker auto-select via `initialContact` + per-role-primary convention documented |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
-| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ✏️ premise dissolves under GAP-045/046 — redirect & close |
-| [GAP-030](gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ⬜ reuses `StayOptionsService`; fixed-changeover only, variable/sub-week deferred |
-| [GAP-031](gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ⬜ FE-only polish, sibling of GAP-030 |
-| [GAP-032](gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ⬜ FE-only; no API change |
+| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ⏸️ deferred — blocked on GAP-045/046 (Person/Organisation); kept open. **Live bug:** company-only contact 400s until they land |
+| [GAP-030](done/gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ✅ resolved (2026-06-18) — `StayOptionsService.weekly_prices()` + `GET /availability/weekly-prices` price each changeover week (context reused, no per-week reload), Q-013/POA/projected flags, never 500; FE price strip aligned under the bands with changeover weekday, guide/POA markers, separate non-blocking query; en+el; pytest+vitest. Fixed-changeover only; variable/sub-week deferred (GAP-025/Q-022) |
+| [GAP-031](done/gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ✅ resolved (2026-06-18) — `monthSpanLabel` helper renders spanning month(s)+year above the date range (single/cross-month/cross-year), date-fns locale text + i18n dash join (en+el), vitest all three cases; FE-only |
+| [GAP-032](done/gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ✅ resolved (2026-06-18) — press-drag-release on the villa month grid opens the create dialog pre-filled; `resolveDragRange` helper truncates before occupied days (half-open), pointer-delegation keeps dropdowns/links working, role-gated; vitest range-mapping + grid-drag; FE-only |
 | [GAP-033](gap-033-availability-last-confirmed-timestamp.md) | Availability "last confirmed" timestamp + manual confirm button | ⬜ legacy parity; resets on owner-availability events only, not VC churn |
 | [GAP-034](gap-034-availability-calendar-source-indicator.md) | Sales-view calendar-source indicator: iCal badge + owner calendar link | ⬜ builds on shipped `PropertyCalendarFeed` (GAP-011 residual UI) |
 | [GAP-035](gap-035-net-gross-commission-derivation.md) | Net↔gross rate entry with automatic commission derivation | ⬜ entry-time tool; x-ref BUG-009 single-source-of-truth |
@@ -89,6 +88,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-046](gap-046-organisation-and-agent-capacity.md) | `Organisation` entity + agent capacity (B2B Companies) | ⬜ after GAP-045; repoints `.agent` FKs; dissolves GAP-029 |
 | [GAP-047](gap-047-clients-directory-and-profile.md) | Clients (renter) directory: browsable list + direct/agent filter | ⬜ after GAP-045/046; list only (detail = GAP-042, tags = GAP-040, links = GAP-041) |
 | [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Villa Contacts directory + role taxonomy (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co) | ⬜ after GAP-045; allows `Organisation` assignees |
+| [GAP-049](done/gap-049-create-property-ui.md) | No "create property" UI — create flow is API-only | ✅ resolved (2026-06-18) — `CreatePropertyDialog` (6-field form, slug auto-derive, category/group hooks + `useRegions`), role-gated "New villa" button (disabled-with-tooltip), `slugify` helper, en+el i18n, unit+component tests; no backend change |
 
 ## Open product questions
 
@@ -104,7 +104,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [Q-014](q-014-audit-log-retention.md) | Audit log retention window | ✏️ recommendation recorded (keep-forever + BUG-012 scrub); exposure half blocks GAP-021 |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ Q1 answered (both % and fixed reductions, specific weeks) |
-| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ decided jointly with GAP-024 |
+| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed; GAP-024's safe `beds` relaxation already shipped |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
 | [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ groups stay (owner removal deemed premature); coordinate seed list with GAP-022 |
 | [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); cross-villa reporting still open |
@@ -162,6 +162,7 @@ problem, fix, and commit. Listed here for traceability.
 | [GAP-009](done/gap-009-discount-loose-ends.md) | Discount loose ends |
 | [GAP-014](done/gap-014-quote-currency-forced-selection.md) | Quote builder forced currency → per-line currency |
 | [GAP-015](done/gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` resync the payment schedule |
+| [GAP-019](done/gap-019-security-deposit-calculate-from.md) | SD sizing: live-SD resize on charge/modify (dead `calculate_from` dropped) |
 | [INV-001](done/inv-001-propertycontactassignment-owner-uniqueness.md) | `PropertyContactAssignment` owner uniqueness |
 | [INV-002](done/inv-002-raterule-priority-tiebreak.md) | `RateRule.priority` tie-break |
 | [INV-003](done/inv-003-refund-amount-sign-convention.md) | `Refund.amount` sign convention |
@@ -192,4 +193,5 @@ Also resolved outside this list: **Q-012** (payment gateway → Flywire).
 |---|---|---|
 | [FG-003](done/fg-003-effective-crashes-on-null-group.md) | `effective()` crashes on null `property.group` | `Property.group` is non-nullable |
 | [GAP-003](done/gap-003-endpoint-coverage-gap.md) | Endpoint coverage gap | framing only |
+| [GAP-016](done/gap-016-rental-price-override.md) | Rental-price override (legacy parity remainder) | superseded by signed `BookingChargeItem` charge line |
 | [SMELL-005](done/smell-005-residual-property-country-charfield.md) | Residual `Property.country` free-text | verified clean |

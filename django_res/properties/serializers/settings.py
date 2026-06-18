@@ -38,7 +38,23 @@ class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
             data["timezone"] = instance.property.location.timezone
         except ObjectDoesNotExist:
             data["timezone"] = None
+        # `currency_code` (GAP-026): the group-resolved *effective* currency as a
+        # string code, so money inputs can label which currency they commit to
+        # without the client re-deriving the FK id or the inheritance chain. The
+        # raw `currency` FK stays writable; this is its read-only display
+        # projection. `None` when neither property nor group sets a currency.
+        data["currency_code"] = self._effective_currency_code(instance)
         return data
+
+    @staticmethod
+    def _effective_currency_code(instance: PropertySettings) -> str | None:
+        try:
+            currency = instance.effective("currency")
+        except ObjectDoesNotExist:
+            # The group has no settings row, so the fallback leg is absent; only
+            # the property-level value — null on this branch — applies.
+            currency = instance.currency
+        return currency.code if currency is not None else None
 
 
 class GroupSettingsSerializer(serializers.ModelSerializer[GroupSettings]):

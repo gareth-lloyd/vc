@@ -108,7 +108,6 @@ def test_sync_one_copies_template_when_contact_matches(
         "SecurityDepositIsRequired": True,
         "SecurityDepositAmountTypeId": 2,
         "SecurityDepositAmount": Decimal("500"),
-        "SecurityDepositCalculateFromId": 3,
         "SecurityDepositDaysDueBeforeArrival": 14,
         "SecurityDepositDaysRefundedAfterDeparture": 7,
     }

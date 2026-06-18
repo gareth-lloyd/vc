@@ -19,13 +19,22 @@
   "window": {
     "prev": "Previous week",
     "next": "Next week",
-    "today": "Today"
+    "today": "Today",
+    "month_span_single": "{{month}}",
+    "month_span_range": "{{start}} – {{end}}"
   },
   "legend": {
     "available": "Available",
     "booked": "Booked",
     "on_hold": "On hold",
     "stop_sale": "Stop sale"
+  },
+  "price": {
+    "poa": "POA",
+    "none": "—",
+    "guide_value": "~{{value}}",
+    "guide_title": "Guide price",
+    "changeover_label": "({{day}})"
   },
   "gate": {
     "title": "Filter to see availability",

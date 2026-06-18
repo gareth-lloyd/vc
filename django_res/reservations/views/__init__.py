@@ -10,6 +10,7 @@ from reservations.views.availability import (
     AvailabilityReleaseHoldView,
     AvailabilitySearchView,
     PropertyAvailabilityView,
+    WeeklyPricesView,
 )
 from reservations.views.booking import (
     BookingArchiveViewSet,
@@ -74,4 +75,5 @@ __all__ = [
     "TermsVersionDetailView",
     "TermsVersionListCreateView",
     "TermsVersionPublishView",
+    "WeeklyPricesView",
 ]

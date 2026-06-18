@@ -216,7 +216,12 @@ export const propertyRoomWriteInputSchema = z.object({
   website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
-  beds: roomBedsSchema,
+  // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,
+  // room.py:29): a room can be saved with just a name and filled in over time
+  // (GAP-024). NOTE: `website_description`/`vc_notes` above stay `z.string()`
+  // (not `.optional()`) — PATCH sends `""` to clear them; `.optional()` would
+  // emit `undefined`, omit the field, and silently stop clearing.
+  beds: roomBedsSchema.optional(),
 });
 export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema>;
 
@@ -250,6 +255,49 @@ export const collectionSchema = z.object({
 export type Collection = z.infer<typeof collectionSchema>;
 
 export const collectionsResponseSchema = paginated(collectionSchema);
+
+// FK-picker rows for the create-property form (`GET /property-categories`,
+// `/property-groups`). Only `id` + `name` are needed to pick; Zod strips the
+// other serializer fields. Widen these when a consumer actually needs more.
+export const propertyCategorySchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+export type PropertyCategory = z.infer<typeof propertyCategorySchema>;
+
+export const propertyCategoriesResponseSchema = paginated(propertyCategorySchema);
+
+export const propertyGroupSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+export type PropertyGroup = z.infer<typeof propertyGroupSchema>;
+
+export const propertyGroupsResponseSchema = paginated(propertyGroupSchema);
+
+// Write shape for creating a property (GAP-049). Only the six fields the
+// backend requires — `licence_number`/`channel`/`features`/`legacy_id` are
+// optional or server-defaulted and are filled in later on the edit tabs
+// (incremental-onboarding posture, GAP-024). FK fields default to the `0`
+// sentinel so an unselected dropdown trips `.min(1)` with a required message.
+export const propertyCreateInputSchema = z.object({
+  name: z.string().trim().min(1, { message: "properties:create.errors.name_required" }).max(255),
+  display_name: z
+    .string()
+    .trim()
+    .min(1, { message: "properties:create.errors.display_name_required" })
+    .max(255),
+  slug: z
+    .string()
+    .trim()
+    .min(1, { message: "properties:create.errors.slug_required" })
+    .max(255)
+    .regex(/^[a-z0-9-]+$/, { message: "properties:create.errors.slug_invalid" }),
+  category: z.number().int().min(1, { message: "properties:create.errors.category_required" }),
+  group: z.number().int().min(1, { message: "properties:create.errors.group_required" }),
+  region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
+});
+export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
 
 export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
@@ -601,6 +649,10 @@ export const propertySettingsSchema = z.object({
   // IANA timezone, sourced from the property's location; null when the
   // property has no location row yet. Not inheritable from the group.
   timezone: z.string().nullable().optional(),
+  // Read-only group-resolved currency as a string code (GAP-026): the effective
+  // currency money inputs commit to, with the raw `currency` FK's inheritance
+  // already applied. Null when neither property nor group sets a currency.
+  currency_code: z.string().nullable().optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 
@@ -645,7 +697,6 @@ export const propertyFinanceSchema = z.object({
   security_deposit_required: z.boolean().nullable().optional(),
   security_deposit_calculation_type: z.string().nullable().optional(),
   security_deposit_amount: z.string().nullable().optional(),
-  security_deposit_calculate_from: z.string().nullable().optional(),
   security_deposit_days_due_before_arrival: z.number().nullable().optional(),
   security_deposit_days_refunded_after_departure: z.number().nullable().optional(),
   security_deposit_payment_method: z.string().nullable().optional(),

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
@@ -212,5 +212,118 @@ describe("RateRuleFormDialog — edit", () => {
     await waitFor(() => expect(patchBody).not.toBeNull());
     expect(patchBody).toMatchObject({ nightly: "275.00", weekly: null });
     useAuthStore.getState().clear();
+  });
+});
+
+describe("RateRuleFormDialog — changeover end-date suggestion (GAP-025)", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  it("suggests date_to from a fixed changeover day once date_from is seeded", async () => {
+    setReservationsUser();
+    // 2026-07-04 is a Saturday; sat changeover, 7-night min → Fri 10 Jul.
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        defaults={{ date_from: "2026-07-04" }}
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+
+    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
+    await waitFor(() => expect(dateTo.value).toBe("2026-07-10"));
+  });
+
+  it("never clobbers a date_to the user has already typed", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+
+    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
+    await userEvent.type(dateTo, "2026-09-19");
+    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
+
+    // Manual value survives even though a suggestion would otherwise apply.
+    expect(dateTo.value).toBe("2026-09-19");
+  });
+
+  it("makes no suggestion when the changeover day is 'any'", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        defaults={{ date_from: "2026-07-04" }}
+        changeoverDay="any"
+        minNightsRental={7}
+      />,
+    );
+
+    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
+    // Give the effect a chance to (not) run.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(dateTo.value).toBe("");
+  });
+});
+
+describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  it("shows the rate plan currency symbol beside both price inputs", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+      />,
+    );
+    // One adornment for nightly, one for weekly.
+    expect(await screen.findAllByText("€")).toHaveLength(2);
+  });
+
+  it("renders no symbol when the season has no currency", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+    );
+    expect(screen.queryByText("€")).not.toBeInTheDocument();
+    expect(screen.queryByText("£")).not.toBeInTheDocument();
+  });
+
+  it("hides the symbol once POA masks the price inputs", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="GBP"
+      />,
+    );
+    expect(await screen.findAllByText("£")).toHaveLength(2);
+    await userEvent.click(screen.getByLabelText(/price on application/i));
+    await waitFor(() => expect(screen.queryByText("£")).not.toBeInTheDocument());
   });
 });

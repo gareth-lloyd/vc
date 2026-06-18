@@ -10,6 +10,7 @@ from properties.models.features import (
     CollectionMembership,
     Feature,
     FeatureCategory,
+    PropertyFeature,
 )
 from properties.models.finance import GroupFinance, PropertyFinance
 from properties.models.geo import (
@@ -40,6 +41,7 @@ __all__ = [
     "PropertyCategory",
     "PropertyContactAssignment",
     "PropertyDescription",
+    "PropertyFeature",
     "PropertyFinance",
     "PropertyGroup",
     "PropertyImage",

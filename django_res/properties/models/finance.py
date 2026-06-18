@@ -24,7 +24,6 @@ from core.models.base import AuditedModel
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
-    SecurityDepositCalcFrom,
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
@@ -147,12 +146,6 @@ class PropertyFinance(_FinanceFieldMixin, AuditedModel):
         null=True,
         blank=True,
     )
-    security_deposit_calculate_from = models.CharField(
-        max_length=16,
-        choices=SecurityDepositCalcFrom.choices,
-        null=True,
-        blank=True,
-    )
     security_deposit_days_due_before_arrival = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
@@ -220,7 +213,6 @@ class PropertyFinance(_FinanceFieldMixin, AuditedModel):
             "required": self.effective("security_deposit_required"),
             "calculation_type": self.effective("security_deposit_calculation_type"),
             "amount": self.effective("security_deposit_amount"),
-            "calculate_from": self.effective("security_deposit_calculate_from"),
             "days_due_before_arrival": self.effective(
                 "security_deposit_days_due_before_arrival",
             ),
@@ -335,11 +327,6 @@ class GroupFinance(AuditedModel):
         max_digits=12,
         decimal_places=2,
         default=0,
-    )
-    security_deposit_calculate_from = models.CharField(
-        max_length=16,
-        choices=SecurityDepositCalcFrom.choices,
-        default=SecurityDepositCalcFrom.TOTAL_STAY,
     )
     security_deposit_days_due_before_arrival = models.PositiveSmallIntegerField(default=14)
     security_deposit_days_refunded_after_departure = models.PositiveSmallIntegerField(default=7)

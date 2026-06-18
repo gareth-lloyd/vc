@@ -29,7 +29,7 @@ from reservations.services.stay_options import (
 )
 
 if TYPE_CHECKING:
-    from pricing.models import Currency, RatePlan, RateRule
+    from pricing.models import Currency, RateCard, RatePlan, RateRule
     from properties.models import Property
     from reservations.models import Guest, TermsVersion
 
@@ -341,6 +341,138 @@ class TestStayOptionsSearch:
         assert result == {"property_id": 999_999, "available": False}
 
 
+@pytest.mark.django_db
+class TestWeeklyPrices:
+    """`StayOptionsService.weekly_prices` — GAP-030 timeline price strip."""
+
+    def test_fixed_changeover_prices_each_week(
+        self, property_: Property, rate_rule: RateRule
+    ) -> None:
+        # Sat 4 Jul → Sat 1 Aug: Saturday arrivals 4/11/18/25 Jul each fit a
+        # full 7-night block in the window, priced at £200 x 7.
+        _sat_changeover(property_)
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 8, 1),
+        )
+        assert result["property_id"] == property_.pk
+        assert result["changeover_day"] == "sat"
+        assert [(w["week_start"], w["week_end"], w["price"]) for w in result["weeks"]] == [
+            ("2026-07-04", "2026-07-11", "1400.00"),
+            ("2026-07-11", "2026-07-18", "1400.00"),
+            ("2026-07-18", "2026-07-25", "1400.00"),
+            ("2026-07-25", "2026-08-01", "1400.00"),
+        ]
+        assert all(w["currency_code"] == "GBP" for w in result["weeks"])
+        assert all(w["is_projected"] is False for w in result["weeks"])
+        assert all(w["is_poa"] is False for w in result["weeks"])
+        assert all(w["error_code"] is None for w in result["weeks"])
+
+    def test_flexible_changeover_returns_no_weeks(
+        self, property_: Property, rate_rule: RateRule
+    ) -> None:
+        # No ChangeOverRule → 'any' changeover: deferred (GAP-025 / Q-022).
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 8, 1),
+        )
+        assert result["changeover_day"] is None
+        assert result["weeks"] == []
+
+    def test_no_rate_emits_incomplete_shape_not_500(self, property_: Property) -> None:
+        # Fixed changeover but no rate plan → each week is incomplete-priced,
+        # never an exception.
+        _sat_changeover(property_)
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 18),
+        )
+        assert result["changeover_day"] == "sat"
+        assert len(result["weeks"]) == 2
+        for week in result["weeks"]:
+            assert week["price"] is None
+            assert week["error_code"] == "no_rate_available"
+            assert week["is_poa"] is False
+            assert week["currency_code"] is None
+
+    def test_poa_week_is_flagged(self, property_: Property, plan: RatePlan, card: RateCard) -> None:
+        from pricing.models import RateRule as RateRuleModel
+
+        _sat_changeover(property_)
+        RateRuleModel.objects.create(
+            card=card,
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 8, 31),
+            min_party=1,
+            max_party=8,
+            nightly=None,
+            is_poa=True,
+        )
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 18),
+        )
+        assert result["weeks"]
+        for week in result["weeks"]:
+            assert week["price"] is None
+            assert week["is_poa"] is True
+            assert week["error_code"] == "no_rate_available"
+            # POA still resolves a display currency (from the covering plan).
+            assert week["currency_code"] == "GBP"
+
+    def test_future_year_prices_are_flagged_as_projected_guides(
+        self, property_: Property, rate_rule: RateRule
+    ) -> None:
+        # 2027 has no plan; prices project from the 2026 rates and read as
+        # guides (is_projected), never firm quotes.
+        ChangeOverRule.objects.create(
+            property=property_,
+            day=PrefilledChangeOverDay.SAT,
+            starts_on=date(2027, 1, 1),
+            ends_on=date(2027, 12, 31),
+        )
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2027, 7, 3),
+            window_to=date(2027, 7, 31),
+        )
+        assert result["changeover_day"] == "sat"
+        assert result["weeks"]
+        for week in result["weeks"]:
+            assert week["is_projected"] is True
+            assert week["price"] is not None
+            assert week["error_code"] is None
+
+    def test_unknown_property_returns_empty_strip(self, db: None) -> None:
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[999_999],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 8, 1),
+        )
+        assert result == {"property_id": 999_999, "changeover_day": None, "weeks": []}
+
+    def test_query_count_does_not_reload_context_per_week(
+        self, property_: Property, rate_rule: RateRule
+    ) -> None:
+        # The expensive plan/card/rule context loads ONCE per property and
+        # every week's quote reuses it (the AC's "no N-times-weeks per-villa engine
+        # calls"). The residual per-week cost is the extras/discount/changeover
+        # lookups quote() always does — a PricingContext only caches the rate
+        # graph. Pin a ceiling well under the ~30 a per-week context *reload*
+        # would cost over this 4-week window, so a regression there can't hide.
+        _sat_changeover(property_)
+        with assert_max_queries(20):
+            StayOptionsService.weekly_prices(
+                property_ids=[property_.pk],
+                window_from=date(2026, 7, 4),
+                window_to=date(2026, 8, 1),
+            )
+
+
 # ----------------------------------------------------------------------
 # Endpoint
 # ----------------------------------------------------------------------
@@ -454,3 +586,52 @@ class TestSearchOptionsEndpoint:
         with assert_max_queries(12):
             response = api_client.post(self.URL, body, format="json")
         assert response.status_code == 200
+
+
+@pytest.mark.django_db
+class TestWeeklyPricesEndpoint:
+    URL = "/api/v1/availability/weekly-prices"
+
+    def _params(self, property_: Property, **overrides: str) -> dict[str, str]:
+        params = {
+            "property_ids": str(property_.pk),
+            "from": "2026-07-04",
+            "to": "2026-08-01",
+        }
+        params.update(overrides)
+        return params
+
+    def test_requires_staff(self, api_client: APIClient, property_: Property) -> None:
+        response = api_client.get(self.URL, self._params(property_))
+        assert response.status_code in (401, 403)
+
+    def test_returns_weekly_prices(
+        self,
+        api_client: APIClient,
+        staff: User,
+        property_: Property,
+        rate_rule: RateRule,
+    ) -> None:
+        _sat_changeover(property_)
+        api_client.force_authenticate(staff)
+        response = api_client.get(self.URL, self._params(property_))
+        assert response.status_code == 200
+        [row] = response.data["properties"]
+        assert row["property_id"] == property_.pk
+        assert row["changeover_day"] == "sat"
+        assert len(row["weeks"]) == 4
+        assert row["weeks"][0]["price"] == "1400.00"
+        assert row["weeks"][0]["currency_code"] == "GBP"
+
+    def test_missing_params_is_400(self, api_client: APIClient, staff: User) -> None:
+        api_client.force_authenticate(staff)
+        response = api_client.get(self.URL, {"property_ids": "", "from": "", "to": ""})
+        assert response.status_code == 400
+
+    def test_too_many_ids_is_400(self, api_client: APIClient, staff: User) -> None:
+        api_client.force_authenticate(staff)
+        ids = ",".join(str(n) for n in range(1, 52))  # 51 > 50 cap
+        response = api_client.get(
+            self.URL, {"property_ids": ids, "from": "2026-07-04", "to": "2026-08-01"}
+        )
+        assert response.status_code == 400

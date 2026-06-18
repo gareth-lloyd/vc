@@ -9,6 +9,37 @@
     "empty_title": "No properties match these filters",
     "empty_hint": "Try clearing the search or changing the country/status filter."
   },
+  "create": {
+    "button": "New villa",
+    "title": "Create a villa",
+    "description": "Fill in the essentials to create the villa. Everything else is added later on the edit tabs.",
+    "disabled_no_role": "You need reservations access to create a villa.",
+    "submit": "Create villa",
+    "fields": {
+      "name": "Name",
+      "display_name": "Display name",
+      "slug": "Slug",
+      "slug_help": "Used in the villa's URL. Auto-filled from the name — you can change it.",
+      "category": "Category",
+      "category_placeholder": "Select a category",
+      "group": "Group",
+      "group_placeholder": "Select a group",
+      "region": "Region",
+      "region_placeholder": "Select a region"
+    },
+    "toasts": {
+      "created": "Villa created"
+    },
+    "errors": {
+      "name_required": "Name is required",
+      "display_name_required": "Display name is required",
+      "slug_required": "Slug is required",
+      "slug_invalid": "Use only lowercase letters, numbers and dashes",
+      "category_required": "Pick a category",
+      "group_required": "Pick a group",
+      "region_required": "Pick a region"
+    }
+  },
   "status": {
     "any": "Any status",
     "active": "Active",
@@ -195,7 +226,8 @@
         "price_basis": "Price basis",
         "effective": "Effective",
         "status": "Status"
-      }
+      },
+      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}."
     },
     "active_badge": "Active",
     "inactive_badge": "Inactive",
@@ -740,10 +772,20 @@
       "title": "No features available",
       "description": "Ask an admin to seed the feature catalog before tagging this property."
     },
+    "none_selected": {
+      "title": "No features selected",
+      "description": "Use Add feature to build this property's feature list, then drag to reorder."
+    },
+    "row": {
+      "drag_handle_label": "Drag to reorder feature",
+      "remove_label": "Remove {{name}}",
+      "unknown_feature": "Unknown feature"
+    },
     "errors": {
       "load_failed": "Couldn't load features."
     },
     "actions": {
+      "add": "Add feature",
       "save": "Save changes",
       "saving": "Saving…",
       "reset": "Reset"
@@ -820,7 +862,8 @@
       "save": "Save finance",
       "saving": "Saving…",
       "saved": "Finance saved",
-      "save_failed": "Couldn't save finance"
+      "save_failed": "Couldn't save finance",
+      "no_currency_prompt": "No currency is set for this property yet — set one in Pricing so fixed amounts are labelled."
     },
     "lifecycle": {
       "title": "Lifecycle",

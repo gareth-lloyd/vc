@@ -19,13 +19,22 @@
   "window": {
     "prev": "Προηγούμενη εβδομάδα",
     "next": "Επόμενη εβδομάδα",
-    "today": "Σήμερα"
+    "today": "Σήμερα",
+    "month_span_single": "{{month}}",
+    "month_span_range": "{{start}} – {{end}}"
   },
   "legend": {
     "available": "Διαθέσιμο",
     "booked": "Κρατημένο",
     "on_hold": "Σε αναμονή",
     "stop_sale": "Στάση πωλήσεων"
+  },
+  "price": {
+    "poa": "Κατόπιν αιτήματος",
+    "none": "—",
+    "guide_value": "~{{value}}",
+    "guide_title": "Ενδεικτική τιμή",
+    "changeover_label": "({{day}})"
   },
   "gate": {
     "title": "Φιλτράρετε για να δείτε διαθεσιμότητα",

@@ -1,3 +1,16 @@
+> **✅ RESOLVED (2026-06-18)** — Relaxed `propertyRoomWriteInputSchema.beds`
+> from required to optional in `frontend/src/features/properties/schemas.ts`,
+> matching the serializer (`RoomSerializer.beds` is `required=False`,
+> `room.py:29`) so a room can be saved with just a name. `website_description`/
+> `vc_notes` were deliberately left as `z.string().trim()` (a PATCH sends `""`
+> to clear them; `.optional()` would emit `undefined` and silently stop
+> clearing) — covered by a regression-guard test. The broader structured
+> room-attribute posture (ensuite type, aircon, views, accessibility, floor)
+> needs an owner vocabulary decision and stays open under **Q-019**; only the
+> safe `beds` relaxation shipped here.
+>
+> _Original ticket preserved below for context._
+
 # GAP-024 — Required-field posture fights incremental property loading
 
 - **Severity:** Gap (workflow regression)

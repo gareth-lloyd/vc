@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, isNonNegativeMoney, isPositiveMoney, parseMoney } from "./money";
+import {
+  currencyAdornment,
+  formatMoney,
+  isNonNegativeMoney,
+  isPositiveMoney,
+  parseMoney,
+} from "./money";
 
 describe("parseMoney", () => {
   it("parses numbers and decimal strings", () => {
@@ -50,6 +56,31 @@ describe("isNonNegativeMoney", () => {
     expect(isNonNegativeMoney("")).toBe(false);
     expect(isNonNegativeMoney("abc")).toBe(false);
     expect(isNonNegativeMoney(null)).toBe(false);
+  });
+});
+
+describe("currencyAdornment", () => {
+  it("returns the symbol for a known currency", () => {
+    expect(currencyAdornment("GBP")).toBe("£");
+    expect(currencyAdornment("EUR")).toBe("€");
+  });
+
+  it("is case-insensitive on the code", () => {
+    expect(currencyAdornment("usd")).toBe("$");
+  });
+
+  it("trims padded symbols (e.g. CHF)", () => {
+    expect(currencyAdornment("CHF")).toBe("CHF");
+  });
+
+  it("falls back to the uppercased code when no symbol is mapped", () => {
+    expect(currencyAdornment("aed")).toBe("AED");
+  });
+
+  it("returns null when no currency is given", () => {
+    expect(currencyAdornment(null)).toBeNull();
+    expect(currencyAdornment(undefined)).toBeNull();
+    expect(currencyAdornment("")).toBeNull();
   });
 });
 

@@ -16,9 +16,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import InvalidSecurityDepositKind
+from core.locking import refresh_locked
 from core.logging.operations import log_operation
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
+    TERMINAL_SD_STATUSES,
     EventSource,
     PaymentMethod,
     PaymentProvider,
@@ -100,6 +102,120 @@ class SecurityDepositService:
             booking_id=booking.pk,
             kind=kind,
             amount=str(amount),
+            currency=booking.currency.code,
+        )
+        return sd
+
+    @classmethod
+    @transaction.atomic
+    def resize_for_booking(cls, booking: Any) -> SecurityDeposit | None:
+        """Resize a still-pre-charge SD when the booking total moves.
+
+        Hooked on `booking_total_changed` (charge-item writes *and* the
+        `modify_dates`/`modify_guests` endpoints), alongside the deposit/balance
+        schedule resync — this is what makes a charge added *after* the SD row
+        exists resize it (`PaymentScheduler.resync_for_booking` filters to
+        DEPOSIT/BALANCE and never touches the SD).
+
+        Only an SD that holds no money yet — AWAITING_DETAILS / AWAITING_BT —
+        may be resized; once it is PRE_AUTHED/HELD the figure is committed at the
+        provider, so a move is recorded as a deliberate skip event for operators
+        rather than silently applied. Percent SDs re-derive against the same
+        charges-inclusive total `create_for_booking` sized against; a fixed SD is
+        unaffected by the move (recomputes to the same figure, no event). No
+        SD → no-op.
+
+        Atomic and row-locked like every `transition_to_*`: the candidate is
+        re-read under `SELECT … FOR UPDATE` before any decision, so a concurrent
+        `hold()`/`mark_paid()` that committed the figure at the provider between
+        the unlocked lookup and here is seen (and skipped) rather than clobbered.
+        """
+        sd = (
+            SecurityDeposit.objects.filter(booking=booking)
+            .exclude(status__in=TERMINAL_SD_STATUSES)
+            .first()
+        )
+        if sd is None:
+            return None
+
+        # Lock + re-read before deciding anything. The lookup above is unlocked,
+        # so the status/amount it returned may already be stale; every other SD
+        # mutator takes this lock before its guard (`SecurityDeposit._transition`)
+        # and resize must too, or it can overwrite a provider-committed amount.
+        refresh_locked(sd)
+
+        finance = getattr(booking.property, "finance", None)
+        if finance is None:
+            return sd
+        policy = finance.effective_security_deposit_policy()
+        if not policy.get("required"):
+            return sd
+
+        new_amount = quantise_money(cls._size_sd(booking=booking, policy=policy), booking.currency)
+        if new_amount == sd.amount:
+            # The figure didn't move (a fixed SD, or a signal that left the
+            # total unchanged) — nothing to apply and nothing worth recording.
+            # Checked before the status guard so a settled SD does not accrue a
+            # skip event on every booking_total_changed that is a no-op for it.
+            return sd
+
+        if sd.status not in (
+            SecurityDepositStatus.AWAITING_DETAILS.value,
+            SecurityDepositStatus.AWAITING_BT.value,
+        ):
+            cls._write_sd_event(
+                sd,
+                kind="RESIZE_SKIPPED",
+                status=sd.status,
+                amount=str(sd.amount),
+                would_be=str(new_amount),
+                reason="not_pre_charge",
+            )
+            logger.info(
+                "security_deposit.resize_skipped",
+                security_deposit_id=sd.pk,
+                booking_id=booking.pk,
+                sd_status=sd.status,
+                would_be=str(new_amount),
+                reason="not_pre_charge",
+            )
+            return sd
+
+        if new_amount <= 0:
+            # A credit drove the recomputed figure to/under zero. The amount>0
+            # constraint forbids writing it, so the row stays at its current
+            # figure — but it is now overstated, so record the skip rather than
+            # returning mute (mirrors the schedule resync's residual write).
+            cls._write_sd_event(
+                sd,
+                kind="RESIZE_SKIPPED",
+                status=sd.status,
+                amount=str(sd.amount),
+                would_be=str(new_amount),
+                reason="non_positive_total",
+            )
+            logger.warning(
+                "security_deposit.resize_skipped",
+                security_deposit_id=sd.pk,
+                booking_id=booking.pk,
+                sd_status=sd.status,
+                would_be=str(new_amount),
+                reason="non_positive_total",
+            )
+            return sd
+
+        old_amount = sd.amount
+        sd.amount = new_amount
+        sd.save(update_fields=["amount", "updated_at"])
+        cls._write_sd_event(
+            sd, kind="RESIZE", from_amount=str(old_amount), to_amount=str(new_amount)
+        )
+        logger.info(
+            "security_deposit.resized",
+            security_deposit_id=sd.pk,
+            booking_id=booking.pk,
+            from_amount=str(old_amount),
+            to_amount=str(new_amount),
             currency=booking.currency.code,
         )
         return sd
@@ -330,6 +446,21 @@ class SecurityDepositService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _write_sd_event(sd: SecurityDeposit, *, kind: str, **meta: Any) -> None:
+        """Append a non-transitional (status-unchanged) audit row to the SD's
+        PaymentEvent stream — used by the resize/skip bookkeeping above so the
+        un/applied total change is visible on the SD timeline, not just in logs.
+        """
+        from payments.models.payment_event import PaymentEvent
+
+        PaymentEvent.objects.create(
+            security_deposit=sd,
+            kind=kind,
+            source=EventSource.SYSTEM.value,
+            meta=meta,
+        )
+
     @staticmethod
     def _supersede_active_hold(sd: SecurityDeposit, *, actor: Any = None) -> None:
         """Retire the still-active pre-auth hold Payment for `sd`.

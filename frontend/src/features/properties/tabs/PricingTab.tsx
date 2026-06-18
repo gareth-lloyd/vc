@@ -240,6 +240,7 @@ export function PricingTab() {
           />
         ) : selectedSeasonId != null ? (
           <SeasonDetailPanel
+            propertyId={property.id}
             seasonId={selectedSeasonId}
             onBack={() => setSelectedSeasonId(null)}
             canWrite={canWrite}

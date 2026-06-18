@@ -1,3 +1,18 @@
+> **✅ RESOLVED (2026-06-18)** — Money inputs now adorn with the resolved
+> currency. `PropertySettings` exposes a read-only group-resolved `currency_code`
+> (serializer `to_representation`, query-count pinned); the FE adorns rate/season
+> price inputs from the rate plan's `currency_code` and fixed finance amounts
+> from the property's effective `currency_code` (a `percent` amount shows `%`; an
+> inherited-type amount stays unadorned since its basis lives on the unseen
+> group). A season whose currency diverges from the property's shows a
+> **non-blocking** warning; a `fixed` amount with no resolved currency shows a
+> "set a currency" prompt rather than a blank prefix. Shared `MoneyInput`
+> (`components/ui/money-input.tsx`) + `currencyAdornment` (`lib/format/money.ts`).
+> Decision recorded in `10-decisions.md`. Multi-currency per property is
+> intentional — the currency is a display hint, not an enforced constraint.
+>
+> _Original ticket preserved below for context._
+
 # GAP-026 — Show the property currency beside every money field
 
 - **Severity:** Gap (UX / data-quality guard)
@@ -65,4 +80,5 @@ FE adornment only — no backend changes.
 
 ## Dependencies
 
-Touches the same surfaces as GAP-019 (`security_deposit_calculate_from`).
+Touches the finance-config money fields (the same `PropertyFinance` /
+`GroupFinance` surfaces GAP-019 cleaned up).

@@ -39,6 +39,7 @@ from reservations.views import (
     TermsVersionDetailView,
     TermsVersionListCreateView,
     TermsVersionPublishView,
+    WeeklyPricesView,
 )
 
 # ----------------------------------------------------------------------
@@ -381,6 +382,11 @@ _availability_routes: list[URLPattern | URLResolver] = [
         "availability",
         AvailabilityMultiView.as_view(),
         name="availability-multi",
+    ),
+    path(
+        "availability/weekly-prices",
+        WeeklyPricesView.as_view(),
+        name="availability-weekly-prices",
     ),
     path(
         "availability:search",

@@ -24,6 +24,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
+
 from core.exceptions import DomainError
 from pricing.models import Currency
 from pricing.services import PricingContext, PricingEngine
@@ -115,6 +117,48 @@ class StayOptionsService:
                 occupied=occupied,
             )
             for entry in requests
+        ]
+
+    @classmethod
+    def weekly_prices(
+        cls,
+        *,
+        property_ids: list[int],
+        window_from: date,
+        window_to: date,
+        currency: Currency | None = None,
+    ) -> list[dict[str, Any]]:
+        """Per-changeover-week guide prices for the multi-villa timeline (GAP-030).
+
+        For each **fixed-changeover** property, price every changeover-anchored
+        7-night block intersecting ``[window_from, window_to)`` at base occupancy
+        (`PropertyCapacity.guests`). **Flexible** (`any`) changeover villas are
+        deferred (cross-ref GAP-025 / Q-022): they return ``changeover_day=None``
+        and no weeks — the caller renders no strip, never an error.
+
+        A week with no automatic price (no covering rate, POA, or party out of
+        range) yields ``price=None`` plus the Q-013 incomplete-pricing shape —
+        never a 500 — mirroring `_search_one`. Guide (projected) prices carry
+        ``is_projected=True``.
+
+        Performance: ONE `PricingEngine.load_context()` per property covers the
+        whole window when a single plan spans it, and every week's quote reuses
+        it — no per-week plan/card/rule reload. When a plan boundary falls
+        inside the window the load returns ``None`` and each week loads its own
+        context (still correct, just off the fast path).
+        """
+        properties_by_id = {
+            p.pk: p for p in Property.objects.filter(pk__in=property_ids).select_related("capacity")
+        }
+        return [
+            cls._weekly_prices_one(
+                properties_by_id.get(property_id),
+                property_id,
+                window_from=window_from,
+                window_to=window_to,
+                currency=currency,
+            )
+            for property_id in property_ids
         ]
 
     # ------------------------------------------------------------------
@@ -250,6 +294,109 @@ class StayOptionsService:
         if not blocks:
             return [], 0, context
         return blocks, pick_default(blocks, preferred_from), context
+
+    @classmethod
+    def _weekly_prices_one(
+        cls,
+        property_obj: Property | None,
+        property_id: int,
+        *,
+        window_from: date,
+        window_to: date,
+        currency: Currency | None,
+    ) -> dict[str, Any]:
+        if property_obj is None:
+            return {"property_id": property_id, "changeover_day": None, "weeks": []}
+        # Surface the changeover as the code string ("sat") the rest of the
+        # quote API already uses, not a raw weekday int.
+        day_code = ChangeoverService.effective_day(property_obj, window_from)
+        weekday = ChangeoverService.weekday_for(day_code)
+        if weekday is None:
+            # Flexible / ANY changeover — deferred (GAP-025, Q-022).
+            return {"property_id": property_id, "changeover_day": None, "weeks": []}
+        blocks = candidate_blocks(window_from, window_to, weekday, 7)
+        party = cls._guide_party(property_obj)
+        # One context for the whole window — reused by every week's quote when a
+        # single plan spans it (see the method docstring's performance note).
+        window_context = PricingEngine.load_context(
+            property_obj,
+            date_from=window_from,
+            date_to=window_to,
+            currency=currency,
+        )
+        weeks = [
+            cls._price_week(
+                property_obj,
+                week_from,
+                week_to,
+                party=party,
+                currency=currency,
+                window_context=window_context,
+            )
+            for week_from, week_to in blocks
+        ]
+        return {"property_id": property_id, "changeover_day": day_code, "weeks": weeks}
+
+    @staticmethod
+    def _guide_party(property_obj: Property) -> int:
+        """Base occupancy for the guide price; never below 1 (an occupancy-
+        bracketed plan would 400 on party=0, so floor it and let the quote
+        raise loudly only on a genuine out-of-range)."""
+        try:
+            guests = property_obj.capacity.guests
+        except ObjectDoesNotExist:
+            guests = 0
+        return max(guests or 0, 1)
+
+    @classmethod
+    def _price_week(
+        cls,
+        property_obj: Property,
+        week_from: date,
+        week_to: date,
+        *,
+        party: int,
+        currency: Currency | None,
+        window_context: PricingContext | None,
+    ) -> dict[str, Any]:
+        try:
+            quote = PricingEngine.quote(
+                property=property_obj,
+                date_from=week_from,
+                date_to=week_to,
+                party=party,
+                currency=currency,
+                # The window context (covers any week inside it) — None falls
+                # back to the engine's own per-week load / projection.
+                context=window_context,
+            )
+        except DomainError as exc:
+            # Q-013 parity: no-rate / POA / party-out-of-range feed the
+            # incomplete-pricing shape, never a 500. POA is a NoRateAvailable
+            # whose message names it (the engine has no distinct POA code).
+            code = getattr(exc, "code", "domain_error")
+            is_poa = code == "no_rate_available" and "POA" in str(exc)
+            resolved = (
+                resolve_property_currency(property_obj) if code == "no_rate_available" else None
+            )
+            return {
+                "week_start": week_from.isoformat(),
+                "week_end": week_to.isoformat(),
+                "price": None,
+                "currency_code": resolved.code if resolved else None,
+                "is_projected": False,
+                "is_poa": is_poa,
+                "error_code": code,
+            }
+        return {
+            "week_start": week_from.isoformat(),
+            "week_end": week_to.isoformat(),
+            "price": str(quote.total),
+            "currency_code": quote.currency_code,
+            "is_projected": quote.is_projected,
+            "is_poa": False,
+            "error_code": None,
+        }
 
     @staticmethod
     def _occupied_intervals(

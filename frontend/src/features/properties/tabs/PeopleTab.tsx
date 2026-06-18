@@ -478,6 +478,10 @@ export function PeopleTab() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [createContactOpen, setCreateContactOpen] = useState(false);
+  // A contact created inline (GAP-027): held so the assignment dialog can
+  // re-open with it already selected. Cleared whenever that dialog closes so a
+  // later manual "Add contact" starts from a blank picker.
+  const [createdContact, setCreatedContact] = useState<Contact | null>(null);
 
   if (contacts.isLoading) {
     return (
@@ -509,7 +513,15 @@ export function PeopleTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{t("people.heading")}</h2>
         {canWrite ? (
-          <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              // Manual open always starts from a blank picker — the inline-create
+              // handoff sets `createdContact` deliberately right before reopening.
+              setCreatedContact(null);
+              setAddOpen(true);
+            }}
+          >
             {t("people.add_contact")}
           </Button>
         ) : (
@@ -549,8 +561,12 @@ export function PeopleTab() {
         <AssignmentFormDialog
           propertyId={propertyKey}
           open={addOpen}
-          onOpenChange={setAddOpen}
+          onOpenChange={(o) => {
+            setAddOpen(o);
+            if (!o) setCreatedContact(null);
+          }}
           mode="create"
+          initialContact={createdContact}
           onCreateNewContact={() => {
             setAddOpen(false);
             setCreateContactOpen(true);
@@ -562,7 +578,8 @@ export function PeopleTab() {
           open={createContactOpen}
           onOpenChange={setCreateContactOpen}
           mode="create"
-          onCreated={() => {
+          onCreated={(contact) => {
+            setCreatedContact(contact);
             setAddOpen(true);
           }}
         />

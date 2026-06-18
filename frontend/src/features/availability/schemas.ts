@@ -21,6 +21,33 @@ export const multiAvailabilityResponseSchema = z.object({
 });
 export type MultiAvailabilityResponse = z.infer<typeof multiAvailabilityResponseSchema>;
 
+// GAP-030 — weekly guide pricing on the timeline. `price` is a decimal string
+// (or null when incomplete/POA); `is_projected` flags a guide vs a firm price.
+export const weeklyPriceSchema = z.object({
+  week_start: z.string(),
+  week_end: z.string(),
+  price: z.string().nullable(),
+  currency_code: z.string().nullable(),
+  is_projected: z.boolean(),
+  is_poa: z.boolean(),
+  error_code: z.string().nullable(),
+});
+export type WeeklyPrice = z.infer<typeof weeklyPriceSchema>;
+
+export const weeklyPricesPropertySchema = z.object({
+  property_id: z.number(),
+  // The changeover-day code ("sat") for a fixed-changeover villa, or null when
+  // flexible/ANY (deferred — no price strip).
+  changeover_day: z.string().nullable(),
+  weeks: z.array(weeklyPriceSchema),
+});
+export type WeeklyPricesProperty = z.infer<typeof weeklyPricesPropertySchema>;
+
+export const weeklyPricesResponseSchema = z.object({
+  properties: z.array(weeklyPricesPropertySchema),
+});
+export type WeeklyPricesResponse = z.infer<typeof weeklyPricesResponseSchema>;
+
 export interface TimelineFilters {
   q?: string;
   country?: string;

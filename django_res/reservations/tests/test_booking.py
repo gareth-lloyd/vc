@@ -416,6 +416,45 @@ def test_modify_guests_fires_booking_total_changed(booking: Booking, rate_rule: 
     assert seen[0].pk == booking.pk
 
 
+@pytest.mark.django_db
+def test_modify_dates_resizes_security_deposit(booking: Booking, rate_rule: RateRule) -> None:
+    """The same `booking_total_changed` the schedule resync rides also resizes a
+    still-pre-charge SD — so a modify onto a pricier range grows the SD too,
+    proving GAP-019's resize composes with the GAP-015 modify path."""
+    from decimal import Decimal
+
+    from payments.services.security_deposit import SecurityDepositService
+    from properties.models.finance import GroupFinance, PropertyFinance
+
+    gf, _ = GroupFinance.objects.get_or_create(group=booking.property.group)
+    gf.security_deposit_required = True
+    gf.security_deposit_amount = Decimal("10.00")
+    gf.security_deposit_calculation_type = "percent"
+    gf.security_deposit_payment_method = "card_hold"
+    gf.save(
+        update_fields=[
+            "security_deposit_required",
+            "security_deposit_amount",
+            "security_deposit_calculation_type",
+            "security_deposit_payment_method",
+        ]
+    )
+    PropertyFinance.objects.get_or_create(property=booking.property)
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    # Re-fetch so the SD policy resolves against the finance just written, not
+    # relations the fixture cached before it existed.
+    fresh = Booking.objects.get(pk=booking.pk)
+    sd = SecurityDepositService.create_for_booking(fresh)
+    assert sd is not None
+    assert sd.amount == Decimal("140.00")  # 10% of 1400
+
+    # 14 nights * £200 = £2800 → 10% = £280.
+    fresh.modify_dates(date(2026, 6, 10), date(2026, 6, 24))
+
+    sd.refresh_from_db()
+    assert sd.amount == Decimal("280.00")
+
+
 # ---------------------------------------------------------------------------
 # archive / restore
 # ---------------------------------------------------------------------------

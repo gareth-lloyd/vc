@@ -49,6 +49,9 @@ interface CommonProps {
 
 interface CreateProps extends CommonProps {
   mode: "create";
+  // Pre-fill the date range (e.g. from a click-drag on the month grid). Reason
+  // and notes are still chosen in the dialog.
+  initialRange?: { date_from: string; date_to: string };
 }
 
 interface EditProps extends CommonProps {
@@ -65,6 +68,13 @@ const CREATE_DEFAULTS: AvailabilityBlockWriteInput = {
   notes: "",
 };
 
+function createDefaults(initialRange?: {
+  date_from: string;
+  date_to: string;
+}): AvailabilityBlockWriteInput {
+  return initialRange ? { ...CREATE_DEFAULTS, ...initialRange } : CREATE_DEFAULTS;
+}
+
 function defaultsFromBlock(block: EditableBlock): AvailabilityBlockWriteInput {
   return {
     reason: block.reason,
@@ -79,9 +89,10 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
+  const initialRange = props.mode === "create" ? props.initialRange : undefined;
   const form = useForm<AvailabilityBlockWriteInput>({
     resolver: zodResolver(availabilityBlockWriteInputSchema),
-    defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromBlock(props.block),
+    defaultValues: isCreate ? createDefaults(initialRange) : defaultsFromBlock(props.block),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -91,11 +102,11 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromBlock(props.block));
+      form.reset(isCreate ? createDefaults(initialRange) : defaultsFromBlock(props.block));
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isCreate ? null : props.block.id]);
+  }, [open, isCreate ? null : props.block.id, initialRange?.date_from, initialRange?.date_to]);
 
   const handleSubmit = async (values: AvailabilityBlockWriteInput) => {
     setTopLevelError(null);

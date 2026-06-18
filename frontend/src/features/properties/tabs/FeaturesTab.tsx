@@ -1,18 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { toast } from "sonner";
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useFeatureCategories, useFeatures } from "@/features/admin/tags/hooks";
-import type { Feature, FeatureCategory } from "@/features/admin/tags/schemas";
+import type { Feature } from "@/features/admin/tags/schemas";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
 import { useUpdatePropertyFeatures } from "../hooks";
 import type { PropertyDetail } from "../schemas";
@@ -22,58 +37,63 @@ interface FeaturesContext {
   property: PropertyDetail;
 }
 
-interface CategorySectionProps {
-  category: FeatureCategory;
-  features: Feature[];
-  selected: Set<number>;
+interface SelectedFeatureRowProps {
+  id: number;
+  feature: Feature | undefined;
+  categoryName: string | undefined;
   canWrite: boolean;
-  onToggle: (id: number) => void;
+  onRemove: (id: number) => void;
+  t: TFunction<"properties">;
 }
 
-function CategorySection({
-  category,
-  features,
-  selected,
+function SelectedFeatureRow({
+  id,
+  feature,
+  categoryName,
   canWrite,
-  onToggle,
-}: CategorySectionProps) {
-  const sorted = useMemo(
-    () => [...features].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
-    [features],
-  );
+  onRemove,
+  t,
+}: SelectedFeatureRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !canWrite,
+  });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  const name = feature?.name ?? t("features.row.unknown_feature");
+
   return (
-    <section className="space-y-3">
-      <h3 className="text-foreground flex items-center gap-2 text-sm font-semibold">
-        <FeatureIcon name={category.icon} className="text-muted-foreground size-4" />
-        {category.name}
-      </h3>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {sorted.map((feature) => {
-          const id = `feature-${feature.id}`;
-          const isChecked = selected.has(feature.id);
-          return (
-            <div
-              key={feature.id}
-              className="border-border bg-card flex items-start gap-2 rounded-md border p-2"
-            >
-              <Checkbox
-                id={id}
-                checked={isChecked}
-                disabled={!canWrite}
-                onCheckedChange={() => onToggle(feature.id)}
-              />
-              <Label htmlFor={id} className="flex items-center gap-1.5 text-sm font-normal">
-                <FeatureIcon
-                  name={feature.icon}
-                  className="text-muted-foreground size-4 shrink-0"
-                />
-                {feature.name}
-              </Label>
-            </div>
-          );
-        })}
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "border-border bg-card flex items-center justify-between gap-3 rounded-md border p-2",
+        isDragging && "opacity-60",
+      )}
+      data-testid={`property-feature-row-${id}`}
+    >
+      <div
+        className="flex min-w-0 flex-1 items-center gap-2"
+        {...(canWrite ? { ...attributes, ...listeners } : {})}
+        aria-label={canWrite ? t("features.row.drag_handle_label") : undefined}
+        role={canWrite ? "button" : undefined}
+      >
+        <span className="text-muted-foreground px-1 select-none">⋮⋮</span>
+        <FeatureIcon name={feature?.icon ?? ""} className="text-muted-foreground size-4 shrink-0" />
+        <span className="truncate text-sm font-medium">{name}</span>
+        {categoryName ? <Badge variant="outline">{categoryName}</Badge> : null}
       </div>
-    </section>
+      {canWrite ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2"
+          aria-label={t("features.row.remove_label", { name })}
+          onClick={() => onRemove(id)}
+        >
+          ✕
+        </Button>
+      ) : null}
+    </li>
   );
 }
 
@@ -84,63 +104,88 @@ export function FeaturesTab() {
   const features = useFeatures({});
   const categories = useFeatureCategories({});
   const saveMutation = useUpdatePropertyFeatures(property.id);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const initialSelected = useMemo(
-    () => new Set<number>(property.feature_ids ?? []),
-    [property.feature_ids],
-  );
-  const [selected, setSelected] = useState<Set<number>>(initialSelected);
+  // The ORDERED list of selected feature ids is the source of truth — its index
+  // becomes each link's `sort_order` server-side (GAP-022). Reordering is a real
+  // edit, so `isDirty` is order-sensitive (unlike the old Set-based grid).
+  const initialOrder = useMemo(() => property.feature_ids ?? [], [property.feature_ids]);
+  const [order, setOrder] = useState<number[]>(initialOrder);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
   // Reset only when navigating between properties — refetches of the same
-  // property must not clobber in-flight user edits (e.g. after Save).
+  // property (e.g. after Save invalidates the detail query) must not clobber
+  // in-flight edits. After Save the server echoes the persisted order, so
+  // `initialOrder` catches up and `isDirty` settles to false on its own.
   useEffect(() => {
-    setSelected(new Set<number>(property.feature_ids ?? []));
+    setOrder(property.feature_ids ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id]);
 
-  const isDirty = useMemo(() => {
-    if (selected.size !== initialSelected.size) return true;
-    for (const id of selected) {
-      if (!initialSelected.has(id)) return true;
-    }
-    return false;
-  }, [selected, initialSelected]);
-
-  const featuresByCategory = useMemo(() => {
-    const map = new Map<number, Feature[]>();
-    for (const f of features.data?.results ?? []) {
-      if (!f.is_active) continue;
-      const list = map.get(f.category) ?? [];
-      list.push(f);
-      map.set(f.category, list);
-    }
+  const featuresById = useMemo(() => {
+    const map = new Map<number, Feature>();
+    for (const f of features.data?.results ?? []) map.set(f.id, f);
     return map;
   }, [features.data?.results]);
 
-  const orderedCategories = useMemo(() => {
-    const rows = categories.data?.results ?? [];
-    return [...rows]
-      .filter((c) => c.is_active)
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  const categoryNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of categories.data?.results ?? []) map.set(c.id, c.name);
+    return map;
   }, [categories.data?.results]);
 
-  const handleToggle = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
+  const selectedSet = useMemo(() => new Set(order), [order]);
+
+  const isDirty = useMemo(() => {
+    if (order.length !== initialOrder.length) return true;
+    return order.some((id, i) => id !== initialOrder[i]);
+  }, [order, initialOrder]);
+
+  // Unselected, active features offered by the add control, sorted by category
+  // then per-category rank — grouping the dropdown without a grouped data shape.
+  const availableToAdd = useMemo(() => {
+    const catSort = new Map(
+      (categories.data?.results ?? []).map((c) => [c.id, c.sort_order] as const),
+    );
+    return (features.data?.results ?? [])
+      .filter((f) => f.is_active && !selectedSet.has(f.id))
+      .sort(
+        (a, b) =>
+          (catSort.get(a.category) ?? 0) - (catSort.get(b.category) ?? 0) ||
+          a.sort_order - b.sort_order ||
+          a.name.localeCompare(b.name),
+      );
+  }, [features.data?.results, categories.data?.results, selectedSet]);
+
+  const hasCatalogue = useMemo(
+    () => (features.data?.results ?? []).some((f) => f.is_active),
+    [features.data?.results],
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setOrder((prev) => {
+      const oldIndex = prev.indexOf(Number(active.id));
+      const newIndex = prev.indexOf(Number(over.id));
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
     });
+  };
+
+  const handleAdd = (id: number) => {
+    setOrder((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const handleRemove = (id: number) => {
+    setOrder((prev) => prev.filter((x) => x !== id));
   };
 
   const handleSave = async () => {
     setTopLevelError(null);
     try {
-      await saveMutation.mutateAsync(Array.from(selected));
+      // Send `order` verbatim — list position is the persisted sort_order.
+      await saveMutation.mutateAsync(order);
       toast.success(t("features.toasts.saved"));
     } catch (error) {
       if (error instanceof ApiError && error.isClientError()) {
@@ -152,7 +197,7 @@ export function FeaturesTab() {
   };
 
   const handleReset = () => {
-    setSelected(initialSelected);
+    setOrder(initialOrder);
     setTopLevelError(null);
   };
 
@@ -181,6 +226,31 @@ export function FeaturesTab() {
     );
   }
 
+  const addControl = canWrite ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" disabled={availableToAdd.length === 0}>
+          {t("features.actions.add")}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+        {availableToAdd.map((feature) => (
+          <DropdownMenuItem
+            key={feature.id}
+            className="gap-2"
+            onClick={() => handleAdd(feature.id)}
+          >
+            <FeatureIcon name={feature.icon} className="text-muted-foreground size-4 shrink-0" />
+            <span className="flex-1">{feature.name}</span>
+            <span className="text-muted-foreground text-xs">
+              {categoryNameById.get(feature.category)}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
   const saveButton = canWrite ? (
     <Button size="sm" onClick={handleSave} disabled={!isDirty || saveMutation.isPending}>
       {saveMutation.isPending ? t("features.actions.saving") : t("features.actions.save")}
@@ -203,6 +273,7 @@ export function FeaturesTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{t("features.title")}</h2>
         <div className="flex items-center gap-2">
+          {addControl}
           <Button variant="outline" size="sm" onClick={handleReset} disabled={!isDirty}>
             {t("features.actions.reset")}
           </Button>
@@ -210,28 +281,37 @@ export function FeaturesTab() {
         </div>
       </div>
 
-      {orderedCategories.length === 0 ? (
+      {!hasCatalogue ? (
         <EmptyState
           title={t("features.empty.title")}
           description={t("features.empty.description")}
         />
+      ) : order.length === 0 ? (
+        <EmptyState
+          title={t("features.none_selected.title")}
+          description={t("features.none_selected.description")}
+        />
       ) : (
-        <div className="space-y-6">
-          {orderedCategories.map((category) => {
-            const list = featuresByCategory.get(category.id) ?? [];
-            if (list.length === 0) return null;
-            return (
-              <CategorySection
-                key={category.id}
-                category={category}
-                features={list}
-                selected={selected}
-                canWrite={canWrite}
-                onToggle={handleToggle}
-              />
-            );
-          })}
-        </div>
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <SortableContext items={order} strategy={verticalListSortingStrategy}>
+            <ul className="space-y-2">
+              {order.map((id) => {
+                const feature = featuresById.get(id);
+                return (
+                  <SelectedFeatureRow
+                    key={id}
+                    id={id}
+                    feature={feature}
+                    categoryName={feature ? categoryNameById.get(feature.category) : undefined}
+                    canWrite={canWrite}
+                    onRemove={handleRemove}
+                    t={t}
+                  />
+                );
+              })}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
 
       <FormErrorAlert message={topLevelError} />

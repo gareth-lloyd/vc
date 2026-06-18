@@ -13,6 +13,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.calendar_feed import PropertyCalendarFeed
         from properties.models.changeover import ChangeOverRule
         from properties.models.contacts import PropertyContactAssignment
+        from properties.models.features import PropertyFeature
         from properties.models.finance import GroupFinance, PropertyFinance
         from properties.models.geo import PropertyNearbyPlace
         from properties.models.images import PropertyImage
@@ -59,7 +60,6 @@ class PropertiesConfig(AppConfig):
             "security_deposit_required",
             "security_deposit_calculation_type",
             "security_deposit_amount",
-            "security_deposit_calculate_from",
             "security_deposit_days_due_before_arrival",
             "security_deposit_days_refunded_after_departure",
             "security_deposit_payment_method",
@@ -131,4 +131,16 @@ class PropertiesConfig(AppConfig):
                 "end_date",
                 "is_primary",
             ),
+        )
+        # Deselecting a feature hard-deletes a `PropertyFeature` row, so the link
+        # (and its per-villa `sort_order`) must leave a `__deleted__` tombstone
+        # naming what vanished (FG-017). Deletes (incl. `.set()`'s removals) and
+        # direct `sort_order` edits are captured; additions via the M2M `.set()`
+        # go through `bulk_create` and fire no `pre_save`, so granting a feature
+        # is not yet logged. That gap closes in GAP-022 step 4, when the write
+        # path becomes an explicit per-row diff-writer (add/remove/update) so a
+        # reorder logs only the moved rows and an addition logs its own row.
+        audit.track(
+            PropertyFeature,
+            fields=("property_id", "feature_id", "sort_order"),
         )

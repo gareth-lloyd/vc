@@ -29,7 +29,6 @@ from pricing.services.currency import resolve_property_currency
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
-    SecurityDepositCalcFrom,
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
@@ -55,11 +54,6 @@ _SEC_DEPOSIT_TYPE_MAP = {
     1: SecurityDepositCalcType.PERCENT,
     2: SecurityDepositCalcType.FIXED,
 }
-_SEC_DEPOSIT_FROM_MAP = {
-    1: SecurityDepositCalcFrom.NIGHTLY,
-    2: SecurityDepositCalcFrom.WEEKLY,
-    3: SecurityDepositCalcFrom.TOTAL_STAY,
-}
 
 _VILLAFINANCE_COLUMNS = (
     "Id, VillaId, ContactId, ParentId, CommissionTypeId, CommissionAmount, "
@@ -74,7 +68,7 @@ _VILLAFINANCE_COLUMNS = (
     "PaymentScheduleDaysInterimDueBeforeArrival, "
     "PaymentScheduleDaysBalanceDueBeforeArrival, "
     "SecurityDepositIsRequired, SecurityDepositAmountTypeId, "
-    "SecurityDepositAmount, SecurityDepositCalculateFromId, "
+    "SecurityDepositAmount, "
     "SecurityDepositDaysDueBeforeArrival, SecurityDepositDaysRefundedAfterDeparture"
 )
 
@@ -146,9 +140,6 @@ def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
             row.get("SecurityDepositAmountTypeId") or 0,
         ),
         "security_deposit_amount": _decimal(row.get("SecurityDepositAmount")),
-        "security_deposit_calculate_from": _SEC_DEPOSIT_FROM_MAP.get(
-            row.get("SecurityDepositCalculateFromId") or 0,
-        ),
         "security_deposit_days_due_before_arrival": row.get(
             "SecurityDepositDaysDueBeforeArrival",
         ),

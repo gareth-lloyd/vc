@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchCollections, fetchProperties, fetchRegions } from "@/features/properties/api";
 import type { PropertyFilters } from "@/features/properties/schemas";
-import { fetchMultiAvailability } from "./api";
+import { fetchMultiAvailability, fetchWeeklyPrices } from "./api";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
 
 /**
@@ -40,6 +40,19 @@ export function useMultiAvailability(propertyIds: number[], from: string, to: st
   return useQuery({
     queryKey: queryKeys.availability.timeline(propertyIds, from, to),
     queryFn: () => fetchMultiAvailability(propertyIds, from, to),
+    enabled: propertyIds.length > 0,
+  });
+}
+
+/**
+ * Per-week guide prices for the timeline (GAP-030) — a SEPARATE query from the
+ * bands so the price strip fills in after the (faster) availability bands,
+ * never blocking them. Same id/window gate as `useMultiAvailability`.
+ */
+export function useWeeklyPrices(propertyIds: number[], from: string, to: string) {
+  return useQuery({
+    queryKey: queryKeys.availability.weeklyPrices(propertyIds, from, to),
+    queryFn: () => fetchWeeklyPrices(propertyIds, from, to),
     enabled: propertyIds.length > 0,
   });
 }

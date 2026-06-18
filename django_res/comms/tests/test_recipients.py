@@ -9,6 +9,7 @@ not a missing email log buried under a signal handler.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 
@@ -271,6 +272,27 @@ def test_primary_owner_email_returns_none_for_non_primary_assignment() -> None:
     )
 
     assert primary_owner_email(property_) is None
+
+
+@pytest.mark.django_db
+def test_primary_owner_email_reads_email_from_prefetch_cache(
+    django_assert_num_queries: Any,
+) -> None:
+    """GAP-045 Unit 3c-2c: the resolver prefetches ``contact__emails``, so the
+    delegated ``Person.primary_email()`` reads the cache — the assignment fetch +
+    its email prefetch, and no third per-call query for the address."""
+    property_ = _build_property("prefetch")
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email="owner@example.com", is_primary=True)
+    PropertyContactAssignment.objects.create(
+        property=property_,
+        contact=contact,
+        role=ContactRole.OWNER,
+        is_primary=True,
+    )
+
+    with django_assert_num_queries(2):
+        assert primary_owner_email(property_) == "owner@example.com"
 
 
 @pytest.mark.django_db

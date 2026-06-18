@@ -305,3 +305,36 @@ def test_upcoming_arrivals_window_and_naming(
     assert len(arrivals) == 1
     assert arrivals[0]["guest_name"] == f"{guest.first_name} {guest.last_name}"
     assert "guest_contact" not in arrivals[0]
+
+
+def test_upcoming_arrivals_name_reads_person_first(
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    guest: Guest,
+    property_: Property,
+) -> None:
+    """GAP-045 Unit 3c-2c: the arrivals name resolves from the Person mirror,
+    falling back to the guest while ``person`` is null."""
+    from reservations.services.person_sync import person_for_guest
+
+    user = _owner_with_full_money_grant(property_)
+    today = timezone.localdate()
+    booking = _make_booking(
+        property_=property_,
+        gbp=gbp,
+        terms=terms,
+        guest=guest,
+        date_from=today + timedelta(days=5),
+        rental_price="1400.00",
+        status=BookingStatus.BALANCE_PAID.value,
+    )
+    person = person_for_guest(guest)
+    person.first_name = "Grace"
+    person.last_name = "Hopper"
+    person.save(update_fields=["first_name", "last_name", "updated_at"])
+    Booking.objects.filter(pk=booking.pk).update(person=person)
+
+    api_client.force_authenticate(user)
+    body = api_client.get(URL).json()
+    assert body["upcoming_arrivals"][0]["guest_name"] == "Grace Hopper"

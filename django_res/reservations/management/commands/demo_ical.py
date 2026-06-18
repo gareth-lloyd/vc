@@ -473,7 +473,9 @@ def _delete_demo_data() -> int:
     up whatever the demo actually created — including a booking-clash booking and
     an owner created under a non-default --owner-email.
     """
-    from accounts.models import User
+    from django.db.models import Q
+
+    from accounts.models import Person, User
     from owners.models import OwnerMembership, OwnerOrganisation, OwnerOrgProperty
     from pricing.models import RatePlan
     from properties.models import (
@@ -497,6 +499,20 @@ def _delete_demo_data() -> int:
 
     total = 0
     with transaction.atomic():
+        # The 3c-1a Guest post_save signal mirrors each demo Guest into a
+        # ``guest-{pk}`` Person; deleting the Guest does NOT cascade to it (no
+        # Guest→Person FK), so resolve the mirror ids up front (materialised
+        # before any delete touches their PersonEmail rows) and erase them after
+        # the Guest delete, or every --reset would strand a PII-bearing Person.
+        demo_person_ids = list(
+            Person.objects.filter(emails__email=GUEST_EMAIL).values_list("pk", flat=True)
+        )
+        # Person-first ownership predicate, reused at each teardown site so the
+        # three filters can never drift. The guest leg is the established
+        # fallback (removed in 3d) and catches a person=NULL row such as the
+        # booking-clash enquiry from make_occupying_booking.
+        demo_owned = Q(person_id__in=demo_person_ids) | Q(guest__email=GUEST_EMAIL)
+
         prop = Property.objects.filter(slug=PROPERTY_SLUG).first()
         if prop is not None:
             # When the demo runs against a pre-existing (seeded) property, only
@@ -532,7 +548,7 @@ def _delete_demo_data() -> int:
             # against_payment, so deletion order among the money rows is free.
             demo_bookings = Booking.objects.filter(property=prop)
             if not created_by_demo:
-                demo_bookings = demo_bookings.filter(guest__email=GUEST_EMAIL)
+                demo_bookings = demo_bookings.filter(demo_owned)
             for booking in demo_bookings:
                 booking.refunds.all().delete()
                 booking.security_deposits.all().delete()
@@ -557,9 +573,7 @@ def _delete_demo_data() -> int:
                         "quotation_id", flat=True
                     )
                 )
-            quotation_ids.update(
-                Quotation.objects.filter(guest__email=GUEST_EMAIL).values_list("pk", flat=True)
-            )
+            quotation_ids.update(Quotation.objects.filter(demo_owned).values_list("pk", flat=True))
             # Quotation.enquiry PROTECTs the enquiry until the quotation is gone,
             # so collect the candidate enquiries before deleting the quotations.
             enquiry_ids = {
@@ -569,9 +583,7 @@ def _delete_demo_data() -> int:
                 )
                 if eid is not None
             }
-            enquiry_ids.update(
-                Enquiry.objects.filter(guest__email=GUEST_EMAIL).values_list("pk", flat=True)
-            )
+            enquiry_ids.update(Enquiry.objects.filter(demo_owned).values_list("pk", flat=True))
             total += Quotation.objects.filter(pk__in=quotation_ids).delete()[0]
             # Only drop enquiries with no surviving quotation (another quotation
             # on a different property could still PROTECT one).
@@ -594,6 +606,9 @@ def _delete_demo_data() -> int:
                 total += prop.calendar_feeds.all().delete()[0]
 
         total += Guest.objects.filter(email=GUEST_EMAIL).delete()[0]
+        # Erase the Person mirrors stranded by the Guest delete (cascades their
+        # PersonEmail/PersonPhone children). Resolved before any delete above.
+        total += Person.objects.filter(pk__in=demo_person_ids).delete()[0]
 
         org = OwnerOrganisation.objects.filter(name=ORG_NAME).first()
         if org is not None:

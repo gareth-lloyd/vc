@@ -22,9 +22,15 @@ from rest_framework import serializers
 
 from reservations.enums import OwnerBlockKind
 from reservations.models import OwnerBlock
+from reservations.serializers._contact_reads import (
+    contact_email,
+    contact_name,
+    contact_phone,
+)
 from reservations.services.owner_finance import owner_money_for_booking
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from reservations.models import Booking
     from reservations.models.guest import Guest
 
@@ -40,8 +46,15 @@ class OwnerBookingListSerializer(serializers.Serializer):
         return self.context["visibility"].get(obj.property_id, _HIDDEN_VISIBILITY)
 
     @staticmethod
-    def _country(guest: Guest | None) -> dict[str, str] | None:
-        country = guest.country if guest is not None else None
+    def _country(person: Person | None, guest: Guest | None) -> dict[str, str] | None:
+        # Person-first, guest fallback (removed in 3d). Both are real FKs to
+        # properties.Country, so .iso2/.name resolve uniformly — no free-text
+        # divergence to reconcile.
+        country = None
+        if person is not None and person.country_id:
+            country = person.country
+        elif guest is not None:
+            country = guest.country
         if country is None:
             return None
         return {"code": country.iso2, "name": country.name}
@@ -50,6 +63,7 @@ class OwnerBookingListSerializer(serializers.Serializer):
         obj = instance
         vis = self._visibility(obj)
         guest = obj.guest if obj.guest_id else None
+        person = obj.person if obj.person_id else None
         prop = obj.property if obj.property_id else None
 
         data: dict[str, Any] = {
@@ -63,18 +77,23 @@ class OwnerBookingListSerializer(serializers.Serializer):
             "adults": obj.adults,
             "children": obj.children,
             "currency_code": obj.currency.code if obj.currency_id else None,
-            "guest_name": (
-                (f"{guest.first_name} {guest.last_name}".strip() or None) if guest else None
-            ),
-            "guest_country": self._country(guest),
+            "guest_name": contact_name(person, guest),
+            "guest_country": self._country(person, guest),
             "is_repeat_guest": bool(getattr(obj, "is_repeat_guest", False)),
         }
 
         if vis["view_full_money"]:
             data["rental_price"] = f"{obj.rental_price:.2f}"
             data["balance_due"] = f"{obj.balance_due:.2f}"
-        if vis["view_guest_details"] and guest is not None:
-            data["guest_contact"] = {"email": guest.email, "phone": guest.phone}
+        if vis["view_guest_details"]:
+            # Person-first email/phone; emit the key only when at least one
+            # channel resolves, so an ANONYMIZED person (both fail closed) and a
+            # contactless guest both stay redacted — matching the existing
+            # "guest_contact not in detail" tests.
+            email = contact_email(person, guest)
+            phone = contact_phone(person, guest)
+            if email is not None or phone is not None:
+                data["guest_contact"] = {"email": email, "phone": phone}
         # Capability flag: may *this* caller approve/decline this booking? Pure
         # role capability — the UI combines it with the pending status. Sourced
         # from a role-scoped set the view places in context (default empty so a

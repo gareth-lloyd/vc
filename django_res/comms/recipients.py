@@ -86,6 +86,7 @@ def primary_owner_email(property_: Property) -> str | None:
         )
         .filter(Q(end_date__isnull=True) | Q(end_date__gt=today))
         .select_related("contact")
+        .prefetch_related("contact__emails")
         .first()
     )
     if assignment is None:

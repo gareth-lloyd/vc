@@ -159,6 +159,14 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
     _run("--poll")
     _run("--inject-conflict", "booking")
 
+    from accounts.models import Person
+
+    # The demo Guest was mirrored into a Person by the 3c-1a sync signal; the
+    # booking-clash enquiry it owns has person=NULL (made via
+    # make_occupying_booking), so the union teardown filter must catch it on the
+    # guest leg.
+    assert Person.objects.filter(emails__email=GUEST_EMAIL).exists()
+
     _run("--reset")  # would raise ProtectedError if the Booking weren't deleted
 
     from reservations.models import Booking, Guest
@@ -166,6 +174,9 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
+    # The Person mirror (and its PII-bearing email/phone children) must not be
+    # stranded — otherwise mirrors accumulate and --reset stops being idempotent.
+    assert not Person.objects.filter(emails__email=GUEST_EMAIL).exists()
 
 
 @respx.mock
@@ -260,6 +271,51 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
+
+
+@respx.mock
+@override_settings(OPS_EMAIL_RECIPIENTS=["ops@villacollective.test"])
+@pytest.mark.usefixtures("system_profile")
+def test_reset_after_quotation_conflict_clears_person_mirror() -> None:
+    """The quotation-clash path links its Quotation/Enquiry to a Person; --reset
+    must remove the demo rows AND the stranded Person mirror."""
+    respx.get(_FEED_URL).mock(return_value=httpx.Response(200, text=_ics("20260701", "20260705")))
+    _run("--setup")
+    _run("--add-feed", "--feed-url", _FEED_URL)
+    _run("--poll")
+    _run("--inject-conflict", "quotation")
+
+    from accounts.models import Person
+
+    assert Person.objects.filter(emails__email=GUEST_EMAIL).exists()
+
+    _run("--reset")
+
+    from reservations.models import Guest, Quotation
+
+    assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
+    assert not Quotation.objects.filter(guest__email=GUEST_EMAIL).exists()
+    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
+    assert not Person.objects.filter(emails__email=GUEST_EMAIL).exists()
+
+
+@respx.mock
+@override_settings(OPS_EMAIL_RECIPIENTS=["ops@villacollective.test"])
+@pytest.mark.usefixtures("system_profile")
+def test_repeated_setup_reset_does_not_accumulate_person_mirrors() -> None:
+    """Idempotency regression: two full setup→conflict→reset cycles must leave
+    zero demo Person mirrors behind, not one per cycle."""
+    respx.get(_FEED_URL).mock(return_value=httpx.Response(200, text=_ics("20260701", "20260705")))
+    from accounts.models import Person
+
+    for _ in range(2):
+        _run("--setup")
+        _run("--add-feed", "--feed-url", _FEED_URL)
+        _run("--poll")
+        _run("--inject-conflict", "booking")
+        _run("--reset")
+
+    assert Person.objects.filter(emails__email=GUEST_EMAIL).count() == 0
 
 
 def test_reset_cleans_up_custom_owner_email() -> None:

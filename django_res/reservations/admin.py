@@ -118,7 +118,14 @@ class BookingNoteAdmin(admin.ModelAdmin):
 class BookingGuestAdmin(admin.ModelAdmin):
     list_display = ("pk", "booking", "guest", "role", "email_override")
     list_filter = ("role",)
-    search_fields = ("booking__reference", "guest__email", "guest__last_name")
+    search_fields = (
+        "booking__reference",
+        "guest__email",
+        "guest__last_name",
+        "person__last_name",
+        "person__first_name",
+        "person__emails__email",
+    )
     raw_id_fields = ("booking", "guest", "person")
 
 

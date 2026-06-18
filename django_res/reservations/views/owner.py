@@ -35,6 +35,7 @@ from owners.scoping import (
 from properties.models import Property
 from reservations.enums import BookingStatus
 from reservations.models import Booking, OwnerBlock
+from reservations.serializers._contact_reads import contact_name
 from reservations.serializers.owner import (
     OwnerBlockSerializer,
     OwnerBlockWriteSerializer,
@@ -125,7 +126,7 @@ class OwnerDashboardView(APIView):
                 date_from__gte=today,
                 date_from__lte=today + timedelta(days=_UPCOMING_WINDOW_DAYS),
             )
-            .select_related("property", "guest")
+            .select_related("property", "guest", "person")
             .order_by("date_from")[:_UPCOMING_LIMIT]
         )
         upcoming_payload = [
@@ -136,10 +137,9 @@ class OwnerDashboardView(APIView):
                 "date_from": booking.date_from,
                 "date_to": booking.date_to,
                 # Named, contact withheld — the owner redaction policy.
-                "guest_name": (
-                    f"{booking.guest.first_name} {booking.guest.last_name}".strip()
-                    if booking.guest_id
-                    else None
+                "guest_name": contact_name(
+                    booking.person if booking.person_id else None,
+                    booking.guest if booking.guest_id else None,
                 ),
                 "adults": booking.adults,
                 "children": booking.children,
@@ -190,7 +190,15 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         return (
             Booking.objects.filter(property_id__in=property_ids, is_archived=False)
             .exclude(status=BookingStatus.DRAFT.value)
-            .select_related("property", "guest", "guest__country", "currency")
+            .select_related(
+                "property",
+                "guest",
+                "guest__country",
+                "person",
+                "person__country",
+                "currency",
+            )
+            .prefetch_related("person__emails", "person__phones")
             .annotate(is_repeat_guest=repeat)
             .order_by("-date_from")
         )

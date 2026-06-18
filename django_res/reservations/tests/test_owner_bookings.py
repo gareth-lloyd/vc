@@ -260,7 +260,9 @@ def test_guest_contact_shown_with_grant(
     api_client.force_authenticate(user)
     detail = _detail(api_client, booking)
     assert detail["guest_contact"]["email"] == guest.email
-    assert detail["guest_contact"]["phone"] == guest.phone
+    # An absent phone ("" on the guest) is value-gated to null by the
+    # person-first contact helpers — matching the staff-API contract (3c-2a).
+    assert detail["guest_contact"]["phone"] is None
 
 
 def test_guest_always_named_with_country_and_repeat(
@@ -335,3 +337,150 @@ def test_list_query_budget(
     api_client.force_authenticate(user)
     with assert_max_queries(12):
         api_client.get(LIST_URL)
+
+
+# ---------------------------------------------------------------------------
+# GAP-045 Unit 3c-2c — owner reads resolve person-first, guest fallback
+# ---------------------------------------------------------------------------
+
+
+def _repoint_person(guest: Guest, *, country: Country | None = None) -> Any:
+    """Edit the Guest's Person mirror so its name / email / phone / country
+    differ from the originating Guest — proving the owner read switched source."""
+    from accounts.enums import PhoneLabel
+    from accounts.models import PersonPhone
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
+    person.first_name = "Grace"
+    person.last_name = "Hopper"
+    if country is not None:
+        person.country = country
+    person.save(update_fields=["first_name", "last_name", "country", "updated_at"])
+    primary_email = person.emails.filter(is_primary=True).first()
+    assert primary_email is not None
+    primary_email.email = "grace@navy.mil"
+    primary_email.save(update_fields=["email", "updated_at"])
+    PersonPhone.objects.create(
+        contact=person, number="+15125550100", label=PhoneLabel.MOBILE.value, is_primary=True
+    )
+    return person
+
+
+def _attach_person(booking: Booking, person: Any) -> None:
+    Booking.objects.filter(pk=booking.pk).update(person=person)
+
+
+def test_owner_detail_reads_person_name_and_contact(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_guest_details=True)
+    booking = _make_booking(property_=property_, gbp=gbp, terms=terms, guest=guest)
+    person = _repoint_person(guest)
+    _attach_person(booking, person)
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["guest_name"] == "Grace Hopper"
+    assert detail["guest_contact"]["email"] == "grace@navy.mil"
+    assert detail["guest_contact"]["phone"] == "+15125550100"
+
+
+def test_owner_person_country_wins_over_guest(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    greece, _ = Country.objects.get_or_create(
+        iso2="GR", defaults={"name": "Greece", "iso3": "GRC", "sort_order": 300}
+    )
+    france, _ = Country.objects.get_or_create(
+        iso2="FR", defaults={"name": "France", "iso3": "FRA", "sort_order": 301}
+    )
+    guest.country = greece
+    guest.save(update_fields=["country"])
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_)  # no flags → contact hidden, name + country still shown
+    booking = _make_booking(property_=property_, gbp=gbp, terms=terms, guest=guest)
+    person = _repoint_person(guest, country=france)
+    _attach_person(booking, person)
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["guest_country"] == {"code": "FR", "name": "France"}
+
+
+def test_owner_falls_back_to_guest_when_person_null(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    greece, _ = Country.objects.get_or_create(
+        iso2="GR", defaults={"name": "Greece", "iso3": "GRC", "sort_order": 300}
+    )
+    guest.country = greece
+    guest.save(update_fields=["country"])
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_guest_details=True)
+    # _make_booking leaves person=NULL → the read must fall back to the guest.
+    booking = _make_booking(property_=property_, gbp=gbp, terms=terms, guest=guest)
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["guest_name"] == "Ada Lovelace"
+    assert detail["guest_country"] == {"code": "GR", "name": "Greece"}
+    assert detail["guest_contact"]["email"] == "ada@example.com"
+
+
+def test_owner_guest_contact_absent_for_anonymized_customer(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    """An anonymized customer leaks no channel: ``Person.primary_email/phone``
+    fail closed on ANONYMIZED and ``Guest.anonymize`` nulls its own channels, so
+    both arms of the fallback are empty and ``guest_contact`` is omitted entirely
+    (matching the no-grant redaction tests)."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_guest_details=True)
+    booking = _make_booking(property_=property_, gbp=gbp, terms=terms, guest=guest)
+    person = _repoint_person(guest)
+    _attach_person(booking, person)
+    # Anonymizing the Guest cascades to its Person mirror via the 3c-1a sync
+    # signal, so both the person and guest channels fail closed.
+    guest.anonymize()
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert "guest_contact" not in detail
+    assert "grace@navy.mil" not in str(detail)
+    assert "ada@example.com" not in str(detail)
+
+
+def test_owner_list_person_reads_stay_within_query_budget(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, property_: Property
+) -> None:
+    """The person join + email/phone prefetch keep the owner list at a constant
+    budget regardless of how many person-linked bookings it returns."""
+    from core.tests import assert_max_queries
+
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_guest_details=True)
+    today = timezone.localdate()
+    for i in range(4):
+        g = Guest.objects.create(
+            first_name="Extra", last_name="Guest", email=f"owner-extra{i}@example.com"
+        )
+        booking = _make_booking(
+            property_=property_,
+            gbp=gbp,
+            terms=terms,
+            guest=g,
+            date_from=today - timedelta(days=10 * (i + 1)),
+        )
+        _attach_person(booking, _repoint_person(g))
+
+    api_client.force_authenticate(user)
+    with assert_max_queries(12):
+        response = api_client.get(LIST_URL)
+    assert len(response.json()["results"]) == 4

@@ -45,7 +45,11 @@ class ReservationsConfig(AppConfig):
         )
         # Booking state machine + money fields. The chatty `pricing_snapshot`
         # JSON is skipped; the dollar columns capture the deltas that matter
-        # for an audit trail.
+        # for an audit trail. `guest_id`/`person_id` (GAP-045) capture the
+        # customer the booking was BORN with; post-create LEAD reassignment
+        # mutates them only via `_booking_guest_post_save`'s `queryset.update()`
+        # (no pre_save signal — bypasses this trail by design), so the LEAD
+        # change history lives on the audited `BookingGuest` row, not here.
         track(
             Booking,
             fields=[
@@ -59,6 +63,8 @@ class ReservationsConfig(AppConfig):
                 "adjustment",
                 "balance_due",
                 "balance_due_at",
+                "guest_id",
+                "person_id",
                 "agent_id",
                 "assigned_to_id",
                 "payment_method",
@@ -86,6 +92,7 @@ class ReservationsConfig(AppConfig):
                 "phone",
                 "contact_method",
                 "guest_id",
+                "person_id",
                 "property_id",
                 "agent_id",
                 "assigned_to_id",
@@ -106,6 +113,7 @@ class ReservationsConfig(AppConfig):
                 "is_unbranded",
                 "agent_id",
                 "guest_id",
+                "person_id",
                 "enquiry_id",
             ],
         )
@@ -131,6 +139,7 @@ class ReservationsConfig(AppConfig):
             fields=[
                 "booking_id",
                 "guest_id",
+                "person_id",
                 "role",
                 "email_override",
             ],

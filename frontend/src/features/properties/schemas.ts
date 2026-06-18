@@ -601,6 +601,10 @@ export const propertySettingsSchema = z.object({
   // IANA timezone, sourced from the property's location; null when the
   // property has no location row yet. Not inheritable from the group.
   timezone: z.string().nullable().optional(),
+  // Read-only group-resolved currency as a string code (GAP-026): the effective
+  // currency money inputs commit to, with the raw `currency` FK's inheritance
+  // already applied. Null when neither property nor group sets a currency.
+  currency_code: z.string().nullable().optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 

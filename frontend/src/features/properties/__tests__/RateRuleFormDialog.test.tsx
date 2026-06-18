@@ -281,3 +281,49 @@ describe("RateRuleFormDialog — changeover end-date suggestion (GAP-025)", () =
     expect(dateTo.value).toBe("");
   });
 });
+
+describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  it("shows the rate plan currency symbol beside both price inputs", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+      />,
+    );
+    // One adornment for nightly, one for weekly.
+    expect(await screen.findAllByText("€")).toHaveLength(2);
+  });
+
+  it("renders no symbol when the season has no currency", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+    );
+    expect(screen.queryByText("€")).not.toBeInTheDocument();
+    expect(screen.queryByText("£")).not.toBeInTheDocument();
+  });
+
+  it("hides the symbol once POA masks the price inputs", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="GBP"
+      />,
+    );
+    expect(await screen.findAllByText("£")).toHaveLength(2);
+    await userEvent.click(screen.getByLabelText(/price on application/i));
+    await waitFor(() => expect(screen.queryByText("£")).not.toBeInTheDocument());
+  });
+});

@@ -50,6 +50,16 @@ export function isNonNegativeMoney(value: string | number | null | undefined): b
   return Number.isFinite(parsed) && parsed >= 0;
 }
 
+// The token to render as a money-input adornment: the currency symbol when
+// known (e.g. "£", "€"), else the uppercased code itself (e.g. "AED" for a
+// currency with no mapped symbol), else `null` when no currency is resolved —
+// callers show a "set currency" prompt in that case rather than a blank prefix.
+export function currencyAdornment(currencyCode: string | null | undefined): string | null {
+  if (!currencyCode) return null;
+  const code = currencyCode.toUpperCase();
+  return SYMBOLS[code]?.trim() ?? code;
+}
+
 export function formatMoney(
   value: string | number | null | undefined,
   currencyCode: string | null | undefined,

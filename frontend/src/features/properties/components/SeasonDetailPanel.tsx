@@ -207,6 +207,14 @@ export function SeasonDetailPanel({
   const settings = usePropertySettings(propertyId);
   const changeoverDay = settings.data?.changeover_day ?? null;
   const minNightsRental = settings.data?.min_nights_rental ?? null;
+  // GAP-026: the property's effective currency, used to flag (softly, never
+  // blocking) a season whose currency diverges from it.
+  const propertyCurrencyCode = settings.data?.currency_code ?? null;
+  const seasonCurrencyCode = detail.data?.currency_code ?? null;
+  const currencyMismatch =
+    !!propertyCurrencyCode &&
+    !!seasonCurrencyCode &&
+    propertyCurrencyCode.toUpperCase() !== seasonCurrencyCode.toUpperCase();
   const dash = t("common.unset");
 
   const deleteCardMutation = useDeleteRateCard(seasonId);
@@ -305,6 +313,17 @@ export function SeasonDetailPanel({
               value={<ActiveBadge isActive={detail.data.is_active} />}
             />
           </FactList>
+          {currencyMismatch ? (
+            <p
+              role="status"
+              className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-xs"
+            >
+              {t("pricing.season_detail.currency_mismatch", {
+                season: seasonCurrencyCode,
+                property: propertyCurrencyCode,
+              })}
+            </p>
+          ) : null}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-foreground text-sm font-semibold">
@@ -360,6 +379,7 @@ export function SeasonDetailPanel({
           defaults={nextRuleDefaults(addingRuleCard)}
           changeoverDay={changeoverDay}
           minNightsRental={minNightsRental}
+          currencyCode={seasonCurrencyCode}
         />
       ) : null}
       {editingRule ? (
@@ -370,6 +390,7 @@ export function SeasonDetailPanel({
           onOpenChange={(o) => !o && setEditingRule(null)}
           mode="edit"
           rule={editingRule}
+          currencyCode={seasonCurrencyCode}
         />
       ) : null}
       {deletingCard ? (

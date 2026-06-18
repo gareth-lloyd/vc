@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-17): **54 done** (51 resolved + 3 dropped), **67 open**
+Scoreboard (2026-06-18): **55 done** (52 resolved + 3 dropped), **66 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -57,7 +57,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | 🟨 partial — ingest engine + feed model shipped; residual = staff-awareness UI + sales indicator (GAP-034) |
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
-| [GAP-015](gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` don't resync the payment schedule | ⬜ |
 | [GAP-016](gap-016-rental-price-override.md) | Rental-price override (legacy parity remainder) | ⬜ |
 | [GAP-017](gap-017-legacy-villabookingdetails-loader.md) | Data-migration loader for legacy `VillaBookingDetails` | ⬜ |
 | [GAP-018](gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ⬜ |
@@ -163,6 +162,7 @@ problem, fix, and commit. Listed here for traceability.
 | [GAP-008](done/gap-008-no-rate-night-fallback-parity.md) | No-rate-night fallback parity (`fallback_nightly`) |
 | [GAP-009](done/gap-009-discount-loose-ends.md) | Discount loose ends |
 | [GAP-014](done/gap-014-quote-currency-forced-selection.md) | Quote builder forced currency → per-line currency |
+| [GAP-015](done/gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` resync the payment schedule |
 | [INV-001](done/inv-001-propertycontactassignment-owner-uniqueness.md) | `PropertyContactAssignment` owner uniqueness |
 | [INV-002](done/inv-002-raterule-priority-tiebreak.md) | `RateRule.priority` tie-break |
 | [INV-003](done/inv-003-refund-amount-sign-convention.md) | `Refund.amount` sign convention |

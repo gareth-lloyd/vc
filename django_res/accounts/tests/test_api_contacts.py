@@ -229,6 +229,25 @@ def test_list_contacts(api_client: APIClient, staff: User, contact: Person) -> N
 
 
 @pytest.mark.django_db
+def test_list_contacts_excludes_guest_backfilled_persons(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # GAP-045 Unit 3b: Persons back-filled from reservations.Guest carry a
+    # `guest-` legacy_id and must not leak into the owner/agent directory.
+    api_client.force_login(staff)
+    guest_person = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="guest-42"
+    )
+
+    response = api_client.get("/api/v1/contacts")
+
+    assert response.status_code == 200
+    ids = {row["id"] for row in response.json()["results"]}
+    assert contact.pk in ids
+    assert guest_person.pk not in ids
+
+
+@pytest.mark.django_db
 def test_patch_contact(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 

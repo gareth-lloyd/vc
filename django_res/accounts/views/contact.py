@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
 from accounts.enums import PersonStatus
-from accounts.models import Person, PersonEmail, PersonPhone
+from accounts.models import GUEST_LEGACY_PREFIX, Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
     ContactPhoneSerializer,
@@ -48,7 +48,13 @@ class ContactFilterSet(FilterSet):
 class ContactViewSet(viewsets.ModelViewSet[Person]):
     """`/contacts` — owner/agent/manager records."""
 
-    queryset = Person.objects.all().prefetch_related("emails", "phones")
+    # GAP-045 Unit 3b: exclude Persons back-filled from `reservations.Guest`
+    # (`legacy_id` namespaced `guest-`) so the data backfill doesn't leak travel
+    # guests into the owner/agent directory. Unit 3c reworks `/contacts` into a
+    # proper filtered view and revisits this.
+    queryset = Person.objects.exclude(legacy_id__startswith=GUEST_LEGACY_PREFIX).prefetch_related(
+        "emails", "phones"
+    )
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

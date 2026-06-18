@@ -11,10 +11,10 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-15): **54 done** (51 resolved + 3 dropped), **45 open**
-(incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (Six
-GAP tickets — 010, 015–019 — were absent from the old index and are now
-listed.)
+Scoreboard (2026-06-17): **54 done** (51 resolved + 3 dropped), **63 open**
+(incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
+are the availability/commission/region/services cluster; GAP-038–044 are the
+enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 ---
 
@@ -54,7 +54,7 @@ listed.)
 |---|---|---|
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy + spine UX overhaul | ⬜ tracker |
 | [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md) | Quote/enquiry specs analysed against the wrong (post-deletion) codebase | ⬜ tracker / corrected reference |
-| [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | ⬜ deferred (v2 tracker) |
+| [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | 🟨 partial — ingest engine + feed model shipped; residual = staff-awareness UI + sales indicator (GAP-034) |
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
 | [GAP-015](gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` don't resync the payment schedule | ⬜ |
@@ -72,6 +72,21 @@ listed.)
 | [GAP-027](gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ⬜ inline-create already wired; real fix is picker auto-select + convention doc; required-field divergence spun out to GAP-029 |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
 | [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ⬜ |
+| [GAP-030](gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ⬜ reuses `StayOptionsService`; fixed-changeover only, variable/sub-week deferred |
+| [GAP-031](gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ⬜ FE-only polish, sibling of GAP-030 |
+| [GAP-032](gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ⬜ FE-only; no API change |
+| [GAP-033](gap-033-availability-last-confirmed-timestamp.md) | Availability "last confirmed" timestamp + manual confirm button | ⬜ legacy parity; resets on owner-availability events only, not VC churn |
+| [GAP-034](gap-034-availability-calendar-source-indicator.md) | Sales-view calendar-source indicator: iCal badge + owner calendar link | ⬜ builds on shipped `PropertyCalendarFeed` (GAP-011 residual UI) |
+| [GAP-035](gap-035-net-gross-commission-derivation.md) | Net↔gross rate entry with automatic commission derivation | ⬜ entry-time tool; x-ref BUG-009 single-source-of-truth |
+| [GAP-036](gap-036-region-filter-property-listing.md) | Region filter on the property listing grid (status filter already exists) | ⬜ FE-only; backend + region API already shipped |
+| [GAP-037](gap-037-services-as-separate-entity-and-tab.md) | Services as a separate entity + tab, split from season inclusions | ⬜ reconcile 3 inclusion concepts; model + UX decision |
+| [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md) | Enquiry pipeline: stage taxonomy + quotes-to-convert metric | ⬜ owner Loom 2026-06-17; builds on GAP-005 stacking |
+| [GAP-039](gap-039-enquiry-dashboard-enrichment.md) | Enquiry list/dashboard enrichment to the Ben/owner mockup | ⬜ owner Loom 2026-06-17 |
+| [GAP-040](gap-040-customer-tags-taxonomy.md) | Customer tags taxonomy (VIP/Trade/Disability/…) | ⬜ owner Loom 2026-06-17; new area, model-shape decision first |
+| [GAP-041](gap-041-standing-linked-contacts.md) | Standing linked contacts (spouse/child/PA) | ⬜ owner Loom 2026-06-17; new area |
+| [GAP-042](gap-042-customer-360-profile-view.md) | Customer 360 profile for the sales team | ⬜ owner Loom 2026-06-17; consumes GAP-040/041; "calls" needs activity-log decision |
+| [GAP-043](gap-043-quote-builder-multi-week-range.md) | Quote builder: multi-week date-range selection | ⬜ owner Loom 2026-06-17; reverses the flexibility_days rework (replace-vs-coexist open) |
+| [GAP-044](gap-044-occupancy-band-fanout-builder.md) | Quote builder: occupancy-band fan-out (all bands, default-checked) | ⬜ owner Loom 2026-06-17; reverses 04-pricing "no auto fan-out" |
 
 ## Open product questions
 
@@ -90,7 +105,8 @@ listed.)
 | [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ decided jointly with GAP-024 |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
 | [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ groups stay (owner removal deemed premature); coordinate seed list with GAP-022 |
-| [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ |
+| [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); cross-villa reporting still open |
+| [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; partial-week rule open |
 
 ## Decisions blocking implementation
 

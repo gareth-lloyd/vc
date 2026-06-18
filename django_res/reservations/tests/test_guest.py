@@ -200,6 +200,78 @@ def test_merge_deletion_row_records_merged_into_and_rewrite_counts(
     assert all(count > 0 for count in rewrites.values())
 
 
+# ---------------------------------------------------------------------------
+# GAP-045 Unit 3c-3c — a guest merge/anonymize no longer strands a Person mirror
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_merge_repoints_person_fk_and_erases_source_mirror() -> None:
+    """A guest merge folds the source's `guest-{pk}` Person mirror into the
+    target's: the rows' parallel `person` FK repoints to the surviving mirror and
+    the orphan mirror is hard-deleted — no inconsistent guest=target/person=dead
+    row, no stranded PII Person."""
+    from accounts.models import Person
+    from reservations.services.person_sync import person_for_guest
+
+    keep = Guest.objects.create(first_name="Keep", last_name="Me", email="keep@x.com")
+    duplicate = Guest.objects.create(first_name="Dup", last_name="Me", email="dup@x.com")
+    source_mirror = person_for_guest(duplicate)
+    target_mirror = person_for_guest(keep)
+    # A row linked to BOTH the source guest and its mirror, as the 3c-1b write
+    # paths populate it.
+    enquiry = duplicate.enquiries.create(person=source_mirror)
+
+    duplicate.merge(keep)
+
+    assert not Guest.objects.filter(pk=duplicate.pk).exists()
+    assert not Person.objects.filter(pk=source_mirror.pk).exists()
+    enquiry.refresh_from_db()
+    assert enquiry.guest_id == keep.pk
+    assert enquiry.person_id == target_mirror.pk
+
+
+@pytest.mark.django_db
+def test_merge_scrubs_source_mirror_deletion_row_pii() -> None:
+    """The folded-away mirror's deletion row carries no recoverable cleartext
+    PII (Person.merge scrubs it — BUG-012)."""
+    from accounts.models import Person
+    from reservations.services.person_sync import person_for_guest
+
+    keep = Guest.objects.create(first_name="Keep", last_name="Me", email="keep@x.com")
+    duplicate = Guest.objects.create(first_name="Leaky", last_name="Name", email="dup@x.com")
+    source_mirror = person_for_guest(duplicate)
+
+    duplicate.merge(keep)
+
+    assert not Person.objects.filter(pk=source_mirror.pk).exists()
+    ct = ContentType.objects.get_for_model(Person)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(source_mirror.pk))
+    blob = " ".join(str(r.field_diffs) for r in rows)
+    assert "Leaky" not in blob
+
+
+@pytest.mark.django_db
+def test_anonymize_cascades_to_person_mirror(guest: Guest) -> None:
+    """`Guest.anonymize` runs via `.save()`, firing the sync signal that
+    anonymizes the mirror too — so no cleartext survives on the Person side."""
+    from accounts.enums import PersonStatus
+    from accounts.models import Person
+    from reservations.services.person_sync import person_for_guest
+
+    mirror = person_for_guest(guest)
+    assert mirror.status != PersonStatus.ANONYMIZED
+
+    guest.anonymize()
+
+    mirror = Person.objects.get(pk=mirror.pk)
+    assert mirror.status == PersonStatus.ANONYMIZED
+    assert mirror.first_name == "[REDACTED]"
+    # Children rewritten to the sentinel / blanked.
+    assert not mirror.emails.exclude(email__endswith="@anonymized.local").exists()
+    assert mirror.primary_email() is None
+
+
 @pytest.mark.django_db
 def test_changing_contact_method_writes_audit_row(guest: Guest) -> None:
     """The preferred-channel change must be captured in the AuditLog trail,

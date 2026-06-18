@@ -189,6 +189,16 @@ class Guest(AuditedModel):
         """
         if target.pk == self.pk:
             raise ValueError("Cannot merge a guest into itself")
+        # GAP-045: each Guest has a parallel `guest-{pk}` Person mirror, and the
+        # reservation rows carry BOTH a `guest` FK (rewritten below) and a
+        # `person` FK (pointing at this mirror). Resolve both mirrors NOW, before
+        # the delete — `person_for_guest(self)` after `self.delete()` would
+        # re-create a mirror keyed to a dead guest. Same-app import kept local to
+        # avoid a models ↔ services import cycle at load time.
+        from reservations.services.person_sync import person_for_guest
+
+        source_mirror = person_for_guest(self)
+        target_mirror = person_for_guest(target)
         # The .update() rewrites bypass the audit signals, so record a summary
         # of what moved (per-relation counts) onto the deletion row (FG-016).
         rewrites: dict[str, int] = {}
@@ -214,3 +224,10 @@ class Guest(AuditedModel):
         # augmented row is scrubbed too (FG-016).
         record_merge(self, target_pk, rewrites)
         scrub_pii(self, self._AUDIT_PII_FIELDS)
+        # Fold the source's Person mirror into the target's: rewrites the rows'
+        # parallel `person` FK (still pointing at source_mirror — the guest-FK
+        # rewrite above never touched it) onto target_mirror and hard-deletes the
+        # orphan mirror with its PII scrubbed. Without this a guest merge would
+        # leave guest=target but person=source_mirror (inconsistent) and strand a
+        # PII-bearing Person. Channel-safe since 3c-3b.
+        source_mirror.merge(target_mirror)

@@ -255,6 +255,14 @@ Constraints:
 - `UniqueConstraint(property, contact, role, condition=Q(end_date__isnull=True), name="unique_active_role_assignment")` — same role for the same person can't be open twice.
 - `UniqueConstraint(property, role, condition=Q(is_primary=True, end_date__isnull=True), name="one_primary_per_role")`.
 
+**Primacy is per-role, never per-villa (GAP-027).** There is no single
+property-wide "primary contact": `one_primary_per_role` lets a primary OWNER and
+a primary MANAGER coexist. Consumers resolve "the" primary by purpose —
+commercial/sales → primary OWNER; operations/concierge → primary MANAGER
+(falling back to HOUSEKEEPER); finance → primary OWNER unless an OWNERS_REP is
+primary. Do **not** add a property-level `is_primary`; any UI that shows "the
+primary contact" must label which role it is resolving. See `10-decisions.md`.
+
 Surfaced on Property:
 ```python
 contacts = M2M("accounts.Contact", through="PropertyContactAssignment", related_name="properties")

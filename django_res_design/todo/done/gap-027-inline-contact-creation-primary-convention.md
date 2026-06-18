@@ -1,3 +1,20 @@
+> **✅ RESOLVED (2026-06-18)** — Two parts, both shipped.
+> **Auto-select:** `ContactFormDialog.onCreated` already returned the created
+> `Contact`; `PeopleTab` now holds it (`createdContact`) and passes it to
+> `AssignmentFormDialog` as a new optional `initialContact`, which seeds both the
+> picker's `selectedContact` and the form's `contact` id (in the open-effect too).
+> `createdContact` is cleared on every manual "Add contact" and whenever the
+> assignment dialog closes, so a later unrelated assignment starts from a blank
+> picker. No new minimal-contact dialog — the existing `ContactFormDialog`/
+> `ContactPicker` are reused (the picker renders the selected `Contact` directly,
+> so no React-Query cache priming is needed). **Convention:** recorded in
+> `10-decisions.md` + `02-properties.md` — no property-wide primary; primacy
+> resolves per role via the pre-existing `one_primary_per_role` constraint
+> (documentation only, no new enforcement). Vitest covers the auto-select and the
+> blank-on-manual-reopen guarantee.
+>
+> _Original ticket preserved below for context._
+
 # GAP-027 — Inline contact creation from the property + per-role primary convention
 
 > ℹ️ **Note (2026-06-18):** under the unified-`Person` model (GAP-045), the

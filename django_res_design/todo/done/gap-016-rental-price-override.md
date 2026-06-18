@@ -1,3 +1,15 @@
+> **❌ DROPPED (2026-06-18)** — Problem: legacy let staff overwrite
+> `VillaBooking.RentalPrice` directly; the rebuild has no equivalent override.
+> Fix: superseded by the signed charge-line. `BookingChargeItem` (e.g.
+> "Negotiated rate adjustment −400.00") already covers the operator need and is
+> *better* than a silent edit — the label records the *why*, and the write
+> resyncs the deposit/balance schedule and any pre-charge security deposit (the
+> `booking_total_changed` chain, GAP-015/GAP-019). No new `:override-price`
+> action; re-open only if ops require a true rental-figure override (e.g. a
+> re-priced engine total) the charge line can't express.
+>
+> _Original ticket preserved below for context._
+
 # GAP-016 — rental-price override (legacy parity remainder)
 
 - **Severity:** Gap

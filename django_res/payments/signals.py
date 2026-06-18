@@ -90,17 +90,23 @@ def _resync_schedule_on_booking_total_changed(
     booking: Any,
     **_: Any,
 ) -> None:
-    """Resize the unsettled schedule when staff-entered money moves the total.
+    """Resize the unsettled schedule (and a pre-charge SD) when staff-entered
+    money moves the total.
 
     reservations fires `booking_total_changed` from the charge-item model
-    signals; the resize lives here because the spine forbids reservations →
-    payments. The resync is a no-op until a schedule exists, and the
-    charge-item write paths run inside one transaction with it, so the
-    charge and the resized rows commit (or roll back) together.
+    signals and the `modify_dates`/`modify_guests` endpoints; the resize lives
+    here because the spine forbids reservations → payments. The schedule resync
+    is a no-op until a schedule exists; the SD resize is a no-op until an SD
+    exists and only touches it while still AWAITING_DETAILS/AWAITING_BT. Both
+    services live in `payments`, and the charge-item write paths run inside one
+    transaction with this receiver, so the charge and the resized rows commit
+    (or roll back) together.
     """
     from payments.services.payment_scheduler import PaymentScheduler
+    from payments.services.security_deposit import SecurityDepositService
 
     PaymentScheduler.resync_for_booking(booking)
+    SecurityDepositService.resize_for_booking(booking)
 
 
 def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) -> None:

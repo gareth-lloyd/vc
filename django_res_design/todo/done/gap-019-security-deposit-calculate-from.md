@@ -1,3 +1,21 @@
+> **✅ RESOLVED (2026-06-18)** — Two remainders from the SD percent-base fix.
+> **Part 1 (dead `calculate_from`):** dropped. `_size_sd` always sizes a percent
+> SD against the charges-inclusive booking total, and legacy did the same — its
+> `CalculateFrom` basis was ignored (`ResService.cs:2519-2526`). The field/enum
+> were removed from the finance models, effective policy, serializer, audit
+> registration, data-migration loader and SPA schema (migration
+> `properties/0018`). Commit `d641bee`.
+> **Part 2 (no SD resync on later charges):** `resync_for_booking` filters to
+> DEPOSIT/BALANCE, so a charge added after the SD row existed never resized it.
+> Added `SecurityDepositService.resize_for_booking`, hooked on the same
+> `booking_total_changed` receiver as the schedule resync; it re-derives a
+> percent SD but only while still AWAITING_DETAILS/AWAITING_BT — once
+> PRE_AUTHED/HELD the figure is committed at the provider, so the move is logged
+> as a `RESIZE_SKIPPED` event instead. The merged GAP-015 modify path rides the
+> same signal, so modifies resize the SD for free. Commit `1e52b70`.
+>
+> _Original ticket preserved below for context._
+
 # GAP-019 — security deposit sizing ignores `calculate_from`; no resync on charges
 
 - **Severity:** Gap

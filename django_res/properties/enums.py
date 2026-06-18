@@ -82,12 +82,6 @@ class SecurityDepositCalcType(models.TextChoices):
     FIXED = "fixed", "Fixed"
 
 
-class SecurityDepositCalcFrom(models.TextChoices):
-    NIGHTLY = "nightly", "Nightly"
-    WEEKLY = "weekly", "Weekly"
-    TOTAL_STAY = "total_stay", "Total stay"
-
-
 class SecurityDepositPaymentMethod(models.TextChoices):
     CARD_HOLD = "card_hold", "Card hold"
     CARD_CHARGE = "card_charge", "Card charge"

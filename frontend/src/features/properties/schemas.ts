@@ -645,7 +645,6 @@ export const propertyFinanceSchema = z.object({
   security_deposit_required: z.boolean().nullable().optional(),
   security_deposit_calculation_type: z.string().nullable().optional(),
   security_deposit_amount: z.string().nullable().optional(),
-  security_deposit_calculate_from: z.string().nullable().optional(),
   security_deposit_days_due_before_arrival: z.number().nullable().optional(),
   security_deposit_days_refunded_after_departure: z.number().nullable().optional(),
   security_deposit_payment_method: z.string().nullable().optional(),

@@ -1,11 +1,20 @@
 # GAP-029 — Contact first_name/last_name FE/BE required-field divergence
 
-> ⚠️ **Premise largely dissolves under GAP-045/GAP-046 (2026-06-18).** The
-> divergence existed because the FE allowed *company-only* contacts. Under the
-> unified-`Person` model a company is a first-class **`Organisation`** (GAP-046),
-> and a `Person` always has a name — so "company-only contact" is no longer a
-> `Person` shape at all. **Recommend redirecting this ticket to GAP-046** and
-> closing once Organisation lands; the body below is retained for context.
+> ⏸️ **DEFERRED — blocked on GAP-045/046 (Person/Organisation); do not close
+> until the unified model lands (2026-06-18).** The divergence exists because the
+> FE allows *company-only* contacts while the BE `Contact` requires
+> `first_name`/`last_name`. It dissolves under the unified-`Person` model: a
+> company becomes a first-class **`Organisation`** (GAP-046) and a `Person`
+> always has a name — so "company-only contact" stops being a `Person` shape.
+> But GAP-045/046 are **design-complete and uncoded** (likely months out), so a
+> standalone backend loosening now (`blank=True` on an audited/PII model + a
+> name-or-company validator) would be throwaway, and closing this would make a
+> **live bug** look resolved.
+>
+> **Known live friction (documented, not silent):** creating a company-only
+> contact **fails with a 400** today and stays broken until Person/Organisation
+> ships. Kept open in `todo/` deliberately; fold into GAP-046 when it lands. The
+> body below is retained for context.
 
 - **Severity:** Gap (data-quality / contract divergence)
 - **Source:** spun out of GAP-027 during the 2026-06-11

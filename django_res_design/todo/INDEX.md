@@ -69,7 +69,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-026](done/gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ✅ FE adornment + soft mismatch warning; PropertySettings exposes read-only group-resolved `currency_code`; multi-currency intentional (2026-06-18) |
 | [GAP-027](done/gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ✅ resolved (2026-06-18) — picker auto-select via `initialContact` + per-role-primary convention documented |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
-| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ✏️ premise dissolves under GAP-045/046 — redirect & close |
+| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ⏸️ deferred — blocked on GAP-045/046 (Person/Organisation); kept open. **Live bug:** company-only contact 400s until they land |
 | [GAP-030](gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ⬜ reuses `StayOptionsService`; fixed-changeover only, variable/sub-week deferred |
 | [GAP-031](gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ⬜ FE-only polish, sibling of GAP-030 |
 | [GAP-032](gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ⬜ FE-only; no API change |

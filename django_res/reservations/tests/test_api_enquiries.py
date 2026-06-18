@@ -16,7 +16,13 @@ from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.enums import ImageKind
 from properties.models import Property, PropertyImage
-from reservations.enums import ContactMethod, EnquiryLostReason, EnquiryStatus, LeadStatus
+from reservations.enums import (
+    ContactMethod,
+    EnquiryLostReason,
+    EnquiryStatus,
+    LeadStatus,
+    QuotationStatus,
+)
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
@@ -675,6 +681,195 @@ def test_enquiry_detail_quote_stack_constant_query_count(
 
 
 @pytest.mark.django_db
+def test_quotes_to_convert__counts_real_quotes_up_to_accepted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """GAP-038: the metric counts real quotes issued up to and including the
+    accepted one — a later draft must not inflate it."""
+    quotes = [
+        Quotation.objects.create(
+            enquiry=enquiry,
+            guest=guest,
+            expires_at=timezone.now() + timedelta(days=7 + i),
+            terms_version=terms,
+        )
+        for i in range(3)
+    ]
+    quotes[1].status = QuotationStatus.ACCEPTED.value
+    quotes[1].save(update_fields=["status"])
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__null_when_not_converted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """A non-converted enquiry (no accepted real quote) reads null — the metric
+    measures won deals only."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] is None
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__null_when_converted_without_accepted_real_quote(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Converted but with no ACCEPTED real quote (e.g. legacy bookings migrate as
+    NEW with a synthetic DRAFT quote) → null, not 0 (L4 caveat)."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] is None
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__excludes_synthetic_booking_quotes(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Synthetic `booking-` quotes never count (the detail prefetch is `.real()`),
+    so a single real accepted quote reads 1 despite an earlier synthetic row."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+        legacy_id="booking-99",
+    )
+    real = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=14),
+        terms_version=terms,
+        status=QuotationStatus.ACCEPTED.value,
+    )
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 1
+    assert {row["reference"] for row in response.data["quotations"]} == {real.reference}
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__tie_breaks_by_pk(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """When two quotes share a created_at, ordering falls back to pk so the count
+    is deterministic — accepting the higher-pk twin yields 2, not 1 (L3)."""
+    shared = timezone.now()
+    q1 = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=shared + timedelta(days=7),
+        terms_version=terms,
+    )
+    q2 = Quotation.objects.create(
+        enquiry=enquiry,
+        guest=guest,
+        expires_at=shared + timedelta(days=7),
+        terms_version=terms,
+        status=QuotationStatus.ACCEPTED.value,
+    )
+    Quotation.objects.filter(pk__in=[q1.pk, q2.pk]).update(created_at=shared)
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__stays_within_query_budget(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """The metric is pure-Python over the already-prefetched quote-stack, so it
+    must not add a query to the detail endpoint's budget."""
+    quotes = [
+        Quotation.objects.create(
+            enquiry=enquiry,
+            guest=guest,
+            expires_at=timezone.now() + timedelta(days=7 + i),
+            terms_version=terms,
+        )
+        for i in range(3)
+    ]
+    quotes[1].status = QuotationStatus.ACCEPTED.value
+    quotes[1].save(update_fields=["status"])
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    with assert_max_queries(9):
+        response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
 def test_enquiry_list_does_not_include_nested_quotations(
     api_client: APIClient,
     staff: User,
@@ -822,6 +1017,64 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
     enquiry.refresh_from_db()
     assert enquiry.status == EnquiryStatus.CONVERTED.value
     assert EnquiryEvent.objects.filter(enquiry=enquiry, kind="converted").count() == 1
+
+
+@pytest.mark.django_db
+def test_convert_response_is_query_bounded(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """`:convert` runs `refresh_locked()`, which wipes the instance's prefetch
+    cache, so the response must re-fetch through the detail queryset
+    (`_detail_response`). Otherwise the `quotes_to_convert` metric + nested
+    quote-stack re-query per quote/line — an N+1, and an unscoped read that drops
+    the `.real()` synthetic-quote filter. Pinned constant regardless of quote
+    count to lock that regression out."""
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+    enquiry.contact()
+    quotations = []
+    for q_offset in range(3):
+        quotation = Quotation.objects.create(
+            enquiry=enquiry,
+            guest=guest,
+            expires_at=timezone.now() + timedelta(days=7 + q_offset),
+            terms_version=terms,
+        )
+        quotations.append(quotation)
+        for line_offset in range(2):
+            QuotationLine.objects.create(
+                quotation=quotation,
+                property=property_,
+                currency=gbp,
+                date_from=date(2026, 6, 10 + line_offset),
+                date_to=date(2026, 6, 17 + line_offset),
+                adults=2,
+                total=Decimal("1400.00"),
+            )
+    api_client.force_login(staff)
+
+    with assert_max_queries(25):
+        response = api_client.post(
+            f"/api/v1/enquiries/{enquiry.pk}:convert",
+            {"quotation": quotations[0].pk},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["status"] == EnquiryStatus.CONVERTED.value
+    # Detail shape: the GAP-038 metric is computed (null here — no accepted quote)
+    # without an extra query, proving the re-fetch carried the `.real()` prefetch.
+    assert "quotes_to_convert" in response.data
+    assert response.data["quotes_to_convert"] is None
 
 
 @pytest.mark.django_db

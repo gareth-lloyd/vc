@@ -150,14 +150,21 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         """
         enquiry = self.get_object()
         if enquiry.status == EnquiryStatus.CONVERTED.value:
-            return Response(EnquiryDetailSerializer(enquiry).data)
+            return self._detail_response(enquiry, status.HTTP_200_OK)
         quotation_id = request.data.get("quotation")
         # Scoped to *this* enquiry's quotations — citing another enquiry's
         # quote would mark this one converted with an audit pointer at an
         # unrelated quotation.
         quotation = get_object_or_404(Quotation, pk=quotation_id, enquiry=enquiry)
         enquiry.convert(quotation, actor=request.user)
-        return Response(EnquiryDetailSerializer(enquiry).data)
+        # Re-fetch through the prefetched detail queryset: convert() runs
+        # refresh_locked(), which wipes this instance's prefetch cache, so a bare
+        # serialization would re-query `quotations` through the *default* manager
+        # (an N+1 and, for the now-CONVERTED status, an unscoped read that drops
+        # the `.real()` synthetic-quote filter the `quotes_to_convert` metric and
+        # quote-stack rely on). `_detail_response` re-fetches with the `.real()`
+        # prefetch intact.
+        return self._detail_response(enquiry, status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request: Request, pk: str | None = None) -> Response:

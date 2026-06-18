@@ -153,7 +153,15 @@ class GuestEnquirySerializer(serializers.ModelSerializer[Enquiry]):
 
     @staticmethod
     def _real_quotations(obj: Enquiry) -> list[Quotation]:
-        return [q for q in obj.quotations.all() if not (q.legacy_id or "").startswith("booking-")]
+        # Single source of truth for the synthetic-row exclusion: the
+        # `.real()` queryset method (SMELL-014). When the viewset primed the
+        # prefetch its cache is already `.real()`-filtered (see
+        # `_enquiry_history_prefetch`), so reuse it and stay query-bounded;
+        # on the unprimed fallback hit the DB through `.real()` so `booking-`
+        # synthetic rows can never leak there either — no hand-rolled predicate.
+        if "quotations" in getattr(obj, "_prefetched_objects_cache", {}):
+            return list(obj.quotations.all())
+        return list(obj.quotations.real())
 
     def get_quote_count(self, obj: Enquiry) -> int:
         return len(self._real_quotations(obj))

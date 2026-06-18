@@ -87,6 +87,33 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
 
 
 @pytest.mark.django_db
+def test_list_quotations_excludes_legacy_synthetic_quotations(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """SMELL-014: the `/quotations` list is a Quotation-surfacing read, so the
+    BookingLoader's `booking-`-prefixed synthetic fill rows (internal artefacts
+    that satisfy the QuotationLine PROTECT FK for imported bookings) must never
+    reach the operator's list — the viewset routes through `.real()`."""
+    synthetic = Quotation.objects.create(
+        enquiry=quotation.guest.enquiries.create(),
+        guest=quotation.guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=quotation.terms_version,
+        legacy_id="booking-9999",
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/quotations")
+
+    assert response.status_code == 200
+    refs = {row["reference"] for row in response.data["results"]}
+    assert quotation.reference in refs
+    assert synthetic.reference not in refs
+
+
+@pytest.mark.django_db
 def test_patch_quotation_with_null_enquiry_keeps_existing(
     api_client: APIClient,
     staff: User,

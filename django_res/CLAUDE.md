@@ -34,9 +34,10 @@ prod); no result backend — tasks are fire-and-forget. App object in
   run. Pass `-n0` for the single-test TDD inner loop (readable output, live
   progress, clean `-x`).
 - `--reuse-db` is on by default; pass `--create-db` after changing migrations.
-- A checkout under `.claude/worktrees/` automatically gets its own
-  `test_villacollective_<hash>` DB (`settings/test.py`; override with
-  `PYTEST_DB_SUFFIX`), so concurrent worktrees don't collide on the shared
+- A linked git worktree (sibling `../villacollective-worktrees/<slug>/`)
+  automatically gets its own `test_villacollective_<hash>` DB
+  (`settings/test.py` detects the worktree via its file-pointer `.git`; override
+  with `PYTEST_DB_SUFFIX`), so concurrent worktrees don't collide on the shared
   Postgres container.
 - Local Postgres runs `fsync=off` (test-speed convenience) — never copy those
   flags to a database you can't recreate.

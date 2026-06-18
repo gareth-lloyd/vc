@@ -17,12 +17,14 @@ from .base import *  # noqa: F403
 MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="villa-test-media-"))
 
 # Concurrent git worktrees share one Postgres instance (docker-compose `db`),
-# so they must not share the default `test_villacollective` database or their
-# CREATE/DROP DATABASE calls collide. Give each worktree a stable, distinct
-# test DB name derived from its checkout path. The main checkout and CI keep
-# the plain name. PYTEST_DB_SUFFIX overrides for manual control.
+# so a *linked* worktree must not share the default `test_villacollective`
+# database with the main checkout, or their CREATE/DROP DATABASE calls collide.
+# Give each linked worktree a stable, distinct test DB name derived from its
+# checkout path. A linked worktree's repo-root `.git` is a file (a gitdir
+# pointer); the main checkout's and a CI clone's `.git` is a directory, so both
+# keep the plain name. PYTEST_DB_SUFFIX overrides for manual control.
 _db_suffix = os.environ.get("PYTEST_DB_SUFFIX")
-if _db_suffix is None and "/.claude/worktrees/" in str(BASE_DIR):  # noqa: F405
+if _db_suffix is None and (BASE_DIR.parent / ".git").is_file():  # noqa: F405 — linked worktree
     _db_suffix = hashlib.sha1(str(BASE_DIR).encode()).hexdigest()[:8]  # noqa: F405
 if _db_suffix:
     DATABASES["default"]["TEST"] = {"NAME": f"test_villacollective_{_db_suffix}"}  # noqa: F405

@@ -32,6 +32,7 @@ from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
+from reservations.services.person_sync import person_for_guest
 
 
 def _decimal(v: Any) -> Decimal | None:
@@ -91,6 +92,13 @@ class BookingLoader(BaseLoader):
 
         terms = _ensure_default_terms()
         booking_legacy = f"booking-{row['Id']}"
+        # GAP-045 Unit 3c-1b: resolve the unified Person mirror once and set it
+        # on the synthesised Quotation / Booking / LEAD BookingGuest alongside
+        # the Guest FK. `guest` is guaranteed non-None here (early-returned
+        # above). `defaults` only applies on create, so re-runs of this
+        # idempotent loader rely on the `link_person_fks` delta linker to fill
+        # any rows written before this change.
+        person = person_for_guest(guest)
 
         # The synthesised quotation is an internal artifact (hidden from public
         # APIs via the `booking-` legacy_id prefix) and must NOT claim the
@@ -105,6 +113,7 @@ class BookingLoader(BaseLoader):
             defaults={
                 "enquiry": enquiry,
                 "guest": guest,
+                "person": person,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],
                 "expires_at": timezone.now() + timedelta(days=7),
                 "status": QuotationStatus.DRAFT,
@@ -138,6 +147,7 @@ class BookingLoader(BaseLoader):
         defaults: dict[str, Any] = {
             "quotation_line": line,
             "guest": guest,
+            "person": person,
             "property": prop,
             "date_from": date_from,
             "date_to": date_to,
@@ -176,7 +186,7 @@ class BookingLoader(BaseLoader):
         BookingGuest.objects.get_or_create(
             booking=booking,
             role=BookingGuestRole.LEAD.value,
-            defaults={"guest": guest},
+            defaults={"guest": guest, "person": person},
         )
         if created:
             report.created += 1

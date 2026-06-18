@@ -411,11 +411,16 @@ def _demo_currency() -> Any:
 
 def _new_quotation() -> Any:
     from reservations.models import Quotation
+    from reservations.services.person_sync import person_for_guest
 
     guest = _demo_guest()
+    # GAP-045 Unit 3c-1b: mirror the parallel Person FK onto the demo enquiry +
+    # quotation so the person-based teardown filters (Unit 3c-2c) reach them.
+    person = person_for_guest(guest)
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=_demo_terms(),
     )

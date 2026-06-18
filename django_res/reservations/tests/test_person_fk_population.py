@@ -1,0 +1,429 @@
+"""GAP-045 Unit 3c-1b — every `guest`-setting write path also fills `person`.
+
+The five reservation models carry a parallel nullable `person` FK alongside
+`guest` during the expand/contract cutover. These tests drive each write path
+and assert `person` landed and equals `person_for_guest(guest)`, plus the
+`link_person_fks` delta-linker safety net.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pytest
+from django.core.management import call_command
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from accounts.models import User
+from core.enums import StaffRole
+from pricing.models import Currency
+from properties.models import Property
+from reservations.enums import BookingGuestRole
+from reservations.factories import make_occupying_booking
+from reservations.models import (
+    Booking,
+    BookingGuest,
+    Enquiry,
+    Guest,
+    Quotation,
+    QuotationLine,
+    TermsVersion,
+)
+from reservations.models.preferences import GuestPreference, GuestPreferenceType
+from reservations.services.bookings import BookingService
+from reservations.services.person_sync import person_for_guest
+from reservations.services.quotations import QuotationService
+
+
+@pytest.fixture
+def api_client() -> APIClient:
+    return APIClient()
+
+
+@pytest.fixture
+def staff(db: None) -> User:
+    return User.objects.create_user(
+        is_staff=True,
+        email="res-staff-personfk@example.com",
+        password="x",
+        role=StaffRole.RESERVATIONS,
+    )
+
+
+@pytest.fixture
+def other_guest(db: None) -> Guest:
+    return Guest.objects.create(
+        first_name="Grace",
+        last_name="Hopper",
+        email="grace@example.com",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Enquiry — the DRF write path (most important: no service layer)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_enquiry_create_via_api_sets_person(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "guest": guest.pk,
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@personfk.example.com",
+            "adults": 2,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    enquiry = Enquiry.objects.get(pk=response.data["id"])
+    assert enquiry.person is not None
+    assert enquiry.person == person_for_guest(guest)
+
+
+@pytest.mark.django_db
+def test_enquiry_patch_changing_guest_repoints_person(
+    api_client: APIClient, staff: User, guest: Guest, other_guest: Guest
+) -> None:
+    enquiry = Enquiry.objects.create(
+        guest=guest,
+        person=person_for_guest(guest),
+        first_name="Ada",
+        last_name="Lovelace",
+        email="ada@example.com",
+        adults=2,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"guest": other_guest.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.guest == other_guest
+    assert enquiry.person == person_for_guest(other_guest)
+
+
+@pytest.mark.django_db
+def test_enquiry_patch_not_touching_guest_leaves_person(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    enquiry = Enquiry.objects.create(
+        guest=guest,
+        person=person_for_guest(guest),
+        first_name="Ada",
+        last_name="Lovelace",
+        email="ada@example.com",
+        adults=2,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"adults": 4},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.adults == 4
+    assert enquiry.person == person_for_guest(guest)
+
+
+# ---------------------------------------------------------------------------
+# Quotation — QuotationService
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_quotation_create_from_enquiry_sets_person(
+    guest: Guest,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+    rate_rule: object,
+) -> None:
+    enquiry = Enquiry.objects.create(
+        guest=guest,
+        person=person_for_guest(guest),
+        first_name="Ada",
+        last_name="Lovelace",
+        email="ada@example.com",
+        adults=2,
+    )
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        [
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+            }
+        ],
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    assert quotation.person is not None
+    assert quotation.person == person_for_guest(guest)
+
+
+@pytest.mark.django_db
+def test_quotation_create_direct_sets_person_on_quotation_and_enquiry(
+    guest: Guest,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+    rate_rule: object,
+) -> None:
+    quotation = QuotationService.create_direct(
+        guest=guest,
+        lines=[
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+            }
+        ],
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    expected = person_for_guest(guest)
+    assert quotation.person == expected
+    # The auto-minted enquiry must also carry the mirror.
+    assert quotation.enquiry.person == expected
+
+
+# ---------------------------------------------------------------------------
+# Booking + LEAD BookingGuest — BookingService
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+) -> None:
+    guest = quotation_line.quotation.guest
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+    expected = person_for_guest(guest)
+    assert booking.person == expected
+    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
+    assert lead.person == expected
+
+
+# ---------------------------------------------------------------------------
+# make_occupying_booking factory
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_make_occupying_booking_sets_person_everywhere(
+    guest: Guest,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    booking = make_occupying_booking(
+        property=property_,
+        guest=guest,
+        currency=gbp,
+        terms=terms,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+    )
+
+    expected = person_for_guest(guest)
+    assert booking.person == expected
+    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
+    assert lead.person == expected
+    assert booking.quotation_line.quotation.person == expected
+
+
+# ---------------------------------------------------------------------------
+# Denorm signal — LEAD BookingGuest mirrors person onto Booking
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_lead_booking_guest_save_mirrors_person_to_booking(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+    other_guest: Guest,
+) -> None:
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
+
+    # Re-point the LEAD row at a different guest/person and save — the post_save
+    # signal must mirror BOTH guest and person onto the denormalised Booking.
+    new_person = person_for_guest(other_guest)
+    lead.guest = other_guest
+    lead.person = new_person
+    lead.save(update_fields=["guest", "person", "updated_at"])
+
+    booking.refresh_from_db()
+    assert booking.guest == other_guest
+    assert booking.person == new_person
+
+
+# ---------------------------------------------------------------------------
+# GuestPreference write path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_guest_preference_loader_transform_sets_person(guest: Guest) -> None:
+    """The legacy loader's transform must carry `person` into the upsert."""
+    from data_migration.loaders.preferences import GuestPreferenceLoader
+
+    # Loader resolves the type by legacy_id, so the row must exist (unused var).
+    GuestPreferenceType.objects.create(name="Late checkout", legacy_id="pt-1")
+    guest.legacy_id = "g-1"
+    guest.save(update_fields=["legacy_id", "updated_at"])
+
+    loader = GuestPreferenceLoader()
+    kwargs = loader.transform(
+        {
+            "Id": "1",
+            "ClientDetailsId": "g-1",
+            "ClientPrefMasterId": "pt-1",
+            "QuotationMasterId": None,
+        }
+    )
+
+    assert kwargs is not None
+    assert kwargs["person"] == person_for_guest(guest)
+
+    pref = GuestPreference.objects.create(**kwargs)
+    assert pref.person == person_for_guest(guest)
+
+
+# ---------------------------------------------------------------------------
+# Quotation :duplicate — live DRF action (no service layer)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_quotation_duplicate_action_sets_person_on_clone(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+    rate_rule: object,
+) -> None:
+    source = QuotationService.create_direct(
+        guest=guest,
+        lines=[
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),
+            }
+        ],
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/quotations/{source.pk}/duplicate")
+
+    assert response.status_code == 201
+    clone = Quotation.objects.get(pk=response.data["id"])
+    assert clone.pk != source.pk
+    assert clone.person == person_for_guest(guest)
+
+
+# ---------------------------------------------------------------------------
+# Legacy loaders — ensure_enquiry + QuotationLoader.transform
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_ensure_enquiry_sets_person(guest: Guest) -> None:
+    """Both legacy quotation paths back-create enquiries through ensure_enquiry."""
+    from data_migration.loaders._util import ensure_enquiry
+
+    enquiry = ensure_enquiry(guest, legacy_id="ensure-1")
+
+    assert enquiry.person == person_for_guest(guest)
+
+
+@pytest.mark.django_db
+def test_quotation_loader_transform_sets_person(guest: Guest) -> None:
+    from data_migration.loaders.finance import QuotationLoader
+
+    guest.legacy_id = "ql-guest-1"
+    guest.save(update_fields=["legacy_id", "updated_at"])
+
+    defaults = QuotationLoader().transform(
+        {
+            "Id": "1",
+            "ClientDetailsId": "ql-guest-1",
+            "AgentId": None,
+            "EnquireId": None,
+            "QuotationNo": 42,
+        }
+    )
+
+    assert defaults is not None
+    assert defaults["person"] == person_for_guest(guest)
+
+
+# ---------------------------------------------------------------------------
+# link_person_fks delta linker — safety net
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_link_person_fks_links_null_rows_and_is_idempotent(
+    quotation_line: QuotationLine,
+    terms: TermsVersion,
+    guest: Guest,
+) -> None:
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    quotation = quotation_line.quotation
+    enquiry = quotation.enquiry
+    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
+    pref_type = GuestPreferenceType.objects.create(name="Early checkin")
+    pref = GuestPreference.objects.create(guest=guest, preference_type=pref_type)
+
+    # Simulate rows written before the inline-setting code shipped: NULL out
+    # person via a bulk .update() (bypasses the inline write paths).
+    Enquiry.objects.filter(pk=enquiry.pk).update(person=None)
+    Quotation.objects.filter(pk=quotation.pk).update(person=None)
+    Booking.objects.filter(pk=booking.pk).update(person=None)
+    BookingGuest.objects.filter(pk=lead.pk).update(person=None)
+    GuestPreference.objects.filter(pk=pref.pk).update(person=None)
+
+    call_command("link_person_fks")
+
+    for obj in (enquiry, quotation, booking, lead, pref):
+        obj.refresh_from_db()
+
+    expected = person_for_guest(guest)
+    assert enquiry.person == expected
+    assert quotation.person == expected
+    assert booking.person == expected
+    assert lead.person == expected
+    assert pref.person == expected
+
+    # Second run is a no-op — nothing is NULL anymore.
+    second = person_for_guest(guest)
+    call_command("link_person_fks")
+    for obj in (enquiry, quotation, booking, lead, pref):
+        obj.refresh_from_db()
+    assert booking.person == second

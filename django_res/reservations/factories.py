@@ -173,9 +173,15 @@ def make_occupying_booking(
     each caller. Everything links back to `guest`, so a relationship-driven
     teardown (the demo `--reset`) unwinds it cleanly.
     """
+    # GAP-045 Unit 3c-1b: resolve the unified Person mirror once and mirror it
+    # onto the Quotation / Booking / LEAD BookingGuest alongside the Guest FK.
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
     quotation = models.Quotation.objects.create(
         enquiry=guest.enquiries.create(),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -192,6 +198,7 @@ def make_occupying_booking(
         booking = models.Booking.objects.create(
             quotation_line=line,
             guest=guest,
+            person=person,
             property=property,
             date_from=date_from,
             date_to=date_to,
@@ -206,6 +213,6 @@ def make_occupying_booking(
         models.BookingGuest.objects.get_or_create(
             booking=booking,
             guest=guest,
-            defaults={"role": BookingGuestRole.LEAD.value},
+            defaults={"role": BookingGuestRole.LEAD.value, "person": person},
         )
     return booking

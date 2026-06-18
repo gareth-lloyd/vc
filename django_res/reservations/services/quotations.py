@@ -21,6 +21,7 @@ from pricing.services.currency import quantise_money, resolve_property_currency
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
+from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from reservations.models.booking import BookingHold
@@ -262,7 +263,10 @@ class QuotationService:
                 **header,
                 "enquiry": cls.minimal_enquiry_for(header["guest"], agent=header.get("agent")),
             }
-        quotation = Quotation.objects.create(**header)
+        # GAP-045 Unit 3c-1b: mirror the unified Person alongside the header's
+        # Guest FK (this path creates the Quotation directly, not via
+        # `create_from_enquiry`, so it must set `person` itself).
+        quotation = Quotation.objects.create(**header, person=person_for_guest(header["guest"]))
         for line_data in lines:
             cls.add_line(quotation, line_data)
         return quotation
@@ -301,6 +305,9 @@ class QuotationService:
         quotation = Quotation.objects.create(
             enquiry=enquiry,
             guest=resolved_guest,
+            # GAP-045 Unit 3c-1b: mirror the unified Person alongside the Guest
+            # FK so every quotation write keeps `person` in lockstep.
+            person=person_for_guest(resolved_guest),
             agent=agent,
             terms_version=terms_version,
             expires_at=expires_at,
@@ -365,6 +372,8 @@ class QuotationService:
 
         return Enquiry.objects.create(
             guest=guest,
+            # GAP-045 Unit 3c-1b: keep the parallel Person FK in lockstep.
+            person=person_for_guest(guest),
             first_name=guest.first_name,
             last_name=guest.last_name,
             email=guest.email or "",

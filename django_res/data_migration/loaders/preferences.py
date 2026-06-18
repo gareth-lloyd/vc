@@ -14,6 +14,7 @@ from data_migration.declarative import DeclarativeLoader
 from reservations.models.guest import Guest
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation
+from reservations.services.person_sync import person_for_guest
 
 
 class GuestPreferenceTypeLoader(DeclarativeLoader):
@@ -68,8 +69,14 @@ class GuestPreferenceLoader(BaseLoader):
         )
         if existing is not None:
             return None
+        # GAP-045 Unit 3c-1b: mirror the unified Person FK alongside the Guest.
+        # `guest` is non-None here (returned early above otherwise). This lands
+        # in `defaults` (create-only) via BaseLoader._process_row, so re-runs of
+        # this idempotent loader rely on the `link_person_fks` delta linker to
+        # fill any rows written before this change.
         return {
             "guest": guest,
+            "person": person_for_guest(guest),
             "preference_type": pref_type,
             "quotation": quotation,
         }

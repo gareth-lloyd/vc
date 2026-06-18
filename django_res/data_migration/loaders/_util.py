@@ -15,11 +15,16 @@ def ensure_enquiry(guest: Any, *, legacy_id: str, agent: Any | None = None) -> A
     """
     from reservations.enums import EnquirySource
     from reservations.models.enquiry import Enquiry
+    from reservations.services.person_sync import person_for_guest
 
     enquiry, _ = Enquiry.objects.update_or_create(
         legacy_id=legacy_id,
         defaults={
             "guest": guest,
+            # GAP-045 Unit 3c-1b: keep the parallel Person FK in lockstep. Both
+            # legacy quotation paths (QuotationLoader, BookingLoader) back-create
+            # enquiries through here, so mirroring `person` once covers both.
+            "person": person_for_guest(guest),
             "first_name": guest.first_name,
             "last_name": guest.last_name,
             "email": guest.email or "",

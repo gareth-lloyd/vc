@@ -180,6 +180,29 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "inbound_message",
         ]
 
+    def create(self, validated_data: dict[str, Any]) -> Enquiry:
+        # GAP-045 Unit 3c-1b: the EnquiryViewSet write path is plain DRF (no
+        # service layer), so the serializer is the place to keep the parallel
+        # `person` FK in lockstep with `guest`. Resolve the Person mirror from
+        # the supplied Guest (None → None, since Enquiry.guest is nullable).
+        validated_data["person"] = self._person_for(validated_data.get("guest"))
+        return super().create(validated_data)
+
+    def update(self, instance: Enquiry, validated_data: dict[str, Any]) -> Enquiry:
+        # Only re-point `person` when this write actually touches `guest` — a
+        # PATCH that doesn't send `guest` must leave the existing link alone.
+        if "guest" in validated_data:
+            validated_data["person"] = self._person_for(validated_data["guest"])
+        return super().update(instance, validated_data)
+
+    @staticmethod
+    def _person_for(guest: Any) -> Any:
+        if guest is None:
+            return None
+        from reservations.services.person_sync import person_for_guest
+
+        return person_for_guest(guest)
+
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         # Enquiry dates are an optional, independent capture surface (the model
         # and spec leave them unconstrained), but an inverted range is never

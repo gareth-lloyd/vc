@@ -158,12 +158,17 @@ def _charge_item_changed(sender: type, instance: Any, **_: Any) -> None:
 
 
 def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
-    """Mirror the LEAD BookingGuest row onto `Booking.guest`.
+    """Mirror the LEAD BookingGuest row onto `Booking.guest` (and `Booking.person`).
 
     `Booking.guest` survives as a denormalised pointer so the many
     booking-list / search reads that touch `guest_id` don't have to
     refactor through the through-table. The LEAD row is the source of
     truth; this signal keeps the denormalised column in sync.
+
+    GAP-045 Unit 3c-1b: the parallel `Booking.person` FK is mirrored the same
+    way — the LEAD BookingGuest is created with `person` set (BookingService /
+    factory / loader), so the same single UPDATE keeps both denorm columns in
+    lockstep with the LEAD row.
 
     The write goes through a queryset `.update()` (not `instance.save()`)
     on purpose:
@@ -179,14 +184,24 @@ def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
     """
     if instance.role != BookingGuestRole.LEAD.value:
         return
+    from django.db.models import Q
+
     from reservations.models.booking import Booking
 
-    # Intentional queryset .update() — denorm sync of Booking.guest only.
+    # Intentional queryset .update() — denorm sync of Booking.guest + .person.
     # Skips Booking.save() (and its auto_now updated_at bump) so the canonical
     # audit trail stays on BookingGuest. Also: queryset .update() fires no
     # post_save, so no recursion risk.
-    Booking.objects.filter(pk=instance.booking_id).exclude(guest_id=instance.guest_id).update(
+    #
+    # The cheap-skip excludes the row only when BOTH denorm columns already
+    # match the LEAD row, so an already-synced booking costs one no-op UPDATE
+    # (zero rows) while a drift on either column still writes both in one
+    # statement.
+    Booking.objects.filter(pk=instance.booking_id).exclude(
+        Q(guest_id=instance.guest_id) & Q(person_id=instance.person_id)
+    ).update(
         guest_id=instance.guest_id,
+        person_id=instance.person_id,
     )
 
 

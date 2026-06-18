@@ -11,6 +11,7 @@ def _run(ctx: SeedContext) -> int:
         return 0
     from reservations.models.guest import Guest
     from reservations.models.preferences import GuestPreference, GuestPreferenceType
+    from reservations.services.person_sync import person_for_guest
 
     names = [
         "Twin beds preferred",
@@ -35,7 +36,9 @@ def _run(ctx: SeedContext) -> int:
                 guest=guest,
                 preference_type=pref_type,
                 quotation=None,
-                defaults={"notes": ""},
+                # GAP-045 Unit 3c-1b: mirror the parallel Person FK so seeded
+                # dev/staging preferences match the cutover invariant.
+                defaults={"notes": "", "person": person_for_guest(guest)},
             )
             if created:
                 made += 1

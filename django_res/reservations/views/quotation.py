@@ -29,6 +29,7 @@ from reservations.serializers import (
 )
 from reservations.services.bookings import BookingService
 from reservations.services.holds import HoldService
+from reservations.services.person_sync import person_for_guest
 from reservations.services.quotation_render import (
     build_quotation_context,
     render_quotation_html,
@@ -223,6 +224,10 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             clone = Quotation.objects.create(
                 enquiry=quotation.enquiry,
                 guest=quotation.guest,
+                # GAP-045 Unit 3c-1b: this DRF action creates a Quotation outside
+                # the service layer, so it must mirror the parallel `person` FK
+                # from the source quote's guest in lockstep.
+                person=person_for_guest(quotation.guest),
                 agent=quotation.agent,
                 is_unbranded=quotation.is_unbranded,
                 expires_at=quotation.expires_at,

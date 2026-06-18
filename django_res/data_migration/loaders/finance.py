@@ -41,6 +41,7 @@ from reservations.models.enquiry import Enquiry
 from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 _COMMISSION_TYPE_MAP = {
     1: CommissionCalcType.PERCENT,
@@ -357,6 +358,11 @@ class QuotationLoader(BaseLoader):
             "reference": quotation_reference(display)[:32],
             "enquiry": enquiry,
             "guest": guest,
+            # GAP-045 Unit 3c-1b: mirror the unified Person alongside the Guest
+            # FK on the real legacy quotation upsert (`guest` is non-None — early
+            # return above). `defaults` only applies on create, so re-runs rely on
+            # the `link_person_fks` delta linker.
+            "person": person_for_guest(guest),
             "agent": agent,
             "expires_at": timezone.now() + timedelta(days=7),
             "status": QuotationStatus.DRAFT,

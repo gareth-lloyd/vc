@@ -43,6 +43,80 @@ def test_only_one_primary_phone_per_contact(contact: Person) -> None:
 
 
 @pytest.mark.django_db
+def test_new_address_and_marketing_fields_default_blank() -> None:
+    """town/post_code default to "", country to NULL, marketing_consent False."""
+    c = Person.objects.create(first_name="Ada", last_name="Lovelace")
+
+    c.refresh_from_db()
+    assert c.town == ""
+    assert c.post_code == ""
+    assert c.country is None
+    assert c.marketing_consent is False
+
+
+@pytest.mark.django_db
+def test_anonymize_clears_town_and_post_code() -> None:
+    c = Person.objects.create(
+        first_name="Ada",
+        last_name="Lovelace",
+        town="London",
+        post_code="EC1A 1BB",
+    )
+
+    c.anonymize()
+
+    c.refresh_from_db()
+    assert c.town == ""
+    assert c.post_code == ""
+
+
+@pytest.mark.django_db
+def test_anonymize_preserves_country_and_marketing_consent() -> None:
+    """country (an FK, not PII) and marketing_consent survive anonymize,
+    matching Guest's convention."""
+    from typing import cast
+
+    from properties.factories import CountryFactory
+    from properties.models import Country
+
+    country = cast(Country, CountryFactory())
+    c = Person.objects.create(
+        first_name="Ada",
+        last_name="Lovelace",
+        country=country,
+        marketing_consent=True,
+    )
+
+    c.anonymize()
+
+    c.refresh_from_db()
+    assert c.country_id == country.pk
+    assert c.marketing_consent is True
+
+
+@pytest.mark.django_db
+def test_anonymize_scrubs_town_and_post_code_from_audit_log() -> None:
+    """town/post_code are audit-tracked PII; anonymize must scrub them from
+    the AuditLog trail (BUG-012)."""
+    c = Person.objects.create(first_name="Ada", last_name="Lovelace")
+    c.town = "Secretville"
+    c.post_code = "ZZ9 9ZZ"
+    c.save(update_fields=["town", "post_code"])
+
+    ct = ContentType.objects.get_for_model(Person)
+    pre_rows = AuditLog.objects.filter(content_type=ct, object_id=str(c.pk))
+    assert any("Secretville" in str(r.field_diffs) for r in pre_rows)
+
+    c.anonymize()
+
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(c.pk)))
+    for r in rows:
+        blob = str(r.field_diffs)
+        assert "Secretville" not in blob
+        assert "ZZ9 9ZZ" not in blob
+
+
+@pytest.mark.django_db
 def test_anonymize_blanks_pii_and_cascades(contact: Person) -> None:
     email = PersonEmail.objects.create(contact=contact, email="ada@example.com")
     phone = PersonPhone.objects.create(contact=contact, number="0123 456")

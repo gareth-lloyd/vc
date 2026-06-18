@@ -35,6 +35,16 @@ class Person(AuditedModel):
     )
     address_line_1 = models.CharField(max_length=255, blank=True)
     address_line_2 = models.CharField(max_length=255, blank=True)
+    town = models.CharField(max_length=128, blank=True)
+    post_code = models.CharField(max_length=32, blank=True)
+    country = models.ForeignKey(
+        "properties.Country",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    marketing_consent = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     status = models.CharField(
         max_length=16,
@@ -60,6 +70,8 @@ class Person(AuditedModel):
         "company",
         "address_line_1",
         "address_line_2",
+        "town",
+        "post_code",
         "notes",
     )
 
@@ -87,6 +99,8 @@ class Person(AuditedModel):
         self.notes = ""
         self.address_line_1 = ""
         self.address_line_2 = ""
+        self.town = ""
+        self.post_code = ""
         self.status = PersonStatus.ANONYMIZED
         self.anonymized_at = timezone.now()
         self.save(
@@ -97,6 +111,8 @@ class Person(AuditedModel):
                 "notes",
                 "address_line_1",
                 "address_line_2",
+                "town",
+                "post_code",
                 "status",
                 "anonymized_at",
                 "updated_at",

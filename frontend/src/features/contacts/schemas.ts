@@ -50,6 +50,47 @@ export const contactWriteInputSchema = z
   });
 export type ContactWriteInput = z.infer<typeof contactWriteInputSchema>;
 
+// Create form schema: the base write fields plus a single email/phone field, so
+// a new active contact arrives reachable (the backend rejects an active contact
+// with no channel). The dialog folds the single fields into the inline
+// `emails`/`phones` arrays the API expects (see `ContactCreateBody`).
+export const contactCreateInputSchema = z
+  .object({
+    title: z.string().trim().max(40).optional(),
+    first_name: z.string().trim().max(80).optional(),
+    last_name: z.string().trim().max(80).optional(),
+    company: z.string().trim().max(160).optional(),
+    website_url: z.string().trim().max(255).optional(),
+    preferred_method: z.string().trim().max(40).optional(),
+    address_line_1: z.string().trim().max(255).optional(),
+    address_line_2: z.string().trim().max(255).optional(),
+    notes: z.string().trim().max(2000).optional(),
+    email: z
+      .string()
+      .trim()
+      .max(254)
+      .optional()
+      .refine((v) => !v || z.string().email().safeParse(v).success, {
+        message: i18n.t("common:zod.invalid_email"),
+      }),
+    phone: z.string().trim().max(40).optional(),
+  })
+  .refine((v) => v.first_name || v.last_name || v.company, {
+    message: i18n.t("contacts:errors.name_or_company_required"),
+    path: ["first_name"],
+  })
+  .refine((v) => Boolean(v.email || v.phone), {
+    message: i18n.t("contacts:errors.channel_required"),
+    path: ["email"],
+  });
+export type ContactCreateInput = z.infer<typeof contactCreateInputSchema>;
+
+// Wire shape POSTed to /contacts: base write fields + inline channel arrays.
+export type ContactCreateBody = ContactWriteInput & {
+  emails?: ContactEmailWriteInput[];
+  phones?: ContactPhoneWriteInput[];
+};
+
 export const contactSchema = z.object({
   id: z.number(),
   title: z.string().nullable().optional(),

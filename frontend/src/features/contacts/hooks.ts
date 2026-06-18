@@ -19,6 +19,7 @@ import {
   updateContactPhone,
 } from "./api";
 import type {
+  ContactCreateBody,
   ContactEmailWriteInput,
   ContactFilters,
   ContactPhoneWriteInput,
@@ -59,7 +60,7 @@ function invalidateContact(queryClient: QueryClient, contactId: ContactId) {
 export function useCreateContact() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: ContactWriteInput) => createContact(input),
+    mutationFn: (input: ContactCreateBody) => createContact(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.contacts.lists() });
     },

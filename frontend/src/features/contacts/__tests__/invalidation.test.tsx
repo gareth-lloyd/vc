@@ -68,10 +68,10 @@ describe("contact mutations invalidate the list (list rows carry email/phone)", 
     const { result } = renderHook(() => useCreateContact(), { wrapper: wrapperFor(queryClient) });
 
     await result.current.mutateAsync({
-      kind: "person",
       first_name: "Jane",
       last_name: "Doe",
-    } as never);
+      emails: [{ email: "jane@vc.test", is_primary: true }],
+    });
 
     await waitFor(() => expect(invalidatedKeys(spy)).toContainEqual(queryKeys.contacts.lists()));
   });

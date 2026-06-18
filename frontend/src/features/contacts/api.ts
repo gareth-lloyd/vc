@@ -10,6 +10,7 @@ import {
   contactSchema,
   contactsListResponseSchema,
   type Contact,
+  type ContactCreateBody,
   type ContactEmail,
   type ContactEmailWriteInput,
   type ContactFilters,
@@ -52,7 +53,7 @@ export async function searchContacts(query: string): Promise<Paginated<Contact>>
   return paginated(contactSchema).parse(data);
 }
 
-export async function createContact(body: ContactWriteInput): Promise<Contact> {
+export async function createContact(body: ContactCreateBody): Promise<Contact> {
   const data = await apiSend<unknown>("POST", "/contacts", body);
   return contactSchema.parse(data);
 }

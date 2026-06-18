@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  contactCreateInputSchema,
   contactEmailWriteInputSchema,
   contactPhoneWriteInputSchema,
   contactWriteInputSchema,
@@ -60,5 +61,39 @@ describe("contactWriteInputSchema", () => {
   it("trims whitespace from fields", () => {
     const result = contactWriteInputSchema.parse({ first_name: "  Alice  " });
     expect(result.first_name).toBe("Alice");
+  });
+});
+
+describe("contactCreateInputSchema", () => {
+  it("accepts a contact with a name and an email", () => {
+    const result = contactCreateInputSchema.parse({
+      first_name: "Alice",
+      email: "alice@example.com",
+    });
+    expect(result.email).toBe("alice@example.com");
+  });
+
+  it("accepts a contact with a name and a phone", () => {
+    const result = contactCreateInputSchema.parse({
+      first_name: "Alice",
+      phone: "+34 600 123 456",
+    });
+    expect(result.phone).toBe("+34 600 123 456");
+  });
+
+  it("rejects a contact with no channel", () => {
+    expect(() => contactCreateInputSchema.parse({ first_name: "Alice" })).toThrow(/reachable/i);
+  });
+
+  it("rejects a contact with no name or company", () => {
+    expect(() => contactCreateInputSchema.parse({ email: "alice@example.com" })).toThrow(
+      /name or company/i,
+    );
+  });
+
+  it("rejects an invalid email when one is supplied", () => {
+    expect(() =>
+      contactCreateInputSchema.parse({ first_name: "Alice", email: "not-an-email" }),
+    ).toThrow(/valid email/i);
   });
 });

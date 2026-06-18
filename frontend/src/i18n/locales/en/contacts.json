@@ -119,7 +119,8 @@
     "detail_load_failed_title": "Couldn't load this contact",
     "detail_not_found_body": "It may have been deleted or you may not have access.",
     "detail_load_failed_body": "Try again or head back to the list.",
-    "name_or_company_required": "At least a name or company is required"
+    "name_or_company_required": "At least a name or company is required",
+    "channel_required": "Add at least one email or phone so the contact is reachable"
   },
   "tooltips": {
     "create_role_required": "You need the Reservations role to create contacts"

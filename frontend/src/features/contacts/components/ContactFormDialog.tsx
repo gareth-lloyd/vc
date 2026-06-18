@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,7 +12,13 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import type { ContactId } from "@/lib/query/keys";
 import { useCreateContact, useUpdateContact } from "../hooks";
-import { contactWriteInputSchema, type Contact, type ContactWriteInput } from "../schemas";
+import {
+  contactCreateInputSchema,
+  contactWriteInputSchema,
+  type Contact,
+  type ContactCreateBody,
+  type ContactCreateInput,
+} from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
@@ -33,7 +39,7 @@ interface EditProps extends CommonProps {
 
 type ContactFormDialogProps = CreateProps | EditProps;
 
-const CREATE_DEFAULTS: ContactWriteInput = {
+const CREATE_DEFAULTS: ContactCreateInput = {
   title: "",
   first_name: "",
   last_name: "",
@@ -43,9 +49,11 @@ const CREATE_DEFAULTS: ContactWriteInput = {
   address_line_1: "",
   address_line_2: "",
   notes: "",
+  email: "",
+  phone: "",
 };
 
-function defaultsFromContact(c: Contact): ContactWriteInput {
+function defaultsFromContact(c: Contact): ContactCreateInput {
   return {
     title: c.title ?? "",
     first_name: c.first_name ?? "",
@@ -56,6 +64,9 @@ function defaultsFromContact(c: Contact): ContactWriteInput {
     address_line_1: c.address_line_1 ?? "",
     address_line_2: c.address_line_2 ?? "",
     notes: c.notes ?? "",
+    // Channels are edited through the dedicated email/phone dialogs, not here.
+    email: "",
+    phone: "",
   };
 }
 
@@ -64,8 +75,14 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
   const { open, onOpenChange } = props;
   const isCreate = props.mode === "create";
 
-  const form = useForm<ContactWriteInput>({
-    resolver: zodResolver(contactWriteInputSchema),
+  // Create validates the at-least-one-channel rule (contactCreateInputSchema);
+  // edit reuses the base schema (channels are managed via their own dialogs).
+  const resolver = (
+    isCreate ? zodResolver(contactCreateInputSchema) : zodResolver(contactWriteInputSchema)
+  ) as Resolver<ContactCreateInput>;
+
+  const form = useForm<ContactCreateInput>({
+    resolver,
     defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromContact(props.contact),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
@@ -82,15 +99,24 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.contactId]);
 
-  const handleSubmit = async (values: ContactWriteInput) => {
+  const handleSubmit = async (values: ContactCreateInput) => {
     setTopLevelError(null);
     try {
       if (isCreate) {
-        const created = await createMutation.mutateAsync(values);
+        const { email, phone, ...details } = values;
+        const body: ContactCreateBody = {
+          ...details,
+          emails: email ? [{ email, is_primary: true }] : undefined,
+          phones: phone ? [{ number: phone, is_primary: true }] : undefined,
+        };
+        const created = await createMutation.mutateAsync(body);
         toast.success(t("toasts.created"));
         props.onCreated?.(created);
       } else {
-        await updateMutation.mutateAsync(values);
+        const { email: _email, phone: _phone, ...details } = values;
+        void _email;
+        void _phone;
+        await updateMutation.mutateAsync(details);
         toast.success(t("toasts.updated"));
       }
       onOpenChange(false);
@@ -141,6 +167,33 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
             <Label htmlFor="contact-company">{t("fields.company")}</Label>
             <Input id="contact-company" {...form.register("company")} />
           </div>
+
+          {isCreate ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="contact-email">{t("fields.email")}</Label>
+                <Input
+                  id="contact-email"
+                  type="email"
+                  placeholder={t("placeholders.email")}
+                  {...form.register("email")}
+                />
+                {form.formState.errors.email ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {form.formState.errors.email.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-phone">{t("fields.phone")}</Label>
+                <Input
+                  id="contact-phone"
+                  placeholder={t("placeholders.phone")}
+                  {...form.register("phone")}
+                />
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

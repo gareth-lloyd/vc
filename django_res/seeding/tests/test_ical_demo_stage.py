@@ -13,7 +13,7 @@ from seeding.stages.ical_demo import ICAL_DEMO_NAME, ICAL_DEMO_SLUG
 pytestmark = pytest.mark.django_db
 
 
-def _seed() -> None:
+def _seed(profile: str = "happy") -> None:
     call_command(
         "seed_dev",
         "--properties",
@@ -21,7 +21,7 @@ def _seed() -> None:
         "--bookings",
         "8",
         "--profile",
-        "happy",
+        profile,
         "--seed",
         "1",
         stdout=StringIO(),
@@ -29,7 +29,11 @@ def _seed() -> None:
 
 
 def test_seed_creates_fixed_slug_demo_villa_with_pricing() -> None:
-    _seed()
+    # `mixed` is the profile the `demo_ical` command actually runs under, and
+    # the one where the demo villa carries realistic seasonal pricing. (Under
+    # `happy` it conforms to the legacy single-card portfolio shape instead —
+    # see the pricing-shape smoke test.)
+    _seed("mixed")
 
     prop = Property.objects.get(slug=ICAL_DEMO_SLUG)
     assert prop.name == ICAL_DEMO_NAME

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import random
 
-from pricing.factories import RatePlanFactory
+from pricing.factories import RateCardFactory, RatePlanFactory, RateRuleFactory
 from properties.factories import PropertyFactory
 from properties.models import Property
 from seeding._pricing_helpers import (
@@ -42,13 +42,24 @@ def _run(ctx: SeedContext) -> int:
     prop = PropertyFactory(slug=ICAL_DEMO_SLUG, name=ICAL_DEMO_NAME)
     currency = ctx.default_currency
     plan = RatePlanFactory(property=prop, currency=currency, inclusion=inclusion_for(0))
-    # A fixed-seed local RNG (not ctx.rng) keeps the demo villa's pricing
-    # deterministic without shifting the shared sequence other stages draw from.
-    # Seasonal Low/Mid/Peak cards + commission keep this villa conforming to the
-    # same shape invariants the portfolio plans satisfy.
-    local_rng = random.Random(0)
-    build_seasonal_cards(plan, draw_base_nightly(local_rng, currency.code), min_nights=1)
-    assign_commission(local_rng, prop)
+    # Match the active profile's pricing shape so the demo villa conforms to the
+    # same invariants the portfolio plans satisfy — otherwise the seasonal cards
+    # leak into the `happy` profile, which is meant to keep the legacy
+    # single-card shape on *every* plan (and the smoke-test assertions enforce
+    # exactly that).
+    if ctx.knobs.realistic_pricing:
+        # A fixed-seed local RNG (not ctx.rng) keeps the demo villa's pricing
+        # deterministic without shifting the shared sequence other stages draw
+        # from. Seasonal Low/Mid/Peak cards + commission mirror the realistic
+        # portfolio plans.
+        local_rng = random.Random(0)
+        build_seasonal_cards(plan, draw_base_nightly(local_rng, currency.code), min_nights=1)
+        assign_commission(local_rng, prop)
+    else:
+        # Legacy single 1-30 card, matching the happy portfolio (no commission
+        # override — the villa keeps the factory's null-finance default).
+        card = RateCardFactory(plan=plan)
+        RateRuleFactory(card=card)
     return 1
 
 

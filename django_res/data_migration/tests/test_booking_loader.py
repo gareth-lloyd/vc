@@ -126,6 +126,33 @@ def test_booking_loader_is_idempotent(seeded: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_booking_loader_writes_person_not_guest(seeded: Property) -> None:
+    """GAP-045 Unit 3d-B: the loader populates `person` (the authoritative
+    customer FK) and leaves the legacy `guest` leg NULL on the synthesised
+    Quotation, the Booking, and its LEAD BookingGuest."""
+    from reservations.enums import BookingGuestRole
+    from reservations.models.booking_guest import BookingGuest
+    from reservations.models.quotation import Quotation
+    from reservations.services.person_sync import person_for_guest
+
+    BookingLoader()._process_row(_row(), LoadReport(loader="booking"))
+
+    person = person_for_guest(Guest.objects.get(legacy_id="55"))
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.person_id == person.pk
+    assert booking.guest_id is None
+
+    quotation = Quotation.objects.get(legacy_id="booking-7")
+    assert quotation.person_id == person.pk
+    assert quotation.guest_id is None
+
+    lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
+    assert lead.person_id == person.pk
+    assert lead.guest_id is None
+
+
+@pytest.mark.django_db
 def test_two_bookings_sharing_quotationno_are_preserved_with_suffix(seeded: Property) -> None:
     """A second legacy booking reusing a QuotationNo must be preserved with a
     uniquified `VC{n}-…` reference, not crash the import (the old behaviour

@@ -50,19 +50,22 @@ class GuestPreferenceLoader(BaseLoader):
         ).first()
         if guest is None or pref_type is None:
             return None
+        person = person_for_guest(guest)
         quotation = (
             Quotation.objects.filter(legacy_id=str(row["QuotationMasterId"])).first()
             if row.get("QuotationMasterId")
             else None
         )
-        # The unique constraint covers (person, preference_type, quotation) as of
-        # GAP-045 Unit 3d-A; this guest-keyed dedup stays correct because guest →
-        # person is 1:1, and `guest`/`person` are repointed together in 3d-B.
-        # Duplicates (same triple) are collapsed to the first occurrence so the
-        # loader stays idempotent on re-runs.
+        # GAP-045 Unit 3d-B: the dedup is keyed on `person` to match the
+        # `unique_person_preference` constraint (person, preference_type,
+        # quotation) — `person` is now the sole customer FK written, so a
+        # guest-keyed dedup would stop matching prior rows (born guest-NULL) on
+        # re-run and trip the constraint. guest → person is 1:1 (mirror key
+        # `guest-{pk}`), so this is exactly equivalent. Duplicates (same triple)
+        # collapse to the first occurrence so the loader stays idempotent.
         existing = (
             GuestPreference.objects.filter(
-                guest=guest,
+                person=person,
                 preference_type=pref_type,
                 quotation=quotation,
             )
@@ -71,14 +74,8 @@ class GuestPreferenceLoader(BaseLoader):
         )
         if existing is not None:
             return None
-        # GAP-045 Unit 3c-1b: mirror the unified Person FK alongside the Guest.
-        # `guest` is non-None here (returned early above otherwise). This lands
-        # in `defaults` (create-only) via BaseLoader._process_row, so re-runs of
-        # this idempotent loader rely on the `link_person_fks` delta linker to
-        # fill any rows written before this change.
         return {
-            "guest": guest,
-            "person": person_for_guest(guest),
+            "person": person,
             "preference_type": pref_type,
             "quotation": quotation,
         }

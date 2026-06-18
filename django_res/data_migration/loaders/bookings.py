@@ -92,12 +92,12 @@ class BookingLoader(BaseLoader):
 
         terms = _ensure_default_terms()
         booking_legacy = f"booking-{row['Id']}"
-        # GAP-045 Unit 3c-1b: resolve the unified Person mirror once and set it
-        # on the synthesised Quotation / Booking / LEAD BookingGuest alongside
-        # the Guest FK. `guest` is guaranteed non-None here (early-returned
-        # above). `defaults` only applies on create, so re-runs of this
-        # idempotent loader rely on the `link_person_fks` delta linker to fill
-        # any rows written before this change.
+        # GAP-045 Unit 3d-B: `person` is now the sole customer FK the loader
+        # writes onto the synthesised Quotation / Booking / LEAD BookingGuest;
+        # the legacy `guest` leg is left to the still-dual-FK Enquiry path
+        # (`ensure_enquiry` below) and dropped from the schema in 3d-E. `guest`
+        # is still resolved (early-returned non-None above) to drive
+        # `ensure_enquiry` and `person_for_guest`.
         person = person_for_guest(guest)
 
         # The synthesised quotation is an internal artifact (hidden from public
@@ -112,7 +112,6 @@ class BookingLoader(BaseLoader):
             legacy_id=booking_legacy,
             defaults={
                 "enquiry": enquiry,
-                "guest": guest,
                 "person": person,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],
                 "expires_at": timezone.now() + timedelta(days=7),
@@ -146,7 +145,6 @@ class BookingLoader(BaseLoader):
 
         defaults: dict[str, Any] = {
             "quotation_line": line,
-            "guest": guest,
             "person": person,
             "property": prop,
             "date_from": date_from,
@@ -186,7 +184,7 @@ class BookingLoader(BaseLoader):
         BookingGuest.objects.get_or_create(
             booking=booking,
             role=BookingGuestRole.LEAD.value,
-            defaults={"guest": guest, "person": person},
+            defaults={"person": person},
         )
         if created:
             report.created += 1

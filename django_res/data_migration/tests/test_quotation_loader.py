@@ -74,6 +74,18 @@ def test_transform_returns_no_currency_key(_guest_and_currency: None) -> None:
     assert "currency" not in kwargs
 
 
+@pytest.mark.django_db
+def test_transform_writes_person_not_guest(_guest_and_currency: None) -> None:
+    """GAP-045 Unit 3d-B: the loader writes only the unified `person` mirror,
+    not the legacy `guest` leg, onto the Quotation."""
+    from reservations.services.person_sync import person_for_guest
+
+    kwargs = QuotationLoader().transform(_row())
+    assert kwargs is not None
+    assert "guest" not in kwargs
+    assert kwargs["person"] == person_for_guest(Guest.objects.get(legacy_id="55"))
+
+
 def _line_row(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "Id": 77,

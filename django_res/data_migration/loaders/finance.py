@@ -348,11 +348,10 @@ class QuotationLoader(BaseLoader):
         defaults: dict[str, Any] = {
             "reference": quotation_reference(display)[:32],
             "enquiry": enquiry,
-            "guest": guest,
-            # GAP-045 Unit 3c-1b: mirror the unified Person alongside the Guest
-            # FK on the real legacy quotation upsert (`guest` is non-None — early
-            # return above). `defaults` only applies on create, so re-runs rely on
-            # the `link_person_fks` delta linker.
+            # GAP-045 Unit 3d-B: `person` is the sole customer FK written on the
+            # real legacy quotation upsert; the legacy `guest` leg is dropped
+            # from the schema in 3d-E. `guest` is still resolved (non-None —
+            # early return above) to drive `ensure_enquiry`/`person_for_guest`.
             "person": person_for_guest(guest),
             "agent": agent,
             "expires_at": timezone.now() + timedelta(days=7),

@@ -78,6 +78,7 @@ class Property(AuditedModel):
     )
     features = models.ManyToManyField(
         "properties.Feature",
+        through="properties.PropertyFeature",
         blank=True,
         related_name="properties",
     )

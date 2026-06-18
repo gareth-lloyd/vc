@@ -31,6 +31,7 @@ EXPECTED_TRACKED_MODELS = {
     "properties.ChangeOverRule",
     "properties.Property",
     "properties.PropertyContactAssignment",
+    "properties.PropertyFeature",
     "properties.PropertyImage",
     "properties.PropertyNearbyPlace",
     "properties.Room",

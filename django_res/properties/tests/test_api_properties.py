@@ -226,6 +226,30 @@ def test_duplicate_creates_new_property(
 
 
 @pytest.mark.django_db
+def test_duplicate_clones_feature_links(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`duplicate()` copies feature links via `features.set()`. Guard that the
+    GAP-022 through-model swap (`PropertyFeature`) keeps `.set()` working — it
+    relies on `sort_order` having a DB default; a future required field would
+    break the copy silently without this assertion."""
+    from typing import cast
+
+    from properties.factories import FeatureFactory
+    from properties.models import Feature
+
+    feature = cast(Feature, FeatureFactory())
+    property_.features.set([feature])
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+
+    clone = Property.objects.get(pk=response.json()["id"])
+    assert list(clone.features.values_list("pk", flat=True)) == [feature.pk]
+
+
+@pytest.mark.django_db
 def test_import_from_zoho_returns_501(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

@@ -146,6 +146,18 @@ and create the new LEAD atomically. References:
 `BookingService.create_from_quotation_line`, `BookingLoader._process_row`,
 `reservations.factories.make_occupying_booking`.
 
+### Booking money adjustments are charge lines, not rental-figure edits
+
+There is no `rental_price` override action (GAP-016, dropped). Adjust a
+booking's money with a signed `BookingChargeItem` (e.g. "Negotiated rate
+adjustment −400.00") — the label records the *why* a silent edit never could,
+and the write fires `booking_total_changed`, which resyncs the unsettled
+deposit/balance schedule (`PaymentScheduler.resync_for_booking`) and any
+still-pre-charge security deposit (`SecurityDepositService.resize_for_booking`)
+in the same transaction. The `modify_dates`/`modify_guests` re-pricing endpoints
+ride the same signal. Reach for a true rental-figure override only if ops hits a
+case the charge line can't express.
+
 ### AuditLog registration is part of model definition
 
 Any PII- or money-bearing model (and any model whose docs claim an audit

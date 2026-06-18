@@ -65,4 +65,5 @@ FE adornment only — no backend changes.
 
 ## Dependencies
 
-Touches the same surfaces as GAP-019 (`security_deposit_calculate_from`).
+Touches the finance-config money fields (the same `PropertyFinance` /
+`GroupFinance` surfaces GAP-019 cleaned up).

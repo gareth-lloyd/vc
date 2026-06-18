@@ -90,11 +90,19 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         return contact_phone(obj.person, obj.guest)
 
     def get_guest_contact_method(self, obj: Enquiry) -> str | None:
-        # GAP-045 Unit 3c-2a: contact_method stays guest-sourced. The Person
-        # mirror coerces a null contact_method to "email" (preferred_method's
-        # default), so reading person-first here would silently change null →
-        # "email". The null-vs-"email" semantics is a 3d decision; until then
-        # this field reports exactly what the guest recorded.
+        # GAP-045 Unit 3d-2: contact_method now resolves from the unified
+        # Person's `preferred_method`. The mirror coerces a null guest
+        # contact_method to "email" (preferred_method's default), so an enquiry
+        # whose guest never recorded a method now reports "email" rather than the
+        # legacy null — the documented null→"email" value change. Falls back to
+        # the legacy guest value while `person` is still null (the fallback arm
+        # is removed in 3d-3 once person is the sole source). Value-gated, like
+        # the `contact_*` helpers: fall through to the guest when the person has
+        # no method (a saved Person always does today, but this keeps the field
+        # consistent with its siblings).
+        person = obj.person
+        if person is not None and person.preferred_method:
+            return person.preferred_method
         guest = obj.guest
         if guest is None:
             return None

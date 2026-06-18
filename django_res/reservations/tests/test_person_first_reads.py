@@ -284,13 +284,15 @@ def test_enquiry_name_falls_back_to_denorm_when_no_person_or_guest(
 
 
 @pytest.mark.django_db
-def test_enquiry_contact_method_stays_guest_sourced(
+def test_enquiry_contact_method_reads_person_preferred_method(
     api_client: APIClient,
     staff: User,
     property_: Property,
 ) -> None:
-    """A guest with no contact_method must report null — NOT the "email" the
-    Person mirror defaults its ``preferred_method`` to (the 3c-2a decision)."""
+    """GAP-045 Unit 3d-2: contact_method now resolves from the Person mirror's
+    ``preferred_method``. A guest with no contact_method therefore reports the
+    mirror's "email" default — the documented null→"email" value change (this
+    reverses the interim 3c-2a guest-sourced behaviour)."""
     guest = Guest.objects.create(first_name="No", last_name="Method", email="nm@example.com")
     person = person_for_guest(guest)
     assert person.preferred_method == "email"  # mirror coerced null → email
@@ -300,7 +302,7 @@ def test_enquiry_contact_method_stays_guest_sourced(
     response = api_client.get("/api/v1/enquiries")
 
     row = next(r for r in response.data["results"] if r["id"] == enquiry.pk)
-    assert row["guest_contact_method"] is None
+    assert row["guest_contact_method"] == "email"
 
 
 # ---------------------------------------------------------------------------

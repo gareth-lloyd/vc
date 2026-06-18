@@ -10,6 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.enums import PersonPreferredMethod
 from accounts.models import User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
@@ -26,6 +27,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -117,6 +119,30 @@ def test_enquiry_guest_contact_fields_null_without_guest(
     assert row["guest_email"] is None
     assert row["guest_phone"] is None
     assert row["guest_contact_method"] is None
+
+
+@pytest.mark.django_db
+def test_enquiry_contact_method_reads_person_preferred_method(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """GAP-045 Unit 3d-2: `guest_contact_method` now resolves from the unified
+    Person's `preferred_method`, not the legacy `guest.contact_method`. With a
+    person linked, the person value wins even when it diverges from the guest."""
+    # "email" is an actionable choice — the guest check constraint requires the
+    # chosen method's channel to be present, and the guest fixture has an email.
+    guest.contact_method = "email"
+    guest.save()
+    person = person_for_guest(guest)
+    person.preferred_method = PersonPreferredMethod.SMS.value
+    person.save()
+    enquiry = Enquiry.objects.create(guest=guest, person=person, adults=2)
+    api_client.force_login(staff)
+
+    for payload in (
+        api_client.get("/api/v1/enquiries").data["results"][0],
+        api_client.get(f"/api/v1/enquiries/{enquiry.pk}").data,
+    ):
+        assert payload["guest_contact_method"] == PersonPreferredMethod.SMS.value
 
 
 @pytest.mark.django_db

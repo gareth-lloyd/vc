@@ -5,12 +5,13 @@ from __future__ import annotations
 from django.db import models, transaction
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
+from accounts.enums import PersonStatus
 from accounts.models import Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
@@ -18,6 +19,21 @@ from accounts.serializers import (
     ContactSerializer,
 )
 from core.api import IsStaff, not_implemented_response
+
+_LAST_CHANNEL_MESSAGE = "Cannot remove the last contact channel of an active contact."
+
+
+def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones: int) -> None:
+    """Block a channel deletion that would leave an ACTIVE contact unreachable.
+
+    Counts the *other* channel type too: an active contact may drop its last
+    email as long as a phone remains, and vice versa. INACTIVE/ANONYMIZED
+    contacts are exempt (mirrors the contactability gate in ContactSerializer).
+    """
+    if contact.status != PersonStatus.ACTIVE.value:
+        return
+    if keeping_emails == 0 and keeping_phones == 0:
+        raise serializers.ValidationError(_LAST_CHANNEL_MESSAGE)
 
 
 class ContactFilterSet(FilterSet):
@@ -90,6 +106,15 @@ class ContactEmailViewSet(viewsets.ModelViewSet[PersonEmail]):
         contact = get_object_or_404(Person, pk=self.kwargs["contact_pk"])
         serializer.save(contact=contact)
 
+    def perform_destroy(self, instance: PersonEmail) -> None:
+        contact = instance.contact
+        _guard_last_channel(
+            contact,
+            keeping_emails=contact.emails.exclude(pk=instance.pk).count(),
+            keeping_phones=contact.phones.count(),
+        )
+        instance.delete()
+
 
 class ContactPhoneViewSet(viewsets.ModelViewSet[PersonPhone]):
     """Nested `/contacts/{contact_id}/phones`."""
@@ -105,6 +130,15 @@ class ContactPhoneViewSet(viewsets.ModelViewSet[PersonPhone]):
     def perform_create(self, serializer: BaseSerializer[PersonPhone]) -> None:
         contact = get_object_or_404(Person, pk=self.kwargs["contact_pk"])
         serializer.save(contact=contact)
+
+    def perform_destroy(self, instance: PersonPhone) -> None:
+        contact = instance.contact
+        _guard_last_channel(
+            contact,
+            keeping_emails=contact.emails.count(),
+            keeping_phones=contact.phones.exclude(pk=instance.pk).count(),
+        )
+        instance.delete()
 
 
 class ContactPropertiesView(viewsets.ViewSet):

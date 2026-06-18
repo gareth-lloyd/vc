@@ -35,12 +35,186 @@ def test_create_contact(api_client: APIClient, staff: User) -> None:
 
     response = api_client.post(
         "/api/v1/contacts",
+        {
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "emails": [{"email": "grace@example.com", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    person = Person.objects.get(first_name="Grace")
+    assert person.emails.filter(email="grace@example.com", is_primary=True).exists()
+
+
+@pytest.mark.django_db
+def test_create_contact_with_inline_phone(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "phones": [{"number": "+441234567890"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    person = Person.objects.get(first_name="Grace")
+    assert person.phones.filter(number="+441234567890").exists()
+
+
+@pytest.mark.django_db
+def test_create_active_contact_without_channel_is_rejected(
+    api_client: APIClient, staff: User
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
         {"first_name": "Grace", "last_name": "Hopper"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert not Person.objects.filter(first_name="Grace").exists()
+
+
+@pytest.mark.django_db
+def test_create_inactive_contact_without_channel_is_allowed(
+    api_client: APIClient, staff: User
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {"first_name": "Grace", "last_name": "Hopper", "status": "inactive"},
         format="json",
     )
 
     assert response.status_code == 201
     assert Person.objects.filter(first_name="Grace").exists()
+
+
+@pytest.mark.django_db
+def test_create_contact_with_two_primary_emails_is_rejected(
+    api_client: APIClient, staff: User
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "emails": [
+                {"email": "a@example.com", "is_primary": True},
+                {"email": "b@example.com", "is_primary": True},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert not Person.objects.filter(first_name="Grace").exists()
+
+
+@pytest.mark.django_db
+def test_patch_channelless_active_contact_notes_still_allowed(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    """Editing a legacy channel-less active contact in place must stay allowed —
+    contactability only guards the create and the status→active transition."""
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"notes": "called, no answer"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    assert contact.notes == "called, no answer"
+
+
+@pytest.mark.django_db
+def test_reactivating_channelless_contact_is_rejected(api_client: APIClient, staff: User) -> None:
+    inactive = Person.objects.create(first_name="Grace", last_name="Hopper", status="inactive")
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{inactive.pk}",
+        {"status": "active"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    inactive.refresh_from_db()
+    assert inactive.status == "inactive"
+
+
+@pytest.mark.django_db
+def test_reactivating_contact_with_existing_channel_is_allowed(
+    api_client: APIClient, staff: User
+) -> None:
+    inactive = Person.objects.create(first_name="Grace", last_name="Hopper", status="inactive")
+    PersonEmail.objects.create(contact=inactive, email="grace@example.com")
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{inactive.pk}",
+        {"status": "active"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    inactive.refresh_from_db()
+    assert inactive.status == "active"
+
+
+@pytest.mark.django_db
+def test_delete_last_channel_of_active_contact_is_rejected(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    email = PersonEmail.objects.create(contact=contact, email="ada@example.com")
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/contacts/{contact.pk}/emails/{email.pk}")
+
+    assert response.status_code == 400
+    assert contact.emails.filter(pk=email.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_channel_when_another_remains_succeeds(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    email = PersonEmail.objects.create(contact=contact, email="ada@example.com")
+    PersonPhone.objects.create(contact=contact, number="+441234567890")
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/contacts/{contact.pk}/emails/{email.pk}")
+
+    assert response.status_code == 204
+    assert not contact.emails.filter(pk=email.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_last_channel_of_inactive_contact_succeeds(
+    api_client: APIClient, staff: User
+) -> None:
+    inactive = Person.objects.create(first_name="Grace", last_name="Hopper", status="inactive")
+    email = PersonEmail.objects.create(contact=inactive, email="grace@example.com")
+    api_client.force_login(staff)
+
+    response = api_client.delete(f"/api/v1/contacts/{inactive.pk}/emails/{email.pk}")
+
+    assert response.status_code == 204
+    assert not inactive.emails.filter(pk=email.pk).exists()
 
 
 @pytest.mark.django_db

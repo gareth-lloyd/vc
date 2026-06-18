@@ -1,5 +1,20 @@
 # GAP-032 — Click-and-drag availability block creation
 
+> ✅ **RESOLVED (2026-06-18).** Press-drag-release on a villa's month grid opens
+> the existing create dialog pre-filled with the dragged range (reason/notes
+> still chosen in the dialog); typed-range entry and single-cell edit are
+> unchanged. New pure `lib/dragRange.ts#resolveDragRange` anchors on the press
+> origin and truncates the selection before the first non-selectable day
+> (half-open `date_to = lastNight + 1`, matching the picker and backend overlap
+> predicates), so a drag can't span an occupied/booked day. The grid uses
+> pointer-event delegation (drag starts only on selectable cells; no
+> `setPointerCapture`; a `window` `pointerup` commits) so editable-block
+> dropdowns and booking links keep working, and drag is role-gated to
+> reservations users. `AvailabilityBlockFormDialog` gained an optional
+> `initialRange` create prop. Vitest covers the range mapping
+> (forward/reverse/single-day/occupied-truncation) and the grid drag →
+> pre-filled dialog. FE-only, no API change. Quality gate green.
+
 - **Severity:** Gap (FE UX; reduces friction for busy update windows)
 - **Source:** owner Loom walkthrough 2026-06-17 (availability section, 1:20–1:46):
   "the way that we add availability is a little bit clunky… putting the date

@@ -19,7 +19,9 @@
   "window": {
     "prev": "Previous week",
     "next": "Next week",
-    "today": "Today"
+    "today": "Today",
+    "month_span_single": "{{month}}",
+    "month_span_range": "{{start}} – {{end}}"
   },
   "legend": {
     "available": "Available",

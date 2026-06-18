@@ -19,6 +19,7 @@ import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
 import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
 import { useCollections, useMultiAvailability, useRegions, useTimelineProperties } from "./hooks";
+import { monthSpanLabel } from "./monthSpan";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
 import { bandStatusClasses, type BandDisplayStatus } from "./status";
 import { useTimelineWindow } from "./useTimelineWindow";
@@ -240,11 +241,21 @@ export function AvailabilityTimelinePage() {
               <Button variant="outline" size="sm" onClick={window.goNext}>
                 {t("window.next")}
               </Button>
-              <span className="text-muted-foreground min-w-[150px] text-center text-sm">
-                {format(window.days[0], "d MMM", { locale: activeLocale() })} –{" "}
-                {format(window.days[window.days.length - 1], "d MMM yyyy", {
-                  locale: activeLocale(),
-                })}
+              <span className="flex min-w-[150px] flex-col text-center text-sm">
+                <span className="text-foreground font-medium">
+                  {monthSpanLabel(
+                    window.days[0],
+                    window.days[window.days.length - 1],
+                    t,
+                    activeLocale(),
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  {format(window.days[0], "d MMM", { locale: activeLocale() })} –{" "}
+                  {format(window.days[window.days.length - 1], "d MMM yyyy", {
+                    locale: activeLocale(),
+                  })}
+                </span>
               </span>
             </div>
           }

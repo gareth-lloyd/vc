@@ -19,7 +19,9 @@
   "window": {
     "prev": "Προηγούμενη εβδομάδα",
     "next": "Επόμενη εβδομάδα",
-    "today": "Σήμερα"
+    "today": "Σήμερα",
+    "month_span_single": "{{month}}",
+    "month_span_range": "{{start}} – {{end}}"
   },
   "legend": {
     "available": "Διαθέσιμο",

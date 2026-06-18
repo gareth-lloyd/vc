@@ -191,6 +191,30 @@ def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Guest → Person mirror (GAP-045 Unit 3c)
+# ---------------------------------------------------------------------------
+
+
+def _guest_post_save(
+    sender: type,
+    instance: Any,
+    update_fields: frozenset[str] | None = None,
+    **_: Any,
+) -> None:
+    """Keep the unified `accounts.Person` mirror in sync with every Guest write.
+
+    The mirror lets Unit 3c switch reads/FKs onto Person while Guest is still the
+    write surface; both go away when Guest is retired (Unit 3d). A targeted save
+    that touches none of the synced fields (e.g. a denorm-only column) is skipped.
+    """
+    from reservations.services.person_sync import SYNCED_GUEST_FIELDS, sync_person_from_guest
+
+    if update_fields is not None and SYNCED_GUEST_FIELDS.isdisjoint(update_fields):
+        return
+    sync_person_from_guest(instance)
+
+
+# ---------------------------------------------------------------------------
 # BookingGuest(role=LEAD) → orphan-guard on delete
 # ---------------------------------------------------------------------------
 
@@ -279,6 +303,7 @@ def _connect() -> None:
     from reservations.models.charge_item import BookingChargeItem
     from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
+    from reservations.models.guest import Guest
     from reservations.models.quotation import QuotationLine
 
     post_save.connect(
@@ -310,6 +335,11 @@ def _connect() -> None:
         _booking_guest_post_save,
         sender=BookingGuest,
         dispatch_uid="reservations.booking_guest_post_save",
+    )
+    post_save.connect(
+        _guest_post_save,
+        sender=Guest,
+        dispatch_uid="reservations.guest_post_save",
     )
     pre_delete.connect(
         _booking_guest_pre_delete,

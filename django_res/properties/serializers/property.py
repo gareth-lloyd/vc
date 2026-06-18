@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from django.db import transaction
 from rest_framework import serializers
 
-from properties.models import Property, PropertyCapacity
+from properties.models import Feature, Property, PropertyCapacity, PropertyFeature
 
 _CAPACITY_READ_FIELDS = (
     "guests",
@@ -79,11 +82,7 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
 class PropertyDetailSerializer(serializers.ModelSerializer[Property]):
     """Full representation including small-cardinality nested collections."""
 
-    feature_ids: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
-        source="features",
-        many=True,
-        read_only=True,
-    )
+    feature_ids = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -107,6 +106,14 @@ class PropertyDetailSerializer(serializers.ModelSerializer[Property]):
         ]
         read_only_fields = ["id", "status", "created_at", "updated_at"]
 
+    def get_feature_ids(self, obj: Property) -> list[int]:
+        # Per-villa order (GAP-022): walk the `PropertyFeature` through-links,
+        # which `Meta.ordering` sorts by `sort_order`. NOT `obj.features.all()`,
+        # which would sort by Feature's global rank. This reads only the
+        # `feature_id` column already on each through-row, so it's a single
+        # ordered query regardless of feature count — no N+1, no prefetch needed.
+        return [link.feature_id for link in obj.feature_links.all()]
+
     def get_hero_image_url(self, obj: Property) -> str | None:
         return obj.hero_image_url()
 
@@ -117,6 +124,16 @@ class PropertyWriteSerializer(serializers.ModelSerializer[Property]):
     `status` is not directly writable here — lifecycle changes go through the
     `:activate` / `:archive` / `:restore` action endpoints.
     """
+
+    # Declared explicitly: DRF auto-marks a `through`-model M2M as read-only, so
+    # without this `features` would never reach `validated_data` and the ordered
+    # diff-writer below would be a no-op. The LIST ORDER is meaningful — it
+    # becomes each link's `sort_order` (GAP-022).
+    features = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Feature.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = Property
@@ -132,3 +149,46 @@ class PropertyWriteSerializer(serializers.ModelSerializer[Property]):
             "features",
             "legacy_id",
         ]
+
+    def create(self, validated_data: dict[str, Any]) -> Property:
+        # Handle `features` ourselves so list ORDER becomes `sort_order`; DRF's
+        # default `.set()` would discard order and assign every row sort_order=0.
+        features = validated_data.pop("features", None)
+        instance = super().create(validated_data)
+        if features is not None:
+            self._sync_feature_order(instance, features)
+        return instance
+
+    def update(self, instance: Property, validated_data: dict[str, Any]) -> Property:
+        # `features` absent on a partial PATCH → leave the existing links alone.
+        has_features = "features" in validated_data
+        features = validated_data.pop("features", None)
+        instance = super().update(instance, validated_data)
+        if has_features:
+            self._sync_feature_order(instance, features or [])
+        return instance
+
+    @staticmethod
+    def _sync_feature_order(instance: Property, features: list[Any]) -> None:
+        """Diff the property's feature links against the desired ORDERED list,
+        writing `sort_order` = list position. Per-row `create`/`delete`/`save`
+        (never `bulk_*`) so each change fires its audit signal (FG-017); the
+        `sort_order != position` guard means a pure reorder touches only the
+        rows that actually moved, keeping the audit trail quiet. Duplicate ids
+        collapse to their first position (the unique constraint forbids repeats).
+        """
+        ordered_ids = list(dict.fromkeys(feature.pk for feature in features))
+        with transaction.atomic():
+            existing = {link.feature_id: link for link in instance.feature_links.all()}
+            for feature_id, link in existing.items():
+                if feature_id not in ordered_ids:
+                    link.delete()
+            for position, feature_id in enumerate(ordered_ids):
+                existing_link = existing.get(feature_id)
+                if existing_link is None:
+                    PropertyFeature.objects.create(
+                        property=instance, feature_id=feature_id, sort_order=position
+                    )
+                elif existing_link.sort_order != position:
+                    existing_link.sort_order = position
+                    existing_link.save(update_fields=["sort_order"])

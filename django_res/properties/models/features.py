@@ -62,7 +62,9 @@ class PropertyFeature(models.Model):
     property = models.ForeignKey(
         "properties.Property",
         on_delete=models.CASCADE,
-        related_name="+",
+        # Reverse accessor `property.feature_links` lets the detail serializer
+        # prefetch the links ordered by per-villa `sort_order` (GAP-022 step 4).
+        related_name="feature_links",
     )
     feature = models.ForeignKey(
         Feature,

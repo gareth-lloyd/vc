@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from properties import factories
 from properties.enums import ImageKind, PropertyStatus
 from properties.models import (
+    Feature,
+    FeatureCategory,
     Property,
     PropertyCategory,
+    PropertyFeature,
     PropertyGroup,
     PropertyImage,
     PropertyLocation,
@@ -233,12 +241,7 @@ def test_duplicate_clones_feature_links(
     GAP-022 through-model swap (`PropertyFeature`) keeps `.set()` working — it
     relies on `sort_order` having a DB default; a future required field would
     break the copy silently without this assertion."""
-    from typing import cast
-
-    from properties.factories import FeatureFactory
-    from properties.models import Feature
-
-    feature = cast(Feature, FeatureFactory())
+    feature = cast(Feature, factories.FeatureFactory())
     property_.features.set([feature])
 
     api_client.force_login(staff)
@@ -247,6 +250,195 @@ def test_duplicate_clones_feature_links(
 
     clone = Property.objects.get(pk=response.json()["id"])
     assert list(clone.features.values_list("pk", flat=True)) == [feature.pk]
+
+
+# --- GAP-022: per-villa feature display order (sort_order) -------------------
+
+
+def _shared_category() -> FeatureCategory:
+    return cast(FeatureCategory, factories.FeatureCategoryFactory(slug="gap022-shared-cat"))
+
+
+def _named_feature(name: str, slug: str, category: FeatureCategory) -> Feature:
+    return cast(Feature, factories.FeatureFactory(name=name, slug=slug, category=category))
+
+
+@pytest.mark.django_db
+def test_create_property_persists_feature_order(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    """The order of `features` on create becomes the per-villa `sort_order`."""
+    cat = _shared_category()
+    a = _named_feature("Apple", "feat-a", cat)
+    b = _named_feature("Mango", "feat-b", cat)
+    c = _named_feature("Zebra", "feat-c", cat)
+
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/properties",
+        data={
+            "name": "Ordered Villa",
+            "display_name": "Ordered Villa",
+            "slug": "ordered-villa",
+            "category": category.pk,
+            "group": group.pk,
+            "region": region.pk,
+            "features": [c.pk, a.pk, b.pk],
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    prop_id = response.json()["id"]
+
+    links = PropertyFeature.objects.filter(property_id=prop_id).order_by("sort_order")
+    assert [(link.feature_id, link.sort_order) for link in links] == [
+        (c.pk, 0),
+        (a.pk, 1),
+        (b.pk, 2),
+    ]
+    # The create response reflects the persisted per-villa order.
+    assert response.json()["feature_ids"] == [c.pk, a.pk, b.pk]
+
+
+@pytest.mark.django_db
+def test_detail_feature_ids_follow_sort_order_not_global_rank(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`feature_ids` reflects per-villa `sort_order`, NOT `Feature._meta.ordering`
+    (category, sort_order, name). With a shared category the global rank is by
+    name (Apple, Mango, Zebra); the per-villa order here is the reverse-ish
+    [Zebra, Apple, Mango], so a passing assertion proves the through is walked."""
+    cat = _shared_category()
+    a = _named_feature("Apple", "feat-a", cat)
+    b = _named_feature("Mango", "feat-b", cat)
+    c = _named_feature("Zebra", "feat-c", cat)
+    PropertyFeature.objects.create(property=property_, feature=c, sort_order=0)
+    PropertyFeature.objects.create(property=property_, feature=a, sort_order=1)
+    PropertyFeature.objects.create(property=property_, feature=b, sort_order=2)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["feature_ids"] == [c.pk, a.pk, b.pk]
+
+
+@pytest.mark.django_db
+def test_patch_features_adds_and_removes_links(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    cat = _shared_category()
+    a = _named_feature("Apple", "feat-a", cat)
+    b = _named_feature("Mango", "feat-b", cat)
+    c = _named_feature("Zebra", "feat-c", cat)
+    PropertyFeature.objects.create(property=property_, feature=a, sort_order=0)
+    PropertyFeature.objects.create(property=property_, feature=b, sort_order=1)
+
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"features": [b.pk, c.pk]},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["feature_ids"] == [b.pk, c.pk]
+
+    links = {pf.feature_id: pf.sort_order for pf in property_.feature_links.all()}
+    assert links == {b.pk: 0, c.pk: 1}  # a removed, c added, b re-positioned
+    assert not PropertyFeature.objects.filter(property=property_, feature=a).exists()
+
+
+@pytest.mark.django_db
+def test_partial_patch_without_features_leaves_links(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A PATCH that omits `features` must not touch the existing links."""
+    cat = _shared_category()
+    a = _named_feature("Apple", "feat-a", cat)
+    b = _named_feature("Mango", "feat-b", cat)
+    PropertyFeature.objects.create(property=property_, feature=a, sort_order=0)
+    PropertyFeature.objects.create(property=property_, feature=b, sort_order=1)
+
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"display_name": "Renamed Only"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["feature_ids"] == [a.pk, b.pk]
+    assert PropertyFeature.objects.filter(property=property_).count() == 2
+
+
+@pytest.mark.django_db
+def test_patch_reorder_writes_only_moved_links(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A pure reorder must issue an UPDATE only for the rows that actually moved.
+    The diff-writer's `sort_order != position` guard is what skips the unchanged
+    row — and only a real query-count check proves it (the audit layer diffs
+    independently, so an AuditLog assertion would pass even without the guard)."""
+    cat = _shared_category()
+    a = _named_feature("Apple", "feat-a", cat)
+    b = _named_feature("Mango", "feat-b", cat)
+    c = _named_feature("Zebra", "feat-c", cat)
+    PropertyFeature.objects.create(property=property_, feature=a, sort_order=0)
+    PropertyFeature.objects.create(property=property_, feature=b, sort_order=1)
+    PropertyFeature.objects.create(property=property_, feature=c, sort_order=2)
+
+    api_client.force_login(staff)
+    # Swap b and c; a stays at position 0 and must NOT be re-saved.
+    with CaptureQueriesContext(connection) as captured:
+        response = api_client.patch(
+            f"/api/v1/properties/{property_.pk}",
+            data={"features": [a.pk, c.pk, b.pk]},
+            format="json",
+        )
+    assert response.status_code == 200, response.content
+    assert response.json()["feature_ids"] == [a.pk, c.pk, b.pk]
+
+    link_updates = [
+        q["sql"]
+        for q in captured.captured_queries
+        if q["sql"].startswith('UPDATE "properties_property_features"')
+    ]
+    # b and c moved → exactly two UPDATEs; a was guarded out. Drop the guard and
+    # this becomes three.
+    assert len(link_updates) == 2, link_updates
+
+
+@pytest.mark.django_db
+def test_detail_feature_ids_query_count_is_constant(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`feature_ids` must cost the same number of queries no matter how many
+    features a property has — the regression guard against `get_feature_ids`
+    growing an N+1 (e.g. by walking `link.feature` without `select_related`)."""
+    cat = _shared_category()
+    api_client.force_login(staff)
+
+    PropertyFeature.objects.create(
+        property=property_, feature=_named_feature("One", "feat-one", cat), sort_order=0
+    )
+    api_client.get(f"/api/v1/properties/{property_.pk}")  # warm content-type caches
+    with CaptureQueriesContext(connection) as one_feature:
+        api_client.get(f"/api/v1/properties/{property_.pk}")
+
+    for i in range(5):
+        PropertyFeature.objects.create(
+            property=property_,
+            feature=_named_feature(f"More {i}", f"feat-m-{i}", cat),
+            sort_order=i + 1,
+        )
+    with CaptureQueriesContext(connection) as six_features:
+        response = api_client.get(f"/api/v1/properties/{property_.pk}")
+
+    assert response.status_code == 200, response.content
+    assert len(response.json()["feature_ids"]) == 6
+    assert len(six_features.captured_queries) == len(one_feature.captured_queries)
 
 
 @pytest.mark.django_db

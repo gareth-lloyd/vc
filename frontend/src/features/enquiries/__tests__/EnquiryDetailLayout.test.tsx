@@ -46,7 +46,7 @@ const baseEnquiry = {
 
 const quotedEnquiry = {
   ...baseEnquiry,
-  status: "quoted" as const,
+  status: "quote_sent" as const,
   quotations: [
     {
       id: 50,
@@ -129,11 +129,11 @@ describe("EnquiryDetailLayout", () => {
     expect(screen.getByRole("button", { name: /reopen/i })).toBeDisabled();
   });
 
-  it("enables Reopen + disables Close when status is lost", async () => {
+  it("enables Reopen + disables Close when status is dead", async () => {
     asReservationsUser();
     server.use(
       http.get("/api/v1/enquiries/7", () =>
-        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+        HttpResponse.json({ ...baseEnquiry, status: "dead", quotations: [] }),
       ),
     );
     setup("/enquiries/7");
@@ -213,7 +213,7 @@ describe("EnquiryDetailLayout", () => {
             id: 1,
             enquiry: 7,
             from_status: "new",
-            to_status: "contacted",
+            to_status: "progressing",
             kind: "contacted",
             actor: null,
             source: "user",
@@ -231,20 +231,20 @@ describe("EnquiryDetailLayout", () => {
     expect(activityCalls).toBe(0);
 
     await userEvent.click(screen.getByRole("button", { name: /^activity$/i }));
-    expect(await screen.findByText("new → contacted")).toBeInTheDocument();
+    expect(await screen.findByText("new → progressing")).toBeInTheDocument();
     expect(activityCalls).toBe(1);
   });
 
-  it("suppresses the inline builder and disables the toggle on a lost enquiry", async () => {
+  it("suppresses the inline builder and disables the toggle on a dead enquiry", async () => {
     asReservationsUser();
     server.use(
       http.get("/api/v1/enquiries/7", () =>
-        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+        HttpResponse.json({ ...baseEnquiry, status: "dead", quotations: [] }),
       ),
     );
     setup("/enquiries/7");
     // Builder must not auto-open for a final enquiry (no search button), and the
-    // build toggle is disabled — quoting a lost enquiry is blocked.
+    // build toggle is disabled — quoting a dead enquiry is blocked.
     await screen.findByRole("button", { name: /assign/i });
     expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /build a quote/i })).toBeDisabled();

@@ -61,10 +61,10 @@ function groupIntoColumns(
 ): KanbanColumn<EnquiryListItem>[] {
   const buckets: Record<EnquiryStatus, EnquiryListItem[]> = {
     new: [],
-    contacted: [],
-    quoted: [],
+    progressing: [],
+    quote_sent: [],
     converted: [],
-    lost: [],
+    dead: [],
   };
   for (const item of items) {
     buckets[item.status]?.push(item);

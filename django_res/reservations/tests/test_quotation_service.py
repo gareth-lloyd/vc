@@ -63,7 +63,7 @@ def test_create_from_enquiry_happy_path(
 
     # Enquiry advanced to QUOTED.
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
 
 
 @pytest.mark.django_db
@@ -130,7 +130,7 @@ def test_create_from_enquiry_requires_guest(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("final_status", [EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value])
+@pytest.mark.parametrize("final_status", [EnquiryStatus.DEAD.value, EnquiryStatus.CONVERTED.value])
 def test_create_from_enquiry_rejects_final_enquiry(
     final_status: str,
     guest: Guest,
@@ -548,7 +548,7 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     assert enquiry.email == guest.email
     assert enquiry.contact_method == ContactMethod.EMAIL.value
     # The service path advances the enquiry to QUOTED (audited).
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
     # And conversion reporting sees it.
     assert quotation.lines.count() == 1
 

@@ -221,10 +221,10 @@ class Enquiry(AuditedModel):
             )
 
     def contact(self, *, actor: Any = None, reason: str = "") -> Enquiry:
-        """Mark this enquiry as contacted (operator reached out)."""
+        """Move a NEW enquiry to PROGRESSING (operator reached out)."""
         self._transition(
             allowed_from=(EnquiryStatus.NEW.value,),
-            to=EnquiryStatus.CONTACTED.value,
+            to=EnquiryStatus.PROGRESSING.value,
             kind=EnquiryEventKind.CONTACTED.value,
             actor=actor,
             reason=reason,
@@ -255,8 +255,8 @@ class Enquiry(AuditedModel):
         if meta:
             event_meta.update(meta)
         self._transition(
-            allowed_from=(EnquiryStatus.NEW.value, EnquiryStatus.CONTACTED.value),
-            to=EnquiryStatus.QUOTED.value,
+            allowed_from=(EnquiryStatus.NEW.value, EnquiryStatus.PROGRESSING.value),
+            to=EnquiryStatus.QUOTE_SENT.value,
             kind=EnquiryEventKind.QUOTE_SENT.value,
             actor=actor,
             meta=event_meta,
@@ -288,7 +288,7 @@ class Enquiry(AuditedModel):
     def convert(self, quotation: Quotation, *, actor: Any = None) -> Enquiry:
         """Mark this enquiry as converted (a booking was made from a quotation)."""
         self._transition(
-            allowed_from=(EnquiryStatus.QUOTED.value, EnquiryStatus.CONTACTED.value),
+            allowed_from=(EnquiryStatus.QUOTE_SENT.value, EnquiryStatus.PROGRESSING.value),
             to=EnquiryStatus.CONVERTED.value,
             kind=EnquiryEventKind.CONVERTED.value,
             actor=actor,
@@ -301,10 +301,10 @@ class Enquiry(AuditedModel):
         self._transition(
             allowed_from=(
                 EnquiryStatus.NEW.value,
-                EnquiryStatus.CONTACTED.value,
-                EnquiryStatus.QUOTED.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.QUOTE_SENT.value,
             ),
-            to=EnquiryStatus.LOST.value,
+            to=EnquiryStatus.DEAD.value,
             kind=EnquiryEventKind.LOST.value,
             actor=actor,
             reason=reason,
@@ -314,7 +314,7 @@ class Enquiry(AuditedModel):
     def reopen(self, *, actor: Any = None, reason: str = "") -> Enquiry:
         """Bring a LOST enquiry back to NEW for renewed work."""
         self._transition(
-            allowed_from=(EnquiryStatus.LOST.value,),
+            allowed_from=(EnquiryStatus.DEAD.value,),
             to=EnquiryStatus.NEW.value,
             kind=EnquiryEventKind.REOPENED.value,
             actor=actor,

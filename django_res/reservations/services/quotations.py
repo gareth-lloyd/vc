@@ -289,8 +289,8 @@ class QuotationService:
         # A lost/converted enquiry is closed to new quotes — the workspace
         # suppresses the builder for these, but guard the service too so the
         # API rejects a direct POST (the old UI disabled the action via `isFinal`).
-        if enquiry.status in (EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value):
-            raise ValidationError("Cannot quote a lost or converted enquiry.")
+        if enquiry.status in (EnquiryStatus.DEAD.value, EnquiryStatus.CONVERTED.value):
+            raise ValidationError("Cannot quote a dead or converted enquiry.")
 
         resolved_guest = guest if guest is not None else enquiry.guest
         if resolved_guest is None:
@@ -344,7 +344,7 @@ class QuotationService:
         # Move the enquiry forward. The service-layer path is the in-app
         # SMTP flow — manual-mark goes via the dedicated endpoint, never
         # through here — so the audit event is stamped accordingly.
-        if enquiry.status not in (EnquiryStatus.QUOTED.value, EnquiryStatus.CONVERTED.value):
+        if enquiry.status not in (EnquiryStatus.QUOTE_SENT.value, EnquiryStatus.CONVERTED.value):
             from reservations.services.quotation_transmission import SEND_PATH_SMTP
 
             enquiry.quote_sent(quotation, send_path=SEND_PATH_SMTP, actor=actor)

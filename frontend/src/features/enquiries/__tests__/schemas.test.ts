@@ -8,7 +8,7 @@ import {
 
 describe("enquiryStatusSchema", () => {
   it("parses each known status", () => {
-    for (const s of ["new", "contacted", "quoted", "lost", "converted"] as const) {
+    for (const s of ["new", "progressing", "quote_sent", "dead", "converted"] as const) {
       expect(enquiryStatusSchema.parse(s)).toBe(s);
     }
   });
@@ -63,7 +63,7 @@ describe("enquiryDetailSchema", () => {
   const base = {
     id: 1,
     reference: "E-AAA-001",
-    status: "quoted",
+    status: "quote_sent",
     adults: 2,
     request_type: "quote",
     site_source: "main_website",

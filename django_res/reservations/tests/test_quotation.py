@@ -268,7 +268,7 @@ def test_quotation_accept_atomic_rollback_on_downstream_failure(
     line.refresh_from_db()
     # Neither side moved.
     assert quotation.status == QuotationStatus.SENT.value
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
     assert line.is_selected is False
 
 

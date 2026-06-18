@@ -7,9 +7,9 @@
   "labels": {
     "status": {
       "new": "New",
-      "contacted": "Contacted",
-      "quoted": "Quoted",
-      "lost": "Lost",
+      "progressing": "Progressing",
+      "quote_sent": "Quote sent",
+      "dead": "Dead",
       "converted": "Converted"
     },
     "source": {

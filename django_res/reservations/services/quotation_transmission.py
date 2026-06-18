@@ -127,10 +127,10 @@ def _record_enquiry_quote_sent(
     send_path: str,
     actor: Any,
 ) -> None:
-    """Flip enquiry → QUOTED if it's in a pre-quote state; always write event."""
+    """Flip enquiry → QUOTE_SENT if it's in a pre-quote state; always write event."""
     transitionable_from = (
         EnquiryStatus.NEW.value,
-        EnquiryStatus.CONTACTED.value,
+        EnquiryStatus.PROGRESSING.value,
     )
 
     if enquiry.status in transitionable_from:

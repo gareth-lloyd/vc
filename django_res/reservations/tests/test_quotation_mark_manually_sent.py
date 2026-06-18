@@ -173,7 +173,7 @@ def test_manual_mark_flips_quotation_and_enquiry_status(
     quotation.refresh_from_db()
     enquiry.refresh_from_db()
     assert quotation.status == QuotationStatus.SENT.value
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
 
 
 @pytest.mark.django_db

@@ -133,10 +133,10 @@ class GuestLoader(BaseLoader):
 
 _ENQUIRY_STATUS_MAP = {
     1: EnquiryStatus.NEW,
-    2: EnquiryStatus.CONTACTED,
-    3: EnquiryStatus.QUOTED,
+    2: EnquiryStatus.PROGRESSING,
+    3: EnquiryStatus.QUOTE_SENT,
     4: EnquiryStatus.CONVERTED,
-    5: EnquiryStatus.LOST,
+    5: EnquiryStatus.DEAD,
 }
 
 

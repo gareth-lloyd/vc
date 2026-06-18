@@ -42,14 +42,29 @@ def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quo
     )
 
 
+def test_enquiry_status_vocabulary() -> None:
+    """Stage values match the operator-facing UI vocabulary (GAP-038/039).
+
+    `contacted`/`quoted`/`lost` were renamed to `progressing`/`quote_sent`/`dead`
+    so the DB, API, and dashboard share one set of stage names.
+    """
+    assert [s.value for s in EnquiryStatus] == [
+        "new",
+        "progressing",
+        "quote_sent",
+        "dead",
+        "converted",
+    ]
+
+
 @pytest.mark.django_db
 def test_contact_new_to_contacted_writes_event(enquiry: Enquiry) -> None:
     enquiry.contact()
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.CONTACTED.value
+    assert enquiry.status == EnquiryStatus.PROGRESSING.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.CONTACTED.value)
     assert event.from_status == EnquiryStatus.NEW.value
-    assert event.to_status == EnquiryStatus.CONTACTED.value
+    assert event.to_status == EnquiryStatus.PROGRESSING.value
 
 
 @pytest.mark.django_db
@@ -63,7 +78,7 @@ def test_contact_from_wrong_state_raises(enquiry: Enquiry) -> None:
 def test_quote_sent_writes_event_with_quotation_id(enquiry: Enquiry, quotation: Quotation) -> None:
     enquiry.quote_sent(quotation, send_path="smtp")
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.QUOTE_SENT.value)
     assert event.meta == {"quotation_id": quotation.pk, "send_path": "smtp"}
 
@@ -106,7 +121,7 @@ def test_convert_from_new_raises(enquiry: Enquiry, quotation: Quotation) -> None
 def test_lose_writes_lost_event(enquiry: Enquiry) -> None:
     enquiry.lose("client went elsewhere")
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.LOST.value
+    assert enquiry.status == EnquiryStatus.DEAD.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.LOST.value)
     assert event.reason == "client went elsewhere"
 

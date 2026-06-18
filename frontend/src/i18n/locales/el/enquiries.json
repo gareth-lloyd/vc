@@ -7,9 +7,9 @@
   "labels": {
     "status": {
       "new": "Νέο",
-      "contacted": "Επικοινωνία",
-      "quoted": "Προσφορά",
-      "lost": "Χάθηκε",
+      "progressing": "Σε εξέλιξη",
+      "quote_sent": "Προσφορά εστάλη",
+      "dead": "Άκυρο",
       "converted": "Μετατράπηκε"
     },
     "source": {

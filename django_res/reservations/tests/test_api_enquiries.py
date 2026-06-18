@@ -127,11 +127,11 @@ def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, gu
         first_name="C",
         last_name="D",
         email="c@d.com",
-        status=EnquiryStatus.LOST.value,
+        status=EnquiryStatus.DEAD.value,
     )
     api_client.force_login(staff)
 
-    response = api_client.get("/api/v1/enquiries", {"status": EnquiryStatus.LOST.value})
+    response = api_client.get("/api/v1/enquiries", {"status": EnquiryStatus.DEAD.value})
 
     assert response.status_code == 200
     assert response.data["count"] == 1
@@ -754,7 +754,7 @@ def test_close_enquiry__marks_lost(api_client: APIClient, staff: User, enquiry: 
 
     assert response.status_code == 200
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.LOST.value
+    assert enquiry.status == EnquiryStatus.DEAD.value
 
 
 @pytest.mark.django_db
@@ -767,7 +767,7 @@ def test_activity_returns_event_timeline(
     response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}/activity")
 
     assert response.status_code == 200
-    assert any(row["to_status"] == EnquiryStatus.CONTACTED.value for row in response.data)
+    assert any(row["to_status"] == EnquiryStatus.PROGRESSING.value for row in response.data)
 
 
 @pytest.mark.django_db
@@ -815,14 +815,14 @@ def test_enquiry_status_counts__groups_by_status(
         first_name="C",
         last_name="D",
         email="c@d.com",
-        status=EnquiryStatus.LOST.value,
+        status=EnquiryStatus.DEAD.value,
     )
     api_client.force_login(staff)
 
     response = api_client.get("/api/v1/enquiries/status-counts")
 
     assert response.status_code == 200
-    assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.LOST.value: 1}
+    assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.DEAD.value: 1}
 
 
 @pytest.mark.django_db

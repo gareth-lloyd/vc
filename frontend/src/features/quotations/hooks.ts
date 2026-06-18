@@ -147,7 +147,7 @@ function invalidateAfterSend(
   quotation: QuotationDetail,
 ) {
   invalidateQuotationStatus(qc, id);
-  // Parent enquiry status flips to QUOTED — refresh that view too.
+  // Parent enquiry status flips to QUOTE_SENT — refresh that view too.
   if (quotation.enquiry != null) {
     qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
     qc.invalidateQueries({ queryKey: queryKeys.enquiries.activity(quotation.enquiry) });

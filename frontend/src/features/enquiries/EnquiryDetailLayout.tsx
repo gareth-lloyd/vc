@@ -41,7 +41,7 @@ function EnquiryActions({ enquiry, onOpen }: EnquiryActionsProps) {
   const { t } = useTranslation("enquiries");
   const hasRole = useHasReservationsRole();
 
-  const isClosed = enquiry.status === "lost";
+  const isClosed = enquiry.status === "dead";
   const isFinal = isFinalStatus(enquiry.status);
   const roleRequired = t("common:errors.reservations_role_required");
 

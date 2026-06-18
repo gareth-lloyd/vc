@@ -60,7 +60,7 @@ describe("guestEnquiryHistorySchema", () => {
     const row = guestEnquiryHistorySchema.parse({
       id: 11,
       reference: "E-2026-000011",
-      status: "quoted",
+      status: "quote_sent",
       quote_count: 1,
       converted_booking: null,
     });

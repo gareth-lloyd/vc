@@ -39,7 +39,7 @@ const listFixture = {
       ...baseEnquiry,
       id: 2,
       reference: "E-BBB-002",
-      status: "contacted" as const,
+      status: "progressing" as const,
       first_name: "Grace",
       last_name: "Hopper",
       email: "grace@example.com",
@@ -48,7 +48,7 @@ const listFixture = {
       ...baseEnquiry,
       id: 3,
       reference: "E-CCC-003",
-      status: "quoted" as const,
+      status: "quote_sent" as const,
       first_name: "Linus",
       last_name: "Torvalds",
       email: "linus@example.com",
@@ -73,13 +73,13 @@ describe("EnquiriesListPage", () => {
 
     await screen.findByTestId("kanban-column-new");
     const newCol = screen.getByTestId("kanban-column-new");
-    const quotedCol = screen.getByTestId("kanban-column-quoted");
+    const quotedCol = screen.getByTestId("kanban-column-quote_sent");
 
     expect(within(newCol).getByText("Ada Lovelace")).toBeInTheDocument();
     expect(within(quotedCol).getByText("Linus Torvalds")).toBeInTheDocument();
-    // `contacted` has no forward affordance in the app, so the board omits that
-    // column — a contacted (migrated) enquiry doesn't appear on the board.
-    expect(screen.queryByTestId("kanban-column-contacted")).not.toBeInTheDocument();
+    // `progressing` has no forward affordance in the app, so the board omits that
+    // column — a progressing (migrated) enquiry doesn't appear on the board.
+    expect(screen.queryByTestId("kanban-column-progressing")).not.toBeInTheDocument();
     expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
   });
 
@@ -139,7 +139,7 @@ describe("EnquiriesListPage", () => {
     await waitFor(() => expect(seenStatus).toBeNull());
     // …so cards from other statuses still populate their columns.
     expect(
-      within(screen.getByTestId("kanban-column-quoted")).getByText("Linus Torvalds"),
+      within(screen.getByTestId("kanban-column-quote_sent")).getByText("Linus Torvalds"),
     ).toBeInTheDocument();
   });
 

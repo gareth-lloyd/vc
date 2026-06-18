@@ -21,10 +21,12 @@ class ContactMethod(models.TextChoices):
 
 
 class EnquiryStatus(models.TextChoices):
+    # Stage vocabulary mirrors the operator-facing dashboard (GAP-038/039):
+    # progressing / quote_sent / dead were formerly contacted / quoted / lost.
     NEW = "new", "New"
-    CONTACTED = "contacted", "Contacted"
-    QUOTED = "quoted", "Quoted"
-    LOST = "lost", "Lost"
+    PROGRESSING = "progressing", "Progressing"
+    QUOTE_SENT = "quote_sent", "Quote sent"
+    DEAD = "dead", "Dead"
     CONVERTED = "converted", "Converted"
 
 

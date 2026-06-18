@@ -11,7 +11,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-17): **54 done** (51 resolved + 3 dropped), **67 open**
+Scoreboard (2026-06-18): **56 done** (53 resolved + 3 dropped), **65 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -46,7 +46,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ doc-only |
-| [SMELL-014](smell-014-quotation-synthesised-row-guard-structural.md) | Synthesised `booking-` quotation rows: make the exclusion structural | ⬜ |
 
 ## Surface gaps
 
@@ -57,7 +56,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | 🟨 partial — ingest engine + feed model shipped; residual = staff-awareness UI + sales indicator (GAP-034) |
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
-| [GAP-015](gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` don't resync the payment schedule | ⬜ |
 | [GAP-016](gap-016-rental-price-override.md) | Rental-price override (legacy parity remainder) | ⬜ |
 | [GAP-017](gap-017-legacy-villabookingdetails-loader.md) | Data-migration loader for legacy `VillaBookingDetails` | ⬜ |
 | [GAP-018](gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ⬜ |
@@ -163,6 +161,7 @@ problem, fix, and commit. Listed here for traceability.
 | [GAP-008](done/gap-008-no-rate-night-fallback-parity.md) | No-rate-night fallback parity (`fallback_nightly`) |
 | [GAP-009](done/gap-009-discount-loose-ends.md) | Discount loose ends |
 | [GAP-014](done/gap-014-quote-currency-forced-selection.md) | Quote builder forced currency → per-line currency |
+| [GAP-015](done/gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` resync the payment schedule |
 | [INV-001](done/inv-001-propertycontactassignment-owner-uniqueness.md) | `PropertyContactAssignment` owner uniqueness |
 | [INV-002](done/inv-002-raterule-priority-tiebreak.md) | `RateRule.priority` tie-break |
 | [INV-003](done/inv-003-refund-amount-sign-convention.md) | `Refund.amount` sign convention |
@@ -180,6 +179,7 @@ problem, fix, and commit. Listed here for traceability.
 | [SMELL-004](done/smell-004-emaillog-content-hash-scope.md) | `EmailLog` content-hash dedupe scope |
 | [SMELL-006](done/smell-006-terms-accepted-at-required-no-default.md) | `terms_accepted_at` required, no default |
 | [SMELL-007](done/smell-007-occupancy-fallback-doc-claim.md) | Spec misstates legacy occupancy fallback (doc) |
+| [SMELL-014](done/smell-014-quotation-synthesised-row-guard-structural.md) | Synthesised `booking-` quotation-row exclusion made structural |
 | [SMELL-015](done/smell-015-comms-smtp-no-transient-retry.md) | Email marks FAILED on any SMTP error |
 | [SMELL-016](done/smell-016-audit-actor-threadlocal-not-asgi-safe.md) | Audit actor on `threading.local` (ASGI-unsafe) |
 | [SMELL-017](done/smell-017-cart-naming-vs-shortlist-copy.md) | Quote-builder code said "cart" |

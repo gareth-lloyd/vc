@@ -350,6 +350,31 @@ def test_guest_enquiries_excludes_legacy_synthetic_quotations(
 
 
 @pytest.mark.django_db
+def test_guest_enquiry_serializer_excludes_synthetic_without_prefetch() -> None:
+    """SMELL-014: the synthetic-row exclusion must hold even when the prefetch
+    cache is NOT primed (a caller that serialises an Enquiry directly). The
+    unprimed path routes through `.real()` rather than a hand-rolled predicate,
+    so `booking-` rows can't leak there either."""
+    from reservations.serializers import GuestEnquirySerializer
+
+    guest = Guest.objects.create(first_name="Bea", last_name="M", email="bea@example.com")
+    gbp = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    terms = TermsVersion.objects.create(
+        version="t-unprimed", body_markdown="x", published_at=timezone.now()
+    )
+    enquiry = Enquiry.objects.create(guest=guest, first_name="Bea", last_name="M", adults=2)
+    _quote(enquiry=enquiry, guest=guest, gbp=gbp, terms=terms, status=QuotationStatus.SENT.value)
+    _quote(enquiry=enquiry, guest=guest, gbp=gbp, terms=terms, legacy_id="booking-7777")
+
+    # Re-fetch with no prefetch so `_prefetched_objects_cache` is absent.
+    fresh = Enquiry.objects.get(pk=enquiry.pk)
+    assert "quotations" not in getattr(fresh, "_prefetched_objects_cache", {})
+
+    data = GuestEnquirySerializer(fresh).data
+    assert data["quote_count"] == 1
+
+
+@pytest.mark.django_db
 def test_guest_quotations_excludes_legacy_synthetic_quotations(
     api_client: APIClient,
     staff: User,

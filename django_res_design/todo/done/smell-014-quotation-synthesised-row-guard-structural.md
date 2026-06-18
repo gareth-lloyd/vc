@@ -1,3 +1,15 @@
+> **✅ RESOLVED (2026-06-18)** — Problem: the `booking-` synthetic-row
+> exclusion was opt-in, with one hand-rolled `.startswith("booking-")` re-filter
+> in `GuestEnquirySerializer`. Verified (as the ticket suspected) that this was
+> the only hand-rolled copy — every viewset already routes through `.real()`.
+> Fix: replaced the literal with `.real()` (reuse the already-`.real()`'d
+> prefetch cache when primed, hit the DB via `.real()` on the unprimed
+> fallback), so no synthetic predicate lives outside `real()` and the loader.
+> Added pinning tests for the `/quotations` list and the unprimed serializer
+> path. Commit: bcd9013.
+>
+> _Original ticket preserved below for context._
+
 # SMELL-014 — Synthesised `booking-` quotation rows: make the exclusion structural
 
 - **Severity:** 🟡 Smell

@@ -20,6 +20,7 @@ import {
   useDeleteRateCard,
   useDeleteRateRule,
   useDuplicateRateCard,
+  usePropertySettings,
   useSeasonDetail,
 } from "../hooks";
 import { RateCardFormDialog } from "./RateCardFormDialog";
@@ -189,16 +190,23 @@ function RateCardBlock({
 }
 
 export function SeasonDetailPanel({
+  propertyId,
   seasonId,
   onBack,
   canWrite,
 }: {
+  propertyId: number;
   seasonId: number;
   onBack: () => void;
   canWrite: boolean;
 }) {
   const { t } = useTranslation("properties");
   const detail = useSeasonDetail(seasonId);
+  // Drives the GAP-025 rate-band end-date suggestion; absent settings just
+  // mean no suggestion fires.
+  const settings = usePropertySettings(propertyId);
+  const changeoverDay = settings.data?.changeover_day ?? null;
+  const minNightsRental = settings.data?.min_nights_rental ?? null;
   const dash = t("common.unset");
 
   const deleteCardMutation = useDeleteRateCard(seasonId);
@@ -350,6 +358,8 @@ export function SeasonDetailPanel({
           onOpenChange={(o) => !o && setAddingRuleCard(null)}
           mode="create"
           defaults={nextRuleDefaults(addingRuleCard)}
+          changeoverDay={changeoverDay}
+          minNightsRental={minNightsRental}
         />
       ) : null}
       {editingRule ? (

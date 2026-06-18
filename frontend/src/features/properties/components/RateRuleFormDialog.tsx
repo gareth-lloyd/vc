@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
-import { addDaysIso } from "@/lib/format/date";
+import { addDaysIso, suggestRateBandEnd } from "@/lib/format/date";
 import { useCreateRateRule, useUpdateRateRule } from "../hooks";
 import {
   rateRuleWriteInputSchema,
@@ -27,6 +27,10 @@ interface CommonProps {
   cardId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Property changeover settings (GAP-025) for the rate-band end-date
+   * suggestion. Both are optional — no fixed changeover means no suggestion. */
+  changeoverDay?: string | null;
+  minNightsRental?: number | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -79,7 +83,7 @@ function toPayload(values: RateRuleWriteInput): RateRuleWritePayload {
 }
 
 export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
-  const { seasonId, cardId, open, onOpenChange } = props;
+  const { seasonId, cardId, open, onOpenChange, changeoverDay, minNightsRental } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
@@ -100,6 +104,23 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.rule.id]);
+
+  // GAP-025: when the property changes over on a fixed weekday, suggest the
+  // band's end date as soon as `date_from` is known — but never clobber a value
+  // the user typed (only fill while `date_to` is empty or still holds our own
+  // last suggestion). Edit mode keeps the stored value untouched.
+  const dateFrom = form.watch("date_from");
+  const lastSuggestionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCreate || !dateFrom) return;
+    const currentTo = form.getValues("date_to");
+    if (currentTo && currentTo !== lastSuggestionRef.current) return;
+    const suggested = suggestRateBandEnd(dateFrom, changeoverDay, minNightsRental);
+    if (!suggested || suggested === currentTo) return;
+    lastSuggestionRef.current = suggested;
+    form.setValue("date_to", suggested, { shouldDirty: false, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, isCreate, changeoverDay, minNightsRental]);
 
   const submit = async (values: RateRuleWriteInput, andAddAnother: boolean) => {
     setTopLevelError(null);

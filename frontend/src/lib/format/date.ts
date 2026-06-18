@@ -1,4 +1,12 @@
-import { addDays, format, formatDistanceToNow, isValid, parseISO, type Locale } from "date-fns";
+import {
+  addDays,
+  format,
+  formatDistanceToNow,
+  getDay,
+  isValid,
+  parseISO,
+  type Locale,
+} from "date-fns";
 import { el, enGB } from "date-fns/locale";
 import i18n, { DEFAULT_LANGUAGE } from "@/i18n";
 import { baseLanguageTag } from "@/i18n/normalize";
@@ -26,6 +34,50 @@ export function formatDate(value: string | Date | null | undefined): string {
 /** Shift an ISO `yyyy-MM-dd` date by whole days, returning the same shape. */
 export function addDaysIso(isoDate: string, days: number): string {
   return format(addDays(parseISO(isoDate), days), "yyyy-MM-dd");
+}
+
+/** Changeover day codes (`PROPERTY_CHANGEOVER_DAYS`) → `date-fns` `getDay` index
+ * (0 = Sunday … 6 = Saturday). `"any"` and unknown codes are absent on purpose:
+ * no fixed weekday → no suggestion. */
+const CHANGEOVER_WEEKDAY_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+/**
+ * Suggest a rate-band end date (inclusive `date_to`) for a property with a fixed
+ * weekly changeover day: the day *before* the next changeover that lands at least
+ * `minNights` nights after `dateFromIso`. The result is always strictly after
+ * `dateFromIso`, so it satisfies the rule's `date_to > date_from` constraint.
+ *
+ * Returns `null` when there is no fixed changeover (`"any"`, null, or an unknown
+ * code) or `dateFromIso` is empty/unparseable — the caller should leave the field
+ * untouched in that case.
+ */
+export function suggestRateBandEnd(
+  dateFromIso: string,
+  changeoverDay: string | null | undefined,
+  minNights: number | null | undefined,
+): string | null {
+  if (!dateFromIso) return null;
+  const targetIndex = changeoverDay == null ? undefined : CHANGEOVER_WEEKDAY_INDEX[changeoverDay];
+  if (targetIndex === undefined) return null;
+  const from = parseISO(dateFromIso);
+  if (!isValid(from)) return null;
+  // Floor at `minNights`, but never below 2 days out — the next changeover must
+  // be ≥ 2 days away so `date_to` (changeover − 1) stays strictly after `date_from`.
+  const floor = Math.max(minNights && minNights > 0 ? minNights : 1, 2);
+  for (let offset = floor; offset < floor + 7; offset += 1) {
+    if (getDay(addDays(from, offset)) === targetIndex) {
+      return format(addDays(from, offset - 1), "yyyy-MM-dd");
+    }
+  }
+  return null; // unreachable: a weekday always recurs within any 7-day window
 }
 
 /**

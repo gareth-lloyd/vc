@@ -87,9 +87,15 @@ def booking(
     property_: Property,
     rate_rule: RateRule,
 ) -> Booking:
+    # Mirror production: every customer-linked row carries the unified Person, the
+    # sole source of the recipient address/greeting (GAP-045 3d-3).
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -105,6 +111,7 @@ def booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=line.date_from,
         date_to=line.date_to,

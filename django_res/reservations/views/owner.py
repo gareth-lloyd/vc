@@ -126,7 +126,7 @@ class OwnerDashboardView(APIView):
                 date_from__gte=today,
                 date_from__lte=today + timedelta(days=_UPCOMING_WINDOW_DAYS),
             )
-            .select_related("property", "guest", "person")
+            .select_related("property", "person")
             .order_by("date_from")[:_UPCOMING_LIMIT]
         )
         upcoming_payload = [
@@ -137,10 +137,7 @@ class OwnerDashboardView(APIView):
                 "date_from": booking.date_from,
                 "date_to": booking.date_to,
                 # Named, contact withheld — the owner redaction policy.
-                "guest_name": contact_name(
-                    booking.person if booking.person_id else None,
-                    booking.guest if booking.guest_id else None,
-                ),
+                "guest_name": contact_name(booking.person if booking.person_id else None),
                 "adults": booking.adults,
                 "children": booking.children,
             }
@@ -182,6 +179,8 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         property_ids = owner_property_ids(user)
         # "Repeat guest" = this guest has another booking at the caller's own
         # villas — a single correlated EXISTS, constant-query regardless of rows.
+        # GAP-045 3d-4 TODO: re-key this onto `person_id` when the guest column
+        # is dropped (it's a non-display read, so it survives the 3d-3 cutover).
         repeat = Exists(
             Booking.objects.filter(
                 guest_id=OuterRef("guest_id"), property_id__in=property_ids
@@ -192,8 +191,6 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
             .exclude(status=BookingStatus.DRAFT.value)
             .select_related(
                 "property",
-                "guest",
-                "guest__country",
                 "person",
                 "person__country",
                 "currency",

@@ -85,10 +85,13 @@ def quotation_line(
     property_: Property,
 ) -> QuotationLine:
     from reservations.models import Quotation, QuotationLine
+    from reservations.services.person_sync import person_for_guest
 
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -116,10 +119,12 @@ def booking(
 ) -> Booking:
     from reservations.enums import BookingStatus, PaymentMethod
     from reservations.models import Booking
+    from reservations.services.person_sync import person_for_guest
 
     return Booking.objects.create(
         quotation_line=quotation_line,
         guest=guest,
+        person=person_for_guest(guest),
         property=property_,
         date_from=quotation_line.date_from,
         date_to=quotation_line.date_to,

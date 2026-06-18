@@ -57,11 +57,15 @@ def _make_booking(
     snapshot: dict[str, str] | None = None,
     date_from: date | None = None,
 ) -> Booking:
+    from reservations.services.person_sync import person_for_guest
+
     date_from = date_from or (timezone.localdate() - timedelta(days=1))
     date_to = date_from + timedelta(days=7)
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -77,6 +81,7 @@ def _make_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=date_from,
         date_to=date_to,
@@ -388,17 +393,14 @@ def test_owner_detail_reads_person_name_and_contact(
     assert detail["guest_contact"]["phone"] == "+15125550100"
 
 
-def test_owner_person_country_wins_over_guest(
+def test_owner_reads_person_country(
     api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
 ) -> None:
-    greece, _ = Country.objects.get_or_create(
-        iso2="GR", defaults={"name": "Greece", "iso3": "GRC", "sort_order": 300}
-    )
+    # GAP-045 3d-3: the owner serializer resolves country solely from the Person
+    # (the guest leg is gone), so a repointed person's country is what shows.
     france, _ = Country.objects.get_or_create(
         iso2="FR", defaults={"name": "France", "iso3": "FRA", "sort_order": 301}
     )
-    guest.country = greece
-    guest.save(update_fields=["country"])
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     _grant(org, property_)  # no flags → contact hidden, name + country still shown
@@ -409,27 +411,6 @@ def test_owner_person_country_wins_over_guest(
     api_client.force_authenticate(user)
     detail = _detail(api_client, booking)
     assert detail["guest_country"] == {"code": "FR", "name": "France"}
-
-
-def test_owner_falls_back_to_guest_when_person_null(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
-) -> None:
-    greece, _ = Country.objects.get_or_create(
-        iso2="GR", defaults={"name": "Greece", "iso3": "GRC", "sort_order": 300}
-    )
-    guest.country = greece
-    guest.save(update_fields=["country"])
-    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
-    user = _owner(org)
-    _grant(org, property_, view_guest_details=True)
-    # _make_booking leaves person=NULL → the read must fall back to the guest.
-    booking = _make_booking(property_=property_, gbp=gbp, terms=terms, guest=guest)
-
-    api_client.force_authenticate(user)
-    detail = _detail(api_client, booking)
-    assert detail["guest_name"] == "Ada Lovelace"
-    assert detail["guest_country"] == {"code": "GR", "name": "Greece"}
-    assert detail["guest_contact"]["email"] == "ada@example.com"
 
 
 def test_owner_guest_contact_absent_for_anonymized_customer(

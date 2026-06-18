@@ -63,11 +63,26 @@ class TermsVersionFactory(DjangoModelFactory):
     is_current = False
 
 
+def _person_for_enquiry_guest(enquiry: object) -> object | None:
+    """Resolve the unified Person mirror for an EnquiryFactory's guest.
+
+    GAP-045 Unit 3d-3: reads resolve customer data solely from `person`, so a
+    factory-built Enquiry must carry the mirror (production write paths already
+    set it). The Guest `post_save` signal has already minted the mirror by the
+    time this LazyAttribute runs; `person_for_guest` just fetches it.
+    """
+    from reservations.services.person_sync import person_for_guest
+
+    guest = getattr(enquiry, "guest", None)
+    return person_for_guest(guest) if guest is not None else None
+
+
 class EnquiryFactory(DjangoModelFactory):
     class Meta:
         model = models.Enquiry
 
     guest = factory.SubFactory(GuestFactory)
+    person = factory.LazyAttribute(_person_for_enquiry_guest)
     property = factory.SubFactory(PropertyFactory)
     date_from = factory.LazyFunction(lambda: date.today() + timedelta(days=30))
     date_to = factory.LazyFunction(lambda: date.today() + timedelta(days=37))
@@ -179,7 +194,7 @@ def make_occupying_booking(
 
     person = person_for_guest(guest)
     quotation = models.Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
         person=person,
         expires_at=timezone.now() + timedelta(days=7),

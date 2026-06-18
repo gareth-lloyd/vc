@@ -1,11 +1,12 @@
-"""GAP-045 Unit 3c-2a — staff-API reads resolve from the unified Person.
+"""GAP-045 — staff-API reads resolve customer data from the unified Person.
 
-Every staff-API read of a customer's name / email / phone now resolves from
-the linked ``accounts.Person`` mirror first, falling back to the legacy
-``reservations.Guest`` columns while ``person`` is still null. These tests
-edit the Person so its values *differ* from the originating Guest, then assert
-the API returns the Person's values — proving the read switched source, not
-just that the (identical) mirror happens to agree.
+Every staff-API read of a customer's name / email / phone resolves from the
+linked ``accounts.Person`` mirror. Unit 3c-2a switched the source (with a
+transitional guest fallback); Unit 3d-3 removed the fallback so ``person`` is
+now the sole source. These tests edit the Person so its values *differ* from
+the originating Guest, then assert the API returns the Person's values —
+proving the read resolves from the Person, not just that the (identical) mirror
+happens to agree.
 """
 
 from __future__ import annotations
@@ -191,26 +192,6 @@ def test_booking_detail_reads_person_name_and_email(
     assert response.data["guest_email"] == "grace@navy.mil"
 
 
-@pytest.mark.django_db
-def test_booking_falls_back_to_guest_when_person_null(
-    api_client: APIClient,
-    staff: User,
-    guest: Guest,
-    gbp: Currency,
-    terms: TermsVersion,
-    property_: Property,
-) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    Booking.objects.filter(pk=booking.pk).update(person=None)
-
-    api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
-
-    assert response.status_code == 200
-    assert response.data["guest_name"] == "Ada Lovelace"
-    assert response.data["guest_email"] == "ada@example.com"
-
-
 # ---------------------------------------------------------------------------
 # Quotation
 # ---------------------------------------------------------------------------
@@ -260,6 +241,31 @@ def test_enquiry_list_reads_person_name_email_phone(
     assert row["guest_name"] == "Grace Hopper"
     assert row["guest_email"] == "grace@navy.mil"
     assert row["guest_phone"] == "+15125550100"
+
+
+@pytest.mark.django_db
+def test_enquiry_with_person_and_no_guest_still_serialises(
+    api_client: APIClient,
+    staff: User,
+    guest: Guest,
+    property_: Property,
+) -> None:
+    """GAP-045 Unit 3d-3 guard: person is the sole source, so an enquiry with the
+    Person set and the guest column cleared (it vanishes in 3d-4) still serialises
+    the person's name / email / phone."""
+    person = _repoint_person(guest)
+    enquiry = Enquiry.objects.create(guest=None, person=person, property=property_)
+
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/enquiries")
+
+    assert response.status_code == 200
+    row = next(r for r in response.data["results"] if r["id"] == enquiry.pk)
+    assert row["guest_name"] == "Grace Hopper"
+    assert row["guest_email"] == "grace@navy.mil"
+    assert row["guest_phone"] == "+15125550100"
+    # contact_method also resolves solely from the Person (no guest leg).
+    assert row["guest_contact_method"] == person.preferred_method
 
 
 @pytest.mark.django_db
@@ -366,26 +372,6 @@ def test_quotation_render_context_reads_person_name(
 
     assert ctx["guest_first_name"] == "Grace"
     assert ctx["guest_full_name"] == "Grace Hopper"
-
-
-@pytest.mark.django_db
-def test_quotation_render_context_falls_back_to_guest_when_person_null(
-    guest: Guest,
-    terms: TermsVersion,
-) -> None:
-    from reservations.services.quotation_render import build_quotation_context
-
-    quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        expires_at=timezone.now() + timedelta(days=7),
-        terms_version=terms,
-    )
-
-    ctx = build_quotation_context(quotation)
-
-    assert ctx["guest_first_name"] == "Ada"
-    assert ctx["guest_full_name"] == "Ada Lovelace"
 
 
 # ---------------------------------------------------------------------------

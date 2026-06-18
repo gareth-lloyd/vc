@@ -79,7 +79,7 @@ class AvailabilityBookingSerializer(serializers.ModelSerializer["Booking"]):
         ]
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        return contact_name(obj.person, obj.guest)
+        return contact_name(obj.person)
 
 
 class AvailabilitySearchSerializer(serializers.Serializer[None]):

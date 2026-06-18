@@ -239,7 +239,7 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
         ]
 
     def get_guest_name(self, obj: Quotation) -> str | None:
-        return contact_name(obj.person, obj.guest)
+        return contact_name(obj.person)
 
     def get_enquiry_reference(self, obj: Quotation) -> str | None:
         enquiry = obj.enquiry

@@ -52,8 +52,11 @@ def test_person_fk_schema(model: type[models.Model], on_delete: Any, related_nam
 
 
 @pytest.mark.django_db
-def test_person_defaults_none_and_round_trips() -> None:
-    enquiry = cast(Enquiry, EnquiryFactory())
+def test_person_fk_nullable_and_round_trips() -> None:
+    # Enquiry.person is nullable (SET_NULL — anonymous enquiries have no
+    # customer). Build one explicitly without a guest so person starts None,
+    # then point it and assert the round-trip + reverse accessor.
+    enquiry = Enquiry.objects.create(first_name="Anon", last_name="Lead")
     assert enquiry.person is None
 
     person = cast(Person, PersonFactory())
@@ -63,3 +66,12 @@ def test_person_defaults_none_and_round_trips() -> None:
     enquiry.refresh_from_db()
     assert enquiry.person == person
     assert list(person.enquiries_as_customer.all()) == [enquiry]
+
+
+@pytest.mark.django_db
+def test_enquiry_factory_populates_person_mirror() -> None:
+    # GAP-045 Unit 3d-3: factory-built rows mirror production, where every
+    # customer-linked row carries the Person (reads resolve solely from it).
+    enquiry = cast(Enquiry, EnquiryFactory())
+    assert enquiry.person is not None
+    assert enquiry.person.legacy_id == f"guest-{enquiry.guest_id}"

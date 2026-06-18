@@ -89,14 +89,16 @@ def test_list_enquiries__staff_sees_all(
 def test_enquiry_exposes_guest_contact_fields(
     api_client: APIClient, staff: User, guest: Guest
 ) -> None:
-    """Guest-linked enquiries often have blank denormalised contact fields;
+    """Customer-linked enquiries often have blank denormalised contact fields;
     the API exposes read-only `guest_email` / `guest_phone` /
-    `guest_contact_method` sourced from the linked Guest (mirroring the
-    `guest_name` fallback) so the FE Guest panel isn't all em-dashes."""
+    `guest_contact_method` sourced from the linked Person mirror (GAP-045 3d-3)
+    so the FE Guest panel isn't all em-dashes. The guest fields are copied to
+    the mirror by the sync signal on `guest.save()`."""
     guest.phone = "+447700900123"
     guest.contact_method = "phone"
     guest.save()
-    enquiry = Enquiry.objects.create(guest=guest, adults=2)
+    person = person_for_guest(guest)
+    enquiry = Enquiry.objects.create(guest=guest, person=person, adults=2)
     api_client.force_login(staff)
 
     for payload in (

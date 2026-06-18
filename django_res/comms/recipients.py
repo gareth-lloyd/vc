@@ -17,15 +17,7 @@ from accounts.enums import ContactRole
 if TYPE_CHECKING:
     from accounts.models import Person, User
     from properties.models import Property
-    from reservations.models import Guest, Quotation
-
-
-def guest_email(guest: Guest | None) -> str | None:
-    """Return the guest's email address, or `None` if unset/anonymised."""
-    if guest is None:
-        return None
-    email = getattr(guest, "email", "") or ""
-    return email or None
+    from reservations.models import Quotation
 
 
 def _primary_contact_email(contact: Person | None) -> str | None:
@@ -42,29 +34,25 @@ def _primary_contact_email(contact: Person | None) -> str | None:
     return contact.primary_email()
 
 
-def recipient_email(person: Person | None, guest: Guest | None) -> str | None:
-    """Customer recipient address, person-first with the guest as fallback.
+def recipient_email(person: Person | None) -> str | None:
+    """Customer recipient address from the unified `accounts.Person`.
 
-    GAP-045 Unit 3c-2b: transactional sends resolve the recipient from the
-    unified `accounts.Person` mirror, falling back to the legacy `Guest.email`
-    while `person` is still null (fallback removed in 3d). Person-first means an
-    anonymised Person fails closed (`primary_email()` returns None) instead of
-    leaking through the guest column.
+    GAP-045 Unit 3c-2b cut transactional sends over to the Person mirror; Unit
+    3d-3 removed the legacy `Guest.email` fallback, so `person` is the sole
+    source. An anonymised Person fails closed (`primary_email()` returns None)
+    rather than leaking a sentinel address.
     """
-    return _primary_contact_email(person) or guest_email(guest)
+    return _primary_contact_email(person)
 
 
-def recipient_first_name(person: Person | None, guest: Guest | None) -> str:
-    """Greeting first name, person-first with the guest as fallback.
+def recipient_first_name(person: Person | None) -> str:
+    """Greeting first name from the unified `accounts.Person`, or `""`.
 
-    Value-gated, not existence-gated: a Person with a blank `first_name` still
-    falls through to the guest's. Returns `""` (templates render the empty
-    greeting) rather than `None` so callers can drop it straight into a context.
+    Returns `""` (templates render the empty greeting) rather than `None` so
+    callers can drop it straight into a context.
     """
     if person is not None and person.first_name:
         return person.first_name
-    if guest is not None:
-        return guest.first_name or ""
     return ""
 
 

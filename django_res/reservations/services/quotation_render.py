@@ -131,12 +131,12 @@ def build_quotation_context(
 
     return {
         "lines": line_dicts,
-        # GAP-045 Unit 3c-2b: resolve the customer name person-first (guest
-        # fallback while `person` is null). quotation_render is in reservations
-        # and cannot import comms, so it uses the same-app `_contact_reads`
-        # resolvers rather than `comms.recipients.recipient_first_name`.
-        "guest_first_name": contact_first_name(quotation.person, quotation.guest),
-        "guest_full_name": contact_name(quotation.person, quotation.guest) or "",
+        # GAP-045 Unit 3d-3: the customer name resolves solely from `person`.
+        # quotation_render is in reservations and cannot import comms, so it uses
+        # the same-app `_contact_reads` resolvers rather than
+        # `comms.recipients.recipient_first_name`.
+        "guest_first_name": contact_first_name(quotation.person),
+        "guest_full_name": contact_name(quotation.person) or "",
         "agent_name": agent_name,
         "quotation_reference": quotation.reference,
         # Customer-facing "valid until" — the stored UTC time would render

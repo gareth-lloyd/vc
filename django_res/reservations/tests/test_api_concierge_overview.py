@@ -77,11 +77,15 @@ def _make_booking(
     Callers pass non-overlapping windows so the no-overlap constraint on the
     shared property is never tripped.
     """
+    from reservations.services.person_sync import person_for_guest
+
     date_from = date.today() + timedelta(days=days_from)
     date_to = date.today() + timedelta(days=days_to)
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -97,6 +101,7 @@ def _make_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=date_from,
         date_to=date_to,

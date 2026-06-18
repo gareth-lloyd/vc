@@ -44,13 +44,12 @@ class QuotationFilter(filters.FilterSet):
 
     status = filters.CharFilter(field_name="status")
     enquiry = filters.NumberFilter(field_name="enquiry_id")
-    guest = filters.NumberFilter(field_name="guest_id")
     created_after = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="gte")
     created_before = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="lte")
 
     class Meta:
         model = Quotation
-        fields = ["status", "enquiry", "guest", "created_after", "created_before"]
+        fields = ["status", "enquiry", "created_after", "created_before"]
 
 
 class BookingFilter(filters.FilterSet):
@@ -58,7 +57,6 @@ class BookingFilter(filters.FilterSet):
 
     status = filters.CharFilter(field_name="status")
     property = filters.NumberFilter(field_name="property_id")
-    guest = filters.NumberFilter(field_name="guest_id")
     assigned_to = filters.NumberFilter(field_name="assigned_to_id")
     site = filters.CharFilter(field_name="site_source")
     check_in_after = filters.DateFilter(field_name="date_from", lookup_expr="gte")
@@ -73,7 +71,6 @@ class BookingFilter(filters.FilterSet):
         fields: list[Any] = [
             "status",
             "property",
-            "guest",
             "assigned_to",
             "site",
             "check_in_after",
@@ -94,11 +91,10 @@ class BookingFilter(filters.FilterSet):
     def filter_q(self, queryset: QuerySet[Booking], _name: str, value: str) -> QuerySet[Booking]:
         if not value:
             return queryset
-        # GAP-045 Unit 3c-2a: also match the unified Person (name + email),
-        # keeping the legacy `guest__*` terms as the transitional fallback.
-        # `person__first_name`/`last_name` are single-valued FK joins → safe in
-        # the OR. The person EMAIL lives in a multi-valued child table, so an
-        # OR'd `person__emails__email` join would multiply rows and leak into
+        # GAP-045 Unit 3d-3: customer search resolves solely from the unified
+        # Person. `person__first_name`/`last_name` are single-valued FK joins →
+        # safe in the OR. The person EMAIL lives in a multi-valued child table, so
+        # an OR'd `person__emails__email` join would multiply rows and leak into
         # the paginator COUNT / StatusCountsMixin (django_res/CLAUDE.md). Match
         # it with a scalar `Exists()` subquery instead, which adds no JOIN.
         person_email_match = PersonEmail.objects.filter(
@@ -106,9 +102,6 @@ class BookingFilter(filters.FilterSet):
         )
         return queryset.filter(
             Q(reference__icontains=value)
-            | Q(guest__first_name__icontains=value)
-            | Q(guest__last_name__icontains=value)
-            | Q(guest__email__icontains=value)
             | Q(person__first_name__icontains=value)
             | Q(person__last_name__icontains=value)
             | Q(Exists(person_email_match))

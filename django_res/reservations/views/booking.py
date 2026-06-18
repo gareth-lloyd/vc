@@ -78,10 +78,9 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
     query that bypasses the prefetch cache.
     """
     return qs.select_related(
-        # GAP-045 Unit 3c-2a: the detail serializer resolves guest name + email
-        # person-first (guest fallback), so join the mirror + prefetch its email
-        # on every detail/action path that funnels through here.
-        "guest",
+        # GAP-045 Unit 3d-3: the detail serializer resolves guest name + email
+        # solely from the Person mirror, so join it + prefetch its email on every
+        # detail/action path that funnels through here.
         "person",
         "property__finance__contact",
         "property__group__finance",
@@ -126,9 +125,8 @@ class BookingViewSet(
     def get_queryset(self) -> Any:
         qs: QuerySet[Booking] = Booking.objects.filter(is_archived=False).select_related(
             "property",
-            # GAP-045 Unit 3c-2a: name + email resolve person-first (guest
-            # fallback). Join both; the email prefetch is path-specific below.
-            "guest",
+            # GAP-045 Unit 3d-3: name + email resolve solely from the Person
+            # mirror. Join it; the email prefetch is path-specific below.
             "person",
             "agent",
             "assigned_to",
@@ -279,7 +277,6 @@ class BookingArchiveViewSet(
     def get_queryset(self) -> Any:
         qs: QuerySet[Booking] = Booking.objects.filter(is_archived=True).select_related(
             "property",
-            "guest",
             "person",
             "agent",
             "assigned_to",

@@ -32,7 +32,6 @@ from reservations.services.owner_finance import owner_money_for_booking
 if TYPE_CHECKING:
     from accounts.models import Person
     from reservations.models import Booking
-    from reservations.models.guest import Guest
 
 _HIDDEN_VISIBILITY = {"view_full_money": False, "view_guest_details": False}
 
@@ -46,15 +45,10 @@ class OwnerBookingListSerializer(serializers.Serializer):
         return self.context["visibility"].get(obj.property_id, _HIDDEN_VISIBILITY)
 
     @staticmethod
-    def _country(person: Person | None, guest: Guest | None) -> dict[str, str] | None:
-        # Person-first, guest fallback (removed in 3d). Both are real FKs to
-        # properties.Country, so .iso2/.name resolve uniformly — no free-text
-        # divergence to reconcile.
-        country = None
-        if person is not None and person.country_id:
-            country = person.country
-        elif guest is not None:
-            country = guest.country
+    def _country(person: Person | None) -> dict[str, str] | None:
+        # Person is the sole source (GAP-045 3d-3); `Person.country` is a real
+        # FK to properties.Country, so .iso2/.name resolve directly.
+        country = person.country if person is not None and person.country_id else None
         if country is None:
             return None
         return {"code": country.iso2, "name": country.name}
@@ -62,7 +56,6 @@ class OwnerBookingListSerializer(serializers.Serializer):
     def to_representation(self, instance: Booking) -> dict[str, Any]:
         obj = instance
         vis = self._visibility(obj)
-        guest = obj.guest if obj.guest_id else None
         person = obj.person if obj.person_id else None
         prop = obj.property if obj.property_id else None
 
@@ -77,8 +70,8 @@ class OwnerBookingListSerializer(serializers.Serializer):
             "adults": obj.adults,
             "children": obj.children,
             "currency_code": obj.currency.code if obj.currency_id else None,
-            "guest_name": contact_name(person, guest),
-            "guest_country": self._country(person, guest),
+            "guest_name": contact_name(person),
+            "guest_country": self._country(person),
             "is_repeat_guest": bool(getattr(obj, "is_repeat_guest", False)),
         }
 
@@ -86,12 +79,12 @@ class OwnerBookingListSerializer(serializers.Serializer):
             data["rental_price"] = f"{obj.rental_price:.2f}"
             data["balance_due"] = f"{obj.balance_due:.2f}"
         if vis["view_guest_details"]:
-            # Person-first email/phone; emit the key only when at least one
-            # channel resolves, so an ANONYMIZED person (both fail closed) and a
-            # contactless guest both stay redacted — matching the existing
-            # "guest_contact not in detail" tests.
-            email = contact_email(person, guest)
-            phone = contact_phone(person, guest)
+            # Person-only email/phone (GAP-045 3d-3); emit the key only when at
+            # least one channel resolves, so an ANONYMIZED person (both fail
+            # closed) and a contactless person both stay redacted — matching the
+            # existing "guest_contact not in detail" tests.
+            email = contact_email(person)
+            phone = contact_phone(person)
             if email is not None or phone is not None:
                 data["guest_contact"] = {"email": email, "phone": phone}
         # Capability flag: may *this* caller approve/decline this booking? Pure

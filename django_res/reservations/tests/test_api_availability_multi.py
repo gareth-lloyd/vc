@@ -60,9 +60,13 @@ def _make_booking(
     date_to: date,
     status: str = BookingStatus.AWAITING_DEPOSIT.value,
 ) -> Booking:
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -78,6 +82,7 @@ def _make_booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property,
         date_from=date_from,
         date_to=date_to,

@@ -83,10 +83,10 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
         return (prop.display_name or prop.name) or None
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        return contact_name(obj.person, obj.guest)
+        return contact_name(obj.person)
 
     def get_guest_email(self, obj: Booking) -> str | None:
-        return contact_email(obj.person, obj.guest)
+        return contact_email(obj.person)
 
     def get_night_count(self, obj: Booking) -> int:
         return (obj.date_to - obj.date_from).days

@@ -24,6 +24,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 
@@ -49,9 +50,11 @@ def quotation(
     gbp: Currency,
     terms: TermsVersion,
 ) -> Quotation:
+    person = person_for_guest(guest)
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -1357,12 +1360,18 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
     from reservations.enums import EnquiryEventKind
     from reservations.models import Enquiry, EnquiryEvent
 
+    person = person_for_guest(guest)
     enquiry = Enquiry.objects.create(
-        guest=guest, email=guest.email or "", first_name="Ada", last_name="Lovelace"
+        guest=guest,
+        person=person,
+        email=guest.email or "",
+        first_name="Ada",
+        last_name="Lovelace",
     )
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

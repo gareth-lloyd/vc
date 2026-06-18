@@ -72,10 +72,10 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         ]
 
     def get_guest_name(self, obj: Enquiry) -> str | None:
-        """Prefer the unified Person, then the legacy Guest, then the
-        denormalised first/last/email captured at lead time for anonymous
-        submissions (the triple fallback the customer-facing list relies on)."""
-        name = contact_name(obj.person, obj.guest)
+        """Prefer the unified Person, then the denormalised first/last/email
+        captured at lead time for anonymous submissions (an enquiry can have no
+        customer — `person` is nullable — so the denorm leg stays)."""
+        name = contact_name(obj.person)
         if name:
             return name
         denorm = f"{obj.first_name} {obj.last_name}".strip()
@@ -84,29 +84,21 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         return obj.email or None
 
     def get_guest_email(self, obj: Enquiry) -> str | None:
-        return contact_email(obj.person, obj.guest)
+        return contact_email(obj.person)
 
     def get_guest_phone(self, obj: Enquiry) -> str | None:
-        return contact_phone(obj.person, obj.guest)
+        return contact_phone(obj.person)
 
     def get_guest_contact_method(self, obj: Enquiry) -> str | None:
-        # GAP-045 Unit 3d-2: contact_method now resolves from the unified
-        # Person's `preferred_method`. The mirror coerces a null guest
-        # contact_method to "email" (preferred_method's default), so an enquiry
-        # whose guest never recorded a method now reports "email" rather than the
-        # legacy null — the documented null→"email" value change. Falls back to
-        # the legacy guest value while `person` is still null (the fallback arm
-        # is removed in 3d-3 once person is the sole source). Value-gated, like
-        # the `contact_*` helpers: fall through to the guest when the person has
-        # no method (a saved Person always does today, but this keeps the field
-        # consistent with its siblings).
+        # GAP-045 Unit 3d-3: contact_method resolves solely from the unified
+        # Person's `preferred_method` (the guest fallback was removed). The
+        # mirror coerced a null guest contact_method to "email" (the field's
+        # default), so a saved customer always reports a method; an anonymous
+        # enquiry with no person reports None.
         person = obj.person
         if person is not None and person.preferred_method:
             return person.preferred_method
-        guest = obj.guest
-        if guest is None:
-            return None
-        return guest.contact_method or None
+        return None
 
     def get_property_name(self, obj: Enquiry) -> str | None:
         prop = obj.property

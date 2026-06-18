@@ -25,6 +25,7 @@ from reservations.models import (
     QuotationLine,
     TermsVersion,
 )
+from reservations.services.person_sync import person_for_guest
 
 
 # A pricing snapshot is the JSON blob the engine writes onto the booking at
@@ -89,9 +90,11 @@ def booking(
     property_: Property,
     rate_rule: RateRule,
 ) -> Booking:
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -107,6 +110,7 @@ def booking(
     return Booking.objects.create(
         quotation_line=line,
         guest=guest,
+        person=person,
         property=property_,
         date_from=line.date_from,
         date_to=line.date_to,

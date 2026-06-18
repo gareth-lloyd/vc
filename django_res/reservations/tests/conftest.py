@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from pricing.models import Currency, RateCard, RatePlan, RateRule
 from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
+from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -107,9 +108,11 @@ def quotation_line(
     terms: TermsVersion,
     property_: Property,
 ) -> QuotationLine:
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

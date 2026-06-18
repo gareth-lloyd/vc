@@ -79,9 +79,13 @@ def quotation_with_line(
     terms: TermsVersion,
     property_: Property,
 ) -> Quotation:
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
+        enquiry=guest.enquiries.create(person=person),
         guest=guest,
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

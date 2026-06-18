@@ -53,7 +53,7 @@ class ConciergeOverviewSerializer(serializers.ModelSerializer[Booking]):
         ]
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        return contact_name(obj.person, obj.guest)
+        return contact_name(obj.person)
 
     def get_property_name(self, obj: Booking) -> str | None:
         prop = obj.property

@@ -147,9 +147,7 @@ def _send_payment_reminders(today: Any) -> int:
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
             booking__date_from__gte=today,
         )
-        .select_related(
-            "booking", "booking__guest", "booking__person", "booking__property", "currency"
-        )
+        .select_related("booking", "booking__person", "booking__property", "currency")
         .prefetch_related("booking__person__emails")
         .order_by("pk")
     )
@@ -218,9 +216,7 @@ def _send_security_deposit_reminders(today: Any) -> int:
             status__in=list(SECURITY_DEPOSIT_OPEN_STATUSES),
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
         )
-        .select_related(
-            "booking", "booking__guest", "booking__person", "booking__property", "currency"
-        )
+        .select_related("booking", "booking__person", "booking__property", "currency")
         .prefetch_related("booking__person__emails")
         .order_by("pk")
     )
@@ -338,7 +334,7 @@ def _dispatch(
     else:
         raise ValueError("send_payment_reminders._dispatch needs payment or security_deposit")
 
-    recipient = recipient_email(booking.person, booking.guest)
+    recipient = recipient_email(booking.person)
     if recipient is None:
         logger.warning(
             "payment.reminder_skipped",
@@ -379,7 +375,7 @@ def _reminder_context(
 
     return {
         "booking_reference": booking.reference,
-        "guest_first_name": recipient_first_name(booking.person, booking.guest),
+        "guest_first_name": recipient_first_name(booking.person),
         "property_name": booking.property.display_name or booking.property.name,
         "date_from": format_date(booking.date_from),
         "date_to": format_date(booking.date_to),

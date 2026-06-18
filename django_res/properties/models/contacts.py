@@ -8,7 +8,7 @@ from core.models.base import AuditedModel
 
 
 class PropertyContactAssignment(AuditedModel):
-    """Through model linking a `Property` to an `accounts.Contact` in a role.
+    """Through model linking a `Property` to an `accounts.Person` in a role.
 
     Lifecycle: an open-ended assignment has `end_date IS NULL`; ending the
     relationship sets `end_date`. Rows are never hidden.
@@ -20,7 +20,7 @@ class PropertyContactAssignment(AuditedModel):
         related_name="contact_assignments",
     )
     contact = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         on_delete=models.PROTECT,
         related_name="property_assignments",
     )

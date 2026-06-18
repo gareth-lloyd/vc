@@ -1,28 +1,28 @@
-"""Contact / ContactEmail / ContactPhone serializers."""
+"""Person / PersonEmail / PersonPhone serializers."""
 
 from __future__ import annotations
 
 from rest_framework import serializers
 
-from accounts.models import Contact, ContactEmail, ContactPhone
+from accounts.models import Person, PersonEmail, PersonPhone
 
 
-class ContactEmailSerializer(serializers.ModelSerializer[ContactEmail]):
+class ContactEmailSerializer(serializers.ModelSerializer[PersonEmail]):
     class Meta:
-        model = ContactEmail
+        model = PersonEmail
         fields = ["id", "email", "label", "is_primary", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class ContactPhoneSerializer(serializers.ModelSerializer[ContactPhone]):
+class ContactPhoneSerializer(serializers.ModelSerializer[PersonPhone]):
     class Meta:
-        model = ContactPhone
+        model = PersonPhone
         fields = ["id", "number", "label", "is_primary", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class ContactSerializer(serializers.ModelSerializer[Contact]):
-    """Full Contact representation with inline emails/phones."""
+class ContactSerializer(serializers.ModelSerializer[Person]):
+    """Full Person representation with inline emails/phones."""
 
     emails = ContactEmailSerializer(many=True, read_only=True)
     phones = ContactPhoneSerializer(many=True, read_only=True)
@@ -34,7 +34,7 @@ class ContactSerializer(serializers.ModelSerializer[Contact]):
     )
 
     class Meta:
-        model = Contact
+        model = Person
         fields = [
             "id",
             "title",

@@ -19,7 +19,7 @@ from typing import Any
 from django.utils import timezone
 
 from accounts.enums import ContactRole
-from accounts.models import Contact
+from accounts.models import Person
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
@@ -181,7 +181,7 @@ class PropertyFinanceLoader(BaseLoader):
             report.skipped += 1
             return
         contact = (
-            Contact.objects.filter(legacy_id=str(row["ContactId"])).first()
+            Person.objects.filter(legacy_id=str(row["ContactId"])).first()
             if row.get("ContactId")
             else None
         )
@@ -328,7 +328,7 @@ class QuotationLoader(BaseLoader):
         if guest is None:
             return None
         agent = (
-            Contact.objects.filter(legacy_id=str(row["AgentId"])).first()
+            Person.objects.filter(legacy_id=str(row["AgentId"])).first()
             if row.get("AgentId")
             else None
         )

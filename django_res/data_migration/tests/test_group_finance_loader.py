@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 
 from accounts.enums import ContactRole
-from accounts.models import Contact, User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from data_migration.base import LoadReport
 from data_migration.loaders.finance import GroupFinanceLoader
@@ -25,7 +25,7 @@ def _admin() -> User:
 
 
 @pytest.fixture
-def group_with_owner(db: None) -> tuple[PropertyGroup, Contact]:
+def group_with_owner(db: None) -> tuple[PropertyGroup, Person]:
     actor = _admin()
     country = Country.objects.get(iso2="GR")
     region = Region.objects.create(country=country, name="Crete", slug="crete")
@@ -39,7 +39,7 @@ def group_with_owner(db: None) -> tuple[PropertyGroup, Contact]:
         group=group,
         region=region,
     )
-    contact = Contact.objects.create(
+    contact = Person.objects.create(
         first_name="O",
         last_name="W",
         legacy_id="55",
@@ -59,7 +59,7 @@ def group_with_owner(db: None) -> tuple[PropertyGroup, Contact]:
 
 @pytest.mark.django_db
 def test_sync_one_with_no_legacy_template_falls_back_to_defaults(
-    group_with_owner: tuple[PropertyGroup, Contact],
+    group_with_owner: tuple[PropertyGroup, Person],
 ) -> None:
     group, contact = group_with_owner
     loader = GroupFinanceLoader()
@@ -75,7 +75,7 @@ def test_sync_one_with_no_legacy_template_falls_back_to_defaults(
 
 @pytest.mark.django_db
 def test_sync_one_copies_template_when_contact_matches(
-    group_with_owner: tuple[PropertyGroup, Contact],
+    group_with_owner: tuple[PropertyGroup, Person],
 ) -> None:
     group, contact = group_with_owner
     loader = GroupFinanceLoader()

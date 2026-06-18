@@ -88,7 +88,7 @@ class Property(AuditedModel):
         blank=True,
     )
     contacts = models.ManyToManyField(
-        "accounts.Contact",
+        "accounts.Person",
         through="properties.PropertyContactAssignment",
         related_name="properties",
         blank=True,

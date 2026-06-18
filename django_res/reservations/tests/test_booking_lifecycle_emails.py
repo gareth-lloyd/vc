@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from accounts.enums import ContactRole
-from accounts.models import Contact
-from accounts.models.contact import ContactEmail
+from accounts.models import Person
+from accounts.models.person import PersonEmail
 from comms.enums import EmailLogStatus
 from comms.models import EmailLog
 from properties.models import PropertyContactAssignment
@@ -34,9 +34,9 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.usefixtures("run_on_commit_immediately")
 
 
-def _assign_owner(property_: Property, email: str) -> Contact:
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(contact=contact, email=email, is_primary=True)
+def _assign_owner(property_: Property, email: str) -> Person:
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email=email, is_primary=True)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,

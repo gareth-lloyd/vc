@@ -1,4 +1,4 @@
-"""Seed staff users (one Contact + email/phone per user).
+"""Seed staff users (one Person + email/phone per user).
 
 Also ensures two well-known superusers exist on every run so a developer can
 log in without hunting through generated rows. These are upserted by email
@@ -7,7 +7,7 @@ log in without hunting through generated rows. These are upserted by email
 
 from __future__ import annotations
 
-from accounts.factories import ContactEmailFactory, ContactPhoneFactory, UserFactory
+from accounts.factories import PersonEmailFactory, PersonPhoneFactory, UserFactory
 from accounts.models import User
 from core.enums import StaffRole
 from seeding.context import SeedContext
@@ -47,8 +47,8 @@ def _run(ctx: SeedContext) -> int:
         made += _ensure_superuser(email, password, first_name, last_name)
 
     for _ in range(ctx.n_users):
-        contact = ContactEmailFactory().contact
-        ContactPhoneFactory(contact=contact)
+        contact = PersonEmailFactory().contact
+        PersonPhoneFactory(contact=contact)
         UserFactory()
         made += 1
     return made

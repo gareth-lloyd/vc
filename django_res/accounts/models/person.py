@@ -6,9 +6,9 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.enums import (
-    ContactPreferredMethod,
-    ContactStatus,
     EmailLabel,
+    PersonPreferredMethod,
+    PersonStatus,
     PhoneLabel,
 )
 from core.audit import record_merge, scrub_pii
@@ -16,10 +16,10 @@ from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
 
 
-class Contact(AuditedModel):
+class Person(AuditedModel):
     """Villa owner, property manager, or external agent.
 
-    Distinct from `User` because most contacts never log in. If they do,
+    Distinct from `User` because most people never log in. If they do,
     we link via the optional `user` OneToOne.
     """
 
@@ -30,16 +30,16 @@ class Contact(AuditedModel):
     website_url = models.URLField(blank=True)
     preferred_method = models.CharField(
         max_length=8,
-        choices=ContactPreferredMethod.choices,
-        default=ContactPreferredMethod.EMAIL,
+        choices=PersonPreferredMethod.choices,
+        default=PersonPreferredMethod.EMAIL,
     )
     address_line_1 = models.CharField(max_length=255, blank=True)
     address_line_2 = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     status = models.CharField(
         max_length=16,
-        choices=ContactStatus.choices,
-        default=ContactStatus.ACTIVE,
+        choices=PersonStatus.choices,
+        default=PersonStatus.ACTIVE,
     )
     anonymized_at = models.DateTimeField(null=True, blank=True)
     user = models.OneToOneField(
@@ -70,8 +70,8 @@ class Contact(AuditedModel):
         ordering = ["last_name", "first_name"]
 
     def __str__(self) -> str:
-        if self.status == ContactStatus.ANONYMIZED:
-            return f"[redacted contact #{self.pk}]"
+        if self.status == PersonStatus.ANONYMIZED:
+            return f"[redacted person #{self.pk}]"
         return f"{self.first_name} {self.last_name}".strip()
 
     @transaction.atomic
@@ -87,7 +87,7 @@ class Contact(AuditedModel):
         self.notes = ""
         self.address_line_1 = ""
         self.address_line_2 = ""
-        self.status = ContactStatus.ANONYMIZED
+        self.status = PersonStatus.ANONYMIZED
         self.anonymized_at = timezone.now()
         self.save(
             update_fields=[
@@ -113,15 +113,15 @@ class Contact(AuditedModel):
         scrub_pii(self, self._AUDIT_PII_FIELDS)
 
     @transaction.atomic
-    def merge(self, target: Contact) -> None:
+    def merge(self, target: Person) -> None:
         """Rewrite FKs pointing at `self` to point at `target`, then hard-delete self.
 
         Destructive: there is no merged_into back-reference. The AuditLog is
         the only trail.
         """
         if target.pk == self.pk:
-            raise ValueError("Cannot merge a contact into itself")
-        # Apps that hold FKs to Contact are properties.PropertyContactAssignment,
+            raise ValueError("Cannot merge a person into itself")
+        # Apps that hold FKs to Person are properties.PropertyContactAssignment,
         # reservations.Enquiry/Quotation/Booking (agent FKs),
         # properties.PropertyFinance.contact. Their migrations create the
         # reverse relations; we rewrite via _meta.related_objects so the merge
@@ -156,8 +156,8 @@ class Contact(AuditedModel):
         scrub_pii(self, self._AUDIT_PII_FIELDS)
 
 
-class ContactEmail(TimestampedModel):
-    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="emails")
+class PersonEmail(TimestampedModel):
+    contact = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="emails")
     email = CIEmailField()
     label = models.CharField(max_length=16, choices=EmailLabel.choices, default=EmailLabel.PRIMARY)
     is_primary = models.BooleanField(default=False)
@@ -177,8 +177,8 @@ class ContactEmail(TimestampedModel):
         ]
 
 
-class ContactPhone(TimestampedModel):
-    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="phones")
+class PersonPhone(TimestampedModel):
+    contact = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="phones")
     number = models.CharField(max_length=32)
     label = models.CharField(max_length=16, choices=PhoneLabel.choices, default=PhoneLabel.MOBILE)
     is_primary = models.BooleanField(default=False)

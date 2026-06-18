@@ -251,7 +251,7 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
         agent = obj.agent
         if agent is None:
             return None
-        # Contact has first_name/last_name; fall back to company if both blank.
+        # Person has first_name/last_name; fall back to company if both blank.
         name = f"{agent.first_name} {agent.last_name}".strip()
         return name or agent.company or None
 

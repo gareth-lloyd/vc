@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.models import Contact, ContactEmail, ContactPhone, User
+from accounts.models import Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 
 
@@ -25,8 +25,8 @@ def staff(db: None) -> User:
 
 
 @pytest.fixture
-def contact(db: None) -> Contact:
-    return Contact.objects.create(first_name="Ada", last_name="Lovelace")
+def contact(db: None) -> Person:
+    return Person.objects.create(first_name="Ada", last_name="Lovelace")
 
 
 @pytest.mark.django_db
@@ -40,11 +40,11 @@ def test_create_contact(api_client: APIClient, staff: User) -> None:
     )
 
     assert response.status_code == 201
-    assert Contact.objects.filter(first_name="Grace").exists()
+    assert Person.objects.filter(first_name="Grace").exists()
 
 
 @pytest.mark.django_db
-def test_list_contacts(api_client: APIClient, staff: User, contact: Contact) -> None:
+def test_list_contacts(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 
     response = api_client.get("/api/v1/contacts")
@@ -55,7 +55,7 @@ def test_list_contacts(api_client: APIClient, staff: User, contact: Contact) -> 
 
 
 @pytest.mark.django_db
-def test_patch_contact(api_client: APIClient, staff: User, contact: Contact) -> None:
+def test_patch_contact(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 
     response = api_client.patch(
@@ -70,7 +70,7 @@ def test_patch_contact(api_client: APIClient, staff: User, contact: Contact) -> 
 
 
 @pytest.mark.django_db
-def test_add_email_to_contact(api_client: APIClient, staff: User, contact: Contact) -> None:
+def test_add_email_to_contact(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 
     response = api_client.post(
@@ -85,10 +85,10 @@ def test_add_email_to_contact(api_client: APIClient, staff: User, contact: Conta
 
 @pytest.mark.django_db
 def test_set_primary_email_demotes_previous(
-    api_client: APIClient, staff: User, contact: Contact
+    api_client: APIClient, staff: User, contact: Person
 ) -> None:
-    old = ContactEmail.objects.create(contact=contact, email="old@x.com", is_primary=True)
-    new = ContactEmail.objects.create(contact=contact, email="new@x.com", is_primary=False)
+    old = PersonEmail.objects.create(contact=contact, email="old@x.com", is_primary=True)
+    new = PersonEmail.objects.create(contact=contact, email="new@x.com", is_primary=False)
     api_client.force_login(staff)
 
     response = api_client.post(f"/api/v1/contacts/{contact.pk}/emails/{new.pk}:set-primary")
@@ -102,10 +102,10 @@ def test_set_primary_email_demotes_previous(
 
 @pytest.mark.django_db
 def test_set_primary_phone_demotes_previous(
-    api_client: APIClient, staff: User, contact: Contact
+    api_client: APIClient, staff: User, contact: Person
 ) -> None:
-    old = ContactPhone.objects.create(contact=contact, number="111", is_primary=True)
-    new = ContactPhone.objects.create(contact=contact, number="222", is_primary=False)
+    old = PersonPhone.objects.create(contact=contact, number="111", is_primary=True)
+    new = PersonPhone.objects.create(contact=contact, number="222", is_primary=False)
     api_client.force_login(staff)
 
     response = api_client.post(f"/api/v1/contacts/{contact.pk}/phones/{new.pk}:set-primary")
@@ -118,7 +118,7 @@ def test_set_primary_phone_demotes_previous(
 
 
 @pytest.mark.django_db
-def test_invite_portal_returns_501(api_client: APIClient, staff: User, contact: Contact) -> None:
+def test_invite_portal_returns_501(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 
     response = api_client.post(f"/api/v1/contacts/{contact.pk}:invite-portal")
@@ -128,7 +128,7 @@ def test_invite_portal_returns_501(api_client: APIClient, staff: User, contact: 
 
 @pytest.mark.django_db
 def test_delete_contact_referenced_by_protected_fk_returns_409(
-    api_client: APIClient, staff: User, contact: Contact
+    api_client: APIClient, staff: User, contact: Person
 ) -> None:
     # A contact assigned to a property is referenced through a PROTECT FK;
     # deleting it must surface a clean 409, not an uncaught 500.
@@ -142,16 +142,16 @@ def test_delete_contact_referenced_by_protected_fk_returns_409(
     assert response.status_code == 409
     body = response.json()
     assert body["code"] == "protected"
-    assert Contact.objects.filter(pk=contact.pk).exists()
+    assert Person.objects.filter(pk=contact.pk).exists()
 
 
 @pytest.mark.django_db
 def test_delete_unreferenced_contact_succeeds(
-    api_client: APIClient, staff: User, contact: Contact
+    api_client: APIClient, staff: User, contact: Person
 ) -> None:
     api_client.force_login(staff)
 
     response = api_client.delete(f"/api/v1/contacts/{contact.pk}")
 
     assert response.status_code == 204
-    assert not Contact.objects.filter(pk=contact.pk).exists()
+    assert not Person.objects.filter(pk=contact.pk).exists()

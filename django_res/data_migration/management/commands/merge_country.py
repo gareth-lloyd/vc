@@ -1,6 +1,6 @@
 """Merge one Country into another by walking _meta.related_objects.
 
-Same pattern as `accounts.models.contact.Contact.merge`: every FK that
+Same pattern as `accounts.models.person.Person.merge`: every FK that
 points at the source country is rewritten to point at the target. Once the
 source has zero references, it's hard-deleted.
 

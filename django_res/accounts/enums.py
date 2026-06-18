@@ -10,13 +10,13 @@ class TfaMethod(models.TextChoices):
     SMS = "sms", "SMS (deferred)"
 
 
-class ContactStatus(models.TextChoices):
+class PersonStatus(models.TextChoices):
     ACTIVE = "active", "Active"
     INACTIVE = "inactive", "Inactive"
     ANONYMIZED = "anonymized", "Anonymized"
 
 
-class ContactPreferredMethod(models.TextChoices):
+class PersonPreferredMethod(models.TextChoices):
     EMAIL = "email", "Email"
     PHONE = "phone", "Phone"
     SMS = "sms", "SMS"

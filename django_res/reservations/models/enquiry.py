@@ -97,7 +97,7 @@ class Enquiry(AuditedModel):
     referral_code = models.CharField(max_length=64, blank=True)
 
     agent = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

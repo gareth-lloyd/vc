@@ -33,8 +33,8 @@ from typing import Any
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
 
-from accounts.models import Contact, User
-from accounts.models.contact import ContactEmail, ContactPhone
+from accounts.models import Person, User
+from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders.integrations import SyncRecordZohoLoader
@@ -97,9 +97,9 @@ _CHECKS: list[_Check] = [
         "Feature",
     ),
     _Check("SELECT COUNT(*) FROM UserMaster WHERE DeletedAt IS NULL", User, "User"),
-    _Check("SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL", Contact, "Contact"),
-    _Check("SELECT COUNT(*) FROM VillaContactEmail", ContactEmail, "ContactEmail"),
-    _Check("SELECT COUNT(*) FROM VillaContactTele", ContactPhone, "ContactPhone"),
+    _Check("SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL", Person, "Person"),
+    _Check("SELECT COUNT(*) FROM VillaContactEmail", PersonEmail, "PersonEmail"),
+    _Check("SELECT COUNT(*) FROM VillaContactTele", PersonPhone, "PersonPhone"),
     _Check(
         "SELECT COUNT(*) FROM VillaGroup WHERE DeletedAt IS NULL",
         PropertyGroup,

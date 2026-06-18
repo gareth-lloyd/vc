@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from accounts.models import Contact, User
+from accounts.models import Person, User
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.models import EmailLog, SmtpProfile
 from reservations.enums import QuotationStatus
@@ -76,7 +76,7 @@ def test_quotation_send_uses_agent_personal_smtp_when_configured(
         first_name="Aaron",
         last_name="Agent",
     )
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Aaron",
         last_name="Agent",
         user=agent_user,
@@ -116,7 +116,7 @@ def test_quotation_send_falls_back_to_system_when_agent_has_no_personal_profile(
         email="agent-no-profile@example.com",
         password="agent-pw",
     )
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Bea",
         last_name="Agent",
         user=agent_user,
@@ -161,7 +161,7 @@ def test_quotation_send_with_agent_lacking_user_falls_back_to_system(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Carol",
         last_name="Agent",
         # No linked user → agent_user_for() returns None.

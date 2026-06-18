@@ -6,7 +6,7 @@ import pytest
 from django.db import IntegrityError
 
 from accounts.enums import ContactRole
-from accounts.models import Contact
+from accounts.models import Person
 from properties.enums import ImageKind
 from properties.models import (
     Collection,
@@ -62,8 +62,8 @@ def prop(
 
 
 @pytest.fixture
-def contact(db: None) -> Contact:
-    return Contact.objects.create(first_name="Owner", last_name="One")
+def contact(db: None) -> Person:
+    return Person.objects.create(first_name="Owner", last_name="One")
 
 
 @pytest.mark.django_db
@@ -110,7 +110,7 @@ def test_property_image_multiple_galleries_allowed(prop: Property) -> None:
 
 
 @pytest.mark.django_db
-def test_contact_assignment_unique_active_role(prop: Property, contact: Contact) -> None:
+def test_contact_assignment_unique_active_role(prop: Property, contact: Person) -> None:
     PropertyContactAssignment.objects.create(
         property=prop,
         contact=contact,
@@ -126,7 +126,7 @@ def test_contact_assignment_unique_active_role(prop: Property, contact: Contact)
 
 
 @pytest.mark.django_db
-def test_contact_assignment_can_reopen_after_end_date(prop: Property, contact: Contact) -> None:
+def test_contact_assignment_can_reopen_after_end_date(prop: Property, contact: Person) -> None:
     PropertyContactAssignment.objects.create(
         property=prop,
         contact=contact,
@@ -143,8 +143,8 @@ def test_contact_assignment_can_reopen_after_end_date(prop: Property, contact: C
 
 
 @pytest.mark.django_db
-def test_contact_assignment_only_one_primary_per_role(prop: Property, contact: Contact) -> None:
-    other = Contact.objects.create(first_name="Owner", last_name="Two")
+def test_contact_assignment_only_one_primary_per_role(prop: Property, contact: Person) -> None:
+    other = Person.objects.create(first_name="Owner", last_name="Two")
     PropertyContactAssignment.objects.create(
         property=prop,
         contact=contact,

@@ -13,8 +13,8 @@ from datetime import date, timedelta
 import pytest
 
 from accounts.enums import ContactRole
-from accounts.models import Contact, User
-from accounts.models.contact import ContactEmail
+from accounts.models import Person, User
+from accounts.models.person import PersonEmail
 from comms.recipients import agent_user_for, guest_email, primary_owner_email
 from properties.models import (
     Country,
@@ -94,9 +94,9 @@ def test_guest_email_returns_none_for_empty_string() -> None:
 @pytest.mark.django_db
 def test_primary_owner_email_returns_primary_contact_primary_email() -> None:
     property_ = _build_property("primary")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(contact=contact, email="secondary@example.com", is_primary=False)
-    ContactEmail.objects.create(contact=contact, email="primary@example.com", is_primary=True)
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email="secondary@example.com", is_primary=False)
+    PersonEmail.objects.create(contact=contact, email="primary@example.com", is_primary=True)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,
@@ -115,11 +115,9 @@ def test_primary_owner_email_falls_back_to_oldest_email_when_no_primary() -> Non
     ordering contract — not just `.first()` happening to return the only row.
     """
     property_ = _build_property("fallback")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    older = ContactEmail.objects.create(
-        contact=contact, email="older@example.com", is_primary=False
-    )
-    ContactEmail.objects.create(contact=contact, email="newer@example.com", is_primary=False)
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    older = PersonEmail.objects.create(contact=contact, email="older@example.com", is_primary=False)
+    PersonEmail.objects.create(contact=contact, email="newer@example.com", is_primary=False)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,
@@ -134,8 +132,8 @@ def test_primary_owner_email_falls_back_to_oldest_email_when_no_primary() -> Non
 def test_primary_owner_email_returns_email_for_future_end_date() -> None:
     """A scheduled-to-end-later assignment is still active today."""
     property_ = _build_property("future-end")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(contact=contact, email="future-owner@example.com", is_primary=True)
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email="future-owner@example.com", is_primary=True)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,
@@ -150,8 +148,8 @@ def test_primary_owner_email_returns_email_for_future_end_date() -> None:
 @pytest.mark.django_db
 def test_primary_owner_email_returns_none_for_ended_assignment() -> None:
     property_ = _build_property("ended")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(contact=contact, email="ex-owner@example.com", is_primary=True)
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email="ex-owner@example.com", is_primary=True)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,
@@ -166,8 +164,8 @@ def test_primary_owner_email_returns_none_for_ended_assignment() -> None:
 @pytest.mark.django_db
 def test_primary_owner_email_returns_none_for_non_primary_assignment() -> None:
     property_ = _build_property("nonprimary")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(
         contact=contact, email="secondary-owner@example.com", is_primary=True
     )
     PropertyContactAssignment.objects.create(
@@ -183,7 +181,7 @@ def test_primary_owner_email_returns_none_for_non_primary_assignment() -> None:
 @pytest.mark.django_db
 def test_primary_owner_email_returns_none_when_contact_has_no_email() -> None:
     property_ = _build_property("noemail")
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,
@@ -202,7 +200,7 @@ def test_primary_owner_email_returns_none_when_contact_has_no_email() -> None:
 @pytest.mark.django_db
 def test_agent_user_for_returns_user() -> None:
     user = User.objects.create_user(email="agnes@example.com", password="pw")
-    agent = Contact.objects.create(first_name="Agnes", last_name="Agent", user=user)
+    agent = Person.objects.create(first_name="Agnes", last_name="Agent", user=user)
 
     class StubQuotation:
         pass
@@ -222,7 +220,7 @@ def test_agent_user_for_returns_none_without_agent() -> None:
 
 @pytest.mark.django_db
 def test_agent_user_for_returns_none_when_contact_lacks_user() -> None:
-    agent = Contact.objects.create(first_name="Boris", last_name="Agent")
+    agent = Person.objects.create(first_name="Boris", last_name="Agent")
 
     class StubQuotation:
         pass

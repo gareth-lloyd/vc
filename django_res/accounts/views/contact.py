@@ -11,7 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
-from accounts.models import Contact, ContactEmail, ContactPhone
+from accounts.models import Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
     ContactPhoneSerializer,
@@ -22,17 +22,17 @@ from core.api import IsStaff, not_implemented_response
 
 class ContactFilterSet(FilterSet):
     class Meta:
-        model = Contact
+        model = Person
         fields = {
             "status": ["exact"],
             "preferred_method": ["exact"],
         }
 
 
-class ContactViewSet(viewsets.ModelViewSet[Contact]):
+class ContactViewSet(viewsets.ModelViewSet[Person]):
     """`/contacts` — owner/agent/manager records."""
 
-    queryset = Contact.objects.all().prefetch_related("emails", "phones")
+    queryset = Person.objects.all().prefetch_related("emails", "phones")
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -71,39 +71,39 @@ class ContactInvitePortalView(viewsets.ViewSet):
     permission_classes = [IsStaff]
 
     def create(self, request: Request, contact_pk: str | None = None) -> Response:
-        get_object_or_404(Contact, pk=contact_pk)
+        get_object_or_404(Person, pk=contact_pk)
         return not_implemented_response("Owner-portal invitation flow is not yet wired.")
 
 
-class ContactEmailViewSet(viewsets.ModelViewSet[ContactEmail]):
+class ContactEmailViewSet(viewsets.ModelViewSet[PersonEmail]):
     """Nested `/contacts/{contact_id}/emails`."""
 
     serializer_class = ContactEmailSerializer
     permission_classes = [IsStaff]
 
-    def get_queryset(self) -> models.QuerySet[ContactEmail]:
-        return ContactEmail.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
+    def get_queryset(self) -> models.QuerySet[PersonEmail]:
+        return PersonEmail.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
             "-is_primary", "id"
         )
 
-    def perform_create(self, serializer: BaseSerializer[ContactEmail]) -> None:
-        contact = get_object_or_404(Contact, pk=self.kwargs["contact_pk"])
+    def perform_create(self, serializer: BaseSerializer[PersonEmail]) -> None:
+        contact = get_object_or_404(Person, pk=self.kwargs["contact_pk"])
         serializer.save(contact=contact)
 
 
-class ContactPhoneViewSet(viewsets.ModelViewSet[ContactPhone]):
+class ContactPhoneViewSet(viewsets.ModelViewSet[PersonPhone]):
     """Nested `/contacts/{contact_id}/phones`."""
 
     serializer_class = ContactPhoneSerializer
     permission_classes = [IsStaff]
 
-    def get_queryset(self) -> models.QuerySet[ContactPhone]:
-        return ContactPhone.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
+    def get_queryset(self) -> models.QuerySet[PersonPhone]:
+        return PersonPhone.objects.filter(contact_id=self.kwargs["contact_pk"]).order_by(
             "-is_primary", "id"
         )
 
-    def perform_create(self, serializer: BaseSerializer[ContactPhone]) -> None:
-        contact = get_object_or_404(Contact, pk=self.kwargs["contact_pk"])
+    def perform_create(self, serializer: BaseSerializer[PersonPhone]) -> None:
+        contact = get_object_or_404(Person, pk=self.kwargs["contact_pk"])
         serializer.save(contact=contact)
 
 
@@ -131,10 +131,10 @@ class SetPrimaryEmailView(viewsets.ViewSet):
         email_pk: str | None = None,
     ) -> Response:
         contact_id = int(contact_pk) if contact_pk is not None else 0
-        email = get_object_or_404(ContactEmail, pk=email_pk, contact_id=contact_id)
+        email = get_object_or_404(PersonEmail, pk=email_pk, contact_id=contact_id)
         # Demote the existing primary first so we don't violate the partial
         # unique constraint on (contact, is_primary=True).
-        ContactEmail.objects.filter(contact_id=contact_id, is_primary=True).exclude(
+        PersonEmail.objects.filter(contact_id=contact_id, is_primary=True).exclude(
             pk=email.pk
         ).update(is_primary=False)
         email.is_primary = True
@@ -155,8 +155,8 @@ class SetPrimaryPhoneView(viewsets.ViewSet):
         phone_pk: str | None = None,
     ) -> Response:
         contact_id = int(contact_pk) if contact_pk is not None else 0
-        phone = get_object_or_404(ContactPhone, pk=phone_pk, contact_id=contact_id)
-        ContactPhone.objects.filter(contact_id=contact_id, is_primary=True).exclude(
+        phone = get_object_or_404(PersonPhone, pk=phone_pk, contact_id=contact_id)
+        PersonPhone.objects.filter(contact_id=contact_id, is_primary=True).exclude(
             pk=phone.pk
         ).update(is_primary=False)
         phone.is_primary = True

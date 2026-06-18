@@ -9,11 +9,11 @@ class AccountsConfig(AppConfig):
 
     def ready(self) -> None:
         from accounts import signals  # noqa: F401
-        from accounts.models import Contact, User
+        from accounts.models import Person, User
         from core.audit import track
 
         track(
-            Contact,
+            Person,
             fields=[
                 "title",
                 "first_name",

@@ -142,7 +142,7 @@ class Booking(AuditedModel):
     )
 
     agent = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

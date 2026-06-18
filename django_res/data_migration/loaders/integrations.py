@@ -42,7 +42,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.utils import timezone
 
-from accounts.models import Contact
+from accounts.models import Person
 from data_migration.base import LoadReport, legacy_datetime_literal
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
@@ -73,7 +73,7 @@ class SyncRecordZohoLoader:
     # Order mirrors the domain loaders that populate these models' `legacy_id`.
     SPECS: ClassVar[tuple[_ZohoSpec, ...]] = (
         _ZohoSpec("VillaMaster", Property, has_timestamps=True),
-        _ZohoSpec("VillaContact", Contact, has_timestamps=False),
+        _ZohoSpec("VillaContact", Person, has_timestamps=False),
         _ZohoSpec("VillaEnquire", Enquiry, has_timestamps=True),
         _ZohoSpec("VillaQuotationMaster", Quotation, has_timestamps=True),
         _ZohoSpec("VillaBooking", Booking, has_timestamps=True),

@@ -1,11 +1,11 @@
-"""User + Contact loaders.
+"""User + Person loaders.
 
 UserMaster: legacy password hashes are SQL Server bcrypt-with-salt; we do
 NOT migrate them. New users get unusable passwords and will need a reset.
 Per `01-accounts.md`: IsSystemAdmin=1 -> ADMIN, else RESERVATIONS.
 
-VillaContact -> Contact (one-to-one). Then VillaContactEmail/VillaContactTele
-fan out into ContactEmail/ContactPhone children. The new schema enforces
+VillaContact -> Person (one-to-one). Then VillaContactEmail/VillaContactTele
+fan out into PersonEmail/PersonPhone children. The new schema enforces
 "at most one primary per contact" via a partial unique constraint, so we
 demote any duplicate primaries on the second-and-later child rows.
 """
@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from accounts.enums import ContactPreferredMethod, ContactStatus, EmailLabel, PhoneLabel
-from accounts.models import Contact, ContactEmail, ContactPhone, User
+from accounts.enums import EmailLabel, PersonPreferredMethod, PersonStatus, PhoneLabel
+from accounts.models import Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 from data_migration.base import BaseLoader
 
@@ -48,7 +48,7 @@ class UserLoader(BaseLoader):
 
 class ContactLoader(BaseLoader):
     name = "contact"
-    target_model = Contact
+    target_model = Person
     legacy_query = (
         "SELECT Id, Title, FirstName, LastName, Company, WebsiteUrl, Notes, "
         "PrefferedMethod, AddressLine1, AddressLine2, DeletedAt "
@@ -56,9 +56,9 @@ class ContactLoader(BaseLoader):
     )
 
     _method_map = {
-        1: ContactPreferredMethod.EMAIL,
-        2: ContactPreferredMethod.PHONE,
-        3: ContactPreferredMethod.SMS,
+        1: PersonPreferredMethod.EMAIL,
+        2: PersonPreferredMethod.PHONE,
+        3: PersonPreferredMethod.SMS,
     }
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -75,32 +75,32 @@ class ContactLoader(BaseLoader):
             "notes": (row.get("Notes") or "").strip(),
             "preferred_method": self._method_map.get(
                 row.get("PrefferedMethod") or 0,
-                ContactPreferredMethod.EMAIL,
+                PersonPreferredMethod.EMAIL,
             ),
             "address_line_1": (row.get("AddressLine1") or "").strip()[:255],
             "address_line_2": (row.get("AddressLine2") or "").strip()[:255],
-            "status": (ContactStatus.INACTIVE if row.get("DeletedAt") else ContactStatus.ACTIVE),
+            "status": (PersonStatus.INACTIVE if row.get("DeletedAt") else PersonStatus.ACTIVE),
         }
 
 
 class ContactEmailLoader(BaseLoader):
-    """VillaContactEmail -> ContactEmail. Demotes duplicate primaries."""
+    """VillaContactEmail -> PersonEmail. Demotes duplicate primaries."""
 
     name = "contact_email"
-    target_model = ContactEmail
+    target_model = PersonEmail
     legacy_query = "SELECT Id, ContactId, Email, IsPrimary FROM VillaContactEmail"
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         email = (row.get("Email") or "").strip().lower()
         if not email or "@" not in email:
             return None
-        contact = Contact.objects.filter(legacy_id=str(row["ContactId"])).first()
+        contact = Person.objects.filter(legacy_id=str(row["ContactId"])).first()
         if contact is None:
             return None
         is_primary = bool(row.get("IsPrimary"))
-        if is_primary and ContactEmail.objects.filter(contact=contact, is_primary=True).exists():
+        if is_primary and PersonEmail.objects.filter(contact=contact, is_primary=True).exists():
             is_primary = False
-        # ContactEmail has unique(contact, email); if dup exists, treat as upsert
+        # PersonEmail has unique(contact, email); if dup exists, treat as upsert
         # via legacy_id (BaseLoader handles that for us).
         return {
             "contact": contact,
@@ -112,20 +112,20 @@ class ContactEmailLoader(BaseLoader):
 
 class ContactPhoneLoader(BaseLoader):
     name = "contact_phone"
-    target_model = ContactPhone
+    target_model = PersonPhone
     legacy_query = "SELECT Id, ContactId, CountryCode, MobileNo, IsPrimary FROM VillaContactTele"
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         number = (row.get("MobileNo") or "").strip()
         if not number:
             return None
-        contact = Contact.objects.filter(legacy_id=str(row["ContactId"])).first()
+        contact = Person.objects.filter(legacy_id=str(row["ContactId"])).first()
         if contact is None:
             return None
         cc = (row.get("CountryCode") or "").strip()
         full = (f"+{cc.lstrip('+')} {number}" if cc else number)[:32]
         is_primary = bool(row.get("IsPrimary"))
-        if is_primary and ContactPhone.objects.filter(contact=contact, is_primary=True).exists():
+        if is_primary and PersonPhone.objects.filter(contact=contact, is_primary=True).exists():
             is_primary = False
         return {
             "contact": contact,

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
-from accounts.models import Contact, User
+from accounts.models import Person, User
 from comms.models import EmailLog
 from reservations.enums import BookingHoldReason
 from reservations.models.booking import BookingHold
@@ -81,7 +81,7 @@ def test_expire_holds_notifies_agent_for_quotation_hold(
         first_name="Aaron",
         last_name="Agent",
     )
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Aaron",
         last_name="Agent",
         user=agent_user,
@@ -144,7 +144,7 @@ def test_expire_holds_skips_when_agent_contact_has_no_user(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Bea",
         last_name="Agent",
         # No linked user.
@@ -177,7 +177,7 @@ def test_expire_holds_skips_when_agent_user_has_no_email(
     # Strip the email after creation — create_user requires a value.
     agent_user.email = ""
     agent_user.save(update_fields=["email"])
-    agent_contact = Contact.objects.create(
+    agent_contact = Person.objects.create(
         first_name="Carol",
         last_name="Agent",
         user=agent_user,

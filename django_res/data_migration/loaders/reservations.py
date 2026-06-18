@@ -1,6 +1,6 @@
 """PropertyContactAssignment, Guest, Enquiry loaders.
 
-PropertyContactAssignment: legacy VillaContactMapping joins Property+Contact;
+PropertyContactAssignment: legacy VillaContactMapping joins Property+Person;
 VillaContactRoleMapping carries the role(s). Each (mapping, role) combination
 becomes one assignment row.
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from accounts.enums import ContactRole
-from accounts.models import Contact
+from accounts.models import Person
 from data_migration.base import BaseLoader, LoadReport
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.geo import Country, Region
@@ -51,7 +51,7 @@ class PropertyContactAssignmentLoader(BaseLoader):
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         prop = Property.objects.filter(legacy_id=str(row.get("PropertyId") or "")).first()
-        contact = Contact.objects.filter(legacy_id=str(row.get("ContactId") or "")).first()
+        contact = Person.objects.filter(legacy_id=str(row.get("ContactId") or "")).first()
         if prop is None or contact is None:
             report.skipped += 1
             return
@@ -178,7 +178,7 @@ class EnquiryLoader(BaseLoader):
             region = Region.objects.filter(legacy_id=region_raw).first()
 
         agent = (
-            Contact.objects.filter(legacy_id=str(row["AgentId"])).first()
+            Person.objects.filter(legacy_id=str(row["AgentId"])).first()
             if row.get("AgentId")
             else None
         )

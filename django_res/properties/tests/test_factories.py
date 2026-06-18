@@ -146,10 +146,10 @@ def test_collection_slug_unique_across_runs() -> None:
 
 
 def test_property_contact_assignment_factory() -> None:
-    # Caller supplies the Contact; factory does not pull `accounts` in.
-    from accounts.factories import ContactFactory
+    # Caller supplies the Person; factory does not pull `accounts` in.
+    from accounts.factories import PersonFactory
 
-    contact = ContactFactory()
+    contact = PersonFactory()
     assignment = cast(
         models.PropertyContactAssignment,
         factories.PropertyContactAssignmentFactory(contact=contact),

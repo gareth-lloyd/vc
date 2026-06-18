@@ -171,7 +171,7 @@ def _post_delete_handler(
     `SyncRecord` points at its target via a GenericFK (`content_type`,
     `object_id`), so Django's FK `on_delete` can't cascade. Without this,
     hard-deleting a registered target (e.g. the absorbed row in
-    `Contact.merge`, or a `Quotation` delete) would orphan its SyncRecords —
+    `Person.merge`, or a `Quotation` delete) would orphan its SyncRecords —
     `.target` then silently resolves to `None`. Delete them in the same
     transaction as the target. Only registered sync-target models reach here.
     """

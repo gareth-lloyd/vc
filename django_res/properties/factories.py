@@ -286,11 +286,11 @@ class PropertyFactory(DjangoModelFactory):
         extracted: object,
         **kwargs: object,
     ) -> None:
-        """Opt-in: attach a Contact + commission terms to the finance row.
+        """Opt-in: attach a Person + commission terms to the finance row.
 
         Default off (preserves legacy "all-null finance, inherit from group"
         shape). Set to True via ``PropertyFactory(with_owner_contact=True)`` —
-        the seeded Contact gets a primary `ContactEmail` and `ContactPhone`,
+        the seeded Person gets a primary `PersonEmail` and `PersonPhone`,
         and the finance row gets a mix of percent / fixed commission so the
         Owner tab renders both branches in dev/staging.
         """
@@ -299,25 +299,25 @@ class PropertyFactory(DjangoModelFactory):
         # Local imports: `accounts.factories` already imports from us, and
         # the `accounts` models live in a different app graph.
         from accounts.factories import (
-            ContactEmailFactory,
-            ContactFactory,
-            ContactPhoneFactory,
+            PersonEmailFactory,
+            PersonFactory,
+            PersonPhoneFactory,
         )
-        from accounts.models import Contact
+        from accounts.models import Person
 
         # `get_or_create` rather than `obj.finance` removes the implicit
         # dependency on the sibling `children` post_generation hook having
         # already created the PropertyFinance row.
         finance, _ = models.PropertyFinance.objects.get_or_create(property=obj)
         contact = cast(
-            Contact,
-            ContactFactory(address_line_1=_faker.street_address(), address_line_2=""),
+            Person,
+            PersonFactory(address_line_1=_faker.street_address(), address_line_2=""),
         )
         # Pin `is_primary` explicitly so a future change to the email/phone
         # factory default doesn't silently break the Owner-tab serializer,
         # which reads the primary row.
-        ContactEmailFactory(contact=contact, is_primary=True)
-        ContactPhoneFactory(contact=contact, is_primary=True)
+        PersonEmailFactory(contact=contact, is_primary=True)
+        PersonPhoneFactory(contact=contact, is_primary=True)
         # Mirror the finance link with a primary OWNER assignment so
         # `primary_owner_email()` (which keys off PropertyContactAssignment,
         # not finance.contact) resolves and the owner-approval email fires
@@ -405,7 +405,7 @@ class PropertyContactAssignmentFactory(DjangoModelFactory):
         model = models.PropertyContactAssignment
 
     property = factory.SubFactory(PropertyFactory)
-    # Caller supplies a Contact — accounts.factories.ContactFactory lives in
+    # Caller supplies a Person — accounts.factories.PersonFactory lives in
     # a sibling app and importing it here would create a cycle.
     role = ContactRole.HOUSEKEEPER
     is_primary = False

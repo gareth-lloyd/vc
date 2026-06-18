@@ -6,7 +6,7 @@ import factory
 from factory.django import DjangoModelFactory
 
 from accounts import models
-from accounts.enums import ContactStatus, EmailLabel, PhoneLabel
+from accounts.enums import EmailLabel, PersonStatus, PhoneLabel
 from core.enums import StaffRole
 from core.factories import RUN_TOKEN
 
@@ -28,31 +28,31 @@ class UserFactory(DjangoModelFactory):
     password = factory.PostGenerationMethodCall("set_password", "seed-password")
 
 
-class ContactFactory(DjangoModelFactory):
+class PersonFactory(DjangoModelFactory):
     class Meta:
-        model = models.Contact
+        model = models.Person
 
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
     company = factory.Faker("company")
-    status = ContactStatus.ACTIVE
+    status = PersonStatus.ACTIVE
 
 
-class ContactEmailFactory(DjangoModelFactory):
+class PersonEmailFactory(DjangoModelFactory):
     class Meta:
-        model = models.ContactEmail
+        model = models.PersonEmail
 
-    contact = factory.SubFactory(ContactFactory)
+    contact = factory.SubFactory(PersonFactory)
     email = factory.Sequence(lambda n: f"contact-{RUN_TOKEN}-{n}@example.com")
     label = EmailLabel.PRIMARY
     is_primary = True
 
 
-class ContactPhoneFactory(DjangoModelFactory):
+class PersonPhoneFactory(DjangoModelFactory):
     class Meta:
-        model = models.ContactPhone
+        model = models.PersonPhone
 
-    contact = factory.SubFactory(ContactFactory)
+    contact = factory.SubFactory(PersonFactory)
     number = factory.Sequence(lambda n: f"+44 7700 9{n:05d} x{RUN_TOKEN}")
     label = PhoneLabel.MOBILE
     is_primary = True

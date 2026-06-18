@@ -15,7 +15,7 @@ from django.utils import timezone
 from accounts.enums import ContactRole
 
 if TYPE_CHECKING:
-    from accounts.models import Contact, User
+    from accounts.models import Person, User
     from properties.models import Property
     from reservations.models import Guest, Quotation
 
@@ -28,14 +28,14 @@ def guest_email(guest: Guest | None) -> str | None:
     return email or None
 
 
-def _primary_contact_email(contact: Contact | None) -> str | None:
+def _primary_contact_email(contact: Person | None) -> str | None:
     if contact is None:
         return None
     primary = contact.emails.filter(is_primary=True).first()
     if primary is not None:
         return primary.email
     # Deterministic fallback when no row is flagged primary: oldest email by
-    # insertion. ContactEmail has no Meta.ordering, so `.first()` without an
+    # insertion. PersonEmail has no Meta.ordering, so `.first()` without an
     # explicit `order_by` is heap-order — unstable across VACUUMs.
     any_email = contact.emails.order_by("pk").first()
     return any_email.email if any_email is not None else None
@@ -67,7 +67,7 @@ def primary_owner_email(property_: Property) -> str | None:
 
 
 def agent_user_for(quotation: Quotation) -> User | None:
-    """The `User` behind a quotation's agent Contact, or `None`.
+    """The `User` behind a quotation's agent Person, or `None`.
 
     Used to drive `EmailService` toward the agent's personal SMTP
     profile. Returns `None` when the quotation has no agent or the

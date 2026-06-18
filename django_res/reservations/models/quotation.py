@@ -57,7 +57,7 @@ class Quotation(AuditedModel):
         related_name="quotations",
     )
     agent = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         null=True,
         blank=True,
         on_delete=models.PROTECT,

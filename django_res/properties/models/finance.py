@@ -56,7 +56,7 @@ class PropertyFinance(_FinanceFieldMixin, AuditedModel):
         related_name="+",
     )
     contact = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -261,7 +261,7 @@ class GroupFinance(AuditedModel):
         related_name="finance",
     )
     contact = models.ForeignKey(
-        "accounts.Contact",
+        "accounts.Person",
         on_delete=models.PROTECT,
         null=True,
         blank=True,

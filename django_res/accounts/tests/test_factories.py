@@ -21,9 +21,9 @@ def test_user_factory_sets_usable_password_and_unique_email() -> None:
 
 
 def test_contact_with_primary_email_and_phone() -> None:
-    contact = cast(models.Contact, factories.ContactFactory())
-    email = factories.ContactEmailFactory(contact=contact)
-    phone = factories.ContactPhoneFactory(contact=contact)
+    contact = cast(models.Person, factories.PersonFactory())
+    email = factories.PersonEmailFactory(contact=contact)
+    phone = factories.PersonPhoneFactory(contact=contact)
     assert email.is_primary
     assert phone.is_primary
     assert contact.emails.count() == 1

@@ -13,8 +13,8 @@ from datetime import date
 import pytest
 
 from accounts.enums import ContactRole
-from accounts.models import Contact, User
-from accounts.models.contact import ContactEmail
+from accounts.models import Person, User
+from accounts.models.person import PersonEmail
 from comms.models import EmailLog, SmtpProfile
 from comms.signals import owner_block_contested_handler
 from properties.models import (
@@ -47,8 +47,8 @@ def _property_with_owner(email: str) -> Property:
         group=group,
         region=region,
     )
-    contact = Contact.objects.create(first_name="Olive", last_name="Owner")
-    ContactEmail.objects.create(contact=contact, email=email, is_primary=True)
+    contact = Person.objects.create(first_name="Olive", last_name="Owner")
+    PersonEmail.objects.create(contact=contact, email=email, is_primary=True)
     PropertyContactAssignment.objects.create(
         property=property_,
         contact=contact,

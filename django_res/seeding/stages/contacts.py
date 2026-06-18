@@ -6,13 +6,13 @@ assignments so dev/staging contact tabs show more than the single owner.
 
 Constraint: `unique_active_role_assignment(property, contact, role)` is
 enforced on rows with `end_date IS NULL`. Because each call mints a fresh
-Contact, there is no collision.
+Person, there is no collision.
 """
 
 from __future__ import annotations
 
 from accounts.enums import ContactRole
-from accounts.factories import ContactFactory
+from accounts.factories import PersonFactory
 from properties.factories import PropertyContactAssignmentFactory
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
@@ -38,7 +38,7 @@ def _run(ctx: SeedContext) -> int:
         n = min(ctx.rng.randint(low, high), len(_ROLES))
         roles = ctx.rng.sample(_ROLES, k=n)
         for role in roles:
-            contact = ContactFactory()
+            contact = PersonFactory()
             PropertyContactAssignmentFactory(
                 property=prop,
                 contact=contact,

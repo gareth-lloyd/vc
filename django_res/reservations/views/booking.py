@@ -23,7 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from accounts.models import ContactEmail, ContactPhone
+from accounts.models import PersonEmail, PersonPhone
 from core.api.permissions import IsReservationsWriter
 from reservations.filters import BookingFilter
 from reservations.models import Booking, BookingEvent, BookingNote
@@ -85,12 +85,12 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
     ).prefetch_related(
         Prefetch(
             "property__finance__contact__emails",
-            queryset=ContactEmail.objects.filter(is_primary=True),
+            queryset=PersonEmail.objects.filter(is_primary=True),
             to_attr="primary_emails",
         ),
         Prefetch(
             "property__finance__contact__phones",
-            queryset=ContactPhone.objects.filter(is_primary=True),
+            queryset=PersonPhone.objects.filter(is_primary=True),
             to_attr="primary_phones",
         ),
     )

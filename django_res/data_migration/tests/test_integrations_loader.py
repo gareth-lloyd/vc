@@ -7,8 +7,8 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
-from accounts.factories import ContactFactory
-from accounts.models import Contact
+from accounts.factories import PersonFactory
+from accounts.models import Person
 from data_migration.base import LoadReport
 from data_migration.loaders.integrations import SyncRecordZohoLoader, _ZohoSpec
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
@@ -22,7 +22,7 @@ def _property_spec() -> _ZohoSpec:
 
 
 def _contact_spec() -> _ZohoSpec:
-    return _ZohoSpec(table="VillaContact", model=Contact, has_timestamps=False)
+    return _ZohoSpec(table="VillaContact", model=Person, has_timestamps=False)
 
 
 # --- pure query-builder tests (no DB) ---
@@ -104,7 +104,7 @@ def test_falls_back_to_created_at_when_no_updated_at() -> None:
 
 @pytest.mark.django_db
 def test_contact_without_timestamps_has_null_last_pushed_at() -> None:
-    contact = cast(Contact, ContactFactory(legacy_id="20"))
+    contact = cast(Person, PersonFactory(legacy_id="20"))
     loader = SyncRecordZohoLoader()
     report = LoadReport(loader=loader.name)
 
@@ -112,7 +112,7 @@ def test_contact_without_timestamps_has_null_last_pushed_at() -> None:
 
     rec = SyncRecord.objects.get()
     assert rec.object_id == contact.pk
-    assert rec.content_type == ContentType.objects.get_for_model(Contact)
+    assert rec.content_type == ContentType.objects.get_for_model(Person)
     assert rec.last_pushed_at is None
 
 

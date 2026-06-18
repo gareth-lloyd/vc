@@ -87,7 +87,7 @@ LOADERS: dict[str, type[Loader]] = {
     BookingLoader.name: BookingLoader,
     PaymentLoader.name: PaymentLoader,
     # External-ID backfill — registered last so every domain target row
-    # (Property/Contact/Enquiry/Quotation/Booking) already carries its
+    # (Property/Person/Enquiry/Quotation/Booking) already carries its
     # legacy_id when SyncRecord rows are written.
     SyncRecordZohoLoader.name: SyncRecordZohoLoader,
 }

@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.enums import EmailLabel, PhoneLabel
-from accounts.models import Contact, ContactEmail, ContactPhone, User
+from accounts.models import Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
@@ -471,8 +471,8 @@ def _make_owner_contact(
     address_line_2: str = "",
     email: str | None = "olivia@owner.example",
     phone: str | None = "+44 7700 900111",
-) -> Contact:
-    contact = Contact.objects.create(
+) -> Person:
+    contact = Person.objects.create(
         first_name=first_name,
         last_name=last_name,
         company=company,
@@ -480,14 +480,14 @@ def _make_owner_contact(
         address_line_2=address_line_2,
     )
     if email is not None:
-        ContactEmail.objects.create(
+        PersonEmail.objects.create(
             contact=contact,
             email=email,
             label=EmailLabel.PRIMARY,
             is_primary=True,
         )
     if phone is not None:
-        ContactPhone.objects.create(
+        PersonPhone.objects.create(
             contact=contact,
             number=phone,
             label=PhoneLabel.MOBILE,
@@ -499,7 +499,7 @@ def _make_owner_contact(
 def _make_finance(
     property_: Property,
     *,
-    contact: Contact | None = None,
+    contact: Person | None = None,
     calc_type: str | None = None,
     amount: Decimal | None = None,
     note: str = "",

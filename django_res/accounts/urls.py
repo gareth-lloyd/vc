@@ -130,6 +130,16 @@ contact_nested_patterns = [
         views.ContactInvitePortalView.as_view({"post": "create"}),
         name="contact-invite-portal",
     ),
+    path(
+        "contacts/<int:contact_pk>:merge",
+        views.ContactMergeView.as_view({"post": "create"}),
+        name="contact-merge",
+    ),
+    path(
+        "contacts/<int:contact_pk>:anonymize",
+        views.ContactAnonymizeView.as_view({"post": "create"}),
+        name="contact-anonymize",
+    ),
 ]
 
 role_patterns = [

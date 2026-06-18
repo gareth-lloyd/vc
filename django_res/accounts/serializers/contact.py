@@ -11,6 +11,12 @@ from accounts.enums import PersonStatus
 from accounts.models import Person, PersonEmail, PersonPhone
 
 
+class ContactMergeSerializer(serializers.Serializer[None]):
+    """Body of `POST /contacts/{id}:merge` — the surviving contact's id."""
+
+    target_contact_id = serializers.IntegerField()
+
+
 class ContactEmailSerializer(serializers.ModelSerializer[PersonEmail]):
     class Meta:
         model = PersonEmail

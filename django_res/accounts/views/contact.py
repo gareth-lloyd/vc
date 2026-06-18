@@ -15,12 +15,21 @@ from accounts.enums import PersonStatus
 from accounts.models import GUEST_LEGACY_PREFIX, Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
+    ContactMergeSerializer,
     ContactPhoneSerializer,
     ContactSerializer,
 )
-from core.api import IsStaff, not_implemented_response
+from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
 _LAST_CHANNEL_MESSAGE = "Cannot remove the last contact channel of an active contact."
+
+# GAP-045 Unit 3c-3d: :merge/:anonymize operate on REAL owner/agent contacts
+# only. A `guest-` mirror is a customer's Guest twin; merging or anonymizing it
+# through the Person API would desync guest/person (the canonical customer path
+# is `Guest.merge`/`Guest.anonymize`, which cascades to the mirror). Exclude
+# mirrors from BOTH source and target resolution so a 404 — not a half-redacted
+# identity — is the outcome.
+_real_contacts = Person.objects.exclude(legacy_id__startswith=GUEST_LEGACY_PREFIX)
 
 
 def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones: int) -> None:
@@ -95,6 +104,47 @@ class ContactInvitePortalView(viewsets.ViewSet):
     def create(self, request: Request, contact_pk: str | None = None) -> Response:
         get_object_or_404(Person, pk=contact_pk)
         return not_implemented_response("Owner-portal invitation flow is not yet wired.")
+
+
+class ContactMergeView(viewsets.ViewSet):
+    """`POST /contacts/{id}:merge` — delegates to `Person.merge(target)`.
+
+    Destructive (hard-deletes the source) so we gate on `IsStaffRoleAdmin`.
+    Real contacts only — a `guest-` mirror pk 404s on both source and target.
+    """
+
+    permission_classes = [IsStaffRoleAdmin]
+
+    def create(self, request: Request, contact_pk: str | None = None) -> Response:
+        source = get_object_or_404(_real_contacts, pk=contact_pk)
+        serializer = ContactMergeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_id = serializer.validated_data["target_contact_id"]
+        target = get_object_or_404(_real_contacts, pk=target_id)
+        try:
+            source.merge(target)
+        except ValueError as exc:
+            return Response(
+                {"code": "merge_invalid", "detail": str(exc), "field_errors": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(ContactSerializer(target).data, status=status.HTTP_200_OK)
+
+
+class ContactAnonymizeView(viewsets.ViewSet):
+    """`POST /contacts/{id}:anonymize` — delegates to `Person.anonymize()`.
+
+    Admin-only — GDPR-class operation. Idempotent (running twice on an
+    already-anonymized contact leaves the redacted state intact). Real contacts
+    only — a `guest-` mirror pk 404s (use `/guests/{id}:anonymize`).
+    """
+
+    permission_classes = [IsStaffRoleAdmin]
+
+    def create(self, request: Request, contact_pk: str | None = None) -> Response:
+        contact = get_object_or_404(_real_contacts, pk=contact_pk)
+        contact.anonymize()
+        return Response(ContactSerializer(contact).data, status=status.HTTP_200_OK)
 
 
 class ContactEmailViewSet(viewsets.ModelViewSet[PersonEmail]):

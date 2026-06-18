@@ -14,6 +14,7 @@ from accounts.serializers.auth import (
 )
 from accounts.serializers.contact import (
     ContactEmailSerializer,
+    ContactMergeSerializer,
     ContactPhoneSerializer,
     ContactSerializer,
 )
@@ -21,6 +22,7 @@ from accounts.serializers.user import UserCreateSerializer, UserSerializer
 
 __all__ = [
     "ContactEmailSerializer",
+    "ContactMergeSerializer",
     "ContactPhoneSerializer",
     "ContactSerializer",
     "LoginSerializer",

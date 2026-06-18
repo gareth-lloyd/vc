@@ -20,8 +20,10 @@ from accounts.views.auth import (
     TfaVerifyView,
 )
 from accounts.views.contact import (
+    ContactAnonymizeView,
     ContactEmailViewSet,
     ContactInvitePortalView,
+    ContactMergeView,
     ContactPhoneViewSet,
     ContactPropertiesView,
     ContactViewSet,
@@ -37,8 +39,10 @@ from accounts.views.user import (
 
 __all__ = [
     "AuthSessionViewSet",
+    "ContactAnonymizeView",
     "ContactEmailViewSet",
     "ContactInvitePortalView",
+    "ContactMergeView",
     "ContactPhoneViewSet",
     "ContactPropertiesView",
     "ContactViewSet",

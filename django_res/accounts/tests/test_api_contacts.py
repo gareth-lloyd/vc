@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
+from accounts.enums import PersonStatus
 from accounts.models import Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 
@@ -21,6 +22,16 @@ def staff(db: None) -> User:
         email="staff@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,
+    )
+
+
+@pytest.fixture
+def admin(db: None) -> User:
+    return User.objects.create_user(
+        is_staff=True,
+        email="admin@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
     )
 
 
@@ -348,3 +359,147 @@ def test_delete_unreferenced_contact_succeeds(
 
     assert response.status_code == 204
     assert not Person.objects.filter(pk=contact.pk).exists()
+
+
+# ----------------------------------------------------------------------
+# GAP-045 Unit 3c-3d — :merge + :anonymize colon-verbs (real contacts only)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_merge_requires_admin(api_client: APIClient, staff: User, contact: Person) -> None:
+    target = Person.objects.create(first_name="Target", last_name="Person")
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/contacts/{contact.pk}:merge",
+        {"target_contact_id": target.pk},
+        format="json",
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_anonymize_requires_admin(api_client: APIClient, staff: User, contact: Person) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/contacts/{contact.pk}:anonymize")
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_merge_moves_relations_and_deletes_source(
+    api_client: APIClient, admin: User, contact: Person
+) -> None:
+    """A whole-person merge folds BOTH a customer relation and an agent relation
+    into the target, then hard-deletes the source."""
+    from reservations.models import Enquiry
+
+    target = Person.objects.create(first_name="Target", last_name="Person")
+    as_customer = Enquiry.objects.create(person=contact)
+    as_agent = Enquiry.objects.create(agent=contact)
+    api_client.force_login(admin)
+
+    response = api_client.post(
+        f"/api/v1/contacts/{contact.pk}:merge",
+        {"target_contact_id": target.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == target.pk
+    assert not Person.objects.filter(pk=contact.pk).exists()
+    as_customer.refresh_from_db()
+    as_agent.refresh_from_db()
+    assert as_customer.person_id == target.pk
+    assert as_agent.agent_id == target.pk
+
+
+@pytest.mark.django_db
+def test_merge_into_self_returns_400(api_client: APIClient, admin: User, contact: Person) -> None:
+    api_client.force_login(admin)
+
+    response = api_client.post(
+        f"/api/v1/contacts/{contact.pk}:merge",
+        {"target_contact_id": contact.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "merge_invalid"
+
+
+@pytest.mark.django_db
+def test_merge_on_guest_mirror_source_returns_404(
+    api_client: APIClient, admin: User, contact: Person
+) -> None:
+    """A `guest-` mirror is the customer's Guest twin; merging it through the
+    Person API would desync guest/person. Real contacts only → 404."""
+    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-7")
+    api_client.force_login(admin)
+
+    response = api_client.post(
+        f"/api/v1/contacts/{mirror.pk}:merge",
+        {"target_contact_id": contact.pk},
+        format="json",
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_merge_into_guest_mirror_target_returns_404(
+    api_client: APIClient, admin: User, contact: Person
+) -> None:
+    """Merging a real contact INTO a mirror is the same desync in reverse —
+    the target must also resolve through the real-contacts queryset."""
+    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-8")
+    api_client.force_login(admin)
+
+    response = api_client.post(
+        f"/api/v1/contacts/{contact.pk}:merge",
+        {"target_contact_id": mirror.pk},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert Person.objects.filter(pk=contact.pk).exists()
+
+
+@pytest.mark.django_db
+def test_anonymize_on_guest_mirror_returns_404(api_client: APIClient, admin: User) -> None:
+    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-9")
+    api_client.force_login(admin)
+
+    response = api_client.post(f"/api/v1/contacts/{mirror.pk}:anonymize")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_anonymize_redacts_and_is_idempotent_without_leaking_pii(
+    api_client: APIClient, admin: User, contact: Person
+) -> None:
+    PersonEmail.objects.create(contact=contact, email="ada@example.com", is_primary=True)
+    api_client.force_login(admin)
+
+    first = api_client.post(f"/api/v1/contacts/{contact.pk}:anonymize")
+
+    assert first.status_code == 200
+    contact.refresh_from_db()
+    assert contact.status == PersonStatus.ANONYMIZED.value
+    assert contact.first_name == "[REDACTED]"
+    # No cleartext PII in the 200 body — emails are rewritten to the
+    # `redacted-…@anonymized.local` sentinel, not the original address.
+    blob = first.content.decode()
+    assert "ada@example.com" not in blob
+    assert "Lovelace" not in blob
+
+    # Idempotent: running again leaves the redacted state intact.
+    second = api_client.post(f"/api/v1/contacts/{contact.pk}:anonymize")
+
+    assert second.status_code == 200
+    contact.refresh_from_db()
+    assert contact.status == PersonStatus.ANONYMIZED.value

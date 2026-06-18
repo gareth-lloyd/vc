@@ -15,6 +15,8 @@ class EnquiryFilter(filters.FilterSet):
     """Filter shape for `GET /enquiries`."""
 
     status = filters.CharFilter(field_name="status")
+    lead_status = filters.CharFilter(field_name="lead_status")
+    lost_reason = filters.CharFilter(field_name="lost_reason")
     site = filters.CharFilter(field_name="site_source")
     assigned_to = filters.NumberFilter(field_name="assigned_to_id")
     source = filters.CharFilter(field_name="site_source")
@@ -24,7 +26,17 @@ class EnquiryFilter(filters.FilterSet):
 
     class Meta:
         model = Enquiry
-        fields = ["status", "site", "assigned_to", "source", "created_after", "created_before", "q"]
+        fields = [
+            "status",
+            "lead_status",
+            "lost_reason",
+            "site",
+            "assigned_to",
+            "source",
+            "created_after",
+            "created_before",
+            "q",
+        ]
 
     def filter_q(self, queryset: QuerySet[Enquiry], _name: str, value: str) -> QuerySet[Enquiry]:
         if not value:

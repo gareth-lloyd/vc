@@ -16,7 +16,7 @@ from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.enums import ImageKind
 from properties.models import Property, PropertyImage
-from reservations.enums import ContactMethod, EnquiryLostReason, EnquiryStatus
+from reservations.enums import ContactMethod, EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
@@ -137,6 +137,87 @@ def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, gu
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == lost.pk
+
+
+@pytest.mark.django_db
+def test_enquiry_exposes_lead_status_and_lost_reason(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The lead temperature + structured lost-reason land on both list and
+    detail payloads (read-only) so the dashboard can render + filter them."""
+    enquiry = Enquiry.objects.create(
+        guest=guest,
+        first_name="C",
+        last_name="D",
+        email="c@d.com",
+        status=EnquiryStatus.DEAD.value,
+        lead_status=LeadStatus.HOT.value,
+        lost_reason=EnquiryLostReason.AVAILABILITY.value,
+    )
+    api_client.force_login(staff)
+
+    for payload in (
+        api_client.get("/api/v1/enquiries").data["results"][0],
+        api_client.get(f"/api/v1/enquiries/{enquiry.pk}").data,
+    ):
+        assert payload["lead_status"] == LeadStatus.HOT.value
+        assert payload["lost_reason"] == EnquiryLostReason.AVAILABILITY.value
+
+
+@pytest.mark.django_db
+def test_enquiry_lead_status_is_read_only_on_write(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """`lead_status` is mutated only via the audited :set-lead-status action; a
+    plain PATCH must not change it (it isn't on the write serializer)."""
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value  # unchanged (model default)
+
+
+@pytest.mark.django_db
+def test_list_enquiries__filter_by_lead_status(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    Enquiry.objects.create(guest=guest, email="warm@x.com")  # default warm
+    hot = Enquiry.objects.create(guest=guest, email="hot@x.com", lead_status=LeadStatus.HOT.value)
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries", {"lead_status": LeadStatus.HOT.value})
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == hot.pk
+
+
+@pytest.mark.django_db
+def test_list_enquiries__filter_by_lost_reason(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    Enquiry.objects.create(guest=guest, email="open@x.com")
+    dead = Enquiry.objects.create(
+        guest=guest,
+        email="dead@x.com",
+        status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.AVAILABILITY.value,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(
+        "/api/v1/enquiries", {"lost_reason": EnquiryLostReason.AVAILABILITY.value}
+    )
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == dead.pk
 
 
 @pytest.mark.django_db

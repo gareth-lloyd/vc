@@ -28,6 +28,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "id",
             "reference",
             "status",
+            "lead_status",
+            "lost_reason",
             "guest",
             "guest_name",
             "guest_email",
@@ -58,6 +60,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         read_only_fields = [
             "id",
             "reference",
+            "lead_status",
+            "lost_reason",
             "guest_name",
             "guest_email",
             "guest_phone",

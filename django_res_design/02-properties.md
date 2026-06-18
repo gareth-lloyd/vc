@@ -217,7 +217,7 @@ Convenience: `Property.hero_image` as a method returning `images.filter(kind="HE
 - `name`, `slug`, `description`, `icon`, `sort_order`, `is_active`
 - `service_type` — TextChoices (`AMENITY`, `INCLUDED_SERVICE`, `PAID_ADDON`)
 
-Property ↔ Feature is plain `ManyToManyField` (auto-through). No per-link metadata in the legacy mapping table beyond audit; plain M2M wins.
+Property ↔ Feature uses an explicit `PropertyFeature` through model carrying `sort_order` — the legacy mapping table (`VillaFeaturesMappings`) **did** carry per-link metadata: `MappingOrder`, the operator-chosen per-villa display order. A plain auto-through M2M dropped that order (alphabetical/insertion only), regressing the public-site and editor render against legacy. `PropertyFeature` restores it (`Meta.ordering = ("sort_order", "id")`); the write serializer maps the ordered `feature_ids` list position → `sort_order` and the loader carries `MIN(MappingOrder)` across. See GAP-022.
 
 `service_type` segments the catalogue. The legacy `Tags.razor` admin page (mounted at `/tags`) was a `VillaFeatures` CRUD view filtered by a `ServiceType` enum — there is no separate `Tags` table in the legacy schema. The new design absorbs that admin surface into `/features` with a `?service_type=` filter; there is no `Tag` model, no `PropertyTag` junction, and no `/tags` API resource. See reconciliation issue #8 in `product-design/07-api-schema-reconciliation.md`.
 

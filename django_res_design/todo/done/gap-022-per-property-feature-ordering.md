@@ -1,3 +1,19 @@
+> **✅ RESOLVED (2026-06-18)** — Replaced the plain auto-through `Property.features`
+> M2M with an explicit `PropertyFeature(property, feature, sort_order)` through
+> model (non-destructive migration reusing the existing `properties_property_features`
+> table + a separate `AddField` for `sort_order`; row-count/pair-survival guarded),
+> audit-registered for FG-017. The write serializer accepts an ordered `feature_ids`
+> list and diff-writes `sort_order` from list position (a pure reorder logs only
+> moved rows); the read side returns `feature_ids` in persisted order. The
+> `PropertyFeatureMappingLoader` carries the legacy `MappingOrder` across via
+> `MIN(MappingOrder)` (dedup is load-bearing — `VillaFeaturesMappings` has no
+> unique on the pair and the prod snapshot contains duplicate pairs) into
+> `sort_order` with `update_or_create`. FeaturesTab became a flat `@dnd-kit`
+> drag-drop ordered list (explicit Save → ordered PATCH). Decision recorded in
+> `10-decisions.md`; `02-properties.md` reversed from "plain M2M wins".
+>
+> _Original ticket preserved below for context._
+
 # GAP-022 — Per-property feature display ordering dropped vs legacy
 
 - **Severity:** Gap (legacy-parity regression)

@@ -1,5 +1,16 @@
 # GAP-038 — Enquiry pipeline: stage taxonomy + quotes-to-convert metric
 
+> **🧱 Shared-enum foundation landed (2026-06-18)** — the stage taxonomy this
+> ticket needs now exists on `Enquiry`: values renamed to the dashboard
+> vocabulary (`new` / `progressing` / `quote_sent` / `follow_up` / `dead` /
+> `converted`), a structured `EnquiryLostReason` (`lost_reason` + a dead-requires-
+> reason constraint), and the orthogonal `lead_status` temperature — commits
+> `48d1014`…`b90f833`, reservations migrations `0032`–`0035`. Remaining GAP-038
+> work is the **quotes-to-convert metric** (count `kind=OPERATOR` quotations
+> only — until the GAP-020 `kind` enum lands, use `Quotation.objects.real()`
+> plus an enquiry-side synthetic filter) and the per-quote status surfacing /
+> serializer exposure built on these enums.
+
 - **Severity:** Gap (backend + frontend) — sales-pipeline reporting
 - **Source:** 2026-06-17 owner Loom walkthrough of Quotes & Enquiries + the
   Ben/owner mockup at https://vc-new-res-system.netlify.app/ (the mockup mirrors

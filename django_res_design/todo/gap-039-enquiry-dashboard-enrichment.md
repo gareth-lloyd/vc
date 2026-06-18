@@ -1,5 +1,18 @@
 # GAP-039 — Enquiry list/dashboard enrichment to the Ben/owner mockup
 
+> **🧱 Shared-enum foundation landed (2026-06-18)** — the stage, lead-status, and
+> lost-reason vocabularies the enriched grid needs now exist on `Enquiry`: stage
+> values renamed to the mockup wording (`new` / `progressing` / `quote_sent` /
+> `follow_up` / `dead` / `converted`), `lead_status` (`hot/warm/cold/dead`,
+> default `warm`) with a `(lead_status, status)` index and a `set_lead_status()`
+> mutation that writes a `LEAD_STATUS_CHANGED` event, and a structured
+> `lost_reason` for the Dead-with-reason dropdown — commits `48d1014`…`b90f833`,
+> reservations migrations `0032`–`0035`. Remaining GAP-039 work is the
+> **serializer/filter/inline-PATCH exposure** of these fields plus the richer FE
+> table (region, villa name, date range, flex label, inline dropdowns, stage tabs).
+> Note: the **Flex?** column still uses the existing `is_flexible` +
+> `flexibility_days` until GAP-043 widens that vocabulary.
+
 - **Severity:** Gap (frontend-led; small serializer/filter additions) — operator UX
 - **Source:** 2026-06-17 owner Loom ("the dashboard … is a little bit light … go
   into the version that Ben and I designed") + the mockup at

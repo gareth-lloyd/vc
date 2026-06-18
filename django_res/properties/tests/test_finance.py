@@ -9,7 +9,6 @@ from core.models import AuditLog
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
-    SecurityDepositCalcFrom,
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
@@ -79,7 +78,6 @@ def test_property_group_post_save_creates_group_finance() -> None:
     assert gf.deposit_amount == Decimal("30.00")
     assert gf.days_balance_due_before_arrival == 60
     assert gf.security_deposit_required is False
-    assert gf.security_deposit_calculate_from == SecurityDepositCalcFrom.TOTAL_STAY
     assert gf.security_deposit_payment_method == SecurityDepositPaymentMethod.CARD_HOLD
     assert gf.security_deposit_calculation_type == SecurityDepositCalcType.FIXED
     assert gf.cancellation_window_days == 0
@@ -223,7 +221,6 @@ def test_effective_security_deposit_policy_returns_full_dict(prop: Property) -> 
     gf.security_deposit_required = True
     gf.security_deposit_calculation_type = SecurityDepositCalcType.FIXED
     gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculate_from = SecurityDepositCalcFrom.TOTAL_STAY
     gf.security_deposit_days_due_before_arrival = 14
     gf.security_deposit_days_refunded_after_departure = 7
     gf.security_deposit_payment_method = SecurityDepositPaymentMethod.CARD_HOLD
@@ -240,7 +237,6 @@ def test_effective_security_deposit_policy_returns_full_dict(prop: Property) -> 
         "required": True,
         "calculation_type": SecurityDepositCalcType.FIXED,
         "amount": Decimal("1000.00"),
-        "calculate_from": SecurityDepositCalcFrom.TOTAL_STAY,
         "days_due_before_arrival": 14,
         "days_refunded_after_departure": 7,
         "payment_method": SecurityDepositPaymentMethod.BANK_TRANSFER,

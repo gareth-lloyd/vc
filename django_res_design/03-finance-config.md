@@ -60,7 +60,6 @@ Used by `payments.PaymentScheduler` to derive due dates at booking-creation time
 - `security_deposit_required` — BooleanField(null=True)
 - `security_deposit_calculation_type` — TextChoices (`PERCENT`, `FIXED`), null=True
 - `security_deposit_amount` — Decimal(12, 2, null=True)
-- `security_deposit_calculate_from` — TextChoices (`NIGHTLY`, `WEEKLY`, `TOTAL_STAY`), null=True
 - `security_deposit_days_due_before_arrival` — PositiveSmallInteger(null=True)
 - `security_deposit_days_refunded_after_departure` — PositiveSmallInteger(null=True)
 - `security_deposit_payment_method` — TextChoices (`CARD_HOLD`, `CARD_CHARGE`, `BANK_TRANSFER`), null=True

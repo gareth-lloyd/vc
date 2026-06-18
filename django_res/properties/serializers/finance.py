@@ -46,7 +46,6 @@ _FINANCE_FIELDS = (
     "security_deposit_required",
     "security_deposit_calculation_type",
     "security_deposit_amount",
-    "security_deposit_calculate_from",
     "security_deposit_days_due_before_arrival",
     "security_deposit_days_refunded_after_departure",
     "security_deposit_payment_method",

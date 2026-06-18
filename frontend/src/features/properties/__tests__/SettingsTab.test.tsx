@@ -69,7 +69,6 @@ function makeFinance(overrides: Record<string, unknown> = {}) {
     security_deposit_required: false,
     security_deposit_calculation_type: null,
     security_deposit_amount: null,
-    security_deposit_calculate_from: null,
     security_deposit_days_due_before_arrival: null,
     security_deposit_days_refunded_after_departure: null,
     security_deposit_payment_method: null,

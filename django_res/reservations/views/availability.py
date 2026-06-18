@@ -33,6 +33,7 @@ from reservations.serializers.availability import (
 )
 from reservations.services import AvailabilityService
 from reservations.services.holds import HoldService
+from reservations.services.stay_options import StayOptionsService
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
@@ -234,6 +235,56 @@ class AvailabilityMultiView(APIView):
                 "bookings": AvailabilityBookingSerializer(bookings, many=True).data,
             }
         )
+
+
+class WeeklyPricesView(APIView):
+    """`GET /availability/weekly-prices` — per-week guide prices for the timeline.
+
+    A sibling of `AvailabilityMultiView` (GAP-030): same `property_ids,from,to`
+    query and 50-property page cap, but returns a guide price per
+    changeover-anchored week-block for each fixed-changeover villa. Kept a
+    **separate** request from the bands so the price strip can fill in after the
+    (faster) availability bands render. Flexible-changeover villas come back
+    with `changeover_day=null` and no weeks (deferred — GAP-025 / Q-022).
+    """
+
+    permission_classes = [IsStaff]
+
+    MAX_PROPERTY_IDS = AvailabilityMultiView.MAX_PROPERTY_IDS
+
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        ids_param = request.query_params.get("property_ids", "")
+        property_ids = [
+            int(part)
+            for part in (raw.strip() for raw in ids_param.split(","))
+            if part.isascii() and part.isdigit()
+        ]
+        range_start = _parse_date(request.query_params.get("from"))
+        range_end = _parse_date(request.query_params.get("to"))
+        if not property_ids or not range_start or not range_end:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": "`property_ids`, `from`, `to` are required",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(property_ids) > self.MAX_PROPERTY_IDS:
+            return Response(
+                {
+                    "code": "validation_error",
+                    "detail": f"`property_ids` accepts at most {self.MAX_PROPERTY_IDS} ids",
+                    "field_errors": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        properties = StayOptionsService.weekly_prices(
+            property_ids=property_ids,
+            window_from=range_start,
+            window_to=range_end,
+        )
+        return Response({"properties": properties})
 
 
 class AvailabilitySearchView(APIView):

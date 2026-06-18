@@ -197,6 +197,14 @@ class Person(AuditedModel):
         # works without hard-coding which apps exist yet.
         # The .update() rewrites bypass the audit signals, so record a summary
         # of what moved (per-relation counts) onto the deletion row (FG-016).
+        # The channel children carry partial-unique constraints
+        # (one_primary_*_per_contact + unique_contact_email/number), so a blind
+        # `.update(contact=target)` collides whenever both Persons own a primary
+        # or share an address. Reconcile them explicitly instead.
+        channel_value_fields: dict[type[models.Model], str] = {
+            PersonEmail: "email",
+            PersonPhone: "number",
+        }
         rewrites: dict[str, int] = {}
         for rel in self._meta.related_objects:
             related_model = rel.related_model
@@ -208,9 +216,13 @@ class Person(AuditedModel):
             if rel.many_to_many:
                 continue
             field_name = rel.field.name
-            count = related_model._default_manager.filter(**{field_name: self}).update(
-                **{field_name: target}
-            )
+            value_field = channel_value_fields.get(related_model)
+            if value_field is not None:
+                count = self._merge_channel(target, related_model, value_field)
+            else:
+                count = related_model._default_manager.filter(**{field_name: self}).update(
+                    **{field_name: target}
+                )
             if count:
                 rewrites[f"{related_model._meta.label}.{field_name}"] = count
         dead_pk = self.pk
@@ -223,6 +235,32 @@ class Person(AuditedModel):
         # augmented row is scrubbed too (FG-016).
         record_merge(self, target_pk, rewrites)
         scrub_pii(self, self._AUDIT_PII_FIELDS)
+
+    def _merge_channel(self, target: Person, model: type[models.Model], value_field: str) -> int:
+        """Fold ``self``'s email/phone rows into ``target`` without tripping the
+        channel constraints. The survivor keeps its own primary; a source row
+        whose address already exists on the target is dropped; the rest move in
+        as non-primary — unless the target has no primary, in which case the
+        source's primary is promoted so the merged Person stays contactable.
+        Returns the number of rows actually moved (dropped duplicates excluded).
+        """
+        target_values = set(
+            model._default_manager.filter(contact=target).values_list(value_field, flat=True)
+        )
+        target_has_primary = model._default_manager.filter(contact=target, is_primary=True).exists()
+        moved = 0
+        for row in model._default_manager.filter(contact=self):
+            if getattr(row, value_field) in target_values:
+                row.delete()  # duplicate address — the target already has it
+                continue
+            row.contact = target  # type: ignore[attr-defined]
+            if target_has_primary:
+                row.is_primary = False  # type: ignore[attr-defined]
+            elif row.is_primary:  # type: ignore[attr-defined]
+                target_has_primary = True  # this row becomes the survivor's primary
+            row.save(update_fields=["contact", "is_primary", "updated_at"])
+            moved += 1
+        return moved
 
 
 class PersonEmail(TimestampedModel):

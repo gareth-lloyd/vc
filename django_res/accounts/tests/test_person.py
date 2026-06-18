@@ -165,6 +165,111 @@ def test_merge_rewrites_fks_and_deletes_source() -> None:
 
 
 @pytest.mark.django_db
+def test_merge_folds_source_email_keeping_target_primary() -> None:
+    """GAP-045 Unit 3c-3b: merging two Persons that EACH own a PRIMARY email must
+    not trip ``one_primary_email_per_contact``. The survivor keeps its own
+    primary; the source's other address folds in as a non-primary so no
+    contactable address is lost."""
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    PersonEmail.objects.create(contact=keep, email="keep@example.com", is_primary=True)
+    PersonEmail.objects.create(contact=dup, email="dup@example.com", is_primary=True)
+
+    dup.merge(keep)
+
+    assert not Person.objects.filter(pk=dup.pk).exists()
+    primaries = keep.emails.filter(is_primary=True)
+    assert primaries.count() == 1
+    assert primaries.get().email == "keep@example.com"
+    assert keep.emails.filter(email="dup@example.com", is_primary=False).exists()
+
+
+@pytest.mark.django_db
+def test_merge_folds_source_phone_keeping_target_primary() -> None:
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    PersonPhone.objects.create(contact=keep, number="111", is_primary=True)
+    PersonPhone.objects.create(contact=dup, number="222", is_primary=True)
+
+    dup.merge(keep)
+
+    primaries = keep.phones.filter(is_primary=True)
+    assert primaries.count() == 1
+    assert primaries.get().number == "111"
+    assert keep.phones.filter(number="222", is_primary=False).exists()
+
+
+@pytest.mark.django_db
+def test_merge_drops_duplicate_source_address() -> None:
+    """A source address already on the target is dropped (would violate
+    ``unique_contact_email``), not duplicated."""
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    PersonEmail.objects.create(contact=keep, email="shared@example.com", is_primary=True)
+    PersonEmail.objects.create(contact=dup, email="shared@example.com", is_primary=True)
+
+    dup.merge(keep)
+
+    assert keep.emails.filter(email="shared@example.com").count() == 1
+    assert keep.emails.filter(is_primary=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_merge_promotes_source_primary_when_target_has_none() -> None:
+    """If the survivor has no primary, the source's primary becomes the merged
+    primary rather than being silently demoted to nothing."""
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    # keep has a non-primary email only; dup has a primary.
+    PersonEmail.objects.create(contact=keep, email="keep@example.com", is_primary=False)
+    PersonEmail.objects.create(contact=dup, email="dup@example.com", is_primary=True)
+
+    dup.merge(keep)
+
+    primaries = keep.emails.filter(is_primary=True)
+    assert primaries.count() == 1
+    assert primaries.get().email == "dup@example.com"
+
+
+@pytest.mark.django_db
+def test_merge_dropped_duplicate_may_leave_survivor_without_primary_flag() -> None:
+    """Edge: the survivor's only copy of an address is non-primary and the
+    source's duplicate is its primary. The duplicate is dropped (not moved), so
+    no ``is_primary`` flag is carried over — but ``primary_email`` still resolves
+    via its oldest-by-pk fallback, so the merged Person stays contactable."""
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    PersonEmail.objects.create(contact=keep, email="shared@example.com", is_primary=False)
+    PersonEmail.objects.create(contact=dup, email="shared@example.com", is_primary=True)
+
+    dup.merge(keep)
+
+    assert keep.emails.count() == 1
+    assert keep.emails.filter(is_primary=True).count() == 0
+    keep.refresh_from_db()
+    assert keep.primary_email() == "shared@example.com"
+
+
+@pytest.mark.django_db
+def test_merge_rewrite_count_excludes_dropped_channel_duplicates() -> None:
+    """FG-016 deletion-row summary counts MOVED channel rows; a dropped
+    duplicate (the address already on the survivor) is excluded from the count."""
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    dup = Person.objects.create(first_name="Dup", last_name="Me")
+    PersonEmail.objects.create(contact=keep, email="shared@example.com", is_primary=True)
+    PersonEmail.objects.create(contact=dup, email="shared@example.com", is_primary=True)  # dropped
+    PersonEmail.objects.create(contact=dup, email="extra@example.com", is_primary=False)  # moved
+
+    dup.merge(keep)
+
+    ct = ContentType.objects.get_for_model(Person)
+    rows = list(AuditLog.objects.filter(content_type=ct, object_id=str(dup.pk)))
+    row = next(r for r in rows if r.field_diffs.get("__deleted__"))
+    assert row.field_diffs["__rewrites__"]["accounts.PersonEmail.contact"] == 1
+    assert keep.emails.filter(email="extra@example.com").exists()
+
+
+@pytest.mark.django_db
 def test_merge_deletion_row_records_merged_into_and_rewrite_counts() -> None:
     """FG-016: the bulk FK rewrites bypass the audit signals, so merge must
     stamp the destination pk and per-relation rewrite counts onto the

@@ -7,16 +7,18 @@ export const enquiryStatusSchema = z.enum([
   "new",
   "progressing",
   "quote_sent",
+  "follow_up",
   "dead",
   "converted",
 ]);
 export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
 
-// Columns shown on the Kanban board. Both `dead` and `progressing` are excluded:
-// `dead` is reachable via Close, but `progressing` has no forward affordance in the
-// app (nothing calls Enquiry.contact(); it only arrives via the legacy data
-// migration). The board therefore shows the funnel operators can actually drive —
-// new → quote_sent → converted. Either excluded status is still filterable in the
+// Columns shown on the Kanban board. `dead`, `progressing`, and `follow_up` are
+// excluded: `dead` is reachable via Close, while `progressing`/`follow_up` have no
+// forward affordance in the app yet (nothing calls Enquiry.contact()/follow_up();
+// they arrive via the legacy data migration or an operator stage change landing in
+// GAP-039). The board therefore shows the funnel operators can actually drive —
+// new → quote_sent → converted. Every excluded status is still filterable in the
 // list view.
 export const KANBAN_STATUSES: readonly EnquiryStatus[] = [
   "new",
@@ -111,6 +113,7 @@ export const enquiryEventKindSchema = z.enum([
   "unassigned",
   "contacted",
   "quote_sent",
+  "follow_up",
   "converted",
   "lost",
   "reopened",

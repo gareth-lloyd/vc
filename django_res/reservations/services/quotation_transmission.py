@@ -131,6 +131,7 @@ def _record_enquiry_quote_sent(
     transitionable_from = (
         EnquiryStatus.NEW.value,
         EnquiryStatus.PROGRESSING.value,
+        EnquiryStatus.FOLLOW_UP.value,
     )
 
     if enquiry.status in transitionable_from:

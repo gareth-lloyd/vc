@@ -63,6 +63,7 @@ function groupIntoColumns(
     new: [],
     progressing: [],
     quote_sent: [],
+    follow_up: [],
     converted: [],
     dead: [],
   };

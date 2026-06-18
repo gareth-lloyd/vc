@@ -8,7 +8,14 @@ import {
 
 describe("enquiryStatusSchema", () => {
   it("parses each known status", () => {
-    for (const s of ["new", "progressing", "quote_sent", "dead", "converted"] as const) {
+    for (const s of [
+      "new",
+      "progressing",
+      "quote_sent",
+      "follow_up",
+      "dead",
+      "converted",
+    ] as const) {
       expect(enquiryStatusSchema.parse(s)).toBe(s);
     }
   });

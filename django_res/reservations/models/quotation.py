@@ -179,6 +179,7 @@ class Quotation(AuditedModel):
         if enquiry is not None and enquiry.status in (
             EnquiryStatus.QUOTE_SENT.value,
             EnquiryStatus.PROGRESSING.value,
+            EnquiryStatus.FOLLOW_UP.value,
         ):
             enquiry.convert(self, actor=actor)
         return self

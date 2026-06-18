@@ -255,11 +255,34 @@ class Enquiry(AuditedModel):
         if meta:
             event_meta.update(meta)
         self._transition(
-            allowed_from=(EnquiryStatus.NEW.value, EnquiryStatus.PROGRESSING.value),
+            allowed_from=(
+                EnquiryStatus.NEW.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.FOLLOW_UP.value,
+            ),
             to=EnquiryStatus.QUOTE_SENT.value,
             kind=EnquiryEventKind.QUOTE_SENT.value,
             actor=actor,
             meta=event_meta,
+        )
+        return self
+
+    def follow_up(self, *, actor: Any = None, reason: str = "") -> Enquiry:
+        """Operator-set Follow-up: chasing a Progressing / Quote-sent lead (Q2).
+
+        Sending a new quote moves it back to QUOTE_SENT (`quote_sent`), an
+        accepted quote converts it (`convert` / `Quotation.accept`), and Close
+        marks it DEAD (`lose`).
+        """
+        self._transition(
+            allowed_from=(
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.QUOTE_SENT.value,
+            ),
+            to=EnquiryStatus.FOLLOW_UP.value,
+            kind=EnquiryEventKind.FOLLOW_UP.value,
+            actor=actor,
+            reason=reason,
         )
         return self
 
@@ -288,7 +311,11 @@ class Enquiry(AuditedModel):
     def convert(self, quotation: Quotation, *, actor: Any = None) -> Enquiry:
         """Mark this enquiry as converted (a booking was made from a quotation)."""
         self._transition(
-            allowed_from=(EnquiryStatus.QUOTE_SENT.value, EnquiryStatus.PROGRESSING.value),
+            allowed_from=(
+                EnquiryStatus.QUOTE_SENT.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.FOLLOW_UP.value,
+            ),
             to=EnquiryStatus.CONVERTED.value,
             kind=EnquiryEventKind.CONVERTED.value,
             actor=actor,
@@ -297,12 +324,13 @@ class Enquiry(AuditedModel):
         return self
 
     def lose(self, reason: str = "", *, actor: Any = None) -> Enquiry:
-        """Mark as lost; reachable from any non-converted state."""
+        """Mark as dead; reachable from any non-converted state."""
         self._transition(
             allowed_from=(
                 EnquiryStatus.NEW.value,
                 EnquiryStatus.PROGRESSING.value,
                 EnquiryStatus.QUOTE_SENT.value,
+                EnquiryStatus.FOLLOW_UP.value,
             ),
             to=EnquiryStatus.DEAD.value,
             kind=EnquiryEventKind.LOST.value,
@@ -312,7 +340,7 @@ class Enquiry(AuditedModel):
         return self
 
     def reopen(self, *, actor: Any = None, reason: str = "") -> Enquiry:
-        """Bring a LOST enquiry back to NEW for renewed work."""
+        """Bring a DEAD enquiry back to NEW for renewed work."""
         self._transition(
             allowed_from=(EnquiryStatus.DEAD.value,),
             to=EnquiryStatus.NEW.value,

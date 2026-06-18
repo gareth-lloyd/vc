@@ -52,6 +52,7 @@ def test_enquiry_status_vocabulary() -> None:
         "new",
         "progressing",
         "quote_sent",
+        "follow_up",
         "dead",
         "converted",
     ]
@@ -146,6 +147,104 @@ def test_reopen_from_lost(enquiry: Enquiry) -> None:
 def test_reopen_from_new_raises(enquiry: Enquiry) -> None:
     with pytest.raises(InvalidTransition):
         enquiry.reopen()
+
+
+# ---------------------------------------------------------------------------
+# Follow-up stage (Q2: operator-set; re-quote returns to Quote Sent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_follow_up_from_quote_sent(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.FOLLOW_UP.value
+    event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.FOLLOW_UP.value)
+    assert event.from_status == EnquiryStatus.QUOTE_SENT.value
+    assert event.to_status == EnquiryStatus.FOLLOW_UP.value
+
+
+@pytest.mark.django_db
+def test_follow_up_from_progressing(enquiry: Enquiry) -> None:
+    enquiry.contact()  # NEW -> PROGRESSING
+    enquiry.follow_up()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.FOLLOW_UP.value
+
+
+@pytest.mark.django_db
+def test_follow_up_from_new_raises(enquiry: Enquiry) -> None:
+    with pytest.raises(InvalidTransition):
+        enquiry.follow_up()
+
+
+@pytest.mark.django_db
+def test_requote_from_follow_up_returns_to_quote_sent(
+    enquiry: Enquiry, quotation: Quotation
+) -> None:
+    """A new quote sent on a Follow-up enquiry moves it back to Quote Sent (Q2)."""
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
+
+
+@pytest.mark.django_db
+def test_convert_from_follow_up(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.convert(quotation)
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+
+
+@pytest.mark.django_db
+def test_lose_from_follow_up(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.lose("no response")
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+
+
+@pytest.mark.django_db
+def test_accept_converts_follow_up_enquiry(
+    enquiry: Enquiry,
+    quotation: Quotation,
+    property_: Any,
+    gbp: Currency,
+) -> None:
+    """Accepting a quote whose enquiry is in FOLLOW_UP must still convert it.
+
+    Regression guard: `Quotation.accept()` previously auto-converted only from
+    QUOTE_SENT/PROGRESSING, so a Follow-up enquiry whose quote was accepted would
+    have silently stayed in Follow-up.
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    from reservations.models import QuotationLine
+
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        currency=gbp,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    quotation.send()
+    quotation.accept(line)
+
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
 
 
 @pytest.mark.django_db

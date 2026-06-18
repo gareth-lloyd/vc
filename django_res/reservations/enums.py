@@ -26,6 +26,7 @@ class EnquiryStatus(models.TextChoices):
     NEW = "new", "New"
     PROGRESSING = "progressing", "Progressing"
     QUOTE_SENT = "quote_sent", "Quote sent"
+    FOLLOW_UP = "follow_up", "Follow-up"
     DEAD = "dead", "Dead"
     CONVERTED = "converted", "Converted"
 
@@ -58,6 +59,7 @@ class EnquiryEventKind(models.TextChoices):
     UNASSIGNED = "unassigned", "Unassigned"
     CONTACTED = "contacted", "Contacted"
     QUOTE_SENT = "quote_sent", "Quote sent"
+    FOLLOW_UP = "follow_up", "Follow-up"
     CONVERTED = "converted", "Converted"
     LOST = "lost", "Lost"
     REOPENED = "reopened", "Reopened"

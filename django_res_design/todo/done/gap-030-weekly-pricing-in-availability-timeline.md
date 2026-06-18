@@ -1,5 +1,25 @@
 # GAP-030 — Show weekly pricing in the sales availability timeline
 
+> ✅ **RESOLVED (2026-06-18).** Backend `StayOptionsService.weekly_prices()`
+> prices every changeover-anchored 7-night block intersecting the timeline
+> window for a batch of fixed-changeover villas, at base occupancy
+> (`PropertyCapacity.guests`, floored at 1), reusing the existing changeover +
+> `PricingEngine` machinery — ONE `load_context()` per villa, reused across the
+> window's weeks (no per-week rate-graph reload; query-count pinned). Weeks with
+> no automatic price (no rate, POA, party-out-of-range) return the Q-013
+> incomplete-pricing shape, never a 500; POA is flagged distinctly and
+> derived-year prices carry `is_projected` (guide). Exposed at
+> `GET /availability/weekly-prices` (`WeeklyPricesView`, 50-property cap), kept
+> separate from the bands endpoint. Frontend renders a per-week price strip
+> beneath each villa's bands (aligned via the existing band geometry) with the
+> changeover weekday shown once per row, guide prices muted + `~`-marked, POA
+> labelled; the price query is independent so it never blocks band rendering.
+> Money via `formatMoney` (GAP-026); copy via i18n (en + el). pytest + vitest
+> cover the week-block mapping, flags, the flexible-changeover skip, and the
+> strip render. **Deferred as scoped:** flexible/variable changeovers and
+> sub-week pricing blocks (cross-ref GAP-025 / Q-022) — flexible villas return
+> `changeover_day=null` and no strip.
+
 - **Severity:** Gap (designed-but-unbuilt; sales-team UX)
 - **Source:** owner Loom walkthrough 2026-06-17 (availability section, 0:30–1:04):
   "what we're missing is pricing… it would be great to get pricing in some of

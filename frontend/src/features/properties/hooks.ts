@@ -5,6 +5,7 @@ import {
   activateProperty,
   archiveProperty,
   createChangeOverRule,
+  createProperty,
   createPropertyBlock,
   createPropertyContact,
   createPropertyImage,
@@ -32,11 +33,13 @@ import {
   fetchPropertyAvailabilityCells,
   fetchPropertyBookingsForRange,
   fetchPropertyCapacity,
+  fetchPropertyCategories,
   fetchPropertyContacts,
   fetchPropertyDescriptions,
   fetchPropertyDiscounts,
   fetchPropertyExtras,
   fetchPropertyFinance,
+  fetchPropertyGroups,
   fetchPropertyHolds,
   fetchPropertyImages,
   fetchPropertyLocation,
@@ -71,6 +74,7 @@ import type {
   DescriptionSection,
   PropertyCapacityWriteInput,
   PropertyContactAssignmentWriteInput,
+  PropertyCreateInput,
   PropertyFilters,
   PropertyFinanceWriteInput,
   PropertyImageCreateInput,
@@ -94,6 +98,29 @@ export function useProperties(filters: PropertyFilters) {
 
 export function useProperty(idOrSlug: PropertyId | undefined) {
   return useQuery(enabledQuery(idOrSlug, queryKeys.properties.detail, fetchProperty));
+}
+
+export function usePropertyCategories() {
+  return useQuery({
+    queryKey: queryKeys.propertyCategories.list(),
+    queryFn: fetchPropertyCategories,
+  });
+}
+
+export function usePropertyGroups() {
+  return useQuery({ queryKey: queryKeys.propertyGroups.list(), queryFn: fetchPropertyGroups });
+}
+
+export function useCreateProperty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyCreateInput) => createProperty(input),
+    onSuccess: () => {
+      // Invalidate the whole properties tree so every filtered list view picks
+      // up the new villa, not just the default filter set.
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.all() });
+    },
+  });
 }
 
 export function usePropertyDescriptions(idOrSlug: PropertyId | undefined) {

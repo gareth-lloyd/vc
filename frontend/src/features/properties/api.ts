@@ -7,6 +7,8 @@ import {
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
   collectionsResponseSchema,
+  propertyCategoriesResponseSchema,
+  propertyGroupsResponseSchema,
   regionsResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
@@ -49,8 +51,11 @@ import {
   type PropertyContactAssignment,
   propertyContactAssignmentSchema,
   type PropertyContactAssignmentWriteInput,
+  type PropertyCategory,
+  type PropertyCreateInput,
   type PropertyDescription,
   type PropertyDetail,
+  type PropertyGroup,
   type PropertyFilters,
   type PropertyFinance,
   type PropertyFinanceWriteInput,
@@ -99,6 +104,13 @@ export async function fetchProperties(
 
 export async function fetchProperty(idOrSlug: PropertyId): Promise<PropertyDetail> {
   const data = await apiGet<unknown>(`/properties/${idOrSlug}`);
+  return propertyDetailSchema.parse(data);
+}
+
+export async function createProperty(body: PropertyCreateInput): Promise<PropertyDetail> {
+  // The viewset re-serialises the created row with the detail serializer and
+  // returns 201, so the response parses with `propertyDetailSchema`.
+  const data = await apiSend<unknown>("POST", "/properties", body);
   return propertyDetailSchema.parse(data);
 }
 
@@ -342,6 +354,22 @@ export async function fetchCollections(): Promise<Paginated<Collection>> {
     query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
   });
   return collectionsResponseSchema.parse(data);
+}
+
+export async function fetchPropertyCategories(): Promise<Paginated<PropertyCategory>> {
+  // Model `Meta.ordering` already sorts by (sort_order, name); fetch the whole
+  // catalogue for the create-form picker (`page_size` guards against growth).
+  const data = await apiGet<unknown>("/property-categories", {
+    query: { page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return propertyCategoriesResponseSchema.parse(data);
+}
+
+export async function fetchPropertyGroups(): Promise<Paginated<PropertyGroup>> {
+  const data = await apiGet<unknown>("/property-groups", {
+    query: { page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return propertyGroupsResponseSchema.parse(data);
 }
 
 export async function fetchPropertyHolds(

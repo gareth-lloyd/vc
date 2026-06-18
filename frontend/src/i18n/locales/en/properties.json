@@ -741,10 +741,20 @@
       "title": "No features available",
       "description": "Ask an admin to seed the feature catalog before tagging this property."
     },
+    "none_selected": {
+      "title": "No features selected",
+      "description": "Use Add feature to build this property's feature list, then drag to reorder."
+    },
+    "row": {
+      "drag_handle_label": "Drag to reorder feature",
+      "remove_label": "Remove {{name}}",
+      "unknown_feature": "Unknown feature"
+    },
     "errors": {
       "load_failed": "Couldn't load features."
     },
     "actions": {
+      "add": "Add feature",
       "save": "Save changes",
       "saving": "Saving…",
       "reset": "Reset"

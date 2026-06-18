@@ -1,5 +1,13 @@
 # GAP-031 — Show the month context above the availability timeline date range
 
+> ✅ **RESOLVED (2026-06-18).** `monthSpanLabel` (new pure helper) renders the
+> spanning month(s) + year above the existing date-range span in the timeline
+> window header — single month ("June 2026"), cross-month same-year ("June –
+> July 2026"), cross-year ("December 2025 – January 2026"). Month/year text is
+> date-fns in the active locale; the dash join is an i18n key (`window.
+> month_span_range`, en + el), never a concatenated literal. Vitest covers all
+> three cases. FE-only, no API change. Quality gate green.
+
 - **Severity:** Gap (FE polish; sales-team readability)
 - **Source:** owner Loom walkthrough 2026-06-17 (availability section, 1:04–1:20):
   "just a minor thing, but I see even the date range here, it'd be really nice to

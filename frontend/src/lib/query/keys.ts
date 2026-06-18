@@ -146,6 +146,8 @@ export const queryKeys = {
     all: () => ["availability"] as const,
     timeline: (ids: number[], from: string, to: string) =>
       ["availability", "timeline", ids.map(k), from, to] as const,
+    weeklyPrices: (ids: number[], from: string, to: string) =>
+      ["availability", "weekly-prices", ids.map(k), from, to] as const,
   },
   regions: {
     all: () => ["regions"] as const,

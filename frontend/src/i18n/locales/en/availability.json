@@ -29,6 +29,13 @@
     "on_hold": "On hold",
     "stop_sale": "Stop sale"
   },
+  "price": {
+    "poa": "POA",
+    "none": "—",
+    "guide_value": "~{{value}}",
+    "guide_title": "Guide price",
+    "changeover_label": "({{day}})"
+  },
   "gate": {
     "title": "Filter to see availability",
     "description": "Pick a country, region or collection — or search by name — to load villas. The full portfolio is too large to show at once."

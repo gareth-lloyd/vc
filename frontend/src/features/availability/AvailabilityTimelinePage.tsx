@@ -18,7 +18,13 @@ import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
 import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
-import { useCollections, useMultiAvailability, useRegions, useTimelineProperties } from "./hooks";
+import {
+  useCollections,
+  useMultiAvailability,
+  useRegions,
+  useTimelineProperties,
+  useWeeklyPrices,
+} from "./hooks";
 import { monthSpanLabel } from "./monthSpan";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
 import { bandStatusClasses, type BandDisplayStatus } from "./status";
@@ -61,6 +67,8 @@ export function AvailabilityTimelinePage() {
   const properties = useMemo(() => propertiesQuery.data?.results ?? [], [propertiesQuery.data]);
   const propertyIds = useMemo(() => properties.map((p) => p.id), [properties]);
   const availabilityQuery = useMultiAvailability(propertyIds, window.from, window.to);
+  // Prices load independently of the bands — never gate band rendering on them.
+  const weeklyPricesQuery = useWeeklyPrices(propertyIds, window.from, window.to);
   const regions = useRegions();
   const collections = useCollections();
 
@@ -155,6 +163,7 @@ export function AvailabilityTimelinePage() {
           properties={properties}
           holds={availabilityQuery.data?.records ?? []}
           bookings={availabilityQuery.data?.bookings ?? []}
+          weeklyPrices={weeklyPricesQuery.data?.properties}
         />
       </>
     );

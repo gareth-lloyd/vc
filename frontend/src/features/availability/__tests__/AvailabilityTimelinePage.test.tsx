@@ -52,6 +52,9 @@ function installTaxonomyHandlers() {
     http.get("/api/v1/collections", () =>
       HttpResponse.json(drfPage([{ id: 1, name: "Signature", slug: "signature" }])),
     ),
+    // Prices load on their own query; default to empty so bands-only tests
+    // don't trip the unhandled-request guard. Override per-test for the strip.
+    http.get("/api/v1/availability/weekly-prices", () => HttpResponse.json({ properties: [] })),
   );
 }
 
@@ -235,6 +238,66 @@ describe("AvailabilityTimelinePage", () => {
     const retry = await screen.findByRole("button", { name: /retry/i });
     await userEvent.click(retry);
     expect(await screen.findByRole("button", { name: /VC1001/ })).toBeInTheDocument();
+  });
+
+  it("renders the weekly price strip with changeover, guide marker, and POA", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(villas)),
+      http.get("/api/v1/availability", () => HttpResponse.json(bands)),
+      http.get("/api/v1/availability/weekly-prices", () =>
+        HttpResponse.json({
+          properties: [
+            {
+              property_id: 1,
+              changeover_day: "sat",
+              weeks: [
+                {
+                  week_start: "2026-06-13",
+                  week_end: "2026-06-20",
+                  price: "1400.00",
+                  currency_code: "GBP",
+                  is_projected: false,
+                  is_poa: false,
+                  error_code: null,
+                },
+                {
+                  week_start: "2026-06-20",
+                  week_end: "2026-06-27",
+                  price: "1500.00",
+                  currency_code: "GBP",
+                  is_projected: true,
+                  is_poa: false,
+                  error_code: null,
+                },
+              ],
+            },
+            {
+              property_id: 2,
+              changeover_day: "sat",
+              weeks: [
+                {
+                  week_start: "2026-06-13",
+                  week_end: "2026-06-20",
+                  price: null,
+                  currency_code: "GBP",
+                  is_projected: false,
+                  is_poa: true,
+                  error_code: "no_rate_available",
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    renderPage(`/availability?country=es&start=${START}`);
+
+    // Firm price, projected guide (prefixed ~), and POA all render…
+    expect(await screen.findByText("£1,400.00")).toBeInTheDocument();
+    expect(screen.getByText("~£1,500.00")).toBeInTheDocument();
+    expect(screen.getByText("POA")).toBeInTheDocument();
+    // …with the changeover weekday shown once per villa row.
+    expect(screen.getAllByText("(Sat)")).toHaveLength(2);
   });
 
   it("stacks overlapping bookings into separate sub-lanes, both clickable", async () => {

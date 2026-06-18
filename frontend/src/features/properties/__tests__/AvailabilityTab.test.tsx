@@ -250,6 +250,59 @@ describe("AvailabilityTab", () => {
     expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
   });
 
+  it("opens the create dialog pre-filled from a click-drag across free days", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    installCalendar([]);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { container } = setup();
+
+    await screen.findByText("May 2026");
+    const start = container.querySelector<HTMLElement>('[data-iso="2026-05-12"]');
+    const end = container.querySelector<HTMLElement>('[data-iso="2026-05-14"]');
+    expect(start).not.toBeNull();
+    expect(end).not.toBeNull();
+
+    await user.pointer([
+      { keys: "[MouseLeft>]", target: start! },
+      { target: end! },
+      { keys: "[/MouseLeft]" },
+    ]);
+
+    expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
+    // Half-open: nights 12–14 → date_to is the 15th (checkout morning).
+    expect(screen.getByLabelText("From")).toHaveValue("2026-05-12");
+    expect(screen.getByLabelText("To")).toHaveValue("2026-05-15");
+  });
+
+  it("truncates a drag before an occupied day", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    // The 14th is booked → a drag from the 12th stops at the 13th.
+    installCalendar([{ date: "2026-05-14", available: false, reason: "booked", block_id: null }]);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { container } = setup();
+
+    await screen.findByText("May 2026");
+    const start = container.querySelector<HTMLElement>('[data-iso="2026-05-12"]');
+    expect(start).not.toBeNull();
+    // The booked 14th is not selectable, so it carries no data-iso hook.
+    const blocked = container.querySelector<HTMLElement>('[data-iso="2026-05-14"]');
+    expect(blocked).toBeNull();
+    const past = container.querySelector<HTMLElement>('[data-iso="2026-05-15"]');
+
+    await user.pointer([
+      { keys: "[MouseLeft>]", target: start! },
+      { target: past! },
+      { keys: "[/MouseLeft]" },
+    ]);
+
+    expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("From")).toHaveValue("2026-05-12");
+    // Stops at the 13th (last selectable night) → date_to is the 14th.
+    expect(screen.getByLabelText("To")).toHaveValue("2026-05-14");
+  });
+
   it("shows booked state on adjacent-month days in the grid", async () => {
     // May 2026 starts on a Friday, so the grid leads with 27–30 April.
     installBaseHandlers();

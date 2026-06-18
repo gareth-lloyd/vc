@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useOutletContext } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
+import { resolveDragRange, type DragRange } from "@/lib/dragRange";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -62,6 +64,10 @@ export function AvailabilityTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<EditableBlock | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  // Click-drag block creation: the press origin + current hover, and the range
+  // a completed drag pre-fills the create dialog with.
+  const [drag, setDrag] = useState<{ start: string; end: string } | null>(null);
+  const [pendingRange, setPendingRange] = useState<DragRange | null>(null);
 
   const { viewMonth, days, from, to, isCurrentMonth, goToPreviousMonth, goToNextMonth, goToToday } =
     useMonthGrid();
@@ -106,6 +112,61 @@ export function AvailabilityTab() {
     }
     return map;
   }, [holds.data]);
+
+  // A day is drag-selectable when its cell is available (or there is no cell) —
+  // the same rule `disabledDaysFromCells` greys out in the dialog.
+  const isSelectable = useCallback(
+    (iso: string) => {
+      const cell = cellByIso.get(iso);
+      return !cell || cell.available;
+    },
+    [cellByIso],
+  );
+
+  // The range a drag would commit, recomputed live so the in-progress selection
+  // can highlight it (and truncate before the first occupied day).
+  const dragPreview = useMemo(
+    () => (drag ? resolveDragRange(drag.start, drag.end, isSelectable) : null),
+    [drag, isSelectable],
+  );
+  const isInPreview = (iso: string) =>
+    dragPreview != null && iso >= dragPreview.date_from && iso < dragPreview.date_to;
+
+  // Resolve the drag on release (anywhere — pointer may leave the grid). A ref
+  // keeps the window listener off the hot path of every hover update.
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+  useEffect(() => {
+    if (!canWrite) return;
+    const onPointerUp = () => {
+      const current = dragRef.current;
+      if (!current) return;
+      setDrag(null);
+      const range = resolveDragRange(current.start, current.end, isSelectable);
+      if (range) {
+        setPendingRange(range);
+        setAddOpen(true);
+      }
+    };
+    window.addEventListener("pointerup", onPointerUp);
+    return () => window.removeEventListener("pointerup", onPointerUp);
+  }, [canWrite, isSelectable]);
+
+  // Start a drag only on a selectable cell (its root carries
+  // data-selectable="true"); other targets — dropdown triggers, links — pass
+  // through untouched. preventDefault suppresses the text-selection drag.
+  const handleGridPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canWrite) return;
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-iso]");
+    if (!el || el.dataset.selectable !== "true" || !el.dataset.iso) return;
+    e.preventDefault();
+    setDrag({ start: el.dataset.iso, end: el.dataset.iso });
+  };
+  const handleGridPointerOver = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const iso = (e.target as HTMLElement).closest<HTMLElement>("[data-iso]")?.dataset.iso;
+    if (!iso) return;
+    setDrag((prev) => (prev && prev.end !== iso ? { ...prev, end: iso } : prev));
+  };
 
   const reasonLabel = (reason: string) =>
     reason ? t(`availability.reason_labels.${reason}`) : t("availability.reason_labels.available");
@@ -186,7 +247,11 @@ export function AvailabilityTab() {
           onRetry={() => calendar.refetch()}
         />
       ) : (
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          className="grid grid-cols-7 gap-1 select-none"
+          onPointerDown={handleGridPointerDown}
+          onPointerOver={handleGridPointerOver}
+        >
           {WEEKDAYS.map((d) => (
             <div
               key={d}
@@ -275,8 +340,16 @@ export function AvailabilityTab() {
             }
 
             if (reason === "") {
+              const selected = isInPreview(iso);
               return (
-                <div key={iso} className={`${base} text-foreground`}>
+                <div
+                  key={iso}
+                  data-iso={iso}
+                  data-selectable={canWrite ? "true" : undefined}
+                  className={`${base} text-foreground${canWrite ? "cursor-pointer" : ""}${
+                    selected ? "ring-primary bg-primary/10 ring-2 ring-inset" : ""
+                  }`}
+                >
                   {dayNum}
                 </div>
               );
@@ -331,8 +404,12 @@ export function AvailabilityTab() {
         <AvailabilityBlockFormDialog
           propertyId={property.id}
           open={addOpen}
-          onOpenChange={setAddOpen}
+          onOpenChange={(o) => {
+            setAddOpen(o);
+            if (!o) setPendingRange(null);
+          }}
           mode="create"
+          initialRange={pendingRange ?? undefined}
         />
       ) : null}
       {editing ? (

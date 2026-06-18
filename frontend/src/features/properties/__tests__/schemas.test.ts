@@ -7,6 +7,7 @@ import {
   propertyDetailSchema,
   propertyListItemSchema,
   propertyListResponseSchema,
+  propertyRoomWriteInputSchema,
   rateCardWriteInputSchema,
   rateRuleWriteInputSchema,
 } from "../schemas";
@@ -217,5 +218,58 @@ describe("rateRuleWriteInputSchema", () => {
     expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "-5" })).toThrow();
     expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "1250" }).nightly).toBe("1250");
     expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "12.5" }).nightly).toBe("12.5");
+  });
+});
+
+describe("propertyRoomWriteInputSchema", () => {
+  const beds = {
+    double: 1,
+    twin_double: 0,
+    twin: 0,
+    single: 0,
+    bunk: 0,
+    sofa: 0,
+    childrens: 0,
+  };
+  const valid = {
+    name: "Master",
+    placement: "main_house" as const,
+    website_description: "",
+    vc_notes: "",
+    is_ensuite: true,
+    beds,
+  };
+
+  it("accepts a fully specified room", () => {
+    const result = propertyRoomWriteInputSchema.parse(valid);
+    expect(result.beds).toEqual(beds);
+  });
+
+  it("saves a room with just a name (beds omitted, GAP-024)", () => {
+    const result = propertyRoomWriteInputSchema.parse({
+      name: "Master",
+      placement: "main_house" as const,
+      website_description: "",
+      vc_notes: "",
+      is_ensuite: true,
+    });
+    expect(result.beds).toBeUndefined();
+    expect(result.name).toBe("Master");
+  });
+
+  it("still rejects a blank name", () => {
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, name: "  " })).toThrow();
+  });
+
+  it("keeps empty description/notes as '' so a PATCH can clear them", () => {
+    // Regression guard: these must stay `z.string()` (not `.optional()`), or an
+    // empty value would be omitted from the payload and silently stop clearing.
+    const result = propertyRoomWriteInputSchema.parse(valid);
+    expect(result.website_description).toBe("");
+    expect(result.vc_notes).toBe("");
+    // `undefined` is rejected (the field is required), proving it is NOT optional.
+    expect(() =>
+      propertyRoomWriteInputSchema.parse({ ...valid, website_description: undefined }),
+    ).toThrow();
   });
 });

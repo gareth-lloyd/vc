@@ -216,7 +216,12 @@ export const propertyRoomWriteInputSchema = z.object({
   website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
-  beds: roomBedsSchema,
+  // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,
+  // room.py:29): a room can be saved with just a name and filled in over time
+  // (GAP-024). NOTE: `website_description`/`vc_notes` above stay `z.string()`
+  // (not `.optional()`) — PATCH sends `""` to clear them; `.optional()` would
+  // emit `undefined`, omit the field, and silently stop clearing.
+  beds: roomBedsSchema.optional(),
 });
 export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema>;
 

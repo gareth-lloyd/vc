@@ -151,6 +151,14 @@ export const queryKeys = {
     all: () => ["regions"] as const,
     list: () => ["regions", "list"] as const,
   },
+  propertyCategories: {
+    all: () => ["property-categories"] as const,
+    list: () => ["property-categories", "list"] as const,
+  },
+  propertyGroups: {
+    all: () => ["property-groups"] as const,
+    list: () => ["property-groups", "list"] as const,
+  },
   collections: {
     all: () => ["collections"] as const,
     list: () => ["collections", "list"] as const,

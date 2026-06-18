@@ -256,6 +256,49 @@ export type Collection = z.infer<typeof collectionSchema>;
 
 export const collectionsResponseSchema = paginated(collectionSchema);
 
+// FK-picker rows for the create-property form (`GET /property-categories`,
+// `/property-groups`). Only `id` + `name` are needed to pick; Zod strips the
+// other serializer fields. Widen these when a consumer actually needs more.
+export const propertyCategorySchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+export type PropertyCategory = z.infer<typeof propertyCategorySchema>;
+
+export const propertyCategoriesResponseSchema = paginated(propertyCategorySchema);
+
+export const propertyGroupSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+export type PropertyGroup = z.infer<typeof propertyGroupSchema>;
+
+export const propertyGroupsResponseSchema = paginated(propertyGroupSchema);
+
+// Write shape for creating a property (GAP-049). Only the six fields the
+// backend requires — `licence_number`/`channel`/`features`/`legacy_id` are
+// optional or server-defaulted and are filled in later on the edit tabs
+// (incremental-onboarding posture, GAP-024). FK fields default to the `0`
+// sentinel so an unselected dropdown trips `.min(1)` with a required message.
+export const propertyCreateInputSchema = z.object({
+  name: z.string().trim().min(1, { message: "properties:create.errors.name_required" }).max(255),
+  display_name: z
+    .string()
+    .trim()
+    .min(1, { message: "properties:create.errors.display_name_required" })
+    .max(255),
+  slug: z
+    .string()
+    .trim()
+    .min(1, { message: "properties:create.errors.slug_required" })
+    .max(255)
+    .regex(/^[a-z0-9-]+$/, { message: "properties:create.errors.slug_invalid" }),
+  category: z.number().int().min(1, { message: "properties:create.errors.category_required" }),
+  group: z.number().int().min(1, { message: "properties:create.errors.group_required" }),
+  region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
+});
+export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
+
 export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
 export const rateRuleSchema = z.object({

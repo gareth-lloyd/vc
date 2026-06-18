@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { SortingState } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
 import { DataTable } from "@/components/data/DataTable";
@@ -14,8 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
+import { CreatePropertyDialog } from "./components/CreatePropertyDialog";
 import { propertyColumns } from "./columns";
 import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
 import type { PropertyFilters, PropertyListItem } from "./schemas";
@@ -45,6 +50,8 @@ export function PropertiesListPage() {
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState(filters.q ?? "");
+  const [createOpen, setCreateOpen] = useState(false);
+  const canCreate = useHasReservationsRole();
 
   const countryOptions = [
     { value: ALL_VALUE, label: t("common:filters.any_country") },
@@ -122,11 +129,31 @@ export function PropertiesListPage() {
     navigate(propertyDetailsPath(isValidSlug ? slug : row.id));
   };
 
+  const newVillaButton = (
+    <Button size="sm" disabled={!canCreate} onClick={() => setCreateOpen(true)}>
+      <Plus className="size-4" />
+      {t("create.button")}
+    </Button>
+  );
+
   return (
     <div>
       <PageHeader
         title={t("list.title")}
         breadcrumbs={[{ label: t("list.breadcrumb_library") }, { label: t("list.title") }]}
+        actions={
+          canCreate ? (
+            newVillaButton
+          ) : (
+            // Convention: write affordances disable (with a reason), never disappear.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="block">{newVillaButton}</span>
+              </TooltipTrigger>
+              <TooltipContent>{t("create.disabled_no_role")}</TooltipContent>
+            </Tooltip>
+          )
+        }
       />
       <div className="space-y-4 p-6">
         <Toolbar
@@ -194,6 +221,7 @@ export function PropertiesListPage() {
           />
         )}
       </div>
+      {createOpen ? <CreatePropertyDialog open={createOpen} onOpenChange={setCreateOpen} /> : null}
     </div>
   );
 }

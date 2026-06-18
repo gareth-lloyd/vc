@@ -4,6 +4,7 @@ import {
   availabilityBlockWriteInputSchema,
   availabilityCellSchema,
   propertyContactAssignmentWriteInputSchema,
+  propertyCreateInputSchema,
   propertyDetailSchema,
   propertyListItemSchema,
   propertyListResponseSchema,
@@ -37,6 +38,44 @@ describe("availabilityCellSchema", () => {
     });
     expect(cell.segments?.am.reason).toBe("booked");
     expect(cell.segments?.pm.block_id).toBe(9);
+  });
+});
+
+describe("propertyCreateInputSchema", () => {
+  const valid = {
+    name: "Villa Aurora",
+    display_name: "Villa Aurora",
+    slug: "villa-aurora",
+    category: 1,
+    group: 2,
+    region: 3,
+  };
+
+  it("accepts the six required fields", () => {
+    expect(propertyCreateInputSchema.parse(valid)).toMatchObject(valid);
+  });
+
+  it("rejects a blank name", () => {
+    const result = propertyCreateInputSchema.safeParse({ ...valid, name: "  " });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unselected FK (the 0 sentinel)", () => {
+    for (const field of ["category", "group", "region"] as const) {
+      const result = propertyCreateInputSchema.safeParse({ ...valid, [field]: 0 });
+      expect(result.success, field).toBe(false);
+    }
+  });
+
+  it("rejects a slug with invalid characters", () => {
+    const result = propertyCreateInputSchema.safeParse({ ...valid, slug: "Villa Aurora!" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a slug with digits and dashes", () => {
+    expect(propertyCreateInputSchema.parse({ ...valid, slug: "villa-23-aurora" }).slug).toBe(
+      "villa-23-aurora",
+    );
   });
 });
 

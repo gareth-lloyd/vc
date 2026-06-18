@@ -93,6 +93,39 @@ class Person(AuditedModel):
             return f"[redacted person #{self.pk}]"
         return f"{self.first_name} {self.last_name}".strip()
 
+    @property
+    def display_name(self) -> str | None:
+        """Full name for staff lists, or ``None`` when both name parts blank."""
+        return f"{self.first_name} {self.last_name}".strip() or None
+
+    def primary_email(self) -> str | None:
+        """Primary email address, read from the prefetch cache.
+
+        Iterates ``self.emails.all()`` (so it stays inside a
+        ``prefetch_related("emails")`` budget rather than firing a fresh
+        ``.filter()`` per row). Returns the ``is_primary`` address, else the
+        oldest by pk — matching ``comms.recipients._primary_contact_email``.
+        Guest mirrors always carry exactly one PRIMARY (GAP-045 Unit 3c-1a),
+        so the oldest-by-pk fallback only matters for non-mirror Persons.
+        """
+        emails = list(self.emails.all())
+        if not emails:
+            return None
+        for email in emails:
+            if email.is_primary:
+                return email.email
+        return min(emails, key=lambda e: e.pk).email
+
+    def primary_phone(self) -> str | None:
+        """Primary phone number from the prefetch cache (see ``primary_email``)."""
+        phones = list(self.phones.all())
+        if not phones:
+            return None
+        for phone in phones:
+            if phone.is_primary:
+                return phone.number or None
+        return min(phones, key=lambda p: p.pk).number or None
+
     @transaction.atomic
     def anonymize(self) -> None:
         """Overwrite PII with sentinels and flip status.

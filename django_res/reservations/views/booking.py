@@ -78,11 +78,17 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
     query that bypasses the prefetch cache.
     """
     return qs.select_related(
+        # GAP-045 Unit 3c-2a: the detail serializer resolves guest name + email
+        # person-first (guest fallback), so join the mirror + prefetch its email
+        # on every detail/action path that funnels through here.
+        "guest",
+        "person",
         "property__finance__contact",
         "property__group__finance",
         "property__settings",
         "property__group__settings",
     ).prefetch_related(
+        "person__emails",
         Prefetch(
             "property__finance__contact__emails",
             queryset=PersonEmail.objects.filter(is_primary=True),
@@ -120,7 +126,10 @@ class BookingViewSet(
     def get_queryset(self) -> Any:
         qs: QuerySet[Booking] = Booking.objects.filter(is_archived=False).select_related(
             "property",
+            # GAP-045 Unit 3c-2a: name + email resolve person-first (guest
+            # fallback). Join both; the email prefetch is path-specific below.
             "guest",
+            "person",
             "agent",
             "assigned_to",
             "currency",
@@ -135,8 +144,12 @@ class BookingViewSet(
             qs = _with_charges_total(_with_amount_paid(qs))
         # Every non-list action returns BookingDetailSerializer (`retrieve` and
         # the state-machine actions all route through `_refresh`), which walks
-        # property -> finance -> contact -> emails/phones.
-        if self.action != "list":
+        # property -> finance -> contact -> emails/phones AND person -> emails
+        # (both prefetched by `_detail_owner_qs`). The list path prefetches the
+        # person email on its own so the two never double up on one queryset.
+        if self.action == "list":
+            qs = qs.prefetch_related("person__emails")
+        else:
             qs = _detail_owner_qs(qs)
         return qs
 
@@ -267,13 +280,16 @@ class BookingArchiveViewSet(
         qs: QuerySet[Booking] = Booking.objects.filter(is_archived=True).select_related(
             "property",
             "guest",
+            "person",
             "agent",
             "assigned_to",
             "currency",
             "quotation_line",
         )
         qs = _with_charges_total(_with_amount_paid(qs))
-        if self.action != "list":
+        if self.action == "list":
+            qs = qs.prefetch_related("person__emails")
+        else:
             qs = _detail_owner_qs(qs)
         return qs
 

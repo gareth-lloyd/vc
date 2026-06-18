@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db.models import Q, QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 from django_filters import rest_framework as filters
 
+from accounts.models import PersonEmail
 from reservations.enums import TERMINAL_BOOKING_STATUSES
 from reservations.models import Booking, Enquiry, Quotation
 
@@ -93,10 +94,23 @@ class BookingFilter(filters.FilterSet):
     def filter_q(self, queryset: QuerySet[Booking], _name: str, value: str) -> QuerySet[Booking]:
         if not value:
             return queryset
+        # GAP-045 Unit 3c-2a: also match the unified Person (name + email),
+        # keeping the legacy `guest__*` terms as the transitional fallback.
+        # `person__first_name`/`last_name` are single-valued FK joins → safe in
+        # the OR. The person EMAIL lives in a multi-valued child table, so an
+        # OR'd `person__emails__email` join would multiply rows and leak into
+        # the paginator COUNT / StatusCountsMixin (django_res/CLAUDE.md). Match
+        # it with a scalar `Exists()` subquery instead, which adds no JOIN.
+        person_email_match = PersonEmail.objects.filter(
+            contact_id=OuterRef("person_id"), email__icontains=value
+        )
         return queryset.filter(
             Q(reference__icontains=value)
             | Q(guest__first_name__icontains=value)
             | Q(guest__last_name__icontains=value)
             | Q(guest__email__icontains=value)
+            | Q(person__first_name__icontains=value)
+            | Q(person__last_name__icontains=value)
+            | Q(Exists(person_email_match))
             | Q(property__name__icontains=value)
         )

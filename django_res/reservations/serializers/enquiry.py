@@ -7,6 +7,7 @@ from typing import Any
 from rest_framework import serializers
 
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
+from reservations.serializers._contact_reads import contact_email, contact_name, contact_phone
 from reservations.serializers.quotation import QuotationDetailSerializer
 
 
@@ -71,31 +72,29 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         ]
 
     def get_guest_name(self, obj: Enquiry) -> str | None:
-        """Prefer the linked Guest's name; fall back to the denormalised
-        first/last/email captured at lead time for anonymous submissions."""
-        guest = obj.guest
-        if guest is not None:
-            name = f"{guest.first_name} {guest.last_name}".strip()
-            if name:
-                return name
+        """Prefer the unified Person, then the legacy Guest, then the
+        denormalised first/last/email captured at lead time for anonymous
+        submissions (the triple fallback the customer-facing list relies on)."""
+        name = contact_name(obj.person, obj.guest)
+        if name:
+            return name
         denorm = f"{obj.first_name} {obj.last_name}".strip()
         if denorm:
             return denorm
         return obj.email or None
 
     def get_guest_email(self, obj: Enquiry) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return guest.email or None
+        return contact_email(obj.person, obj.guest)
 
     def get_guest_phone(self, obj: Enquiry) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return guest.phone or None
+        return contact_phone(obj.person, obj.guest)
 
     def get_guest_contact_method(self, obj: Enquiry) -> str | None:
+        # GAP-045 Unit 3c-2a: contact_method stays guest-sourced. The Person
+        # mirror coerces a null contact_method to "email" (preferred_method's
+        # default), so reading person-first here would silently change null →
+        # "email". The null-vs-"email" semantics is a 3d decision; until then
+        # this field reports exactly what the guest recorded.
         guest = obj.guest
         if guest is None:
             return None

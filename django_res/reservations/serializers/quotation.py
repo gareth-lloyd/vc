@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from pricing.models import Currency
 from reservations.models import Quotation, QuotationLine
+from reservations.serializers._contact_reads import contact_name
 
 
 class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
@@ -238,10 +239,7 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
         ]
 
     def get_guest_name(self, obj: Quotation) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return f"{guest.first_name} {guest.last_name}".strip() or None
+        return contact_name(obj.person, obj.guest)
 
     def get_enquiry_reference(self, obj: Quotation) -> str | None:
         enquiry = obj.enquiry

@@ -14,6 +14,7 @@ from rest_framework import serializers
 
 from reservations.enums import ConciergeService, ConciergeTier, ServiceStatus
 from reservations.models import Booking, BookingServiceCoverage
+from reservations.serializers._contact_reads import contact_name
 
 
 class ConciergeOverviewSerializer(serializers.ModelSerializer[Booking]):
@@ -52,10 +53,7 @@ class ConciergeOverviewSerializer(serializers.ModelSerializer[Booking]):
         ]
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return f"{guest.first_name} {guest.last_name}".strip() or None
+        return contact_name(obj.person, obj.guest)
 
     def get_property_name(self, obj: Booking) -> str | None:
         prop = obj.property

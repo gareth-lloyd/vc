@@ -10,6 +10,7 @@ from rest_framework import serializers
 
 from properties.models import GroupSettings, PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
+from reservations.serializers._contact_reads import contact_email, contact_name
 from reservations.services.charges import charges_total_for, effective_commission_for, owner_effect
 
 
@@ -82,16 +83,10 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
         return (prop.display_name or prop.name) or None
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return f"{guest.first_name} {guest.last_name}".strip() or None
+        return contact_name(obj.person, obj.guest)
 
     def get_guest_email(self, obj: Booking) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return guest.email or None
+        return contact_email(obj.person, obj.guest)
 
     def get_night_count(self, obj: Booking) -> int:
         return (obj.date_to - obj.date_from).days

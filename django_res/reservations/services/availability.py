@@ -165,7 +165,9 @@ class AvailabilityService:
         bookings = (
             Booking.objects.occupying(date_from=date_from, date_to=date_to)
             .filter(property_id__in=ids)
-            .select_related("guest")
+            # GAP-045 Unit 3c-2a: band labels resolve guest name person-first;
+            # name only, so the mirror join suffices (no email/phone prefetch).
+            .select_related("guest", "person")
         )
         return holds, bookings
 

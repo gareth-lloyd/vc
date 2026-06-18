@@ -45,7 +45,7 @@ class ConciergeOverviewViewSet(viewsets.ViewSet):
             Booking.objects.filter(is_archived=False)
             .exclude(status__in=TERMINAL_BOOKING_STATUSES)
             .filter(date_to__gte=today)
-            .select_related("property__region", "guest", "assigned_to")
+            .select_related("property__region", "guest", "person", "assigned_to")
             .prefetch_related("service_coverage", "concierge_items")
             .order_by("date_from")
         )

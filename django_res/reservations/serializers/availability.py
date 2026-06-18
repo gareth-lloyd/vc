@@ -13,6 +13,7 @@ from rest_framework import serializers
 
 from reservations.enums import OPERATOR_EDITABLE_HOLD_REASONS, BookingHoldReason
 from reservations.models.booking import Booking, BookingHold
+from reservations.serializers._contact_reads import contact_name
 
 _EDITABLE_CHOICES = [
     choice for choice in BookingHoldReason.choices if choice[0] in OPERATOR_EDITABLE_HOLD_REASONS
@@ -78,10 +79,7 @@ class AvailabilityBookingSerializer(serializers.ModelSerializer["Booking"]):
         ]
 
     def get_guest_name(self, obj: Booking) -> str | None:
-        guest = obj.guest
-        if guest is None:
-            return None
-        return f"{guest.first_name} {guest.last_name}".strip() or None
+        return contact_name(obj.person, obj.guest)
 
 
 class AvailabilitySearchSerializer(serializers.Serializer[None]):

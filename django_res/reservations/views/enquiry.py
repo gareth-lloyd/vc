@@ -39,7 +39,11 @@ def _quotations_prefetch() -> Prefetch:
     return Prefetch(
         "quotations",
         queryset=Quotation.objects.real()
-        .select_related("guest", "agent", "enquiry")
+        # GAP-045 Unit 3c-2a: the nested QuotationDetailSerializer resolves its
+        # guest name person-first, so join the mirror here too — without it each
+        # nested quote fires a per-row Person lookup. Name only → no email/phone
+        # prefetch needed on the nested quotes.
+        .select_related("guest", "person", "agent", "enquiry")
         .prefetch_related(
             "lines__property__images",
             "lines__currency",
@@ -56,15 +60,21 @@ def _detail_queryset() -> Any:
     """Enquiry queryset shaped for the detail serializer — FKs joined and the
     quote-stack prefetched so `EnquiryDetailSerializer` walks `.quotations.lines`
     without an N+1."""
-    return Enquiry.objects.select_related(
-        "guest", "property", "region", "agent", "assigned_to"
-    ).prefetch_related(_quotations_prefetch())
+    return (
+        Enquiry.objects.select_related(
+            "guest", "person", "property", "region", "agent", "assigned_to"
+        )
+        .prefetch_related("person__emails", "person__phones")
+        .prefetch_related(_quotations_prefetch())
+    )
 
 
 class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     """`/enquiries` CRUD plus colon-verb action endpoints."""
 
-    queryset = Enquiry.objects.select_related("guest", "property", "region", "agent", "assigned_to")
+    queryset = Enquiry.objects.select_related(
+        "guest", "person", "property", "region", "agent", "assigned_to"
+    ).prefetch_related("person__emails", "person__phones")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     filterset_class = EnquiryFilter
     ordering_fields = ["created_at", "updated_at", "status"]

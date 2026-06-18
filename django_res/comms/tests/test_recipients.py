@@ -15,7 +15,14 @@ import pytest
 from accounts.enums import ContactRole
 from accounts.models import Person, User
 from accounts.models.person import PersonEmail
-from comms.recipients import agent_user_for, guest_email, primary_owner_email
+from comms.recipients import (
+    _primary_contact_email,
+    agent_user_for,
+    guest_email,
+    primary_owner_email,
+    recipient_email,
+    recipient_first_name,
+)
 from properties.models import (
     Country,
     Property,
@@ -84,6 +91,94 @@ def test_guest_email_returns_none_for_empty_string() -> None:
     )
 
     assert guest_email(guest) is None
+
+
+# ---------------------------------------------------------------------------
+# _primary_contact_email — delegates to Person.primary_email()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_primary_contact_email_returns_flagged_primary() -> None:
+    contact = Person.objects.create(first_name="Ada", last_name="Lovelace")
+    PersonEmail.objects.create(contact=contact, email="secondary@example.com", is_primary=False)
+    PersonEmail.objects.create(contact=contact, email="primary@example.com", is_primary=True)
+
+    assert _primary_contact_email(contact) == "primary@example.com"
+
+
+def test_primary_contact_email_returns_none_for_none() -> None:
+    assert _primary_contact_email(None) is None
+
+
+@pytest.mark.django_db
+def test_primary_contact_email_fails_closed_for_anonymized() -> None:
+    """Delegation inherits the model guard: an anonymised Person's surviving
+    sentinel address must never be surfaced to a send."""
+    contact = Person.objects.create(first_name="Ada", last_name="Lovelace")
+    PersonEmail.objects.create(contact=contact, email="ada@example.com", is_primary=True)
+
+    contact.anonymize()
+
+    assert _primary_contact_email(contact) is None
+
+
+# ---------------------------------------------------------------------------
+# recipient_email / recipient_first_name — person-first, guest fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_recipient_email_prefers_person_over_guest() -> None:
+    person = Person.objects.create(first_name="Grace", last_name="Hopper")
+    PersonEmail.objects.create(contact=person, email="grace@navy.mil", is_primary=True)
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+
+    assert recipient_email(person, guest) == "grace@navy.mil"
+
+
+@pytest.mark.django_db
+def test_recipient_email_falls_back_to_guest_when_person_none() -> None:
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+
+    assert recipient_email(None, guest) == "ada@example.com"
+
+
+@pytest.mark.django_db
+def test_recipient_email_falls_back_to_guest_when_person_has_no_email() -> None:
+    """Value-gated: a Person with no deliverable address still falls through."""
+    person = Person.objects.create(first_name="Grace", last_name="Hopper")
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+
+    assert recipient_email(person, guest) == "ada@example.com"
+
+
+@pytest.mark.django_db
+def test_recipient_email_none_when_neither_has_an_address() -> None:
+    person = Person.objects.create(first_name="Grace", last_name="Hopper")
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="", phone="+44700")
+
+    assert recipient_email(person, guest) is None
+
+
+@pytest.mark.django_db
+def test_recipient_first_name_prefers_person() -> None:
+    person = Person.objects.create(first_name="Grace", last_name="Hopper")
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+
+    assert recipient_first_name(person, guest) == "Grace"
+
+
+@pytest.mark.django_db
+def test_recipient_first_name_falls_back_to_guest_when_person_name_blank() -> None:
+    person = Person.objects.create(first_name="", last_name="")
+    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+
+    assert recipient_first_name(person, guest) == "Ada"
+
+
+def test_recipient_first_name_empty_string_when_nothing() -> None:
+    assert recipient_first_name(None, None) == ""
 
 
 # ---------------------------------------------------------------------------

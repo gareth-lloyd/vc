@@ -336,6 +336,57 @@ def test_concierge_serializer_reads_person_name(
 
 
 # ---------------------------------------------------------------------------
+# Quotation render seam (3c-2b) — customer email/PDF name resolves person-first
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_quotation_render_context_reads_person_name(
+    guest: Guest,
+    terms: TermsVersion,
+) -> None:
+    from reservations.services.quotation_render import build_quotation_context
+
+    person = person_for_guest(guest)
+    quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(person=person),
+        guest=guest,
+        person=person,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    _repoint_person(guest)
+    # Re-fetch so the seam reads the repointed Person, not the stale instance
+    # cached on the in-memory quotation (the live send loads it fresh).
+    fresh = Quotation.objects.select_related("person", "guest").get(pk=quotation.pk)
+
+    ctx = build_quotation_context(fresh)
+
+    assert ctx["guest_first_name"] == "Grace"
+    assert ctx["guest_full_name"] == "Grace Hopper"
+
+
+@pytest.mark.django_db
+def test_quotation_render_context_falls_back_to_guest_when_person_null(
+    guest: Guest,
+    terms: TermsVersion,
+) -> None:
+    from reservations.services.quotation_render import build_quotation_context
+
+    quotation = Quotation.objects.create(
+        enquiry=guest.enquiries.create(),
+        guest=guest,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+
+    ctx = build_quotation_context(quotation)
+
+    assert ctx["guest_first_name"] == "Ada"
+    assert ctx["guest_full_name"] == "Ada Lovelace"
+
+
+# ---------------------------------------------------------------------------
 # BookingFilter — person search + no COUNT inflation
 # ---------------------------------------------------------------------------
 

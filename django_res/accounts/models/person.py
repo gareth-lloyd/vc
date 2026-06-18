@@ -107,7 +107,15 @@ class Person(AuditedModel):
         oldest by pk — matching ``comms.recipients._primary_contact_email``.
         Guest mirrors always carry exactly one PRIMARY (GAP-045 Unit 3c-1a),
         so the oldest-by-pk fallback only matters for non-mirror Persons.
+
+        Fails closed for an ANONYMIZED Person: ``Person.anonymize`` rewrites
+        each PersonEmail to a syntactically-valid ``redacted-…@anonymized.local``
+        sentinel and keeps the row, so without this guard a person-first read
+        (staff list or comms send) would surface — and mail — that sentinel.
+        Returning ``None`` here is the single chokepoint that protects both.
         """
+        if self.status == PersonStatus.ANONYMIZED:
+            return None
         emails = list(self.emails.all())
         if not emails:
             return None
@@ -117,7 +125,12 @@ class Person(AuditedModel):
         return min(emails, key=lambda e: e.pk).email
 
     def primary_phone(self) -> str | None:
-        """Primary phone number from the prefetch cache (see ``primary_email``)."""
+        """Primary phone number from the prefetch cache (see ``primary_email``).
+
+        Fails closed for an ANONYMIZED Person, mirroring ``primary_email``.
+        """
+        if self.status == PersonStatus.ANONYMIZED:
+            return None
         phones = list(self.phones.all())
         if not phones:
             return None

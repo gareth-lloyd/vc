@@ -135,6 +135,25 @@ def test_anonymize_blanks_pii_and_cascades(contact: Person) -> None:
 
 
 @pytest.mark.django_db
+def test_primary_email_and_phone_fail_closed_when_anonymized(contact: Person) -> None:
+    """GAP-045 Unit 3c-2b: an ANONYMIZED Person keeps its email/phone rows,
+    rewritten to ``redacted-…@anonymized.local`` sentinels. ``primary_email``
+    / ``primary_phone`` must return ``None`` so a person-first read (staff
+    list) or send (comms) never surfaces or mails the sentinel."""
+    PersonEmail.objects.create(contact=contact, email="ada@example.com", is_primary=True)
+    PersonPhone.objects.create(contact=contact, number="+15125550100", is_primary=True)
+    assert contact.primary_email() == "ada@example.com"
+    assert contact.primary_phone() == "+15125550100"
+
+    contact.anonymize()
+
+    # The sentinel row still exists, but the resolvers fail closed.
+    assert contact.emails.filter(email__endswith="@anonymized.local").exists()
+    assert contact.primary_email() is None
+    assert contact.primary_phone() is None
+
+
+@pytest.mark.django_db
 def test_merge_rewrites_fks_and_deletes_source() -> None:
     keep = Person.objects.create(first_name="Keep", last_name="Me")
     duplicate = Person.objects.create(first_name="Dup", last_name="Me")

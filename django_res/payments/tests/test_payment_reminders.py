@@ -778,6 +778,77 @@ def test_one_failing_row_does_not_abort_the_batch(
     ).exists()
 
 
+# ---------------------------------------------------------------------------
+# GAP-045 Unit 3c-2b — reminders resolve the recipient person-first
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_reminder_sends_to_person_email_when_person_linked(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """A booking linked to a Person whose email differs from the guest's sends
+    to the *person* address — proving the reminder resolves person-first, not
+    just that the (synced) mirror happens to agree."""
+    from reservations.models import Booking as BookingModel
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(booking.guest)
+    person.first_name = "Grace"
+    person.save(update_fields=["first_name", "updated_at"])
+    primary = person.emails.filter(is_primary=True).first()
+    assert primary is not None
+    primary.email = "grace@navy.mil"
+    primary.save(update_fields=["email", "updated_at"])
+    BookingModel.objects.filter(pk=booking.pk).update(person=person)
+
+    today = date.today()
+    payment = _make_payment(booking, gbp, purpose=PaymentPurpose.DEPOSIT.value, due_on=today)
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(
+        template_key="payment.reminder.deposit",
+        correlation__payment_id=payment.pk,
+    )
+    assert log.to == ["grace@navy.mil"]
+
+
+@pytest.mark.django_db
+def test_reminder_idempotent_when_person_email_equals_guest(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    """The idempotency hash keys on ``to``. In the common synced case the
+    person mirror email equals the guest email, so dedupe must still hold
+    across the person-first cutover — a re-run sends nothing new."""
+    from reservations.models import Booking as BookingModel
+    from reservations.services.person_sync import person_for_guest
+
+    person = person_for_guest(booking.guest)
+    assert person.primary_email() == booking.guest.email  # synced 1:1
+    BookingModel.objects.filter(pk=booking.pk).update(person=person)
+
+    today = date.today()
+    payment = _make_payment(booking, gbp, purpose=PaymentPurpose.DEPOSIT.value, due_on=today)
+
+    send_payment_reminders(now=_at_noon(today))
+    send_payment_reminders(now=_at_noon(today))
+
+    assert (
+        EmailLog.objects.filter(
+            template_key="payment.reminder.deposit",
+            correlation__payment_id=payment.pk,
+        ).count()
+        == 1
+    )
+
+
 def test_reminder_context_formats_dates_for_customers() -> None:
     """Stay dates and due_on are long-form ("8 July 2025"), never ISO."""
     from types import SimpleNamespace
@@ -786,6 +857,7 @@ def test_reminder_context_formats_dates_for_customers() -> None:
 
     booking = SimpleNamespace(
         reference="VC-1",
+        person=None,  # person-first greeting falls back to the guest
         guest=SimpleNamespace(first_name="Ada"),
         property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
         date_from=date(2025, 7, 8),

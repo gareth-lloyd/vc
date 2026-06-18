@@ -147,7 +147,10 @@ def _send_payment_reminders(today: Any) -> int:
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
             booking__date_from__gte=today,
         )
-        .select_related("booking", "booking__guest", "booking__property", "currency")
+        .select_related(
+            "booking", "booking__guest", "booking__person", "booking__property", "currency"
+        )
+        .prefetch_related("booking__person__emails")
         .order_by("pk")
     )
 
@@ -215,7 +218,10 @@ def _send_security_deposit_reminders(today: Any) -> int:
             status__in=list(SECURITY_DEPOSIT_OPEN_STATUSES),
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
         )
-        .select_related("booking", "booking__guest", "booking__property", "currency")
+        .select_related(
+            "booking", "booking__guest", "booking__person", "booking__property", "currency"
+        )
+        .prefetch_related("booking__person__emails")
         .order_by("pk")
     )
 
@@ -306,7 +312,7 @@ def _dispatch(
     keep going.
     """
     from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
-    from comms.recipients import guest_email
+    from comms.recipients import recipient_email
     from comms.services import EmailService
 
     if payment is not None:
@@ -332,7 +338,7 @@ def _dispatch(
     else:
         raise ValueError("send_payment_reminders._dispatch needs payment or security_deposit")
 
-    recipient = guest_email(booking.guest)
+    recipient = recipient_email(booking.person, booking.guest)
     if recipient is None:
         logger.warning(
             "payment.reminder_skipped",
@@ -369,9 +375,11 @@ def _reminder_context(
     due_at: datetime | None,
     payment: Payment | None,
 ) -> dict[str, Any]:
+    from comms.recipients import recipient_first_name
+
     return {
         "booking_reference": booking.reference,
-        "guest_first_name": booking.guest.first_name,
+        "guest_first_name": recipient_first_name(booking.person, booking.guest),
         "property_name": booking.property.display_name or booking.property.name,
         "date_from": format_date(booking.date_from),
         "date_to": format_date(booking.date_to),

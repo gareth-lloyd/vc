@@ -19,6 +19,7 @@ from comms.contexts import booking_context, resolve_context
 def test_booking_context_formats_dates_for_customers() -> None:
     booking = SimpleNamespace(
         reference="VC-1",
+        person=None,  # person-first greeting falls back to the guest
         guest=SimpleNamespace(first_name="Ada"),
         property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
         date_from=date(2025, 7, 8),

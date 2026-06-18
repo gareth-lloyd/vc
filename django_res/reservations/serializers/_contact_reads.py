@@ -28,6 +28,23 @@ def contact_name(person: Person | None, guest: Guest | None) -> str | None:
     return None
 
 
+def contact_first_name(person: Person | None, guest: Guest | None) -> str:
+    """Person first name, else the guest's, else ``""`` (value-gated).
+
+    Returns ``""`` rather than ``None`` so it drops straight into a greeting
+    merge field (a render context value of ``None`` would print ``"None"``).
+    The comms/payments send paths use ``comms.recipients.recipient_first_name``
+    instead — same shape, but reachable from the top of the import spine; this
+    one is for the reservations-internal quotation render seam, which cannot
+    import ``comms`` (upward edge).
+    """
+    if person is not None and person.first_name:
+        return person.first_name
+    if guest is not None:
+        return guest.first_name or ""
+    return ""
+
+
 def contact_email(person: Person | None, guest: Guest | None) -> str | None:
     """Person primary email, else the guest's email, else ``None``."""
     if person is not None:

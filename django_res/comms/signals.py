@@ -17,7 +17,12 @@ from django.conf import settings
 from comms.contexts import booking_context as _booking_context
 from comms.contexts import payment_context as _payment_context
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
-from comms.recipients import agent_user_for, guest_email, primary_owner_email
+from comms.recipients import (
+    agent_user_for,
+    primary_owner_email,
+    recipient_email,
+    recipient_first_name,
+)
 from comms.services import TEMPLATE_RENDER_ERRORS, EmailService
 from core.formats import format_date
 from reservations.enums import BookingStatus
@@ -82,7 +87,7 @@ def booking_transitioned_handler(
     if to_status == BookingStatus.AWAITING_DEPOSIT.value:
         # Auto-accept or owner approval both land here; guest sees a
         # single confirmation either way.
-        recipient = guest_email(booking.guest)
+        recipient = recipient_email(booking.person, booking.guest)
         if recipient is None:
             logger.warning(
                 "comms.email_skipped",
@@ -117,7 +122,7 @@ def booking_transitioned_handler(
             correlation=_booking_correlation(booking),
         )
     elif to_status == BookingStatus.DECLINED.value:
-        recipient = guest_email(booking.guest)
+        recipient = recipient_email(booking.person, booking.guest)
         if recipient is None:
             return
         _safe_send(
@@ -127,7 +132,7 @@ def booking_transitioned_handler(
             correlation=_booking_correlation(booking),
         )
     elif to_status == BookingStatus.CANCELLED.value:
-        recipient = guest_email(booking.guest)
+        recipient = recipient_email(booking.person, booking.guest)
         if recipient is None:
             return
         _safe_send(
@@ -137,7 +142,7 @@ def booking_transitioned_handler(
             correlation=_booking_correlation(booking),
         )
     elif to_status == BookingStatus.CHECKED_OUT.value:
-        recipient = guest_email(booking.guest)
+        recipient = recipient_email(booking.person, booking.guest)
         if recipient is None:
             return
         _safe_send(
@@ -164,7 +169,7 @@ def quotation_sent_handler(
     rendered subject + body reflect the edited copy (and stay identical to the
     operator's preview).
     """
-    recipient = guest_email(quotation.guest)
+    recipient = recipient_email(quotation.person, quotation.guest)
     if recipient is None:
         logger.warning(
             "comms.email_skipped",
@@ -235,7 +240,7 @@ def booking_confirmation_resend_requested_handler(
     # can still surface a confirmation for a booking whose lifecycle handler
     # never fired (e.g. PENDING_OWNER_APPROVAL bookings where the operator
     # wants to pre-send while awaiting owner sign-off).
-    recipient = guest_email(booking.guest)
+    recipient = recipient_email(booking.person, booking.guest)
     if recipient is None:
         logger.warning(
             "comms.email_skipped",
@@ -376,7 +381,7 @@ def payment_succeeded_handler(
 ) -> None:
     """Send the guest receipt for a successful payment."""
     booking = payment.booking
-    recipient = guest_email(booking.guest)
+    recipient = recipient_email(booking.person, booking.guest)
     if recipient is None:
         logger.warning(
             "comms.email_skipped",
@@ -416,7 +421,7 @@ def payment_failed_handler(
             },
         )
 
-    guest_recipient = guest_email(booking.guest)
+    guest_recipient = recipient_email(booking.person, booking.guest)
     if guest_recipient is None:
         logger.warning(
             "comms.email_skipped",
@@ -445,14 +450,14 @@ def security_deposit_released_handler(
 ) -> None:
     """Tell the guest their security deposit has been released."""
     booking = sd.booking
-    recipient = guest_email(booking.guest)
+    recipient = recipient_email(booking.person, booking.guest)
     if recipient is None:
         return
     _safe_send(
         template_key="security_deposit.released",
         context={
             "booking_reference": booking.reference,
-            "guest_first_name": booking.guest.first_name,
+            "guest_first_name": recipient_first_name(booking.person, booking.guest),
             "amount": f"{sd.amount:.2f}",
             "currency": sd.currency.code,
         },

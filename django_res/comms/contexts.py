@@ -15,13 +15,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from comms.recipients import recipient_first_name
 from core.formats import format_date
 
 
 def booking_context(booking: Any) -> dict[str, Any]:
     return {
         "booking_reference": booking.reference,
-        "guest_first_name": booking.guest.first_name,
+        "guest_first_name": recipient_first_name(booking.person, booking.guest),
         "property_name": booking.property.display_name or booking.property.name,
         "date_from": format_date(booking.date_from),
         "date_to": format_date(booking.date_to),
@@ -35,7 +36,7 @@ def payment_context(payment: Any) -> dict[str, Any]:
         "payment_reference": payment.reference,
         "amount": f"{payment.amount:.2f}",
         "currency": payment.currency.code,
-        "guest_first_name": booking.guest.first_name,
+        "guest_first_name": recipient_first_name(booking.person, booking.guest),
         "failure_reason": payment.failure_reason or "",
     }
 
@@ -72,7 +73,7 @@ def resolve_context(
         from reservations.models import Booking
 
         booking = get_object_or_404(
-            Booking.objects.select_related("guest", "property"), pk=booking_id
+            Booking.objects.select_related("guest", "person", "property"), pk=booking_id
         )
         return booking_context(booking)
     if quotation_id is not None:
@@ -81,6 +82,9 @@ def resolve_context(
         from reservations.models import Quotation
         from reservations.services.quotation_render import build_quotation_context
 
-        quotation = get_object_or_404(Quotation, pk=quotation_id)
+        quotation = get_object_or_404(
+            Quotation.objects.select_related("person", "guest", "agent"),
+            pk=quotation_id,
+        )
         return build_quotation_context(quotation)
     return {}

@@ -24,6 +24,7 @@ from reservations.views import (
     BookingNoteViewSet,
     BookingViewSet,
     ConciergeOverviewViewSet,
+    ContactCustomerReadViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
     OwnerBlockViewSet,
@@ -64,6 +65,37 @@ _guest_actions: list[URLPattern | URLResolver] = [
         "guests/<int:pk>:anonymize",
         views.GuestAnonymizeView.as_view({"post": "create"}),
         name="guest-anonymize",
+    ),
+]
+
+
+# ----------------------------------------------------------------------
+# Person-scoped customer history reads (GAP-045 Unit 3d-1). Hosted here, not in
+# `accounts`, because they serialise reservations rows and need
+# `Quotation.objects.real()` — `accounts` is the bottom of the import spine.
+# Slash-separated paths, so the DRF `[^/.]+` detail regex can't swallow them;
+# they bypass the `/contacts` directory's `guest-` mirror exclusion by design.
+# ----------------------------------------------------------------------
+_contact_read_routes: list[URLPattern | URLResolver] = [
+    path(
+        "contacts/<int:contact_pk>/bookings",
+        ContactCustomerReadViewSet.as_view({"get": "bookings"}),
+        name="contact-bookings",
+    ),
+    path(
+        "contacts/<int:contact_pk>/enquiries",
+        ContactCustomerReadViewSet.as_view({"get": "enquiries"}),
+        name="contact-enquiries",
+    ),
+    path(
+        "contacts/<int:contact_pk>/quotations",
+        ContactCustomerReadViewSet.as_view({"get": "quotations"}),
+        name="contact-quotations",
+    ),
+    path(
+        "contacts/<int:contact_pk>/travel-preferences",
+        ContactCustomerReadViewSet.as_view({"get": "travel_preferences"}),
+        name="contact-travel-preferences",
     ),
 ]
 
@@ -471,6 +503,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
     *_guest_actions,
+    *_contact_read_routes,
     *_owner_routes,
     *_owner_block_update_routes,
     *_enquiry_actions,

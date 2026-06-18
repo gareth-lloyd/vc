@@ -16,6 +16,12 @@ from reservations.serializers.concierge import (
     BookingConciergeItemSerializer,
     BookingConciergeItemWriteSerializer,
 )
+from reservations.serializers.contact import (
+    ContactBookingSerializer,
+    ContactEnquirySerializer,
+    ContactQuotationSerializer,
+    ContactTravelPreferenceSerializer,
+)
 from reservations.serializers.enquiry import (
     EnquiryDetailSerializer,
     EnquiryEventSerializer,
@@ -47,6 +53,10 @@ __all__ = [
     "BookingListSerializer",
     "BookingNoteSerializer",
     "BookingWriteSerializer",
+    "ContactBookingSerializer",
+    "ContactEnquirySerializer",
+    "ContactQuotationSerializer",
+    "ContactTravelPreferenceSerializer",
     "EnquiryDetailSerializer",
     "EnquiryEventSerializer",
     "EnquiryListSerializer",

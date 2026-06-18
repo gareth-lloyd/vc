@@ -1,4 +1,10 @@
-"""Guest serializers + shallow Booking/Enquiry/Quotation reps for nested lists."""
+"""Guest serializers (full Guest rep + merge body).
+
+The shallow Booking/Enquiry/Quotation history reps moved to
+`serializers/contact.py` in `GAP-045` Unit 3d-1 (they are model-shaped, not
+Guest-specific, and outlive Guest). They are re-exported here under their legacy
+`Guest*` names so `GuestViewSet` keeps working until 3d-5 deletes `/guests`.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +12,25 @@ from typing import Any
 
 from rest_framework import serializers
 
-from reservations.enums import ContactMethod, GuestStatus, QuotationStatus
-from reservations.models import Booking, Enquiry, Guest, Quotation
+from reservations.enums import ContactMethod, GuestStatus
+from reservations.models import Guest
+from reservations.serializers.contact import (
+    ContactBookingSerializer as GuestBookingSerializer,
+)
+from reservations.serializers.contact import (
+    ContactEnquirySerializer as GuestEnquirySerializer,
+)
+from reservations.serializers.contact import (
+    ContactQuotationSerializer as GuestQuotationSerializer,
+)
+
+__all__ = [
+    "GuestBookingSerializer",
+    "GuestEnquirySerializer",
+    "GuestMergeSerializer",
+    "GuestQuotationSerializer",
+    "GuestSerializer",
+]
 
 
 class GuestSerializer(serializers.ModelSerializer[Guest]):
@@ -85,112 +108,3 @@ class GuestMergeSerializer(serializers.Serializer[dict[str, Any]]):
     """Body for `POST /guests/{id}:merge` — target guest id to merge INTO."""
 
     target_guest_id = serializers.IntegerField()
-
-
-class GuestBookingSerializer(serializers.ModelSerializer[Booking]):
-    """Shallow booking representation for `/guests/{id}/bookings`."""
-
-    class Meta:
-        model = Booking
-        fields = [
-            "id",
-            "reference",
-            "status",
-            "property",
-            "date_from",
-            "date_to",
-            "adults",
-            "children",
-            "is_archived",
-            "created_at",
-        ]
-        read_only_fields = fields
-
-
-class GuestEnquirySerializer(serializers.ModelSerializer[Enquiry]):
-    """Enquiry history row for `/guests/{id}/enquiries`, enriched with the
-    real quote count and the converted booking (if any).
-
-    Both computed fields read off `obj.quotations.all()` — never a fresh
-    `.filter()` — so they reuse the 3-level prefetch the viewset installs
-    (`GuestViewSet.enquiries`) and stay query-bounded. When the cache is not
-    primed they fall back to live SELECTs and remain correct.
-
-    `quote_count` and the converted-booking walk exclude `booking-`-prefixed
-    synthetic quotations (the BookingLoader legacy-fill rows) — those leak into
-    no public API and would otherwise inflate the count / mis-attribute a
-    conversion.
-
-    `converted_booking` rule: among this enquiry's ACCEPTED quotations'
-    selected lines, the *most-recently-created non-archived* Booking; `null` if
-    none. Plural/ambiguous graphs (re-books, cancellations) collapse to the
-    live booking, never a superseded one.
-    """
-
-    quote_count = serializers.SerializerMethodField()
-    converted_booking = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Enquiry
-        fields = [
-            "id",
-            "reference",
-            "status",
-            "site_source",
-            "request_type",
-            "created_at",
-            "quote_count",
-            "converted_booking",
-        ]
-        read_only_fields = [
-            "id",
-            "reference",
-            "status",
-            "site_source",
-            "request_type",
-            "created_at",
-        ]
-
-    @staticmethod
-    def _real_quotations(obj: Enquiry) -> list[Quotation]:
-        # Single source of truth for the synthetic-row exclusion: the
-        # `.real()` queryset method (SMELL-014). When the viewset primed the
-        # prefetch its cache is already `.real()`-filtered (see
-        # `_enquiry_history_prefetch`), so reuse it and stay query-bounded;
-        # on the unprimed fallback hit the DB through `.real()` so `booking-`
-        # synthetic rows can never leak there either — no hand-rolled predicate.
-        if "quotations" in getattr(obj, "_prefetched_objects_cache", {}):
-            return list(obj.quotations.all())
-        return list(obj.quotations.real())
-
-    def get_quote_count(self, obj: Enquiry) -> int:
-        return len(self._real_quotations(obj))
-
-    def get_converted_booking(self, obj: Enquiry) -> dict[str, Any] | None:
-        accepted = QuotationStatus.ACCEPTED.value
-        bookings = [
-            booking
-            for quotation in self._real_quotations(obj)
-            if quotation.status == accepted
-            for line in quotation.lines.all()
-            if line.is_selected
-            for booking in line.bookings.all()
-            if not booking.is_archived
-        ]
-        if not bookings:
-            return None
-        best = max(bookings, key=lambda b: b.created_at)
-        return {"reference": best.reference, "status": best.status}
-
-
-class GuestQuotationSerializer(serializers.ModelSerializer[Quotation]):
-    class Meta:
-        model = Quotation
-        fields = [
-            "id",
-            "reference",
-            "status",
-            "expires_at",
-            "created_at",
-        ]
-        read_only_fields = fields

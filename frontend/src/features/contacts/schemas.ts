@@ -132,6 +132,9 @@ export const contactListItemSchema = z.object({
   last_name: z.string().nullable().optional(),
   company: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
+  // GAP-045 D2: CUSTOMER (was Guest) vs CONTACT (owner/manager/agent) — drives
+  // the directory's kind filter + column.
+  kind: z.string().nullable().optional(),
   // The backend returns the full ContactSerializer shape for list responses,
   // so emails/phones come through as arrays. We accept the convenience
   // `primary_email` / `primary_phone` strings too in case the list serializer
@@ -148,6 +151,7 @@ export const contactsListResponseSchema = paginated(contactListItemSchema);
 export interface ContactFilters {
   q?: string;
   status?: string;
+  kind?: string;
   ordering?: string;
   page?: number;
 }
@@ -155,6 +159,7 @@ export interface ContactFilters {
 export const contactListFiltersSchema = z.object({
   q: z.string().optional(),
   status: z.string().optional(),
+  kind: z.string().optional(),
   ordering: z.string().optional(),
   page: z.number().optional(),
 });

@@ -31,6 +31,7 @@ function paramsToFilters(params: URLSearchParams): ContactFilters {
   return {
     q: params.get("q") ?? undefined,
     status: params.get("status") ?? undefined,
+    kind: params.get("kind") ?? undefined,
     ordering: params.get("ordering") ?? undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
@@ -45,6 +46,12 @@ export function ContactsListPage() {
   const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
   const canWrite = useHasReservationsRole();
+
+  const kindOptions = [
+    { value: ALL_VALUE, label: t("kind.any") },
+    { value: "customer", label: t("kind.customer") },
+    { value: "contact", label: t("kind.contact") },
+  ];
 
   const statusOptions = [
     { value: ALL_VALUE, label: t("status.any") },
@@ -142,21 +149,38 @@ export function ContactsListPage() {
           onSearchChange={setSearch}
           searchPlaceholder={t("placeholders.search")}
           filters={
-            <Select
-              value={filters.status ?? ALL_VALUE}
-              onValueChange={(v) => updateParam("status", v)}
-            >
-              <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_status_aria")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <Select
+                value={filters.kind ?? ALL_VALUE}
+                onValueChange={(v) => updateParam("kind", v)}
+              >
+                <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_kind_aria")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {kindOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.status ?? ALL_VALUE}
+                onValueChange={(v) => updateParam("status", v)}
+              >
+                <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_status_aria")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           }
         />
 

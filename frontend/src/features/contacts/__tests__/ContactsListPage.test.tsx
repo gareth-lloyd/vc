@@ -18,6 +18,7 @@ const fixture = {
       last_name: "Lovelace",
       company: "Analytical Engines",
       status: "active",
+      kind: "customer",
       emails: [{ id: 11, email: "ada@example.com", is_primary: true }],
       phones: [],
     },
@@ -27,6 +28,7 @@ const fixture = {
       last_name: null,
       company: "Solo Corp",
       status: "active",
+      kind: "contact",
       emails: [],
       phones: [],
     },
@@ -100,6 +102,42 @@ describe("ContactsListPage", () => {
     await screen.findByText("Ada Lovelace");
     await userEvent.type(screen.getByLabelText(/search/i), "ada");
     await waitFor(() => expect(seen).toContain("ada"));
+  });
+
+  it("forwards the selected kind to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/contacts", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url.searchParams.get("kind"));
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/contacts" element={<ContactsListPage />} />
+      </Routes>,
+      { route: "/contacts" },
+    );
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by type/i }));
+    await userEvent.click(await screen.findByRole("option", { name: /^customer$/i }));
+    await waitFor(() => expect(seen).toContain("customer"));
+  });
+
+  it("renders the kind of each row", async () => {
+    server.use(http.get("/api/v1/contacts", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/contacts" element={<ContactsListPage />} />
+      </Routes>,
+      { route: "/contacts" },
+    );
+    await screen.findByText("Ada Lovelace");
+    // The kind column shows the localised label, distinguishing customers from
+    // business contacts (GAP-045 D3-4).
+    expect(screen.getByText("Customer")).toBeInTheDocument();
+    expect(screen.getByText("Contact")).toBeInTheDocument();
   });
 
   it("navigates to the detail page on row click", async () => {

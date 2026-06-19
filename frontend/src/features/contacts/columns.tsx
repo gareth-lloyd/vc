@@ -38,6 +38,18 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
     },
   },
   {
+    id: "kind",
+    header: () => i18n.t("contacts:fields.kind"),
+    enableSorting: false,
+    cell: ({ row }) => {
+      // `kind` is a typed enum (customer | contact) — building the i18n key from
+      // it is allowed; anything else (incl. null) falls back to a dash.
+      const value = row.original.kind;
+      if (value !== "customer" && value !== "contact") return MUTED_DASH;
+      return <span className="text-sm">{i18n.t(`contacts:kind.${value}`)}</span>;
+    },
+  },
+  {
     accessorKey: "company",
     header: () => i18n.t("contacts:fields.company"),
     enableSorting: false,

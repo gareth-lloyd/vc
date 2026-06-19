@@ -46,6 +46,7 @@
     "email": "Email",
     "phone": "Τηλέφωνο",
     "status": "Κατάσταση",
+    "kind": "Τύπος",
     "title": "Τίτλος",
     "first_name": "Όνομα",
     "last_name": "Επώνυμο",
@@ -80,8 +81,14 @@
     "inactive": "Ανενεργή",
     "archived": "Αρχειοθετημένη"
   },
+  "kind": {
+    "any": "Οποιοσδήποτε τύπος",
+    "customer": "Πελάτης",
+    "contact": "Επαφή"
+  },
   "filters": {
-    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση"
+    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση",
+    "filter_kind_aria": "Φιλτράρισμα κατά τύπο"
   },
   "checkboxes": {
     "primary_email": "Κύριο email",

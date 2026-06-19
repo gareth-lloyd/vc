@@ -258,17 +258,19 @@ class QuotationService:
         (no enquiry) mints the minimal AGENT_PORTAL enquiry inside the same
         transaction, so a failed line rolls it back too.
         """
+        # GAP-045 D3-1: `person` is the authoritative customer FK. The SPA sends
+        # it directly (off `/contacts`); a transitional `guest` input still
+        # derives the same Person via the mirror. Drop BOTH raw keys so neither
+        # the legacy leg nor a duplicate `person=` kwarg reaches `create`.
+        person = header.pop("person", None)
+        guest = header.pop("guest", None)
+        if person is None and guest is not None:
+            person = person_for_guest(guest)
         if header.get("enquiry") is None:
             header = {
                 **header,
-                "enquiry": cls.minimal_enquiry_for(header["guest"], agent=header.get("agent")),
+                "enquiry": cls.minimal_enquiry_for(person, agent=header.get("agent")),
             }
-        # GAP-045 Unit 3d-C: `person` is the sole persisted customer FK — resolve
-        # it from the header's guest, then drop the guest key so the legacy leg
-        # isn't written (this path creates the Quotation directly, not via
-        # `create_from_enquiry`).
-        person = person_for_guest(header["guest"])
-        header = {k: v for k, v in header.items() if k != "guest"}
         quotation = Quotation.objects.create(**header, person=person)
         for line_data in lines:
             cls.add_line(quotation, line_data)
@@ -362,26 +364,28 @@ class QuotationService:
         return quotation
 
     @classmethod
-    def minimal_enquiry_for(cls, guest: Any, *, agent: Any | None = None) -> Enquiry:
-        """Auto-create a minimal Enquiry from a Guest snapshot.
+    def minimal_enquiry_for(cls, person: Any, *, agent: Any | None = None) -> Enquiry:
+        """Auto-create a minimal Enquiry from a Person snapshot.
 
         The single mechanism behind "every quote has an enquiry" for
         agent-direct quotes that arrive with no enquiry (legacy
         `sp_quotationMaster @EnquireId=0` parity). Tagged via the existing
         `site_source=AGENT_PORTAL` so conversion reporting (per-Enquiry) can
         segment these. No sentinel, no nullable bridge, no forced capture step.
+
+        GAP-045 D3-1: seeds the denormalised contact snapshot from the unified
+        Person (name / primary email / primary phone / preferred method) — the
+        Guest leg is gone.
         """
         from reservations.models.enquiry import Enquiry
 
         return Enquiry.objects.create(
-            # GAP-045 Unit 3d-C: persist only the unified Person FK; the guest
-            # snapshot still seeds the denormalised contact fields below.
-            person=person_for_guest(guest),
-            first_name=guest.first_name,
-            last_name=guest.last_name,
-            email=guest.email or "",
-            phone=guest.phone,
-            contact_method=guest.contact_method,
+            person=person,
+            first_name=person.first_name,
+            last_name=person.last_name,
+            email=person.primary_email() or "",
+            phone=person.primary_phone() or "",
+            contact_method=person.preferred_method,
             agent=agent,
             site_source=EnquirySource.AGENT_PORTAL.value,
         )
@@ -399,7 +403,7 @@ class QuotationService:
         actor: Any = None,
     ) -> Quotation:
         """Agent-direct quote with no enquiry — auto-create one, then delegate."""
-        enquiry = cls.minimal_enquiry_for(guest, agent=agent)
+        enquiry = cls.minimal_enquiry_for(person_for_guest(guest), agent=agent)
         return cls.create_from_enquiry(
             enquiry,
             lines,

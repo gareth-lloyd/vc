@@ -292,7 +292,12 @@ export function TimelineGrid({
         </div>
 
         {/* One row per villa */}
-        {properties.map((property) => {
+        {properties.map((property, index) => {
+          // Subtle zebra striping, alternating by villa, so a villa's bands and
+          // its price strip read as one row. Opaque tokens (card = white,
+          // muted = neutral-100) keep the sticky name column masking
+          // horizontally-scrolled bands.
+          const rowBg = index % 2 === 1 ? "bg-muted" : "bg-card";
           const bands = bandsByProperty.get(property.id) ?? [];
           const lanes = assignLanes(
             bands.map((band) => {
@@ -318,10 +323,15 @@ export function TimelineGrid({
           return (
             <div
               key={property.id}
-              className="border-border/60 grid border-b last:border-b-0"
+              className={cn("border-border/60 grid border-b last:border-b-0", rowBg)}
               style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}
             >
-              <div className="bg-card sticky left-0 z-10 flex flex-col justify-start gap-0.5 px-3 py-1.5">
+              <div
+                className={cn(
+                  "sticky left-0 z-10 flex flex-col justify-start gap-0.5 px-3 py-1.5",
+                  rowBg,
+                )}
+              >
                 <Link
                   to={villaCalendarPath(property)}
                   className="truncate text-sm font-medium hover:underline"

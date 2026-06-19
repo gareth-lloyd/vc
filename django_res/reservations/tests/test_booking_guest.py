@@ -155,7 +155,7 @@ def test_booking_guest_lead_syncs_to_booking_guest(
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    """Creating a LEAD row updates Booking.guest to that guest."""
+    """Creating a LEAD row updates Booking.person to that customer (3d-C)."""
     # Create booking with a placeholder Guest, then attach a different LEAD.
     placeholder = guest
     lead_guest = Guest.objects.create(
@@ -179,7 +179,7 @@ def test_booking_guest_lead_syncs_to_booking_guest(
         rental_price=Decimal("1400.00"),
         balance_due=Decimal("1400.00"),
     )
-    assert booking.guest_id == placeholder.pk
+    assert booking.person_id == person_for_guest(placeholder).pk
 
     BookingGuest.objects.create(
         booking=booking,
@@ -188,7 +188,7 @@ def test_booking_guest_lead_syncs_to_booking_guest(
         role=BookingGuestRole.LEAD.value,
     )
     booking.refresh_from_db()
-    assert booking.guest_id == lead_guest.pk
+    assert booking.person_id == person_for_guest(lead_guest).pk
 
 
 def test_booking_guest_lead_change_resyncs(
@@ -198,7 +198,7 @@ def test_booking_guest_lead_change_resyncs(
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    """Changing the LEAD row's guest re-syncs Booking.guest."""
+    """Changing the LEAD row's person re-syncs Booking.person (3d-C)."""
     placeholder = guest
     lead_a = Guest.objects.create(first_name="Alice", last_name="A", email="a@example.com")
     lead_b = Guest.objects.create(first_name="Bob", last_name="B", email="b@example.com")
@@ -225,12 +225,12 @@ def test_booking_guest_lead_change_resyncs(
         role=BookingGuestRole.LEAD.value,
     )
     booking.refresh_from_db()
-    assert booking.guest_id == lead_a.pk
+    assert booking.person_id == person_for_guest(lead_a).pk
 
-    bg.guest = lead_b
-    bg.save(update_fields=["guest", "updated_at"])
+    bg.person = person_for_guest(lead_b)
+    bg.save(update_fields=["person", "updated_at"])
     booking.refresh_from_db()
-    assert booking.guest_id == lead_b.pk
+    assert booking.person_id == person_for_guest(lead_b).pk
 
 
 def test_booking_guest_lead_delete_raises_while_booking_exists(booking: Booking) -> None:
@@ -296,7 +296,7 @@ def test_booking_guest_lead_swap_via_role_demotion_succeeds(booking: Booking) ->
         )
 
     booking.refresh_from_db()
-    assert booking.guest_id == new_lead_guest.pk
+    assert booking.person_id == person_for_guest(new_lead_guest).pk
     assert (
         BookingGuest.objects.filter(
             booking=booking,

@@ -180,18 +180,20 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
         ]
 
     def create(self, validated_data: dict[str, Any]) -> Enquiry:
-        # GAP-045 Unit 3c-1b: the EnquiryViewSet write path is plain DRF (no
-        # service layer), so the serializer is the place to keep the parallel
-        # `person` FK in lockstep with `guest`. Resolve the Person mirror from
-        # the supplied Guest (None → None, since Enquiry.guest is nullable).
-        validated_data["person"] = self._person_for(validated_data.get("guest"))
+        # GAP-045 Unit 3d-C: the EnquiryViewSet write path is plain DRF (no
+        # service layer), so the serializer resolves `person` (the sole persisted
+        # customer FK) from the supplied Guest input, then DROPS the legacy
+        # `guest` leg so it isn't written. `guest` stays a writable INPUT field,
+        # so the API contract is unchanged. None → None (Enquiry.person nullable).
+        validated_data["person"] = self._person_for(validated_data.pop("guest", None))
         return super().create(validated_data)
 
     def update(self, instance: Enquiry, validated_data: dict[str, Any]) -> Enquiry:
         # Only re-point `person` when this write actually touches `guest` — a
-        # PATCH that doesn't send `guest` must leave the existing link alone.
+        # PATCH that doesn't send `guest` must leave the existing link alone. Pop
+        # the guest leg either way so it's never persisted (3d-C).
         if "guest" in validated_data:
-            validated_data["person"] = self._person_for(validated_data["guest"])
+            validated_data["person"] = self._person_for(validated_data.pop("guest"))
         return super().update(instance, validated_data)
 
     @staticmethod

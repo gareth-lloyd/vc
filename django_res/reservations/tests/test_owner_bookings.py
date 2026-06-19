@@ -56,6 +56,7 @@ def _make_booking(
     status: str = BookingStatus.BALANCE_PAID.value,
     snapshot: dict[str, str] | None = None,
     date_from: date | None = None,
+    write_guest_leg: bool = True,
 ) -> Booking:
     from reservations.services.person_sync import person_for_guest
 
@@ -80,7 +81,7 @@ def _make_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
+        guest=guest if write_guest_leg else None,
         person=person,
         property=property_,
         date_from=date_from,
@@ -298,6 +299,42 @@ def test_guest_always_named_with_country_and_repeat(
     # Internal channels never present without the grant.
     assert "guest_contact" not in detail
     assert "notes" not in detail
+
+
+def test_repeat_guest_detected_on_person_only_bookings(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+) -> None:
+    """GAP-045 3d-C regression: repeat detection is keyed on `person_id`, so it
+    still fires for bookings carrying NO legacy `guest` leg (guest_id NULL) — the
+    state every booking is born in once the production writers stopped persisting
+    guest. A `guest_id=OuterRef("guest_id")` join would be NULL=NULL → never a
+    match, silently breaking owner repeat-guest detection.
+    """
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_)
+    today = timezone.localdate()
+    _make_booking(
+        property_=property_,
+        gbp=gbp,
+        terms=terms,
+        guest=guest,
+        date_from=today - timedelta(days=40),
+        write_guest_leg=False,
+    )
+    booking = _make_booking(
+        property_=property_,
+        gbp=gbp,
+        terms=terms,
+        guest=guest,
+        date_from=today - timedelta(days=20),
+        write_guest_leg=False,
+    )
+    assert booking.guest_id is None  # born person-only, like a post-3d-C booking
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["is_repeat_guest"] is True
 
 
 def test_co_owned_villa_or_merges_money_visibility(

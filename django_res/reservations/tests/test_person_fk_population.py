@@ -1,9 +1,13 @@
-"""GAP-045 Unit 3c-1b — every `guest`-setting write path also fills `person`.
+"""GAP-045 — every customer write path fills `person`; 3d-C drops the guest leg.
 
-The five reservation models carry a parallel nullable `person` FK alongside
-`guest` during the expand/contract cutover. These tests drive each write path
-and assert `person` landed and equals `person_for_guest(guest)`, plus the
-`link_person_fks` delta-linker safety net.
+The reservation models carried a parallel `person` FK alongside `guest` through
+the expand/contract cutover. Unit 3c-1b made every write set `person`; Unit 3d-C
+made `person` the SOLE persisted customer FK on the production request/service
+paths (services / EnquiryWriteSerializer / denorm signal / :duplicate action) —
+those now write `guest=None`. Dev/test tooling (factories, make_occupying_booking,
+seeding) still writes the harmless nullable guest leg until 3d-E removes the
+field. These tests drive each path and assert `person` landed, and that the
+production paths no longer persist `guest`.
 """
 
 from __future__ import annotations
@@ -85,6 +89,9 @@ def test_enquiry_create_via_api_sets_person(
     enquiry = Enquiry.objects.get(pk=response.data["id"])
     assert enquiry.person is not None
     assert enquiry.person == person_for_guest(guest)
+    # 3d-C: `guest` is a writable INPUT (the API still accepts it) but is no
+    # longer persisted — only `person` is stored.
+    assert enquiry.guest_id is None
 
 
 @pytest.mark.django_db
@@ -109,8 +116,10 @@ def test_enquiry_patch_changing_guest_repoints_person(
 
     assert response.status_code == 200
     enquiry.refresh_from_db()
-    assert enquiry.guest == other_guest
+    # 3d-C: the PATCH repoints `person` from the guest input but does NOT persist
+    # the guest leg — it stays frozen at its setup value (guest is going away).
     assert enquiry.person == person_for_guest(other_guest)
+    assert enquiry.guest == guest
 
 
 @pytest.mark.django_db
@@ -175,6 +184,7 @@ def test_quotation_create_from_enquiry_sets_person(
 
     assert quotation.person is not None
     assert quotation.person == person_for_guest(guest)
+    assert quotation.guest_id is None  # 3d-C: person is the sole persisted FK
 
 
 @pytest.mark.django_db
@@ -202,6 +212,9 @@ def test_quotation_create_direct_sets_person_on_quotation_and_enquiry(
     assert quotation.person == expected
     # The auto-minted enquiry must also carry the mirror.
     assert quotation.enquiry.person == expected
+    # 3d-C: neither the quotation nor its minted enquiry persists the guest leg.
+    assert quotation.guest_id is None
+    assert quotation.enquiry.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +235,9 @@ def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
     assert booking.person == expected
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
     assert lead.person == expected
+    # 3d-C: the booking + LEAD are born person-only — no legacy guest leg.
+    assert booking.guest_id is None
+    assert lead.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -266,16 +282,16 @@ def test_lead_booking_guest_save_mirrors_person_to_booking(
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
 
-    # Re-point the LEAD row at a different guest/person and save — the post_save
-    # signal must mirror BOTH guest and person onto the denormalised Booking.
+    # Re-point the LEAD row at a different person and save — 3d-C: the post_save
+    # signal mirrors ONLY `person` onto the denormalised Booking (the guest leg is
+    # no longer persisted by any writer).
     new_person = person_for_guest(other_guest)
-    lead.guest = other_guest
     lead.person = new_person
-    lead.save(update_fields=["guest", "person", "updated_at"])
+    lead.save(update_fields=["person", "updated_at"])
 
     booking.refresh_from_db()
-    assert booking.guest == other_guest
     assert booking.person == new_person
+    assert booking.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +361,7 @@ def test_quotation_duplicate_action_sets_person_on_clone(
     clone = Quotation.objects.get(pk=response.data["id"])
     assert clone.pk != source.pk
     assert clone.person == person_for_guest(guest)
+    assert clone.guest_id is None  # 3d-C: clone carries only the person FK
 
 
 # ---------------------------------------------------------------------------

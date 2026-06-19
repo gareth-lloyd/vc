@@ -263,10 +263,13 @@ class QuotationService:
                 **header,
                 "enquiry": cls.minimal_enquiry_for(header["guest"], agent=header.get("agent")),
             }
-        # GAP-045 Unit 3c-1b: mirror the unified Person alongside the header's
-        # Guest FK (this path creates the Quotation directly, not via
-        # `create_from_enquiry`, so it must set `person` itself).
-        quotation = Quotation.objects.create(**header, person=person_for_guest(header["guest"]))
+        # GAP-045 Unit 3d-C: `person` is the sole persisted customer FK — resolve
+        # it from the header's guest, then drop the guest key so the legacy leg
+        # isn't written (this path creates the Quotation directly, not via
+        # `create_from_enquiry`).
+        person = person_for_guest(header["guest"])
+        header = {k: v for k, v in header.items() if k != "guest"}
+        quotation = Quotation.objects.create(**header, person=person)
         for line_data in lines:
             cls.add_line(quotation, line_data)
         return quotation
@@ -304,9 +307,9 @@ class QuotationService:
 
         quotation = Quotation.objects.create(
             enquiry=enquiry,
-            guest=resolved_guest,
-            # GAP-045 Unit 3c-1b: mirror the unified Person alongside the Guest
-            # FK so every quotation write keeps `person` in lockstep.
+            # GAP-045 Unit 3d-C: persist only the unified Person FK (resolved from
+            # the supplied/enquiry guest). Reading the guest INPUT here is
+            # transitional — 3d-E removes the `enquiry.guest` leg entirely.
             person=person_for_guest(resolved_guest),
             agent=agent,
             terms_version=terms_version,
@@ -371,8 +374,8 @@ class QuotationService:
         from reservations.models.enquiry import Enquiry
 
         return Enquiry.objects.create(
-            guest=guest,
-            # GAP-045 Unit 3c-1b: keep the parallel Person FK in lockstep.
+            # GAP-045 Unit 3d-C: persist only the unified Person FK; the guest
+            # snapshot still seeds the denormalised contact fields below.
             person=person_for_guest(guest),
             first_name=guest.first_name,
             last_name=guest.last_name,

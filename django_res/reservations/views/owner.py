@@ -177,13 +177,14 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self) -> QuerySet[Booking]:
         user = cast("User", self.request.user)
         property_ids = owner_property_ids(user)
-        # "Repeat guest" = this guest has another booking at the caller's own
+        # "Repeat guest" = this customer has another booking at the caller's own
         # villas — a single correlated EXISTS, constant-query regardless of rows.
-        # GAP-045 3d-4 TODO: re-key this onto `person_id` when the guest column
-        # is dropped (it's a non-display read, so it survives the 3d-3 cutover).
+        # GAP-045 3d-C: keyed on `person_id` (NOT NULL since 3d-A) now that the
+        # production writers no longer persist the nullable `guest` leg — a
+        # `guest_id=OuterRef("guest_id")` join would be NULL=NULL → never a match.
         repeat = Exists(
             Booking.objects.filter(
-                guest_id=OuterRef("guest_id"), property_id__in=property_ids
+                person_id=OuterRef("person_id"), property_id__in=property_ids
             ).exclude(pk=OuterRef("pk"))
         )
         return (

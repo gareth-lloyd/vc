@@ -82,14 +82,12 @@ class BookingService:
         balance_due_at = property_.balance_due_at(quotation_line.date_from)
         total = cls._decimal(snapshot.get("total", quotation_line.total))
 
-        # GAP-045 Unit 3d-A: `Quotation.person` is now the authoritative,
-        # NOT-NULL customer FK, so read it directly (one fewer query than
-        # re-resolving from the now-nullable guest leg) and set it on both the
-        # Booking and its LEAD BookingGuest below, in lockstep with the Guest FK.
+        # GAP-045 Unit 3d-A/C: `Quotation.person` is the authoritative, NOT-NULL
+        # customer FK — read it directly and set it on both the Booking and its
+        # LEAD BookingGuest below. The legacy `guest` leg is no longer persisted.
         person = quotation.person
         booking = Booking.objects.create(
             quotation_line=quotation_line,
-            guest=quotation.guest,
             person=person,
             property=property_,
             date_from=quotation_line.date_from,
@@ -110,17 +108,16 @@ class BookingService:
         )
 
         # Birth the LEAD `BookingGuest` row alongside the Booking. The
-        # quotation's guest is the lead by definition — that is who accepted
+        # quotation's customer is the lead by definition — that is who accepted
         # the quote. Creating the row inside the same `transaction.atomic()`
         # keeps Booking + LEAD an indivisible pair: if either insert fails
         # both roll back, preserving the "every Booking has exactly one LEAD"
         # invariant the partial-unique constraint and pre_delete guard rely
-        # on. `Booking.guest` is already set above; the post_save sync signal
+        # on. `Booking.person` is already set above; the post_save sync signal
         # is idempotent (it excludes rows that already match), so the second
         # write is a no-op.
         BookingGuest.objects.create(
             booking=booking,
-            guest=quotation.guest,
             person=person,
             role=BookingGuestRole.LEAD.value,
         )

@@ -1,29 +1,25 @@
 # GAP-039 — Enquiry list/dashboard enrichment to the Ben/owner mockup
 
-> **🟨 PARTIAL (2026-06-19)** — Core enrichment shipped on local `main`
-> (`8f9e37b`…`135b582`); a few mockup affordances remain as follow-ups.
-> **Shipped:** read columns — Region, Villa, Holiday Dates, Sales Person, Flex?
-> (interim `Specific / ± N days / Flexible` label), Stage (read-only badge) —
-> plus serializer/filter exposure of `lead_status`/`lost_reason` (Units 1, 5);
-> the audited `:set-lead-status` action with an **inline Lead-Status dropdown**
-> in the grid (Units 2, 6); lead-status & salesperson (incl. `— Unassigned —`)
-> filters, a page-size selector (25/50/100), and stage tabs with live counts
-> that exclude the terminal Dead/Converted stages (Unit 7); schemas + en/el i18n
-> (Unit 4). **Remaining (follow-ups):**
-> (a) inline **Sales Person** assign dropdown — currently read-only display;
-> (b) inline **Stage** transition dropdown — deliberately read-only this ship
-> (transitions stay on the action buttons; the inline-dropdown variant conflicts
-> with `05-reservations.md` "stage advances only via transition methods" and is
-> a deferred decision);
-> (c) inline **Dead → `lost_reason`** dropdown in the cell — `lost_reason` is
-> read-only, set via the existing `:close` action;
-> (d) **date-range filter** UI control — `created_after`/`created_before` are
-> plumbed end to end (params → `toQuery` → backend `CharFilter`s) but no picker
-> is rendered yet;
-> (e) the **Action (delete, ADMIN-gated)** column and the leading **select**
-> checkbox column;
-> (f) page-size `10` option (mockup lists 10/25/50/100; shipped 25/50/100).
-> The `± 7 days` flex variant remains with GAP-043. Quality gate green.
+> **✅ RESOLVED (2026-06-19)** — The dashboard enrichment shipped on local `main`
+> (`8f9e37b`…`135b582`, merged `a045546`). **Delivered:**
+> - **Read columns** — Region, Villa, Holiday Dates, Sales Person, Flex?
+>   (interim `Specific / ± N days / Flexible` label; `± 7 days` waits on
+>   GAP-043), Stage (read-only `StatusBadge`), Lead Status — plus the
+>   serializer/filter exposure of `lead_status`/`lost_reason` (Units 1, 5).
+> - **Inline Lead-Status edit** in the grid via the audited `:set-lead-status`
+>   action (Units 2, 6), reusing the `onDetailUpdated` invalidation chain.
+> - **Filters & controls** — lead-status and salesperson (incl. `— Unassigned —`)
+>   filters, a page-size selector (25/50/100), free-text search, and stage tabs
+>   with live counts that exclude the terminal Dead/Converted stages (Unit 7).
+> - **Schemas + en/el i18n** (Unit 4). Quality gate green (pytest + ruff + mypy;
+>   vitest + eslint + tsc).
+>
+> The remaining mockup affordances — inline **Sales Person** / **Stage** /
+> **Dead→`lost_reason`** dropdowns, the **date-range filter** UI (its
+> `created_after`/`created_before` params are already plumbed end to end), the
+> **delete (ADMIN)** + leading **select** columns, and the page-size `10` option
+> — are split into **[GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md)**
+> so this ticket records exactly what landed.
 
 > **🧱 Shared-enum foundation landed (2026-06-18)** — the stage, lead-status, and
 > lost-reason vocabularies the enriched grid needs now exist on `Enquiry`: stage
@@ -45,8 +41,10 @@
   columns match the real legacy `/quote` list reconstructed in
   [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md) (VC Ref, Name,
   Villa Name, Enq/Quote Date, Person, Holiday Dates, Flex?).
-- **Status:** 🟨 Partial (2026-06-19) — core enrichment shipped; see the banner
-  above for the remaining follow-up affordances.
+- **Status:** ✅ Resolved (2026-06-19) — dashboard enrichment delivered (see the
+  banner above); the remaining inline-edit / date-range / delete affordances are
+  tracked separately in
+  [GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md).
 - **Files:**
   - `frontend/src/features/enquiries/EnquiriesListPage.tsx`, `columns.tsx`
   - `django_res/reservations/serializers/enquiry.py`,
@@ -86,6 +84,12 @@ the salesperson/region/date-range filters.
   date-range filters and search work together.
 - Quality gate green (vitest + eslint + prettier + tsc; pytest for the
   serializer/filter additions).
+
+> **Scope note (2026-06-19):** the inline **salesperson** / **stage** /
+> **lost_reason** edits and the **date-range filter** from the acceptance list
+> above were carved out to
+> [GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md); everything else
+> here is delivered.
 
 ## Dependencies
 

@@ -1,5 +1,23 @@
 # GAP-038 — Enquiry pipeline: stage taxonomy + quotes-to-convert metric
 
+> **✅ RESOLVED (2026-06-19)** — Shipped on local `main` (`8f9e37b`…`135b582`).
+> All three sub-gaps closed: **(1) stage taxonomy + structured `lost_reason`**
+> reconciled in Phase 0 (reservations migrations `0032`–`0035`, decision in
+> `10-decisions.md`) and exposed read-only on the API (Unit 1); a Dead enquiry
+> requires a reason (CheckConstraint). **(2) `quotes_to_convert`** — a
+> `SerializerMethodField` computed in pure Python over the already-prefetched
+> real quotations (count up to & including the first accepted one, tie-broken by
+> pk; **null until converted**), pinned by an `assert_max_queries` test so it
+> adds no query (Unit 3), and surfaced as a "Converted in N quote(s)" badge on
+> the enquiry detail header (Unit 8). **(3) Per-quote lifecycle chips** already
+> shipped under GAP-005 (`EnquiryQuoteStack` renders `StatusBadge` +
+> `quotationStatusLabel`). **Caveat (L4):** the metric is *rebuild-era only* —
+> legacy converted bookings migrate as `NEW` enquiries with a single synthetic
+> `booking-` quote and therefore read null, so the conversion figure must NOT be
+> read as covering migrated history. Booking-lifecycle chips (Deposit Due/Paid/
+> Booked) need Booking state → deferred. Zoho CRM stays out of scope (future).
+> Quality gate green (pytest + ruff + mypy; vitest + eslint + tsc).
+
 > **🧱 Shared-enum foundation landed (2026-06-18)** — the stage taxonomy this
 > ticket needs now exists on `Enquiry`: values renamed to the dashboard
 > vocabulary (`new` / `progressing` / `quote_sent` / `follow_up` / `dead` /
@@ -16,8 +34,8 @@
   Ben/owner mockup at https://vc-new-res-system.netlify.app/ (the mockup mirrors
   the real legacy 4-screen flow corrected in
   [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md)).
-- **Status:** Open. Builds on the **already-shipped** quote-stacking work — do
-  not re-spec it (see below).
+- **Status:** ✅ Resolved (2026-06-19) — see the banner above. Built on the
+  **already-shipped** quote-stacking work (GAP-005); did not re-spec it.
 - **Files:**
   - `django_res/reservations/models/enquiry.py` (status enum + lost-reason),
     `models/quotation.py` (per-quote status surfacing)

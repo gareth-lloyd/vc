@@ -78,10 +78,10 @@ function fromPriceSummary(entry: WeeklyPricesProperty): string | null {
 }
 
 /** The price strip beneath a villa's bands. Each changeover week is marked by a
- * vertical line in the MIDDLE of its changeover day's column — where the
- * check-in/out bands meet — with the changeover date plus the week's guide
- * price, POA, or (greyed) booked/held state left-aligned to its right. The exact
- * figure is surfaced on hover. */
+ * diagonal across its changeover-day column — a guest checks out in the morning,
+ * the next checks in that afternoon — with the changeover date plus the week's
+ * guide price, POA, or (greyed) booked/held state left-aligned to its right. The
+ * exact figure is surfaced on hover. */
 function PriceStrip({
   entry,
   bands,
@@ -97,14 +97,13 @@ function PriceStrip({
   return (
     <div className="border-border/60 relative border-t" style={{ height: PRICE_STRIP_HEIGHT }}>
       {entry.weeks.map((week) => {
-        // Anchor to the changeover day's MIDDLE (its day-column centre, where a
-        // check-in/out band edge lands). The cell runs from there to the next
-        // changeover, clamped to the window; its left border is the week marker.
-        const anchor = bandEdges(week.week_start, week.week_start, windowStart, {
-          halfDayOffset: true,
-        }).start;
-        if (anchor < 0 || anchor >= dayCount) return null;
-        const widthPct = ((Math.min(anchor + 7, dayCount) - anchor) / dayCount) * 100;
+        // Position a container spanning the changeover day → next changeover
+        // (clamped to the window). Its first day-column carries the diagonal
+        // marker; the date + price sit left-aligned in the remaining days.
+        const dayIndex = bandEdges(week.week_start, week.week_start, windowStart).start;
+        if (dayIndex < 0 || dayIndex >= dayCount) return null;
+        const containerDays = Math.min(dayIndex + 7, dayCount) - dayIndex;
+        const dayPct = (1 / containerDays) * 100; // changeover day, as % of the container
         const blocked = weekBlock(week, bands);
         const exact = week.price ? formatMoney(week.price, week.currency_code) : null;
         // Availability wins (a blocked week isn't sellable at any price), then
@@ -131,17 +130,43 @@ function PriceStrip({
         return (
           <div
             key={week.week_start}
-            className={cn(
-              "border-border absolute inset-y-0 flex flex-col justify-center gap-0.5 truncate border-l pl-1.5 text-left tabular-nums",
-              muted ? "text-muted-foreground" : "text-foreground",
-            )}
-            style={{ left: `${(anchor / dayCount) * 100}%`, width: `${widthPct}%` }}
+            className="absolute inset-y-0"
+            style={{
+              left: `${(dayIndex / dayCount) * 100}%`,
+              width: `${(containerDays / dayCount) * 100}%`,
+            }}
             title={title}
           >
-            <span className="text-muted-foreground/80 text-[9px] leading-none">
-              {fmtShort(week.week_start)}
-            </span>
-            <span className={cn("text-[11px] leading-none", blocked && "italic")}>{label}</span>
+            {/* Diagonal "/" across the changeover-day column. */}
+            <svg
+              aria-hidden
+              className="absolute inset-y-0 left-0"
+              style={{ width: `${dayPct}%` }}
+              viewBox="0 0 10 10"
+              preserveAspectRatio="none"
+            >
+              <line
+                x1="0"
+                y1="10"
+                x2="10"
+                y2="0"
+                className="stroke-border"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            <div
+              className={cn(
+                "absolute inset-y-0 right-0 flex flex-col justify-center gap-0.5 truncate pl-1 text-left tabular-nums",
+                muted ? "text-muted-foreground" : "text-foreground",
+              )}
+              style={{ left: `${dayPct}%` }}
+            >
+              <span className="text-muted-foreground/80 text-[9px] leading-none">
+                {fmtShort(week.week_start)}
+              </span>
+              <span className={cn("text-[11px] leading-none", blocked && "italic")}>{label}</span>
+            </div>
           </div>
         );
       })}

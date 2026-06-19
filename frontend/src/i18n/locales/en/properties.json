@@ -4,10 +4,11 @@
     "breadcrumb_library": "Library",
     "search_placeholder": "Search by name or slug…",
     "filter_country_aria": "Filter by country",
+    "filter_region_aria": "Filter by region",
     "filter_status_aria": "Filter by status",
     "load_failed": "Couldn't load properties.",
     "empty_title": "No properties match these filters",
-    "empty_hint": "Try clearing the search or changing the country/status filter."
+    "empty_hint": "Try clearing the search or changing the country/region/status filter."
   },
   "create": {
     "button": "New villa",

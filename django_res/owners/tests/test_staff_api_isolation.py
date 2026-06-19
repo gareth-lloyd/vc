@@ -12,8 +12,11 @@ The contract this pins:
   is gated by a role class (``IsReservationsWriter``) or by a bare
   ``IsStaff`` floor.
 * A real staff user keeps full access.
-* The owner portal (``/owner/*``) still works for the owner and stays closed
-  to staff-non-owners.
+* The owner portal still works for the owner. Its *data* endpoints
+  (``/owner/properties``, …) stay ``IsOwner``-closed to staff-non-owners. The
+  ``/owner/me`` *probe* is deliberately the exception: it is readable by any
+  authenticated user and returns ``{is_owner: false, organisations: []}`` for a
+  non-owner (leaking nothing), so the SPA can pick its shell without a 403.
 """
 
 from __future__ import annotations
@@ -100,7 +103,22 @@ def test_owner_portal_still_open_to_owner() -> None:
     assert client.get("/api/v1/owner/me").status_code == 200
 
 
-def test_owner_portal_closed_to_staff_non_owner() -> None:
+def test_owner_me_probe_open_to_staff_non_owner_as_not_owner() -> None:
+    # The /owner/me probe drives boot-time shell selection, so it is readable by
+    # any authenticated user: a staff non-owner gets 200 + is_owner:false and an
+    # empty org list (no leak), rather than the old 403-as-control-flow.
     client = APIClient()
     client.force_authenticate(user=_staff())
-    assert client.get("/api/v1/owner/me").status_code == 403
+    resp = client.get("/api/v1/owner/me")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_owner"] is False
+    assert body["organisations"] == []
+
+
+def test_owner_data_endpoints_stay_closed_to_staff_non_owner() -> None:
+    # The probe relaxing to 200 must NOT widen the owner *data* surface: the
+    # IsOwner-gated endpoints stay 403 for a staff non-owner.
+    client = APIClient()
+    client.force_authenticate(user=_staff())
+    assert client.get("/api/v1/owner/properties").status_code == 403

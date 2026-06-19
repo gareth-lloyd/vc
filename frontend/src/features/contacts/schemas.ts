@@ -88,7 +88,11 @@ export const contactCreateInputSchema = z
 export type ContactCreateInput = z.infer<typeof contactCreateInputSchema>;
 
 // Wire shape POSTed to /contacts: base write fields + inline channel arrays.
+// `kind` is accepted create-only (GAP-045 D2) — the quote builder sends
+// `kind: "customer"` to mint a customer Person; the contacts form omits it so
+// the backend defaults to CONTACT.
 export type ContactCreateBody = ContactWriteInput & {
+  kind?: "contact" | "customer";
   emails?: ContactEmailWriteInput[];
   phones?: ContactPhoneWriteInput[];
 };

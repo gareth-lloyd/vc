@@ -14,7 +14,7 @@ const enquiry: EnquiryDetail = {
   id: 99,
   reference: "ENQ-99",
   status: "new",
-  guest: 42,
+  person: 42,
   first_name: "Ada",
   last_name: "Lovelace",
   email: "ada@example.com",

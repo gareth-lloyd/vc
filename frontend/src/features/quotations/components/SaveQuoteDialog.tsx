@@ -18,7 +18,8 @@ import { apiErrorMessage } from "@/lib/api/forms";
 import { toDatetimeLocal } from "@/lib/format/date";
 import { toDecimalString } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
-import { useCreateGuest, useCreateQuotation, useCurrentTermsVersion } from "../hooks";
+import { useCreateContact } from "@/features/contacts/hooks";
+import { useCreateQuotation, useCurrentTermsVersion } from "../hooks";
 import { isStagedLineValid } from "../lineTotals";
 import type { QuotationDetail, QuotationLineWriteInput, StagedLine } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
@@ -83,19 +84,19 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
   const qc = useQueryClient();
-  const createGuest = useCreateGuest();
+  const createContact = useCreateContact();
   const createQuotation = useCreateQuotation();
-  // Remembers a guest created by a failed save attempt so a retry reuses it
-  // instead of creating a duplicate (the enquiry cache still says `guest:
-  // null` until the save succeeds and invalidates it).
-  const [createdGuestId, setCreatedGuestId] = useState<number | null>(null);
-  const submitting = createGuest.isPending || createQuotation.isPending;
+  // Remembers a customer Person created by a failed save attempt so a retry
+  // reuses it instead of creating a duplicate (the enquiry cache still says
+  // `person: null` until the save succeeds and invalidates it).
+  const [createdContactId, setCreatedContactId] = useState<number | null>(null);
+  const submitting = createContact.isPending || createQuotation.isPending;
 
   useEffect(() => {
     if (open) {
       setExpiresAt(defaultExpiresAt());
       setTopLevelError(null);
-      setCreatedGuestId(null);
+      setCreatedContactId(null);
     }
   }, [open]);
 
@@ -123,35 +124,40 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
     }
 
     try {
-      let guestId = enquiry.guest ?? createdGuestId;
-      if (guestId == null) {
-        // An active guest must be reachable by at least one channel (mirrors
-        // the server CHECK). No synthetic email — pass through whatever the
-        // enquiry actually captured; a phone-only guest is first-class valid.
+      let personId = enquiry.person ?? createdContactId;
+      if (personId == null) {
+        // An active customer must be reachable by at least one channel (mirrors
+        // the server's contactability check). No synthetic email — pass through
+        // whatever the enquiry actually captured; a phone-only customer is
+        // first-class valid.
         if (!enquiry.email && !enquiry.phone) {
           setTopLevelError(t("builder.save.errors.no_contact_channel"));
           return;
         }
-        // Carry the enquiry's preferred channel onto the guest, but only when
+        // Carry the enquiry's preferred channel onto the customer, but only when
         // the channel it requires was actually captured — an email preference
-        // needs an email; phone/sms need a phone. Forwarding it blind would
-        // trip the server's contactability CHECK (a confusing 400 at save).
+        // needs an email; phone/sms need a phone. Set a preference with no
+        // backing channel is meaningless, so omit it.
         const cm = enquiry.contact_method;
-        const carryContactMethod =
+        const carryPreferredMethod =
           (cm === "email" && enquiry.email) ||
           (cm === "phone" && enquiry.phone) ||
           (cm === "sms" && enquiry.phone)
             ? cm
             : undefined;
-        const guest = await createGuest.mutateAsync({
+        // Create a customer Person (GAP-045) — fold the enquiry's scalar
+        // email/phone into the inline channel arrays /contacts expects, marking
+        // the sole channel primary (mirrors ContactFormDialog).
+        const contact = await createContact.mutateAsync({
+          kind: "customer",
           first_name: enquiry.first_name || t("builder.save.placeholder_first_name"),
           last_name: enquiry.last_name || t("builder.save.placeholder_last_name"),
-          ...(enquiry.email ? { email: enquiry.email } : {}),
-          ...(enquiry.phone ? { phone: enquiry.phone } : {}),
-          ...(carryContactMethod ? { contact_method: carryContactMethod } : {}),
+          ...(carryPreferredMethod ? { preferred_method: carryPreferredMethod } : {}),
+          ...(enquiry.email ? { emails: [{ email: enquiry.email, is_primary: true }] } : {}),
+          ...(enquiry.phone ? { phones: [{ number: enquiry.phone, is_primary: true }] } : {}),
         });
-        setCreatedGuestId(guest.id);
-        guestId = guest.id;
+        setCreatedContactId(contact.id);
+        personId = contact.id;
       }
 
       // One atomic POST: header + lines + pricing + holds succeed or fail
@@ -159,7 +165,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
       // currency (GAP-014) — currency lives per line.
       const quotation = await createQuotation.mutateAsync({
         enquiry: enquiry.id,
-        guest: guestId,
+        person: personId,
         agent: null,
         is_unbranded: false,
         expires_at: expiresAt,

@@ -10,11 +10,11 @@ import { SaveQuoteDialog } from "../components/SaveQuoteDialog";
 import type { StagedLine } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 
-// Guest already attached so the save path skips guest creation.
+// Customer already linked so the save path skips contact creation.
 const enquiry = {
   id: 99,
   reference: "ENQ-99",
-  guest: 42,
+  person: 42,
   first_name: "Ada",
   last_name: "Lovelace",
   email: "ada@example.com",
@@ -327,21 +327,21 @@ describe("SaveQuoteDialog", () => {
     expect(await screen.findByText(/required for a manual line/i)).toBeInTheDocument();
   });
 
-  it("retries after a failed save without duplicating the created guest", async () => {
-    let guestPosts = 0;
+  it("retries after a failed save without duplicating the created contact", async () => {
+    let contactPosts = 0;
     let quotationPosts = 0;
     server.use(
       http.get("/api/v1/terms-versions/current", () =>
         HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
       ),
-      http.post("/api/v1/guests", () => {
-        guestPosts += 1;
+      http.post("/api/v1/contacts", () => {
+        contactPosts += 1;
         return HttpResponse.json(
-          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { id: 77, first_name: "Ada", last_name: "Lovelace", emails: [], phones: [] },
           { status: 201 },
         );
       }),
-      // First save attempt fails after the guest exists; the retry succeeds.
+      // First save attempt fails after the contact exists; the retry succeeds.
       http.post("/api/v1/quotations", () => {
         quotationPosts += 1;
         if (quotationPosts === 1) {
@@ -357,7 +357,7 @@ describe("SaveQuoteDialog", () => {
     const unattached = {
       id: 99,
       reference: "ENQ-99",
-      guest: null,
+      person: null,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "ada@example.com",
@@ -379,20 +379,20 @@ describe("SaveQuoteDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save quote$/i }));
 
     await waitFor(() => expect(quotationPosts).toBe(2));
-    // The guest created on attempt #1 is reused, never duplicated.
-    expect(guestPosts).toBe(1);
+    // The contact created on attempt #1 is reused, never duplicated.
+    expect(contactPosts).toBe(1);
   });
 
   it("passes the enquiry's phone through and never fabricates a synthetic email", async () => {
-    let guestBody: Record<string, unknown> | null = null;
+    let contactBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/terms-versions/current", () =>
         HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
       ),
-      http.post("/api/v1/guests", async ({ request }) => {
-        guestBody = (await request.json()) as Record<string, unknown>;
+      http.post("/api/v1/contacts", async ({ request }) => {
+        contactBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
-          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { id: 77, first_name: "Ada", last_name: "Lovelace", emails: [], phones: [] },
           { status: 201 },
         );
       }),
@@ -405,7 +405,7 @@ describe("SaveQuoteDialog", () => {
     const phoneOnly = {
       id: 99,
       reference: "ENQ-99",
-      guest: null,
+      person: null,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "",
@@ -424,26 +424,28 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(guestBody).not.toBeNull());
-    expect(guestBody).toMatchObject({
+    await waitFor(() => expect(contactBody).not.toBeNull());
+    // A new customer (kind=customer) with the phone folded into the channel array.
+    expect(contactBody).toMatchObject({
+      kind: "customer",
       first_name: "Ada",
       last_name: "Lovelace",
-      phone: "+447911123456",
+      phones: [{ number: "+447911123456", is_primary: true }],
     });
-    // No synthetic `enquiry-{id}@noemail.local` — email omitted entirely.
-    expect(guestBody).not.toHaveProperty("email");
+    // No synthetic `enquiry-{id}@noemail.local` — emails omitted entirely.
+    expect(contactBody).not.toHaveProperty("emails");
   });
 
   it("blocks the save when an unattached enquiry has neither email nor phone", async () => {
-    let guestPosted = false;
+    let contactPosted = false;
     server.use(
       http.get("/api/v1/terms-versions/current", () =>
         HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
       ),
-      http.post("/api/v1/guests", () => {
-        guestPosted = true;
+      http.post("/api/v1/contacts", () => {
+        contactPosted = true;
         return HttpResponse.json(
-          { id: 77, first_name: "X", last_name: "Y", email: null },
+          { id: 77, first_name: "X", last_name: "Y", emails: [], phones: [] },
           { status: 201 },
         );
       }),
@@ -452,7 +454,7 @@ describe("SaveQuoteDialog", () => {
     const noChannel = {
       id: 99,
       reference: "ENQ-99",
-      guest: null,
+      person: null,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "",
@@ -472,18 +474,18 @@ describe("SaveQuoteDialog", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
     expect(await screen.findByText(/no email or phone/i)).toBeInTheDocument();
-    expect(guestPosted).toBe(false);
+    expect(contactPosted).toBe(false);
   });
 
-  function mockGuestCreate(capture: (body: Record<string, unknown>) => void) {
+  function mockContactCreate(capture: (body: Record<string, unknown>) => void) {
     server.use(
       http.get("/api/v1/terms-versions/current", () =>
         HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
       ),
-      http.post("/api/v1/guests", async ({ request }) => {
+      http.post("/api/v1/contacts", async ({ request }) => {
         capture((await request.json()) as Record<string, unknown>);
         return HttpResponse.json(
-          { id: 77, first_name: "Ada", last_name: "Lovelace", email: null },
+          { id: 77, first_name: "Ada", last_name: "Lovelace", emails: [], phones: [] },
           { status: 201 },
         );
       }),
@@ -493,17 +495,17 @@ describe("SaveQuoteDialog", () => {
     );
   }
 
-  it("carries the enquiry's contact_method when its channel is present", async () => {
-    let guestBody: Record<string, unknown> | null = null;
-    mockGuestCreate((body) => {
-      guestBody = body;
+  it("carries the enquiry's contact_method as preferred_method when its channel is present", async () => {
+    let contactBody: Record<string, unknown> | null = null;
+    mockContactCreate((body) => {
+      contactBody = body;
     });
 
     // Phone-only enquiry that prefers SMS — the phone channel backs the pref.
     const smsEnquiry = {
       id: 99,
       reference: "ENQ-99",
-      guest: null,
+      person: null,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "",
@@ -523,22 +525,25 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(guestBody).not.toBeNull());
-    expect(guestBody).toMatchObject({ phone: "+447911123456", contact_method: "sms" });
+    await waitFor(() => expect(contactBody).not.toBeNull());
+    expect(contactBody).toMatchObject({
+      phones: [{ number: "+447911123456", is_primary: true }],
+      preferred_method: "sms",
+    });
   });
 
   it("drops the contact_method when its required channel is missing", async () => {
-    let guestBody: Record<string, unknown> | null = null;
-    mockGuestCreate((body) => {
-      guestBody = body;
+    let contactBody: Record<string, unknown> | null = null;
+    mockContactCreate((body) => {
+      contactBody = body;
     });
 
-    // Prefers email, but only a phone was captured — forwarding "email" would
-    // 400 on the server's contactability CHECK, so the guard omits it.
+    // Prefers email, but only a phone was captured — forwarding "email" would be
+    // a preference with no backing channel, so the guard omits it.
     const mismatched = {
       id: 99,
       reference: "ENQ-99",
-      guest: null,
+      person: null,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "",
@@ -558,9 +563,9 @@ describe("SaveQuoteDialog", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
 
-    await waitFor(() => expect(guestBody).not.toBeNull());
-    expect(guestBody).toMatchObject({ phone: "+447911123456" });
-    expect(guestBody).not.toHaveProperty("contact_method");
+    await waitFor(() => expect(contactBody).not.toBeNull());
+    expect(contactBody).toMatchObject({ phones: [{ number: "+447911123456", is_primary: true }] });
+    expect(contactBody).not.toHaveProperty("preferred_method");
   });
 
   // Expiry is LOCAL end-of-day semantics: the default and the input value are

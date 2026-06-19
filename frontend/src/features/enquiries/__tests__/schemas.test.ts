@@ -95,7 +95,7 @@ describe("enquiryDetailSchema", () => {
 
 describe("enquiryWriteInputSchema", () => {
   const valid = {
-    guest: null,
+    person: null,
     first_name: "Ada",
     last_name: "Lovelace",
     email: "ada@example.com",

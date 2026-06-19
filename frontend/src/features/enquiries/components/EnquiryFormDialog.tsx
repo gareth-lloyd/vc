@@ -29,13 +29,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { addDaysIso } from "@/lib/format/date";
 import { ApiError } from "@/lib/api/errors";
-import { GuestPicker } from "@/features/guests/components/GuestPicker";
-import { GuestEnquiryHistory } from "@/features/guests/components/GuestEnquiryHistory";
-import { useGuest } from "@/features/guests/hooks";
-import type { Guest } from "@/features/guests/schemas";
+import { ContactPicker } from "@/features/contacts/components/ContactPicker";
+import { ContactEnquiryHistory } from "@/features/contacts/components/ContactEnquiryHistory";
+import { useContact } from "@/features/contacts/hooks";
+import type { Contact } from "@/features/contacts/schemas";
+import { primaryEmail, primaryPhone } from "@/features/contacts/utils";
+import type { ContactMethod } from "../schemas";
 import { useCreateEnquiry, useUpdateEnquiry } from "../hooks";
 import {
   contactMethodOptions,
+  contactMethodSchema,
   enquirySourceOptions,
   enquiryRequestTypeOptions,
   enquiryWriteInputSchema,
@@ -46,6 +49,14 @@ import {
 // shadcn/radix Select forbids an empty-string item value, so "no preference"
 // rides a sentinel that maps to `null` on the way in/out of the form.
 const CONTACT_METHOD_NONE = "none";
+
+// A Contact's `preferred_method` is a free string; the enquiry's contact_method
+// is the typed email/phone/sms enum. Map only recognised values through; any
+// other value (or null) becomes "no preference".
+function toContactMethod(value: string | null | undefined): ContactMethod | null {
+  const parsed = contactMethodSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 interface CommonProps {
   open: boolean;
@@ -67,7 +78,7 @@ const MIN_SPREAD = 0;
 const MAX_SPREAD = 3;
 
 const CREATE_DEFAULTS: EnquiryWriteInput = {
-  guest: null,
+  person: null,
   first_name: "",
   last_name: "",
   email: "",
@@ -87,7 +98,7 @@ const CREATE_DEFAULTS: EnquiryWriteInput = {
 
 function defaultsFromEnquiry(enq: EnquiryDetail): EnquiryWriteInput {
   return {
-    guest: enq.guest ?? null,
+    person: enq.person ?? null,
     first_name: enq.first_name ?? "",
     last_name: enq.last_name ?? "",
     email: enq.email ?? "",
@@ -122,15 +133,15 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
   const updateMutation = useUpdateEnquiry(isCreate ? 0 : props.enquiry.id);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
-  // The resolved existing guest, if any. Drives the picker label and (in
-  // M3-F4) the history panel. Edits to the denorm fields after picking update
-  // the enquiry's columns only — never the linked Guest row.
-  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
-  const linkedGuestId = isCreate ? undefined : (props.enquiry.guest ?? undefined);
-  const linkedGuestQuery = useGuest(linkedGuestId);
-  // Edit-mode hydration runs exactly once per open: the first of {linked-guest
+  // The resolved existing contact (customer Person), if any. Drives the picker
+  // label and the history panel. Edits to the denorm fields after picking update
+  // the enquiry's columns only — never the linked Person row.
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const linkedPersonId = isCreate ? undefined : (props.enquiry.person ?? undefined);
+  const linkedContactQuery = useContact(linkedPersonId);
+  // Edit-mode hydration runs exactly once per open: the first of {linked-contact
   // fetch resolves, operator picks/clears} claims it. Without this latch a
-  // deliberate Unlink (selectedGuest → null) would be instantly reverted by the
+  // deliberate Unlink (selectedContact → null) would be instantly reverted by the
   // hydration effect, and a late-arriving fetch could clobber an in-session pick.
   const didHydrateRef = useRef(false);
 
@@ -138,36 +149,36 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
     if (open) {
       form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromEnquiry(props.enquiry));
       setTopLevelError(null);
-      setSelectedGuest(null);
+      setSelectedContact(null);
       didHydrateRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.enquiry.id]);
 
   useEffect(() => {
-    if (open && !didHydrateRef.current && linkedGuestQuery.data) {
+    if (open && !didHydrateRef.current && linkedContactQuery.data) {
       didHydrateRef.current = true;
-      setSelectedGuest(linkedGuestQuery.data);
+      setSelectedContact(linkedContactQuery.data);
     }
-  }, [open, linkedGuestQuery.data]);
+  }, [open, linkedContactQuery.data]);
 
-  const handleGuestSelect = (guest: Guest) => {
+  const handleContactSelect = (contact: Contact) => {
     didHydrateRef.current = true;
-    setSelectedGuest(guest);
-    form.setValue("guest", guest.id);
-    // Prefill the denorm capture fields from the linked guest. These remain
-    // editable; editing them updates the enquiry only, not the Guest.
-    form.setValue("first_name", guest.first_name);
-    form.setValue("last_name", guest.last_name);
-    form.setValue("email", guest.email ?? "");
-    form.setValue("phone", guest.phone ?? "");
-    form.setValue("contact_method", guest.contact_method ?? null);
+    setSelectedContact(contact);
+    form.setValue("person", contact.id);
+    // Prefill the denorm capture fields from the linked contact. These remain
+    // editable; editing them updates the enquiry only, not the Person.
+    form.setValue("first_name", contact.first_name ?? "");
+    form.setValue("last_name", contact.last_name ?? "");
+    form.setValue("email", primaryEmail(contact));
+    form.setValue("phone", primaryPhone(contact));
+    form.setValue("contact_method", toContactMethod(contact.preferred_method));
   };
 
-  const handleGuestClear = () => {
+  const handleContactClear = () => {
     didHydrateRef.current = true;
-    setSelectedGuest(null);
-    form.setValue("guest", null);
+    setSelectedContact(null);
+    form.setValue("person", null);
   };
 
   const requestTypeCtrl = useController({ control: form.control, name: "request_type" });
@@ -236,20 +247,22 @@ export function EnquiryFormDialog(props: EnquiryFormDialogProps) {
             <Label>{t("form_dialog.fields.guest")}</Label>
             <div className="flex items-center gap-2">
               <div className="flex-1">
-                <GuestPicker
-                  value={selectedGuest}
-                  onChange={handleGuestSelect}
-                  onCreateNew={handleGuestClear}
+                <ContactPicker
+                  value={selectedContact}
+                  onChange={handleContactSelect}
+                  onCreateNew={handleContactClear}
+                  kind="customer"
+                  status="active"
                 />
               </div>
-              {selectedGuest ? (
-                <Button type="button" variant="ghost" size="sm" onClick={handleGuestClear}>
+              {selectedContact ? (
+                <Button type="button" variant="ghost" size="sm" onClick={handleContactClear}>
                   {t("form_dialog.actions.unlink_guest")}
                 </Button>
               ) : null}
             </div>
             <p className="text-muted-foreground text-xs">{t("form_dialog.fields.guest_hint")}</p>
-            {selectedGuest ? <GuestEnquiryHistory guestId={selectedGuest.id} /> : null}
+            {selectedContact ? <ContactEnquiryHistory contactId={selectedContact.id} /> : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

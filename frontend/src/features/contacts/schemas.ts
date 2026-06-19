@@ -1,6 +1,8 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { bookingStatusSchema } from "@/features/bookings/schemas";
+import { enquiryStatusSchema } from "@/features/enquiries/schemas";
 
 export const contactEmailSchema = z.object({
   id: z.number(),
@@ -152,3 +154,26 @@ export const contactListFiltersSchema = z.object({
   ordering: z.string().optional(),
   page: z.number().optional(),
 });
+
+// `/contacts/{id}/enquiries` returns the SAME shape as `/guests/{id}/enquiries`
+// (GAP-045 D2). Contacts owns its own copy of the schema so D4 can delete the
+// guests module without breaking the enquiry surface.
+export const contactConvertedBookingSchema = z.object({
+  reference: z.string(),
+  status: bookingStatusSchema,
+});
+export type ContactConvertedBooking = z.infer<typeof contactConvertedBookingSchema>;
+
+export const contactEnquiryHistorySchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  status: enquiryStatusSchema,
+  site_source: z.string().nullable().optional(),
+  request_type: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  quote_count: z.number(),
+  converted_booking: contactConvertedBookingSchema.nullable(),
+});
+export type ContactEnquiryHistoryItem = z.infer<typeof contactEnquiryHistorySchema>;
+
+export const contactEnquiryHistoryResponseSchema = paginated(contactEnquiryHistorySchema);

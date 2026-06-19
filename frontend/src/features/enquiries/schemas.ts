@@ -39,6 +39,9 @@ export const enquiryListItemSchema = z.object({
   id: z.number(),
   reference: z.string(),
   status: enquiryStatusSchema,
+  // GAP-045: `person` is the authoritative customer FK; `guest` is transitional
+  // and still emitted by the backend until the Guest model is retired (D5).
+  person: z.number().nullable().optional(),
   guest: z.number().nullable().optional(),
   guest_name: z.string().nullable().optional(),
   // Read-only contact details sourced from the linked Guest — the
@@ -151,9 +154,11 @@ export type EnquiryNoteWriteInput = z.infer<typeof enquiryNoteWriteInputSchema>;
 
 export const enquiryWriteInputSchema = z
   .object({
-    // Resolved guest link (existing-client picker). Null = free-text capture /
-    // create-new; the backend mints or reuses the Guest from the denorm fields.
-    guest: z.number().nullable(),
+    // Resolved customer link (existing-client picker). Null = free-text capture
+    // / create-new; the backend mints or reuses the Person from the denorm
+    // fields. `person` is authoritative (GAP-045); `guest` is kept transitional.
+    person: z.number().nullable(),
+    guest: z.number().nullable().optional(),
     first_name: z.string().trim().max(128),
     last_name: z.string().trim().max(128),
     email: z

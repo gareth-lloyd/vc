@@ -71,7 +71,13 @@ export const queryKeys = {
     list: <F>(filters: F) => ["contacts", "list", filters] as const,
     detail: (id: ContactId) => ["contacts", "detail", k(id)] as const,
     properties: (id: ContactId) => ["contacts", "detail", k(id), "properties"] as const,
-    search: (q: string) => ["contacts", "search", q] as const,
+    enquiries: (id: ContactId) => ["contacts", "detail", k(id), "enquiries"] as const,
+    // `kind` and `status` are part of the cache key: the same query string
+    // scoped to `contact` (business directory) vs `customer` (enquiry picker),
+    // or filtered by a different `status`, must not collide, or one picker would
+    // serve the other's results.
+    search: (q: string, kind: string = "contact", status?: string) =>
+      ["contacts", "search", kind, status ?? "all", q] as const,
   },
   guests: {
     all: () => ["guests"] as const,

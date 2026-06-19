@@ -135,5 +135,16 @@
   },
   "fallback": {
     "name_with_id": "Contact #{{id}}"
+  },
+  "history": {
+    "title": "Enquiry history",
+    "toggle_aria": "Toggle enquiry history",
+    "loading": "Loading history…",
+    "error": "Couldn't load this contact's enquiries.",
+    "empty": "No previous enquiries.",
+    "quote_count_one": "{{count}} quote",
+    "quote_count_other": "{{count}} quotes",
+    "more_one": "+{{count}} more enquiry not shown",
+    "more_other": "+{{count}} more enquiries not shown"
   }
 }

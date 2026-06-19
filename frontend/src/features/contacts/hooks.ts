@@ -9,6 +9,7 @@ import {
   deleteContactEmail,
   deleteContactPhone,
   fetchContact,
+  fetchContactEnquiries,
   fetchContactProperties,
   fetchContacts,
   searchContacts,
@@ -41,10 +42,17 @@ export function useContactProperties(id: ContactId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.contacts.properties, fetchContactProperties));
 }
 
-export function useSearchContacts(query: string) {
+export function useContactEnquiries(id: ContactId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.contacts.enquiries, fetchContactEnquiries));
+}
+
+export function useSearchContacts(
+  query: string,
+  opts?: { kind?: "contact" | "customer"; status?: string },
+) {
   return useQuery({
-    queryKey: queryKeys.contacts.search(query),
-    queryFn: () => searchContacts(query),
+    queryKey: queryKeys.contacts.search(query, opts?.kind ?? "contact", opts?.status),
+    queryFn: () => searchContacts(query, opts),
     enabled: query.length >= 2,
   });
 }

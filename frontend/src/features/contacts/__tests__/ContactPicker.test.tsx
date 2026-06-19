@@ -25,9 +25,15 @@ const bob: Contact = {
   phones: [],
 };
 
-function Wrapper({ onCreateNew }: { onCreateNew?: () => void }) {
+function Wrapper({
+  onCreateNew,
+  kind,
+}: {
+  onCreateNew?: () => void;
+  kind?: "contact" | "customer";
+}) {
   const [value, setValue] = useState<Contact | null>(null);
-  return <ContactPicker value={value} onChange={setValue} onCreateNew={onCreateNew} />;
+  return <ContactPicker value={value} onChange={setValue} onCreateNew={onCreateNew} kind={kind} />;
 }
 
 describe("ContactPicker", () => {
@@ -65,6 +71,24 @@ describe("ContactPicker", () => {
     await userEvent.type(screen.getByLabelText(/search contacts/i), "ali");
     await screen.findByText("Alice Owner");
     expect(capturedKind).toBe("contact");
+  });
+
+  it("scopes the search to the given kind (customer) when asked", async () => {
+    // The enquiry picker passes kind=customer to offer linkable clients, not
+    // business contacts. The query string must carry that scope through.
+    let capturedKind: string | null = null;
+    server.use(
+      http.get("/api/v1/contacts", ({ request }) => {
+        capturedKind = new URL(request.url).searchParams.get("kind");
+        return HttpResponse.json(drfPage([alice]));
+      }),
+    );
+
+    renderWithProviders(<Wrapper kind="customer" />);
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.type(screen.getByLabelText(/search contacts/i), "ali");
+    await screen.findByText("Alice Owner");
+    expect(capturedKind).toBe("customer");
   });
 
   it("selects a contact and closes the popover", async () => {

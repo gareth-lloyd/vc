@@ -5,6 +5,7 @@ import type { ContactId } from "@/lib/query/keys";
 import { z } from "zod";
 import {
   contactEmailSchema,
+  contactEnquiryHistoryResponseSchema,
   contactPhoneSchema,
   contactPropertyAssignmentSchema,
   contactSchema,
@@ -13,6 +14,7 @@ import {
   type ContactCreateBody,
   type ContactEmail,
   type ContactEmailWriteInput,
+  type ContactEnquiryHistoryItem,
   type ContactFilters,
   type ContactListItem,
   type ContactPhone,
@@ -48,11 +50,25 @@ export async function fetchContactProperties(
   return z.array(contactPropertyAssignmentSchema).parse(data);
 }
 
-export async function searchContacts(query: string): Promise<Paginated<Contact>> {
-  // GAP-045 D2: `/contacts` now includes customer Persons. This picker assigns a
-  // business contact to a property (owner/manager/agent), so it must only offer
-  // `kind=contact` records — never a customer mirror.
-  const data = await apiGet<unknown>("/contacts", { query: { q: query, kind: "contact" } });
+export async function fetchContactEnquiries(
+  contactId: ContactId,
+): Promise<Paginated<ContactEnquiryHistoryItem>> {
+  const data = await apiGet<unknown>(`/contacts/${contactId}/enquiries`);
+  return contactEnquiryHistoryResponseSchema.parse(data);
+}
+
+export async function searchContacts(
+  query: string,
+  opts?: { kind?: "contact" | "customer"; status?: string },
+): Promise<Paginated<Contact>> {
+  // GAP-045 D2: `/contacts` now includes customer Persons. Callers scope the
+  // directory by `kind`: the property-assignment picker keeps the default
+  // `kind=contact` (never a customer mirror); the enquiry picker passes
+  // `kind=customer` (+ `status=active` GDPR floor) to offer linkable clients.
+  const kind = opts?.kind ?? "contact";
+  const data = await apiGet<unknown>("/contacts", {
+    query: { q: query, kind, ...(opts?.status ? { status: opts.status } : {}) },
+  });
   return paginated(contactSchema).parse(data);
 }
 

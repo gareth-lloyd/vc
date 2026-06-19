@@ -8,13 +8,15 @@ import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { EnquiryFormDialog } from "../components/EnquiryFormDialog";
 
-const EXISTING_GUEST = {
+// A customer Person as the /contacts directory returns it: channels live in
+// `emails`/`phones` arrays and the preference is `preferred_method`.
+const EXISTING_CONTACT = {
   id: 55,
   first_name: "Ada",
   last_name: "Lovelace",
-  email: "ada@guest.example.com",
-  phone: "+447900000000",
-  contact_method: "email",
+  emails: [{ id: 1, email: "ada@guest.example.com", is_primary: true }],
+  phones: [{ id: 1, number: "+447900000000", is_primary: true }],
+  preferred_method: "email",
   status: "active",
 };
 
@@ -479,12 +481,12 @@ describe("EnquiryFormDialog server-side field errors", () => {
   });
 });
 
-describe("EnquiryFormDialog guest resolve-or-create", () => {
-  it("links an existing guest, prefills the fields, and submits the guest id", async () => {
+describe("EnquiryFormDialog contact resolve-or-create", () => {
+  it("links an existing contact, prefills the fields, and submits person", async () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
-      http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
-      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/contacts", () => HttpResponse.json(drfPage([EXISTING_CONTACT]))),
+      http.get("/api/v1/contacts/55/enquiries", () => HttpResponse.json(drfPage([]))),
       http.post("/api/v1/enquiries", async ({ request }) => {
         payload = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
@@ -498,27 +500,48 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
 
     // The picker trigger has role=combobox, whose accessible name is not
     // derived from its text content — so target it by its visible label.
-    await userEvent.click(
-      await screen.findByText(/link an existing guest/i, { selector: "button" }),
-    );
-    await userEvent.type(screen.getByLabelText(/search guests/i), "ada");
+    await userEvent.click(await screen.findByText(/select a contact/i, { selector: "button" }));
+    await userEvent.type(screen.getByLabelText(/search contacts/i), "ada");
     await userEvent.click(await screen.findByText("Ada Lovelace"));
 
-    // Picking prefills the denorm capture fields.
+    // Picking prefills the denorm capture fields from the contact's channel arrays.
     expect(screen.getByLabelText(/first name/i)).toHaveValue("Ada");
     expect(screen.getByLabelText(/email/i)).toHaveValue("ada@guest.example.com");
+    expect(screen.getByLabelText(/^phone$/i)).toHaveValue("+447900000000");
 
     await userEvent.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => expect(payload).not.toBeNull());
-    expect(payload).toMatchObject({ guest: 55, email: "ada@guest.example.com" });
+    expect(payload).toMatchObject({ person: 55, email: "ada@guest.example.com" });
   });
 
-  it("unlinking a picked guest submits guest as null (create-new path)", async () => {
+  it("scopes the contact search to customers (kind=customer, status=active)", async () => {
+    let capturedKind: string | null = null;
+    let capturedStatus: string | null = null;
+    server.use(
+      http.get("/api/v1/contacts", ({ request }) => {
+        const url = new URL(request.url);
+        capturedKind = url.searchParams.get("kind");
+        capturedStatus = url.searchParams.get("status");
+        return HttpResponse.json(drfPage([EXISTING_CONTACT]));
+      }),
+    );
+
+    renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
+
+    await userEvent.click(await screen.findByText(/select a contact/i, { selector: "button" }));
+    await userEvent.type(screen.getByLabelText(/search contacts/i), "ada");
+    await screen.findByText("Ada Lovelace");
+
+    expect(capturedKind).toBe("customer");
+    expect(capturedStatus).toBe("active");
+  });
+
+  it("unlinking a picked contact submits person as null (create-new path)", async () => {
     let payload: Record<string, unknown> | null = null;
     server.use(
-      http.get("/api/v1/guests", () => HttpResponse.json(drfPage([EXISTING_GUEST]))),
-      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/contacts", () => HttpResponse.json(drfPage([EXISTING_CONTACT]))),
+      http.get("/api/v1/contacts/55/enquiries", () => HttpResponse.json(drfPage([]))),
       http.post("/api/v1/enquiries", async ({ request }) => {
         payload = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
@@ -530,10 +553,8 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
 
     renderWithProviders(<EnquiryFormDialog mode="create" open onOpenChange={() => {}} />);
 
-    await userEvent.click(
-      await screen.findByText(/link an existing guest/i, { selector: "button" }),
-    );
-    await userEvent.type(screen.getByLabelText(/search guests/i), "ada");
+    await userEvent.click(await screen.findByText(/select a contact/i, { selector: "button" }));
+    await userEvent.type(screen.getByLabelText(/search contacts/i), "ada");
     await userEvent.click(await screen.findByText("Ada Lovelace"));
 
     await userEvent.click(screen.getByRole("button", { name: /unlink/i }));
@@ -542,20 +563,20 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
     await userEvent.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => expect(payload).not.toBeNull());
-    expect(payload).toMatchObject({ guest: null });
+    expect(payload).toMatchObject({ person: null });
   });
 
-  it("hydrates the picker from an already-linked guest in edit mode", async () => {
+  it("hydrates the picker from an already-linked person in edit mode", async () => {
     server.use(
-      http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)),
-      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/contacts/55", () => HttpResponse.json(EXISTING_CONTACT)),
+      http.get("/api/v1/contacts/55/enquiries", () => HttpResponse.json(drfPage([]))),
     );
 
     const enquiry = {
       id: 12,
       reference: "E-012",
       status: "new" as const,
-      guest: 55,
+      person: 55,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "ada@guest.example.com",
@@ -577,23 +598,23 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
       <EnquiryFormDialog mode="edit" enquiry={enquiry} open onOpenChange={() => {}} />,
     );
 
-    // After hydration the picker trigger shows the linked guest's name (the
+    // After hydration the picker trigger shows the linked contact's name (the
     // only place "Ada Lovelace" appears as a single text node — the denorm
     // first/last names are separate input values, not text).
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
   });
 
-  it("keeps a guest unlinked in edit mode (hydration does not revert the clear)", async () => {
+  it("keeps a contact unlinked in edit mode (hydration does not revert the clear)", async () => {
     server.use(
-      http.get("/api/v1/guests/55", () => HttpResponse.json(EXISTING_GUEST)),
-      http.get("/api/v1/guests/55/enquiries", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/contacts/55", () => HttpResponse.json(EXISTING_CONTACT)),
+      http.get("/api/v1/contacts/55/enquiries", () => HttpResponse.json(drfPage([]))),
     );
 
     const enquiry = {
       id: 13,
       reference: "E-013",
       status: "new" as const,
-      guest: 55,
+      person: 55,
       first_name: "Ada",
       last_name: "Lovelace",
       email: "ada@guest.example.com",
@@ -619,11 +640,9 @@ describe("EnquiryFormDialog guest resolve-or-create", () => {
     await screen.findByText("Ada Lovelace");
     await userEvent.click(screen.getByRole("button", { name: /unlink/i }));
 
-    // The clear must stick — the hydration effect must NOT re-link the guest.
+    // The clear must stick — the hydration effect must NOT re-link the contact.
     await waitFor(() =>
-      expect(
-        screen.getByText(/link an existing guest/i, { selector: "button" }),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/select a contact/i, { selector: "button" })).toBeInTheDocument(),
     );
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
     // The unlink affordance is gone once nothing is linked.

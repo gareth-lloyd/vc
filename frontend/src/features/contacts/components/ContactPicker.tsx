@@ -13,9 +13,20 @@ interface ContactPickerProps {
   onChange: (contact: Contact) => void;
   onCreateNew?: () => void;
   disabled?: boolean;
+  // Scope the directory: the default `contact` offers business contacts
+  // (owners/agents); the enquiry picker passes `customer` (+ `status=active`).
+  kind?: "contact" | "customer";
+  status?: string;
 }
 
-export function ContactPicker({ value, onChange, onCreateNew, disabled }: ContactPickerProps) {
+export function ContactPicker({
+  value,
+  onChange,
+  onCreateNew,
+  disabled,
+  kind = "contact",
+  status,
+}: ContactPickerProps) {
   const { t } = useTranslation("contacts");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -36,7 +47,7 @@ export function ContactPicker({ value, onChange, onCreateNew, disabled }: Contac
     }
   }, [open]);
 
-  const query = useSearchContacts(debouncedSearch);
+  const query = useSearchContacts(debouncedSearch, { kind, status });
 
   const handleSelect = (contact: Contact) => {
     onChange(contact);

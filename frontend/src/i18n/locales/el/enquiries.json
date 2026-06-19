@@ -248,11 +248,22 @@
     "guest": "Επισκέπτης",
     "property": "Ακίνητο",
     "no_property": "Χωρίς ακίνητο",
+    "region": "Περιοχή",
     "unknown_guest": "Άγνωστος επισκέπτης",
     "dates": "Ημερομηνίες",
+    "flex": {
+      "header": "Ευελιξία;",
+      "specific": "Συγκεκριμένες ημερομηνίες",
+      "spread_one": "± {{count}} ημέρα",
+      "spread_other": "± {{count}} ημέρες",
+      "flexible": "Ευέλικτο"
+    },
     "party": "Παρέα",
+    "sales_person": "Πωλητής",
+    "unassigned": "Μη ανατεθειμένο",
     "source": "Πηγή",
     "status": "Κατάσταση",
+    "lead_status": "Κατάσταση lead",
     "created": "Δημιουργήθηκε"
   },
   "schema_errors": {

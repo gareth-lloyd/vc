@@ -92,6 +92,10 @@ export const enquiryListItemSchema = z.object({
   region_name: z.string().nullable().optional(),
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),
+  // Date flexibility rides the list so the Flex? column can render without a
+  // detail fetch: `is_flexible` (open-ended) + the structured `± N days` spread.
+  is_flexible: z.boolean().optional().default(false),
+  flexibility_days: z.number().int().optional().default(0),
   adults: z.number(),
   children: z.number().default(0),
   request_type: enquiryRequestTypeSchema,
@@ -106,10 +110,7 @@ export const enquiryListItemSchema = z.object({
 export type EnquiryListItem = z.infer<typeof enquiryListItemSchema>;
 
 export const enquiryDetailSchema = enquiryListItemSchema.extend({
-  is_flexible: z.boolean().optional().default(false),
-  // Structured "± N days" spread; dates stay the client's true requested
-  // dates and the quote search widens by this value.
-  flexibility_days: z.number().int().optional().default(0),
+  // is_flexible / flexibility_days are inherited from the list schema above.
   min_bedrooms: z.number().nullable().optional(),
   referral_code: z.string().optional().default(""),
   inbound_message: z.string().optional().default(""),

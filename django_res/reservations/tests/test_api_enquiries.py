@@ -190,6 +190,21 @@ def test_enquiry_lead_status_is_read_only_on_write(
 
 
 @pytest.mark.django_db
+def test_list_enquiry_exposes_flexibility_fields(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The Flex? list column derives from `is_flexible` + `flexibility_days`, so
+    both must ride the *list* serializer — they were detail-only before GAP-039."""
+    Enquiry.objects.create(guest=guest, email="flex@x.com", is_flexible=True, flexibility_days=2)
+    api_client.force_login(staff)
+
+    row = api_client.get("/api/v1/enquiries").data["results"][0]
+
+    assert row["is_flexible"] is True
+    assert row["flexibility_days"] == 2
+
+
+@pytest.mark.django_db
 def test_list_enquiries__filter_by_lead_status(
     api_client: APIClient, staff: User, guest: Guest
 ) -> None:

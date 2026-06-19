@@ -169,4 +169,91 @@ describe("EnquiriesListPage", () => {
     await userEvent.click(await screen.findByText("E-AAA-001"));
     expect(await screen.findByText("Detail page")).toBeInTheDocument();
   });
+
+  it("renders the GAP-039 enrichment columns in list view", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...baseEnquiry,
+              region: 5,
+              region_name: "Cyclades",
+              assigned_to: 7,
+              assigned_to_name: "Mona Sales",
+              lead_status: "hot",
+              is_flexible: false,
+              flexibility_days: 2,
+            },
+          ],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    // New columns + their derived cell values all render.
+    expect(screen.getByText("Region")).toBeInTheDocument();
+    expect(screen.getByText("Cyclades")).toBeInTheDocument();
+    expect(screen.getByText("Sales person")).toBeInTheDocument();
+    expect(screen.getByText("Mona Sales")).toBeInTheDocument();
+    expect(screen.getByText("Lead status")).toBeInTheDocument();
+    expect(screen.getByText("Hot")).toBeInTheDocument();
+    expect(screen.getByText("± 2 days")).toBeInTheDocument();
+  });
+
+  it("maps the Flex? column across specific / spread / open-ended", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 3,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...baseEnquiry,
+              id: 1,
+              reference: "E-SPECIFIC",
+              is_flexible: false,
+              flexibility_days: 0,
+            },
+            {
+              ...baseEnquiry,
+              id: 2,
+              reference: "E-SPREAD",
+              is_flexible: true,
+              flexibility_days: 3,
+            },
+            { ...baseEnquiry, id: 3, reference: "E-OPEN", is_flexible: true, flexibility_days: 0 },
+          ],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-SPECIFIC");
+    expect(screen.getByText("Specific dates")).toBeInTheDocument();
+    expect(screen.getByText("± 3 days")).toBeInTheDocument();
+    expect(screen.getByText("Flexible")).toBeInTheDocument();
+  });
+
+  it("falls back to — for region and 'Unassigned' for an unowned enquiry", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{ ...baseEnquiry, region: null, assigned_to: null }],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
 });

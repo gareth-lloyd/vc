@@ -248,11 +248,22 @@
     "guest": "Guest",
     "property": "Property",
     "no_property": "No property",
+    "region": "Region",
     "unknown_guest": "Unknown guest",
     "dates": "Dates",
+    "flex": {
+      "header": "Flex?",
+      "specific": "Specific dates",
+      "spread_one": "± {{count}} day",
+      "spread_other": "± {{count}} days",
+      "flexible": "Flexible"
+    },
     "party": "Party",
+    "sales_person": "Sales person",
+    "unassigned": "Unassigned",
     "source": "Source",
     "status": "Status",
+    "lead_status": "Lead status",
     "created": "Created"
   },
   "schema_errors": {

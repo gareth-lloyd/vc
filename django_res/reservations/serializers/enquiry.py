@@ -47,6 +47,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "region_name",
             "date_from",
             "date_to",
+            "is_flexible",
+            "flexibility_days",
             "adults",
             "children",
             "request_type",
@@ -147,8 +149,8 @@ class EnquiryDetailSerializer(EnquiryListSerializer):
     class Meta(EnquiryListSerializer.Meta):
         fields = [
             *EnquiryListSerializer.Meta.fields,
-            "is_flexible",
-            "flexibility_days",
+            # is_flexible / flexibility_days now ride the list serializer (the
+            # GAP-039 Flex? column needs them) — inherited here, not re-declared.
             "min_bedrooms",
             "referral_code",
             "inbound_message",

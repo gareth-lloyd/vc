@@ -2,6 +2,7 @@ import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { EnquiryId } from "@/lib/query/keys";
+import type { LeadStatus } from "@/styles/tokens";
 import {
   assignEnquiryInputSchema,
   closeEnquiryInputSchema,
@@ -96,6 +97,18 @@ export async function assignEnquiry(
 export async function closeEnquiry(id: EnquiryId, body: CloseEnquiryInput): Promise<EnquiryDetail> {
   const parsed = closeEnquiryInputSchema.parse(body);
   const data = await apiSend<unknown>("POST", `/enquiries/${id}:close`, parsed);
+  return enquiryDetailSchema.parse(data);
+}
+
+export async function setEnquiryLeadStatus(
+  id: EnquiryId,
+  value: LeadStatus,
+): Promise<EnquiryDetail> {
+  // Audited action (mirrors :assign) — writes a LEAD_STATUS_CHANGED event +
+  // AuditLog. The lead_status field is read-only on the write serializer.
+  const data = await apiSend<unknown>("POST", `/enquiries/${id}:set-lead-status`, {
+    lead_status: value,
+  });
   return enquiryDetailSchema.parse(data);
 }
 

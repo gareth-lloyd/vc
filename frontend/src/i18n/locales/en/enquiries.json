@@ -266,6 +266,12 @@
     "lead_status": "Lead status",
     "created": "Created"
   },
+  "lead_status_edit": {
+    "title": "Set lead status",
+    "aria": "Change lead status for {{reference}}",
+    "error": "Couldn't update lead status",
+    "role_required": "Reservations role required to change lead status"
+  },
   "schema_errors": {
     "body_required": "Body is required",
     "at_least_one_adult": "At least one adult",

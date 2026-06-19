@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import type { ColumnDef } from "@tanstack/react-table";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
-import { LeadStatusBadge } from "./components/LeadStatusBadge";
+import { LeadStatusCell } from "./components/LeadStatusCell";
 import { enquirySourceLabel, enquiryStatusLabel, type EnquiryListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
@@ -146,7 +146,13 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         accessorKey: "lead_status",
         header: t("columns.lead_status"),
         enableSorting: false,
-        cell: ({ row }) => <LeadStatusBadge value={row.original.lead_status} />,
+        cell: ({ row }) => (
+          <LeadStatusCell
+            enquiryId={row.original.id}
+            reference={row.original.reference}
+            value={row.original.lead_status}
+          />
+        ),
       },
       {
         accessorKey: "created_at",

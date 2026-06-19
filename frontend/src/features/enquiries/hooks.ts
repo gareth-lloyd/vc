@@ -14,6 +14,7 @@ import {
   fetchEnquiryActivity,
   fetchEnquiryNotes,
   reopenEnquiry,
+  setEnquiryLeadStatus,
   updateEnquiry,
 } from "./api";
 import type {
@@ -24,6 +25,7 @@ import type {
   EnquiryNoteWriteInput,
   EnquiryWriteInput,
 } from "./schemas";
+import type { LeadStatus } from "@/styles/tokens";
 
 export const ENQUIRIES_PAGE_SIZE = 50;
 
@@ -97,6 +99,14 @@ export function useCloseEnquiry(enquiryId: EnquiryId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CloseEnquiryInput) => closeEnquiry(enquiryId, input),
+    onSuccess: (updated) => onDetailUpdated(queryClient, enquiryId, updated),
+  });
+}
+
+export function useSetLeadStatus(enquiryId: EnquiryId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: LeadStatus) => setEnquiryLeadStatus(enquiryId, value),
     onSuccess: (updated) => onDetailUpdated(queryClient, enquiryId, updated),
   });
 }

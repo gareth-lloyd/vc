@@ -266,6 +266,12 @@
     "lead_status": "Κατάσταση lead",
     "created": "Δημιουργήθηκε"
   },
+  "lead_status_edit": {
+    "title": "Ορισμός κατάστασης lead",
+    "aria": "Αλλαγή κατάστασης lead για {{reference}}",
+    "error": "Δεν ήταν δυνατή η ενημέρωση της κατάστασης lead",
+    "role_required": "Απαιτείται ρόλος Κρατήσεων για αλλαγή κατάστασης lead"
+  },
   "schema_errors": {
     "body_required": "Το κείμενο είναι υποχρεωτικό",
     "at_least_one_adult": "Τουλάχιστον ένας ενήλικας",

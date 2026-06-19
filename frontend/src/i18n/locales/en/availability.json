@@ -34,7 +34,10 @@
     "none": "—",
     "guide_value": "~{{value}}",
     "guide_title": "Guide price",
-    "changeover_label": "({{day}})"
+    "from_per_week": "from {{value}}/wk",
+    "week_booked": "Booked",
+    "week_held": "On hold",
+    "changeover_aria": "Changeover day"
   },
   "gate": {
     "title": "Filter to see availability",

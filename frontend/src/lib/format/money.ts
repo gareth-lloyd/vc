@@ -60,6 +60,14 @@ export function currencyAdornment(currencyCode: string | null | undefined): stri
   return SYMBOLS[code]?.trim() ?? code;
 }
 
+// The symbol-or-code wrapper shared by every formatter: a known symbol hugs the
+// number ("£1,234.56"), an unmapped code trails it ("1,234.56 AED"). Keeps the
+// en-GB pinning + symbol map in one place.
+function withCurrency(formatted: string, code: string): string {
+  const symbol = SYMBOLS[code];
+  return symbol ? `${symbol}${formatted}` : `${formatted} ${code}`;
+}
+
 export function formatMoney(
   value: string | number | null | undefined,
   currencyCode: string | null | undefined,
@@ -67,11 +75,38 @@ export function formatMoney(
   if (value == null || !currencyCode) return "—";
   const amount = parseMoney(value);
   if (!Number.isFinite(amount)) return "—";
-  const code = currencyCode.toUpperCase();
-  const formatted = amount.toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  const symbol = SYMBOLS[code];
-  return symbol ? `${symbol}${formatted}` : `${formatted} ${code}`;
+  return withCurrency(
+    amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    currencyCode.toUpperCase(),
+  );
+}
+
+// Whole-amount headline figure for at-a-glance summaries (e.g. "from £20,378/wk")
+// — drops the cents that add noise without precision at the guide-price altitude.
+export function formatMoneyWhole(
+  value: string | number | null | undefined,
+  currencyCode: string | null | undefined,
+): string {
+  if (value == null || !currencyCode) return "—";
+  const amount = parseMoney(value);
+  if (!Number.isFinite(amount)) return "—";
+  return withCurrency(
+    Math.round(amount).toLocaleString("en-GB", { maximumFractionDigits: 0 }),
+    currencyCode.toUpperCase(),
+  );
+}
+
+// Compact notation ("£20.4K") for dense cells like the per-week price strip,
+// where the full figure won't fit; callers surface the exact amount on hover.
+export function formatMoneyCompact(
+  value: string | number | null | undefined,
+  currencyCode: string | null | undefined,
+): string {
+  if (value == null || !currencyCode) return "—";
+  const amount = parseMoney(value);
+  if (!Number.isFinite(amount)) return "—";
+  return withCurrency(
+    amount.toLocaleString("en-GB", { notation: "compact", maximumFractionDigits: 1 }),
+    currencyCode.toUpperCase(),
+  );
 }

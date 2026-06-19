@@ -2,15 +2,21 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { format, isToday, isWeekend, parseISO } from "date-fns";
+import { Repeat } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, formatMoneyCompact, formatMoneyWhole } from "@/lib/format/money";
 import { propertyAvailabilityPath } from "@/lib/routes";
 import type { PropertyListItem } from "@/features/properties/schemas";
 import { assignLanes, bandEdges, bandGeometry } from "../geometry";
 import { holdDisplayStatus, bandStatusClasses } from "../status";
-import type { AvailabilityBookingBand, AvailabilityHold, WeeklyPricesProperty } from "../schemas";
+import type {
+  AvailabilityBookingBand,
+  AvailabilityHold,
+  WeeklyPrice,
+  WeeklyPricesProperty,
+} from "../schemas";
 import { bandDates, type TimelineBand } from "../bands";
 import { BandPopover } from "./BandPopover";
 
@@ -18,7 +24,9 @@ const NAME_COL = "220px";
 const LANE_HEIGHT = 28;
 const BAND_HEIGHT = 22;
 const ROW_PADDING = 6;
-const PRICE_STRIP_HEIGHT = 22;
+// Two stacked lines per cell (changeover date + price/state), so a touch taller
+// than the bands.
+const PRICE_STRIP_HEIGHT = 30;
 
 /** Slug-safe villa path (some legacy slugs are full URLs — fall back to id). */
 function villaCalendarPath(property: PropertyListItem): string {
@@ -39,39 +47,99 @@ interface TimelineGridProps {
   weeklyPrices?: WeeklyPricesProperty[];
 }
 
-/** The price strip beneath a villa's bands — one cell per changeover week,
- * aligned to the same day columns the bands use. */
+/** A changeover week is unsellable if it overlaps any band on the villa.
+ * Half-open: a band ending on the week's changeover day (checkout) frees it.
+ * A booking outranks a hold when both touch the same week. */
+function weekBlock(week: WeeklyPrice, bands: TimelineBand[]): "booked" | "held" | null {
+  let held = false;
+  for (const band of bands) {
+    const { date_from, date_to } = bandDates(band);
+    if (date_from < week.week_end && date_to > week.week_start) {
+      if (band.kind === "booking") return "booked";
+      held = true;
+    }
+  }
+  return held ? "held" : null;
+}
+
+/** The "from £X/wk" headline: the cheapest priced week, whole-number formatted.
+ * Null when no week carries a firm/guide price (all POA/incomplete). */
+function fromPriceSummary(entry: WeeklyPricesProperty): string | null {
+  let best: { amount: number; price: string; currency: string | null } | null = null;
+  for (const week of entry.weeks) {
+    if (week.price == null) continue;
+    const amount = Number(week.price);
+    if (!Number.isFinite(amount)) continue;
+    if (best == null || amount < best.amount) {
+      best = { amount, price: week.price, currency: week.currency_code };
+    }
+  }
+  return best ? formatMoneyWhole(best.price, best.currency) : null;
+}
+
+/** The price strip beneath a villa's bands — one boxed cell per changeover week,
+ * aligned to the same day columns the bands use. Each cell shows its changeover
+ * date plus the week's guide price, POA, or (greyed) booked/held state, so a
+ * flat-rate villa's cells still read as distinct weeks rather than a repeated
+ * number. The exact figure is surfaced on hover. */
 function PriceStrip({
   entry,
+  bands,
   windowStart,
   dayCount,
 }: {
   entry: WeeklyPricesProperty;
+  bands: TimelineBand[];
   windowStart: Date;
   dayCount: number;
 }) {
   const { t } = useTranslation("availability");
   return (
-    <div className="border-border/60 relative border-t" style={{ height: PRICE_STRIP_HEIGHT }}>
-      {entry.weeks.map((week) => {
+    <div
+      className="border-border/60 bg-muted/20 relative border-t"
+      style={{ height: PRICE_STRIP_HEIGHT }}
+    >
+      {entry.weeks.map((week, index) => {
         const geometry = bandGeometry(week.week_start, week.week_end, windowStart, dayCount);
         if (!geometry) return null;
-        const text = week.is_poa
-          ? t("price.poa")
-          : week.price
-            ? formatMoney(week.price, week.currency_code)
-            : t("price.none");
+        const blocked = weekBlock(week, bands);
+        const exact = week.price ? formatMoney(week.price, week.currency_code) : null;
+        // Availability wins (a blocked week isn't sellable at any price), then
+        // POA, then the figure — guide-marked and muted when projected.
+        let label: string;
+        let muted = false;
+        let title: string | undefined;
+        if (blocked) {
+          label = t(blocked === "booked" ? "price.week_booked" : "price.week_held");
+          muted = true;
+          title = exact ?? undefined;
+        } else if (week.is_poa) {
+          label = t("price.poa");
+          muted = true;
+        } else if (!week.price) {
+          label = t("price.none");
+          muted = true;
+        } else {
+          const compact = formatMoneyCompact(week.price, week.currency_code);
+          label = week.is_projected ? t("price.guide_value", { value: compact }) : compact;
+          muted = week.is_projected;
+          title = week.is_projected ? `${t("price.guide_title")} · ${exact}` : (exact ?? undefined);
+        }
         return (
           <div
             key={week.week_start}
             className={cn(
-              "absolute inset-y-0 flex items-center justify-center truncate text-[11px] tabular-nums",
-              week.is_projected ? "text-muted-foreground" : "text-foreground",
+              "border-border/40 absolute inset-y-0 flex flex-col items-center justify-center gap-0.5 truncate border-l px-1 tabular-nums",
+              index % 2 === 1 && "bg-muted/40",
+              muted ? "text-muted-foreground" : "text-foreground",
             )}
             style={{ left: `${geometry.leftPct}%`, width: `${geometry.widthPct}%` }}
-            title={week.is_projected ? t("price.guide_title") : undefined}
+            title={title}
           >
-            {week.is_projected && week.price ? t("price.guide_value", { value: text }) : text}
+            <span className="text-muted-foreground/80 text-[9px] leading-none">
+              {fmtShort(week.week_start)}
+            </span>
+            <span className={cn("text-[11px] leading-none", blocked && "italic")}>{label}</span>
           </div>
         );
       })}
@@ -244,13 +312,16 @@ export function TimelineGrid({
             priceEntry?.changeover_day && priceEntry.weeks[0]
               ? format(parseISO(priceEntry.weeks[0].week_start), "EEE", { locale: activeLocale() })
               : null;
+          // Headline guide price shown beside the name, so the per-week strip
+          // below carries detail rather than the same number repeated.
+          const fromSummary = priceEntry ? fromPriceSummary(priceEntry) : null;
           return (
             <div
               key={property.id}
               className="border-border/60 grid border-b last:border-b-0"
               style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}
             >
-              <div className="bg-card sticky left-0 z-10 flex items-center gap-1 px-3 py-1.5">
+              <div className="bg-card sticky left-0 z-10 flex flex-col justify-start gap-0.5 px-3 py-1.5">
                 <Link
                   to={villaCalendarPath(property)}
                   className="truncate text-sm font-medium hover:underline"
@@ -258,8 +329,17 @@ export function TimelineGrid({
                   {property.display_name || property.name}
                 </Link>
                 {changeoverLabel ? (
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {t("price.changeover_label", { day: changeoverLabel })}
+                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                    <Repeat className="size-3 shrink-0" aria-label={t("price.changeover_aria")} />
+                    <span className="shrink-0">{changeoverLabel}</span>
+                    {fromSummary ? (
+                      <>
+                        <span aria-hidden className="bg-border h-3 w-px shrink-0" />
+                        <span className="truncate">
+                          {t("price.from_per_week", { value: fromSummary })}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 ) : null}
               </div>
@@ -281,7 +361,12 @@ export function TimelineGrid({
                   />
                 </div>
                 {priceEntry && priceEntry.weeks.length > 0 ? (
-                  <PriceStrip entry={priceEntry} windowStart={windowStart} dayCount={days.length} />
+                  <PriceStrip
+                    entry={priceEntry}
+                    bands={bands}
+                    windowStart={windowStart}
+                    dayCount={days.length}
+                  />
                 ) : null}
               </div>
             </div>

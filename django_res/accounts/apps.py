@@ -26,6 +26,7 @@ class AccountsConfig(AppConfig):
                 "marketing_consent",
                 "notes",
                 "status",
+                "kind",
             ],
         )
         # User auth/role/2FA changes — record what shifted, never the

@@ -46,6 +46,8 @@ def test_creating_a_guest_mirrors_a_person_with_channels() -> None:
     assert person.status == "active"
     assert person.preferred_method == "email"
     assert person.user_id is None
+    # GAP-045 D2: a Guest mirror is always a CUSTOMER for the /contacts directory.
+    assert person.kind == "customer"
 
     email = PersonEmail.objects.get(contact=person)
     assert email.email == guest.email

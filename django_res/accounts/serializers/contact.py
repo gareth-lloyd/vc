@@ -63,6 +63,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "address_line_2",
             "notes",
             "status",
+            "kind",
             "anonymized_at",
             "user",
             "emails",
@@ -150,6 +151,10 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         # ignore any inline lists on update so the edit flow stays unchanged.
         validated_data.pop("emails", None)
         validated_data.pop("phones", None)
+        # GAP-045 D2: `kind` is create-only — a PATCH must not reclassify a
+        # customer/contact (and on a mirror would be silently reverted by the
+        # next Guest sync). Settable on POST, ignored on PATCH.
+        validated_data.pop("kind", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()

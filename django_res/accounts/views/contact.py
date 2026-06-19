@@ -51,19 +51,21 @@ class ContactFilterSet(FilterSet):
         fields = {
             "status": ["exact"],
             "preferred_method": ["exact"],
+            # GAP-045 D2: filter the directory to customers vs business contacts.
+            # No `?kind=` → all (fork 3). The owner/agent assignment picker passes
+            # `kind=contact` so it never offers customer mirrors.
+            "kind": ["exact"],
         }
 
 
 class ContactViewSet(viewsets.ModelViewSet[Person]):
     """`/contacts` — owner/agent/manager records."""
 
-    # GAP-045 Unit 3b: exclude Persons back-filled from `reservations.Guest`
-    # (`legacy_id` namespaced `guest-`) so the data backfill doesn't leak travel
-    # guests into the owner/agent directory. Unit 3c reworks `/contacts` into a
-    # proper filtered view and revisits this.
-    queryset = Person.objects.exclude(legacy_id__startswith=GUEST_LEGACY_PREFIX).prefetch_related(
-        "emails", "phones"
-    )
+    # GAP-045 D2: `/contacts` is now a kind-aware directory of ALL Persons —
+    # customers (the former Guest mirrors) included. Filter with `?kind=customer`
+    # / `?kind=contact`; no param lists both (fork 3). The merge/anonymize verbs
+    # below still exclude mirrors (`_real_contacts`) — see that comment.
+    queryset = Person.objects.prefetch_related("emails", "phones")
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from accounts.enums import EmailLabel, PersonPreferredMethod, PersonStatus, PhoneLabel
+from accounts.enums import EmailLabel, PersonKind, PersonPreferredMethod, PersonStatus, PhoneLabel
 from accounts.models import GUEST_LEGACY_PREFIX, Person, PersonEmail, PersonPhone
 from reservations.enums import GuestStatus
 
@@ -101,6 +101,9 @@ def sync_person_from_guest(guest: Guest) -> Person:
             "status": _STATUS_MAP[guest.status],
             "preferred_method": guest.contact_method or PersonPreferredMethod.EMAIL.value,
             "anonymized_at": guest.anonymized_at,
+            # GAP-045 D2: a Guest mirror is always a CUSTOMER (the /contacts
+            # directory filters on this; defaults CONTACT for owner/agent rows).
+            "kind": PersonKind.CUSTOMER.value,
         },
     )
     _reconcile_email(person, guest.email)

@@ -49,6 +49,24 @@ describe("ContactPicker", () => {
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
   });
 
+  it("filters the search to business contacts (kind=contact), never customers", async () => {
+    // GAP-045 D2: /contacts now includes customer mirrors; the assignment picker
+    // must scope to kind=contact so a customer can't be assigned as an owner/agent.
+    let capturedKind: string | null = null;
+    server.use(
+      http.get("/api/v1/contacts", ({ request }) => {
+        capturedKind = new URL(request.url).searchParams.get("kind");
+        return HttpResponse.json(drfPage([alice]));
+      }),
+    );
+
+    renderWithProviders(<Wrapper />);
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.type(screen.getByLabelText(/search contacts/i), "ali");
+    await screen.findByText("Alice Owner");
+    expect(capturedKind).toBe("contact");
+  });
+
   it("selects a contact and closes the popover", async () => {
     server.use(http.get("/api/v1/contacts", () => HttpResponse.json(drfPage([alice, bob]))));
 

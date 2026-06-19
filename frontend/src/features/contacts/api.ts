@@ -49,7 +49,10 @@ export async function fetchContactProperties(
 }
 
 export async function searchContacts(query: string): Promise<Paginated<Contact>> {
-  const data = await apiGet<unknown>("/contacts", { query: { q: query } });
+  // GAP-045 D2: `/contacts` now includes customer Persons. This picker assigns a
+  // business contact to a property (owner/manager/agent), so it must only offer
+  // `kind=contact` records — never a customer mirror.
+  const data = await apiGet<unknown>("/contacts", { query: { q: query, kind: "contact" } });
   return paginated(contactSchema).parse(data);
 }
 

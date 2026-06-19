@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import PersonStatus
+from accounts.enums import PersonKind, PersonStatus
 from accounts.models import Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 
@@ -240,14 +240,14 @@ def test_list_contacts(api_client: APIClient, staff: User, contact: Person) -> N
 
 
 @pytest.mark.django_db
-def test_list_contacts_excludes_guest_backfilled_persons(
+def test_list_contacts_includes_customer_persons(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:
-    # GAP-045 Unit 3b: Persons back-filled from reservations.Guest carry a
-    # `guest-` legacy_id and must not leak into the owner/agent directory.
+    # GAP-045 D2: `/contacts` is now a kind-aware directory of ALL Persons —
+    # customers (the former excluded Guest mirrors) appear too.
     api_client.force_login(staff)
-    guest_person = Person.objects.create(
-        first_name="Tom", last_name="Traveller", legacy_id="guest-42"
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="guest-42", kind=PersonKind.CUSTOMER
     )
 
     response = api_client.get("/api/v1/contacts")
@@ -255,7 +255,95 @@ def test_list_contacts_excludes_guest_backfilled_persons(
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()["results"]}
     assert contact.pk in ids
-    assert guest_person.pk not in ids
+    assert customer.pk in ids
+
+
+@pytest.mark.django_db
+def test_retrieve_customer_person_returns_200(api_client: APIClient, staff: User) -> None:
+    # GAP-045 D2: a customer Person (was a `guest-` mirror) is now retrievable —
+    # previously the exclusion made it 404.
+    api_client.force_login(staff)
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="guest-43", kind=PersonKind.CUSTOMER
+    )
+
+    response = api_client.get(f"/api/v1/contacts/{customer.pk}")
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == PersonKind.CUSTOMER.value
+
+
+@pytest.mark.django_db
+def test_filter_contacts_by_kind(api_client: APIClient, staff: User, contact: Person) -> None:
+    # `contact` defaults to CONTACT; add a CUSTOMER. `?kind=` narrows; no param = all.
+    api_client.force_login(staff)
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", kind=PersonKind.CUSTOMER
+    )
+
+    both = {row["id"] for row in api_client.get("/api/v1/contacts").json()["results"]}
+    assert {contact.pk, customer.pk} <= both
+
+    customers = api_client.get("/api/v1/contacts?kind=customer").json()["results"]
+    assert {row["id"] for row in customers} == {customer.pk}
+
+    contacts = api_client.get("/api/v1/contacts?kind=contact").json()["results"]
+    assert customer.pk not in {row["id"] for row in contacts}
+    assert contact.pk in {row["id"] for row in contacts}
+
+
+@pytest.mark.django_db
+def test_create_customer_contact_sets_kind(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "New",
+            "last_name": "Customer",
+            "kind": PersonKind.CUSTOMER.value,
+            "emails": [{"email": "new@example.com", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    person = Person.objects.get(pk=response.json()["id"])
+    assert person.kind == PersonKind.CUSTOMER.value
+
+
+@pytest.mark.django_db
+def test_create_contact_defaults_kind_contact(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "New",
+            "last_name": "Owner",
+            "emails": [{"email": "owner@example.com", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert Person.objects.get(pk=response.json()["id"]).kind == PersonKind.CONTACT.value
+
+
+@pytest.mark.django_db
+def test_patch_cannot_change_kind(api_client: APIClient, staff: User, contact: Person) -> None:
+    # `kind` is create-only: a PATCH must not reclassify a contact.
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"kind": PersonKind.CUSTOMER.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    assert contact.kind == PersonKind.CONTACT.value
 
 
 @pytest.mark.django_db

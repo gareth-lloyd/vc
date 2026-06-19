@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from accounts.enums import (
     EmailLabel,
+    PersonKind,
     PersonPreferredMethod,
     PersonStatus,
     PhoneLabel,
@@ -57,6 +58,14 @@ class Person(AuditedModel):
         max_length=16,
         choices=PersonStatus.choices,
         default=PersonStatus.ACTIVE,
+    )
+    # GAP-045 D2: directory classification (CUSTOMER vs business CONTACT). Set to
+    # CUSTOMER by the Guest→Person sync + customer-create path; defaults CONTACT
+    # for owner/agent records. A `/contacts` filter hint, not access control.
+    kind = models.CharField(
+        max_length=16,
+        choices=PersonKind.choices,
+        default=PersonKind.CONTACT,
     )
     anonymized_at = models.DateTimeField(null=True, blank=True)
     user = models.OneToOneField(

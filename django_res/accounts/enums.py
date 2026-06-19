@@ -16,6 +16,16 @@ class PersonStatus(models.TextChoices):
     ANONYMIZED = "anonymized", "Anonymized"
 
 
+class PersonKind(models.TextChoices):
+    """Directory classification: a travelling CUSTOMER (was `reservations.Guest`)
+    vs a business CONTACT (owner / manager / agent). A filter hint for the
+    `/contacts` directory, not access control — customer-history reads and agent
+    relations work regardless. GAP-045 D2."""
+
+    CUSTOMER = "customer", "Customer"
+    CONTACT = "contact", "Contact"
+
+
 class PersonPreferredMethod(models.TextChoices):
     EMAIL = "email", "Email"
     PHONE = "phone", "Phone"

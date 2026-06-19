@@ -2,6 +2,7 @@ import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 import { quotationDetailSchema } from "@/features/quotations/schemas";
+import { LEAD_STATUSES, type LeadStatus } from "@/styles/tokens";
 
 export const enquiryStatusSchema = z.enum([
   "new",
@@ -47,10 +48,31 @@ export type EnquiryRequestType = z.infer<typeof enquiryRequestTypeSchema>;
 export const contactMethodSchema = z.enum(["email", "phone", "sms"]);
 export type ContactMethod = z.infer<typeof contactMethodSchema>;
 
+// Lead temperature — operator-set, orthogonal to the workflow `status`. Reuses
+// the single source of truth in `styles/tokens` (which also owns the badge
+// colour map) so the values can't drift between the schema and the styling.
+export const leadStatusSchema = z.enum(LEAD_STATUSES);
+
+// Structured reason a `dead` enquiry was lost. The API returns `""` for any
+// non-dead enquiry, so the field below accepts the empty string too.
+export const lostReasonSchema = z.enum([
+  "found_alternative",
+  "availability",
+  "different_destination",
+  "no_group_consensus",
+  "unknown",
+]);
+export type LostReason = z.infer<typeof lostReasonSchema>;
+
 export const enquiryListItemSchema = z.object({
   id: z.number(),
   reference: z.string(),
   status: enquiryStatusSchema,
+  // Operator-set lead temperature (default `warm` server-side) + structured
+  // lost-reason (empty unless the enquiry is dead). Both read-only here; written
+  // via the :set-lead-status / :close actions respectively.
+  lead_status: leadStatusSchema.optional().default("warm"),
+  lost_reason: lostReasonSchema.or(z.literal("")).optional().default(""),
   guest: z.number().nullable().optional(),
   guest_name: z.string().nullable().optional(),
   // Read-only contact details sourced from the linked Guest — the
@@ -94,6 +116,10 @@ export const enquiryDetailSchema = enquiryListItemSchema.extend({
   // The full quote-stack the merged workspace renders inline. The backend
   // already excludes `booking-` synthetic rows (see `Quotation.objects.real()`).
   quotations: z.array(quotationDetailSchema).optional().default([]),
+  // GAP-038 conversion metric: how many real quotes it took to win this enquiry
+  // (count up to & including the accepted one). Null unless converted with an
+  // accepted real quote — detail-only.
+  quotes_to_convert: z.number().int().nullable().optional().default(null),
 });
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>;
 
@@ -116,6 +142,7 @@ export const enquiryEventKindSchema = z.enum([
   "follow_up",
   "converted",
   "lost",
+  "lead_status_changed",
   "reopened",
   "note_added",
 ]);
@@ -236,6 +263,14 @@ export function enquirySourceLabel(source: EnquirySource): string {
   return i18n.t(`enquiries:labels.source.${source}`);
 }
 
+export function leadStatusLabel(value: LeadStatus): string {
+  return i18n.t(`enquiries:labels.lead_status.${value}`);
+}
+
+export function lostReasonLabel(value: LostReason): string {
+  return i18n.t(`enquiries:labels.lost_reason.${value}`);
+}
+
 export function enquiryNoteKindLabel(kind: EnquiryNoteKind): string {
   return i18n.t(`enquiries:labels.note_kind.${kind}`);
 }
@@ -268,3 +303,9 @@ export const enquiryRequestTypeOptions = (): Array<{
 
 export const contactMethodOptions = (): Array<{ value: ContactMethod; label: string }> =>
   contactMethodSchema.options.map((value) => ({ value, label: contactMethodLabel(value) }));
+
+export const leadStatusOptions = (): Array<{ value: LeadStatus; label: string }> =>
+  leadStatusSchema.options.map((value) => ({ value, label: leadStatusLabel(value) }));
+
+export const lostReasonOptions = (): Array<{ value: LostReason; label: string }> =>
+  lostReasonSchema.options.map((value) => ({ value, label: lostReasonLabel(value) }));

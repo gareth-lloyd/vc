@@ -13,6 +13,19 @@
       "dead": "Dead",
       "converted": "Converted"
     },
+    "lead_status": {
+      "hot": "Hot",
+      "warm": "Warm",
+      "cold": "Cold",
+      "dead": "Dead"
+    },
+    "lost_reason": {
+      "found_alternative": "Found alternative",
+      "availability": "Availability",
+      "different_destination": "Different destination",
+      "no_group_consensus": "No group consensus",
+      "unknown": "Unknown"
+    },
     "source": {
       "main_website": "Main website",
       "agent_portal": "Agent portal",

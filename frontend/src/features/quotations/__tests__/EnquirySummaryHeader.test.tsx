@@ -33,6 +33,9 @@ function enquiry(overrides: Partial<EnquiryDetail> = {}): EnquiryDetail {
     min_bedrooms: null,
     referral_code: "",
     inbound_message: "",
+    lead_status: "warm",
+    lost_reason: "",
+    quotes_to_convert: null,
     quotations: [],
     ...overrides,
   };

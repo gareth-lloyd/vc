@@ -13,6 +13,19 @@
       "dead": "Άκυρο",
       "converted": "Μετατράπηκε"
     },
+    "lead_status": {
+      "hot": "Θερμό",
+      "warm": "Χλιαρό",
+      "cold": "Ψυχρό",
+      "dead": "Άκυρο"
+    },
+    "lost_reason": {
+      "found_alternative": "Βρήκε εναλλακτική",
+      "availability": "Διαθεσιμότητα",
+      "different_destination": "Διαφορετικός προορισμός",
+      "no_group_consensus": "Χωρίς συναίνεση ομάδας",
+      "unknown": "Άγνωστο"
+    },
     "source": {
       "main_website": "Κύριος ιστότοπος",
       "agent_portal": "Πύλη πράκτορα",

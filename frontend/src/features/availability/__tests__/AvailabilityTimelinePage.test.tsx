@@ -240,7 +240,7 @@ describe("AvailabilityTimelinePage", () => {
     expect(await screen.findByRole("button", { name: /VC1001/ })).toBeInTheDocument();
   });
 
-  it("renders the weekly price strip with changeover, guide marker, and POA", async () => {
+  it("wires the weekly-prices query into the strip: from-summary, guide marker, changeover", async () => {
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(villas)),
       http.get("/api/v1/availability", () => HttpResponse.json(bands)),
@@ -292,12 +292,13 @@ describe("AvailabilityTimelinePage", () => {
     );
     renderPage(`/availability?country=es&start=${START}`);
 
-    // Firm price, projected guide (prefixed ~), and POA all render…
-    expect(await screen.findByText("£1,400.00")).toBeInTheDocument();
-    expect(screen.getByText("~£1,500.00")).toBeInTheDocument();
-    expect(screen.getByText("POA")).toBeInTheDocument();
-    // …with the changeover weekday shown once per villa row.
-    expect(screen.getAllByText("(Sat)")).toHaveLength(2);
+    // The cheapest priced week becomes the "from" headline beside the villa…
+    expect(await screen.findByText("from £1,400/wk")).toBeInTheDocument();
+    // …the projected week renders as a compact guide figure (prefixed ~)…
+    expect(screen.getByText("~£1.5K")).toBeInTheDocument();
+    // …and the changeover weekday is marked once per fixed-changeover villa.
+    // (Per-cell booked/held/POA rendering is covered in TimelineGrid.test.tsx.)
+    expect(screen.getAllByText("Sat")).toHaveLength(2);
   });
 
   it("stacks overlapping bookings into separate sub-lanes, both clickable", async () => {

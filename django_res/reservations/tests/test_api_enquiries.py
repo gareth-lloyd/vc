@@ -242,6 +242,43 @@ def test_list_enquiries__filter_by_lost_reason(
 
 
 @pytest.mark.django_db
+def test_list_enquiries__filter_assigned_to_id_and_unassigned(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The salesperson filter accepts a numeric user id and the `unassigned`
+    sentinel (NumberFilter can't express IS NULL, which the dashboard's
+    "— Unassigned —" option needs)."""
+    unowned = Enquiry.objects.create(guest=guest, email="unowned@x.com")
+    owned = Enquiry.objects.create(guest=guest, email="owned@x.com", assigned_to=staff)
+    api_client.force_login(staff)
+
+    by_id = api_client.get("/api/v1/enquiries", {"assigned_to": staff.pk})
+    assert {r["id"] for r in by_id.data["results"]} == {owned.pk}
+
+    unassigned = api_client.get("/api/v1/enquiries", {"assigned_to": "unassigned"})
+    ids = {r["id"] for r in unassigned.data["results"]}
+    assert unowned.pk in ids
+    assert owned.pk not in ids
+
+
+@pytest.mark.django_db
+def test_list_enquiries__respects_page_size(
+    api_client: APIClient, staff: User, guest: Guest
+) -> None:
+    """The dashboard page-size selector relies on the enquiry list honouring a
+    `page_size` query param (ConfigurablePageSizePagination)."""
+    for i in range(3):
+        Enquiry.objects.create(guest=guest, email=f"e{i}@x.com")
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries", {"page_size": 2})
+
+    assert response.status_code == 200
+    assert response.data["count"] == 3
+    assert len(response.data["results"]) == 2
+
+
+@pytest.mark.django_db
 def test_create_enquiry(api_client: APIClient, staff: User, guest: Guest) -> None:
     api_client.force_login(staff)
     response = api_client.post(

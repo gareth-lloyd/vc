@@ -70,6 +70,15 @@
   "kanban": {
     "empty_column": "No enquiries"
   },
+  "filters": {
+    "lead_status_aria": "Filter by lead status",
+    "any_lead_status": "Any lead status",
+    "sales_person_aria": "Filter by sales person",
+    "any_sales_person": "Any sales person",
+    "unassigned": "— Unassigned —",
+    "page_size_aria": "Rows per page",
+    "page_size_option": "{{count}} / page"
+  },
   "card": {
     "no_property": "No property",
     "property_with_id": "Property #{{id}}",

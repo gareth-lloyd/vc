@@ -27,8 +27,13 @@ function toQuery(filters: EnquiryFilters): QueryParams {
     q: filters.q || undefined,
     status: filters.status || undefined,
     site_source: filters.site_source || undefined,
+    lead_status: filters.lead_status || undefined,
+    assigned_to: filters.assigned_to || undefined,
+    created_after: filters.created_after || undefined,
+    created_before: filters.created_before || undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
+    page_size: filters.page_size || undefined,
   };
 }
 
@@ -45,6 +50,7 @@ export function enquiryStatusCountsQuery(filters: EnquiryFilters): QueryParams {
   const query = toQuery(filters);
   delete query.status;
   delete query.page;
+  delete query.page_size;
   delete query.ordering;
   return query;
 }

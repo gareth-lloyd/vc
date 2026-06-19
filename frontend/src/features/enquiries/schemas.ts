@@ -246,9 +246,19 @@ export interface EnquiryFilters {
   q?: string;
   status?: EnquiryStatus;
   site_source?: EnquirySource;
+  lead_status?: LeadStatus;
+  // Either a numeric user id (as a string) or the `unassigned` sentinel — the
+  // backend filter resolves both (CharFilter method, see EnquiryFilter).
+  assigned_to?: string;
+  created_after?: string;
+  created_before?: string;
   ordering?: string;
   page?: number;
+  page_size?: number;
 }
+
+/** The salesperson filter's "no owner" sentinel (matches the backend filter). */
+export const UNASSIGNED_FILTER_VALUE = "unassigned";
 
 // A "final" enquiry (dead or converted) is closed to new quotes: the workspace
 // suppresses the inline builder and the close action is disabled for these.
@@ -286,6 +296,11 @@ export function contactMethodLabel(value: ContactMethod): string {
 
 export const enquiryStatusOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
   enquiryStatusSchema.options.map((value) => ({ value, label: enquiryStatusLabel(value) }));
+
+// The dashboard stage tabs cover the live funnel only — the terminal stages
+// (dead/converted) drop out of the tab set (still filterable by deep-link/URL).
+export const enquiryStageTabOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
+  enquiryStatusOptions().filter(({ value }) => !isFinalStatus(value));
 
 export const enquirySourceOptions = (): Array<{ value: EnquirySource; label: string }> =>
   enquirySourceSchema.options.map((value) => ({ value, label: enquirySourceLabel(value) }));

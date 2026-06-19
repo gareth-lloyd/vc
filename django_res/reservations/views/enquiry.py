@@ -13,6 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from accounts.models import User
+from core.api.pagination import ConfigurablePageSizePagination
 from core.api.permissions import IsReservationsWriter
 from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.filters import EnquiryFilter
@@ -66,6 +67,7 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
 
     queryset = Enquiry.objects.select_related("guest", "property", "region", "agent", "assigned_to")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
+    pagination_class = ConfigurablePageSizePagination
     filterset_class = EnquiryFilter
     ordering_fields = ["created_at", "updated_at", "status"]
     ordering = ["-created_at"]

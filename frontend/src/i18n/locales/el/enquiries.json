@@ -70,6 +70,15 @@
   "kanban": {
     "empty_column": "Χωρίς αιτήματα"
   },
+  "filters": {
+    "lead_status_aria": "Φιλτράρισμα κατά κατάσταση lead",
+    "any_lead_status": "Οποιαδήποτε κατάσταση lead",
+    "sales_person_aria": "Φιλτράρισμα κατά πωλητή",
+    "any_sales_person": "Οποιοσδήποτε πωλητής",
+    "unassigned": "— Μη ανατεθειμένο —",
+    "page_size_aria": "Γραμμές ανά σελίδα",
+    "page_size_option": "{{count}} / σελίδα"
+  },
   "card": {
     "no_property": "Χωρίς ακίνητο",
     "property_with_id": "Ακίνητο #{{id}}",

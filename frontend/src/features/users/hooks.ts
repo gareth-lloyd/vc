@@ -12,10 +12,11 @@ import {
 } from "./api";
 import type { UserCreateInput, UserFilters, UserUpdateInput } from "./schemas";
 
-export function useUsers(filters: UserFilters) {
+export function useUsers(filters: UserFilters, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.users.list(filters),
     queryFn: () => fetchUsers(filters),
+    enabled: options?.enabled,
   });
 }
 

@@ -143,6 +143,27 @@ describe("EnquiriesListPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("drops page/page_size from the kanban board query so the board isn't windowed", async () => {
+    // The list view's pagination controls write `page`/`page_size` to the URL.
+    // The Kanban isn't paginated, so a switch back to the board must ignore them
+    // or the board would show only one truncated page across all columns.
+    let seenPage: string | null = "unset";
+    let seenPageSize: string | null = "unset";
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        const url = new URL(request.url);
+        seenPage = url.searchParams.get("page");
+        seenPageSize = url.searchParams.get("page_size");
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=kanban&page=3&page_size=25");
+
+    await screen.findByTestId("kanban-column-new");
+    await waitFor(() => expect(seenPage).toBeNull());
+    expect(seenPageSize).toBeNull();
+  });
+
   it("kanban toggle remains reachable when a status filter is active", async () => {
     // Landing from the dashboard "New enquiries" KPI puts ?status=new in the
     // URL, which flips the implicit default to "list". The user must still be
@@ -255,5 +276,69 @@ describe("EnquiriesListPage", () => {
 
     await screen.findByText("E-AAA-001");
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
+
+  it("excludes Dead and Converted from the stage tabs", async () => {
+    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    expect(screen.getByRole("tab", { name: /new/i })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /dead/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /converted/i })).not.toBeInTheDocument();
+  });
+
+  it("forwards the lead_status filter to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("lead_status"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by lead status/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Hot" }));
+
+    await waitFor(() => expect(seen).toContain("hot"));
+  });
+
+  it("forwards the salesperson 'unassigned' filter to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/users", () =>
+        HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
+      ),
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("assigned_to"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by sales person/i }));
+    await userEvent.click(await screen.findByRole("option", { name: /unassigned/i }));
+
+    await waitFor(() => expect(seen).toContain("unassigned"));
+  });
+
+  it("forwards the page_size selection to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("page_size"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /rows per page/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "100 / page" }));
+
+    await waitFor(() => expect(seen).toContain("100"));
   });
 });

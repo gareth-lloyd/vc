@@ -220,9 +220,7 @@ class Person(AuditedModel):
             if value_field is not None:
                 count = self._merge_channel(target, related_model, value_field)
             else:
-                count = related_model._default_manager.filter(**{field_name: self}).update(
-                    **{field_name: target}
-                )
+                count = self._merge_relation(target, related_model, field_name)
             if count:
                 rewrites[f"{related_model._meta.label}.{field_name}"] = count
         dead_pk = self.pk
@@ -261,6 +259,75 @@ class Person(AuditedModel):
             row.save(update_fields=["contact", "is_primary", "updated_at"])
             moved += 1
         return moved
+
+    def _merge_relation(self, target: Person, model: type[models.Model], field_name: str) -> int:
+        """Move ``self``'s rows of ``model`` (linked via ``field_name``) onto
+        ``target``, dropping any source row that would collide with an existing
+        target row under one of ``model``'s FK-involving unique constraints.
+
+        Most relations have no such constraint and short-circuit to a bare bulk
+        ``.update()`` — identical to the pre-GAP-045 behaviour. Only models that
+        scope a unique constraint by this FK (``BookingGuest`` on
+        ``(booking, person, role)``, ``GuestPreference`` on
+        ``(person, preference_type, quotation)``) need the dedupe: a blind update
+        would either raise ``IntegrityError`` or — for the nullable ``quotation``
+        leg, whose NULLs the DB constraint treats as distinct — silently
+        duplicate. The Python ``None``-equality membership test below is stricter
+        than the constraint and so dedupes those too. Returns the number of rows
+        actually moved (dropped duplicates excluded). Model-agnostic — no
+        reservations import (``accounts`` is the bottom of the import spine).
+        """
+        # total_unique_constraints excludes conditional/expression constraints
+        # (so the channel partials and one_lead/one_payer partials never reach
+        # here) and covers only Meta UniqueConstraints — not unique_together or
+        # Field(unique=True), neither of which any Person-related model uses.
+        constraints = [c for c in model._meta.total_unique_constraints if field_name in c.fields]
+        if not constraints:
+            return model._default_manager.filter(**{field_name: self}).update(
+                **{field_name: target}
+            )
+
+        # MUST be DB-loaded: getattr on an in-memory row would return enum
+        # members for TextChoices fields (e.g. role), which would not match the
+        # plain scalars values_list yields below.
+        source_rows = list(model._default_manager.filter(**{field_name: self}))
+        if not source_rows:
+            return 0
+
+        colliding: set[int] = set()
+        for constraint in constraints:
+            others = [f for f in constraint.fields if f != field_name]
+            # Constraint fields are always concrete fields, so .attname holds the
+            # FK ``_id`` column matching the values_list pks below (ForeignObjectRel
+            # has no attname — hence the ignore). Resolved once per constraint.
+            other_attnames = [
+                model._meta.get_field(f).attname  # type: ignore[union-attr]
+                for f in others
+            ]
+            # values_list yields the FK pk (None for NULL) per field, so a
+            # NULL-vs-NULL pair matches here even though the DB constraint would
+            # treat them as distinct — this is the dup-NULL fix.
+            existing = set(
+                model._default_manager.filter(**{field_name: target}).values_list(*others)
+            )
+            for row in source_rows:
+                signature = tuple(getattr(row, attname) for attname in other_attnames)
+                if signature in existing:
+                    colliding.add(row.pk)
+
+        # Drop colliding source rows one at a time, not via a bulk
+        # ``queryset.delete()``: a colliding row of a *tracked* model (e.g.
+        # BookingGuest) must leave an audit trail, and bulk deletes fire no
+        # post_delete signal (django_res/CLAUDE.md). Per-instance delete mirrors
+        # ``_merge_channel``. A colliding row is never a LEAD BookingGuest (two
+        # LEADs can't share a booking), so the LEAD pre_delete guard never trips.
+        for row in source_rows:
+            if row.pk in colliding:
+                row.delete()
+        moved_pks = [row.pk for row in source_rows if row.pk not in colliding]
+        if not moved_pks:
+            return 0
+        return model._default_manager.filter(pk__in=moved_pks).update(**{field_name: target})
 
 
 class PersonEmail(TimestampedModel):

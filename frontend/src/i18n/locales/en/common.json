@@ -98,7 +98,8 @@
     "GR": "Greece"
   },
   "filters": {
-    "any_country": "All countries"
+    "any_country": "All countries",
+    "any_region": "All regions"
   },
   "zod": {
     "invalid_type": "Required",

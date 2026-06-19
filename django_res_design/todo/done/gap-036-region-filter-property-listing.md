@@ -1,3 +1,16 @@
+> **✅ RESOLVED (2026-06-19)** — Region `<Select>` added to the property
+> listing filter row (country → region → status). Options are slug-valued
+> (globally unique via the loader's `-{id}` suffix), mirroring
+> `AvailabilityTimelinePage`; the URL `region` param is read into the list
+> query and round-trips through the existing `filter_region` (id-or-slug).
+> New en+el i18n (`list.filter_region_aria`, `common:filters.any_region`,
+> updated `empty_hint`). Reused the existing `filter_region` / `toQuery` /
+> `useRegions` plumbing — FE-only, no backend change. Country-scoping of the
+> region list deferred (no FE code↔id map, and region already implies
+> country). Commit `be5ecde`. Tests (TDD): extended
+> `PropertiesListPage.test.tsx` (renders the region filter + forwards region
+> to the API); a `/regions` MSW stub keeps the prior 7 tests green; vitest.
+
 # GAP-036 — Region filter on the property listing grid
 
 - **Severity:** Gap (FE-only; backend + region API already shipped).

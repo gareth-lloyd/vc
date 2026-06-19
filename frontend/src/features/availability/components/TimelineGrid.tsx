@@ -77,11 +77,11 @@ function fromPriceSummary(entry: WeeklyPricesProperty): string | null {
   return best ? formatMoneyWhole(best.price, best.currency) : null;
 }
 
-/** The price strip beneath a villa's bands — one boxed cell per changeover week,
- * aligned to the same day columns the bands use. Each cell shows its changeover
- * date plus the week's guide price, POA, or (greyed) booked/held state, so a
- * flat-rate villa's cells still read as distinct weeks rather than a repeated
- * number. The exact figure is surfaced on hover. */
+/** The price strip beneath a villa's bands. Each changeover week is marked by a
+ * vertical line in the MIDDLE of its changeover day's column — where the
+ * check-in/out bands meet — with the changeover date plus the week's guide
+ * price, POA, or (greyed) booked/held state left-aligned to its right. The exact
+ * figure is surfaced on hover. */
 function PriceStrip({
   entry,
   bands,
@@ -95,13 +95,16 @@ function PriceStrip({
 }) {
   const { t } = useTranslation("availability");
   return (
-    <div
-      className="border-border/60 bg-muted/20 relative border-t"
-      style={{ height: PRICE_STRIP_HEIGHT }}
-    >
-      {entry.weeks.map((week, index) => {
-        const geometry = bandGeometry(week.week_start, week.week_end, windowStart, dayCount);
-        if (!geometry) return null;
+    <div className="border-border/60 relative border-t" style={{ height: PRICE_STRIP_HEIGHT }}>
+      {entry.weeks.map((week) => {
+        // Anchor to the changeover day's MIDDLE (its day-column centre, where a
+        // check-in/out band edge lands). The cell runs from there to the next
+        // changeover, clamped to the window; its left border is the week marker.
+        const anchor = bandEdges(week.week_start, week.week_start, windowStart, {
+          halfDayOffset: true,
+        }).start;
+        if (anchor < 0 || anchor >= dayCount) return null;
+        const widthPct = ((Math.min(anchor + 7, dayCount) - anchor) / dayCount) * 100;
         const blocked = weekBlock(week, bands);
         const exact = week.price ? formatMoney(week.price, week.currency_code) : null;
         // Availability wins (a blocked week isn't sellable at any price), then
@@ -129,11 +132,10 @@ function PriceStrip({
           <div
             key={week.week_start}
             className={cn(
-              "border-border/40 absolute inset-y-0 flex flex-col items-center justify-center gap-0.5 truncate border-l px-1 tabular-nums",
-              index % 2 === 1 && "bg-muted/40",
+              "border-border absolute inset-y-0 flex flex-col justify-center gap-0.5 truncate border-l pl-1.5 text-left tabular-nums",
               muted ? "text-muted-foreground" : "text-foreground",
             )}
-            style={{ left: `${geometry.leftPct}%`, width: `${geometry.widthPct}%` }}
+            style={{ left: `${(anchor / dayCount) * 100}%`, width: `${widthPct}%` }}
             title={title}
           >
             <span className="text-muted-foreground/80 text-[9px] leading-none">

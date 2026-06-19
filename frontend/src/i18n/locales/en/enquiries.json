@@ -139,7 +139,9 @@
     "build_cta": "Build a quote",
     "build_another_cta": "Build another quote",
     "hide_builder": "Hide builder",
-    "build_disabled_state": "Not available for lost or converted enquiries."
+    "build_disabled_state": "Not available for lost or converted enquiries.",
+    "conversion_count_one": "Converted in {{count}} quote",
+    "conversion_count_other": "Converted in {{count}} quotes"
   },
   "activity": {
     "load_failed_title": "Couldn't load activity",

@@ -59,6 +59,24 @@ const quotedEnquiry = {
   ] satisfies QuotationDetail[],
 };
 
+// A converted enquiry carries the GAP-038 conversion metric: the count of real
+// operator quotes up to & including the accepted one.
+const convertedEnquiry = {
+  ...baseEnquiry,
+  status: "converted" as const,
+  quotes_to_convert: 3,
+  quotations: [
+    {
+      id: 50,
+      reference: "QVC50",
+      status: "accepted",
+      is_unbranded: false,
+      cancel_reason: "",
+      lines: [],
+    },
+  ] satisfies QuotationDetail[],
+};
+
 function makeUser(overrides: Partial<UserMe> = {}): UserMe {
   return {
     id: 1,
@@ -199,6 +217,21 @@ describe("EnquiryDetailLayout", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /build another quote/i }));
     expect(await screen.findByRole("button", { name: /^search$/i })).toBeInTheDocument();
+  });
+
+  it("surfaces the GAP-038 conversion count on a converted enquiry", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(convertedEnquiry)));
+    setup("/enquiries/7");
+    expect(await screen.findByText(/converted in 3 quotes/i)).toBeInTheDocument();
+  });
+
+  it("omits the conversion count when quotes_to_convert is null", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)));
+    setup("/enquiries/7");
+    await screen.findByRole("link", { name: /QVC50/ });
+    expect(screen.queryByText(/converted in/i)).not.toBeInTheDocument();
   });
 
   it("does not fetch the activity timeline until the rail panel is expanded", async () => {

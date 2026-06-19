@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Collapsible } from "@/components/ui/collapsible";
 import { ActionButton } from "@/components/feedback/ActionButton";
 import { formatDate } from "@/lib/format/date";
@@ -167,7 +168,16 @@ function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-foreground text-lg font-semibold">{t("quotes_section.heading")}</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="text-foreground text-lg font-semibold">{t("quotes_section.heading")}</h2>
+        {/* GAP-038 conversion metric — quotes it took to win, shown only once the
+            enquiry has converted (null on every other status). */}
+        {enquiry.quotes_to_convert != null ? (
+          <Badge variant="secondary">
+            {t("quotes_section.conversion_count", { count: enquiry.quotes_to_convert })}
+          </Badge>
+        ) : null}
+      </div>
       <EnquiryQuoteStack quotations={enquiry.quotations} />
       {hasRole ? (
         <div className="space-y-4">

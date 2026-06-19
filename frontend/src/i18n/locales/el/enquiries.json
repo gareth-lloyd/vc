@@ -139,7 +139,9 @@
     "build_cta": "Δημιουργία προσφοράς",
     "build_another_cta": "Δημιουργία νέας προσφοράς",
     "hide_builder": "Απόκρυψη σύνθεσης",
-    "build_disabled_state": "Δεν είναι διαθέσιμο για χαμένα ή μετατραπέντα αιτήματα."
+    "build_disabled_state": "Δεν είναι διαθέσιμο για χαμένα ή μετατραπέντα αιτήματα.",
+    "conversion_count_one": "Μετατροπή με {{count}} προσφορά",
+    "conversion_count_other": "Μετατροπή με {{count}} προσφορές"
   },
   "activity": {
     "load_failed_title": "Δεν ήταν δυνατή η φόρτωση δραστηριότητας",

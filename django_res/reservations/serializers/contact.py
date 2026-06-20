@@ -2,9 +2,9 @@
 customer history reads (`/contacts/{id}/...`).
 
 `GAP-045` Unit 3d-1: these are model-shaped (not customer-identity specific), so
-they were lifted out of `serializers/guest.py` to outlive the Guest retirement.
-`serializers/guest.py` keeps `Guest*`-named aliases until 3d-5 deletes
-`/guests`.
+they were lifted out of the old `serializers/guest.py` to outlive the Guest
+retirement. The `/guests` API and its `Guest*` serializer aliases were deleted
+in D4; the Guest model itself goes in D5.
 """
 
 from __future__ import annotations

@@ -29,13 +29,6 @@ from reservations.serializers.enquiry import (
     EnquiryNoteSerializer,
     EnquiryWriteSerializer,
 )
-from reservations.serializers.guest import (
-    GuestBookingSerializer,
-    GuestEnquirySerializer,
-    GuestMergeSerializer,
-    GuestQuotationSerializer,
-    GuestSerializer,
-)
 from reservations.serializers.quotation import (
     QuotationDetailSerializer,
     QuotationLineSerializer,
@@ -62,11 +55,6 @@ __all__ = [
     "EnquiryListSerializer",
     "EnquiryNoteSerializer",
     "EnquiryWriteSerializer",
-    "GuestBookingSerializer",
-    "GuestEnquirySerializer",
-    "GuestMergeSerializer",
-    "GuestQuotationSerializer",
-    "GuestSerializer",
     "QuotationDetailSerializer",
     "QuotationLineSerializer",
     "QuotationLineWriteSerializer",

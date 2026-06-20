@@ -46,28 +46,10 @@ from reservations.views import (
 # Routers — trailing slash off to match the spec's path shape.
 # ----------------------------------------------------------------------
 _root = SimpleRouter(trailing_slash=False)
-_root.register("guests", views.GuestViewSet, basename="guest")
 _root.register("enquiries", EnquiryViewSet, basename="enquiry")
 _root.register("quotations", QuotationViewSet, basename="quotation")
 _root.register("bookings/archived", BookingArchiveViewSet, basename="booking-archived")
 _root.register("bookings", BookingViewSet, basename="booking")
-
-
-# ----------------------------------------------------------------------
-# Guest action endpoints (owned by the guests subagent — kept as-is).
-# ----------------------------------------------------------------------
-_guest_actions: list[URLPattern | URLResolver] = [
-    path(
-        "guests/<int:pk>:merge",
-        views.GuestMergeView.as_view({"post": "create"}),
-        name="guest-merge",
-    ),
-    path(
-        "guests/<int:pk>:anonymize",
-        views.GuestAnonymizeView.as_view({"post": "create"}),
-        name="guest-anonymize",
-    ),
-]
 
 
 # ----------------------------------------------------------------------
@@ -507,8 +489,7 @@ _owner_block_update_routes: list[URLPattern | URLResolver] = [
 
 urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
-    # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:merge` as the pk.
-    *_guest_actions,
+    # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:duplicate` as the pk.
     *_contact_read_routes,
     *_owner_routes,
     *_owner_block_update_routes,

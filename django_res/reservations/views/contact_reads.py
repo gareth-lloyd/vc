@@ -1,8 +1,9 @@
 """Person-scoped customer history reads.
 
 `GAP-045` Unit 3d-1: `/contacts/{id}/bookings|enquiries|quotations|
-travel-preferences` mirror the `/guests/{id}/...` history reads but key on the
-unified `accounts.Person`. Hosted from `reservations/urls.py` — `accounts` is
+travel-preferences` replace the old `/guests/{id}/...` history reads (deleted in
+D4) but key on the unified `accounts.Person`. Hosted from `reservations/urls.py`
+— `accounts` is
 the bottom of the import spine and cannot serialise reservations rows, so the
 routes live here (a clean downward reservations → accounts edge; precedent:
 `reservations/urls.py` already hosts `comms.views.BookingEmailViewSet`).

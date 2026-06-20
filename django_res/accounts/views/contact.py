@@ -138,7 +138,8 @@ class ContactAnonymizeView(viewsets.ViewSet):
 
     Admin-only — GDPR-class operation. Idempotent (running twice on an
     already-anonymized contact leaves the redacted state intact). Real contacts
-    only — a `guest-` mirror pk 404s (use `/guests/{id}:anonymize`).
+    only — a `guest-` mirror pk 404s (anonymizing a customer mirror desyncs its
+    twin Guest row while Guest exists; D5 widens this verb to mirrors).
     """
 
     permission_classes = [IsStaffRoleAdmin]

@@ -22,11 +22,6 @@ from reservations.views.concierge import BookingConciergeItemViewSet
 from reservations.views.concierge_overview import ConciergeOverviewViewSet
 from reservations.views.contact_reads import ContactCustomerReadViewSet
 from reservations.views.enquiry import EnquiryNoteViewSet, EnquiryViewSet
-from reservations.views.guest import (
-    GuestAnonymizeView,
-    GuestMergeView,
-    GuestViewSet,
-)
 from reservations.views.owner import (
     OwnerBlockViewSet,
     OwnerBookingViewSet,
@@ -59,9 +54,6 @@ __all__ = [
     "ContactCustomerReadViewSet",
     "EnquiryNoteViewSet",
     "EnquiryViewSet",
-    "GuestAnonymizeView",
-    "GuestMergeView",
-    "GuestViewSet",
     "OwnerBlockUpdateViewSet",
     "OwnerBlockViewSet",
     "OwnerBookingViewSet",

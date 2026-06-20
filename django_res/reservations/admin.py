@@ -120,8 +120,6 @@ class BookingGuestAdmin(admin.ModelAdmin):
     list_filter = ("role",)
     search_fields = (
         "booking__reference",
-        "guest__email",
-        "guest__last_name",
         "person__last_name",
         "person__first_name",
         "person__emails__email",

@@ -3,7 +3,7 @@
 Regression for the multi-tenant auth hole: ``User.role`` defaults to
 ``StaffRole.VIEWER`` for *every* user, so before the ``IsStaff`` floor an
 owner — a perfectly ordinary authenticated ``User`` — could read the entire
-staff API (bookings, properties, contacts, payments, guests, …). The staff
+staff API (bookings, properties, contacts, payments, …). The staff
 API conflated "authenticated" with "staff".
 
 The contract this pins:
@@ -41,7 +41,6 @@ STAFF_GET_ENDPOINTS = [
     "/api/v1/enquiries",
     "/api/v1/contacts",
     "/api/v1/payments",
-    "/api/v1/guests",
     "/api/v1/roles",
 ]
 

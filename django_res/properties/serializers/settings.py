@@ -25,6 +25,7 @@ class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
             "min_nights_rental",
             "min_nights_rental_note",
             "prices_entered_as",
+            "calendar_url",
         ]
         read_only_fields = ["property"]
 

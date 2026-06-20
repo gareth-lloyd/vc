@@ -1,3 +1,11 @@
+> **✅ RESOLVED (2026-06-19)** — Problem: What base currency + FX source should
+> reports normalise to? Decided: **EUR base currency; daily FX snapshot** into
+> `pricing.FxRate` `(date, from_currency, to_currency, rate)` via a Celery beat
+> job (real-time API rejected — non-deterministic + runtime dependency). Reports
+> read the snapshot, not live lookups.
+>
+> _Original ticket preserved below for context._
+
 # Q-005 — Currency display normalisation in reports
 
 - **Severity:** Question

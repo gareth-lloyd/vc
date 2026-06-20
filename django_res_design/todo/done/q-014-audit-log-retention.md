@@ -1,3 +1,11 @@
+> **✅ RESOLVED (2026-06-19)** — Problem: Audit-log retention window + exposure?
+> Decided: **keep forever** (no time-based purge — GDPR handled at the subject
+> level by the BUG-012 PII scrub; a finite window can be added later without
+> schema change) and **admin-only** (no operator UI). Unblocks **GAP-021** as
+> an admin-only surface.
+>
+> _Original ticket preserved below for context._
+
 # Q-014 — Audit log retention window
 
 - **Severity:** Question

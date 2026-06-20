@@ -103,7 +103,8 @@
     "online_link": "Online calendar"
   },
   "filters": {
-    "any_country": "All countries"
+    "any_country": "All countries",
+    "any_region": "All regions"
   },
   "zod": {
     "invalid_type": "Required",

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.serializers.auth import UserMeSerializer
 from owners.enums import OwnerMembershipStatus, OwnerOrgStatus
 from owners.models import OwnerMembership, OwnerOrgProperty
-from owners.permissions import IsOwner
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
@@ -21,13 +21,17 @@ if TYPE_CHECKING:
 class OwnerMeView(APIView):
     """Owner counterpart to `/auth/me` + `/auth/permissions`.
 
-    Gated by `IsOwner`, so anonymous callers get 401 and authenticated
-    staff-only users get 403 — the SPA uses that to pick its shell. Returns
-    the caller's orgs (ACTIVE membership of an ACTIVE org), their role in
-    each, and the open per-property visibility grants.
+    The SPA probes this at boot to pick its shell, so it must not signal a
+    routing decision with an error status. Gated by `IsAuthenticated` only:
+    anonymous callers are rejected, but an authenticated non-owner gets a
+    plain `200 {is_owner: false, organisations: []}` (no console 403). An
+    owner gets `is_owner: true` plus their orgs (ACTIVE membership of an
+    ACTIVE org), their role in each, and the open per-property visibility
+    grants. The owner *data* endpoints (`/owner/properties`, …) keep `IsOwner`
+    — this probe leaks nothing, so it can stay readable.
     """
 
-    permission_classes = [IsOwner]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
         user = cast("User", request.user)
@@ -38,6 +42,11 @@ class OwnerMeView(APIView):
                 organisation__status=OwnerOrgStatus.ACTIVE,
             ).select_related("organisation")
         )
+        if not memberships:
+            # Not an owner — identical predicate to owners.permissions.is_owner.
+            return Response(
+                {"user": UserMeSerializer(user).data, "is_owner": False, "organisations": []}
+            )
         org_ids = [m.organisation_id for m in memberships]
 
         grants_by_org: dict[int, list[dict[str, object]]] = {oid: [] for oid in org_ids}

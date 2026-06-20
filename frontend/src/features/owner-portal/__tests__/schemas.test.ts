@@ -136,6 +136,24 @@ describe("ownerMeSchema", () => {
     expect(parsed.is_owner).toBe(true);
     expect(parsed.organisations[0].properties[0].view_full_money).toBe(true);
   });
+
+  it("accepts a non-owner body (is_owner:false, no organisations)", () => {
+    const parsed = ownerMeSchema.parse({
+      user: {
+        id: 7,
+        email: "staff@example.com",
+        first_name: "Stace",
+        last_name: "Staffer",
+        is_active: true,
+        is_staff: true,
+        is_superuser: false,
+      },
+      is_owner: false,
+      organisations: [],
+    });
+    expect(parsed.is_owner).toBe(false);
+    expect(parsed.organisations).toEqual([]);
+  });
 });
 
 describe("ownerCalendarSchema", () => {

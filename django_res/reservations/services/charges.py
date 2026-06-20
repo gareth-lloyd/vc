@@ -74,6 +74,62 @@ def charges_total_for(booking: Booking) -> Decimal:
     return Decimal(total or 0)
 
 
+def _money(amount: Decimal) -> str:
+    """Thousands-grouped, 2dp — mirrors the quotation render seam's `_money`."""
+    return f"{amount:,.2f}"
+
+
+def _booking_base_total(booking: Booking) -> Decimal:
+    """The snapshot total the guest-facing total sizes against.
+
+    Mirrors `PaymentScheduler._booking_total`'s base extraction exactly:
+    prefer `pricing_snapshot["total"]` (`str()`-coerced — JSON may yield a
+    float), else `booking.balance_due`. There is deliberately no `booking.total`
+    field; the snapshot is the locked-in breakdown captured at confirmation.
+    """
+    snapshot = getattr(booking, "pricing_snapshot", None) or {}
+    if isinstance(snapshot, dict) and snapshot.get("total") is not None:
+        return Decimal(str(snapshot["total"]))
+    return Decimal(getattr(booking, "balance_due", Decimal("0")))
+
+
+def booking_charge_breakdown(booking: Booking) -> dict[str, Any]:
+    """Itemise a booking's charge lines for guest-facing comms.
+
+    Decomposes the guest-facing total into the snapshot `base_amount` plus the
+    signed `BookingChargeItem` lines (the legacy `VillaBookingDetail`
+    itemisation), partitioned by sign into positive `charges` and negative
+    `discounts` (a separate "Discounts" block, per the GAP-018 decision). The
+    grand `total` replicates `PaymentScheduler._booking_total` byte-for-byte
+    (flat 2dp quantize) so the email total equals the scheduled total.
+
+    Money fields are pre-formatted strings (`_money`) the template interpolates
+    directly. Lines come out in `pk` order (the model's `Meta.ordering`).
+
+    The charge sum is accumulated from the same single pass that builds the
+    lines rather than via `charges_total_for`: that keeps the builder
+    prefetch-cache-friendly (`charge_items.aggregate(...)` would bypass a
+    `prefetch_related` and re-query per booking — the N+1 the reminder-batch
+    callers prefetch to avoid). The result is identical (both are `Σ amount`).
+    """
+    base = _booking_base_total(booking)
+    charges: list[dict[str, str]] = []
+    discounts: list[dict[str, str]] = []
+    charges_sum = Decimal("0")
+    for item in booking.charge_items.all():
+        charges_sum += item.amount
+        bucket = charges if item.amount > 0 else discounts
+        bucket.append({"label": item.label, "amount": _money(item.amount)})
+    total = (base + charges_sum).quantize(Decimal("0.01"))
+    return {
+        "currency": booking.currency.code,
+        "base_amount": _money(base),
+        "charges": charges,
+        "discounts": discounts,
+        "total": _money(total),
+    }
+
+
 def effective_commission_for(booking: Booking) -> dict[str, Any] | None:
     """Resolve the booking property's effective commission config.
 

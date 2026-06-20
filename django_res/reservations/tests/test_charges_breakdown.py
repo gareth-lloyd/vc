@@ -9,7 +9,7 @@ byte-for-byte so the email total matches the scheduled total.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -129,6 +129,44 @@ def test_falls_back_to_balance_due_without_snapshot(
 
     assert result["base_amount"] == "1,200.00"
     assert result["total"] == "1,300.00"
+
+
+@pytest.mark.django_db
+def test_builder_is_query_free_when_booking_is_prefetched(
+    db: None,
+    guest: Guest,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    # The comms/payments callers `select_related("…currency")` +
+    # `prefetch_related("…charge_items")` so the per-row builder adds ZERO
+    # queries across a reminder batch (H2 — no per-booking N+1). Pin that the
+    # builder reads only the prefetch cache + select_related + local columns.
+    from core.tests import assert_max_queries
+
+    for offset in (0, 14):
+        other = make_occupying_booking(
+            property=property_,
+            guest=guest,
+            currency=gbp,
+            terms=terms,
+            date_from=date(2026, 6, 10) + timedelta(days=offset),
+            date_to=date(2026, 6, 17) + timedelta(days=offset),
+        )
+        BookingChargeItemFactory(
+            booking=other, currency=gbp, label="Late checkout", amount=Decimal("150.00")
+        )
+        BookingChargeItemFactory(
+            booking=other, currency=gbp, label="Loyalty credit", amount=Decimal("-50.00")
+        )
+
+    bookings = list(Booking.objects.select_related("currency").prefetch_related("charge_items"))
+    assert len(bookings) == 2
+
+    with assert_max_queries(0):
+        for prefetched in bookings:
+            booking_charge_breakdown(prefetched)
 
 
 @pytest.mark.django_db

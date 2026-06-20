@@ -147,7 +147,10 @@ def _send_payment_reminders(today: Any) -> int:
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
             booking__date_from__gte=today,
         )
-        .select_related("booking", "booking__guest", "booking__property", "currency")
+        .select_related(
+            "booking", "booking__guest", "booking__property", "booking__currency", "currency"
+        )
+        .prefetch_related("booking__charge_items")
         .order_by("pk")
     )
 
@@ -215,7 +218,10 @@ def _send_security_deposit_reminders(today: Any) -> int:
             status__in=list(SECURITY_DEPOSIT_OPEN_STATUSES),
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
         )
-        .select_related("booking", "booking__guest", "booking__property", "currency")
+        .select_related(
+            "booking", "booking__guest", "booking__property", "booking__currency", "currency"
+        )
+        .prefetch_related("booking__charge_items")
         .order_by("pk")
     )
 
@@ -369,6 +375,12 @@ def _reminder_context(
     due_at: datetime | None,
     payment: Payment | None,
 ) -> dict[str, Any]:
+    # `amount` is the schedule slice due now; `charge_breakdown` is the whole
+    # booking decomposed (subtotal + charge lines + grand total). Both ride the
+    # context — the deposit/balance templates render the breakdown; the
+    # security-deposit request ignores it (a separate refundable hold).
+    from reservations.services.charges import booking_charge_breakdown
+
     return {
         "booking_reference": booking.reference,
         "guest_first_name": booking.guest.first_name,
@@ -379,6 +391,7 @@ def _reminder_context(
         "currency": currency_code,
         "due_on": format_date(due_at) if due_at else "",
         "payment_reference": payment.reference if payment is not None else "",
+        "charge_breakdown": booking_charge_breakdown(booking),
     }
 
 

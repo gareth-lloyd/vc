@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from rest_framework import serializers
 
@@ -19,7 +20,38 @@ _CAPACITY_READ_FIELDS = (
 )
 
 
-class PropertyListSerializer(serializers.ModelSerializer[Property]):
+class _CalendarSourceMixin(serializers.Serializer[Property]):
+    """Read-only calendar-source fields shared by the list and detail shapes (GAP-034).
+
+    `has_active_ical_feed` tells sales the on-screen availability is the latest
+    auto-synced source; `calendar_url` is the owner's online (non-iCal) calendar
+    webpage. Precedence (badge wins over link) is a front-end concern — the API
+    exposes both. The secret feed `url` is never serialized.
+    """
+
+    has_active_ical_feed = serializers.SerializerMethodField()
+    calendar_url = serializers.SerializerMethodField()
+
+    def get_has_active_ical_feed(self, obj: Property) -> bool:
+        # The list viewset annotates this via a scalar `Exists` (no per-row
+        # query). Fresh, non-annotated instances from `create`/`duplicate` lack
+        # the attribute, so fall back to a single existence check on the object.
+        annotated = getattr(obj, "has_active_ical_feed", None)
+        if annotated is not None:
+            return bool(annotated)
+        return obj.calendar_feeds.filter(is_active=True).exists()
+
+    def get_calendar_url(self, obj: Property) -> str | None:
+        # `select_related("settings")` on the viewset makes this free; settings-
+        # less instances (fresh `create`/`duplicate`) hit the guard and return
+        # None after one cheap SELECT — not an N+1 (single object).
+        try:
+            return obj.settings.calendar_url
+        except ObjectDoesNotExist:
+            return None
+
+
+class PropertyListSerializer(_CalendarSourceMixin, serializers.ModelSerializer[Property]):
     """Lighter representation for list endpoints — no nested collections.
 
     Carries a read-only, nullable `capacity` block (null when the property has
@@ -46,6 +78,8 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
             "region",
             "capacity",
             "available_for_range",
+            "has_active_ical_feed",
+            "calendar_url",
             "created_at",
             "updated_at",
         ]
@@ -79,7 +113,7 @@ class PropertyListSerializer(serializers.ModelSerializer[Property]):
         return obj.pk not in unavailable_ids
 
 
-class PropertyDetailSerializer(serializers.ModelSerializer[Property]):
+class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer[Property]):
     """Full representation including small-cardinality nested collections."""
 
     feature_ids = serializers.SerializerMethodField()
@@ -100,6 +134,8 @@ class PropertyDetailSerializer(serializers.ModelSerializer[Property]):
             "region",
             "feature_ids",
             "hero_image_url",
+            "has_active_ical_feed",
+            "calendar_url",
             "legacy_id",
             "created_at",
             "updated_at",

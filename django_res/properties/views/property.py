@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
@@ -22,7 +23,7 @@ from properties.filters.property import (
     parse_availability_range,
     unavailable_property_ids,
 )
-from properties.models import Property
+from properties.models import Property, PropertyCalendarFeed
 from properties.serializers import (
     PropertyDetailSerializer,
     PropertyListSerializer,
@@ -42,7 +43,19 @@ class PropertyViewSet(viewsets.ModelViewSet):
     `get_object`.
     """
 
-    queryset = Property.objects.all().select_related("category", "group", "region", "capacity")
+    queryset = (
+        Property.objects.all()
+        .select_related("category", "group", "region", "capacity", "settings")
+        # Scalar `Exists` subquery → no JOIN, no row multiplication, so the
+        # paginator COUNT(*) stays correct and the list flag costs no per-row
+        # query (GAP-034). `_CalendarSourceMixin` reads this annotation, falling
+        # back to `.exists()` for fresh `create`/`duplicate` instances.
+        .annotate(
+            has_active_ical_feed=Exists(
+                PropertyCalendarFeed.objects.filter(property=OuterRef("pk"), is_active=True)
+            )
+        )
+    )
     filterset_class = PropertyFilter
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering_fields = ["name", "display_name", "created_at", "updated_at"]

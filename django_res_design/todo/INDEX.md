@@ -46,7 +46,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ doc-only |
-| [SMELL-018](smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ⬜ FE+BE; found via 2026-06-18 observability sweep |
+| [SMELL-018](done/smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ✅ resolved (2026-06-20) — `OwnerMeView` → `IsAuthenticated`, returns `200 {is_owner:false}` for non-owners; SPA branches on `me.is_owner` (schema `z.literal(true)`→`z.boolean()`), 403→retryable error. Owner data endpoints keep `IsOwner`; staff boot logs zero console 403s. Commits `d71cba5`+`89d6e9f` |
 
 ## Surface gaps
 

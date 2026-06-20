@@ -1,3 +1,15 @@
+> **⚠️ RE-SCOPED (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — The premise below
+> is moot as written: `IdempotencyRecord` is a **dead table** — zero runtime
+> writers (`grep IdempotencyRecord.objects` → only the class def). Live
+> idempotency is done entirely by `core/idempotency.py` meta-key stamping on
+> per-model `meta` JSON (used by `payments/services/refund.py`,
+> `manual_payment.py`), and `done/FG-010` shipped DB backstops there instead. So
+> the `user`-required FK blocks nothing today. **Decide first:** delete the dead
+> table, or revive it as the canonical backstop — the nullable-FK fix below only
+> applies under "revive."
+>
+> _Original ticket preserved below for context._
+
 # FG-005 — `IdempotencyRecord.user` is required; system actors can't dedupe
 
 - **Severity:** 🟠 Footgun

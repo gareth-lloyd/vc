@@ -220,6 +220,103 @@ describe("SettingsTab", () => {
     useAuthStore.getState().clear();
   });
 
+  it("renders the saved calendar_url in the operational form (GAP-034)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ calendar_url: "https://owner.example.com/cal" })),
+      ),
+    );
+
+    setup();
+    const input = await screen.findByLabelText("Online calendar URL");
+    expect(input).toHaveValue("https://owner.example.com/cal");
+    useAuthStore.getState().clear();
+  });
+
+  it("PATCHes a calendar_url when the operational form is submitted (GAP-034)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ calendar_url: "https://owner.example.com/cal" }));
+      }),
+    );
+
+    setup();
+    const input = await screen.findByLabelText("Online calendar URL");
+    await userEvent.type(input, "https://owner.example.com/cal");
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).calendar_url).toBe(
+      "https://owner.example.com/cal",
+    );
+    useAuthStore.getState().clear();
+  });
+
+  it("sends null for a cleared calendar_url rather than an empty string (GAP-034)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ calendar_url: "https://owner.example.com/cal" })),
+      ),
+    );
+
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ calendar_url: null }));
+      }),
+    );
+
+    setup();
+    const input = await screen.findByLabelText("Online calendar URL");
+    await userEvent.clear(input);
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).calendar_url).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("surfaces a server 400 for an invalid calendar_url (GAP-034)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(
+      http.patch("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: { calendar_url: ["Enter a valid URL."] },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    setup();
+    const input = await screen.findByLabelText("Online calendar URL");
+    await userEvent.type(input, "not a url");
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    expect(await screen.findByText(/Enter a valid URL\./)).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
   it("PATCHes the location endpoint when the location form is edited", async () => {
     setReservationsUser();
     installBaseHandlers();

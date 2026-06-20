@@ -676,17 +676,12 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
   // GAP-034: the owner's online calendar webpage. The OperationalForm runs
-  // `blankToNull` on submit, so a cleared input arrives as null. Accept an empty
-  // string (pre-blankToNull form state) or a valid URL. A `refine` (not a
-  // `z.union`) so the failure surfaces our i18n key rendered through
-  // `fieldErrorText` — a union would emit zod's generic "Invalid value".
-  calendar_url: z
-    .string()
-    .refine((v) => v === "" || z.url().safeParse(v).success, {
-      error: "properties:errors.calendar_url_invalid",
-    })
-    .nullable()
-    .optional(),
+  // `blankToNull` on submit, so a cleared input arrives as null. URL *format* is
+  // validated server-side (Django `URLField`): the OperationalForm surfaces the
+  // 400 through its `FormErrorAlert` (which renders messages verbatim, so a
+  // client-side i18n-key zod message would leak as a raw key). Client-side we
+  // only constrain the shape.
+  calendar_url: z.string().nullable().optional(),
   // `timezone` is read-only on settings (surfaced for context in the response);
   // it is written via the property location endpoint, not here.
 });

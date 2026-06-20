@@ -41,21 +41,13 @@ describe("propertyListItemSchema — GAP-034 calendar source", () => {
 describe("propertySettingsWriteInputSchema — GAP-034 calendar_url", () => {
   const field = propertySettingsWriteInputSchema.shape.calendar_url;
 
-  it("accepts an empty string (pre-blankToNull form state), a valid URL, and null", () => {
+  it("accepts an empty string, a URL, null, and undefined (format is validated server-side)", () => {
+    // The client only constrains the shape; Django's URLField is the authority
+    // on URL *format*, and the OperationalForm surfaces its 400 in the alert.
     expect(field.safeParse("").success).toBe(true);
     expect(field.safeParse("https://owner.example.com/calendar").success).toBe(true);
     expect(field.safeParse(null).success).toBe(true);
     expect(field.safeParse(undefined).success).toBe(true);
-  });
-
-  it("rejects a malformed URL with our i18n error key (not zod's generic message)", () => {
-    const result = field.safeParse("not a url");
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.map((i) => i.message)).toContain(
-        "properties:errors.calendar_url_invalid",
-      );
-    }
   });
 });
 

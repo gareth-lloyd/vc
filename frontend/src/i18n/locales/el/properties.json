@@ -809,7 +809,10 @@
         "changeover_day": "Ημέρα αλλαγής",
         "min_nights_rental": "Ελάχιστα βράδια",
         "min_nights_rental_note": "Σημείωση ελάχιστων βραδιών",
-        "prices_entered_as": "Οι τιμές εισάγονται ως"
+        "prices_entered_as": "Οι τιμές εισάγονται ως",
+        "calendar_url": "URL διαδικτυακού ημερολογίου",
+        "calendar_url_placeholder": "https://…",
+        "calendar_url_help": "Σύνδεσμος προς τη σελίδα του διαδικτυακού ημερολογίου του ιδιοκτήτη (εμφανίζεται στις πωλήσεις για βίλες χωρίς ροή iCal)."
       },
       "save": "Αποθήκευση ρυθμίσεων",
       "saving": "Αποθήκευση…",
@@ -930,7 +933,6 @@
     "nearby_name_required": "Το όνομα είναι υποχρεωτικό",
     "nearby_distance_required": "Η απόσταση είναι υποχρεωτική",
     "nearby_distance_invalid": "Χρησιμοποιήστε αριθμό με έως 2 δεκαδικά (π.χ. 1.25)",
-    "calendar_url_invalid": "Εισαγάγετε έγκυρη διεύθυνση URL (π.χ. https://…)",
     "nearby_type_required": "Επιλέξτε τύπο σημείου",
     "changeover_from_required": "Η ημερομηνία Από είναι υποχρεωτική",
     "changeover_to_required": "Η ημερομηνία Έως είναι υποχρεωτική",

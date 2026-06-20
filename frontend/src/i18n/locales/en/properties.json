@@ -809,7 +809,10 @@
         "changeover_day": "Changeover day",
         "min_nights_rental": "Minimum nights",
         "min_nights_rental_note": "Minimum nights note",
-        "prices_entered_as": "Prices entered as"
+        "prices_entered_as": "Prices entered as",
+        "calendar_url": "Online calendar URL",
+        "calendar_url_placeholder": "https://…",
+        "calendar_url_help": "Link to the owner's online calendar webpage (shown to sales for villas without an iCal feed)."
       },
       "save": "Save settings",
       "saving": "Saving…",
@@ -930,7 +933,6 @@
     "nearby_name_required": "Name is required",
     "nearby_distance_required": "Distance is required",
     "nearby_distance_invalid": "Use a number with up to 2 decimals (e.g. 1.25)",
-    "calendar_url_invalid": "Enter a valid URL (e.g. https://…)",
     "nearby_type_required": "Pick a place type",
     "changeover_from_required": "From date is required",
     "changeover_to_required": "To date is required",

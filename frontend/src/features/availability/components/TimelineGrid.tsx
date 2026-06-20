@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { format, isToday, isWeekend, parseISO } from "date-fns";
 import { Repeat } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarSourceIndicator } from "@/components/data/CalendarSourceIndicator";
 import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
 import { formatMoney, formatMoneyCompact, formatMoneyWhole } from "@/lib/format/money";
@@ -365,6 +366,10 @@ export function TimelineGrid({
                 >
                   {property.display_name || property.name}
                 </Link>
+                <CalendarSourceIndicator
+                  hasActiveIcalFeed={property.has_active_ical_feed}
+                  calendarUrl={property.calendar_url}
+                />
                 {changeoverLabel ? (
                   <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
                     <Repeat className="size-3 shrink-0" aria-label={t("price.changeover_aria")} />

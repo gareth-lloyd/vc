@@ -15,12 +15,17 @@ import type {
 const windowStart = parseISO("2026-06-13");
 const days = Array.from({ length: 21 }, (_, i) => addDays(windowStart, i));
 
-const villa = (id: number, name: string): PropertyListItem => ({
+const villa = (
+  id: number,
+  name: string,
+  extra: Partial<PropertyListItem> = {},
+): PropertyListItem => ({
   id,
   name,
   slug: `villa-${id}`,
   status: "active",
   has_active_ical_feed: false,
+  ...extra,
 });
 
 const week = (
@@ -133,5 +138,41 @@ describe("TimelineGrid weekly price strip", () => {
     expect(screen.getByText("Casa Tres")).toBeInTheDocument();
     // Only the two fixed villas carry a per-week headline.
     expect(screen.getAllByText(/\/wk$/)).toHaveLength(2);
+  });
+});
+
+describe("TimelineGrid calendar-source indicator (GAP-034)", () => {
+  const grid = (extra: Partial<PropertyListItem>) =>
+    renderWithProviders(
+      <TimelineGrid
+        days={days}
+        windowStart={windowStart}
+        properties={[villa(1, "Casa Uno", extra)]}
+        holds={[]}
+        bookings={[]}
+      />,
+    );
+
+  it("shows an iCal badge in the row for a villa with an active feed", () => {
+    grid({ has_active_ical_feed: true });
+    expect(screen.getByText("iCal")).toBeInTheDocument();
+  });
+
+  it("shows an online-calendar link for a villa with a calendar_url and no feed", () => {
+    grid({ calendar_url: "https://owner.example.com/c" });
+    const link = screen.getByRole("link", { name: "Online calendar" });
+    expect(link).toHaveAttribute("href", "https://owner.example.com/c");
+  });
+
+  it("prefers the iCal badge over the link when a villa has both", () => {
+    grid({ has_active_ical_feed: true, calendar_url: "https://owner.example.com/c" });
+    expect(screen.getByText("iCal")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Online calendar" })).not.toBeInTheDocument();
+  });
+
+  it("shows neither when a villa has no feed and no calendar_url", () => {
+    grid({});
+    expect(screen.queryByText("iCal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Online calendar" })).not.toBeInTheDocument();
   });
 });

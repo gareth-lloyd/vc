@@ -46,7 +46,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | ⬜ |
 | [SMELL-013](smell-013-one-model-per-file-doc-drift.md) | "One model per file" rule is fiction; de-facto rule is one aggregate per file | ⬜ doc-only |
-| [SMELL-018](smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ⬜ FE+BE; found via 2026-06-18 observability sweep |
+| [SMELL-018](done/smell-018-owner-probe-403-as-control-flow.md) | Boot-time owner probe uses a 403 as control flow — console-error noise every staff session | ✅ resolved (2026-06-20) — `OwnerMeView` → `IsAuthenticated`, returns `200 {is_owner:false}` for non-owners; SPA branches on `me.is_owner` (schema `z.literal(true)`→`z.boolean()`), 403→retryable error. Owner data endpoints keep `IsOwner`; staff boot logs zero console 403s. Commits `d71cba5`+`89d6e9f` |
 
 ## Surface gaps
 
@@ -75,7 +75,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-033](gap-033-availability-last-confirmed-timestamp.md) | Availability "last confirmed" timestamp + manual confirm button | ⬜ legacy parity; resets on owner-availability events only, not VC churn |
 | [GAP-034](gap-034-availability-calendar-source-indicator.md) | Sales-view calendar-source indicator: iCal badge + owner calendar link | ⬜ builds on shipped `PropertyCalendarFeed` (GAP-011 residual UI) |
 | [GAP-035](gap-035-net-gross-commission-derivation.md) | Net↔gross rate entry with automatic commission derivation | ⬜ entry-time tool; x-ref BUG-009 single-source-of-truth |
-| [GAP-036](gap-036-region-filter-property-listing.md) | Region filter on the property listing grid (status filter already exists) | ⬜ FE-only; backend + region API already shipped |
+| [GAP-036](done/gap-036-region-filter-property-listing.md) | Region filter on the property listing grid (status filter already exists) | ✅ resolved (2026-06-19) — Region `<Select>` added to the list filter row (country → region → status); slug-valued options (mirrors AvailabilityTimelinePage), URL `region` param read into the list query, en+el i18n; vitest. Reused existing `filter_region`/`toQuery`/`useRegions` — FE-only, no backend change. Country-scoping deferred |
 | [GAP-037](gap-037-services-as-separate-entity-and-tab.md) | Services as a separate entity + tab, split from season inclusions | ⬜ reconcile 3 inclusion concepts; model + UX decision |
 | [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md) | Enquiry pipeline: stage taxonomy + quotes-to-convert metric | ✅ resolved (2026-06-19) — stage taxonomy + structured `lost_reason` (Phase 0, migr. 0032–0035) exposed read-only; `quotes_to_convert` query-pinned `SerializerMethodField` + "Converted in N quote(s)" detail badge; per-quote chips already from GAP-005. Rebuild-era only (migrated history reads null) |
 | [GAP-039](done/gap-039-enquiry-dashboard-enrichment.md) | Enquiry list/dashboard enrichment to the Ben/owner mockup | ✅ resolved (2026-06-19) — delivered: enriched read columns, inline lead-status edit, lead-status/salesperson/page-size filters, stage tabs (excl. Dead/Converted), en/el i18n. Remaining inline salesperson/stage/lost-reason edits + date-range/delete/select carved out to GAP-050 |

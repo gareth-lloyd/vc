@@ -1,9 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { drfPage } from "@/test/drf";
 import { renderWithProviders } from "@/test/render";
 import { PropertiesListPage } from "../PropertiesListPage";
 
@@ -18,6 +19,22 @@ const fixture = {
 };
 
 describe("PropertiesListPage", () => {
+  // The page calls useRegions() unconditionally, so every test fires GET /regions.
+  // Stub it here (MSW runs onUnhandledRequest:"error"); the global afterEach
+  // resetHandlers re-arms this before each test.
+  beforeEach(() => {
+    server.use(
+      http.get("/api/v1/regions", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 7, country: 1, name: "Ibiza", slug: "ibiza-7" },
+            { id: 9, country: 1, name: "Mallorca", slug: "mallorca-9" },
+          ]),
+        ),
+      ),
+    );
+  });
+
   it("renders rows from /properties", async () => {
     server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
     renderWithProviders(
@@ -139,5 +156,38 @@ describe("PropertiesListPage", () => {
     );
     await userEvent.click(await screen.findByText("URL Slug Villa"));
     await waitFor(() => expect(screen.getByText("Detail: 436")).toBeInTheDocument());
+  });
+
+  it("renders the region filter", async () => {
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await screen.findByText("Casa Norte");
+    expect(screen.getByRole("combobox", { name: /filter by region/i })).toBeInTheDocument();
+  });
+
+  it("forwards region to the API", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url.searchParams.get("region") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by region/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Ibiza" }));
+    await waitFor(() => expect(seen).toContain("ibiza-7"));
   });
 });

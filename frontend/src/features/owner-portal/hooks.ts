@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@/lib/api/errors";
 import { queryKeys, type BookingId, type PropertyId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
@@ -30,9 +29,10 @@ const OWNER_BOOKINGS_KEY = ["owner", "bookings"] as const;
 
 export const OWNER_BOOKINGS_PAGE_SIZE = 50;
 
-// Boot-time owner detection. Probes /owner/me alongside /auth/me. A 403 means
-// the authenticated user simply isn't an owner — that's an expected, non-error
-// outcome, so we record "not_owner" in the store rather than surfacing a retry.
+// Boot-time owner detection. Probes /owner/me alongside /auth/me. The endpoint
+// returns 200 for any authenticated user: is_owner:true with organisations for
+// an owner, or is_owner:false with an empty list for a non-owner. We branch on
+// that body — no 403-as-control-flow, so a staff boot logs no console error.
 export function useOwnerMe(enabled: boolean) {
   const setOwner = useOwnerStore((s) => s.setOwner);
   const setNotOwner = useOwnerStore((s) => s.setNotOwner);
@@ -45,18 +45,15 @@ export function useOwnerMe(enabled: boolean) {
     queryFn: async () => {
       try {
         const me = await fetchOwnerMe();
-        setOwner(me);
+        if (me.is_owner) setOwner(me);
+        else setNotOwner();
         return me;
       } catch (err) {
-        // 401/403 is a definitive "not an owner" — a terminal, expected outcome.
-        if (err instanceof ApiError && (err.status === 403 || err.status === 401)) {
-          setNotOwner();
-          return null;
-        }
-        // 5xx/network is indeterminate. Record a retryable error state rather
-        // than a false "not_owner": with retry:false + staleTime 5min, the old
-        // "not_owner" verdict would lock a genuine owner out of their portal for
-        // five minutes on a single transient blip. The guards surface a retry.
+        // Not-owner is now a 200 body, so any thrown error (5xx/network/parse)
+        // is indeterminate. Record a retryable error state rather than a false
+        // "not_owner": with retry:false + staleTime 5min, a "not_owner" verdict
+        // would lock a genuine owner out of their portal for five minutes on a
+        // single transient blip. The guards surface a retry.
         setProbeError();
         throw err;
       }

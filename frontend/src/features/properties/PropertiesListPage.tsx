@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
+import { useRegions } from "@/features/availability/hooks";
 import { CreatePropertyDialog } from "./components/CreatePropertyDialog";
 import { propertyColumns } from "./columns";
 import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
@@ -37,6 +38,7 @@ function paramsToFilters(params: URLSearchParams): PropertyFilters {
   return {
     q: params.get("q") ?? undefined,
     country: params.get("country") ?? undefined,
+    region: params.get("region") ?? undefined,
     status: params.get("status") ?? undefined,
     ordering: params.get("ordering") ?? undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
@@ -52,6 +54,7 @@ export function PropertiesListPage() {
   const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
   const canCreate = useHasReservationsRole();
+  const regionsQuery = useRegions();
 
   const countryOptions = [
     { value: ALL_VALUE, label: t("common:filters.any_country") },
@@ -59,6 +62,13 @@ export function PropertiesListPage() {
       value: v,
       label: t(`common:countries.${COUNTRY_ISO[v]}`),
     })),
+  ];
+
+  // Region value is the slug (globally unique via the loader's -{id} suffix);
+  // mirrors AvailabilityTimelinePage and filter_region accepts id or slug.
+  const regionOptions = [
+    { value: ALL_VALUE, label: t("common:filters.any_region") },
+    ...(regionsQuery.data?.results ?? []).map((r) => ({ value: r.slug, label: r.name })),
   ];
 
   const statusOptions = [
@@ -171,6 +181,21 @@ export function PropertiesListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {countryOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.region ?? ALL_VALUE}
+                onValueChange={(v) => updateParam("region", v)}
+              >
+                <SelectTrigger className="w-[160px]" aria-label={t("list.filter_region_aria")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {regionOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>

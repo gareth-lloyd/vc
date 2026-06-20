@@ -34,10 +34,35 @@ afterEach(() => {
 });
 
 describe("useOwnerMe terminal store state", () => {
-  it("a 403 resolves to not_owner (a definitive non-owner)", async () => {
-    server.use(http.get("/api/v1/owner/me", () => HttpResponse.json({}, { status: 403 })));
+  it("a 200 {is_owner:false} body resolves to not_owner (a definitive non-owner)", async () => {
+    server.use(
+      http.get("/api/v1/owner/me", () =>
+        HttpResponse.json({
+          user: {
+            id: 7,
+            email: "staff@example.com",
+            first_name: "Stace",
+            last_name: "Staffer",
+            is_active: true,
+            is_staff: true,
+            is_superuser: false,
+          },
+          is_owner: false,
+          organisations: [],
+        }),
+      ),
+    );
     const { unmount } = renderHook(() => useOwnerMe(true), { wrapper: wrapperFor(makeClient()) });
     await waitFor(() => expect(useOwnerStore.getState().status).toBe("not_owner"));
+    unmount();
+  });
+
+  it("a 403 now resolves to error (retryable), NOT not_owner — non-owner is a 200 body", async () => {
+    // The contract flipped: a non-owner is a 200 {is_owner:false}. A 403 is no
+    // longer an expected outcome, so it must surface as a retryable error.
+    server.use(http.get("/api/v1/owner/me", () => HttpResponse.json({}, { status: 403 })));
+    const { unmount } = renderHook(() => useOwnerMe(true), { wrapper: wrapperFor(makeClient()) });
+    await waitFor(() => expect(useOwnerStore.getState().status).toBe("error"));
     unmount();
   });
 

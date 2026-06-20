@@ -98,7 +98,8 @@
     "GR": "Ελλάδα"
   },
   "filters": {
-    "any_country": "Όλες οι χώρες"
+    "any_country": "Όλες οι χώρες",
+    "any_region": "Όλες οι περιοχές"
   },
   "zod": {
     "invalid_type": "Υποχρεωτικό",

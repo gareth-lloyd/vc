@@ -930,6 +930,7 @@
     "nearby_name_required": "Το όνομα είναι υποχρεωτικό",
     "nearby_distance_required": "Η απόσταση είναι υποχρεωτική",
     "nearby_distance_invalid": "Χρησιμοποιήστε αριθμό με έως 2 δεκαδικά (π.χ. 1.25)",
+    "calendar_url_invalid": "Εισαγάγετε έγκυρη διεύθυνση URL (π.χ. https://…)",
     "nearby_type_required": "Επιλέξτε τύπο σημείου",
     "changeover_from_required": "Η ημερομηνία Από είναι υποχρεωτική",
     "changeover_to_required": "Η ημερομηνία Έως είναι υποχρεωτική",

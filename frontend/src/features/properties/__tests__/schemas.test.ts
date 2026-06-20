@@ -9,9 +9,55 @@ import {
   propertyListItemSchema,
   propertyListResponseSchema,
   propertyRoomWriteInputSchema,
+  propertySettingsWriteInputSchema,
   rateCardWriteInputSchema,
   rateRuleWriteInputSchema,
 } from "../schemas";
+
+describe("propertyListItemSchema — GAP-034 calendar source", () => {
+  const base = { id: 1, name: "Villa", status: "active" };
+
+  it("defaults has_active_ical_feed to false when omitted (older fixtures)", () => {
+    const row = propertyListItemSchema.parse(base);
+    expect(row.has_active_ical_feed).toBe(false);
+    expect(row.calendar_url).toBeUndefined();
+  });
+
+  it("carries the flag and calendar_url when present, on list and detail", () => {
+    const payload = {
+      ...base,
+      has_active_ical_feed: true,
+      calendar_url: "https://o.example.com/c",
+    };
+    expect(propertyListItemSchema.parse(payload).has_active_ical_feed).toBe(true);
+    expect(propertyDetailSchema.parse(payload).calendar_url).toBe("https://o.example.com/c");
+  });
+
+  it("accepts a null calendar_url (BE emits null when unset)", () => {
+    expect(propertyListItemSchema.parse({ ...base, calendar_url: null }).calendar_url).toBeNull();
+  });
+});
+
+describe("propertySettingsWriteInputSchema — GAP-034 calendar_url", () => {
+  const field = propertySettingsWriteInputSchema.shape.calendar_url;
+
+  it("accepts an empty string (pre-blankToNull form state), a valid URL, and null", () => {
+    expect(field.safeParse("").success).toBe(true);
+    expect(field.safeParse("https://owner.example.com/calendar").success).toBe(true);
+    expect(field.safeParse(null).success).toBe(true);
+    expect(field.safeParse(undefined).success).toBe(true);
+  });
+
+  it("rejects a malformed URL with our i18n error key (not zod's generic message)", () => {
+    const result = field.safeParse("not a url");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain(
+        "properties:errors.calendar_url_invalid",
+      );
+    }
+  });
+});
 
 describe("availabilityCellSchema", () => {
   it("parses a whole-day cell without segments", () => {

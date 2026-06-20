@@ -930,6 +930,7 @@
     "nearby_name_required": "Name is required",
     "nearby_distance_required": "Distance is required",
     "nearby_distance_invalid": "Use a number with up to 2 decimals (e.g. 1.25)",
+    "calendar_url_invalid": "Enter a valid URL (e.g. https://…)",
     "nearby_type_required": "Pick a place type",
     "changeover_from_required": "From date is required",
     "changeover_to_required": "To date is required",

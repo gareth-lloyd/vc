@@ -20,6 +20,7 @@ const villa = (id: number, name: string): PropertyListItem => ({
   name,
   slug: `villa-${id}`,
   status: "active",
+  has_active_ical_feed: false,
 });
 
 const week = (

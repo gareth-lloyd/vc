@@ -60,6 +60,12 @@ export const propertyListItemSchema = z.object({
   // Whether the row is free across the request's date_from..date_to window;
   // null when the request carried no date range (availability undefined).
   available_for_range: z.boolean().nullable().optional(),
+  // GAP-034 calendar-source indicators. `has_active_ical_feed` defaults to false
+  // so older fixtures that omit it still parse; `calendar_url` is the owner's
+  // online (non-iCal) calendar webpage (null when unset). Precedence (badge wins
+  // over link) is decided by `CalendarSourceIndicator`.
+  has_active_ical_feed: z.boolean().optional().default(false),
+  calendar_url: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -653,6 +659,8 @@ export const propertySettingsSchema = z.object({
   // currency money inputs commit to, with the raw `currency` FK's inheritance
   // already applied. Null when neither property nor group sets a currency.
   currency_code: z.string().nullable().optional(),
+  // GAP-034: the owner's online (non-iCal) calendar webpage; null when unset.
+  calendar_url: z.string().nullable().optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 
@@ -667,6 +675,18 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental: z.number().int().min(0).nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
+  // GAP-034: the owner's online calendar webpage. The OperationalForm runs
+  // `blankToNull` on submit, so a cleared input arrives as null. Accept an empty
+  // string (pre-blankToNull form state) or a valid URL. A `refine` (not a
+  // `z.union`) so the failure surfaces our i18n key rendered through
+  // `fieldErrorText` — a union would emit zod's generic "Invalid value".
+  calendar_url: z
+    .string()
+    .refine((v) => v === "" || z.url().safeParse(v).success, {
+      error: "properties:errors.calendar_url_invalid",
+    })
+    .nullable()
+    .optional(),
   // `timezone` is read-only on settings (surfaced for context in the response);
   // it is written via the property location endpoint, not here.
 });

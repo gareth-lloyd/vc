@@ -337,15 +337,6 @@ export const termsVersionSchema = z.object({
 });
 export type TermsVersion = z.infer<typeof termsVersionSchema>;
 
-export const guestSchema = z.object({
-  id: z.number(),
-  first_name: z.string(),
-  last_name: z.string(),
-  // Email is optional on the backend now — absence is null, never a synthetic.
-  email: z.string().nullable(),
-});
-export type GuestSummary = z.infer<typeof guestSchema>;
-
 export const quotationDetailSchema = quotationListItemSchema.extend({
   cancel_reason: z.string().optional().default(""),
   lines: z.array(quotationLineSchema).optional().default([]),

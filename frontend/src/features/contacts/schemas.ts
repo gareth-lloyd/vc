@@ -164,9 +164,9 @@ export const contactListFiltersSchema = z.object({
   page: z.number().optional(),
 });
 
-// `/contacts/{id}/enquiries` returns the SAME shape as `/guests/{id}/enquiries`
-// (GAP-045 D2). Contacts owns its own copy of the schema so D4 can delete the
-// guests module without breaking the enquiry surface.
+// `/contacts/{id}/enquiries` enquiry-history shape (GAP-045 D2). Contacts owns
+// its own copy of the schema; it superseded the old `/guests/{id}/enquiries`
+// surface, which was retired in D4.
 export const contactConvertedBookingSchema = z.object({
   reference: z.string(),
   status: bookingStatusSchema,

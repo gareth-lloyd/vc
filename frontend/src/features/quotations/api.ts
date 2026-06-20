@@ -5,7 +5,6 @@ import type { QuotationId } from "@/lib/query/keys";
 import { isCapacityUnset, propertyListResponseSchema } from "@/features/properties/schemas";
 import { bookingDetailSchema, type BookingDetail } from "@/features/bookings/schemas";
 import {
-  guestSchema,
   quotationDetailSchema,
   quotationLineSchema,
   quotationLinesResponseSchema,
@@ -14,7 +13,6 @@ import {
   quoteOptionSchema,
   stayRepriceSchema,
   termsVersionSchema,
-  type GuestSummary,
   type QuotationDetail,
   type QuotationFilters,
   type QuotationLine,
@@ -422,20 +420,4 @@ export async function convertQuotation(
 export async function fetchCurrentTermsVersion(): Promise<TermsVersion> {
   const data = await apiGet<unknown>("/terms-versions/current");
   return termsVersionSchema.parse(data);
-}
-
-interface GuestWriteInput {
-  first_name: string;
-  last_name: string;
-  // Email optional — a phone-only guest is valid; never fabricate a synthetic.
-  email?: string;
-  phone?: string;
-  // Preferred channel, carried from the enquiry. Only sent when the channel it
-  // needs is present, or the server's contactability CHECK 400s the create.
-  contact_method?: "email" | "phone" | "sms";
-}
-
-export async function createGuest(body: GuestWriteInput): Promise<GuestSummary> {
-  const data = await apiSend<unknown>("POST", "/guests", body);
-  return guestSchema.parse(data);
 }

@@ -8,7 +8,6 @@ import commonEn from "./locales/en/common.json";
 import authEn from "./locales/en/auth.json";
 import availabilityEn from "./locales/en/availability.json";
 import contactsEn from "./locales/en/contacts.json";
-import guestsEn from "./locales/en/guests.json";
 import propertiesEn from "./locales/en/properties.json";
 import bookingsEn from "./locales/en/bookings.json";
 import enquiriesEn from "./locales/en/enquiries.json";
@@ -24,7 +23,6 @@ import commonEl from "./locales/el/common.json";
 import authEl from "./locales/el/auth.json";
 import availabilityEl from "./locales/el/availability.json";
 import contactsEl from "./locales/el/contacts.json";
-import guestsEl from "./locales/el/guests.json";
 import propertiesEl from "./locales/el/properties.json";
 import bookingsEl from "./locales/el/bookings.json";
 import enquiriesEl from "./locales/el/enquiries.json";
@@ -51,7 +49,6 @@ export const I18N_NAMESPACES = [
   "auth",
   "availability",
   "contacts",
-  "guests",
   "properties",
   "bookings",
   "enquiries",
@@ -77,7 +74,6 @@ void i18n
         auth: authEn,
         availability: availabilityEn,
         contacts: contactsEn,
-        guests: guestsEn,
         properties: propertiesEn,
         bookings: bookingsEn,
         enquiries: enquiriesEn,
@@ -94,7 +90,6 @@ void i18n
         auth: authEl,
         availability: availabilityEl,
         contacts: contactsEl,
-        guests: guestsEl,
         properties: propertiesEl,
         bookings: bookingsEl,
         enquiries: enquiriesEl,

@@ -2,7 +2,6 @@ export type PropertyId = string | number;
 export type BookingId = string | number;
 export type SeasonId = string | number;
 export type ContactId = string | number;
-export type GuestId = string | number;
 export type EnquiryId = string | number;
 export type UserId = string | number;
 export type QuotationId = string | number;
@@ -78,12 +77,6 @@ export const queryKeys = {
     // serve the other's results.
     search: (q: string, kind: string = "contact", status?: string) =>
       ["contacts", "search", kind, status ?? "all", q] as const,
-  },
-  guests: {
-    all: () => ["guests"] as const,
-    detail: (id: GuestId) => ["guests", "detail", k(id)] as const,
-    enquiries: (id: GuestId) => ["guests", "detail", k(id), "enquiries"] as const,
-    search: (q: string) => ["guests", "search", q] as const,
   },
   bookings: {
     all: () => ["bookings"] as const,

@@ -4,7 +4,6 @@ import { queryKeys, type QuotationId } from "@/lib/query/keys";
 import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import {
   convertQuotation,
-  createGuest,
   createQuotation,
   deleteQuotationLine,
   duplicateQuotation,
@@ -117,10 +116,6 @@ export function useCreateQuotation() {
       qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
     },
   });
-}
-
-export function useCreateGuest() {
-  return useMutation({ mutationFn: createGuest });
 }
 
 // ----------------------------------------------------------------------

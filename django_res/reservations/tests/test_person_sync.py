@@ -10,15 +10,34 @@ from __future__ import annotations
 
 from typing import cast
 
+import factory
 import pytest
+from factory.django import DjangoModelFactory
 
 from accounts.models import Person, PersonEmail, PersonPhone
+from core.factories import RUN_TOKEN
+from properties.factories import CountryFactory
 from reservations.enums import ContactMethod, GuestStatus
-from reservations.factories import GuestFactory
 from reservations.models import Guest
 from reservations.services.person_sync import person_for_guest, sync_person_from_guest
 
 pytestmark = pytest.mark.django_db
+
+
+class GuestFactory(DjangoModelFactory):
+    """Builds a real `reservations.Guest`. The shared `GuestFactory` was retired
+    in GAP-045 D5-1; this transitional copy lives with the Guest-machinery tests
+    that outlive it (deleted with the Guest model in D5-4)."""
+
+    class Meta:
+        model = Guest
+
+    first_name = factory.Faker("first_name")
+    last_name = factory.Faker("last_name")
+    email = factory.Sequence(lambda n: f"guest-{RUN_TOKEN}-{n}@example.com")
+    phone = factory.Sequence(lambda n: f"+44 7700 1{n:05d} x{RUN_TOKEN}")
+    country = factory.SubFactory(CountryFactory)
+    marketing_consent = factory.Iterator([True, False])
 
 
 def _person(guest: Guest) -> Person:

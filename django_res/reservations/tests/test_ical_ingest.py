@@ -33,6 +33,7 @@ from reservations.services.person_sync import person_for_guest
 from reservations.signals import ical_conflict_detected
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property, PropertyCalendarFeed
     from reservations.models import Guest, TermsVersion
@@ -66,7 +67,7 @@ def _feed(property_: Property, url: str, label: str = "Airbnb") -> PropertyCalen
 def _booking(
     *,
     property: Property,
-    guest: Guest,
+    person: Person,
     currency: Currency,
     terms: TermsVersion,
     date_from: date,
@@ -76,7 +77,7 @@ def _booking(
     # BookingGuest) — the established shape for conflict/ingest scenarios.
     return make_occupying_booking(
         property=property,
-        guest=guest,
+        person=person,
         currency=currency,
         terms=terms,
         date_from=date_from,
@@ -241,7 +242,7 @@ def test_booking_conflict_skips_write_and_fires_signal(
     _feed(property_, url)
     _booking(
         property=property_,
-        guest=guest,
+        person=person_for_guest(guest),
         currency=gbp,
         terms=terms,
         date_from=date(2026, 7, 1),

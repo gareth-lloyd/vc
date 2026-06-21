@@ -26,16 +26,17 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from django.contrib.contenttypes.models import ContentType
 
+from accounts.factories import CustomerPersonFactory
 from accounts.models import Person
 from core.models import AuditLog
 from reservations.enums import BookingGuestRole
-from reservations.factories import GuestFactory, make_occupying_booking
+from reservations.factories import make_occupying_booking
 from reservations.models import BookingGuest, GuestPreference, GuestPreferenceType
 
 if TYPE_CHECKING:
     from pricing.models import Currency
     from properties.models import Property
-    from reservations.models import Booking, Guest, TermsVersion
+    from reservations.models import Booking, TermsVersion
 
 pytestmark = pytest.mark.django_db
 
@@ -51,7 +52,7 @@ def _booking(
 ) -> Booking:
     return make_occupying_booking(
         property=property_,
-        guest=cast("Guest", GuestFactory()),
+        person=cast(Person, CustomerPersonFactory()),
         currency=gbp,
         terms=terms,
         date_from=date.today() + timedelta(days=offset_days),

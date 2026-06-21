@@ -29,9 +29,10 @@ from reservations.services.stay_options import (
 )
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency, RateCard, RatePlan, RateRule
     from properties.models import Property
-    from reservations.models import Guest, TermsVersion
+    from reservations.models import TermsVersion
 
 
 # ----------------------------------------------------------------------
@@ -213,7 +214,7 @@ class TestStayOptionsSearch:
         self,
         property_: Property,
         rate_rule: RateRule,
-        guest: Guest,
+        customer: Person,
         gbp: Currency,
         terms: TermsVersion,
     ) -> None:
@@ -224,7 +225,7 @@ class TestStayOptionsSearch:
         _sat_changeover(property_)
         make_occupying_booking(
             property=property_,
-            guest=guest,
+            person=customer,
             currency=gbp,
             terms=terms,
             date_from=date(2026, 6, 22),
@@ -270,7 +271,7 @@ class TestStayOptionsSearch:
         self,
         property_: Property,
         rate_rule: RateRule,
-        guest: Guest,
+        customer: Person,
         gbp: Currency,
         terms: TermsVersion,
     ) -> None:
@@ -279,7 +280,7 @@ class TestStayOptionsSearch:
         _sat_changeover(property_)
         make_occupying_booking(
             property=property_,
-            guest=guest,
+            person=customer,
             currency=gbp,
             terms=terms,
             date_from=date(2026, 7, 6),

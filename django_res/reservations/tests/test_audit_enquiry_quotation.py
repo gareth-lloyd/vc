@@ -8,11 +8,14 @@ sentinel (registered `sensitive=`) rather than cleartext — the Enquiry has no
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import cast
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person
 from core.audit import REDACTED
 from core.models import AuditLog
 from reservations.enums import EnquiryStatus, QuotationStatus
@@ -98,8 +101,6 @@ def test_quotation_status_transition_writes_audit_row(guest: Guest) -> None:
 def test_enquiry_person_reassignment_writes_audit_row() -> None:
     """Repointing an Enquiry's unified Person FK (a real .save() path, e.g. the
     write serializer) lands an AuditLog row capturing the person_id change."""
-    from accounts.models import Person
-
     enquiry = Enquiry.objects.create(status=EnquiryStatus.NEW.value)
     person = Person.objects.create(first_name="Grace", last_name="Hopper")
 
@@ -116,8 +117,6 @@ def test_enquiry_person_reassignment_writes_audit_row() -> None:
 @pytest.mark.django_db
 def test_quotation_person_reassignment_writes_audit_row(guest: Guest) -> None:
     """Repointing a Quotation's Person FK lands an AuditLog row (person_id)."""
-    from accounts.models import Person
-
     terms = TermsVersion.objects.create(
         version="2026-10", body_markdown="x", published_at=timezone.now()
     )
@@ -143,20 +142,24 @@ def test_quotation_person_reassignment_writes_audit_row(guest: Guest) -> None:
 
 @pytest.mark.django_db
 def test_booking_birth_audits_guest_and_person(
-    guest: Guest, gbp: object, terms: TermsVersion, property_: object
+    gbp: object, terms: TermsVersion, property_: object
 ) -> None:
-    """Booking now tracks guest_id + person_id (a pre-existing audit gap). The
+    """Booking tracks guest_id + person_id (a pre-existing audit gap). The
     customer it was born with is captured in the creation diff; post-create LEAD
     reassignment is audited on BookingGuest (it mutates Booking only via a
     signal .update(), which bypasses the trail by design). The creation row is
-    keyed to object_id="" — pre_save fires before the INSERT assigns the pk."""
+    keyed to object_id="" — pre_save fires before the INSERT assigns the pk.
+
+    GAP-045 D5-1: `make_occupying_booking` is now person-only, so the booking is
+    born with `guest_id` NULL — the audit still captures both columns (person_id
+    carries the customer; guest_id is the now-vestigial leg, born `[None, None]`)."""
     from datetime import date
 
     from reservations.factories import make_occupying_booking
 
     booking = make_occupying_booking(
         property=property_,  # type: ignore[arg-type]
-        guest=guest,
+        person=cast(Person, CustomerPersonFactory()),
         currency=gbp,  # type: ignore[arg-type]
         terms=terms,
         date_from=date(2026, 8, 1),
@@ -170,14 +173,14 @@ def test_booking_birth_audits_guest_and_person(
         if "guest_id" in r.field_diffs and "person_id" in r.field_diffs
     ]
     assert birth, "expected the Booking creation diff to capture guest_id + person_id"
-    assert birth[-1].field_diffs["guest_id"] == [None, guest.pk]
+    assert birth[-1].field_diffs["guest_id"] == [None, None]
     assert birth[-1].field_diffs["person_id"] == [None, booking.person_id]
     assert booking.person_id is not None
 
 
 @pytest.mark.django_db
 def test_booking_guest_birth_audits_person(
-    guest: Guest, gbp: object, terms: TermsVersion, property_: object
+    gbp: object, terms: TermsVersion, property_: object
 ) -> None:
     """The LEAD BookingGuest row also tracks person_id alongside guest_id."""
     from datetime import date
@@ -186,7 +189,7 @@ def test_booking_guest_birth_audits_person(
 
     booking = make_occupying_booking(
         property=property_,  # type: ignore[arg-type]
-        guest=guest,
+        person=cast(Person, CustomerPersonFactory()),
         currency=gbp,  # type: ignore[arg-type]
         terms=terms,
         date_from=date(2026, 9, 1),

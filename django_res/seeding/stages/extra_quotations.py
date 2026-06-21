@@ -32,11 +32,11 @@ def _run(ctx: SeedContext) -> int:
         # an up-to-6-day forward alignment (13 days end-to-end), so the old
         # 11-day stride would collide consecutive holds on a small portfolio.
         date_from, date_to = conforming_stay(ctx, prop, ctx.today + timedelta(days=30 + i * 21), 5)
-        guest = pick_guest(ctx)
+        customer = pick_guest(ctx)
         terms = ctx.terms[0]
         enquiry = cast(
             Enquiry,
-            EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
+            EnquiryFactory(person=customer, property=prop, date_from=date_from, date_to=date_to),
         )
         ctx.enquiry_pks.append(enquiry.pk)
         with transaction.atomic():

@@ -63,7 +63,7 @@ def test_booking_requires_person(
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        guest=guest,
+        person=person_for_guest(guest),
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
@@ -79,7 +79,7 @@ def test_booking_guest_requires_person(
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        guest=guest,
+        person=person_for_guest(guest),
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
@@ -130,7 +130,7 @@ def test_bookingguest_unique_booking_person_role_repointed(
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        guest=guest,
+        person=person_for_guest(guest),
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),

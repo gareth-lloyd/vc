@@ -14,13 +14,18 @@ from datetime import date
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+import factory
 import pytest
 from django.apps import apps
+from factory.django import DjangoModelFactory
 
 from accounts.models import Person, PersonEmail, PersonPhone
+from core.factories import RUN_TOKEN
+from properties.factories import CountryFactory
 from reservations.enums import BookingGuestRole, ContactMethod, GuestStatus
-from reservations.factories import EnquiryFactory, GuestFactory, make_occupying_booking
+from reservations.factories import make_occupying_booking
 from reservations.models import Enquiry, Guest
+from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -30,6 +35,30 @@ if TYPE_CHECKING:
 _migration = import_module("reservations.migrations.0033_backfill_person_from_guest")
 
 pytestmark = pytest.mark.django_db
+
+
+class GuestFactory(DjangoModelFactory):
+    """Builds a real `reservations.Guest`. The shared `GuestFactory` was retired
+    in GAP-045 D5-1; this transitional copy lives with the backfill-migration
+    tests that outlive it (deleted with the Guest model in D5-4)."""
+
+    class Meta:
+        model = Guest
+
+    first_name = factory.Faker("first_name")
+    last_name = factory.Faker("last_name")
+    email = factory.Sequence(lambda n: f"guest-{RUN_TOKEN}-{n}@example.com")
+    phone = factory.Sequence(lambda n: f"+44 7700 1{n:05d} x{RUN_TOKEN}")
+    country = factory.SubFactory(CountryFactory)
+    marketing_consent = factory.Iterator([True, False])
+
+
+def _guest_enquiry() -> tuple[Guest, Enquiry]:
+    """A Guest plus a person-less Enquiry linked to it — the shape the 3b backfill
+    consumes (it mints the Person mirror and links the null `person` FK)."""
+    guest = cast(Guest, GuestFactory())
+    enquiry = Enquiry.objects.create(guest=guest, person=None)
+    return guest, enquiry
 
 
 def _forward() -> None:
@@ -146,9 +175,7 @@ def test_links_parallel_person_fks() -> None:
     # backfill's null→link path through the current model. The Booking/Quotation/
     # BookingGuest links are covered by the test below (built person-set, the
     # backfill is a no-op that must still leave them on the right Person).
-    enquiry = cast(Enquiry, EnquiryFactory())
-    guest = cast(Guest, enquiry.guest)
-    Enquiry.objects.filter(pk=enquiry.pk).update(person=None)
+    guest, enquiry = _guest_enquiry()
 
     _forward()
 
@@ -168,9 +195,10 @@ def test_links_booking_quotation_and_bookingguest_to_one_person(
     # service-built). Booking.person resolves via the denormalised Booking.guest
     # = LEAD BookingGuest.guest, so all three must land on the SAME Person.
     guest = cast(Guest, GuestFactory())
+    person = person_for_guest(guest)
     booking = make_occupying_booking(
         property=property_,
-        guest=guest,
+        person=person,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 7, 4),
@@ -190,8 +218,7 @@ def test_links_booking_quotation_and_bookingguest_to_one_person(
 
 
 def test_rerun_is_a_noop() -> None:
-    enquiry = cast(Enquiry, EnquiryFactory())
-    guest = cast(Guest, enquiry.guest)
+    guest, enquiry = _guest_enquiry()
 
     _forward()
     _forward()
@@ -205,8 +232,7 @@ def test_rerun_is_a_noop() -> None:
 
 
 def test_reverse_unlinks_and_deletes_guest_persons() -> None:
-    enquiry = cast(Enquiry, EnquiryFactory())
-    guest = cast(Guest, enquiry.guest)
+    guest, enquiry = _guest_enquiry()
 
     _forward()
     person = _person_for(guest)

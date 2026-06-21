@@ -389,14 +389,23 @@ def _demo_terms() -> Any:
     return terms
 
 
-def _demo_guest() -> Any:
-    from reservations.models import Guest
+def _demo_customer() -> Any:
+    """Return the demo customer Person, creating it (with its PRIMARY email) on
+    first run. GAP-045 D5-1: the demo customer is a CUSTOMER ``Person`` — Guest
+    is retired."""
+    from accounts.enums import PersonKind
+    from accounts.models import Person, PersonEmail
 
-    guest, _ = Guest.objects.get_or_create(
-        email=GUEST_EMAIL,
-        defaults={"first_name": "Demo", "last_name": "Guest"},
+    existing = PersonEmail.objects.filter(email=GUEST_EMAIL).select_related("contact").first()
+    if existing is not None:
+        return existing.contact
+    person = Person.objects.create(
+        first_name="Demo",
+        last_name="Guest",
+        kind=PersonKind.CUSTOMER.value,
     )
-    return guest
+    PersonEmail.objects.create(contact=person, email=GUEST_EMAIL, is_primary=True)
+    return person
 
 
 def _demo_currency() -> Any:
@@ -410,16 +419,11 @@ def _demo_currency() -> Any:
 
 
 def _new_quotation() -> Any:
-    from reservations.models import Quotation
-    from reservations.services.person_sync import person_for_guest
+    from reservations.models import Enquiry, Quotation
 
-    guest = _demo_guest()
-    # GAP-045 Unit 3c-1b: mirror the parallel Person FK onto the demo enquiry +
-    # quotation so the person-based teardown filters (Unit 3c-2c) reach them.
-    person = person_for_guest(guest)
+    person = _demo_customer()
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=Enquiry.objects.create(person=person),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=_demo_terms(),
@@ -451,13 +455,13 @@ def _place_booking_clash(prop: Property, date_from: date, date_to: date) -> str:
     *occupying* booking to trip the conflict guard, not the full
     submit/auto-accept/payment-schedule lifecycle. The shared fabricator keeps
     that shape (and the LEAD BookingGuest invariant) in one place; --reset tears
-    it down by relationship to the demo guest.
+    it down by relationship to the demo customer.
     """
     from reservations.factories import make_occupying_booking
 
     booking = make_occupying_booking(
         property=prop,
-        guest=_demo_guest(),
+        person=_demo_customer(),
         currency=_demo_currency(),
         terms=_demo_terms(),
         date_from=date_from,
@@ -489,7 +493,6 @@ def _delete_demo_data() -> int:
         BookingHold,
         Enquiry,
         EnquiryEvent,
-        Guest,
         OwnerBlock,
         OwnerBlockUpdate,
         OwnerBlockUpdateSeen,
@@ -499,19 +502,15 @@ def _delete_demo_data() -> int:
 
     total = 0
     with transaction.atomic():
-        # The 3c-1a Guest post_save signal mirrors each demo Guest into a
-        # ``guest-{pk}`` Person; deleting the Guest does NOT cascade to it (no
-        # Guest→Person FK), so resolve the mirror ids up front (materialised
-        # before any delete touches their PersonEmail rows) and erase them after
-        # the Guest delete, or every --reset would strand a PII-bearing Person.
+        # GAP-045 D5-1: the demo customer is a CUSTOMER Person (Guest retired),
+        # found by its PRIMARY email. Resolve its id(s) up front (materialised
+        # before any delete touches their PersonEmail rows) and erase them last.
         demo_person_ids = list(
             Person.objects.filter(emails__email=GUEST_EMAIL).values_list("pk", flat=True)
         )
         # Person-first ownership predicate, reused at each teardown site so the
-        # three filters can never drift. The guest leg is the established
-        # fallback (removed in 3d) and catches a person=NULL row such as the
-        # booking-clash enquiry from make_occupying_booking.
-        demo_owned = Q(person_id__in=demo_person_ids) | Q(guest__email=GUEST_EMAIL)
+        # filters can never drift.
+        demo_owned = Q(person_id__in=demo_person_ids)
 
         prop = Property.objects.filter(slug=PROPERTY_SLUG).first()
         if prop is not None:
@@ -554,8 +553,8 @@ def _delete_demo_data() -> int:
                 booking.security_deposits.all().delete()
                 booking.payments.all().delete()
                 booking.events.all().delete()
-            # A booking-clash booking PROTECTs its quotation_line, property and
-            # guest, so it must go after; deleting the Booking CASCADEs its
+            # A booking-clash booking PROTECTs its quotation_line and property,
+            # so it must go after; deleting the Booking CASCADEs its
             # BookingGuest rows (the LEAD guard permits the cascade path).
             total += demo_bookings.delete()[0]
             if created_by_demo:
@@ -605,9 +604,8 @@ def _delete_demo_data() -> int:
                 # their quotations above).
                 total += prop.calendar_feeds.all().delete()[0]
 
-        total += Guest.objects.filter(email=GUEST_EMAIL).delete()[0]
-        # Erase the Person mirrors stranded by the Guest delete (cascades their
-        # PersonEmail/PersonPhone children). Resolved before any delete above.
+        # Erase the demo customer Person(s) (cascades their PersonEmail/
+        # PersonPhone children). Resolved before any delete above.
         total += Person.objects.filter(pk__in=demo_person_ids).delete()[0]
 
         org = OwnerOrganisation.objects.filter(name=ORG_NAME).first()

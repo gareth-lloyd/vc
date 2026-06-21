@@ -13,13 +13,15 @@ production paths no longer persist `guest`.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import cast
 
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person, User
 from core.enums import StaffRole
 from pricing.models import Currency
 from properties.models import Property
@@ -227,11 +229,12 @@ def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
     quotation_line: QuotationLine,
     terms: TermsVersion,
 ) -> None:
-    guest = quotation_line.quotation.guest
-    assert guest is not None
+    # D5-1: `quotation_line` is person-first, so the customer it carries is the
+    # one BookingService must mirror onto the Booking + LEAD.
+    expected = quotation_line.quotation.person
+    assert expected is not None
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
-    expected = person_for_guest(guest)
     assert booking.person == expected
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
     assert lead.person == expected
@@ -247,25 +250,26 @@ def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
 
 @pytest.mark.django_db
 def test_make_occupying_booking_sets_person_everywhere(
-    guest: Guest,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
+    # GAP-045 D5-1: the helper is now person-driven, so the customer is passed
+    # explicitly and mirrored across the Quotation / Booking / LEAD rows.
+    person = cast(Person, CustomerPersonFactory())
     booking = make_occupying_booking(
         property=property_,
-        guest=guest,
+        person=person,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
     )
 
-    expected = person_for_guest(guest)
-    assert booking.person == expected
+    assert booking.person == person
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
-    assert lead.person == expected
-    assert booking.quotation_line.quotation.person == expected
+    assert lead.person == person
+    assert booking.quotation_line.quotation.person == person
 
 
 # ---------------------------------------------------------------------------
@@ -419,9 +423,12 @@ def test_link_person_fks_links_null_rows_and_is_idempotent(
     quotation = quotation_line.quotation
     enquiry = quotation.enquiry
 
-    # Simulate a row written before the inline-setting code shipped: NULL out
-    # Enquiry.person via a bulk .update() (bypasses the inline write paths).
-    Enquiry.objects.filter(pk=enquiry.pk).update(person=None)
+    # Simulate a row written before the inline-setting code shipped: it carries
+    # the legacy `guest` leg but a NULL `person`. The linker re-derives person
+    # from guest, so attach the guest leg and NULL person via a bulk .update()
+    # (bypasses the inline write paths). `quotation_line`'s graph is person-first
+    # (no guest leg), so the guest is wired on here explicitly.
+    Enquiry.objects.filter(pk=enquiry.pk).update(person=None, guest=guest)
 
     call_command("link_person_fks")
 
@@ -430,7 +437,7 @@ def test_link_person_fks_links_null_rows_and_is_idempotent(
     assert enquiry.person == expected
     # The always-customer models were already linked at write time and untouched.
     booking.refresh_from_db()
-    assert booking.person == expected
+    assert booking.person == quotation_line.quotation.person
 
     # Second run is a no-op — nothing is NULL anymore.
     call_command("link_person_fks")

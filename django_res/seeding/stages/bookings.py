@@ -25,7 +25,7 @@ from typing import Any
 
 from django.utils import timezone
 
-from reservations.factories import GuestFactory
+from accounts.factories import CustomerPersonFactory
 from seeding._booking_helpers import conforming_stay, create_one_booking, next_stay_start
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
@@ -42,11 +42,11 @@ _STAY_BEARING_TIERS = ("packed", "busy", "light")
 
 
 def _init_guest_pool(ctx: SeedContext) -> None:
-    """One-shot init of the repeat-guest pool the first time bookings runs."""
+    """One-shot init of the repeat-customer pool the first time bookings runs."""
     if ctx.guest_pool:
         return
     for _ in range(ctx.knobs.repeat_guest_pool_size):
-        ctx.guest_pool.append(GuestFactory())
+        ctx.guest_pool.append(CustomerPersonFactory())
 
 
 def _terms_for(prop: Any, ctx: SeedContext) -> Any:

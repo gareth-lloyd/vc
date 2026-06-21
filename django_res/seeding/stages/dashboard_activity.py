@@ -272,7 +272,7 @@ def _run(ctx: SeedContext) -> int:
     pool = candidates or ctx.properties
     for _ in range(_NEW_ENQUIRIES * factor):
         enquiry = cast(
-            Enquiry, EnquiryFactory(guest=pick_guest(ctx), property=ctx.rng.choice(pool))
+            Enquiry, EnquiryFactory(person=pick_guest(ctx), property=ctx.rng.choice(pool))
         )
         ctx.enquiry_pks.append(enquiry.pk)
         made += 1

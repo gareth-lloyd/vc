@@ -17,8 +17,9 @@ from django.db import transaction
 from django.utils import timezone
 from factory.django import DjangoModelFactory
 
+from accounts.factories import CustomerPersonFactory
 from core.factories import RUN_TOKEN
-from properties.factories import CountryFactory, PropertyFactory
+from properties.factories import PropertyFactory
 from reservations import models
 from reservations.enums import (
     BookingGuestRole,
@@ -34,21 +35,10 @@ from reservations.enums import (
 )
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property
-    from reservations.models import Booking, Guest, TermsVersion
-
-
-class GuestFactory(DjangoModelFactory):
-    class Meta:
-        model = models.Guest
-
-    first_name = factory.Faker("first_name")
-    last_name = factory.Faker("last_name")
-    email = factory.Sequence(lambda n: f"guest-{RUN_TOKEN}-{n}@example.com")
-    phone = factory.Sequence(lambda n: f"+44 7700 1{n:05d} x{RUN_TOKEN}")
-    country = factory.SubFactory(CountryFactory)
-    marketing_consent = factory.Iterator([True, False])
+    from reservations.models import Booking, TermsVersion
 
 
 class TermsVersionFactory(DjangoModelFactory):
@@ -63,27 +53,14 @@ class TermsVersionFactory(DjangoModelFactory):
     is_current = False
 
 
-def _person_for_factory_guest(obj: object) -> object | None:
-    """Resolve the unified Person mirror for a factory's `guest` attribute.
-
-    GAP-045 Unit 3d-3 made `person` the sole read source; Unit 3d-A made it the
-    NOT-NULL authoritative customer FK on Booking/BookingGuest/Quotation/
-    GuestPreference. So a factory-built row must carry the mirror (production
-    write paths already set it). The Guest `post_save` signal has already minted
-    the mirror by the time this LazyAttribute runs; `person_for_guest` fetches it.
-    """
-    from reservations.services.person_sync import person_for_guest
-
-    guest = getattr(obj, "guest", None)
-    return person_for_guest(guest) if guest is not None else None
-
-
 class EnquiryFactory(DjangoModelFactory):
     class Meta:
         model = models.Enquiry
 
-    guest = factory.SubFactory(GuestFactory)
-    person = factory.LazyAttribute(_person_for_factory_guest)
+    # GAP-045 D5-1: `Enquiry.person` is nullable, but tests overwhelmingly expect
+    # a customer attached, so default to a CUSTOMER Person (override `person=` or
+    # pass `person=None` for the anonymous-enquiry case).
+    person = factory.SubFactory(CustomerPersonFactory)
     property = factory.SubFactory(PropertyFactory)
     date_from = factory.LazyFunction(lambda: date.today() + timedelta(days=30))
     date_to = factory.LazyFunction(lambda: date.today() + timedelta(days=37))
@@ -109,19 +86,17 @@ class EnquiryNoteFactory(DjangoModelFactory):
 
 
 class BookingGuestFactory(DjangoModelFactory):
-    """Attach a Guest to a Booking under a role. Caller supplies `booking=`
-    and `guest=` — neither has a sensible default (Booking is service-built;
-    the role-uniqueness constraints make any auto-built guest collide)."""
+    """Attach a customer Person to a Booking under a role. Caller supplies
+    `booking=` (Booking is service-built, so it has no sensible default); the
+    customer `person=` defaults to a fresh CUSTOMER Person but is usually
+    overridden with the booking's lead customer."""
 
     class Meta:
         model = models.BookingGuest
 
     booking = None  # required: provided by caller
-    guest = None  # required: provided by caller
     # GAP-045 Unit 3d-A: `person` is the NOT-NULL authoritative customer FK.
-    # Default it from the supplied `guest`'s mirror so callers that only pass
-    # `booking=`/`guest=` still satisfy the constraint (override with `person=`).
-    person = factory.LazyAttribute(_person_for_factory_guest)
+    person = factory.SubFactory(CustomerPersonFactory)
     role = BookingGuestRole.CO_TRAVELLER
     email_override = ""
     notes = ""
@@ -175,7 +150,7 @@ class BookingServiceCoverageFactory(DjangoModelFactory):
 def make_occupying_booking(
     *,
     property: Property,
-    guest: Guest,
+    person: Person,
     currency: Currency,
     terms: TermsVersion,
     date_from: date,
@@ -190,17 +165,16 @@ def make_occupying_booking(
     guards, not the submit / auto-accept / payment-schedule flow. This is the
     one place that shape is built, so the load-bearing LEAD `BookingGuest`
     invariant (`django_res/CLAUDE.md`) is encoded once instead of by hand in
-    each caller. Everything links back to `guest`, so a relationship-driven
-    teardown (the demo `--reset`) unwinds it cleanly.
+    each caller. Everything links back to `person` (the customer), so a
+    relationship-driven teardown (the demo `--reset`) unwinds it cleanly.
     """
-    # GAP-045 Unit 3c-1b: resolve the unified Person mirror once and mirror it
-    # onto the Quotation / Booking / LEAD BookingGuest alongside the Guest FK.
-    from reservations.services.person_sync import person_for_guest
-
-    person = person_for_guest(guest)
     quotation = models.Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=models.Enquiry.objects.create(
+            person=person,
+            property=property,
+            date_from=date_from,
+            date_to=date_to,
+        ),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -217,7 +191,6 @@ def make_occupying_booking(
     with transaction.atomic():
         booking = models.Booking.objects.create(
             quotation_line=line,
-            guest=guest,
             person=person,
             property=property,
             date_from=date_from,
@@ -232,7 +205,7 @@ def make_occupying_booking(
         # The LEAD BookingGuest invariant — a Booking is incomplete without it.
         models.BookingGuest.objects.get_or_create(
             booking=booking,
-            guest=guest,
-            defaults={"role": BookingGuestRole.LEAD.value, "person": person},
+            person=person,
+            defaults={"role": BookingGuestRole.LEAD.value},
         )
     return booking

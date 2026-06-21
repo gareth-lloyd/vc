@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from accounts.models import Person, User
+from accounts.models.person import PersonPhone
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.models import EmailLog, SmtpProfile
 from reservations.enums import QuotationStatus
@@ -60,8 +61,8 @@ def test_quotation_send_dispatches_quotation_sent_email(
     assert quotation.status == QuotationStatus.SENT.value
     logs = _logs_for_quotation(quotation)
     assert len(logs) == 1
-    assert quotation.guest is not None
-    assert logs[0].to == [quotation.guest.email]
+    assert quotation.person is not None
+    assert logs[0].to == [quotation.person.primary_email()]
     assert logs[0].status == EmailLogStatus.SENT
 
 
@@ -143,16 +144,19 @@ def test_quotation_send_with_no_guest_email_skips_dispatch(
     lifecycle_templates: None,
 ) -> None:
     quotation = quotation_line.quotation
-    # Phone-only guest: no email, still contactable (email="" → NULL on save).
-    assert quotation.guest is not None
-    quotation.guest.email = ""
-    quotation.guest.phone = "+447911123456"
-    quotation.guest.save(update_fields=["email", "phone", "updated_at"])
+    # Phone-only customer: drop all email channels, keep a phone so they're
+    # still contactable. The customer fixture already has a primary phone.
+    person = quotation.person
+    assert person is not None
+    person.emails.all().delete()
+    if not person.phones.exists():
+        PersonPhone.objects.create(contact=person, number="+447911123456", is_primary=True)
+    assert Person.objects.get(pk=person.pk).primary_email() is None
 
     quotation.send()
 
     quotation.refresh_from_db()
-    # Transition must still succeed even with no guest email on file.
+    # Transition must still succeed even with no customer email on file.
     assert quotation.status == QuotationStatus.SENT.value
     assert _logs_for_quotation(quotation) == []
 

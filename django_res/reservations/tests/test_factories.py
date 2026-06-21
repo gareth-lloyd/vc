@@ -11,14 +11,10 @@ from reservations import factories, models
 pytestmark = pytest.mark.django_db
 
 
-def test_guest_factory_unique_email() -> None:
-    assert factories.GuestFactory().email != factories.GuestFactory().email
-
-
-def test_enquiry_factory_autogenerates_reference_and_has_guest() -> None:
+def test_enquiry_factory_autogenerates_reference_and_has_person() -> None:
     enquiry = cast(models.Enquiry, factories.EnquiryFactory())
     assert enquiry.reference  # generated in Enquiry.save()
-    assert enquiry.guest_id is not None
+    assert enquiry.person_id is not None
     assert enquiry.date_from is not None
     assert enquiry.date_to is not None
     assert enquiry.date_from < enquiry.date_to

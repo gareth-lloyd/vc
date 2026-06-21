@@ -301,18 +301,23 @@ class QuotationService:
         if enquiry.status in (EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value):
             raise ValidationError("Cannot quote a lost or converted enquiry.")
 
-        resolved_guest = guest if guest is not None else enquiry.guest
-        if resolved_guest is None:
-            raise ValueError(
-                "Quotation requires a Guest; pass `guest=` or capture one on the enquiry first."
-            )
+        # GAP-045 D5-1: prefer the unified Person — supplied directly, else the
+        # one captured on the enquiry. The transitional `guest=` input / the
+        # enquiry's guest mirror remain a fallback (the guest-input leg is
+        # removed in D5-2).
+        person = enquiry.person
+        if person is None:
+            resolved_guest = guest if guest is not None else enquiry.guest
+            if resolved_guest is None:
+                raise ValueError(
+                    "Quotation requires a customer; pass `person=`/`guest=` or "
+                    "capture one on the enquiry first."
+                )
+            person = person_for_guest(resolved_guest)
 
         quotation = Quotation.objects.create(
             enquiry=enquiry,
-            # GAP-045 Unit 3d-C: persist only the unified Person FK (resolved from
-            # the supplied/enquiry guest). Reading the guest INPUT here is
-            # transitional — 3d-E removes the `enquiry.guest` leg entirely.
-            person=person_for_guest(resolved_guest),
+            person=person,
             agent=agent,
             terms_version=terms_version,
             expires_at=expires_at,

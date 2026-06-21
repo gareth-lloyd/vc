@@ -46,14 +46,14 @@ def conforming_stay(ctx: SeedContext, prop: Any, date_from: date, nights: int) -
 
 
 def pick_guest(ctx: SeedContext) -> Any:
-    """Pick a guest from the repeat pool with high probability, otherwise a
-    fresh one. Empty pool always returns fresh."""
+    """Pick a customer (Person) from the repeat pool with high probability,
+    otherwise a fresh one. Empty pool always returns fresh."""
 
-    from reservations.factories import GuestFactory
+    from accounts.factories import CustomerPersonFactory
 
     if ctx.guest_pool and ctx.rng.random() < 0.6:
         return ctx.rng.choice(ctx.guest_pool)
-    return GuestFactory()
+    return CustomerPersonFactory()
 
 
 def mark_payment_paid(booking: Any, purpose: str) -> None:
@@ -147,10 +147,10 @@ def create_one_booking(
     from reservations.services.bookings import BookingService
     from reservations.services.quotations import QuotationService
 
-    guest = pick_guest(ctx)
+    customer = pick_guest(ctx)
     enquiry = cast(
         Enquiry,
-        EnquiryFactory(guest=guest, property=prop, date_from=date_from, date_to=date_to),
+        EnquiryFactory(person=customer, property=prop, date_from=date_from, date_to=date_to),
     )
     ctx.enquiry_pks.append(enquiry.pk)
     with transaction.atomic():

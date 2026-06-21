@@ -8,16 +8,16 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from django.utils import timezone
 
 from pricing.models import Currency, RateCard, RatePlan, RateRule
-from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
-from reservations.services.person_sync import person_for_guest
+from reservations.models import Enquiry, Guest, Quotation, QuotationLine, TermsVersion
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from properties.models import Property
 
 
@@ -92,6 +92,25 @@ def guest(db: None) -> Guest:
 
 
 @pytest.fixture
+def customer(db: None) -> Person:
+    """A CUSTOMER Person standing in for the booking's lead customer.
+
+    The person-first replacement for the `guest` fixture (GAP-045 D5-1).
+    """
+    from accounts.factories import CustomerPersonFactory
+    from accounts.models import Person
+
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Ada",
+            last_name="Lovelace",
+            primary_email="ada@example.com",
+        ),
+    )
+
+
+@pytest.fixture
 def terms(db: None) -> TermsVersion:
     return TermsVersion.objects.create(
         version="2026-01",
@@ -103,16 +122,14 @@ def terms(db: None) -> TermsVersion:
 
 @pytest.fixture
 def quotation_line(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> QuotationLine:
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=Enquiry.objects.create(person=customer),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

@@ -13,6 +13,7 @@ from typing import Any, cast
 import pytest
 from django.db import models
 
+from accounts.enums import PersonKind
 from accounts.factories import PersonFactory
 from accounts.models import Person
 from reservations.factories import EnquiryFactory
@@ -74,9 +75,15 @@ def test_person_fk_nullable_and_round_trips() -> None:
 
 
 @pytest.mark.django_db
-def test_enquiry_factory_populates_person_mirror() -> None:
-    # GAP-045 Unit 3d-3: factory-built rows mirror production, where every
-    # customer-linked row carries the Person (reads resolve solely from it).
+def test_enquiry_factory_populates_person() -> None:
+    # GAP-045 D5-1: factory-built rows mirror production — every customer-linked
+    # row carries a CUSTOMER Person (reads resolve solely from it), and the
+    # factory no longer mints a legacy Guest leg.
     enquiry = cast(Enquiry, EnquiryFactory())
     assert enquiry.person is not None
-    assert enquiry.person.legacy_id == f"guest-{enquiry.guest_id}"
+    assert enquiry.person.kind == PersonKind.CUSTOMER.value
+    assert enquiry.person.primary_email() is not None
+    # Person-first: no legacy guest leg, and the Person is a real customer (not a
+    # `guest-*` mirror row).
+    assert enquiry.guest_id is None
+    assert enquiry.person.legacy_id is None

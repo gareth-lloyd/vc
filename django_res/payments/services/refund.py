@@ -26,6 +26,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from core.api.permissions import actor_has_perm
+from core.exceptions import AuthorizationError, DomainValidationError, InvalidPaymentState
 from core.idempotency import find_by_meta_key, stamp_meta
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
@@ -98,7 +99,7 @@ class RefundService:
         # log_operation block so a bad amount logs as a rejected request, not a
         # `refund.request.failed` error with a traceback.
         if amount is None or Decimal(str(amount)) <= 0:
-            raise ValueError("Refund amount must be positive")
+            raise DomainValidationError(field_errors={"amount": ["Refund amount must be positive"]})
 
         if against_payment is not None:
             # FG-010: lock the source payment before the aggregate. Under
@@ -117,8 +118,10 @@ class RefundService:
                 ),
             ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
             if (already_refunded + Decimal(str(amount))) > Decimal(against_payment.amount):
-                raise ValueError(
-                    "Cumulative refund amount exceeds the original Payment amount",
+                raise DomainValidationError(
+                    field_errors={
+                        "amount": ["Cumulative refund amount exceeds the original Payment amount"]
+                    }
                 )
 
         with log_operation(
@@ -167,15 +170,17 @@ class RefundService:
         # check below sees the winner's committed state.
         refresh_locked(refund)
         if refund.status != RefundStatus.PENDING.value:
-            raise ValueError(f"Refund {refund.reference}: cannot :approve from {refund.status!r}")
+            raise InvalidPaymentState(
+                f"Refund {refund.reference}: cannot :approve from {refund.status!r}"
+            )
         if not actor_has_perm(actor, PERM_APPROVE):
-            raise PermissionError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
+            raise AuthorizationError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
         if (
             actor is not None
             and refund.requested_by_id is not None
             and getattr(actor, "pk", None) == refund.requested_by_id
         ):
-            raise PermissionError("Requester cannot approve their own refund")
+            raise AuthorizationError("Requester cannot approve their own refund")
 
         refund.approved_by = actor
         refund.approved_at = timezone.now()
@@ -187,9 +192,11 @@ class RefundService:
     def reject(cls, refund: Refund, *, actor: Any, reason: str) -> Refund:
         refresh_locked(refund)
         if refund.status != RefundStatus.PENDING.value:
-            raise ValueError(f"Refund {refund.reference}: cannot :reject from {refund.status!r}")
+            raise InvalidPaymentState(
+                f"Refund {refund.reference}: cannot :reject from {refund.status!r}"
+            )
         if not actor_has_perm(actor, PERM_APPROVE):
-            raise PermissionError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
+            raise AuthorizationError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
         refund.rejected_by = actor
         refund.rejected_at = timezone.now()
         refund.rejection_reason = reason
@@ -215,11 +222,13 @@ class RefundService:
             RefundStatus.PENDING.value,
             RefundStatus.APPROVED.value,
         ):
-            raise ValueError(f"Refund {refund.reference}: cannot :cancel from {refund.status!r}")
+            raise InvalidPaymentState(
+                f"Refund {refund.reference}: cannot :cancel from {refund.status!r}"
+            )
         # Requester may cancel while PENDING; approver/permission-holder may
         # cancel while APPROVED.
         if refund.status == RefundStatus.APPROVED.value and not actor_has_perm(actor, PERM_APPROVE):
-            raise PermissionError(f"actor missing {PERM_APPROVE!r} to cancel approved refund")
+            raise AuthorizationError(f"actor missing {PERM_APPROVE!r} to cancel approved refund")
         refund.cancelled_at = timezone.now()
         refund.save(update_fields=["cancelled_at", "updated_at"])
         return refund._transition(RefundStatus.CANCELLED.value, actor=actor)
@@ -256,9 +265,11 @@ class RefundService:
         # failures — keep them above the log_operation block so they don't log
         # as `refund.execute.failed` with a traceback.
         if refund.status != RefundStatus.APPROVED.value:
-            raise ValueError(f"Refund {refund.reference}: cannot :execute from {refund.status!r}")
+            raise InvalidPaymentState(
+                f"Refund {refund.reference}: cannot :execute from {refund.status!r}"
+            )
         if not actor_has_perm(actor, PERM_EXECUTE):
-            raise PermissionError(f"actor {actor!r} missing {PERM_EXECUTE!r} permission")
+            raise AuthorizationError(f"actor {actor!r} missing {PERM_EXECUTE!r} permission")
         # High-risk org policy: executor must differ from approver unless
         # the actor carries `payments.self_approve_refund`. Service-layer
         # only — the DB doesn't enforce executor distinction.
@@ -268,7 +279,7 @@ class RefundService:
             and getattr(actor, "pk", None) == refund.approved_by_id
             and not actor_has_perm(actor, PERM_SELF_APPROVE)
         ):
-            raise PermissionError(
+            raise AuthorizationError(
                 f"Approver cannot also execute a refund without {PERM_SELF_APPROVE!r}",
             )
 

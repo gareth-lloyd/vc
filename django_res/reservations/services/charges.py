@@ -20,9 +20,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django.db import models, transaction
 from django.db.models.functions import Coalesce
-from rest_framework.exceptions import ValidationError
 
-from core.exceptions import InvalidTransition
+from core.exceptions import DomainValidationError, InvalidTransition
 from properties.enums import CommissionCalcType
 from reservations.enums import ACTIVE_BOOKING_STATUSES
 
@@ -281,7 +280,9 @@ class ChargeItemService:
         if currency is None:
             return booking.currency
         if currency.pk != booking.currency_id:
-            raise ValidationError({"currency": "Charge items must use the booking's currency."})
+            raise DomainValidationError(
+                field_errors={"currency": ["Charge items must use the booking's currency."]}
+            )
         return currency
 
     @staticmethod
@@ -293,7 +294,9 @@ class ChargeItemService:
         """
         current = charges_total_for(booking)
         if booking.balance_due + current + delta < 0:
-            raise ValidationError({"amount": "This would make the booking total negative."})
+            raise DomainValidationError(
+                field_errors={"amount": ["This would make the booking total negative."]}
+            )
 
     @staticmethod
     def _write_event(

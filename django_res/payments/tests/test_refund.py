@@ -10,6 +10,7 @@ import structlog.testing
 from django.contrib.auth.models import Permission
 from django.db import IntegrityError, transaction
 
+from core.exceptions import AuthorizationError
 from payments.enums import (
     PaymentPurpose,
     PaymentStatus,
@@ -133,7 +134,7 @@ def test_refund_approve__rejects_self_approval_without_permission(
         against_payment=paid_deposit,
         requested_by=user,
     )
-    with pytest.raises(PermissionError):
+    with pytest.raises(AuthorizationError):
         RefundService.approve(refund, actor=user)
 
 
@@ -149,7 +150,7 @@ def test_refund_approve__rejects_self_approval_even_with_self_approve_perm(
     The DB CheckConstraint unconditionally forbids `approved_by ==
     requested_by`, so a permission bypass at :approve could only ever end
     in an IntegrityError 500. The service must reject with a clean
-    PermissionError instead; the perm's bypass applies to :execute only.
+    AuthorizationError instead; the perm's bypass applies to :execute only.
     """
     _grant(user, "approve_refund", "self_approve_refund")
     refund = RefundService.request(
@@ -161,7 +162,7 @@ def test_refund_approve__rejects_self_approval_even_with_self_approve_perm(
         against_payment=paid_deposit,
         requested_by=user,
     )
-    with pytest.raises(PermissionError):
+    with pytest.raises(AuthorizationError):
         RefundService.approve(refund, actor=user)
     refund.refresh_from_db()
     assert refund.status == RefundStatus.PENDING.value
@@ -208,7 +209,7 @@ def test_refund_execute__permits_approver_when_self_approve_perm_present(
     RefundService.approve(refund, actor=approver)
 
     # Approver normally cannot also execute (no self_approve perm).
-    with pytest.raises(PermissionError):
+    with pytest.raises(AuthorizationError):
         RefundService.execute(refund, actor=approver)
 
     # Grant `self_approve_refund`; the same approver can now execute.

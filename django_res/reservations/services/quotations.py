@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import structlog
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
 
+from core.exceptions import DomainValidationError
 from pricing.models import Currency
 from pricing.services import PricingEngine
 from pricing.services.currency import quantise_money, resolve_property_currency
@@ -199,8 +199,8 @@ class QuotationService:
         """Canonical line-currency default (GAP-014), or a 400."""
         currency = resolve_property_currency(property)
         if currency is None:
-            raise ValidationError(
-                {
+            raise DomainValidationError(
+                field_errors={
                     "currency": [
                         "No currency resolvable for this property — supply one "
                         "or configure a rate plan / settings currency."
@@ -290,7 +290,7 @@ class QuotationService:
         # suppresses the builder for these, but guard the service too so the
         # API rejects a direct POST (the old UI disabled the action via `isFinal`).
         if enquiry.status in (EnquiryStatus.DEAD.value, EnquiryStatus.CONVERTED.value):
-            raise ValidationError("Cannot quote a dead or converted enquiry.")
+            raise DomainValidationError("Cannot quote a dead or converted enquiry.")
 
         resolved_guest = guest if guest is not None else enquiry.guest
         if resolved_guest is None:
@@ -313,7 +313,7 @@ class QuotationService:
             supplied_currency = line_input.get("currency")
             currency = supplied_currency or resolve_property_currency(line_input["property"])
             if currency is None:
-                raise ValidationError(
+                raise DomainValidationError(
                     "No currency resolvable for this property — configure a rate "
                     "plan, a settings currency, or seed EUR."
                 )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -21,31 +20,6 @@ from payments.models import Payment, Refund
 from payments.serializers import RefundRequestSerializer, RefundSerializer
 from payments.services.refund import RefundService
 from reservations.models import Booking
-
-
-def _run_service(call: Callable[[], Any]) -> Response | None:
-    """Translate service-layer `PermissionError`s into a canonical 403.
-
-    `ValueError` (state-machine misuse) maps to 409 so the FE can branch on
-    "wrong status" vs "auth missing" cleanly. Returns `None` on success.
-    """
-    try:
-        call()
-    except PermissionError as exc:
-        return Response(
-            {
-                "code": "forbidden",
-                "detail": str(exc) or "Permission denied",
-                "field_errors": {},
-            },
-            status=status.HTTP_403_FORBIDDEN,
-        )
-    except ValueError as exc:
-        return Response(
-            {"code": "invalid_state", "detail": str(exc), "field_errors": {}},
-            status=status.HTTP_409_CONFLICT,
-        )
-    return None
 
 
 class RefundViewSet(
@@ -76,12 +50,13 @@ class RefundViewSet(
     # ------------------------------------------------------------------
     # Action endpoints
     # ------------------------------------------------------------------
+    # Service-layer rejections surface through the canonical exception handler:
+    # `AuthorizationError` → 403 `forbidden`, `InvalidPaymentState` → 409
+    # `invalid_state`. No per-action `except` re-mapping (SMELL-010).
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()
-        error = _run_service(lambda: RefundService.approve(refund, actor=request.user))
-        if error is not None:
-            return error
+        RefundService.approve(refund, actor=request.user)
         refund.refresh_from_db()
         return Response(RefundSerializer(refund).data)
 
@@ -89,29 +64,21 @@ class RefundViewSet(
     def reject(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()
         reason = request.data.get("reason", "")
-        error = _run_service(
-            lambda: RefundService.reject(refund, actor=request.user, reason=reason)
-        )
-        if error is not None:
-            return error
+        RefundService.reject(refund, actor=request.user, reason=reason)
         refund.refresh_from_db()
         return Response(RefundSerializer(refund).data)
 
     @action(detail=True, methods=["post"], url_path="execute")
     def execute(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()
-        error = _run_service(lambda: RefundService.execute(refund, actor=request.user))
-        if error is not None:
-            return error
+        RefundService.execute(refund, actor=request.user)
         refund.refresh_from_db()
         return Response(RefundSerializer(refund).data)
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()
-        error = _run_service(lambda: RefundService.cancel(refund, actor=request.user))
-        if error is not None:
-            return error
+        RefundService.cancel(refund, actor=request.user)
         refund.refresh_from_db()
         return Response(RefundSerializer(refund).data)
 

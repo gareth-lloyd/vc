@@ -12,6 +12,39 @@
         <mj-text>Hi {{ guest_first_name }},</mj-text>
         <mj-text>Thanks for booking <strong>{{ property_name }}</strong> from <strong>{{ date_from }}</strong> to <strong>{{ date_to }}</strong>.</mj-text>
         <mj-text>Your reference is <strong>{{ booking_reference }}</strong>.</mj-text>
+        <mj-raw>
+          {% if charge_breakdown.charges or charge_breakdown.discounts %}
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:Helvetica,Arial,sans-serif;">
+            <tbody>
+              <tr>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;">Booking subtotal</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ charge_breakdown.currency }} {{ charge_breakdown.base_amount }}</td>
+              </tr>
+              {% for line in charge_breakdown.charges %}
+              <tr>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;">{{ line.label }}</td>
+                <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ charge_breakdown.currency }} {{ line.amount }}</td>
+              </tr>
+              {% endfor %}
+              {% if charge_breakdown.discounts %}
+              <tr>
+                <td colspan="2" style="font-size:13px;font-weight:bold;color:#2e7d32;padding:14px 6px 6px;">Discounts</td>
+              </tr>
+              {% for line in charge_breakdown.discounts %}
+              <tr>
+                <td style="font-size:14px;color:#2e7d32;border-bottom:1px solid #f0f0f0;padding:10px 6px;">{{ line.label }}</td>
+                <td style="font-size:14px;color:#2e7d32;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ charge_breakdown.currency }} {{ line.amount }}</td>
+              </tr>
+              {% endfor %}
+              {% endif %}
+              <tr>
+                <td style="font-size:15px;font-weight:bold;color:#222222;border-top:2px solid #eeeeee;padding:12px 6px;">Total</td>
+                <td style="font-size:15px;font-weight:bold;color:#222222;border-top:2px solid #eeeeee;padding:12px 6px;text-align:right;">{{ charge_breakdown.currency }} {{ charge_breakdown.total }}</td>
+              </tr>
+            </tbody>
+          </table>
+          {% endif %}
+        </mj-raw>
         <mj-text color="#888888" font-size="13px">We'll be in touch with arrival details closer to your stay.</mj-text>
       </mj-column>
     </mj-section>

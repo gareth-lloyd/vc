@@ -29,6 +29,7 @@ from payments.enums import (
 from payments.models import Payment, SecurityDeposit
 from payments.tasks import send_payment_reminders
 from reservations.enums import BookingStatus
+from reservations.factories import BookingChargeItemFactory
 
 if TYPE_CHECKING:
     from comms.models import SmtpProfile
@@ -784,12 +785,20 @@ def test_reminder_context_formats_dates_for_customers() -> None:
 
     from payments.tasks import _reminder_context
 
+    # `_reminder_context` now also itemises charge lines via the shared builder,
+    # so the stand-in needs the booking shape that builder reads (an empty
+    # charge set, a currency, a snapshot). Itemisation itself is covered by the
+    # render tests below; this test still only pins customer-facing date format.
     booking = SimpleNamespace(
         reference="VC-1",
         guest=SimpleNamespace(first_name="Ada"),
         property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
         date_from=date(2025, 7, 8),
         date_to=date(2025, 7, 14),
+        charge_items=SimpleNamespace(all=list),
+        currency=SimpleNamespace(code="GBP"),
+        pricing_snapshot={},
+        balance_due=Decimal("0"),
     )
 
     ctx = _reminder_context(
@@ -803,3 +812,170 @@ def test_reminder_context_formats_dates_for_customers() -> None:
     assert ctx["date_from"] == "8 July 2025"
     assert ctx["date_to"] == "14 July 2025"
     assert ctx["due_on"] == "1 July 2025"
+    assert "charge_breakdown" in ctx
+
+
+# ---------------------------------------------------------------------------
+# Charge-line itemisation (GAP-018) — the breakdown rides every deposit/balance
+# payment-request email; the security-deposit request never shows it.
+# ---------------------------------------------------------------------------
+
+
+def _add_demo_charges(booking: Booking, gbp: Currency) -> None:
+    """Two positive charges + one credit on `booking` (net +550.00)."""
+    BookingChargeItemFactory(
+        booking=booking, currency=gbp, label="Late checkout", amount=Decimal("150.00")
+    )
+    BookingChargeItemFactory(
+        booking=booking, currency=gbp, label="Heli transfer", amount=Decimal("900.00")
+    )
+    BookingChargeItemFactory(
+        booking=booking, currency=gbp, label="Loyalty credit", amount=Decimal("-500.00")
+    )
+
+
+def _assert_breakdown_present(html: str) -> None:
+    # Base = balance_due 1400 (no snapshot); + 150 + 900 - 500 = 1950.
+    assert "Booking subtotal" in html
+    assert "GBP 1,400.00" in html
+    assert "Late checkout" in html
+    assert "GBP 150.00" in html
+    assert "Heli transfer" in html
+    assert "GBP 900.00" in html
+    assert "Discounts" in html
+    assert "Loyalty credit" in html
+    assert "-500.00" in html
+    assert "Booking total" in html
+    assert "GBP 1,950.00" in html
+
+
+@pytest.mark.django_db
+def test_deposit_reminder_itemises_charge_lines(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    today = date.today()
+    _add_demo_charges(booking, gbp)
+    payment = _make_payment(booking, gbp, purpose=PaymentPurpose.DEPOSIT.value, due_on=today)
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(
+        template_key="payment.reminder.deposit", correlation__payment_id=payment.pk
+    )
+    _assert_breakdown_present(log.rendered_body_html)
+    # The "amount due now" is the schedule slice (420.00) — distinct from the
+    # 1,950.00 booking total in the breakdown.
+    assert "420.00" in log.rendered_body_html
+    # The derived plaintext alternative carries the itemisation too.
+    assert "Late checkout" in log.rendered_body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("days_before_due", "template_key"),
+    [
+        (7, "booking.balance_reminder_7d"),
+        (3, "booking.balance_reminder_3d"),
+        (0, "booking.balance_due_today"),
+    ],
+)
+def test_balance_reminder_itemises_charge_lines(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+    days_before_due: int,
+    template_key: str,
+) -> None:
+    today = date.today()
+    _add_demo_charges(booking, gbp)
+    payment = _make_payment(
+        booking,
+        gbp,
+        purpose=PaymentPurpose.BALANCE.value,
+        due_on=today + timedelta(days=days_before_due),
+        amount="980.00",
+    )
+    # Bank transfer so the T-0 band keeps the balance template (not card-update).
+    payment.payment_method = "bank_transfer"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(template_key=template_key, correlation__payment_id=payment.pk)
+    _assert_breakdown_present(log.rendered_body_html)
+    assert "980.00" in log.rendered_body_html
+
+
+@pytest.mark.django_db
+def test_card_update_reminder_itemises_charge_lines(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    today = date.today()
+    _add_demo_charges(booking, gbp)
+    payment = _make_payment(
+        booking, gbp, purpose=PaymentPurpose.BALANCE.value, due_on=today, amount="980.00"
+    )
+    payment.payment_method = "card"
+    payment.save(update_fields=["payment_method", "updated_at"])
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(
+        template_key="payment.card_update_request", correlation__payment_id=payment.pk
+    )
+    _assert_breakdown_present(log.rendered_body_html)
+
+
+@pytest.mark.django_db
+def test_security_deposit_reminder_omits_the_breakdown(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    today = date.today()
+    _add_demo_charges(booking, gbp)
+    sd = _make_sd(booking, gbp, due_on=today)
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(
+        template_key="payment.security_deposit_request",
+        correlation__security_deposit_id=sd.pk,
+    )
+    html = log.rendered_body_html
+    # A separate refundable hold — never enters `total`, so no decomposition.
+    assert "Booking total" not in html
+    assert "Late checkout" not in html
+
+
+@pytest.mark.django_db
+def test_reminder_without_charge_items_omits_the_breakdown(
+    booking: Booking,
+    gbp: Currency,
+    system_profile: SmtpProfile,
+    lifecycle_templates: None,
+) -> None:
+    # No charge items on the booking → the breakdown block is gated out and the
+    # reminder renders exactly as it did before GAP-018.
+    today = date.today()
+    payment = _make_payment(booking, gbp, purpose=PaymentPurpose.DEPOSIT.value, due_on=today)
+
+    send_payment_reminders(now=_at_noon(today))
+
+    log = EmailLog.objects.get(
+        template_key="payment.reminder.deposit", correlation__payment_id=payment.pk
+    )
+    html = log.rendered_body_html
+    assert "Booking subtotal" not in html
+    assert "Booking total" not in html
+    assert "Here's how your booking breaks down" not in html
+    # The existing reminder copy is unaffected.
+    assert "due today" in html

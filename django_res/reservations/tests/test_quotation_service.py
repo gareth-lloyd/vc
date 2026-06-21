@@ -141,8 +141,8 @@ def test_create_from_enquiry_rejects_final_enquiry(
     rate_rule: RateRule,
 ) -> None:
     """A lost/converted enquiry is closed to new quotes — the service rejects
-    it with a 400-mapping ValidationError and writes nothing."""
-    from rest_framework.exceptions import ValidationError
+    it with a 400-mapping DomainValidationError and writes nothing."""
+    from core.exceptions import DomainValidationError
 
     # A DEAD enquiry must carry a lost_reason (constraint); CONVERTED leaves it blank.
     lost_reason = (
@@ -152,7 +152,7 @@ def test_create_from_enquiry_rejects_final_enquiry(
         guest=guest, email=guest.email or "", status=final_status, lost_reason=lost_reason
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(DomainValidationError) as exc_info:
         QuotationService.create_from_enquiry(
             enquiry,
             [
@@ -167,6 +167,11 @@ def test_create_from_enquiry_rejects_final_enquiry(
             expires_at=timezone.now() + timedelta(days=7),
         )
 
+    # SMELL-010: the rejection carries the canonical code/status the handler
+    # emits, decoupled from DRF (the same `DomainValidationError` whose
+    # `{code: "validation_error"}` API shape is pinned in test_api_charges).
+    assert exc_info.value.code == "validation_error"
+    assert exc_info.value.status_code == 400
     assert Quotation.objects.filter(enquiry=enquiry).count() == 0
 
 

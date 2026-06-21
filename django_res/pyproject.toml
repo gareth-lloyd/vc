@@ -143,6 +143,9 @@ addopts = "-ra --strict-markers --reuse-db -n auto"
 # Run with `uv run lint-imports`; wired into pre-commit and CI alongside mypy.
 # ---------------------------------------------------------------------------
 [tool.importlinter]
+# Needed by the "services are framework-free" forbidden contract below, whose
+# forbidden module (`rest_framework`) is an external package.
+include_external_packages = true
 root_packages = [
     "core",
     "accounts",
@@ -224,3 +227,34 @@ ignore_imports = [
     "payments.tasks -> comms.recipients",
     "payments.tasks -> comms.services",
 ]
+
+[[tool.importlinter.contracts]]
+name = "services are framework-free — no rest_framework in the service layer"
+type = "forbidden"
+# Vertical-architecture rule (django_res/CLAUDE.md §Principles): DRF handles
+# (de)serialization in views/serializers only; ALL business logic lives in the
+# service layer, which must stay free of the HTTP framework. A service that
+# raises `rest_framework.exceptions.ValidationError` couples domain logic to
+# DRF and skips the canonical `{code, detail, field_errors}` shape — raise a
+# `core.exceptions.DomainError` subclass instead (SMELL-010). Listed per app
+# (package + `**` descendants) so a new `<app>/services/` package is a
+# deliberate add here, not silently uncovered.
+source_modules = [
+    "accounts.services",
+    "accounts.services.**",
+    "integrations.services",
+    "integrations.services.**",
+    "payments.services",
+    "payments.services.**",
+    "pricing.services",
+    "pricing.services.**",
+    "properties.services",
+    "properties.services.**",
+    "reservations.services",
+    "reservations.services.**",
+]
+forbidden_modules = ["rest_framework"]
+# Direct imports only: `core.api.permissions` (the sanctioned service-layer
+# `actor_has_perm` primitive) legitimately imports DRF, and services reach it
+# downward — that blessed transitive chain is not the coupling we're banning.
+allow_indirect_imports = "true"

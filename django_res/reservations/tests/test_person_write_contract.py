@@ -114,10 +114,11 @@ def test_create_enquiry_accepts_person(api_client: APIClient, staff: User) -> No
 
 
 @pytest.mark.django_db
-def test_create_enquiry_guest_still_resolves_person(
+def test_create_enquiry_ignores_guest_input(
     api_client: APIClient, staff: User, guest: Guest
 ) -> None:
-    """Transitional: a `guest` id still derives the Person mirror (no `person`)."""
+    """GAP-045 D5-2: `guest` is no longer a write field — a body sending only a
+    `guest` id writes no customer (it's silently ignored), leaving person null."""
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
@@ -127,27 +128,7 @@ def test_create_enquiry_guest_still_resolves_person(
 
     assert response.status_code == 201, response.data
     enquiry = Enquiry.objects.get()
-    assert enquiry.person_id == person_for_guest(guest).pk
-    assert enquiry.guest_id is None
-
-
-@pytest.mark.django_db
-def test_create_enquiry_person_wins_over_guest(
-    api_client: APIClient, staff: User, guest: Guest
-) -> None:
-    """When both are sent, `person` is authoritative; the guest leg is ignored."""
-    person = _customer("Win", "Ner")
-    api_client.force_login(staff)
-    response = api_client.post(
-        "/api/v1/enquiries",
-        {"person": person.pk, "guest": guest.pk, "adults": 2},
-        format="json",
-    )
-
-    assert response.status_code == 201, response.data
-    enquiry = Enquiry.objects.get()
-    assert enquiry.person_id == person.pk
-    assert enquiry.person_id != person_for_guest(guest).pk
+    assert enquiry.person_id is None
     assert enquiry.guest_id is None
 
 
@@ -212,9 +193,11 @@ def test_create_quotation_accepts_person(
 
 
 @pytest.mark.django_db
-def test_create_quotation_person_wins_over_guest(
+def test_create_quotation_ignores_guest_field(
     api_client: APIClient, staff: User, guest: Guest, gbp: Currency, terms: TermsVersion
 ) -> None:
+    """GAP-045 D5-2: the quotation write serializer no longer accepts `guest` —
+    a `guest` id in the body is ignored; only `person` drives the customer."""
     person = _customer("Q", "Win")
     api_client.force_login(staff)
     response = api_client.post(
@@ -233,6 +216,29 @@ def test_create_quotation_person_wins_over_guest(
     quotation = Quotation.objects.get()
     assert quotation.person_id == person.pk
     assert quotation.person_id != person_for_guest(guest).pk
+
+
+@pytest.mark.django_db
+def test_create_quotation_guest_only_is_400(
+    api_client: APIClient, staff: User, guest: Guest, gbp: Currency, terms: TermsVersion
+) -> None:
+    """GAP-045 D5-2: `guest` is no longer resolved — a create carrying only a
+    `guest` (no `person`) is rejected with a clean 400, not silently accepted."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/quotations",
+        {
+            "guest": guest.pk,
+            "currency": gbp.pk,
+            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            "terms_version": terms.pk,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "person" in response.data["field_errors"]
+    assert not Quotation.objects.exists()
 
 
 @pytest.mark.django_db

@@ -34,7 +34,9 @@ def test_create_from_enquiry_happy_path(
     property_: Property,
     rate_rule: RateRule,  # ensures PricingEngine has something to quote on
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
     expires = timezone.now() + timedelta(days=7)
 
     quotation = QuotationService.create_from_enquiry(
@@ -79,7 +81,9 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
     clobber it, mirroring the API `_reprice` guard."""
     from decimal import Decimal
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,
@@ -107,13 +111,15 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
 
 
 @pytest.mark.django_db
-def test_create_from_enquiry_requires_guest(
+def test_create_from_enquiry_requires_person(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
     rate_rule: RateRule,
 ) -> None:
+    """An enquiry with no captured customer cannot be quoted (GAP-045 D5-2)."""
     enquiry = Enquiry.objects.create(email="anonymous@example.com")
+    assert enquiry.person is None
     with pytest.raises(ValueError):
         QuotationService.create_from_enquiry(
             enquiry,
@@ -144,7 +150,9 @@ def test_create_from_enquiry_rejects_final_enquiry(
     it with a 400-mapping ValidationError and writes nothing."""
     from rest_framework.exceptions import ValidationError
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "", status=final_status)
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or "", status=final_status
+    )
 
     with pytest.raises(ValidationError):
         QuotationService.create_from_enquiry(
@@ -182,7 +190,9 @@ def test_create_from_enquiry_records_send_path_smtp(
     from reservations.enums import EnquiryEventKind
     from reservations.models import EnquiryEvent
 
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
 
     QuotationService.create_from_enquiry(
         enquiry,
@@ -206,7 +216,9 @@ def test_create_from_enquiry_records_send_path_smtp(
 def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: TermsVersion) -> None:
     """`Enquiry.quote_sent` must require `send_path` — surfacing the audit
     contract in the signature so future callers can't omit it silently."""
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
     quotation = Quotation.objects.create(
         enquiry=enquiry,
         guest=guest,
@@ -236,7 +248,9 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
     # 2026-06-10 is a Wednesday — not the Saturday changeover day.
     line_input = {
         "property": property_,
@@ -527,9 +541,10 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     """Agent-direct quote with no enquiry mints exactly one AGENT_PORTAL enquiry."""
     guest.contact_method = ContactMethod.EMAIL
     guest.save(update_fields=["contact_method"])
+    person = person_for_guest(guest)
 
     quotation = QuotationService.create_direct(
-        guest=guest,
+        person=person,
         lines=[
             {
                 "property": property_,
@@ -573,7 +588,9 @@ def test_create_from_enquiry_seeds_line_inclusions_from_plan(
     plan = rate_rule.card.plan
     plan.inclusion = "Daily maid service"
     plan.save(update_fields=["inclusion"])
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    enquiry = Enquiry.objects.create(
+        guest=guest, person=person_for_guest(guest), email=guest.email or ""
+    )
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,

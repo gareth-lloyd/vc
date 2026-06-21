@@ -317,8 +317,9 @@ export type QuotationLineWriteInput = z.infer<typeof quotationLineWriteInputSche
 export const quotationWriteInputSchema = z.object({
   enquiry: z.number().int().nullable(),
   // GAP-045: `person` is the authoritative customer FK the builder sends (off
-  // /contacts). The transitional `guest` write was dropped here in D3-3; the
-  // backend still accepts it for legacy callers until the Guest model retires.
+  // /contacts). The transitional `guest` write was dropped from this schema in
+  // D3-3 and from the backend serializer in D5-2 — `person` is now the sole
+  // customer input the backend accepts (a guest-only body is a 400).
   person: z.number().int(),
   agent: z.number().int().nullable().optional(),
   is_unbranded: z.boolean().optional().default(false),

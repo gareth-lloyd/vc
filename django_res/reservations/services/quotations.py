@@ -21,7 +21,6 @@ from pricing.services.currency import quantise_money, resolve_property_currency
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
-from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
     from reservations.models.booking import BookingHold
@@ -258,14 +257,13 @@ class QuotationService:
         (no enquiry) mints the minimal AGENT_PORTAL enquiry inside the same
         transaction, so a failed line rolls it back too.
         """
-        # GAP-045 D3-1: `person` is the authoritative customer FK. The SPA sends
-        # it directly (off `/contacts`); a transitional `guest` input still
-        # derives the same Person via the mirror. Drop BOTH raw keys so neither
-        # the legacy leg nor a duplicate `person=` kwarg reaches `create`.
+        # GAP-045 D5-2: `person` is the sole customer input. The SPA sends it
+        # directly (off `/contacts`); pop it so a duplicate `person=` kwarg
+        # never reaches `create`. A missing person is rejected by the write
+        # serializer (clean 400) before reaching here.
         person = header.pop("person", None)
-        guest = header.pop("guest", None)
-        if person is None and guest is not None:
-            person = person_for_guest(guest)
+        if person is None:
+            raise ValueError("Quotation requires a customer; supply `person`.")
         if header.get("enquiry") is None:
             header = {
                 **header,
@@ -285,7 +283,6 @@ class QuotationService:
         *,
         terms_version: Any,
         expires_at: Any,
-        guest: Any | None = None,
         agent: Any | None = None,
         actor: Any = None,
     ) -> Quotation:
@@ -301,19 +298,12 @@ class QuotationService:
         if enquiry.status in (EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value):
             raise ValidationError("Cannot quote a lost or converted enquiry.")
 
-        # GAP-045 D5-1: prefer the unified Person — supplied directly, else the
-        # one captured on the enquiry. The transitional `guest=` input / the
-        # enquiry's guest mirror remain a fallback (the guest-input leg is
-        # removed in D5-2).
+        # GAP-045 D5-2: the unified Person is the sole customer source — it must
+        # already be captured on the enquiry. The transitional `guest=` input /
+        # the enquiry's guest mirror fallback are gone.
         person = enquiry.person
         if person is None:
-            resolved_guest = guest if guest is not None else enquiry.guest
-            if resolved_guest is None:
-                raise ValueError(
-                    "Quotation requires a customer; pass `person=`/`guest=` or "
-                    "capture one on the enquiry first."
-                )
-            person = person_for_guest(resolved_guest)
+            raise ValueError("Quotation requires a customer; capture one on the enquiry first.")
 
         quotation = Quotation.objects.create(
             enquiry=enquiry,
@@ -400,7 +390,7 @@ class QuotationService:
     def create_direct(
         cls,
         *,
-        guest: Any,
+        person: Any,
         lines: list[dict[str, Any]],
         terms_version: Any,
         expires_at: Any,
@@ -408,13 +398,12 @@ class QuotationService:
         actor: Any = None,
     ) -> Quotation:
         """Agent-direct quote with no enquiry — auto-create one, then delegate."""
-        enquiry = cls.minimal_enquiry_for(person_for_guest(guest), agent=agent)
+        enquiry = cls.minimal_enquiry_for(person, agent=agent)
         return cls.create_from_enquiry(
             enquiry,
             lines,
             terms_version=terms_version,
             expires_at=expires_at,
-            guest=guest,
             agent=agent,
             actor=actor,
         )

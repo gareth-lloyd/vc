@@ -74,11 +74,12 @@ def other_guest(db: None) -> Guest:
 def test_enquiry_create_via_api_sets_person(
     api_client: APIClient, staff: User, guest: Guest
 ) -> None:
+    person = person_for_guest(guest)
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": person.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@personfk.example.com",
@@ -89,15 +90,13 @@ def test_enquiry_create_via_api_sets_person(
 
     assert response.status_code == 201
     enquiry = Enquiry.objects.get(pk=response.data["id"])
-    assert enquiry.person is not None
-    assert enquiry.person == person_for_guest(guest)
-    # 3d-C: `guest` is a writable INPUT (the API still accepts it) but is no
-    # longer persisted — only `person` is stored.
+    assert enquiry.person == person
+    # D5-2: `person` is the sole customer input; the guest leg is never written.
     assert enquiry.guest_id is None
 
 
 @pytest.mark.django_db
-def test_enquiry_patch_changing_guest_repoints_person(
+def test_enquiry_patch_changing_person_repoints_person(
     api_client: APIClient, staff: User, guest: Guest, other_guest: Guest
 ) -> None:
     enquiry = Enquiry.objects.create(
@@ -108,19 +107,20 @@ def test_enquiry_patch_changing_guest_repoints_person(
         email="ada@example.com",
         adults=2,
     )
+    new_person = person_for_guest(other_guest)
     api_client.force_login(staff)
 
     response = api_client.patch(
         f"/api/v1/enquiries/{enquiry.pk}",
-        {"guest": other_guest.pk},
+        {"person": new_person.pk},
         format="json",
     )
 
     assert response.status_code == 200
     enquiry.refresh_from_db()
-    # 3d-C: the PATCH repoints `person` from the guest input but does NOT persist
-    # the guest leg — it stays frozen at its setup value (guest is going away).
-    assert enquiry.person == person_for_guest(other_guest)
+    # D5-2: the PATCH repoints `person` directly; the denormalised guest leg
+    # stays frozen at its setup value (guest is going away).
+    assert enquiry.person == new_person
     assert enquiry.guest == guest
 
 
@@ -198,7 +198,7 @@ def test_quotation_create_direct_sets_person_on_quotation_and_enquiry(
     rate_rule: object,
 ) -> None:
     quotation = QuotationService.create_direct(
-        guest=guest,
+        person=person_for_guest(guest),
         lines=[
             {
                 "property": property_,
@@ -346,7 +346,7 @@ def test_quotation_duplicate_action_sets_person_on_clone(
     rate_rule: object,
 ) -> None:
     source = QuotationService.create_direct(
-        guest=guest,
+        person=person_for_guest(guest),
         lines=[
             {
                 "property": property_,

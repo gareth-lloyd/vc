@@ -173,7 +173,7 @@ def test_create_quotation(
     response = api_client.post(
         "/api/v1/quotations",
         {
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "currency": gbp.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
@@ -1984,7 +1984,7 @@ def test_create_quotation_with_lines_atomic_happy_path(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2050,7 +2050,7 @@ def test_create_with_lines_invalid_line_is_nested_400_and_writes_nothing(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2113,7 +2113,7 @@ def test_create_with_lines_succeeds_over_foreign_live_hold(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2168,7 +2168,7 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
     response = api_client.post(
         "/api/v1/quotations",
         {
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2209,7 +2209,7 @@ def test_create_with_lines_nets_discount(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2257,7 +2257,7 @@ def test_create_with_lines_pins_supplied_currency(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2302,7 +2302,7 @@ def test_create_with_lines_records_changeover_shift(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "guest": guest.pk,
+            "person": person_for_guest(guest).pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [

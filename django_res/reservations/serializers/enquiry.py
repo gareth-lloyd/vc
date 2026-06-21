@@ -157,7 +157,6 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
     class Meta:
         model = Enquiry
         fields = [
-            "guest",
             "person",
             "first_name",
             "last_name",
@@ -180,41 +179,6 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "site_source",
             "inbound_message",
         ]
-
-    def create(self, validated_data: dict[str, Any]) -> Enquiry:
-        # GAP-045 D3-1: the EnquiryViewSet write path is plain DRF (no service
-        # layer), so the serializer reconciles the customer leg here. `person`
-        # (off `/contacts`) is authoritative; a transitional `guest` input
-        # derives the same Person via the mirror. None → None (person nullable).
-        validated_data["person"] = self._resolve_customer(validated_data)
-        return super().create(validated_data)
-
-    def update(self, instance: Enquiry, validated_data: dict[str, Any]) -> Enquiry:
-        # Only re-point `person` when this write actually touches a customer leg
-        # — a PATCH sending neither must leave the existing link alone. When it
-        # does, `_resolve_customer` drops both raw legs so neither is persisted.
-        if "person" in validated_data or "guest" in validated_data:
-            validated_data["person"] = self._resolve_customer(validated_data)
-        return super().update(instance, validated_data)
-
-    def _resolve_customer(self, validated_data: dict[str, Any]) -> Any:
-        """Reconcile the `person`/`guest` legs, dropping both raw keys.
-
-        `person` wins; `guest` is the transitional fallback (removed in D4/D5).
-        """
-        person = validated_data.pop("person", None)
-        guest = validated_data.pop("guest", None)
-        if person is not None:
-            return person
-        return self._person_for(guest)
-
-    @staticmethod
-    def _person_for(guest: Any) -> Any:
-        if guest is None:
-            return None
-        from reservations.services.person_sync import person_for_guest
-
-        return person_for_guest(guest)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         # Enquiry dates are an optional, independent capture surface (the model

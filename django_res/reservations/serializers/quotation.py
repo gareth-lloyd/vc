@@ -284,7 +284,6 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
         model = Quotation
         fields = [
             "enquiry",
-            "guest",
             "person",
             "agent",
             "is_unbranded",
@@ -294,12 +293,11 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
         ]
         # `enquiry` is non-null on the model, but agent-direct quotes arrive
         # without one — the service auto-creates a minimal enquiry in that case
-        # (see QuotationService.create_with_lines). `person` is non-null too, but
-        # the SPA may instead send the transitional `guest` leg the service
-        # resolves it from — so keep both optional on the wire (GAP-045 D3-1).
+        # (see QuotationService.create_with_lines). `person` is the sole,
+        # mandatory customer input (GAP-045 D5-2).
         extra_kwargs = {
             "enquiry": {"required": False, "allow_null": True},
-            "person": {"required": False, "allow_null": True},
+            "person": {"required": True},
         }
 
     def validate(self, attrs: dict) -> dict:
@@ -309,12 +307,12 @@ class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
             raise serializers.ValidationError(
                 {"lines": ["Lines can only be supplied on create — edit via the lines endpoints."]}
             )
-        # `Quotation.person` is NOT NULL; the service resolves it from `person`
-        # (authoritative) or the transitional `guest` leg (GAP-045 D3-1). A create
-        # carrying neither would 500 on the DB constraint — reject with a clean
-        # 400 instead. (Update skips this: the existing row already has a person.)
-        if self.instance is None and not attrs.get("person") and not attrs.get("guest"):
+        # `Quotation.person` is NOT NULL and the sole customer input (GAP-045
+        # D5-2). A create carrying none would 500 on the DB constraint — reject
+        # with a clean 400 instead. (Update skips this: the existing row already
+        # has a person.)
+        if self.instance is None and not attrs.get("person"):
             raise serializers.ValidationError(
-                {"person": ["A quotation requires a customer — supply `person` (or `guest`)."]}
+                {"person": ["A quotation requires a customer — supply `person`."]}
             )
         return attrs

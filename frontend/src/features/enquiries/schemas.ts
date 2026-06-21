@@ -156,9 +156,8 @@ export const enquiryWriteInputSchema = z
   .object({
     // Resolved customer link (existing-client picker). Null = free-text capture
     // / create-new; the backend mints or reuses the Person from the denorm
-    // fields. `person` is authoritative (GAP-045); `guest` is kept transitional.
+    // fields. `person` is the sole customer input (GAP-045 D5-2).
     person: z.number().nullable(),
-    guest: z.number().nullable().optional(),
     first_name: z.string().trim().max(128),
     last_name: z.string().trim().max(128),
     email: z

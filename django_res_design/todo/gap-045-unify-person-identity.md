@@ -1,3 +1,17 @@
+> **🟨 PARTIAL (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — Phase 1a has landed
+> (~`a4264a9`, 2026-06-18): `accounts.Contact` renamed to `Person` in place
+> (`accounts/models/person.py:19`, migration `0006`); supply-side + agent FKs
+> repointed to `accounts.Person` (`enquiry.py:102`, `quotation.py:60`,
+> `booking.py:145`, `properties/models/contacts.py`, `finance.py`). **The hard
+> 2/3 is undone:** `reservations.Guest` still exists as a separate `AuditedModel`
+> with its own merge/anonymize and `town/post_code/country` fields, and
+> `Enquiry/Quotation/Booking.guest` still point at it. Remaining = phases 2–3
+> below (add Guest's fields/constraints + `PersonEmail/PersonPhone` to `Person`,
+> data-migrate + repoint guest FKs, unify status/merge, retire `Guest`).
+> Downstream GAP-046/047/048/042/040/041 stays blocked until that lands.
+>
+> _Original ticket preserved below for context._
+
 # GAP-045 — Unify human identity into a single `Person` model
 
 - **Severity:** Gap (foundational data-model refactor) — **do first; blocks

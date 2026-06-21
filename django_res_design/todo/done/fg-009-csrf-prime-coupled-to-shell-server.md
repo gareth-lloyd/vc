@@ -1,3 +1,14 @@
+> **✅ RESOLVED (2026-06-20)** — Problem: nothing primed the `csrftoken` cookie
+> on the dev origin (only `spa_index`'s `@ensure_csrf_cookie` did, and Vite serves
+> the dev shell) → first login POST 403'd, forcing a second submit. Fix: the
+> proposed decoupling shipped — dedicated `GET /auth/csrf` `CsrfView`
+> (`accounts/views/auth.py:41,53`) + FE `primeCsrfCookie()` on boot
+> (`frontend/src/app/boot.tsx:6,25`), regression tests in
+> `app/__tests__/bootCsrf.test.tsx`. `spa_index` priming kept for prod (two
+> mechanisms coexist, as designed).
+>
+> _Original ticket preserved below for context._
+
 # FG-009 — CSRF priming is coupled to who serves the HTML shell (recurring double-login)
 
 - **Severity:** 🟠 Footgun (dev-only impact; **not vital** — year-long cookie means it bites rarely)

@@ -36,9 +36,11 @@ the detail.
 - **Allow `Organisation` assignees** — a `management_company` role should be
   able to reference an `Organisation` (GAP-046), not only a `Person`.
 - **Surface the role** in the Villa-Contacts list (chip/column) and detail.
-- **Address: dropped — subsumed by GAP-045** (Person already carries the rich
-  `town/post_code/country` address). The owner's "missing address fields" is
-  satisfied there; only verify the Villa-Contacts detail *renders* it.
+- **Address: deferred to GAP-045 phase-2 — NOT on `Person` yet.** (Corrected
+  2026-06-20: `town/post_code/country` still live on `reservations.Guest`, not
+  `Person`, which today has only `address_line_1/2`. They ride in with the Guest
+  fold-in — GAP-045 phases 2–3, not yet landed.) Until then there is no Person
+  address to render; don't assume it's available.
 
 **Caveat 1 (from the UI assessment):** keep the **Villa-Contacts form distinct
 from the Clients form** over the shared `Person` identity — roles / linked
@@ -51,7 +53,8 @@ properties / groups here, vs tags / relationships / history on the Clients side
   Manager / Management Company); the keep/drop call on housekeeper/owners_rep is
   recorded.
 - `management_company` assignments can point at an `Organisation`.
-- Villa-Contacts list/detail shows the role and the (Person) address.
+- Villa-Contacts list/detail shows the role (address acceptance waits on
+  GAP-045 phase-2 putting `town/post_code/country` on `Person`).
 
 ## Dependencies
 

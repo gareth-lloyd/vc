@@ -1,3 +1,12 @@
+> **✅ RESOLVED (2026-06-19)** — Problem: What happens when an owner doesn't
+> respond to a booking pre-approval in time, and what's the default window?
+> Decided: **timeouts always escalate to a human — no auto-approval on
+> timeout** (auto-booking without explicit owner consent rejected as a business
+> risk); **default window 24h**, configurable per Site/Group. The 24h escalate
+> task already exists; remaining build = make the window configurable.
+>
+> _Original ticket preserved below for context._
+
 # Q-002 — Owner pre-approval SLA
 
 - **Severity:** Question

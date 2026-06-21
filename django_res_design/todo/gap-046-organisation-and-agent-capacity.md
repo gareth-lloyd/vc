@@ -31,9 +31,11 @@ supply-side identity bag. Organisations are simply unmodelled.
 2. **Agent capacity** = `Person.agency → Organisation` (FK, null). "Is an
    agent" stays **derived** (has an agency / is referenced as an `.agent`) — no
    `kind` column (per GAP-045).
-3. **Repoint the `.agent` FKs** (`Enquiry/Quotation/Booking.agent`) from
-   `Contact` → `Person`. ~2,000+ legacy enquiries carry an agent;
-   `Quotation.agent` is `PROTECT` — back-audit before tightening.
+3. ~~**Repoint the `.agent` FKs** from `Contact` → `Person`.~~ **Already done
+   (2026-06-20): GAP-045 phase-1a's in-place Contact→Person rename satisfied this
+   trivially** — `Enquiry/Quotation/Booking.agent` already point at
+   `accounts.Person` (`enquiry.py:102`, `quotation.py:60`, `booking.py:145`).
+   Trim from scope; `Quotation.agent` `PROTECT` already honoured.
 4. **Migrate free-text `company` strings → `Organisation` rows**: dedupe
    distinct values (the legacy `SELECT_DISTINCT` company autocomplete is the
    precedent — `workflows/05-directory/contact-records.md:124-134`), attach the

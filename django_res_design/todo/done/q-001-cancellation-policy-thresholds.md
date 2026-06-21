@@ -1,3 +1,11 @@
+> **✅ RESOLVED (2026-06-19)** — Problem: How should villa cancellation
+> policies be stored? Decided: **named policy templates (Strict / Moderate /
+> Flexible) selectable per villa, with optional per-villa override** — adds a
+> `CancellationPolicy` model wired into the Refund execution path with an
+> explicit threshold lookup. (Per-villa-only custom values rejected: no reuse.)
+>
+> _Original ticket preserved below for context._
+
 # Q-001 — Cancellation policy thresholds
 
 - **Severity:** Question (blocks implementation slice)

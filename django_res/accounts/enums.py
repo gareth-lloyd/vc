@@ -53,3 +53,23 @@ class ContactRole(models.TextChoices):
     AGENT = "agent", "Agent"
     HOUSEKEEPER = "housekeeper", "Housekeeper"
     OWNERS_REPRESENTATIVE = "owners_rep", "Owner's representative"
+
+
+class OrgType(models.TextChoices):
+    """Capacity partition for `accounts.Organisation`: one entity, screens
+    scoped by type. AGENCY backs the B2B Companies directory (GAP-046);
+    MANAGEMENT_COMPANY surfaces as a property assignee (GAP-048); SUPPLIER
+    backs the concierge directory (q-007). GAP-046."""
+
+    AGENCY = "agency", "Agency"
+    MANAGEMENT_COMPANY = "mgmt", "Management Company"
+    SUPPLIER = "supplier", "Supplier"
+
+
+class OrgStatus(models.TextChoices):
+    """Lifecycle for `accounts.Organisation`. No ANONYMIZED member: an
+    organisation is not a GDPR data subject — lifecycle is status + a
+    PROTECT-gated hard delete, never soft-delete. GAP-046."""
+
+    ACTIVE = "active", "Active"
+    INACTIVE = "inactive", "Inactive"

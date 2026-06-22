@@ -9,7 +9,7 @@ class AccountsConfig(AppConfig):
 
     def ready(self) -> None:
         from accounts import signals  # noqa: F401
-        from accounts.models import Person, User
+        from accounts.models import Organisation, Person, User
         from core.audit import track
 
         track(
@@ -48,4 +48,23 @@ class AccountsConfig(AppConfig):
                 "preferred_language",
             ],
             sensitive=["tfa_secret"],
+        )
+        # Organisation carries contact detail (email/phone/address) → audited.
+        # No `sensitive` fields and no erasure scrub: an organisation is not a
+        # GDPR data subject (GAP-046).
+        track(
+            Organisation,
+            fields=[
+                "name",
+                "org_type",
+                "email",
+                "phone",
+                "address_line_1",
+                "address_line_2",
+                "town",
+                "post_code",
+                "website_url",
+                "notes",
+                "status",
+            ],
         )

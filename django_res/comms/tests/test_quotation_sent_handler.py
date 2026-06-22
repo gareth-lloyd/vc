@@ -9,16 +9,19 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from django.utils import timezone
 
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person
 from comms.management.commands.seed_email_templates import sync_templates
 from comms.models import EmailLog, SmtpProfile
 from comms.signals import quotation_sent_handler
 from pricing.models import Currency
 from properties.models import Property
-from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import Enquiry, Quotation, QuotationLine, TermsVersion
 
 
 @pytest.fixture
@@ -27,11 +30,14 @@ def gbp(db: None) -> Currency:
 
 
 @pytest.fixture
-def guest(db: None) -> Guest:
-    return Guest.objects.create(
-        first_name="Ada",
-        last_name="Lovelace",
-        email="ada@example.com",
+def customer(db: None) -> Person:
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Ada",
+            last_name="Lovelace",
+            primary_email="ada@example.com",
+        ),
     )
 
 
@@ -74,18 +80,14 @@ def property_(db: None) -> Property:
 @pytest.fixture
 def quotation_with_line(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Quotation:
-    from reservations.services.person_sync import person_for_guest
-
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=Enquiry.objects.create(person=customer, property=property_),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

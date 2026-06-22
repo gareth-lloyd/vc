@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import cast
 
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from properties.models import Property
 from reservations.enums import BookingHoldReason
 from reservations.models.booking import BookingHold
-from reservations.services.person_sync import person_for_guest
 
 
 @pytest.mark.django_db
@@ -67,9 +67,10 @@ def test_calendar_cell_links_quotation_hold_to_its_quotation(
     while `block_id` stays null — no edit affordance on system holds."""
     from datetime import UTC, datetime
 
-    from reservations.models import Guest, Quotation, TermsVersion
+    from accounts.factories import CustomerPersonFactory
+    from reservations.models import Enquiry, Quotation, TermsVersion
 
-    guest = Guest.objects.create(first_name="Cal", last_name="Endar", email="cal@example.com")
+    customer = cast(Person, CustomerPersonFactory(first_name="Cal", last_name="Endar"))
     terms = TermsVersion.objects.create(
         version="cal-test",
         body_markdown="**T&Cs**",
@@ -77,9 +78,8 @@ def test_calendar_cell_links_quotation_hold_to_its_quotation(
         is_current=True,
     )
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=Enquiry.objects.create(person=customer, property=property_),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -246,16 +246,16 @@ def _system_quotation_hold(property_: Property) -> BookingHold:
     """A read-only hold backed by an open quotation (not operator-editable)."""
     from datetime import timedelta
 
-    from reservations.models import Guest, Quotation, TermsVersion
+    from accounts.factories import CustomerPersonFactory
+    from reservations.models import Enquiry, Quotation, TermsVersion
 
-    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@x.com")
+    customer = cast(Person, CustomerPersonFactory(first_name="Ada", last_name="Lovelace"))
     terms = TermsVersion.objects.create(
         version="2026-01", body_markdown="x", published_at=timezone.now(), is_current=True
     )
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=Enquiry.objects.create(person=customer, property=property_),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

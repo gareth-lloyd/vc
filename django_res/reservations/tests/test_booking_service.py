@@ -116,7 +116,7 @@ def test_create_from_quotation_line__lead_creation_is_atomic_with_booking(
             BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
 
     assert not Booking.objects.filter(quotation_line=quotation_line).exists()
-    assert not BookingGuest.objects.filter(guest=quotation_line.quotation.guest).exists()
+    assert not BookingGuest.objects.filter(person=quotation_line.quotation.person).exists()
 
 
 @pytest.mark.django_db

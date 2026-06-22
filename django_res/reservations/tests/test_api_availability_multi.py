@@ -15,7 +15,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
@@ -24,7 +24,6 @@ from reservations.enums import BookingHoldReason, BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingHold,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
@@ -54,18 +53,14 @@ def _make_booking(
     *,
     property: Property,
     currency: Currency,
-    guest: Guest,
+    person: Person,
     terms: TermsVersion,
     date_from: date,
     date_to: date,
     status: str = BookingStatus.AWAITING_DEPOSIT.value,
 ) -> Booking:
-    from reservations.services.person_sync import person_for_guest
-
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -81,7 +76,6 @@ def _make_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property,
         date_from=date_from,
@@ -217,13 +211,13 @@ def test_bookings_carry_timeline_fields(
     staff: User,
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     booking = _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        person=customer,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
@@ -271,13 +265,13 @@ def test_booking_linked_hold_excluded_booking_present(
     staff: User,
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     booking = _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        person=customer,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
@@ -304,7 +298,7 @@ def test_query_count_is_constant(
     staff: User,
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     others = [
@@ -327,7 +321,7 @@ def test_query_count_is_constant(
         _make_booking(
             property=prop,
             currency=gbp,
-            guest=guest,
+            person=customer,
             terms=terms,
             date_from=date(2026, 6, 14 + n),
             date_to=date(2026, 6, 21 + n),

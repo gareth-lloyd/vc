@@ -57,11 +57,14 @@ def staff(db: None) -> User:
 
 
 @pytest.fixture
-def other_guest(db: None) -> Guest:
-    return Guest.objects.create(
-        first_name="Grace",
-        last_name="Hopper",
-        email="grace@example.com",
+def other_customer(db: None) -> Person:
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Grace",
+            last_name="Hopper",
+            primary_email="grace@example.com",
+        ),
     )
 
 
@@ -72,9 +75,9 @@ def other_guest(db: None) -> Guest:
 
 @pytest.mark.django_db
 def test_enquiry_create_via_api_sets_person(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
-    person = person_for_guest(guest)
+    person = customer
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
@@ -91,23 +94,20 @@ def test_enquiry_create_via_api_sets_person(
     assert response.status_code == 201
     enquiry = Enquiry.objects.get(pk=response.data["id"])
     assert enquiry.person == person
-    # D5-2: `person` is the sole customer input; the guest leg is never written.
-    assert enquiry.guest_id is None
 
 
 @pytest.mark.django_db
 def test_enquiry_patch_changing_person_repoints_person(
-    api_client: APIClient, staff: User, guest: Guest, other_guest: Guest
+    api_client: APIClient, staff: User, customer: Person, other_customer: Person
 ) -> None:
     enquiry = Enquiry.objects.create(
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
         adults=2,
     )
-    new_person = person_for_guest(other_guest)
+    new_person = other_customer
     api_client.force_login(staff)
 
     response = api_client.patch(
@@ -118,19 +118,16 @@ def test_enquiry_patch_changing_person_repoints_person(
 
     assert response.status_code == 200
     enquiry.refresh_from_db()
-    # D5-2: the PATCH repoints `person` directly; the denormalised guest leg
-    # stays frozen at its setup value (guest is going away).
+    # D5-2: the PATCH repoints `person` directly.
     assert enquiry.person == new_person
-    assert enquiry.guest == guest
 
 
 @pytest.mark.django_db
 def test_enquiry_patch_not_touching_guest_leaves_person(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     enquiry = Enquiry.objects.create(
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
@@ -147,7 +144,7 @@ def test_enquiry_patch_not_touching_guest_leaves_person(
     assert response.status_code == 200
     enquiry.refresh_from_db()
     assert enquiry.adults == 4
-    assert enquiry.person == person_for_guest(guest)
+    assert enquiry.person == customer
 
 
 # ---------------------------------------------------------------------------
@@ -157,15 +154,14 @@ def test_enquiry_patch_not_touching_guest_leaves_person(
 
 @pytest.mark.django_db
 def test_quotation_create_from_enquiry_sets_person(
-    guest: Guest,
+    customer: Person,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
     rate_rule: object,
 ) -> None:
     enquiry = Enquiry.objects.create(
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
@@ -185,20 +181,19 @@ def test_quotation_create_from_enquiry_sets_person(
     )
 
     assert quotation.person is not None
-    assert quotation.person == person_for_guest(guest)
-    assert quotation.guest_id is None  # 3d-C: person is the sole persisted FK
+    assert quotation.person == customer
 
 
 @pytest.mark.django_db
 def test_quotation_create_direct_sets_person_on_quotation_and_enquiry(
-    guest: Guest,
+    customer: Person,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
     rate_rule: object,
 ) -> None:
     quotation = QuotationService.create_direct(
-        person=person_for_guest(guest),
+        person=customer,
         lines=[
             {
                 "property": property_,
@@ -210,13 +205,10 @@ def test_quotation_create_direct_sets_person_on_quotation_and_enquiry(
         expires_at=timezone.now() + timedelta(days=7),
     )
 
-    expected = person_for_guest(guest)
+    expected = customer
     assert quotation.person == expected
     # The auto-minted enquiry must also carry the mirror.
     assert quotation.enquiry.person == expected
-    # 3d-C: neither the quotation nor its minted enquiry persists the guest leg.
-    assert quotation.guest_id is None
-    assert quotation.enquiry.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -238,9 +230,6 @@ def test_booking_from_quotation_line_sets_person_on_booking_and_lead(
     assert booking.person == expected
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
     assert lead.person == expected
-    # 3d-C: the booking + LEAD are born person-only — no legacy guest leg.
-    assert booking.guest_id is None
-    assert lead.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +270,7 @@ def test_make_occupying_booking_sets_person_everywhere(
 def test_lead_booking_guest_save_mirrors_person_to_booking(
     quotation_line: QuotationLine,
     terms: TermsVersion,
-    other_guest: Guest,
+    other_customer: Person,
 ) -> None:
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
@@ -289,13 +278,12 @@ def test_lead_booking_guest_save_mirrors_person_to_booking(
     # Re-point the LEAD row at a different person and save — 3d-C: the post_save
     # signal mirrors ONLY `person` onto the denormalised Booking (the guest leg is
     # no longer persisted by any writer).
-    new_person = person_for_guest(other_guest)
+    new_person = other_customer
     lead.person = new_person
     lead.save(update_fields=["person", "updated_at"])
 
     booking.refresh_from_db()
     assert booking.person == new_person
-    assert booking.guest_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -342,14 +330,14 @@ def test_guest_preference_loader_transform_sets_person() -> None:
 def test_quotation_duplicate_action_sets_person_on_clone(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
     rate_rule: object,
 ) -> None:
     source = QuotationService.create_direct(
-        person=person_for_guest(guest),
+        person=customer,
         lines=[
             {
                 "property": property_,
@@ -367,8 +355,7 @@ def test_quotation_duplicate_action_sets_person_on_clone(
     assert response.status_code == 201
     clone = Quotation.objects.get(pk=response.data["id"])
     assert clone.pk != source.pk
-    assert clone.person == person_for_guest(guest)
-    assert clone.guest_id is None  # 3d-C: clone carries only the person FK
+    assert clone.person == customer
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +377,6 @@ def test_ensure_enquiry_sets_person() -> None:
     enquiry = ensure_enquiry(person, legacy_id="ensure-1")
 
     assert enquiry.person == person
-    assert enquiry.guest_id is None
     assert enquiry.email == "ada@example.com"
 
 

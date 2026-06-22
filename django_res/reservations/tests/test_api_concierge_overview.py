@@ -13,7 +13,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
@@ -29,7 +29,6 @@ from reservations.models import (
     Booking,
     BookingConciergeItem,
     BookingServiceCoverage,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
@@ -64,7 +63,7 @@ def viewer(db: None) -> User:
 
 def _make_booking(
     *,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -77,14 +76,11 @@ def _make_booking(
     Callers pass non-overlapping windows so the no-overlap constraint on the
     shared property is never tripped.
     """
-    from reservations.services.person_sync import person_for_guest
-
     date_from = date.today() + timedelta(days=days_from)
     date_to = date.today() + timedelta(days=days_to)
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -100,7 +96,6 @@ def _make_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=date_from,
@@ -118,9 +113,11 @@ def _make_booking(
 
 
 @pytest.fixture
-def live_booking(guest: Guest, gbp: Currency, terms: TermsVersion, property_: Property) -> Booking:
+def live_booking(
+    customer: Person, gbp: Currency, terms: TermsVersion, property_: Property
+) -> Booking:
     return _make_booking(
-        guest=guest, gbp=gbp, terms=terms, property_=property_, days_from=10, days_to=17
+        customer=customer, gbp=gbp, terms=terms, property_=property_, days_from=10, days_to=17
     )
 
 
@@ -190,7 +187,7 @@ def test_overview_derives_tier_from_concierge_items(
 def test_overview_excludes_archived_terminal_and_departed(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -198,16 +195,16 @@ def test_overview_excludes_archived_terminal_and_departed(
 ) -> None:
     # Departed: already checked out by date.
     _make_booking(
-        guest=guest, gbp=gbp, terms=terms, property_=property_, days_from=-20, days_to=-10
+        customer=customer, gbp=gbp, terms=terms, property_=property_, days_from=-20, days_to=-10
     )
     # Terminal: cancelled.
     cancelled = _make_booking(
-        guest=guest, gbp=gbp, terms=terms, property_=property_, days_from=30, days_to=37
+        customer=customer, gbp=gbp, terms=terms, property_=property_, days_from=30, days_to=37
     )
     cancelled.cancel("test")
     # Archived.
     archived = _make_booking(
-        guest=guest, gbp=gbp, terms=terms, property_=property_, days_from=50, days_to=57
+        customer=customer, gbp=gbp, terms=terms, property_=property_, days_from=50, days_to=57
     )
     archived.cancel("test")
     archived.archive()
@@ -221,14 +218,14 @@ def test_overview_excludes_archived_terminal_and_departed(
 def test_overview_query_count_is_constant(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
     for offset in (10, 30, 50):
         booking = _make_booking(
-            guest=guest,
+            customer=customer,
             gbp=gbp,
             terms=terms,
             property_=property_,
@@ -323,7 +320,7 @@ def test_set_status_forbidden_for_viewer(
 def test_set_status_404_for_non_live_booking(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -333,7 +330,7 @@ def test_set_status_404_for_non_live_booking(
 ) -> None:
     """Writes resolve through the live scope: non-live bookings 404, no row written."""
     booking = _make_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,

@@ -10,33 +10,32 @@ import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from accounts.models import Person
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import PaymentMethod
 from reservations.models import (
     Booking,
     BookingChargeItem,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 from reservations.signals import booking_total_changed
 
 
 @pytest.fixture
 def booking(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=person.enquiries_as_customer.create(),
+        person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -51,8 +50,7 @@ def booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=person,
         property=property_,
         date_from=line.date_from,
         date_to=line.date_to,

@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 import pytest
 from django.test import override_settings
 
+from accounts.services.person_channels import (
+    reconcile_primary_email,
+    reconcile_primary_phone,
+)
 from comms.models import EmailLog
 from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models import Payment
@@ -51,8 +55,8 @@ def test_payment_succeeded_sends_receipt_to_guest(
         )
     )
     assert len(logs) == 1
-    assert booking.guest is not None
-    assert logs[0].to == [booking.guest.email]
+    assert booking.person is not None
+    assert logs[0].to == [booking.person.primary_email()]
 
 
 @pytest.mark.django_db
@@ -80,8 +84,8 @@ def test_payment_failed_sends_to_ops_and_guest(
     assert len(ops) == 1
     assert ops[0].to == ["ops@villa.test"]
     assert len(guest) == 1
-    assert booking.guest is not None
-    assert guest[0].to == [booking.guest.email]
+    assert booking.person is not None
+    assert guest[0].to == [booking.person.primary_email()]
 
 
 @pytest.mark.django_db
@@ -139,12 +143,11 @@ def test_payment_succeeded_with_no_guest_email_does_not_crash(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
-    # row) — email="" normalizes to NULL on save.
-    assert booking.guest is not None
-    booking.guest.email = ""
-    booking.guest.phone = "+447911123456"
-    booking.guest.save(update_fields=["email", "phone", "updated_at"])
+    # Phone-only customer: no email, but still contactable — drop the PRIMARY
+    # email row and give the Person a phone instead.
+    assert booking.person is not None
+    reconcile_primary_email(booking.person, "")
+    reconcile_primary_phone(booking.person, "+447911123456")
 
     payment.transition_to(PaymentStatus.SUCCEEDED.value)
 
@@ -163,12 +166,11 @@ def test_payment_failed_still_emails_ops_when_guest_has_no_email(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    # Phone-only guest: no email, but still contactable (and so a valid ACTIVE
-    # row) — email="" normalizes to NULL on save.
-    assert booking.guest is not None
-    booking.guest.email = ""
-    booking.guest.phone = "+447911123456"
-    booking.guest.save(update_fields=["email", "phone", "updated_at"])
+    # Phone-only customer: no email, but still contactable — drop the PRIMARY
+    # email row and give the Person a phone instead.
+    assert booking.person is not None
+    reconcile_primary_email(booking.person, "")
+    reconcile_primary_phone(booking.person, "+447911123456")
 
     payment.transition_to(PaymentStatus.FAILED.value, reason="Card declined")
 

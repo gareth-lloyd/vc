@@ -19,9 +19,8 @@ from accounts.models import Person
 from core.audit import REDACTED
 from core.models import AuditLog
 from reservations.enums import EnquiryStatus, QuotationStatus
-from reservations.models import Booking, BookingGuest, Enquiry, Guest, Quotation
+from reservations.models import Booking, BookingGuest, Enquiry, Quotation
 from reservations.models.terms import TermsVersion
-from reservations.services.person_sync import person_for_guest
 
 
 @pytest.mark.django_db
@@ -64,7 +63,7 @@ def test_enquiry_pii_recorded_as_redacted_sentinel() -> None:
 
 
 @pytest.mark.django_db
-def test_quotation_status_transition_writes_audit_row(guest: Guest) -> None:
+def test_quotation_status_transition_writes_audit_row(customer: Person) -> None:
     terms = TermsVersion.objects.create(
         version="2026-09",
         body_markdown="**T&Cs**",
@@ -72,9 +71,8 @@ def test_quotation_status_transition_writes_audit_row(guest: Guest) -> None:
         is_current=True,
     )
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         status=QuotationStatus.SENT.value,
@@ -115,15 +113,14 @@ def test_enquiry_person_reassignment_writes_audit_row() -> None:
 
 
 @pytest.mark.django_db
-def test_quotation_person_reassignment_writes_audit_row(guest: Guest) -> None:
+def test_quotation_person_reassignment_writes_audit_row(customer: Person) -> None:
     """Repointing a Quotation's Person FK lands an AuditLog row (person_id)."""
     terms = TermsVersion.objects.create(
         version="2026-10", body_markdown="x", published_at=timezone.now()
     )
-    original_person = person_for_guest(guest)
+    original_person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=original_person.enquiries_as_customer.create(),
         person=original_person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,

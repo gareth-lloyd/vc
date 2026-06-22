@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.utils import timezone
@@ -16,26 +16,26 @@ from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingEvent,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
+
+if TYPE_CHECKING:
+    from accounts.models import Person
 
 
 @pytest.fixture
 def quotation_line(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> QuotationLine:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -53,15 +53,14 @@ def quotation_line(
 @pytest.fixture
 def booking(
     quotation_line: QuotationLine,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
     return Booking.objects.create(
         quotation_line=quotation_line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property_,
         date_from=quotation_line.date_from,
         date_to=quotation_line.date_to,
@@ -603,7 +602,7 @@ def test_archive_transition_satisfies_constraint(booking: Booking) -> None:
 
 def _second_quotation_line(
     *,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -611,9 +610,8 @@ def _second_quotation_line(
     date_to: date,
 ) -> QuotationLine:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -630,7 +628,7 @@ def _second_quotation_line(
 
 def _second_booking(
     *,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -638,7 +636,7 @@ def _second_booking(
     date_to: date,
 ) -> Booking:
     line = _second_quotation_line(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -647,8 +645,7 @@ def _second_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property_,
         date_from=date_from,
         date_to=date_to,
@@ -666,7 +663,7 @@ def _second_booking(
 @pytest.mark.django_db
 def test_two_pending_approvals_cannot_overlap(
     booking: Booking,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -676,7 +673,7 @@ def test_two_pending_approvals_cannot_overlap(
     booking.submit()
 
     second = _second_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -694,7 +691,7 @@ def test_two_pending_approvals_cannot_overlap(
 @pytest.mark.django_db
 def test_auto_accept_into_overlap_raises_overlapping_booking(
     booking: Booking,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -704,7 +701,7 @@ def test_auto_accept_into_overlap_raises_overlapping_booking(
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
 
     second = _second_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -723,7 +720,7 @@ def test_auto_accept_into_overlap_raises_overlapping_booking(
 @pytest.mark.django_db
 def test_drafts_can_overlap(
     booking: Booking,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -731,7 +728,7 @@ def test_drafts_can_overlap(
     """DRAFT is pre-commitment; two drafts on the same dates is fine."""
     _set_status(booking, BookingStatus.DRAFT.value)
     second = _second_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -744,7 +741,7 @@ def test_drafts_can_overlap(
 @pytest.mark.django_db
 def test_non_overlapping_pending_approvals_coexist(
     booking: Booking,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -754,7 +751,7 @@ def test_non_overlapping_pending_approvals_coexist(
     booking.submit()
 
     second = _second_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -770,7 +767,7 @@ def test_non_overlapping_pending_approvals_coexist(
 @pytest.mark.django_db
 def test_modify_dates_into_overlap_raises_overlapping_booking(
     booking: Booking,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -781,7 +778,7 @@ def test_modify_dates_into_overlap_raises_overlapping_booking(
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
 
     second = _second_booking(
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         property_=property_,
@@ -882,7 +879,7 @@ def test_lock_for_update_locks_and_reloads_in_one_query(booking: Booking) -> Non
 def test_second_booking_on_same_quotation_line_is_refused(
     booking: Booking,
     quotation_line: QuotationLine,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -898,8 +895,7 @@ def test_second_booking_on_same_quotation_line_is_refused(
     with pytest.raises(IntegrityError, match="booking_one_per_quotation_line"):
         Booking.objects.create(
             quotation_line=quotation_line,
-            guest=guest,
-            person=person_for_guest(guest),
+            person=customer,
             property=property_,
             date_from=quotation_line.date_from,
             date_to=quotation_line.date_to,

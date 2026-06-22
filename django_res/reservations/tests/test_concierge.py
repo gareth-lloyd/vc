@@ -17,25 +17,24 @@ from reservations.models import (
     QuotationLine,
 )
 from reservations.services.concierge import ConciergeService
-from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property
-    from reservations.models import Guest, TermsVersion
+    from reservations.models import TermsVersion
 
 
 @pytest.fixture
 def booking(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -51,7 +50,6 @@ def booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=date(2026, 6, 10),

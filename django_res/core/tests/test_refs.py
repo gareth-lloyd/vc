@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import cast
 
 import pytest
 from django.utils import timezone
 
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person
 from core.refs import (
     booking_reference,
     next_quotation_number,
     quotation_reference,
     sync_quotation_sequence,
 )
-from reservations.models import Booking, Guest, Quotation, TermsVersion
-from reservations.services.person_sync import person_for_guest
+from reservations.models import Booking, Enquiry, Quotation, TermsVersion
 
 
 def test_quotation_reference_uses_prefix(db: None) -> None:
@@ -28,7 +30,7 @@ def test_booking_reference_plain_when_no_collision() -> None:
 
 @pytest.mark.django_db
 def test_sync_quotation_sequence_advances_past_imported_max() -> None:
-    guest = Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
+    customer = cast(Person, CustomerPersonFactory(first_name="Ada", last_name="Lovelace"))
     terms = TermsVersion.objects.create(version="2026-01", body_markdown="**T&Cs**")
 
     # Simulate an import that set `number` explicitly (short-circuiting the
@@ -36,9 +38,8 @@ def test_sync_quotation_sequence_advances_past_imported_max() -> None:
     Quotation.objects.create(
         number=5000,
         reference="QVC5000",
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=Enquiry.objects.create(person=customer),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

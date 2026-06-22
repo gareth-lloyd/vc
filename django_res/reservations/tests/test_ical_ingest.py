@@ -29,14 +29,13 @@ from reservations.models import Booking, OwnerBlock, Quotation
 from reservations.services.availability import AvailabilityService
 from reservations.services.holds import HoldService
 from reservations.services.ical_ingest import ICalIngestService
-from reservations.services.person_sync import person_for_guest
 from reservations.signals import ical_conflict_detected
 
 if TYPE_CHECKING:
     from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property, PropertyCalendarFeed
-    from reservations.models import Guest, TermsVersion
+    from reservations.models import TermsVersion
 
 pytestmark = pytest.mark.django_db
 
@@ -236,13 +235,13 @@ def test_cross_feed_overlap_coalesces_into_one_block(property_: Property) -> Non
 
 @respx.mock
 def test_booking_conflict_skips_write_and_fires_signal(
-    property_: Property, guest: Guest, gbp: Currency, terms: TermsVersion
+    property_: Property, customer: Person, gbp: Currency, terms: TermsVersion
 ) -> None:
     url = "https://example.test/a.ics"
     _feed(property_, url)
     _booking(
         property=property_,
-        person=person_for_guest(guest),
+        person=customer,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 7, 1),
@@ -361,16 +360,15 @@ def test_range_edit_updates_block_without_gap(property_: Property) -> None:
 
 @respx.mock
 def test_quotation_hold_clash_fires_conflict(
-    property_: Property, guest: Guest, gbp: Currency, terms: TermsVersion
+    property_: Property, customer: Person, gbp: Currency, terms: TermsVersion
 ) -> None:
     """An imported range overlapping an open-quotation hold is a real double-sell
     risk — VC is quoting dates booked elsewhere — so it escalates like a booking."""
     url = "https://example.test/a.ics"
     _feed(property_, url)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

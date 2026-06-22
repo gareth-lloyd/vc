@@ -9,7 +9,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from pricing.models import Currency
 from properties.models import Property
@@ -17,12 +17,10 @@ from reservations.enums import ConciergeStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingConciergeItem,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -43,15 +41,14 @@ def staff(db: None) -> User:
 @pytest.fixture
 def booking(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -67,7 +64,6 @@ def booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=line.date_from,

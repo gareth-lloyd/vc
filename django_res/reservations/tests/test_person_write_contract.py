@@ -27,7 +27,6 @@ from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import EnquirySource
 from reservations.models import Enquiry, Guest, Quotation, TermsVersion
-from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 
@@ -47,10 +46,9 @@ def staff(db: None) -> User:
 
 
 @pytest.fixture
-def enquiry(guest: Guest) -> Enquiry:
+def enquiry(customer: Person) -> Enquiry:
     return Enquiry.objects.create(
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
@@ -59,11 +57,10 @@ def enquiry(guest: Guest) -> Enquiry:
 
 
 @pytest.fixture
-def quotation(guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
-    person = person_for_guest(guest)
+def quotation(customer: Person, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        person=person,
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -215,7 +212,6 @@ def test_create_quotation_ignores_guest_field(
     assert response.status_code == 201, response.data
     quotation = Quotation.objects.get()
     assert quotation.person_id == person.pk
-    assert quotation.person_id != person_for_guest(guest).pk
 
 
 @pytest.mark.django_db

@@ -9,20 +9,19 @@ import pytest
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
+from accounts.models import Person
 from core.exceptions import InvalidTransition
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import QuotationStatus
-from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
-from reservations.services.person_sync import person_for_guest
+from reservations.models import Quotation, QuotationLine, TermsVersion
 
 
 @pytest.fixture
-def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
+def quotation(db: None, customer: Person, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -48,22 +47,20 @@ def test_quotation_reference_auto_generated(quotation: Quotation) -> None:
 
 @pytest.mark.django_db
 def test_real_excludes_booking_synthesised_quotations(
-    guest: Guest, gbp: Currency, terms: TermsVersion
+    customer: Person, gbp: Currency, terms: TermsVersion
 ) -> None:
     """`.real()` is the shared filter every Quotation-surfacing read routes
     through — it drops the BookingLoader's `booking-` legacy-fill rows."""
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
     real = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         legacy_id="booking-999",
@@ -162,12 +159,11 @@ def test_accept_from_draft_raises(quotation: Quotation, line: QuotationLine) -> 
 
 @pytest.mark.django_db
 def test_accept_rejects_foreign_line(
-    quotation: Quotation, line: QuotationLine, guest: Guest, gbp: Currency, terms: TermsVersion
+    quotation: Quotation, line: QuotationLine, customer: Person, gbp: Currency, terms: TermsVersion
 ) -> None:
     other = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -224,14 +220,14 @@ def test_line_date_constraint(quotation: Quotation, property_: Property, gbp: Cu
 
 @pytest.mark.django_db
 def test_quotation_accept_flips_enquiry_to_converted(
-    line: QuotationLine, quotation: Quotation, guest: Guest
+    line: QuotationLine, quotation: Quotation, customer: Person
 ) -> None:
     """Accepting a quotation must flip the parent Enquiry to CONVERTED inside
     the same atomic block as the Quotation.status flip."""
     from reservations.enums import EnquiryStatus
     from reservations.models import Enquiry
 
-    enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
+    enquiry = Enquiry.objects.create(person=customer, email="ada@example.com")
     quotation.enquiry = enquiry
     quotation.save(update_fields=["enquiry"])
     enquiry.quote_sent(quotation, send_path="smtp")
@@ -247,14 +243,14 @@ def test_quotation_accept_flips_enquiry_to_converted(
 
 @pytest.mark.django_db
 def test_quotation_accept_atomic_rollback_on_downstream_failure(
-    line: QuotationLine, quotation: Quotation, guest: Guest, monkeypatch: pytest.MonkeyPatch
+    line: QuotationLine, quotation: Quotation, customer: Person, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If the enquiry-conversion step inside accept() fails, the Quotation
     status flip must roll back — the operation is a single atomic unit."""
     from reservations.enums import EnquiryStatus
     from reservations.models import Enquiry
 
-    enquiry = Enquiry.objects.create(guest=guest, email="ada@example.com")
+    enquiry = Enquiry.objects.create(person=customer, email="ada@example.com")
     quotation.enquiry = enquiry
     quotation.save(update_fields=["enquiry"])
     enquiry.quote_sent(quotation, send_path="smtp")

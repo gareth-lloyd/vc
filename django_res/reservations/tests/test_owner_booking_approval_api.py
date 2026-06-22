@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.factories import UserFactory
-from accounts.models import User
+from accounts.models import Person, User
 from owners.enums import OwnerMembershipStatus, OwnerRole
 from owners.factories import (
     OwnerMembershipFactory,
@@ -22,8 +22,7 @@ from owners.models import OwnerOrganisation
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
-from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
-from reservations.services.person_sync import person_for_guest
+from reservations.models import Booking, Quotation, QuotationLine, TermsVersion
 from reservations.signals import booking_transitioned
 
 pytestmark = pytest.mark.django_db
@@ -43,14 +42,12 @@ def _owner(org: OwnerOrganisation, role: OwnerRole = OwnerRole.ADMIN) -> User:
 
 
 def _pending_booking(
-    property_: Property, gbp: Currency, terms: TermsVersion, guest: Guest
+    property_: Property, gbp: Currency, terms: TermsVersion, person: Person
 ) -> Booking:
     start = timezone.localdate() + timedelta(days=30)
     end = start + timedelta(days=7)
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -66,7 +63,6 @@ def _pending_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=start,
@@ -81,12 +77,16 @@ def _pending_booking(
 
 
 def test_admin_owner_approves(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     captured: list[tuple[str, str]] = []
@@ -109,7 +109,11 @@ def test_admin_owner_approves(
 
 
 def test_approve_rolls_back_transition_when_payment_scheduling_fails(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     """If the payments receiver raises, the approve transition rolls back.
 
@@ -124,7 +128,7 @@ def test_approve_rolls_back_transition_when_payment_scheduling_fails(
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     with patch(
@@ -139,12 +143,16 @@ def test_approve_rolls_back_transition_when_payment_scheduling_fails(
 
 
 def test_decline_requires_reason(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     resp = api_client.post(f"/api/v1/owner/bookings/{booking.id}:decline", format="json")
@@ -153,12 +161,16 @@ def test_decline_requires_reason(
 
 
 def test_decline_with_reason(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     resp = api_client.post(
@@ -171,12 +183,16 @@ def test_decline_with_reason(
 
 
 def test_editor_cannot_approve(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org, role=OwnerRole.EDITOR)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     resp = api_client.post(f"/api/v1/owner/bookings/{booking.id}:approve", format="json")
@@ -184,12 +200,16 @@ def test_editor_cannot_approve(
 
 
 def test_wrong_status_409s(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     booking.owner_approve()  # already moved to AWAITING_DEPOSIT
     api_client.force_authenticate(user)
 
@@ -198,12 +218,16 @@ def test_wrong_status_409s(
 
 
 def test_can_approve_flag_true_for_admin(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     body = api_client.get(f"/api/v1/owner/bookings/{booking.id}").json()
@@ -211,12 +235,16 @@ def test_can_approve_flag_true_for_admin(
 
 
 def test_can_approve_flag_false_for_view_only(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org, role=OwnerRole.VIEW_ONLY)
     OwnerOrgPropertyFactory(organisation=org, property=property_)
-    booking = _pending_booking(property_, gbp, terms, guest)
+    booking = _pending_booking(property_, gbp, terms, customer)
     api_client.force_authenticate(user)
 
     body = api_client.get(f"/api/v1/owner/bookings/{booking.id}").json()

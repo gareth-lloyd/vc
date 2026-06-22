@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
+from accounts.services.person_channels import (
+    reconcile_primary_email,
+    reconcile_primary_phone,
+)
 from comms.models import EmailLog
 from payments.enums import SecurityDepositKind, SecurityDepositStatus
 from payments.models import SecurityDeposit
@@ -51,8 +55,8 @@ def test_release_emits_security_deposit_released_email(
         )
     )
     assert len(logs) == 1
-    assert booking.guest is not None
-    assert logs[0].to == [booking.guest.email]
+    assert booking.person is not None
+    assert logs[0].to == [booking.person.primary_email()]
 
 
 @pytest.mark.django_db
@@ -62,11 +66,11 @@ def test_release_with_no_guest_email_does_not_crash(
     system_profile: SmtpProfile,
     lifecycle_templates: None,
 ) -> None:
-    # Phone-only guest: no email, still contactable (email="" → NULL on save).
-    assert booking.guest is not None
-    booking.guest.email = ""
-    booking.guest.phone = "+447911123456"
-    booking.guest.save(update_fields=["email", "phone", "updated_at"])
+    # Phone-only customer: no email, still contactable — drop the PRIMARY email
+    # row and give the Person a phone instead.
+    assert booking.person is not None
+    reconcile_primary_email(booking.person, "")
+    reconcile_primary_phone(booking.person, "+447911123456")
 
     sd = SecurityDeposit.objects.create(
         booking=booking,

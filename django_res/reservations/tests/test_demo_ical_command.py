@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from io import StringIO
+from typing import cast
 
 import httpx
 import pytest
@@ -172,7 +173,7 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
     from reservations.models import Booking, Guest
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
-    assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()
+    assert not Booking.objects.filter(person__emails__email=GUEST_EMAIL).exists()
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
     # The Person mirror (and its PII-bearing email/phone children) must not be
     # stranded — otherwise mirrors accumulate and --reset stops being idempotent.
@@ -196,6 +197,8 @@ def test_reset_clears_protecting_rows_on_property() -> None:
 
     from django.utils import timezone
 
+    from accounts.factories import CustomerPersonFactory
+    from accounts.models import Person
     from payments.enums import PaymentPurpose
     from payments.models import Payment
     from pricing.models import Currency, RatePlan
@@ -210,7 +213,6 @@ def test_reset_clears_protecting_rows_on_property() -> None:
         QuotationLine,
         TermsVersion,
     )
-    from reservations.services.person_sync import person_for_guest
 
     prop = Property.objects.get(slug=PROPERTY_SLUG)
     booking = Booking.objects.get(property=prop)
@@ -236,12 +238,14 @@ def test_reset_clears_protecting_rows_on_property() -> None:
         effective_from=date(2026, 6, 1),
         effective_to=date(2026, 9, 1),
     )
-    # A QuotationLine on the property from an unrelated guest (not the demo
+    # A QuotationLine on the property from an unrelated customer (not the demo
     # guest) — the case that broke the original guest-scoped teardown.
-    other_guest = Guest.objects.create(email="someone.else@demo.test")
+    other_customer = cast(Person, CustomerPersonFactory(primary_email="someone.else@demo.test"))
     # An EnquiryEvent PROTECTs its enquiry — the orphaned-enquiry teardown must
     # clear it.
-    other_enquiry = Enquiry.objects.create(guest=other_guest, email=other_guest.email or "")
+    other_enquiry = Enquiry.objects.create(
+        person=other_customer, email=other_customer.primary_email() or ""
+    )
     EnquiryEvent.objects.create(
         enquiry=other_enquiry,
         from_status=EnquiryStatus.NEW,
@@ -253,8 +257,7 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     )
     quotation = Quotation.objects.create(
         enquiry=other_enquiry,
-        guest=other_guest,
-        person=person_for_guest(other_guest),
+        person=other_customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -271,7 +274,7 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     _run("--reset")  # would raise ProtectedError if any PROTECT-ing row survived
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
-    assert not Booking.objects.filter(guest__email=GUEST_EMAIL).exists()
+    assert not Booking.objects.filter(person__emails__email=GUEST_EMAIL).exists()
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
 
 
@@ -296,7 +299,7 @@ def test_reset_after_quotation_conflict_clears_person_mirror() -> None:
     from reservations.models import Guest, Quotation
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
-    assert not Quotation.objects.filter(guest__email=GUEST_EMAIL).exists()
+    assert not Quotation.objects.filter(person__emails__email=GUEST_EMAIL).exists()
     assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
     assert not Person.objects.filter(emails__email=GUEST_EMAIL).exists()
 

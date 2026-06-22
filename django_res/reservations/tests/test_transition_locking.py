@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import pytest
 from django.utils import timezone
@@ -30,21 +31,21 @@ from reservations.models import (
     BookingEvent,
     Enquiry,
     EnquiryEvent,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
 from reservations.services.bookings import BookingService
-from reservations.services.person_sync import person_for_guest
+
+if TYPE_CHECKING:
+    from accounts.models import Person
 
 
 @pytest.fixture
-def quotation(db: None, guest: Guest, terms: TermsVersion) -> Quotation:
+def quotation(db: None, customer: Person, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -121,8 +122,8 @@ def test_quotation_accept_refuses_stale_instance(
 
 
 @pytest.mark.django_db
-def test_enquiry_transition_refuses_stale_instance(guest: Guest) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+def test_enquiry_transition_refuses_stale_instance(customer: Person) -> None:
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
     stale = Enquiry.objects.get(pk=enquiry.pk)
     enquiry.contact()
 

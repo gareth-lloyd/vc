@@ -14,6 +14,7 @@ import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from accounts.models import Person
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import BookingGuestRole
@@ -21,13 +22,11 @@ from reservations.factories import make_occupying_booking
 from reservations.models import (
     Booking,
     BookingGuest,
-    Guest,
     GuestPreference,
     GuestPreferenceType,
     Quotation,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 pytestmark = pytest.mark.django_db
 
@@ -39,31 +38,29 @@ def _pref_type() -> GuestPreferenceType:
 # --- person is now required ------------------------------------------------
 
 
-def test_quotation_requires_person(guest: Guest, terms: TermsVersion) -> None:
-    person = person_for_guest(guest)
+def test_quotation_requires_person(customer: Person, terms: TermsVersion) -> None:
     with pytest.raises(IntegrityError), transaction.atomic():
         Quotation.objects.create(  # type: ignore[misc]
-            enquiry=guest.enquiries.create(person=person),
-            guest=guest,
+            enquiry=customer.enquiries_as_customer.create(),
             person=None,
             expires_at=timezone.now() + timedelta(days=7),
             terms_version=terms,
         )
 
 
-def test_guest_preference_requires_person(guest: Guest) -> None:
+def test_guest_preference_requires_person(db: None) -> None:
     with pytest.raises(IntegrityError), transaction.atomic():
         GuestPreference.objects.create(  # type: ignore[misc]
-            guest=guest, person=None, preference_type=_pref_type()
+            person=None, preference_type=_pref_type()
         )
 
 
 def test_booking_requires_person(
-    guest: Guest, property_: Property, gbp: Currency, terms: TermsVersion
+    customer: Person, property_: Property, gbp: Currency, terms: TermsVersion
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        person=person_for_guest(guest),
+        person=customer,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
@@ -75,11 +72,11 @@ def test_booking_requires_person(
 
 
 def test_booking_guest_requires_person(
-    guest: Guest, property_: Property, gbp: Currency, terms: TermsVersion
+    customer: Person, property_: Property, gbp: Currency, terms: TermsVersion
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        person=person_for_guest(guest),
+        person=customer,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
@@ -88,62 +85,55 @@ def test_booking_guest_requires_person(
     with pytest.raises(IntegrityError), transaction.atomic():
         BookingGuest.objects.create(  # type: ignore[misc]
             booking=booking,
-            guest=guest,
             person=None,
             role=BookingGuestRole.CO_TRAVELLER.value,
         )
 
 
-# --- guest is now optional -------------------------------------------------
+# --- person-only preference ------------------------------------------------
 
 
-def test_guest_preference_allows_null_guest(guest: Guest) -> None:
+def test_guest_preference_person_only(customer: Person) -> None:
     """A person-only preference (no legacy guest leg) saves cleanly."""
-    person = person_for_guest(guest)
-    pref = GuestPreference.objects.create(guest=None, person=person, preference_type=_pref_type())
-    assert pref.guest_id is None
-    assert pref.person_id == person.pk
+    pref = GuestPreference.objects.create(person=customer, preference_type=_pref_type())
+    assert pref.person_id == customer.pk
 
 
 # --- uniqueness repointed onto person --------------------------------------
 
 
-def test_unique_person_preference_repointed(guest: Guest, terms: TermsVersion) -> None:
-    person = person_for_guest(guest)
+def test_unique_person_preference_repointed(customer: Person, terms: TermsVersion) -> None:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     pref_type = _pref_type()
-    GuestPreference.objects.create(person=person, preference_type=pref_type, quotation=quotation)
+    GuestPreference.objects.create(person=customer, preference_type=pref_type, quotation=quotation)
     with pytest.raises(IntegrityError), transaction.atomic():
         GuestPreference.objects.create(
-            person=person, preference_type=pref_type, quotation=quotation
+            person=customer, preference_type=pref_type, quotation=quotation
         )
 
 
 def test_bookingguest_unique_booking_person_role_repointed(
-    guest: Guest, property_: Property, gbp: Currency, terms: TermsVersion
+    customer: Person, property_: Property, gbp: Currency, terms: TermsVersion
 ) -> None:
     booking = make_occupying_booking(
         property=property_,
-        person=person_for_guest(guest),
+        person=customer,
         currency=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
     )
-    person = person_for_guest(guest)
     BookingGuest.objects.create(
-        booking=booking, guest=guest, person=person, role=BookingGuestRole.CO_TRAVELLER.value
+        booking=booking, person=customer, role=BookingGuestRole.CO_TRAVELLER.value
     )
     with pytest.raises(IntegrityError), transaction.atomic():
         BookingGuest.objects.create(
             booking=booking,
-            guest=guest,
-            person=person,
+            person=customer,
             role=BookingGuestRole.CO_TRAVELLER.value,
         )

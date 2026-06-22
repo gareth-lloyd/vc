@@ -35,14 +35,13 @@ from reservations.enums import (
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property
 
@@ -73,9 +72,9 @@ def viewer(db: None) -> User:
 
 
 @pytest.fixture
-def enquiry(guest: Guest) -> Enquiry:
+def enquiry(customer: Person) -> Enquiry:
     return Enquiry.objects.create(
-        guest=guest,
+        person=customer,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
@@ -86,14 +85,13 @@ def enquiry(guest: Guest) -> Enquiry:
 @pytest.fixture
 def quotation(
     enquiry: Enquiry,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> Quotation:
     return Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

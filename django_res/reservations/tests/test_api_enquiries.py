@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,7 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.enums import PersonPreferredMethod
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
@@ -22,12 +23,10 @@ from reservations.models import (
     Enquiry,
     EnquiryEvent,
     EnquiryNote,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -56,9 +55,8 @@ def viewer(db: None) -> User:
 
 
 @pytest.fixture
-def enquiry(guest: Guest) -> Enquiry:
+def enquiry(db: None) -> Enquiry:
     return Enquiry.objects.create(
-        guest=guest,
         first_name="Ada",
         last_name="Lovelace",
         email="ada@example.com",
@@ -86,19 +84,25 @@ def test_list_enquiries__staff_sees_all(
 
 
 @pytest.mark.django_db
-def test_enquiry_exposes_guest_contact_fields(
-    api_client: APIClient, staff: User, guest: Guest
-) -> None:
+def test_enquiry_exposes_guest_contact_fields(api_client: APIClient, staff: User) -> None:
     """Customer-linked enquiries often have blank denormalised contact fields;
     the API exposes read-only `guest_email` / `guest_phone` /
-    `guest_contact_method` sourced from the linked Person mirror (GAP-045 3d-3)
-    so the FE Guest panel isn't all em-dashes. The guest fields are copied to
-    the mirror by the sync signal on `guest.save()`."""
-    guest.phone = "+447700900123"
-    guest.contact_method = "phone"
-    guest.save()
-    person = person_for_guest(guest)
-    enquiry = Enquiry.objects.create(guest=guest, person=person, adults=2)
+    `guest_contact_method` sourced from the linked Person (GAP-045 3d-3)
+    so the FE Guest panel isn't all em-dashes."""
+    from accounts.factories import CustomerPersonFactory
+
+    person = cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Ada",
+            last_name="Lovelace",
+            primary_email="ada@example.com",
+            primary_phone="+447700900123",
+        ),
+    )
+    person.preferred_method = PersonPreferredMethod.PHONE.value
+    person.save()
+    enquiry = Enquiry.objects.create(person=person, adults=2)
     api_client.force_login(staff)
 
     for payload in (
@@ -125,19 +129,13 @@ def test_enquiry_guest_contact_fields_null_without_guest(
 
 @pytest.mark.django_db
 def test_enquiry_contact_method_reads_person_preferred_method(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
-    """GAP-045 Unit 3d-2: `guest_contact_method` now resolves from the unified
-    Person's `preferred_method`, not the legacy `guest.contact_method`. With a
-    person linked, the person value wins even when it diverges from the guest."""
-    # "email" is an actionable choice — the guest check constraint requires the
-    # chosen method's channel to be present, and the guest fixture has an email.
-    guest.contact_method = "email"
-    guest.save()
-    person = person_for_guest(guest)
-    person.preferred_method = PersonPreferredMethod.SMS.value
-    person.save()
-    enquiry = Enquiry.objects.create(guest=guest, person=person, adults=2)
+    """GAP-045 Unit 3d-2: `guest_contact_method` resolves from the unified
+    Person's `preferred_method`."""
+    customer.preferred_method = PersonPreferredMethod.SMS.value
+    customer.save()
+    enquiry = Enquiry.objects.create(person=customer, adults=2)
     api_client.force_login(staff)
 
     for payload in (
@@ -148,10 +146,11 @@ def test_enquiry_contact_method_reads_person_preferred_method(
 
 
 @pytest.mark.django_db
-def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, guest: Guest) -> None:
-    Enquiry.objects.create(guest=guest, first_name="A", last_name="B", email="a@b.com")
+def test_list_enquiries__filter_by_status(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    Enquiry.objects.create(first_name="A", last_name="B", email="a@b.com")
     lost = Enquiry.objects.create(
-        guest=guest,
         first_name="C",
         last_name="D",
         email="c@d.com",
@@ -167,12 +166,12 @@ def test_list_enquiries__filter_by_status(api_client: APIClient, staff: User, gu
 
 
 @pytest.mark.django_db
-def test_create_enquiry(api_client: APIClient, staff: User, guest: Guest) -> None:
+def test_create_enquiry(api_client: APIClient, staff: User, customer: Person) -> None:
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@new.example.com",
@@ -198,7 +197,7 @@ def test_create_enquiry(api_client: APIClient, staff: User, guest: Guest) -> Non
 
 @pytest.mark.django_db
 def test_create_enquiry_persists_contact_method(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     """The write serializer accepts contact_method so the capture form can
     record the lead's preferred channel."""
@@ -206,7 +205,7 @@ def test_create_enquiry_persists_contact_method(
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@pref.example.com",
@@ -241,7 +240,7 @@ def test_update_enquiry_contact_method(
 
 @pytest.mark.django_db
 def test_create_enquiry__rejects_end_date_before_start_date(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     """When both dates are supplied, an inverted range is rejected with a
     field error on `date_to` (the SPA renders it beside the end-date input)."""
@@ -249,7 +248,7 @@ def test_create_enquiry__rejects_end_date_before_start_date(
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@order.example.com",
@@ -267,7 +266,7 @@ def test_create_enquiry__rejects_end_date_before_start_date(
 
 @pytest.mark.django_db
 def test_create_enquiry__allows_start_date_without_end_date(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     """Enquiry dates are an optional, independent capture surface — a start with
     no end is a valid lead. Only an inverted range is rejected."""
@@ -275,7 +274,7 @@ def test_create_enquiry__allows_start_date_without_end_date(
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@openend.example.com",
@@ -293,7 +292,7 @@ def test_create_enquiry__allows_start_date_without_end_date(
 
 @pytest.mark.django_db
 def test_create_enquiry__persists_flexibility_days(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     """`flexibility_days` is the structured "± N days" spread captured on the
     enquiry form. Dates stay the client's true requested dates; the quote
@@ -302,7 +301,7 @@ def test_create_enquiry__persists_flexibility_days(
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@flex.example.com",
@@ -324,13 +323,13 @@ def test_create_enquiry__persists_flexibility_days(
 
 @pytest.mark.django_db
 def test_create_enquiry__flexibility_days_defaults_to_zero(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@noflex.example.com",
@@ -348,13 +347,13 @@ def test_create_enquiry__flexibility_days_defaults_to_zero(
 @pytest.mark.django_db
 @pytest.mark.parametrize("value", [4, 99, -1])
 def test_create_enquiry__rejects_out_of_range_flexibility_days(
-    api_client: APIClient, staff: User, guest: Guest, value: int
+    api_client: APIClient, staff: User, customer: Person, value: int
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@badflex.example.com",
@@ -434,7 +433,7 @@ def test_update_enquiry__unrelated_patch_ignores_stored_inverted_dates(
 
 @pytest.mark.django_db
 def test_create_enquiry__stays_query_bounded(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
     """The detail re-serialisation must re-fetch through the prefetched
     queryset — no N+1 walking the (empty) quote-stack."""
@@ -443,7 +442,7 @@ def test_create_enquiry__stays_query_bounded(
         response = api_client.post(
             "/api/v1/enquiries",
             {
-                "guest": guest.pk,
+                "person": customer.pk,
                 "first_name": "Grace",
                 "last_name": "Hopper",
                 "email": "grace@new.example.com",
@@ -494,22 +493,20 @@ def test_enquiry_detail_includes_nested_quotations(
     api_client: APIClient,
     staff: User,
     enquiry: Enquiry,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
     """Detail view exposes the quote-stack for the staff grouped-list UI."""
     q1 = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     q2 = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=14),
         terms_version=terms,
     )
@@ -530,7 +527,7 @@ def test_enquiry_detail_excludes_synthetic_booking_quotations(
     api_client: APIClient,
     staff: User,
     enquiry: Enquiry,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -539,15 +536,13 @@ def test_enquiry_detail_excludes_synthetic_booking_quotations(
     the same exclusion every other Quotation-surfacing viewset applies."""
     real = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
     Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
         legacy_id="booking-12345",
@@ -566,7 +561,7 @@ def test_enquiry_detail_quote_stack_constant_query_count(
     api_client: APIClient,
     staff: User,
     enquiry: Enquiry,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -585,8 +580,7 @@ def test_enquiry_detail_quote_stack_constant_query_count(
     for q_offset in range(2):
         quotation = Quotation.objects.create(
             enquiry=enquiry,
-            guest=guest,
-            person=person_for_guest(guest),
+            person=customer,
             expires_at=timezone.now() + timedelta(days=7 + q_offset),
             terms_version=terms,
         )
@@ -630,15 +624,14 @@ def test_enquiry_list_does_not_include_nested_quotations(
     api_client: APIClient,
     staff: User,
     enquiry: Enquiry,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
     """List endpoint stays slim — no nested quotation array."""
     Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -676,15 +669,14 @@ def test_convert_enquiry__transitions_to_converted(
     enquiry: Enquiry,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
 ) -> None:
     # Move enquiry through CONTACTED → QUOTED first; convert is allowed from
     # QUOTED or CONTACTED per the state machine.
     enquiry.contact()
     quotation = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -708,7 +700,7 @@ def test_enquiry_convert_endpoint_idempotent_when_already_converted(
     enquiry: Enquiry,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
 ) -> None:
     """A second `:convert` on an already-CONVERTED enquiry returns 200, not 422.
 
@@ -720,8 +712,7 @@ def test_enquiry_convert_endpoint_idempotent_when_already_converted(
     enquiry.contact()
     quotation = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -751,7 +742,7 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
     enquiry: Enquiry,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
 ) -> None:
     """Regression guard: the idempotency short-circuit must not skip work on
     enquiries that haven't been converted yet.
@@ -759,8 +750,7 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
     enquiry.contact()
     quotation = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -826,12 +816,14 @@ def test_notes__list_and_create(api_client: APIClient, staff: User, enquiry: Enq
 
 
 @pytest.mark.django_db
-def test_viewer_cannot_create_enquiry(api_client: APIClient, viewer: User, guest: Guest) -> None:
+def test_viewer_cannot_create_enquiry(
+    api_client: APIClient, viewer: User, customer: Person
+) -> None:
     api_client.force_login(viewer)
     response = api_client.post(
         "/api/v1/enquiries",
         {
-            "guest": guest.pk,
+            "person": customer.pk,
             "first_name": "Ada",
             "last_name": "Lovelace",
             "email": "ada@viewer.com",
@@ -844,11 +836,10 @@ def test_viewer_cannot_create_enquiry(api_client: APIClient, viewer: User, guest
 
 @pytest.mark.django_db
 def test_enquiry_status_counts__groups_by_status(
-    api_client: APIClient, staff: User, guest: Guest
+    api_client: APIClient, staff: User, customer: Person
 ) -> None:
-    Enquiry.objects.create(guest=guest, first_name="A", last_name="B", email="a@b.com")
+    Enquiry.objects.create(first_name="A", last_name="B", email="a@b.com")
     Enquiry.objects.create(
-        guest=guest,
         first_name="C",
         last_name="D",
         email="c@d.com",
@@ -869,17 +860,16 @@ def test_enquiry_convert_rejects_foreign_quotation(
     enquiry: Enquiry,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
 ) -> None:
     """`:convert` must only accept a quotation belonging to *this* enquiry —
     citing another enquiry's quote would mark this one converted with an
     audit pointer at an unrelated quotation."""
     enquiry.contact()
-    other_enquiry = Enquiry.objects.create(guest=guest, email=guest.email or "")
+    other_enquiry = Enquiry.objects.create(email=customer.primary_email() or "")
     foreign_quotation = Quotation.objects.create(
         enquiry=other_enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

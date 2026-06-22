@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.factories import UserFactory
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from owners.enums import OwnerMembershipStatus
 from owners.factories import (
@@ -29,7 +29,6 @@ from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingChargeItem,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
@@ -50,19 +49,16 @@ def _make_booking(
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     date_from: date,
     rental_price: str,
     status: str,
     snapshot: dict[str, str] | None = None,
 ) -> Booking:
-    from reservations.services.person_sync import person_for_guest
-
     date_to = date_from + timedelta(days=7)
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -78,7 +74,6 @@ def _make_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=date_from,
@@ -113,7 +108,7 @@ def test_dashboard_aggregates_scoped_bookings_only(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
     user = _owner_with_full_money_grant(property_)
@@ -124,7 +119,7 @@ def test_dashboard_aggregates_scoped_bookings_only(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=date(today.year, 1, 10),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -134,7 +129,7 @@ def test_dashboard_aggregates_scoped_bookings_only(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=today - timedelta(days=2),
         rental_price="1000.00",
         status=BookingStatus.DEPOSIT_PAID.value,
@@ -146,7 +141,7 @@ def test_dashboard_aggregates_scoped_bookings_only(
         property_=other,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=date(today.year, 1, 5),
         rental_price="9999.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -166,7 +161,7 @@ def test_ytd_net_includes_charge_owner_effect(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
     """The YTD net KPI must agree with the per-booking owner detail once
@@ -184,7 +179,7 @@ def test_ytd_net_includes_charge_owner_effect(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=date(timezone.localdate().year, 1, 10),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -205,7 +200,7 @@ def test_net_is_null_without_full_money_grant(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
@@ -216,7 +211,7 @@ def test_net_is_null_without_full_money_grant(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=timezone.localdate() - timedelta(days=1),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -236,7 +231,7 @@ def test_gross_revenue_only_sums_full_money_properties(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
     """Mixed grants: gross/net reflect only the view_full_money villa."""
@@ -252,7 +247,7 @@ def test_gross_revenue_only_sums_full_money_properties(
         property_=visible,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=date(today.year, 1, 10),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -262,7 +257,7 @@ def test_gross_revenue_only_sums_full_money_properties(
         property_=hidden,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=date(today.year, 1, 12),
         rental_price="5000.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -279,7 +274,7 @@ def test_upcoming_arrivals_window_and_naming(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
     user = _owner_with_full_money_grant(property_)
@@ -288,7 +283,7 @@ def test_upcoming_arrivals_window_and_naming(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=today + timedelta(days=5),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -298,7 +293,7 @@ def test_upcoming_arrivals_window_and_naming(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=today + timedelta(days=60),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
@@ -308,7 +303,7 @@ def test_upcoming_arrivals_window_and_naming(
     body = api_client.get(URL).json()
     arrivals = body["upcoming_arrivals"]
     assert len(arrivals) == 1
-    assert arrivals[0]["guest_name"] == f"{guest.first_name} {guest.last_name}"
+    assert arrivals[0]["guest_name"] == f"{customer.first_name} {customer.last_name}"
     assert "guest_contact" not in arrivals[0]
 
 
@@ -316,29 +311,24 @@ def test_upcoming_arrivals_name_reads_person_first(
     api_client: APIClient,
     gbp: Currency,
     terms: TermsVersion,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
-    """GAP-045 Unit 3c-2c: the arrivals name resolves from the Person mirror,
-    falling back to the guest while ``person`` is null."""
-    from reservations.services.person_sync import person_for_guest
-
+    """GAP-045 Unit 3c-2c: the arrivals name resolves from the booking's Person."""
     user = _owner_with_full_money_grant(property_)
     today = timezone.localdate()
-    booking = _make_booking(
+    _make_booking(
         property_=property_,
         gbp=gbp,
         terms=terms,
-        guest=guest,
+        customer=customer,
         date_from=today + timedelta(days=5),
         rental_price="1400.00",
         status=BookingStatus.BALANCE_PAID.value,
     )
-    person = person_for_guest(guest)
-    person.first_name = "Grace"
-    person.last_name = "Hopper"
-    person.save(update_fields=["first_name", "last_name", "updated_at"])
-    Booking.objects.filter(pk=booking.pk).update(person=person)
+    customer.first_name = "Grace"
+    customer.last_name = "Hopper"
+    customer.save(update_fields=["first_name", "last_name", "updated_at"])
 
     api_client.force_authenticate(user)
     body = api_client.get(URL).json()

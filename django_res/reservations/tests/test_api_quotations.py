@@ -9,7 +9,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from pricing.models import Currency, RateCard, RatePlan, RateRule
 from properties.enums import PrefilledChangeOverDay
@@ -19,12 +19,10 @@ from reservations.enums import QuotationStatus
 from reservations.models import (
     Booking,
     BookingHold,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 
@@ -46,15 +44,13 @@ def staff(db: None) -> User:
 @pytest.fixture
 def quotation(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> Quotation:
-    person = person_for_guest(guest)
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -99,11 +95,10 @@ def test_list_quotations_excludes_legacy_synthetic_quotations(
     BookingLoader's `booking-`-prefixed synthetic fill rows (internal artefacts
     that satisfy the QuotationLine PROTECT FK for imported bookings) must never
     reach the operator's list — the viewset routes through `.real()`."""
-    assert quotation.guest is not None
+    assert quotation.person is not None
     synthetic = Quotation.objects.create(
-        enquiry=quotation.guest.enquiries.create(),
-        guest=quotation.guest,
-        person=person_for_guest(quotation.guest),
+        enquiry=quotation.person.enquiries_as_customer.create(),
+        person=quotation.person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=quotation.terms_version,
         legacy_id="booking-9999",
@@ -165,7 +160,7 @@ def test_retrieve_quotation_exposes_readable_names(
 def test_create_quotation(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -173,7 +168,7 @@ def test_create_quotation(
     response = api_client.post(
         "/api/v1/quotations",
         {
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "currency": gbp.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
@@ -1347,7 +1342,7 @@ def test_convert_schedules_payments_on_booking(
 def test_quotation_convert_endpoint_attributes_to_request_user(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -1362,18 +1357,15 @@ def test_quotation_convert_endpoint_attributes_to_request_user(
     from reservations.enums import EnquiryEventKind
     from reservations.models import Enquiry, EnquiryEvent
 
-    person = person_for_guest(guest)
     enquiry = Enquiry.objects.create(
-        guest=guest,
-        person=person,
-        email=guest.email or "",
+        person=customer,
+        email=customer.primary_email() or "",
         first_name="Ada",
         last_name="Lovelace",
     )
     quotation = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person,
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -1440,7 +1432,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     staff: User,
     quotation: Quotation,
     line: QuotationLine,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -1452,11 +1444,9 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
 
     # Pre-existing AWAITING_DEPOSIT booking holds 2026-06-10..06-17 on the
     # same property, so converting the overlapping quotation must fail.
-    person = person_for_guest(guest)
     other_quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person,
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -1471,8 +1461,7 @@ def test_convert_overlap_rolls_back_quotation_acceptance(
     )
     existing = BookingModel.objects.create(
         quotation_line=other_line,
-        guest=guest,
-        person=person,
+        person=customer,
         property=property_,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
@@ -1968,7 +1957,7 @@ def _second_property(template: Property) -> Property:
 def test_create_quotation_with_lines_atomic_happy_path(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
@@ -1976,7 +1965,7 @@ def test_create_quotation_with_lines_atomic_happy_path(
     """One POST creates header + a priced and a manual line — no holds — and
     echoes the detail shape with the server-priced values."""
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
     status_before = enquiry.status
     second = _second_property(property_)
 
@@ -1984,7 +1973,7 @@ def test_create_quotation_with_lines_atomic_happy_path(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2037,20 +2026,20 @@ def test_create_quotation_with_lines_atomic_happy_path(
 def test_create_with_lines_invalid_line_is_nested_400_and_writes_nothing(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
 ) -> None:
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
     second = _second_property(property_)
 
     response = api_client.post(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2089,7 +2078,7 @@ def test_create_with_lines_invalid_line_is_nested_400_and_writes_nothing(
 def test_create_with_lines_succeeds_over_foreign_live_hold(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
@@ -2099,7 +2088,7 @@ def test_create_with_lines_succeeds_over_foreign_live_hold(
     from reservations.services.holds import HoldService
 
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
     second = _second_property(property_)
     # Another live hold already owns the second villa's dates.
     HoldService.place(
@@ -2113,7 +2102,7 @@ def test_create_with_lines_succeeds_over_foreign_live_hold(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2150,7 +2139,7 @@ def test_create_with_lines_succeeds_over_foreign_live_hold(
 def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
@@ -2168,7 +2157,7 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
     response = api_client.post(
         "/api/v1/quotations",
         {
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2197,19 +2186,19 @@ def test_agent_direct_create_with_lines_rolls_back_minted_enquiry(
 def test_create_with_lines_nets_discount(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
 ) -> None:
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
 
     response = api_client.post(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2239,7 +2228,7 @@ def test_create_with_lines_nets_discount(
 def test_create_with_lines_pins_supplied_currency(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
@@ -2248,7 +2237,7 @@ def test_create_with_lines_pins_supplied_currency(
     """An explicitly supplied currency exact-matches its plan even when a newer
     plan in another currency would win an unpinned search (GAP-014)."""
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
     # Newer effective_from — an unpinned pricing would prefer this plan.
     _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
@@ -2257,7 +2246,7 @@ def test_create_with_lines_pins_supplied_currency(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [
@@ -2284,7 +2273,7 @@ def test_create_with_lines_pins_supplied_currency(
 def test_create_with_lines_records_changeover_shift(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     property_: Property,
     rate_rule: object,
@@ -2296,13 +2285,13 @@ def test_create_with_lines_records_changeover_shift(
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
     api_client.force_login(staff)
-    enquiry = guest.enquiries.create()
+    enquiry = customer.enquiries_as_customer.create()
 
     response = api_client.post(
         "/api/v1/quotations",
         {
             "enquiry": enquiry.pk,
-            "person": person_for_guest(guest).pk,
+            "person": customer.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
             "lines": [

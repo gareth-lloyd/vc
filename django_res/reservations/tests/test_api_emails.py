@@ -18,7 +18,7 @@ from django.core import mail
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import Person, User
 from comms.enums import EmailLogStatus, SmtpScope
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from core.enums import StaffRole
@@ -26,7 +26,7 @@ from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
-from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import Booking, Quotation, QuotationLine, TermsVersion
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def template(db: None) -> EmailTemplate:
 @pytest.fixture
 def booking(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -89,12 +89,9 @@ def booking(
 ) -> Booking:
     # Mirror production: every customer-linked row carries the unified Person, the
     # sole source of the recipient address/greeting (GAP-045 3d-3).
-    from reservations.services.person_sync import person_for_guest
-
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -110,7 +107,6 @@ def booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=line.date_from,
@@ -133,7 +129,7 @@ def booking_email(
     template: EmailTemplate,
     system_profile: SmtpProfile,
 ) -> EmailLog:
-    assert booking.guest is not None
+    assert booking.person is not None
     return EmailLog.objects.create(
         template_key=template.key,
         template_version=template.version,
@@ -141,7 +137,7 @@ def booking_email(
         from_email=system_profile.from_email,
         smtp_profile=system_profile,
         rendered_subject=f"Deposit for {booking.reference}",
-        rendered_body=f"Hi {booking.guest.first_name}",
+        rendered_body=f"Hi {booking.person.first_name}",
         status=EmailLogStatus.SENT,
         sent_at=timezone.now(),
         correlation={"booking_id": booking.pk},

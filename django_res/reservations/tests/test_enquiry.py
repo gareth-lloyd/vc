@@ -18,27 +18,25 @@ from reservations.models import (
     Enquiry,
     EnquiryEvent,
     EnquiryNote,
-    Guest,
     Quotation,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
 
 
 @pytest.fixture
-def enquiry(db: None, guest: Guest) -> Enquiry:
-    return Enquiry.objects.create(guest=guest, email="ada@example.com")
+def enquiry(db: None, customer: Person) -> Enquiry:
+    return Enquiry.objects.create(person=customer, email="ada@example.com")
 
 
 @pytest.fixture
-def quotation(db: None, guest: Guest, gbp: Currency, terms: TermsVersion) -> Quotation:
+def quotation(db: None, customer: Person, gbp: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )

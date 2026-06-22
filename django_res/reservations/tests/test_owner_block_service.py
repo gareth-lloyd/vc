@@ -29,13 +29,13 @@ from reservations.models import (
 )
 from reservations.services.holds import HoldService
 from reservations.services.owner_block import OwnerBlockService
-from reservations.services.person_sync import person_for_guest
 from reservations.signals import owner_block_contested
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property
-    from reservations.models import Guest, TermsVersion
+    from reservations.models import TermsVersion
 
 pytestmark = pytest.mark.django_db
 
@@ -50,17 +50,15 @@ def _user() -> User:
 def _booking(
     *,
     property: Property,
-    guest: Guest,
+    person: Person,
     currency: Currency,
     terms: TermsVersion,
     date_from: date,
     date_to: date,
     status: str,
 ) -> Booking:
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -76,7 +74,6 @@ def _booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property,
         date_from=date_from,
@@ -119,11 +116,11 @@ def test_create_maintenance_kind_maps_to_maintenance_reason(property_: Property)
 
 
 def test_create_rejects_overlapping_booking(
-    property_: Property, guest: Guest, gbp: Currency, terms: TermsVersion
+    property_: Property, customer: Person, gbp: Currency, terms: TermsVersion
 ) -> None:
     _booking(
         property=property_,
-        guest=guest,
+        person=customer,
         currency=gbp,
         terms=terms,
         date_from=FROM,

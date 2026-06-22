@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from django.utils import timezone
@@ -16,9 +16,9 @@ from django.utils import timezone
 from pricing.models import Currency
 
 if TYPE_CHECKING:
-    from accounts.models import User
+    from accounts.models import Person, User
     from properties.models import Property
-    from reservations.models import Booking, Guest, QuotationLine, TermsVersion
+    from reservations.models import Booking, QuotationLine, TermsVersion
 
 
 @pytest.fixture
@@ -54,13 +54,17 @@ def property_(db: None) -> Property:
 
 
 @pytest.fixture
-def guest(db: None) -> Guest:
-    from reservations.models import Guest
+def customer(db: None) -> Person:
+    from accounts.factories import CustomerPersonFactory
+    from accounts.models import Person
 
-    return Guest.objects.create(
-        first_name="Ada",
-        last_name="Lovelace",
-        email="ada-payments@example.com",
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Ada",
+            last_name="Lovelace",
+            primary_email="ada-payments@example.com",
+        ),
     )
 
 
@@ -79,19 +83,16 @@ def terms(db: None) -> TermsVersion:
 @pytest.fixture
 def quotation_line(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> QuotationLine:
-    from reservations.models import Quotation, QuotationLine
-    from reservations.services.person_sync import person_for_guest
+    from reservations.models import Enquiry, Quotation, QuotationLine
 
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=Enquiry.objects.create(person=customer, property=property_),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -112,19 +113,17 @@ def quotation_line(
 def booking(
     db: None,
     quotation_line: QuotationLine,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
     from reservations.enums import BookingStatus, PaymentMethod
     from reservations.models import Booking
-    from reservations.services.person_sync import person_for_guest
 
     return Booking.objects.create(
         quotation_line=quotation_line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property_,
         date_from=quotation_line.date_from,
         date_to=quotation_line.date_to,

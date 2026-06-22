@@ -13,9 +13,10 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
+from accounts.models import Person
 from pricing.models import Currency
 from properties.models import Property
-from reservations.models import Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import Quotation, QuotationLine, TermsVersion
 from reservations.services.quotation_render import (
     DEFAULT_INTRO,
     DEFAULT_SIGNOFF,
@@ -27,17 +28,14 @@ from reservations.services.quotation_render import (
 @pytest.fixture
 def priced_quotation(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Quotation:
-    from reservations.services.person_sync import person_for_guest
-
-    person = person_for_guest(guest)
+    person = customer
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,

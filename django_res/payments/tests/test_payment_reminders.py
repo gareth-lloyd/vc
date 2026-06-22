@@ -90,8 +90,8 @@ def test_deposit_due_today_sends_reminder(
         )
     )
     assert len(logs) == 1
-    assert booking.guest is not None
-    assert logs[0].to == [booking.guest.email]
+    assert booking.person is not None
+    assert logs[0].to == [booking.person.primary_email()]
 
 
 @pytest.mark.django_db
@@ -155,8 +155,8 @@ def test_balance_reminder_fires_on_each_threshold(
         )
     )
     assert len(logs) == 1
-    assert booking.guest is not None
-    assert logs[0].to == [booking.guest.email]
+    assert booking.person is not None
+    assert logs[0].to == [booking.person.primary_email()]
 
 
 @pytest.mark.django_db
@@ -796,10 +796,9 @@ def test_reminder_sends_to_person_email_when_person_linked(
     to the *person* address — proving the reminder resolves person-first, not
     just that the (synced) mirror happens to agree."""
     from reservations.models import Booking as BookingModel
-    from reservations.services.person_sync import person_for_guest
 
-    assert booking.guest is not None
-    person = person_for_guest(booking.guest)
+    assert booking.person is not None
+    person = booking.person
     person.first_name = "Grace"
     person.save(update_fields=["first_name", "updated_at"])
     primary = person.emails.filter(is_primary=True).first()
@@ -831,11 +830,10 @@ def test_reminder_idempotent_when_person_email_equals_guest(
     person mirror email equals the guest email, so dedupe must still hold
     across the person-first cutover — a re-run sends nothing new."""
     from reservations.models import Booking as BookingModel
-    from reservations.services.person_sync import person_for_guest
 
-    assert booking.guest is not None
-    person = person_for_guest(booking.guest)
-    assert person.primary_email() == booking.guest.email  # synced 1:1
+    assert booking.person is not None
+    person = booking.person
+    assert person.primary_email() == "ada-payments@example.com"  # synced 1:1
     BookingModel.objects.filter(pk=booking.pk).update(person=person)
 
     today = date.today()

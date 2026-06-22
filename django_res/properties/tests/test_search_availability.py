@@ -14,11 +14,13 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person, User
 from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.enums import PrefilledChangeOverDay
@@ -34,12 +36,11 @@ from reservations.enums import BookingHoldReason, BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingHold,
-    Guest,
+    Enquiry,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 # ---------------------------------------------------------------------------
 # Local fixtures — kept private to this module so the test data shape is
@@ -113,27 +114,34 @@ def terms(db: None) -> TermsVersion:
 
 
 @pytest.fixture
-def guest(db: None) -> Guest:
-    return Guest.objects.create(
-        first_name="Search",
-        last_name="Tester",
-        email="search@example.com",
+def customer(db: None) -> Person:
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Search",
+            last_name="Tester",
+            primary_email="search@example.com",
+        ),
     )
 
 
 def _make_active_booking(
     *,
     property_: Property,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     date_from: date,
     date_to: date,
 ) -> Booking:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=Enquiry.objects.create(
+            person=customer,
+            property=property_,
+            date_from=date_from,
+            date_to=date_to,
+        ),
+        person=customer,
         expires_at=datetime(2027, 1, 1, tzinfo=UTC),
         terms_version=terms,
     )
@@ -148,8 +156,7 @@ def _make_active_booking(
     )
     booking = Booking.objects.create(
         quotation_line=line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property_,
         date_from=date_from,
         date_to=date_to,
@@ -296,7 +303,7 @@ def test_search_default_excludes_booked_properties(
     staff: User,
     category: PropertyCategory,
     region: Region,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -314,7 +321,7 @@ def test_search_default_excludes_booked_properties(
     )
     _make_active_booking(
         property_=booked,
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         date_from=date(2026, 6, 10),
@@ -376,7 +383,7 @@ def test_search_include_unavailable_returns_all(
     staff: User,
     category: PropertyCategory,
     region: Region,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -400,7 +407,7 @@ def test_search_include_unavailable_returns_all(
     )
     _make_active_booking(
         property_=booked,
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         date_from=date(2026, 8, 1),
@@ -503,7 +510,7 @@ def test_search_no_date_range_no_availability_filter(
     staff: User,
     category: PropertyCategory,
     region: Region,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -517,7 +524,7 @@ def test_search_no_date_range_no_availability_filter(
     )
     _make_active_booking(
         property_=booked,
-        guest=guest,
+        customer=customer,
         gbp=gbp,
         terms=terms,
         date_from=date(2026, 9, 1),
@@ -578,7 +585,7 @@ def test_search_availability_is_single_bulk_query(
     staff: User,
     category: PropertyCategory,
     region: Region,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
@@ -602,7 +609,7 @@ def test_search_availability_is_single_bulk_query(
             if idx % 2 == 0:
                 _make_active_booking(
                     property_=prop,
-                    guest=guest,
+                    customer=customer,
                     gbp=gbp,
                     terms=terms,
                     date_from=date(2026, 10, 1),

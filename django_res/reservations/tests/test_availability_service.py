@@ -19,15 +19,14 @@ from reservations.enums import BookingHoldReason, BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingHold,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
 from reservations.services import AvailabilityService
-from reservations.services.person_sync import person_for_guest
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency
     from properties.models import Property
 
@@ -47,25 +46,19 @@ def terms() -> TermsVersion:
     )
 
 
-@pytest.fixture
-def guest() -> Guest:
-    return Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
-
-
 def _make_booking(
     *,
     property: Property,
     currency: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     date_from: date,
     date_to: date,
     status: str,
 ) -> Booking:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -80,8 +73,7 @@ def _make_booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property,
         date_from=date_from,
         date_to=date_to,
@@ -174,13 +166,13 @@ def test_expired_hold_is_ignored(property_: Property) -> None:
 def test_non_terminal_booking_blocks_without_hold(
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
@@ -199,13 +191,13 @@ def test_non_terminal_booking_blocks_without_hold(
 def test_resting_draft_booking_occupies_range(
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 8, 10),
         date_to=date(2026, 8, 17),
@@ -230,14 +222,14 @@ def test_resting_draft_booking_occupies_range(
 def test_terminal_booking_is_ignored(
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
     status: str,
 ) -> None:
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
@@ -273,7 +265,7 @@ def test_ignore_hold_ids_excludes_own_hold(property_: Property) -> None:
 def test_calendar_query_count_is_constant(
     property_: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     _hold(property=property_, date_from=date(2026, 6, 5), date_to=date(2026, 6, 9))
@@ -286,7 +278,7 @@ def test_calendar_query_count_is_constant(
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 12),
         date_to=date(2026, 6, 15),
@@ -306,11 +298,10 @@ def test_calendar_query_count_is_constant(
 # ----------------------------------------------------------------------
 # 9. Refined reason mapping + block_id (B1)
 # ----------------------------------------------------------------------
-def _quotation(guest: Guest, currency: Currency, terms: TermsVersion) -> Quotation:
+def _quotation(customer: Person, currency: Currency, terms: TermsVersion) -> Quotation:
     return Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -339,9 +330,9 @@ def test_editable_block_carries_block_id(
 
 
 def test_quotation_hold_maps_to_quotation_reason_no_block_id(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
-    quotation = _quotation(guest, gbp, terms)
+    quotation = _quotation(customer, gbp, terms)
     BookingHold.objects.create(
         property=property_,
         quotation=quotation,
@@ -370,7 +361,7 @@ def test_operator_block_has_no_quotation_id(property_: Property) -> None:
 
 
 def test_booking_cell_has_no_block_id_and_booked_outranks_manual(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _hold(
         property=property_,
@@ -381,7 +372,7 @@ def test_booking_cell_has_no_block_id_and_booked_outranks_manual(
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
@@ -405,13 +396,13 @@ def _set_times(property_: Property, *, check_out: time, check_in: time) -> None:
 
 
 def test_changeover_day_splits_am_pm(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),  # departs morning of the 8th
@@ -439,12 +430,12 @@ def test_changeover_day_splits_am_pm(
 
 
 def test_no_split_when_times_missing(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),
@@ -463,13 +454,13 @@ def test_no_split_when_times_missing(
 
 
 def test_no_split_when_checkout_after_checkin(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _set_times(property_, check_out=time(16, 0), check_in=time(10, 0))
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),
@@ -486,7 +477,7 @@ def test_no_split_when_checkout_after_checkin(
 
 
 def test_split_priority_booking_over_hold_same_side(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
     # Two intervals depart on the 8th: a manual hold and a booking.
@@ -499,7 +490,7 @@ def test_split_priority_booking_over_hold_same_side(
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 2),
         date_to=date(2026, 6, 8),
@@ -519,13 +510,13 @@ def test_split_priority_booking_over_hold_same_side(
 
 
 def test_calendar_query_count_with_split(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),
@@ -546,7 +537,7 @@ def test_calendar_query_count_with_split(
 # 11. Lone booking checkout turnover (PR2) — bookings only, blocks stay whole
 # ----------------------------------------------------------------------
 def test_lone_booking_checkout_is_split_and_stays_available(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     """A booking's lone checkout day is sellable as a new arrival: AM booked,
     PM available, and the cell itself stays available."""
@@ -554,7 +545,7 @@ def test_lone_booking_checkout_is_split_and_stays_available(
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),  # departs morning of the 8th, nobody arrives
@@ -574,14 +565,14 @@ def test_lone_booking_checkout_is_split_and_stays_available(
 
 
 def test_lone_booking_checkin_day_stays_whole(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     """The morning of a check-in is not sellable as a night, so no half-bar."""
     _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 14),
@@ -617,13 +608,13 @@ def test_block_checkout_day_stays_whole_no_turnover(property_: Property, reason:
 
 
 def test_lone_checkout_not_split_without_changeover_times(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     """No property changeover times → the checkout day is whole-day available."""
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),
@@ -635,13 +626,13 @@ def test_lone_checkout_not_split_without_changeover_times(
 
 
 def test_calendar_query_count_with_lone_checkout(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     _set_times(property_, check_out=time(10, 0), check_in=time(16, 0))
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 8),
@@ -673,14 +664,14 @@ def test_multi_returns_live_holds_and_occupying_bookings(
     property_: Property,
     other_property: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     hold = _hold(property=property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17))
     booking = _make_booking(
         property=other_property,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 20),
         date_to=date(2026, 6, 27),
@@ -694,12 +685,12 @@ def test_multi_returns_live_holds_and_occupying_bookings(
 
 
 def test_multi_includes_resting_draft_booking(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     booking = _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 8, 10),
         date_to=date(2026, 8, 17),
@@ -714,12 +705,12 @@ def test_multi_includes_resting_draft_booking(
     [BookingStatus.CANCELLED.value, BookingStatus.CHECKED_OUT.value],
 )
 def test_multi_excludes_terminal_bookings(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion, status: str
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion, status: str
 ) -> None:
     _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 7, 1),
         date_to=date(2026, 7, 8),
@@ -759,14 +750,14 @@ def test_multi_includes_null_expiry_hold(property_: Property) -> None:
 
 
 def test_multi_excludes_booking_linked_holds(
-    property_: Property, gbp: Currency, guest: Guest, terms: TermsVersion
+    property_: Property, gbp: Currency, customer: Person, terms: TermsVersion
 ) -> None:
     """A deposit-pending booking has both a live hold and an occupying booking
     row — the hold is excluded so the timeline paints one band per stay."""
     booking = _make_booking(
         property=property_,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),
@@ -789,7 +780,7 @@ def test_multi_scopes_to_ids_and_window(
     property_: Property,
     other_property: Property,
     gbp: Currency,
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     # Other property's rows must not appear when only `property_` is asked for.
@@ -797,7 +788,7 @@ def test_multi_scopes_to_ids_and_window(
     _make_booking(
         property=other_property,
         currency=gbp,
-        guest=guest,
+        customer=customer,
         terms=terms,
         date_from=date(2026, 6, 10),
         date_to=date(2026, 6, 17),

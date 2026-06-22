@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.factories import UserFactory
-from accounts.models import User
+from accounts.models import Person, User
 from core.enums import StaffRole
 from owners.enums import OwnerMembershipStatus
 from owners.factories import (
@@ -24,8 +24,7 @@ from pricing.models import Currency
 from properties.factories import PropertyFactory
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
-from reservations.models import Booking, Guest, Quotation, QuotationLine, TermsVersion
-from reservations.services.person_sync import person_for_guest
+from reservations.models import Booking, Quotation, QuotationLine, TermsVersion
 
 pytestmark = pytest.mark.django_db
 
@@ -41,13 +40,11 @@ def _owner(org: OwnerOrganisation) -> User:
     return user
 
 
-def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: Guest) -> Booking:
+def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, person: Person) -> Booking:
     start = timezone.localdate() + timedelta(days=10)
     end = start + timedelta(days=7)
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
+        enquiry=person.enquiries_as_customer.create(),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -63,7 +60,6 @@ def _booking_on(property_: Property, gbp: Currency, terms: TermsVersion, guest: 
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=start,
@@ -111,12 +107,16 @@ def test_missing_range_400s(api_client: APIClient, property_: Property) -> None:
 
 
 def test_booked_cells_carry_no_guest_identity(
-    api_client: APIClient, gbp: Currency, terms: TermsVersion, guest: Guest, property_: Property
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
 ) -> None:
     org = cast(OwnerOrganisation, OwnerOrganisationFactory())
     user = _owner(org)
     OwnerOrgPropertyFactory(organisation=org, property=property_, view_full_money=True)
-    _booking_on(property_, gbp, terms, guest)
+    _booking_on(property_, gbp, terms, customer)
 
     api_client.force_authenticate(user)
     body = api_client.get(_url(property_.id)).json()
@@ -129,5 +129,6 @@ def test_booked_cells_carry_no_guest_identity(
         # Internal hold id and any guest identity must be absent.
         assert "block_id" not in cell
     # Guest PII never appears anywhere in the calendar payload.
-    assert guest.email and guest.email not in str(body)
-    assert guest.last_name not in str(body)
+    email = customer.primary_email()
+    assert email and email not in str(body)
+    assert customer.last_name not in str(body)

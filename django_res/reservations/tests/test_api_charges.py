@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import pytest
 from django.utils import timezone
@@ -19,12 +20,13 @@ from reservations.models import (
     Booking,
     BookingChargeItem,
     BookingEvent,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
+
+if TYPE_CHECKING:
+    from accounts.models import Person
 
 
 @pytest.fixture
@@ -55,15 +57,14 @@ def viewer(db: None) -> User:
 @pytest.fixture
 def booking(
     db: None,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> Booking:
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -78,8 +79,7 @@ def booking(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         property=property_,
         date_from=line.date_from,
         date_to=line.date_to,

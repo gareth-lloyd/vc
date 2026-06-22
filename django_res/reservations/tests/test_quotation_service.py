@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from django.utils import timezone
 
+from accounts.enums import PersonPreferredMethod
 from properties.enums import PrefilledChangeOverDay
 from properties.models.settings import PropertySettings
 from reservations.enums import (
@@ -17,26 +18,24 @@ from reservations.enums import (
     EnquiryStatus,
 )
 from reservations.models import BookingHold, Enquiry, Quotation
-from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 if TYPE_CHECKING:
+    from accounts.models import Person
     from pricing.models import Currency, RateRule
     from properties.models import Property
-    from reservations.models import Guest, TermsVersion
+    from reservations.models import TermsVersion
 
 
 @pytest.mark.django_db
 def test_create_from_enquiry_happy_path(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
     rate_rule: RateRule,  # ensures PricingEngine has something to quote on
 ) -> None:
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
     expires = timezone.now() + timedelta(days=7)
 
     quotation = QuotationService.create_from_enquiry(
@@ -71,7 +70,7 @@ def test_create_from_enquiry_happy_path(
 
 @pytest.mark.django_db
 def test_create_from_enquiry_does_not_reprice_manual_line(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -81,9 +80,7 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
     clobber it, mirroring the API `_reprice` guard."""
     from decimal import Decimal
 
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,
@@ -140,7 +137,7 @@ def test_create_from_enquiry_requires_person(
 @pytest.mark.parametrize("final_status", [EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value])
 def test_create_from_enquiry_rejects_final_enquiry(
     final_status: str,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -151,7 +148,7 @@ def test_create_from_enquiry_rejects_final_enquiry(
     from rest_framework.exceptions import ValidationError
 
     enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or "", status=final_status
+        person=customer, email=customer.primary_email() or "", status=final_status
     )
 
     with pytest.raises(ValidationError):
@@ -174,7 +171,7 @@ def test_create_from_enquiry_rejects_final_enquiry(
 
 @pytest.mark.django_db
 def test_create_from_enquiry_records_send_path_smtp(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -190,9 +187,7 @@ def test_create_from_enquiry_records_send_path_smtp(
     from reservations.enums import EnquiryEventKind
     from reservations.models import EnquiryEvent
 
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
 
     QuotationService.create_from_enquiry(
         enquiry,
@@ -213,16 +208,15 @@ def test_create_from_enquiry_records_send_path_smtp(
 
 
 @pytest.mark.django_db
-def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: TermsVersion) -> None:
+def test_quote_sent_requires_send_path(
+    customer: Person, gbp: Currency, terms: TermsVersion
+) -> None:
     """`Enquiry.quote_sent` must require `send_path` — surfacing the audit
     contract in the signature so future callers can't omit it silently."""
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
     quotation = Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
-        person=person_for_guest(guest),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -233,7 +227,7 @@ def test_quote_sent_requires_send_path(guest: Guest, gbp: Currency, terms: Terms
 
 @pytest.mark.django_db
 def test_create_from_enquiry_shifts_off_changeover_arrival(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -248,9 +242,7 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
         property=property_,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
     # 2026-06-10 is a Wednesday — not the Saturday changeover day.
     line_input = {
         "property": property_,
@@ -283,7 +275,7 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
 
 @pytest.mark.django_db
 def test_backfill_links_orphaned_holds_to_their_line(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -299,9 +291,8 @@ def test_backfill_links_orphaned_holds_to_their_line(
     )
 
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -330,7 +321,7 @@ def test_backfill_links_orphaned_holds_to_their_line(
 
 
 def _quotation_with_line(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -340,9 +331,8 @@ def _quotation_with_line(
 ) -> tuple[Quotation, Any]:
     """Bare ORM quotation + line — no service side effects, no holds."""
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(),
-        guest=guest,
-        person=person_for_guest(guest),
+        enquiry=customer.enquiries_as_customer.create(),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
@@ -358,7 +348,7 @@ def _quotation_with_line(
 
 @pytest.mark.django_db
 def test_hold_line_places_hold_with_property_default_expiry(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -368,7 +358,7 @@ def test_hold_line_places_hold_with_property_default_expiry(
     `expires_at` (holds are now a deliberate operator action, decoupled from
     quote paperwork)."""
     PropertySettings.objects.create(property=property_, hold_duration_hours=24)
-    quotation, line = _quotation_with_line(guest, gbp, terms, property_)
+    quotation, line = _quotation_with_line(customer, gbp, terms, property_)
 
     before = timezone.now()
     hold = QuotationService.hold_line(line)
@@ -387,13 +377,13 @@ def test_hold_line_places_hold_with_property_default_expiry(
 
 @pytest.mark.django_db
 def test_hold_line_falls_back_to_group_default_expiry(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
     """No PropertySettings row → the 48-hour group default applies."""
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
 
     before = timezone.now()
     hold = QuotationService.hold_line(line)
@@ -405,13 +395,13 @@ def test_hold_line_falls_back_to_group_default_expiry(
 
 @pytest.mark.django_db
 def test_hold_line_is_idempotent(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
     """A second hold_line on an already-held line returns the live hold."""
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
 
     first = QuotationService.hold_line(line)
     second = QuotationService.hold_line(line)
@@ -422,7 +412,7 @@ def test_hold_line_is_idempotent(
 
 @pytest.mark.django_db
 def test_hold_line_raises_when_dates_already_held(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -430,7 +420,7 @@ def test_hold_line_raises_when_dates_already_held(
     from core.exceptions import HoldUnavailable
     from reservations.services.holds import HoldService
 
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
     HoldService.place(
         property=property_,
         date_from=date(2026, 6, 12),
@@ -444,12 +434,12 @@ def test_hold_line_raises_when_dates_already_held(
 
 @pytest.mark.django_db
 def test_release_line_hold_releases_and_is_idempotent(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
     hold = QuotationService.hold_line(line)
 
     assert QuotationService.release_line_hold(line) == 1
@@ -462,14 +452,14 @@ def test_release_line_hold_releases_and_is_idempotent(
 
 @pytest.mark.django_db
 def test_move_line_hold_moves_dates_preserving_expiry(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
     """Editing a held line's dates relocates the hold; the operator-set expiry
     window is preserved (the hold does not re-anchor to the quotation)."""
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
     hold = QuotationService.hold_line(line)
     original_expiry = hold.expires_at
 
@@ -488,13 +478,13 @@ def test_move_line_hold_moves_dates_preserving_expiry(
 
 @pytest.mark.django_db
 def test_move_line_hold_without_live_hold_is_noop(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
     """An un-held line stays un-held through edits — moving never places."""
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
 
     assert QuotationService.move_line_hold(line) is None
     assert BookingHold.objects.count() == 0
@@ -502,7 +492,7 @@ def test_move_line_hold_without_live_hold_is_noop(
 
 @pytest.mark.django_db
 def test_move_line_hold_conflict_raises_and_leaves_hold_in_place(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -510,7 +500,7 @@ def test_move_line_hold_conflict_raises_and_leaves_hold_in_place(
     from core.exceptions import HoldUnavailable
     from reservations.services.holds import HoldService
 
-    _, line = _quotation_with_line(guest, gbp, terms, property_)
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
     hold = QuotationService.hold_line(line)
     HoldService.place(
         property=property_,
@@ -532,19 +522,18 @@ def test_move_line_hold_conflict_raises_and_leaves_hold_in_place(
 
 @pytest.mark.django_db
 def test_create_direct_auto_creates_agent_portal_enquiry(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
     rate_rule: RateRule,
 ) -> None:
     """Agent-direct quote with no enquiry mints exactly one AGENT_PORTAL enquiry."""
-    guest.contact_method = ContactMethod.EMAIL
-    guest.save(update_fields=["contact_method"])
-    person = person_for_guest(guest)
+    customer.preferred_method = PersonPreferredMethod.EMAIL.value
+    customer.save(update_fields=["preferred_method"])
 
     quotation = QuotationService.create_direct(
-        person=person,
+        person=customer,
         lines=[
             {
                 "property": property_,
@@ -563,11 +552,11 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     enquiry = quotation.enquiry
     assert enquiry is not None
     assert enquiry.site_source == EnquirySource.AGENT_PORTAL.value
-    # GAP-045 3d-C: `person` is the sole persisted customer FK; the guest
-    # snapshot still seeds the denormalised contact fields below.
+    # GAP-045 3d-C: `person` is the sole persisted customer FK; the person
+    # snapshot seeds the denormalised contact fields below.
     assert enquiry.guest_id is None
-    assert enquiry.person_id == person_for_guest(guest).pk
-    assert enquiry.email == guest.email
+    assert enquiry.person_id == customer.pk
+    assert enquiry.email == customer.primary_email()
     assert enquiry.contact_method == ContactMethod.EMAIL.value
     # The service path advances the enquiry to QUOTED (audited).
     assert enquiry.status == EnquiryStatus.QUOTED.value
@@ -577,7 +566,7 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
 
 @pytest.mark.django_db
 def test_create_from_enquiry_seeds_line_inclusions_from_plan(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -588,9 +577,7 @@ def test_create_from_enquiry_seeds_line_inclusions_from_plan(
     plan = rate_rule.card.plan
     plan.inclusion = "Daily maid service"
     plan.save(update_fields=["inclusion"])
-    enquiry = Enquiry.objects.create(
-        guest=guest, person=person_for_guest(guest), email=guest.email or ""
-    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
 
     quotation = QuotationService.create_from_enquiry(
         enquiry,

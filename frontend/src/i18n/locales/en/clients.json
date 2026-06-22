@@ -1,0 +1,40 @@
+{
+  "headings": {
+    "list_title": "Clients",
+    "library": "Library"
+  },
+  "fields": {
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "capacity": "Channel",
+    "status": "Status"
+  },
+  "placeholders": {
+    "search": "Search by name or email…"
+  },
+  "status": {
+    "any": "Any status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "capacity": {
+    "any": "Any channel",
+    "direct": "Direct",
+    "agent": "Agent"
+  },
+  "filters": {
+    "filter_status_aria": "Filter by status",
+    "filter_capacity_aria": "Filter by channel"
+  },
+  "empty": {
+    "list_title": "No clients match these filters",
+    "list_hint": "Try clearing the search or changing the filters."
+  },
+  "errors": {
+    "load_failed": "Couldn't load clients."
+  },
+  "fallback": {
+    "name_with_id": "Client #{{id}}"
+  }
+}

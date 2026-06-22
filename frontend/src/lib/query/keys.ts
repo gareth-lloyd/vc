@@ -88,6 +88,12 @@ export const queryKeys = {
     // collide with an unscoped one and serve the wrong picker results.
     search: (q: string, status?: string) => ["companies", "search", status ?? "all", q] as const,
   },
+  clients: {
+    // List-only read-only directory: `all()` is the conventional invalidation
+    // root; only `list()` has a consumer today (no detail/CRUD/picker).
+    all: () => ["clients"] as const,
+    list: <F>(filters: F) => ["clients", "list", filters] as const,
+  },
   bookings: {
     all: () => ["bookings"] as const,
     lists: () => ["bookings", "list"] as const,

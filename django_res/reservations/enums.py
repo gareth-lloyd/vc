@@ -131,6 +131,31 @@ TERMINAL_BOOKING_STATUSES: tuple[str, ...] = (
     BookingStatus.DECLINED.value,
 )
 
+# Status gates for the Clients-directory region aggregation (GAP-047).
+#
+# A region is *quoted* once a real quote has been sent (SENT/ACCEPTED; excludes
+# DRAFT/EXPIRED/CANCELLED). Legacy data has no real quotes — the migration only
+# synthesises `booking-` DRAFT fills — so this correctly leaves legacy clients'
+# quoted regions empty; quotes accrue going forward.
+QUOTED_STATUSES: tuple[str, ...] = (
+    QuotationStatus.SENT.value,
+    QuotationStatus.ACCEPTED.value,
+)
+
+# A region is *booked* for any reservation that wasn't cancelled/expired/declined
+# — i.e. everything that actually occupied (or will occupy) the dates. This
+# mirrors `Booking.occupying()`'s "exclude terminal" philosophy but is expressed
+# as an exclusion so it INCLUDES the legacy book of business: the migration rests
+# imported reservations at DRAFT (`data_migration.loaders.bookings`), and a
+# positive ACTIVE-only list would silently blank booked regions for every
+# migrated client. CHECKED_OUT (a completed stay) is kept — a past stay is still
+# a booked region.
+UNREALISED_BOOKING_STATUSES: tuple[str, ...] = (
+    BookingStatus.CANCELLED.value,
+    BookingStatus.EXPIRED.value,
+    BookingStatus.DECLINED.value,
+)
+
 
 class BookingNoteKind(models.TextChoices):
     GENERAL = "general", "General"

@@ -1,5 +1,16 @@
 # BUG-009 — Pricing engine ignores `RatePlan.price_basis` (GROSS plans mis-priced)
 
+> 🟨 **SPEC SLICE DONE (2026-06-22).** The corrected, `price_basis`-aware engine
+> maths are now specified: `04-pricing.md` Services steps 8-9 (GROSS carve-out /
+> NET gross-up, mode-dependent tax/commission bases, fixed-vs-percentage
+> commission, exemption), the authoritative-field note (`RatePlan.price_basis`
+> vs `PropertySettings.prices_entered_as`), a Deferred row in `10-decisions.md`,
+> and an expanded `TODO(finance-rewrite)` + assembly pointer in
+> `pricing/services/engine.py`. **Engine code remains deferred to the finance
+> rewrite** — the `_call_finance_resolver` shim must be removed first. The
+> single-source-of-truth reconciliation with `prices_entered_as` is tracked in
+> GAP-035. Ticket stays open until the engine branch lands.
+
 - **Severity:** 🔴 Bug (wrong money out) — **fix deferred to the finance rewrite;
   corrected spec lands now.**
 - **Source:** 2026-06-02 pricing audit; legacy `RatesModel.Calculate()`

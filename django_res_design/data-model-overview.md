@@ -14,10 +14,10 @@ model evolves. Known issues and planned changes live in
 
 | App | Domain | Anchor model(s) |
 |---|---|---|
-| `accounts` | Auth users, business contacts (owners/agents/managers), sessions, RBAC | `User`, `Contact` |
+| `accounts` | Auth users, the unified `Person` identity (booking-side customers + owners/agents/managers), sessions, RBAC | `User`, `Person` |
 | `properties` | The villa catalogue + inheritable per-property settings/finance + geography | `Property` |
 | `pricing` | Three-tier price model + surcharges/discounts + FX | `RatePlan` → `RateCard` → `RateRule` |
-| `reservations` | Enquiry → Quotation → Booking lifecycle, plus guests, terms, holds, concierge | `Booking`, `Guest`, `Quotation` |
+| `reservations` | Enquiry → Quotation → Booking lifecycle, plus guests, terms, holds, concierge | `Booking`, `Quotation` (customer = `accounts.Person`) |
 | `payments` | Unified payment ledger + events + refunds + webhooks + security deposit | `Payment` |
 | `comms` | Email sending (SMTP profiles, templates, append-only log) | `EmailLog` |
 | `integrations` | Generic sync metadata, Zoho OAuth, sync run audit | `SyncRecord` |
@@ -31,14 +31,17 @@ Five models carry the weight of the system:
   features, and contact assignments. Has the largest "satellite cluster":
   `PropertySettings`, `PropertyFinance`, `PropertyCapacity`, `Room`,
   `PropertyImage`, `PropertyDescription`, `PropertyLocation`, plus M2M to
-  `Contact` via `PropertyContactAssignment`.
+  `Person` (kind=CONTACT) via `PropertyContactAssignment`.
 - **`Booking`** — central to reservations. Has its own satellite cluster:
   `BookingEvent`, `BookingNote`, `BookingHold`, `BookingConciergeItem`, and a
   1:N to `Payment`.
-- **`Guest`** — unified customer across Enquiry → Quotation → Booking. Has an
-  optional `OneToOne` to `User`.
-- **`Contact`** — owner/manager/agent counterpart to Guest. Also has an
-  optional `OneToOne` to `User`. PII-anonymizable.
+- **`Person`** (`accounts`) — the single unified human-identity model. A
+  `kind` enum (`CUSTOMER` vs `CONTACT`) distinguishes booking-side customers
+  (across Enquiry → Quotation → Booking) from operator-side owners/managers/
+  agents. Has an optional `OneToOne` to `User`; PII-anonymizable. Email/phone
+  live in `PersonEmail` / `PersonPhone` child rows. (Formed by renaming the
+  old `Contact` model to `Person`, then folding the former `Guest` into it —
+  GAP-045.)
 - **`Payment`** — single-table polymorphic ledger keyed on a `purpose` enum
   (`DEPOSIT` | `BALANCE` | `SECURITY_DEPOSIT` | `CONCIERGE` | `REFUND` |
   `ADJUSTMENT`).
@@ -52,12 +55,12 @@ anchors, a lookup/config row, or a cross-cutting audit/sync record.
 Property ─1:N→ RatePlan ─1:N→ RateCard ─1:N→ RateRule
          ─1:1→ PropertySettings, PropertyFinance, PropertyCapacity
          ─1:N→ Room, PropertyImage, PropertyDescription, PropertyLocation
-         ─M:M→ Contact (via PropertyContactAssignment)
+         ─M:M→ Person (via PropertyContactAssignment)
          ─M:M→ Feature, Collection
 
 Enquiry ─1:N→ Quotation ─1:N→ QuotationLine ─1:N→ Booking
-Guest   ─1:N→ Quotation, Booking            (also User OneToOne)
-Contact ─1:N→ Quotation.agent, Booking.agent (also User OneToOne)
+Person  ─1:N→ Quotation, Booking            (customer; also User OneToOne)
+Person  ─1:N→ Quotation.agent, Booking.agent (agent; also User OneToOne)
 
 Booking ─1:N→ Payment, BookingHold, BookingEvent, BookingNote, BookingConciergeItem
 Payment ─1:N→ PaymentEvent, PaymentLine, Refund, WebhookDelivery
@@ -151,9 +154,9 @@ numbers".
 ### Soft delete
 None. Lifecycle is expressed via `status` + `is_active` + `archived_at`, or a
 hard delete paired with an `AuditLog` trail:
-- `Contact` and `Guest` use `status` + `anonymized_at` + `anonymize()` for PII
-  erasure.
-- Hard deletes are paired with `AuditLog` rows (e.g. `Contact.merge`).
+- `Person` uses `status` (`PersonStatus`: ACTIVE / INACTIVE / ANONYMIZED) +
+  `anonymized_at` + `anonymize()` for PII erasure.
+- Hard deletes are paired with `AuditLog` rows (e.g. `Person.merge`).
 
 ### ID strategy
 Auto-increment bigint PKs throughout. No UUIDs except in tests.

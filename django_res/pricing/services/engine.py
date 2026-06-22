@@ -244,6 +244,11 @@ class PricingEngine:
             as_of=as_of,
         )
 
+        # BUG-009: this "add on top" assembly is correct only for a NET plan. A
+        # GROSS RatePlan's rate already includes commission+tax, so a GROSS plan
+        # should carve them out (total == the gross base), not add them. The
+        # mode-aware branch is deferred to the finance rewrite — see
+        # `_call_finance_resolver` and `04-pricing.md` Services steps 8-9.
         total = (rate_subtotal + extras_total - discount_total + commission + tax).quantize(
             Decimal("0.01")
         )
@@ -486,7 +491,15 @@ class PricingEngine:
 
         TODO(finance-rewrite): delete this shim and the dict branches in
         `_compute_commission`/`_compute_tax` once `PropertyFinance.effective_*`
-        accepts `as_of` and returns the scalar/attribute shape directly.
+        accepts `as_of` and returns the scalar/attribute shape directly. The
+        same rewrite must also make the maths `price_basis`-aware (BUG-009):
+        `_compute_commission`/`_compute_tax` and the `total`/`net_to_owner`
+        assembly in `quote()` currently always *add* commission+tax on top
+        (correct only for a NET plan), which over-charges GROSS plans — every
+        imported plan is GROSS. Branch on the resolved `RatePlan.price_basis`
+        per `04-pricing.md` Services steps 8-9 (GROSS carve-out vs NET gross-up,
+        mode-dependent tax/commission bases). See
+        `django_res_design/todo/bug-009-price-basis-ignored-by-engine.md`.
         """
         try:
             return resolver(as_of=as_of)

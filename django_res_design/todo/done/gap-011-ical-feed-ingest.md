@@ -1,26 +1,56 @@
+> **✅ RESOLVED (2026-06-22)** — The feature is built and green; the one
+> outstanding residual is **deliberately deferred**, so the ticket is closed.
+> **Built (verified against code, 79 tests green across the iCal suite):**
+> `PropertyCalendarFeed` (`properties/models/calendar_feed.py`); the generic
+> parser + per-source declarative profiles (`integrations/ical/{parser,profiles}.py`
+> — exclusive vs inclusive `DTEND`, missing-`DTEND`-is-one-night, `webcal://`
+> scheme swap, `STATUS:TENTATIVE` per-profile drop); `ICalIngestService`
+> (`reservations/services/ical_ingest.py` — cross-feed overlap coalescing,
+> composite-key upsert, stale-event release scoped per feed) writing
+> `OwnerBlock(source=ICAL)` = `BookingHold(reason=OWNER_BLOCK, expires_at=NULL)`;
+> `SyncProvider.ICAL` + one `SyncRecord` per feed; the `ingest_ical` command and
+> the **15-minute beat-scheduled** `ingest_ical_feeds` task
+> (`CELERY_BEAT_SCHEDULE`, `settings/base.py`); the `demo_ical` command + seeder.
+> **Conflict alert — built:** an imported event overlapping a live VC `Booking`
+> (or open quotation hold) fires `ical_conflict_detected` →
+> `ical_conflict_detected_handler` (`comms/signals.py`) → ops email via the
+> `ical.conflict` template (`comms/migrations/0012`), deduped per
+> range+reference, gated on `OPS_EMAIL_RECIPIENTS`. **§9(c) shipped as
+> skip-write + alert** (not the "write-and-alert" the body leans toward) —
+> `test_booking_conflict_skips_write_and_fires_signal`; settled, not reopened.
+> **Staff awareness UI — built:** every import/release writes an `OwnerBlockUpdate`
+> row surfaced by `OwnerBlockUpdateViewSet` (per-user seen-tracking + `contest`).
+> **Residual (c) feed-`url` secrecy — confirmed end-to-end:** no serializer/viewset
+> exposes `PropertyCalendarFeed` (only a `has_active_ical_feed` bool +
+> `calendar_url` surface, per GAP-034); logging uses `feed_id` only (explicit
+> `# never the URL` comment); admin keeps `url` off the list view; audit-tracked
+> `sensitive=("url",)`; guard test
+> `properties/tests/test_api_properties.py::test_feed_url_never_serialized_in_property_payloads`.
+> **Deferred (product decision 2026-06-22):** residual (a)'s batched per-poll
+> awareness **digest email** — the in-app `OwnerBlockUpdate` feed + the conflict
+> alert are deemed sufficient awareness, so the routine digest email is not built
+> (recorded in `10-decisions.md` deferred registry). Residual (b) sales-view
+> badge shipped under **GAP-034**.
+
 # GAP-011 — iCal feed ingest from owners
 
-**Severity:** gap (designed-but-unbuilt → **largely built**).
+**Severity:** gap (designed-but-unbuilt → **built; one residual deferred**).
 
-**Status:** 🟨 partial — the ingest engine has since landed; UI/awareness work
-remains. This ticket is the single canonical home for the feature;
-`06-availability.md`, `08-integrations.md`, and `10-decisions.md` now point here
-instead of each carrying their own copy.
+**Status:** ✅ resolved (2026-06-22) — see the banner above. Engine, conflict
+alert, in-app awareness feed, and feed-`url` secrecy all built and green; the
+batched awareness **digest email** is deferred in favour of the in-app feed.
+This ticket is the single canonical home for the feature; `06-availability.md`,
+`08-integrations.md`, and `10-decisions.md` point here.
 
-> **Implemented vs residual (updated 2026-06-17 after the owner availability
-> Loom).** The header previously read "⬜ deferred — tracker", but the body and
-> the code have moved on — they now disagree, hence this status bump.
-> **Built:** `PropertyCalendarFeed` model (`properties/models/calendar_feed.py`),
-> `ICalIngestService` with cross-feed coalescing + stale-event reconciliation +
-> conflict signals (`reservations/services/ical_ingest.py`), `OwnerBlock`
-> (`source=ICAL`, `idempotency_key`), the `ingest_ical` command, the
-> beat-scheduled `ingest_ical_feeds` task (§3), `SyncProvider.ICAL`, and the
-> `demo_ical` seeder. **Residual (verify against code before scheduling):**
-> (a) staff-awareness UI / digest — §9 "staff notification shape" is still an
-> open decision and conflict *signals* fire but a digest/UI looks unbuilt;
-> (b) the sales-view source indicator (the "iCal" badge vs owner-calendar link),
-> now tracked separately by **GAP-034**; (c) confirm the feed `url` secret-handling
-> (§2) is enforced end-to-end (not serialized / not logged).
+> **Implemented vs residual — reconciled & closed 2026-06-22 (was "updated
+> 2026-06-17 after the owner availability Loom").** The three residual items the
+> 2026-06-17 pass flagged are all now settled: (a) the staff-awareness *UI* is
+> built (`OwnerBlockUpdate` feed + seen-tracking), and the batched awareness
+> *digest email* is **deferred** in favour of it (the conflict alert covers the
+> dangerous case); (b) the sales-view source indicator shipped under **GAP-034**;
+> (c) the feed-`url` secrecy is confirmed enforced end-to-end (guard test +
+> `feed_id`-only logging + audit `sensitive`). Full detail in the ✅ RESOLVED
+> banner above. The spec below is retained as the historical design record.
 
 **Source:** scoping-session **2026-05-26** with the site owner; **re-emphasised
 in the 2026-06-08 demo** ("incredibly useful", "a game changer", "a big problem
@@ -281,15 +311,19 @@ Open choices to settle at implementation time:
   releases holds for events that vanished from a feed.
 - Blocks show as unavailable in `AvailabilityService.calendar()` and catalogue
   search with no change to the availability model.
-- Staff are notified of imported blocks for awareness (batched per-poll digest),
-  and an imported event overlapping a live VC `Booking` raises a high-priority
-  conflict alert — via the `comms` signal→`EmailService` pattern.
+- Staff are made aware of imported blocks — via the in-app `OwnerBlockUpdate`
+  feed (per-user seen-tracking) — and an imported event overlapping a live VC
+  `Booking` raises a high-priority conflict alert through the `comms`
+  signal→`EmailService` pattern. **The batched per-poll awareness *digest email*
+  is deferred** (product decision 2026-06-22): the in-app feed + the conflict
+  alert are deemed sufficient awareness, so routine imports do not also email.
 - Tests: idempotent re-poll (no duplicate holds); UID-drift handled by the
   composite key; exclusive vs inclusive `DTEND` per profile (off-by-one);
   cross-feed overlap coalescing; stale event → hold released (and *only* that
   feed's holds); `webcal://` normalization; malformed/404/empty feed handled
-  without crashing the run; awareness digest fires once per poll (not per row);
-  booking-overlap raises the conflict alert.
+  without crashing the run; booking-overlap raises the conflict alert (ops email,
+  deduped). _(The "awareness digest fires once per poll" criterion is dropped —
+  the digest email is deferred; awareness is the in-app `OwnerBlockUpdate` feed.)_
 
 ## Dependencies
 

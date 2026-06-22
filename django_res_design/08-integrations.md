@@ -110,7 +110,7 @@ class SyncClient:
 ```
 
 ### `ZohoSyncClient`
-Pushes `Property`, `Quotation`, `Booking`, `Guest` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
+Pushes `Property`, `Quotation`, `Booking`, `Person` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
 
 Enquiries also carry CRM tags on push: `Enquiry.lead_status` (the `HOT`/`WARM`/`COLD`/`DEAD` TextChoices added in `05-reservations.md`) is pushed to Zoho as a lead tag, alongside the existing loss reason captured on the `LOST` `EnquiryEvent`. See `05-reservations.md`.
 
@@ -342,5 +342,5 @@ def zoho_id(self) -> str | None:
 ## Out of scope
 
 - **Outbound** WordPress sync details (Django → WP `WP_Sync_*` push protocol, multi-`SiteId` fan-out, response shapes) — the `SyncRecord(provider=WORDPRESS_SITE)` framework holds the state, but the wire protocol is still being captured in `workflows/11-integrations/public-website-sync.md`. The **inbound** direction (WP → Django) is fully defined above. **Rate/pricing data is never pushed to WordPress** — it is internal-only and stays within the Res system; the outbound sync covers villa content (descriptions, imagery, slugs), not rates.
-- **iCal feed ingest** from per-villa public calendars. Lands as a new `SyncProvider.ICAL` value on `SyncRecord` (reusing its `external_id` field as the per-feed idempotency key on the iCal `UID`) plus a poller writing `BookingHold(reason=OWNER_BLOCK, …)` rows. High-value v2 force-multiplier, not in MVP. Full spec, verified assumptions, and postponed decisions (incl. the secret-URL hazard): **`todo/gap-011-ical-feed-ingest.md`**.
+- **iCal feed ingest** from per-villa public calendars. Lands as a new `SyncProvider.ICAL` value on `SyncRecord` (one record per feed) plus a poller writing `BookingHold(reason=OWNER_BLOCK, …)` rows. Post-MVP force-multiplier that has **since been built** (parser + per-source profiles, cross-feed coalescing, stale-event release, ops conflict alert; feed `url` kept secret; the per-poll awareness *digest email* deferred). Full spec, verified assumptions, and resolution (incl. the secret-URL handling): **`todo/done/gap-011-ical-feed-ingest.md`** (✅ resolved 2026-06-22).
 - Channel manager integrations (Booking.com, Vrbo, Airbnb) — none in the legacy system; future scope.

@@ -24,33 +24,42 @@ Notes:
 - `IsSystemAdmin` is just Django's `is_superuser`.
 - `IsLock` collapses into `is_active=False`.
 
-### `Contact(AuditedModel)`
+### `Person(AuditedModel)`
 
-> ⚠️ **Being unified into `Person` (2026-06-18).** Per the
-> `people-model-cleanup.md` banner + `10-decisions.md`, `Contact` and
-> `reservations.Guest` merge into a single `accounts.Person` identity (capacity
-> as role/relationship; `Organisation` replaces free-text `company`; `User`
-> stays `OneToOne`). Tracked by `todo/gap-045`–`gap-048`. The fields below describe
-> the pre-unification `Contact` and fold into `Person`.
+> ✅ **Unified into `Person` — delivered (GAP-045, 2026-06-22).** Per the
+> `people-model-cleanup.md` banner + `10-decisions.md`, the model formerly
+> `Contact` was renamed `accounts.Person` and `reservations.Guest` was folded
+> into it: there is now **one** human-identity model. `Person.kind`
+> (CUSTOMER vs CONTACT) distinguishes booking-side customers (travellers,
+> payers) from operator-side contacts (owners, managers, agents); `User` stays
+> an optional `OneToOne`. The section below documents the unified `Person`.
+> Tracked by `todo/gap-045`–`gap-048`.
 
-The villa owner, property manager, or external agent. Distinct from `User` because most contacts never log in. If they do, we link via the optional `user` OneToOne.
+The single human-identity model — booking-side customers (travellers, payers, CC'd family) **and** operator-side contacts (villa owners, property managers, external agents). Distinct from `User` because most people never log in. If they do, we link via the optional `user` OneToOne. The `kind` field tells the two populations apart (a directory filter hint, not access control).
 
 - `title` — `CharField(max_length=16, blank=True)` (Mr / Mrs / Dr — free text)
 - `first_name`, `last_name` — `CharField`
 - `company` — `CharField(blank=True)`
 - `website_url` — `URLField(blank=True)`
-- `preferred_method` — `TextChoices` (`EMAIL`, `PHONE`, `SMS`) — fixes legacy `PrefferedMethod` typo
+- `preferred_method` — `TextChoices` (`EMAIL`, `PHONE`, `SMS`), default `EMAIL` — fixes legacy `PrefferedMethod` typo
 - `address_line_1`, `address_line_2` — `CharField(blank=True)`
+- `town`, `post_code` — `CharField(blank=True)`
+- `country` — `FK properties.Country PROTECT`, null=True, blank=True
+- `marketing_consent` — `BooleanField(default=False)`
 - `notes` — `TextField(blank=True)`
-- `status` — TextChoices (`ACTIVE`, `INACTIVE`, `ANONYMIZED`), default `ACTIVE`
+- `status` — TextChoices (`ACTIVE`, `INACTIVE`, `ANONYMIZED`), default `ACTIVE` (`PersonStatus`)
+- `kind` — TextChoices (`CUSTOMER`, `CONTACT`), default `CONTACT` (`PersonKind`) — CUSTOMER for booking-side people (set by the customer-create path and the legacy `ClientLoader`), CONTACT for owner/manager/agent records. A `/contacts` filter hint, not access control.
 - `anonymized_at` — DateTimeField(null=True, blank=True) — set by `anonymize()`; mirrors the timestamp on the status transition
-- `user` — `OneToOneField(User, null=True, blank=True, on_delete=SET_NULL, related_name="contact")` — created lazily if the contact gains login access
+- `user` — `OneToOneField(User, null=True, blank=True, on_delete=SET_NULL, related_name="contact")` — created lazily if the person gains login access
 - `legacy_id` — nullable, indexed (per 00-conventions)
 
 Reverse relationships:
-- `emails` (ContactEmail set)
-- `phones` (ContactPhone set)
+- `emails` (PersonEmail set)
+- `phones` (PersonPhone set)
 - `property_assignments` (PropertyContactAssignment set — defined in properties app)
+- `bookings_as_customer`, `enquiries_as_customer`, `quotations_as_customer` (the booking-side `person` FKs on `reservations.Booking` / `Enquiry` / `Quotation`)
+- `booking_guests` (`reservations.BookingGuest` set — multi-person bookings)
+- `travel_preferences` (`reservations.GuestPreference` set)
 
 Indexes: `(status, last_name, first_name)`, `legacy_id`.
 
@@ -58,12 +67,12 @@ Indexes: `(status, last_name, first_name)`, `legacy_id`.
 
 Per `00-conventions.md` "Lifecycle, not soft delete":
 
-- **Wrong contact created in error, no relationships yet** — hard delete is permitted. `PropertyContactAssignment.contact` is `PROTECT`, so any contact with downstream rows can't be hard-deleted accidentally.
-- **Contact retired** — set `status=INACTIVE`. Still visible in search results behind a status filter; never opaquely hidden.
-- **Duplicate contacts** — call the explicit service method `Contact.merge(target)`: rewrites FKs on `PropertyContactAssignment`, `Quotation`, `Booking`, `Enquiry` to point at `target`; writes an `AuditLog` row per rewrite; **hard-deletes** `self`. Destructive and final — there is no `merged_into` self-FK and no surviving tombstone. The `AuditLog` is the only trail.
-- **GDPR forget-me** — call `Contact.anonymize()`: overwrites `first_name`, `last_name`, `company`, `notes`, `address_line_1`, `address_line_2` with `"[REDACTED]"` or empty; cascades to `ContactEmail.email` (replaced with `"redacted-{id}@anonymized.local"`) and `ContactPhone.number` (replaced with empty string); sets `status=ANONYMIZED`, `anonymized_at=now()`. Row remains for FK integrity on historical assignments and quotations. Still searchable by ID.
+- **Wrong person created in error, no relationships yet** — hard delete is permitted. `PropertyContactAssignment.contact` is `PROTECT`, so any person with downstream rows can't be hard-deleted accidentally.
+- **Person retired** — set `status=INACTIVE`. Still visible in search results behind a status filter; never opaquely hidden.
+- **Duplicate people** — call the explicit service method `Person.merge(target)`: model-agnostically rewrites every FK pointing at `self` (`PropertyContactAssignment`, the booking-side `person` FKs on `Quotation` / `Booking` / `Enquiry`, the agent FKs, `PropertyFinance.contact`, plus `BookingGuest` / `GuestPreference`) to point at `target`, reconciling the `PersonEmail` / `PersonPhone` channel children and the FK-scoped unique constraints (`BookingGuest`, `GuestPreference`) so a blind bulk update can't collide; writes an `AuditLog` summary row; **hard-deletes** `self`. Destructive and final — there is no `merged_into` self-FK and no surviving tombstone. The `AuditLog` is the only trail.
+- **GDPR forget-me** — call `Person.anonymize()`: overwrites `first_name`, `last_name`, `company`, `notes`, `address_line_1`, `address_line_2`, `town`, `post_code` with `"[REDACTED]"` or empty; cascades to `PersonEmail.email` (replaced with `"redacted-{id}@anonymized.local"`) and `PersonPhone.number` (replaced with empty string); sets `status=ANONYMIZED`, `anonymized_at=now()`. Row remains for FK integrity on historical assignments, quotations, and bookings. Still searchable by ID. `primary_email()` / `primary_phone()` fail closed (return `None`) for an ANONYMIZED person so the sentinel never leaks to a person-first read or comms send.
 
-Sensitive field edits on `Contact` (PII, address, name) are tracked into `AuditLog` via the `core.audit.track(...)` registration in `accounts.apps.ready()`.
+Sensitive field edits on `Person` (PII, address, name) are tracked into `AuditLog` via the `core.audit.track(...)` registration in `accounts.apps.ready()`; the erasure flows scrub those cleartext columns from the `AuditLog` trail.
 
 > **Design intent — operator tags + standing linked contacts (owner Loom 2026-06-17).**
 > The sales team wants first-class **tags** on the customer (VIP / Repeat / Trade /
@@ -72,15 +81,15 @@ Sensitive field edits on `Contact` (PII, address, name) are tracked into `AuditL
 > links** (spouse / child / PA) that persist across bookings — distinct from the
 > per-booking `BookingGuest` roles in `05-reservations.md`. Neither exists in the
 > model yet; the entity that carries them is the unified **`accounts.Person`**
-> (GAP-045 — supersedes the earlier Guest-vs-Contact split), with the model shape
+> (GAP-045, delivered — there is no longer a Guest-vs-Contact split), with the model shape
 > and the Repeat-is-derived / PA-overlaps-the-link-role reconciliation settled in
 > [`todo/gap-040-customer-tags-taxonomy.md`](todo/gap-040-customer-tags-taxonomy.md)
 > and [`todo/gap-041-standing-linked-contacts.md`](todo/gap-041-standing-linked-contacts.md).
 > Sensitive tags (Disability / Approach-with-care) may carry retention/consent
 > implications — cross-ref `todo/q-010-guest-data-retention.md`.
 
-### `ContactEmail(TimestampedModel)`
-- `contact` — `ForeignKey(Contact, on_delete=CASCADE, related_name="emails")`
+### `PersonEmail(TimestampedModel)`
+- `contact` — `ForeignKey(Person, on_delete=CASCADE, related_name="emails")` (FK column name retained as `contact` from the legacy table)
 - `email` — `CIEmailField` (case-insensitive via `citext`)
 - `label` — `TextChoices` (`PRIMARY`, `WORK`, `PERSONAL`, `OTHER`)
 - `is_primary` — `BooleanField(default=False)`
@@ -89,13 +98,13 @@ Constraints:
 - `UniqueConstraint(fields=["contact", "email"], name="unique_contact_email")`
 - `UniqueConstraint(fields=["contact"], condition=Q(is_primary=True), name="one_primary_email_per_contact")`
 
-### `ContactPhone(TimestampedModel)`
-- `contact` — FK CASCADE
+### `PersonPhone(TimestampedModel)`
+- `contact` — FK CASCADE (FK column name retained as `contact`)
 - `number` — `CharField(max_length=32)` (E.164 recommended but not enforced; admin validation)
 - `label` — `TextChoices` (`MOBILE`, `WORK`, `HOME`, `FAX`, `OTHER`)
 - `is_primary` — bool
 
-Same unique-primary constraint pattern as `ContactEmail`.
+Same unique-primary constraint pattern as `PersonEmail`.
 
 ## Roles
 
@@ -125,7 +134,7 @@ API surface: `GET /roles` is a read-only enum listing for FE dropdowns; there is
 
 ### Contact roles (`ContactRole` on `PropertyContactAssignment`)
 
-How is a `Contact` related to a `Property`? Different concept entirely — referenced from `properties.PropertyContactAssignment`:
+How is a `Person` (a CONTACT-kind one — an owner / manager / agent) related to a `Property`? Different concept entirely — referenced from `properties.PropertyContactAssignment`:
 
 ```python
 class ContactRole(models.TextChoices):
@@ -138,11 +147,11 @@ class ContactRole(models.TextChoices):
 
 This is the direct replacement for the legacy `VillaRoles` table (5 static rows: Owner / Agent / Villa Admin / Villa Manager / Management Company), which was FK'd from `VillaContactMap` — i.e. always a contact-to-property mapping role, never a staff-permissions role.
 
-## Why Contact is not a User by default
+## Why Person is not a User by default
 
-- 90% of contacts are passive (we email them booking summaries, they don't log in).
-- Forcing every Contact to be a User creates a username/password row per owner, bloats auth queries, and confuses permissions logic.
-- The OneToOne link is opportunistic: if an owner is given a dashboard login, we create the User and set `Contact.user = user`.
+- 90% of people are passive (we email them booking summaries, they don't log in).
+- Forcing every Person to be a User creates a username/password row per owner, bloats auth queries, and confuses permissions logic.
+- The OneToOne link is opportunistic: if an owner is given a dashboard login, we create the User and set `Person.user = user`.
 
 ## Permissions
 
@@ -266,8 +275,19 @@ Indexes: `(user, last_seen_at)`.
 
 This keeps `GET /auth/sessions` and `GET /users/{id}/sessions` cheap (one indexed query), while revocation hits both tables in a single `transaction.atomic` so the underlying Django session is genuinely invalidated.
 
+## One Person, two kinds (GAP-045)
+
+There is **one** `accounts.Person` human-identity model — there is no separate `Guest` model (it was folded in). `Person.kind` distinguishes the two populations:
+
+- `kind=CUSTOMER` — booking-side people: travellers, payers, CC'd family. Was the deleted `reservations.Guest`.
+- `kind=CONTACT` — operator-side CRM people: owners, managers, agents.
+
+`kind` is a directory filter hint (it powers `/contacts?kind=customer`), **not** access control — customer-history reads and agent relations work regardless of `kind`. Both kinds carry `marketing_consent`, the opportunistic `user` OneToOne, and the `PersonEmail` / `PersonPhone` channel children.
+
+Multi-person bookings link a `Booking` to several `Person` rows via `reservations.BookingGuest` (`LEAD` / `CO_TRAVELLER` / `PAYER` / `CC_ONLY`); the LEAD is mirrored onto `Booking.person` for read convenience. See `05-reservations.md`.
+
 ## Out of scope here
 
-- Guest entity — lives in `reservations/` (a Guest may have an optional User OneToOne — same opportunistic pattern as Contact). Multi-person bookings link to multiple `Guest` rows via `reservations.BookingGuest` (`LEAD` / `CO_TRAVELLER` / `PAYER` / `CC_ONLY`); see `05-reservations.md`. **`Contact` and `Guest` are not the same model** — `Contact` is the operator-side CRM entity (owners, managers, agents); `Guest` is the booking-side person model (travellers, payers, CC'd family).
-- Property assignment (which Contacts manage which Properties) — lives in `properties/` via `PropertyContactAssignment`.
+- Multi-person booking linkage (`BookingGuest`), travel preferences (`GuestPreference`), and the enquiry / quotation / booking `person` FKs — live in `reservations/`; see `05-reservations.md`.
+- Property assignment (which people manage which Properties) — lives in `properties/` via `PropertyContactAssignment`.
 - Payment / financial recipient mapping — flows through `properties.PropertyFinance.contact`.

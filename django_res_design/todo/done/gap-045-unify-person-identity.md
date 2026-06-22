@@ -1,14 +1,18 @@
-> **🟨 PARTIAL (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — Phase 1a has landed
-> (~`a4264a9`, 2026-06-18): `accounts.Contact` renamed to `Person` in place
-> (`accounts/models/person.py:19`, migration `0006`); supply-side + agent FKs
-> repointed to `accounts.Person` (`enquiry.py:102`, `quotation.py:60`,
-> `booking.py:145`, `properties/models/contacts.py`, `finance.py`). **The hard
-> 2/3 is undone:** `reservations.Guest` still exists as a separate `AuditedModel`
-> with its own merge/anonymize and `town/post_code/country` fields, and
-> `Enquiry/Quotation/Booking.guest` still point at it. Remaining = phases 2–3
-> below (add Guest's fields/constraints + `PersonEmail/PersonPhone` to `Person`,
-> data-migrate + repoint guest FKs, unify status/merge, retire `Guest`).
-> Downstream GAP-046/047/048/042/040/041 stays blocked until that lands.
+> **✅ RESOLVED (2026-06-22)** — the full expand/contract is done and on local
+> `main` (fast-forward `51feb1a`). `reservations.Guest`, the five `guest` FKs,
+> `GuestStatus`, the Guest→Person mirror signal, `person_sync`, `link_person_fks`
+> and `guest_dedup` are all gone; `accounts.Person` (with `PersonEmail`/
+> `PersonPhone` children, `kind`, merge/anonymize, and the customer reverse
+> accessors) is the **sole** human identity across Enquiry/Quotation/Booking/
+> BookingGuest/GuestPreference. The legacy import writes `Person` directly
+> (`ClientLoader`, `legacy_id="client-{Id}"`); a one-shot re-key migration
+> (`reservations/0035`) folds any existing `guest-{pk}` mirrors onto the
+> `client-` namespace before `DeleteModel(Guest)`. `/contacts` is the unified
+> kind-aware directory (`?kind=customer|contact`); `/guests` is retired
+> (API + FE). Shipped across units 3a–3d / D1–D5 (see
+> `data_migration/CUTOVER.md §4d` and the merge `51feb1a`). Downstream
+> GAP-046/047/048/042/040/041 are unblocked. **NOT yet pushed** (local-main
+> batch-push workflow).
 >
 > _Original ticket preserved below for context._
 

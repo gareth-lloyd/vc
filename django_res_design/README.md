@@ -33,7 +33,7 @@ accounts/       Users, Contacts (owners/managers), Roles
 properties/     Property, Location, Capacity, Settings, Rooms, Images, Features, Collections, Groups, Geography
                 + Finance config (Commission, Tax, BankAccount, PaymentSchedule, SecurityDepositPolicy)
 pricing/        RatePlan, RateRule, Surcharge, Discount, ChangeOverRule, Currency, FxRate, PricingEngine service
-reservations/   Guest, Enquiry, Quotation, QuotationLine, Booking, BookingHold, BookingEvent, TermsVersion, Concierge
+reservations/   Enquiry, Quotation, QuotationLine, Booking, BookingGuest, BookingHold, BookingEvent, TermsVersion, Concierge
 payments/       Payment, PaymentEvent, WebhookDelivery, Flywire webhook flow
 integrations/   SyncRecord (generic FK to external systems — Zoho, etc.)
 ```
@@ -45,11 +45,11 @@ integrations/   SyncRecord (generic FK to external systems — Zoho, etc.)
 | File | Topic |
 |---|---|
 | [00-conventions.md](./00-conventions.md) | Abstract bases, soft-delete, audit middleware, naming, currency, enums |
-| [01-accounts.md](./01-accounts.md) | User, Contact, ContactEmail, ContactPhone, Role |
+| [01-accounts.md](./01-accounts.md) | User, Person (unified — GAP-045), PersonEmail, PersonPhone, Role |
 | [02-properties.md](./02-properties.md) | Property decomposition, Location, Capacity, Settings, Rooms, Images, Features, Collections, Geography |
 | [03-finance-config.md](./03-finance-config.md) | PropertyFinance and its 5 child models; group-level defaults |
 | [04-pricing.md](./04-pricing.md) | Rate model, surcharges, discounts, change-over rules, PricingEngine |
-| [05-reservations.md](./05-reservations.md) | Guest, Enquiry, Quotation, Booking, lifecycle |
+| [05-reservations.md](./05-reservations.md) | Enquiry, Quotation, Booking, BookingGuest, lifecycle |
 | [06-availability.md](./06-availability.md) | BookingHold, range-overlap availability, state machine, change-over enforcement |
 | [07-payments.md](./07-payments.md) | Payment, PaymentEvent, WebhookDelivery, Flywire flow |
 | [08-integrations.md](./08-integrations.md) | SyncRecord, Zoho reconciliation |

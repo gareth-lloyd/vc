@@ -12,7 +12,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-21): **77 done** (73 resolved + 4 dropped), **47 open**
+Scoreboard (2026-06-22): **80 done** (76 resolved + 4 dropped), **44 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -26,7 +26,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | Id | Title | Status |
 |---|---|---|
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ decision-blocked (DamageClaim in v1?) |
-| [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ code deferred to finance rewrite; **spec slice NOT written** (04-pricing has no GROSS carve-out / NET gross-up) |
+| [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | 🟨 spec written (04-pricing 8-9 GROSS carve-out / NET gross-up + 10-decisions deferred row + engine TODO/assembly pointers); **engine code deferred to finance rewrite** (x-ref GAP-035 single-source-of-truth) |
 
 ## 🟠 Footguns
 
@@ -52,7 +52,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 |---|---|---|
 | [GAP-005](gap-005-quotation-flow-parity.md) | Enquiry→Quotation flow parity vs legacy + spine UX overhaul | ⬜ tracker |
 | [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md) | Quote/enquiry specs analysed against the wrong (post-deletion) codebase | ⬜ tracker / corrected reference |
-| [GAP-011](gap-011-ical-feed-ingest.md) | iCal feed ingest from owners | 🟨 partial — ingest engine + feed model shipped; residual = staff-awareness UI + sales indicator (GAP-034) |
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
 | [GAP-017](gap-017-legacy-villabookingdetails-loader.md) | Data-migration loader for legacy `VillaBookingDetails` | ⬜ |
@@ -82,7 +81,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-042](gap-042-customer-360-profile-view.md) | Customer 360 profile for the sales team | ⬜ owner Loom 2026-06-17; consumes GAP-040/041; "calls" needs activity-log decision |
 | [GAP-043](gap-043-quote-builder-multi-week-range.md) | Quote builder: multi-week date-range selection | ⬜ owner Loom 2026-06-17; reverses the flexibility_days rework (replace-vs-coexist open) |
 | [GAP-044](gap-044-occupancy-band-fanout-builder.md) | Quote builder: occupancy-band fan-out (all bands, default-checked) | ⬜ owner Loom 2026-06-17; reverses 04-pricing "no auto fan-out" |
-| [GAP-045](gap-045-unify-person-identity.md) | **Unify human identity into one `Person`** (folds in `Guest`; agent off the supply-side bag) | 🟨 partial — phase-1a (Contact→Person rename + agent/supply FK repoint) landed 2026-06-18; **Guest fold-in (phases 2–3) undone**. Still **blocks GAP-046/047/048** |
+| [GAP-045](done/gap-045-unify-person-identity.md) | **Unify human identity into one `Person`** (folds in `Guest`; agent off the supply-side bag) | ✅ resolved (2026-06-22) — full expand/contract shipped across 3a–3d / D1–D5 (merge `51feb1a`): `reservations.Guest` + the 5 `guest` FKs deleted; `accounts.Person` is the sole human identity (PersonEmail/PersonPhone children, `kind`, merge/anonymize); legacy import writes `Person` directly (`client-{Id}`) with a one-shot mirror re-key migration; `/contacts` is the unified `?kind=`-filtered directory, `/guests` retired. Unblocks GAP-046/047/048 |
 | [GAP-046](gap-046-organisation-and-agent-capacity.md) | `Organisation` entity + agent capacity (B2B Companies) | ⬜ after GAP-045; repoints `.agent` FKs; dissolves GAP-029 |
 | [GAP-047](gap-047-clients-directory-and-profile.md) | Clients (renter) directory: browsable list + direct/agent filter | ⬜ after GAP-045/046; list only (detail = GAP-042, tags = GAP-040, links = GAP-041) |
 | [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Villa Contacts directory + role taxonomy (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co) | ⬜ after GAP-045; allows `Organisation` assignees |
@@ -93,7 +92,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 | Id | Title | Status |
 |---|---|---|
-| [Q-006](q-006-owner-statement-scheduling.md) | Owner statement cadence + delivery | ⬜ no code yet |
 | [Q-007](q-007-concierge-supplier-directory.md) | Concierge supplier directory shape | ⬜ |
 | [Q-008](q-008-2fa-enforcement.md) | 2FA enforcement scope | ⬜ |
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
@@ -109,7 +107,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **Q-006** — Owner statement cadence + delivery (no code exists yet)
 - **BUG-008** — `DamageClaim` in v1? (scope call; blocks the SD damage slice)
 - **Q-019** — Structured room attributes (owner vocabulary; blocks room-attribute write surface)
 
@@ -155,6 +152,7 @@ problem, fix, and commit. Listed here for traceability.
 | [GAP-007](done/gap-007-changeover-autoshift-parity.md) | Changeover auto-shift parity |
 | [GAP-008](done/gap-008-no-rate-night-fallback-parity.md) | No-rate-night fallback parity (`fallback_nightly`) |
 | [GAP-009](done/gap-009-discount-loose-ends.md) | Discount loose ends |
+| [GAP-011](done/gap-011-ical-feed-ingest.md) | iCal feed ingest from owners (engine + ops conflict alert + in-app `OwnerBlockUpdate` awareness feed + feed-`url` secrecy; awareness *digest email* deferred) |
 | [GAP-014](done/gap-014-quote-currency-forced-selection.md) | Quote builder forced currency → per-line currency |
 | [GAP-015](done/gap-015-modify-resync-payment-schedule.md) | `modify_dates`/`modify_guests` resync the payment schedule |
 | [GAP-019](done/gap-019-security-deposit-calculate-from.md) | SD sizing: live-SD resize on charge/modify (dead `calculate_from` dropped) |
@@ -168,6 +166,7 @@ problem, fix, and commit. Listed here for traceability.
 | [Q-003](done/q-003-channel-sync-scope.md) | Channel sync scope → out of v1 |
 | [Q-004](done/q-004-hold-expiry-default.md) | Hold expiry default (shape) |
 | [Q-005](done/q-005-currency-display-base.md) | Reports base currency + FX → EUR base, daily snapshot |
+| [Q-006](done/q-006-owner-statement-scheduling.md) | Owner statements → monthly + on-demand, portal-only (PDF+CSV), auto-send deferred to v2 |
 | [Q-009](done/q-009-multi-site-inventory-sharing.md) | Multi-site inventory sharing → single site v1 |
 | [Q-011](done/q-011-email-template-inheritance.md) | Email template inheritance → system → site |
 | [Q-013](done/q-013-rate-card-incomplete-pricing.md) | Rate-card incomplete pricing → flag + manual quote |

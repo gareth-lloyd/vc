@@ -18,8 +18,8 @@
 
 The owner wants a **separate Companies section** — add a B2B company (e.g.
 "Dune Travel"), attach an agent to it, browse the list. Today `company` is a
-**free-text `CharField`** on `Contact` (no entity, no list), and the
-booking/travel **agent** is an `accounts.Contact` FK
+**free-text `CharField`** on `Person` (no entity, no list), and the
+booking/travel **agent** is an `accounts.Person` FK
 (`Enquiry/Quotation/Booking.agent`) — a demand-side role stranded in the
 supply-side identity bag. Organisations are simply unmodelled.
 

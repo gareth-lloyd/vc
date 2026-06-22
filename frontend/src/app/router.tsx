@@ -27,6 +27,7 @@ const REAL_PROPERTY_TABS = new Set<string>([
   "availability",
   "media",
   "settings",
+  "history",
 ]);
 const propertyPlaceholderRoutes = PROPERTY_TABS.filter((t) => !REAL_PROPERTY_TABS.has(t.slug)).map(
   (t) => ({
@@ -44,6 +45,7 @@ const REAL_BOOKING_TABS = new Set<string>([
   "finance",
   "owner",
   "comms",
+  "history",
 ]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
   (t) => ({
@@ -204,6 +206,13 @@ export const router = createBrowserRouter([
                             lazy: async () => {
                               const m = await import("@/features/properties/tabs/SettingsTab");
                               return { Component: m.SettingsTab };
+                            },
+                          },
+                          {
+                            path: "history",
+                            lazy: async () => {
+                              const m = await import("@/features/properties/tabs/HistoryTab");
+                              return { Component: m.HistoryTab };
                             },
                           },
                           ...propertyPlaceholderRoutes,
@@ -497,6 +506,13 @@ export const router = createBrowserRouter([
                             lazy: async () => {
                               const m = await import("@/features/bookings/tabs/CommsTab");
                               return { Component: m.CommsTab };
+                            },
+                          },
+                          {
+                            path: "history",
+                            lazy: async () => {
+                              const m = await import("@/features/bookings/tabs/HistoryTab");
+                              return { Component: m.HistoryTab };
                             },
                           },
                           ...bookingPlaceholderRoutes,

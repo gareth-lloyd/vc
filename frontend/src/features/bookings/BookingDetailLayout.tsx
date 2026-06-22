@@ -8,6 +8,7 @@ import { StatTiles, type StatTileData } from "@/components/data/StatTiles";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
+import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 import { propertyDetailsPath } from "@/lib/routes";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
@@ -72,6 +73,10 @@ export function BookingDetailLayout() {
   const { t } = useTranslation("bookings");
   const { id } = useParams<{ id: string }>();
   const query = useBooking(id);
+  const isAdmin = useHasAdminRole();
+  // The audit-log History tab is admin-only (Q-014); the route stays mounted so
+  // a direct URL still resolves (it shows a permission notice).
+  const tabs = BOOKING_TABS.filter((tab) => tab.slug !== "history" || isAdmin);
 
   if (query.isLoading) {
     return (
@@ -116,7 +121,7 @@ export function BookingDetailLayout() {
 
       <div className="border-border border-b px-6">
         <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
-          {BOOKING_TABS.map((tab) => (
+          {tabs.map((tab) => (
             <NavLink
               key={tab.slug}
               to={tab.slug}

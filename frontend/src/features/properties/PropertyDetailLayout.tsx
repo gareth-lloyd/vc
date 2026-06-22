@@ -9,6 +9,7 @@ import { QuickActions, type QuickAction } from "@/components/feedback/QuickActio
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
+import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 import { useProperty } from "./hooks";
 import { PROPERTY_TABS } from "./tabConfig";
 
@@ -16,6 +17,10 @@ export function PropertyDetailLayout() {
   const { t } = useTranslation("properties");
   const { id } = useParams<{ id: string }>();
   const query = useProperty(id);
+  const isAdmin = useHasAdminRole();
+  // The audit-log History tab is admin-only (Q-014); the route itself stays
+  // mounted so a direct URL still resolves (it shows a permission notice).
+  const tabs = PROPERTY_TABS.filter((tab) => tab.slug !== "history" || isAdmin);
 
   const quickActions = useMemo<readonly QuickAction[]>(
     () => [
@@ -68,7 +73,7 @@ export function PropertyDetailLayout() {
 
       <div className="border-border border-b px-6">
         <nav className="flex gap-1" aria-label={t("detail.sections_aria")}>
-          {PROPERTY_TABS.map((tab) => (
+          {tabs.map((tab) => (
             <NavLink
               key={tab.slug}
               to={tab.slug}

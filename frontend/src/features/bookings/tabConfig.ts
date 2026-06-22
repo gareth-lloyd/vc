@@ -7,6 +7,7 @@ export const BOOKING_TABS = [
   { slug: "concierge", labelKey: "tabs.concierge" },
   { slug: "comms", labelKey: "tabs.comms" },
   { slug: "owner", labelKey: "tabs.owner" },
+  { slug: "history", labelKey: "tabs.history" },
 ] as const;
 
 export type BookingTabSlug = (typeof BOOKING_TABS)[number]["slug"];

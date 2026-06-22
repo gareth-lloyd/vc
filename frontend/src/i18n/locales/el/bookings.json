@@ -29,7 +29,8 @@
     "payments": "Πληρωμές",
     "concierge": "Concierge",
     "comms": "Επικοινωνία",
-    "owner": "Ιδιοκτήτης"
+    "owner": "Ιδιοκτήτης",
+    "history": "Ιστορικό"
   },
   "labels": {
     "status": {

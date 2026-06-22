@@ -18,7 +18,11 @@ from accounts.serializers.contact import (
     ContactPhoneSerializer,
     ContactSerializer,
 )
-from accounts.serializers.organisation import OrganisationSummarySerializer
+from accounts.serializers.organisation import (
+    OrganisationMergeSerializer,
+    OrganisationSerializer,
+    OrganisationSummarySerializer,
+)
 from accounts.serializers.user import UserCreateSerializer, UserSerializer
 
 __all__ = [
@@ -27,6 +31,8 @@ __all__ = [
     "ContactPhoneSerializer",
     "ContactSerializer",
     "LoginSerializer",
+    "OrganisationMergeSerializer",
+    "OrganisationSerializer",
     "OrganisationSummarySerializer",
     "PasswordChangeSerializer",
     "PasswordResetRequestSerializer",

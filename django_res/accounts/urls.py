@@ -14,6 +14,7 @@ from accounts import views
 router = DefaultRouter(trailing_slash=False)
 router.register(r"users", views.UserViewSet, basename="user")
 router.register(r"contacts", views.ContactViewSet, basename="contact")
+router.register(r"organisations", views.OrganisationViewSet, basename="organisation")
 
 
 # Manual paths for colon-verb actions and nested sub-resources. DRF's routers
@@ -142,6 +143,14 @@ contact_nested_patterns = [
     ),
 ]
 
+organisation_action_patterns = [
+    path(
+        "organisations/<int:pk>:merge",
+        views.OrganisationMergeView.as_view({"post": "create"}),
+        name="organisation-merge",
+    ),
+]
+
 role_patterns = [
     path("roles", views.role_list, name="role-list"),
 ]
@@ -153,6 +162,7 @@ urlpatterns = [
     *auth_patterns,
     *user_action_patterns,
     *contact_nested_patterns,
+    *organisation_action_patterns,
     *role_patterns,
     *router.urls,
 ]

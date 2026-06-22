@@ -31,6 +31,7 @@ describe("Sidebar", () => {
       "Properties",
       "Availability",
       "Contacts",
+      "Clients",
       "Companies",
       "Bookings",
       "Quotes and Enquiries",

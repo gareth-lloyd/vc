@@ -1,6 +1,6 @@
 # GAP-021 — Per-entity "History" tab in the SPA (audit-log surface)
 
-> ✅ **RESOLVED** (2026-06-22, commit `6f89f95`)
+> ✅ **RESOLVED** (2026-06-22, commit `6f89f95`; review fixes `7eef520`)
 >
 > **Problem:** the admin-only audit-log read API (`GET /audit-log`, filterable
 > by entity) had no SPA consumer — the trail was write-only from the operator's
@@ -45,6 +45,12 @@
 > finance history is a group-screen concern, out of scope here. Multi-target
 > merge was considered and rejected in favour of the simpler stacked
 > single-target panels (per the 2026-06-22 scoping decision).
+>
+> **Review-hardened** (`7eef520`): reset paging/filters when the target entity
+> changes (the route reuses the component across sibling `:id` records); keep
+> the filter bar on the error branch; drive `hasPrevious` from local page state;
+> reset the auth store between tab tests; move a finance-`entity_id` assertion
+> out of the MSW resolver so it can actually fail.
 
 - **Severity:** Gap (designed-but-unbuilt surface)
 - **Source:** the 2026-06-11 audit-logging review; Q-014 follow-up list

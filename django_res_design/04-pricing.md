@@ -466,8 +466,12 @@ figure, pick the plan's `price_basis`, and shows the **derived counterpart** liv
 beside the input — owner net for a GROSS plan, guest price for a NET plan — so the
 operator never hand-converts. The derivation uses the **same mode-aware math as
 steps 8-9** (commission **+** tax, percentage grosses up by `÷(1−pct)`, fixed
-commission flat both ways, tax skipped when exempt, `ROUND_HALF_EVEN`), so a band
-entered here prices identically at quote time. It is **derive-on-display only**:
+commission flat both ways, tax skipped when exempt, `ROUND_HALF_EVEN`). It targets
+the **corrected** engine: because the steps 8-9 carve-out/gross-up is itself
+deferred (BUG-009 — today's engine still adds on top), the hint will match the
+engine's quote *once BUG-009 lands*; until then it shows the figure the engine
+*should* produce, which can differ from today's output once commission/tax are
+non-zero. It is **derive-on-display only**:
 the stored row is exactly the typed figure + `price_basis` — never the computed
 side, which the engine's BUG-009 carve-out would otherwise re-derive and
 double-count. Commission/tax inputs are `PropertyFinance.effective_commission()` /

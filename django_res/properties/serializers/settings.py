@@ -83,39 +83,49 @@ class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Group-resolved commission + tax for the net↔gross derivation.
 
-        Resolves each field property → group from the already-prefetched
-        `finance` / `group__finance` chain (no `finance.property` back-trip, so
-        the query-count pin holds). `None` only when the group floor itself is
-        absent (no `GroupFinance`), which the auto-create signal makes unusual.
+        Defers to the canonical `PropertyFinance.effective_commission()` /
+        `effective_tax_policy()` resolvers (the same figures the engine prices
+        with — never hand-roll the property→group chain), then narrows to the
+        two fields the rate-band form needs. The resolvers' `self.property`
+        back-leg and the group fallback both ride the `finance` /
+        `group__finance` chain the view prefetches, so the query-count pin
+        holds. When the property has no `PropertyFinance` row the effective
+        value *is* the group floor, read off `GroupFinance` directly (it has no
+        inheritance of its own). `None` only when the floor itself is absent.
         """
-        try:
-            prop_finance = instance.property.finance
-        except ObjectDoesNotExist:
-            prop_finance = None
-        try:
-            group_finance = instance.property.group.finance
-        except ObjectDoesNotExist:
-            group_finance = None
-        if group_finance is None and prop_finance is None:
-            return None, None
-
-        def eff(field: str) -> Any:
-            if prop_finance is not None:
-                own = getattr(prop_finance, field)
-                if own is not None and own != "":
-                    return own
-            return getattr(group_finance, field) if group_finance is not None else None
 
         def money(value: Any) -> str | None:
             return str(value) if value is not None else None
 
+        try:
+            finance = instance.property.finance
+        except ObjectDoesNotExist:
+            finance = None
+
+        if finance is not None:
+            commission_src = finance.effective_commission()
+            tax_src = finance.effective_tax_policy()
+        else:
+            try:
+                group_finance = instance.property.group.finance
+            except ObjectDoesNotExist:
+                return None, None
+            commission_src = {
+                "calculation_type": group_finance.commission_calculation_type,
+                "amount": group_finance.commission_amount,
+            }
+            tax_src = {
+                "is_exempt": group_finance.tax_is_exempt,
+                "percentage": group_finance.tax_percentage,
+            }
+
         commission = {
-            "calculation_type": eff("commission_calculation_type"),
-            "amount": money(eff("commission_amount")),
+            "calculation_type": commission_src["calculation_type"],
+            "amount": money(commission_src["amount"]),
         }
         tax = {
-            "percentage": money(eff("tax_percentage")),
-            "is_exempt": eff("tax_is_exempt"),
+            "percentage": money(tax_src["percentage"]),
+            "is_exempt": tax_src["is_exempt"],
         }
         return commission, tax
 

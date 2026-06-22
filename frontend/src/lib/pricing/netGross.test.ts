@@ -80,6 +80,13 @@ describe("deriveNetGross — degenerate inputs return null", () => {
     expect(deriveNetGross(800, "net", pctCommission("20.00"), tax("100.00"))).toBeNull();
   });
 
+  it("returns null when a GROSS carve-out would make owner net negative", () => {
+    // fixed commission 500 > gross 300 → net would be -200; suppress, don't show
+    expect(deriveNetGross(300, "gross", fixedCommission("500.00"), noTax)).toBeNull();
+    // commission + tax exceeding the gross is likewise degenerate
+    expect(deriveNetGross(400, "gross", fixedCommission("450.00"), tax("10.00"))).toBeNull();
+  });
+
   it("treats a missing commission/tax config as zero", () => {
     const result = deriveNetGross(1000, "gross", null, null);
     expect(result).toEqual({ counterpart: 1000, commission: 0, tax: 0 });

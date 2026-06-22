@@ -7,9 +7,13 @@
  * typed, plus the plan's `price_basis`. Persisting the derived side would
  * double-count against the BUG-009 engine carve-out at quote time.
  *
- * The math mirrors the pricing engine's mode-aware steps 8-9
- * (`django_res_design/04-pricing.md`, legacy `RatesModel.Calculate()`), so a
- * band entered here prices identically there:
+ * The math mirrors the **corrected** pricing-engine spec — mode-aware steps 8-9
+ * (`django_res_design/04-pricing.md`, legacy `RatesModel.Calculate()`). NOTE:
+ * the *current* engine still adds commission+tax on top for every plan
+ * (BUG-009's mode-aware carve-out is deferred to the finance rewrite), so a
+ * band entered here will price identically at quote time only *once BUG-009
+ * lands* — until then the live hint can differ from today's engine output (it
+ * shows the figure the engine *should* produce). The math:
  *
  *   GROSS (typed = guest gross) → derive owner net, by carving out:
  *     tax        = gross × taxPct/100                  (0 when exempt)
@@ -128,6 +132,11 @@ export function deriveNetGross(
     taxAmt = taxPct ? taxBase / (1 - taxPct / 100) - taxBase : 0;
     counterpart = base + commissionAmt + taxAmt;
   }
+
+  // Degenerate: commission/tax exceed the gross, so the owner net would be
+  // negative — display nothing rather than a "-£200.00" owner-net (mirrors the
+  // NET branch's null on a ≥100% gross-up).
+  if (counterpart < 0) return null;
 
   return {
     counterpart: roundHalfEven(counterpart, dp),

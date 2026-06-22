@@ -4,8 +4,10 @@
 > each price input, recomputing as they type — computed with the **same** mode-aware
 > commission **+ tax** math as the engine's `04-pricing.md` steps 8-9 (percentage
 > grosses up by `÷(1−pct)`, fixed commission flat both ways, tax skipped when
-> exempt, `ROUND_HALF_EVEN`), so a band entered here prices identically at quote
-> time. **Derive-on-display only** — the stored row is exactly the typed figure +
+> exempt, `ROUND_HALF_EVEN`) — i.e. the **corrected** engine. Since that carve-out
+> is itself deferred (BUG-009 — today's engine still adds on top), the hint will
+> match the engine's quote *once BUG-009 lands*; until then it shows the figure
+> the engine *should* produce. **Derive-on-display only** — the stored row is exactly the typed figure +
 > `price_basis`, never the computed side (which the BUG-009 engine carve-out would
 > otherwise re-derive and double-count). Derivation inputs come from
 > `PropertyFinance.effective_commission()`/`effective_tax_policy()` resolved

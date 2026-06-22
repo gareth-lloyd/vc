@@ -110,12 +110,17 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
-    if (open) {
-      form.reset(
-        isCreate ? createDefaults(defaultCurrency, defaultBasis) : defaultsFromSeason(props.season),
-      );
-      setTopLevelError(null);
-    }
+    if (!open) return;
+    // Create defaults (currency, basis) arrive asynchronously from
+    // usePropertySettings, so this effect re-fires when they land to seed the
+    // still-pristine form. Once the operator has started editing, skip the
+    // re-seed — a late-arriving default must not form.reset() over their input
+    // (the open-edge reset already ran while the form was clean).
+    if (isCreate && form.formState.isDirty) return;
+    form.reset(
+      isCreate ? createDefaults(defaultCurrency, defaultBasis) : defaultsFromSeason(props.season),
+    );
+    setTopLevelError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? defaultCurrency : props.season.id, isCreate ? defaultBasis : null]);
 

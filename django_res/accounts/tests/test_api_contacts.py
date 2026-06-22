@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from rest_framework.test import APIClient
 
 from accounts.enums import PersonKind, PersonStatus
-from accounts.models import Person, PersonEmail, PersonPhone, User
+from accounts.factories import OrganisationFactory
+from accounts.models import Organisation, Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
 
 
@@ -604,3 +607,71 @@ def test_anonymize_redacts_and_is_idempotent_without_leaking_pii(
     assert second.status_code == 200
     contact.refresh_from_db()
     assert contact.status == PersonStatus.ANONYMIZED.value
+
+
+# ----------------------------------------------------------------------
+# GAP-046 Unit 2 — Person.agency on the contact API
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_contact_with_agency(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+    agency = cast(Organisation, OrganisationFactory(name="Dune Travel"))
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "agency": agency.pk,
+            "emails": [{"email": "grace@example.com", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["agency"] == agency.pk
+    assert body["agency_detail"]["name"] == "Dune Travel"
+    assert Person.objects.get(first_name="Grace").agency_id == agency.pk
+
+
+@pytest.mark.django_db
+def test_patch_contact_sets_and_clears_agency(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    api_client.force_login(staff)
+    agency = cast(Organisation, OrganisationFactory())
+
+    set_resp = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"agency": agency.pk},
+        format="json",
+    )
+    assert set_resp.status_code == 200
+    contact.refresh_from_db()
+    assert contact.agency_id == agency.pk
+
+    clear_resp = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"agency": None},
+        format="json",
+    )
+    assert clear_resp.status_code == 200
+    contact.refresh_from_db()
+    assert contact.agency_id is None
+
+
+@pytest.mark.django_db
+def test_search_contacts_by_agency_name(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+    dune = cast(Organisation, OrganisationFactory(name="Dune Travel Co"))
+    other = cast(Organisation, OrganisationFactory(name="Sandpiper Holidays"))
+    Person.objects.create(first_name="A", last_name="One", agency=dune)
+    Person.objects.create(first_name="B", last_name="Two", agency=other)
+
+    results = api_client.get("/api/v1/contacts?search=Dune").json()["results"]
+
+    names = {row["agency_detail"]["name"] for row in results if row["agency_detail"]}
+    assert names == {"Dune Travel Co"}

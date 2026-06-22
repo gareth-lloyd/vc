@@ -28,6 +28,18 @@ class Person(AuditedModel):
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
     company = models.CharField(max_length=128, blank=True)
+    # GAP-046: structured agency link, the successor to the free-text `company`
+    # above (which is dropped in the contract step once reads are switched).
+    # "Is an agent" stays derived (has an agency / referenced as an `.agent`) —
+    # no capacity column (GAP-045 rule). PROTECT: an Organisation with agents
+    # can't be deleted out from under them (merge repoints first).
+    agency = models.ForeignKey(
+        "accounts.Organisation",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="agents",
+    )
     website_url = models.URLField(blank=True)
     preferred_method = models.CharField(
         max_length=8,

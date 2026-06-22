@@ -1,3 +1,29 @@
+> **✅ RESOLVED (2026-06-22)** — The rate-band form now derives the net/gross
+> counterpart on display. Staff type one figure, pick the plan's `price_basis`,
+> and see the derived owner net (GROSS plan) or guest price (NET plan) live beside
+> each price input, recomputing as they type — computed with the **same** mode-aware
+> commission **+ tax** math as the engine's `04-pricing.md` steps 8-9 (percentage
+> grosses up by `÷(1−pct)`, fixed commission flat both ways, tax skipped when
+> exempt, `ROUND_HALF_EVEN`), so a band entered here prices identically at quote
+> time. **Derive-on-display only** — the stored row is exactly the typed figure +
+> `price_basis`, never the computed side (which the BUG-009 engine carve-out would
+> otherwise re-derive and double-count). Derivation inputs come from
+> `PropertyFinance.effective_commission()`/`effective_tax_policy()` resolved
+> property→group, surfaced read-only on the **settings** endpoint (`commission`,
+> `tax`, `prices_entered_as_effective`) beside `currency_code`.
+> **Single-source-of-truth (Q1/the BUG-009 risk):** `RatePlan.price_basis` is the
+> sole pricing authority; `PropertySettings`/`GroupSettings.prices_entered_as` is
+> **demoted to the entry default** that pre-fills a *new* season's `price_basis`
+> (`SeasonFormDialog`), no longer a second basis field. Q2 → `effective_commission()`
+> resolution; Q3 → `ROUND_HALF_EVEN` (`roundHalfEven` mirrors `quantise_money`).
+> Code: `properties/serializers/settings.py` + `views/settings.py`,
+> `frontend/src/lib/pricing/netGross.ts`, `RateRuleFormDialog.tsx`,
+> `SeasonFormDialog.tsx`; spec `04-pricing.md` (rate-entry subsection + updated
+> authoritative-field note); decision row `10-decisions.md` (2026-06-22).
+> **Residual:** the Booking owner-statement serializer still reads
+> `prices_entered_as` for money — closed by the BUG-009 finance rewrite (reads
+> `net_to_owner` from the snapshot, step 10), not by this ticket.
+
 # GAP-035 — Net↔gross rate entry with automatic commission derivation
 
 - **Severity:** Gap (data-entry tooling; pricing flexibility).

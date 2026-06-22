@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
@@ -76,6 +77,12 @@ def test_migration_0017_preserves_links_and_adds_sort_order() -> None:
         assert _pairs() == {pair}, "no rows invented or lost"
         assert "sort_order" in _columns(), "0017 must physically add sort_order"
     finally:
-        # Leave the DB fully migrated for the rest of the suite regardless of
-        # where an assertion failed mid-round-trip.
-        _migrate(_AFTER)
+        # Rolling `properties` back to 0016 cascades a project-wide reversal:
+        # the executor un-applies EVERY migration (in any app) that isn't an
+        # ancestor of properties/0016 — e.g. accounts.0009 (the Person `kind`
+        # column). Restoring only `properties` would leave those other apps
+        # reverted, so the `transaction=True` flush teardown TRUNCATEs against a
+        # schema missing columns/tables and fails — which under xdist poisons the
+        # shared worker DB for whatever migration test runs next. Restore the
+        # WHOLE project to its leaves, not just this app.
+        call_command("migrate", verbosity=0)

@@ -70,9 +70,8 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     queryset = (
         Quotation.objects.real()
         .select_related(
-            "guest",
-            # GAP-045 Unit 3c-2a: guest name resolves person-first; name only,
-            # so the mirror join suffices (no email/phone prefetch).
+            # GAP-045: guest name resolves from the customer Person; name only,
+            # so the join suffices (no email/phone prefetch).
             "person",
             "enquiry",
             "agent",

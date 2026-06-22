@@ -152,15 +152,12 @@ def test_booking_loader_writes_person_not_guest(seeded: Property) -> None:
 
     booking = Booking.objects.get(legacy_id="7")
     assert booking.person_id == person.pk
-    assert booking.guest_id is None
 
     quotation = Quotation.objects.get(legacy_id="booking-7")
     assert quotation.person_id == person.pk
-    assert quotation.guest_id is None
 
     lead = BookingGuest.objects.get(booking=booking, role=BookingGuestRole.LEAD.value)
     assert lead.person_id == person.pk
-    assert lead.guest_id is None
 
 
 @pytest.mark.django_db

@@ -17,39 +17,18 @@ class ReservationsConfig(AppConfig):
             BookingHold,
             BookingServiceCoverage,
             Enquiry,
-            Guest,
             OwnerBlock,
             Quotation,
             QuotationLine,
         )
 
-        # Guest PII: track verbatim so anonymisation runs are auditable.
-        # No `sensitive=` fields — staff need to see what was redacted
-        # to support the GDPR data-export trail.
-        track(
-            Guest,
-            fields=[
-                "first_name",
-                "last_name",
-                "email",
-                "phone",
-                "contact_method",
-                "address_line_1",
-                "address_line_2",
-                "town",
-                "post_code",
-                "marketing_consent",
-                "status",
-                "anonymized_at",
-            ],
-        )
         # Booking state machine + money fields. The chatty `pricing_snapshot`
         # JSON is skipped; the dollar columns capture the deltas that matter
-        # for an audit trail. `guest_id`/`person_id` (GAP-045) capture the
-        # customer the booking was BORN with; post-create LEAD reassignment
-        # mutates them only via `_booking_guest_post_save`'s `queryset.update()`
-        # (no pre_save signal — bypasses this trail by design), so the LEAD
-        # change history lives on the audited `BookingGuest` row, not here.
+        # for an audit trail. `person_id` (GAP-045) captures the customer the
+        # booking was BORN with; post-create LEAD reassignment mutates it only
+        # via `_booking_guest_post_save`'s `queryset.update()` (no pre_save
+        # signal — bypasses this trail by design), so the LEAD change history
+        # lives on the audited `BookingGuest` row, not here.
         track(
             Booking,
             fields=[
@@ -63,7 +42,6 @@ class ReservationsConfig(AppConfig):
                 "adjustment",
                 "balance_due",
                 "balance_due_at",
-                "guest_id",
                 "person_id",
                 "agent_id",
                 "assigned_to_id",
@@ -91,7 +69,6 @@ class ReservationsConfig(AppConfig):
                 "email",
                 "phone",
                 "contact_method",
-                "guest_id",
                 "person_id",
                 "property_id",
                 "agent_id",
@@ -112,7 +89,6 @@ class ReservationsConfig(AppConfig):
                 "cancel_reason",
                 "is_unbranded",
                 "agent_id",
-                "guest_id",
                 "person_id",
                 "enquiry_id",
             ],
@@ -131,14 +107,13 @@ class ReservationsConfig(AppConfig):
             ],
         )
         # BookingGuest: who is on a booking, in what role. PII via the
-        # guest FK + an optional `email_override`; LEAD/PAYER changes
+        # person FK + an optional `email_override`; LEAD/PAYER changes
         # affect comms routing and downstream invoicing, so the change
         # trail is load-bearing for an audit review.
         track(
             BookingGuest,
             fields=[
                 "booking_id",
-                "guest_id",
                 "person_id",
                 "role",
                 "email_override",

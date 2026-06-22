@@ -520,50 +520,63 @@ def test_merge_into_self_returns_400(api_client: APIClient, admin: User, contact
 
 
 @pytest.mark.django_db
-def test_merge_on_guest_mirror_source_returns_404(
+def test_merge_customer_source_into_contact_succeeds(
     api_client: APIClient, admin: User, contact: Person
 ) -> None:
-    """A `guest-` mirror is the customer's Guest twin; merging it through the
-    Person API would desync guest/person. Real contacts only → 404."""
-    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-7")
+    """GAP-045 D5: Guest is retired, so a customer Person merges through the verb
+    like any other Person — dedup customers via /contacts (Person.merge)."""
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="client-7", kind=PersonKind.CUSTOMER
+    )
     api_client.force_login(admin)
 
     response = api_client.post(
-        f"/api/v1/contacts/{mirror.pk}:merge",
+        f"/api/v1/contacts/{customer.pk}:merge",
         {"target_contact_id": contact.pk},
         format="json",
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["id"] == contact.pk
+    assert not Person.objects.filter(pk=customer.pk).exists()
 
 
 @pytest.mark.django_db
-def test_merge_into_guest_mirror_target_returns_404(
+def test_merge_contact_into_customer_target_succeeds(
     api_client: APIClient, admin: User, contact: Person
 ) -> None:
-    """Merging a real contact INTO a mirror is the same desync in reverse —
-    the target must also resolve through the real-contacts queryset."""
-    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-8")
+    """The target may be a customer Person too — both legs resolve through the
+    unfiltered Person queryset now (GAP-045 D5)."""
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="client-8", kind=PersonKind.CUSTOMER
+    )
     api_client.force_login(admin)
 
     response = api_client.post(
         f"/api/v1/contacts/{contact.pk}:merge",
-        {"target_contact_id": mirror.pk},
+        {"target_contact_id": customer.pk},
         format="json",
     )
 
-    assert response.status_code == 404
-    assert Person.objects.filter(pk=contact.pk).exists()
+    assert response.status_code == 200
+    assert response.json()["id"] == customer.pk
+    assert not Person.objects.filter(pk=contact.pk).exists()
 
 
 @pytest.mark.django_db
-def test_anonymize_on_guest_mirror_returns_404(api_client: APIClient, admin: User) -> None:
-    mirror = Person.objects.create(first_name="Tom", last_name="Traveller", legacy_id="guest-9")
+def test_anonymize_customer_person_succeeds(api_client: APIClient, admin: User) -> None:
+    """GAP-045 D5: a customer Person can be anonymized through the verb."""
+    customer = Person.objects.create(
+        first_name="Tom", last_name="Traveller", legacy_id="client-9", kind=PersonKind.CUSTOMER
+    )
     api_client.force_login(admin)
 
-    response = api_client.post(f"/api/v1/contacts/{mirror.pk}:anonymize")
+    response = api_client.post(f"/api/v1/contacts/{customer.pk}:anonymize")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    customer.refresh_from_db()
+    assert customer.status == PersonStatus.ANONYMIZED.value
+    assert customer.first_name == "[REDACTED]"
 
 
 @pytest.mark.django_db

@@ -37,15 +37,8 @@ class Enquiry(AuditedModel):
         unique=True,
         db_default=reference_db_default("E", sequence="enquiry_reference_seq"),
     )
-    guest = models.ForeignKey(
-        "reservations.Guest",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="enquiries",
-    )
-    # GAP-045 Unit 3a: parallel customer FK to the unified Person. Nullable
-    # during the expand/contract transition; reads/writes cut over in Unit 3c.
+    # GAP-045: the unified customer FK. Nullable for purely-anonymous enquiries
+    # that have not yet been attached to a Person.
     person = models.ForeignKey(
         "accounts.Person",
         null=True,
@@ -54,14 +47,14 @@ class Enquiry(AuditedModel):
         related_name="enquiries_as_customer",
     )
 
-    # Denormalised for purely-anonymous submissions until a Guest is captured.
+    # Denormalised for purely-anonymous submissions until a Person is captured.
     first_name = models.CharField(max_length=128, blank=True)
     last_name = models.CharField(max_length=128, blank=True)
     email = CIEmailField(blank=True)
     phone = models.CharField(max_length=32, blank=True)
-    # Stated preference survives before a Guest exists; carried onto the Guest
+    # Stated preference survives before a Person exists; carried onto the Person
     # on resolve. No contactability constraint here — the enquiry is the
-    # permissive capture surface; the Guest is the enforced-clean entity.
+    # permissive capture surface; the Person is the enforced-clean entity.
     contact_method = models.CharField(
         max_length=8,
         choices=ContactMethod.choices,

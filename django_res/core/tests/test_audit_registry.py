@@ -52,7 +52,6 @@ EXPECTED_TRACKED_MODELS = {
     "reservations.BookingGuest",
     "reservations.BookingServiceCoverage",
     "reservations.Enquiry",
-    "reservations.Guest",
     "reservations.OwnerBlock",
     "reservations.Quotation",
     "reservations.QuotationLine",

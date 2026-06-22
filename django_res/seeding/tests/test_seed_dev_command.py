@@ -116,7 +116,7 @@ def test_seed_dev_happy_creates_lead_booking_guest_for_every_booking() -> None:
             role=BookingGuestRole.LEAD.value,
         )
         assert leads.count() == 1, f"Booking {booking.pk} missing LEAD row"
-        assert leads.get().guest_id == booking.guest_id
+        assert leads.get().person_id == booking.person_id
 
 
 def test_seed_dev_happy_is_additive_on_rerun() -> None:

@@ -14,7 +14,7 @@ import pytest
 from django.utils import timezone
 
 from pricing.models import Currency, RateCard, RatePlan, RateRule
-from reservations.models import Enquiry, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import Enquiry, Quotation, QuotationLine, TermsVersion
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -79,15 +79,6 @@ def rate_rule(card: RateCard) -> RateRule:
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),
-    )
-
-
-@pytest.fixture
-def guest(db: None) -> Guest:
-    return Guest.objects.create(
-        first_name="Ada",
-        last_name="Lovelace",
-        email="ada@example.com",
     )
 
 

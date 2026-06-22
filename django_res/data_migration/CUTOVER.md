@@ -145,24 +145,38 @@ through `person_for_client("{Id}")` → that same `client-{Id}` Person; the rare
 no-name client `ClientLoader` skips falls back to the `unknown_client` sentinel
 rather than dropping the referencing row.
 
-This changes nothing about the cutover **order**: the standard
+The cutover **order is load-bearing**: `migrate` MUST run before `loadlegacy`:
 
 ```bash
-uv run python manage.py migrate
+uv run python manage.py migrate           # includes the D5-4c re-key migration
 uv run python manage.py loadlegacy --all
 ```
 
-is sufficient. `ClientLoader` is registered ahead of the preference / finance /
-booking loaders in `registry.py`, so every `client-{Id}` Person exists before a
-downstream loader resolves it.
+`ClientLoader` is registered ahead of the preference / finance / booking loaders
+in `registry.py`, so every `client-{Id}` Person exists before a downstream loader
+resolves it.
 
-**Do NOT run `link_person_fks` during this cutover.** That command was the
-one-shot Unit-3c backfill that filled the (now-removed) parallel `person` FK
-from `guest` via `person_for_guest`; the loaders write `person` directly now, so
-it has nothing to do and is dead for cutover. The `Guest` model and its
-`_guest_post_save` mirror signal still exist transitionally (they are retired in
-GAP-045 D5-4), but no loader touches `Guest`, so a fresh `loadlegacy --all`
-creates no `Guest` rows at all.
+**The `Guest` model is retired (GAP-045 D5-4c).** Customers load straight to
+`Person`; there is no `Guest` table, no `_guest_post_save` mirror signal, and no
+`link_person_fks` command anymore.
+
+**One-shot re-key migration.** Reservations migration
+`0035_remove_guestpreference_guest_remove_booking_guest_and_more` does two
+things, in order: (1) re-keys every legacy guest-mirror Person from
+`legacy_id="guest-{pk}"` onto the unified `client-{VillaClientDetails.Id}`
+namespace (or NULL when the source Guest had no legacy id — never the literal
+`client-None`), then (2) drops the `guest` FK from the five reservation models and
+deletes the `Guest` model. On a fresh Postgres there are no `guest-` rows so the
+re-key is a no-op, but on an existing DB it MUST run **before** any `ClientLoader`
+pass — running a loader first could write a `client-{Id}` row that the re-key
+would then collide with; the migration **fails closed** (raises) on such a
+collision rather than minting a silent duplicate customer. The canonical
+`migrate`-then-`loadlegacy` order above guarantees this never fires.
+
+**Dedup customers via `/contacts`.** With Guest gone, duplicate customers are
+collapsed through the `/contacts/{id}:merge` verb (canonical `Person.merge`,
+GAP-045 D1) — the same destructive FK-rewrite-then-hard-delete path used for
+owner/agent contacts. There is no separate guest-dedup tool.
 
 In `reconcile_legacy`, `VillaClientDetails` is checked against the `client-`
 slice of `Person` (`expected_gap=1`, the no-name row), and the `VillaContact`

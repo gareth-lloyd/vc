@@ -1,9 +1,8 @@
 """API tests for the Person-scoped customer history reads.
 
 `GAP-045` Unit 3d-1: `/contacts/{id}/bookings|enquiries|quotations|
-travel-preferences` mirror the `/guests/{id}/...` history reads but key on the
-unified `accounts.Person`. Hosted from `reservations/urls.py` (a downward
-reservations → accounts edge).
+travel-preferences` key on the unified `accounts.Person`. Hosted from
+`reservations/urls.py` (a downward reservations → accounts edge).
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.factories import PersonFactory
+from accounts.factories import CustomerPersonFactory
 from accounts.models import Person, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
@@ -26,20 +25,17 @@ from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.models import (
     Booking,
     Enquiry,
-    Guest,
     GuestPreference,
     GuestPreferenceType,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
-from reservations.services.person_sync import person_for_guest
 
 
 def _quote(
     *,
     enquiry: Enquiry,
-    guest: Guest,
     person: Person,
     terms: TermsVersion,
     status: str = QuotationStatus.DRAFT.value,
@@ -47,7 +43,6 @@ def _quote(
 ) -> Quotation:
     return Quotation.objects.create(
         enquiry=enquiry,
-        guest=guest,
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -59,7 +54,6 @@ def _quote(
 def _booking_for(
     *,
     quotation: Quotation,
-    guest: Guest,
     person: Person,
     property_: Property,
     gbp: Currency,
@@ -79,7 +73,6 @@ def _booking_for(
     )
     return Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=date(2026, 6, 10),
@@ -109,13 +102,8 @@ def staff(db: None) -> User:
 
 
 @pytest.fixture
-def guest(db: None) -> Guest:
-    return Guest.objects.create(first_name="Ada", last_name="Lovelace", email="ada@example.com")
-
-
-@pytest.fixture
 def person(db: None) -> Person:
-    return cast(Person, PersonFactory())
+    return cast(Person, CustomerPersonFactory())
 
 
 @pytest.mark.django_db
@@ -123,15 +111,14 @@ def test_contact_bookings_returns_linked_rows(
     api_client: APIClient,
     staff: User,
     person: Person,
-    guest: Guest,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, person=person, first_name="Ada", adults=2)
-    quote = _quote(enquiry=enquiry, guest=guest, person=person, terms=terms)
+    enquiry = Enquiry.objects.create(person=person, first_name="Ada", adults=2)
+    quote = _quote(enquiry=enquiry, person=person, terms=terms)
     booking = _booking_for(
-        quotation=quote, guest=guest, person=person, property_=property_, gbp=gbp, terms=terms
+        quotation=quote, person=person, property_=property_, gbp=gbp, terms=terms
     )
     api_client.force_login(staff)
 
@@ -147,28 +134,25 @@ def test_contact_enquiries_includes_quote_count_and_converted_booking(
     api_client: APIClient,
     staff: User,
     person: Person,
-    guest: Guest,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, person=person, first_name="Ada", adults=2)
+    enquiry = Enquiry.objects.create(person=person, first_name="Ada", adults=2)
     _quote(
         enquiry=enquiry,
-        guest=guest,
         person=person,
         terms=terms,
         status=QuotationStatus.CANCELLED.value,
     )
     accepted = _quote(
         enquiry=enquiry,
-        guest=guest,
         person=person,
         terms=terms,
         status=QuotationStatus.ACCEPTED.value,
     )
     booking = _booking_for(
-        quotation=accepted, guest=guest, person=person, property_=property_, gbp=gbp, terms=terms
+        quotation=accepted, person=person, property_=property_, gbp=gbp, terms=terms
     )
     api_client.force_login(staff)
 
@@ -185,12 +169,11 @@ def test_contact_quotations_excludes_legacy_synthetic_rows(
     api_client: APIClient,
     staff: User,
     person: Person,
-    guest: Guest,
     terms: TermsVersion,
 ) -> None:
-    enquiry = Enquiry.objects.create(guest=guest, person=person, first_name="Ada", adults=2)
-    real = _quote(enquiry=enquiry, guest=guest, person=person, terms=terms)
-    _quote(enquiry=enquiry, guest=guest, person=person, terms=terms, legacy_id="booking-9999")
+    enquiry = Enquiry.objects.create(person=person, first_name="Ada", adults=2)
+    real = _quote(enquiry=enquiry, person=person, terms=terms)
+    _quote(enquiry=enquiry, person=person, terms=terms, legacy_id="booking-9999")
     api_client.force_login(staff)
 
     response = api_client.get(f"/api/v1/contacts/{person.pk}/quotations")
@@ -205,12 +188,9 @@ def test_contact_travel_preferences_returns_type_and_notes(
     api_client: APIClient,
     staff: User,
     person: Person,
-    guest: Guest,
 ) -> None:
     pref_type = GuestPreferenceType.objects.create(name="Dietary")
-    GuestPreference.objects.create(
-        guest=guest, person=person, preference_type=pref_type, notes="No nuts"
-    )
+    GuestPreference.objects.create(person=person, preference_type=pref_type, notes="No nuts")
     api_client.force_login(staff)
 
     response = api_client.get(f"/api/v1/contacts/{person.pk}/travel-preferences")
@@ -220,32 +200,6 @@ def test_contact_travel_preferences_returns_type_and_notes(
     assert len(rows) == 1
     assert rows[0]["preference_type"] == "Dietary"
     assert rows[0]["notes"] == "No nuts"
-
-
-@pytest.mark.django_db
-def test_contact_reads_work_on_a_guest_mirror_pk(
-    api_client: APIClient,
-    staff: User,
-    guest: Guest,
-    property_: Property,
-    gbp: Currency,
-    terms: TermsVersion,
-) -> None:
-    """During 3c the customer Person IS the `guest-` mirror — the reads bypass
-    the `/contacts` directory exclusion and resolve any Person by pk."""
-    mirror = person_for_guest(guest)
-    enquiry = Enquiry.objects.create(guest=guest, person=mirror, first_name="Ada", adults=2)
-    quote = _quote(enquiry=enquiry, guest=guest, person=mirror, terms=terms)
-    booking = _booking_for(
-        quotation=quote, guest=guest, person=mirror, property_=property_, gbp=gbp, terms=terms
-    )
-    api_client.force_login(staff)
-
-    response = api_client.get(f"/api/v1/contacts/{mirror.pk}/bookings")
-
-    assert response.status_code == 200
-    ids = {row["id"] for row in response.json()["results"]}
-    assert ids == {booking.pk}
 
 
 @pytest.mark.django_db
@@ -262,7 +216,6 @@ def test_contact_enquiries_query_count_bounded(
     api_client: APIClient,
     staff: User,
     person: Person,
-    guest: Guest,
     property_: Property,
     gbp: Currency,
     terms: TermsVersion,
@@ -270,17 +223,15 @@ def test_contact_enquiries_query_count_bounded(
     """The 3-level quote-stack prefetch keeps the read query-bounded regardless
     of how many enquiries/quotations/bookings hang off the person."""
     for _ in range(4):
-        enquiry = Enquiry.objects.create(guest=guest, person=person, first_name="Ada", adults=2)
+        enquiry = Enquiry.objects.create(person=person, first_name="Ada", adults=2)
         accepted = _quote(
             enquiry=enquiry,
-            guest=guest,
             person=person,
             terms=terms,
             status=QuotationStatus.ACCEPTED.value,
         )
         _booking_for(
             quotation=accepted,
-            guest=guest,
             person=person,
             property_=property_,
             gbp=gbp,

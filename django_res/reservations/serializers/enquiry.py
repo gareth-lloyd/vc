@@ -29,7 +29,6 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "id",
             "reference",
             "status",
-            "guest",
             "person",
             "guest_name",
             "guest_email",

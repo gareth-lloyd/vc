@@ -85,12 +85,10 @@ def test_create_from_quotation_line__creates_lead_booking_guest(
 
     leads = BookingGuest.objects.filter(booking=booking, role=BookingGuestRole.LEAD.value)
     assert leads.count() == 1
-    # GAP-045 3d-C: `person` is the sole persisted customer FK; the legacy
-    # `guest` leg is no longer written on either the Booking or its LEAD row.
+    # GAP-045 D5-4c: `person` is the sole customer FK — the legacy `guest`
+    # column has been dropped from both the Booking and its LEAD row.
     assert leads.get().person_id == quotation_line.quotation.person_id
     assert booking.person_id == quotation_line.quotation.person_id
-    assert leads.get().guest_id is None
-    assert booking.guest_id is None
 
 
 @pytest.mark.django_db

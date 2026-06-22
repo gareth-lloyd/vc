@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
 from accounts.enums import PersonStatus
-from accounts.models import GUEST_LEGACY_PREFIX, Person, PersonEmail, PersonPhone
+from accounts.models import Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
     ContactMergeSerializer,
@@ -22,14 +22,6 @@ from accounts.serializers import (
 from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
 _LAST_CHANNEL_MESSAGE = "Cannot remove the last contact channel of an active contact."
-
-# GAP-045 Unit 3c-3d: :merge/:anonymize operate on REAL owner/agent contacts
-# only. A `guest-` mirror is a customer's Guest twin; merging or anonymizing it
-# through the Person API would desync guest/person (the canonical customer path
-# is `Guest.merge`/`Guest.anonymize`, which cascades to the mirror). Exclude
-# mirrors from BOTH source and target resolution so a 404 — not a half-redacted
-# identity — is the outcome.
-_real_contacts = Person.objects.exclude(legacy_id__startswith=GUEST_LEGACY_PREFIX)
 
 
 def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones: int) -> None:
@@ -61,10 +53,9 @@ class ContactFilterSet(FilterSet):
 class ContactViewSet(viewsets.ModelViewSet[Person]):
     """`/contacts` — owner/agent/manager records."""
 
-    # GAP-045 D2: `/contacts` is now a kind-aware directory of ALL Persons —
-    # customers (the former Guest mirrors) included. Filter with `?kind=customer`
-    # / `?kind=contact`; no param lists both (fork 3). The merge/anonymize verbs
-    # below still exclude mirrors (`_real_contacts`) — see that comment.
+    # GAP-045 D2: `/contacts` is a kind-aware directory of ALL Persons —
+    # customers included. Filter with `?kind=customer` / `?kind=contact`; no
+    # param lists both (fork 3).
     queryset = Person.objects.prefetch_related("emails", "phones")
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
@@ -112,17 +103,18 @@ class ContactMergeView(viewsets.ViewSet):
     """`POST /contacts/{id}:merge` — delegates to `Person.merge(target)`.
 
     Destructive (hard-deletes the source) so we gate on `IsStaffRoleAdmin`.
-    Real contacts only — a `guest-` mirror pk 404s on both source and target.
+    Operates on any Person — customers included (GAP-045 D5: dedup customers
+    via this verb, the canonical `Person.merge` path).
     """
 
     permission_classes = [IsStaffRoleAdmin]
 
     def create(self, request: Request, contact_pk: str | None = None) -> Response:
-        source = get_object_or_404(_real_contacts, pk=contact_pk)
+        source = get_object_or_404(Person, pk=contact_pk)
         serializer = ContactMergeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_id = serializer.validated_data["target_contact_id"]
-        target = get_object_or_404(_real_contacts, pk=target_id)
+        target = get_object_or_404(Person, pk=target_id)
         try:
             source.merge(target)
         except ValueError as exc:
@@ -137,15 +129,14 @@ class ContactAnonymizeView(viewsets.ViewSet):
     """`POST /contacts/{id}:anonymize` — delegates to `Person.anonymize()`.
 
     Admin-only — GDPR-class operation. Idempotent (running twice on an
-    already-anonymized contact leaves the redacted state intact). Real contacts
-    only — a `guest-` mirror pk 404s (anonymizing a customer mirror desyncs its
-    twin Guest row while Guest exists; D5 widens this verb to mirrors).
+    already-anonymized contact leaves the redacted state intact). Operates on
+    any Person — customers included (GAP-045 D5: Guest is retired).
     """
 
     permission_classes = [IsStaffRoleAdmin]
 
     def create(self, request: Request, contact_pk: str | None = None) -> Response:
-        contact = get_object_or_404(_real_contacts, pk=contact_pk)
+        contact = get_object_or_404(Person, pk=contact_pk)
         contact.anonymize()
         return Response(ContactSerializer(contact).data, status=status.HTTP_200_OK)
 

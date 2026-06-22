@@ -1,33 +1,31 @@
 """GAP-045 — staff-API reads resolve customer data from the unified Person.
 
 Every staff-API read of a customer's name / email / phone resolves from the
-linked ``accounts.Person`` mirror. Unit 3c-2a switched the source (with a
-transitional guest fallback); Unit 3d-3 removed the fallback so ``person`` is
-now the sole source. These tests edit the Person so its values *differ* from
-the originating Guest, then assert the API returns the Person's values —
-proving the read resolves from the Person, not just that the (identical) mirror
-happens to agree.
+linked ``accounts.Person``. These tests build a customer Person, point the
+reservation rows at it, and assert the API returns the Person's name / email /
+phone — and that the multi-valued email child can't inflate the paginator COUNT
+or the per-list query budget.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.enums import PhoneLabel
-from accounts.models import Person, PersonPhone, User
+from accounts.factories import CustomerPersonFactory
+from accounts.models import Person, User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.models import Property
-from reservations.models import Booking, Enquiry, Guest, Quotation, QuotationLine, TermsVersion
+from reservations.models import Booking, Enquiry, Quotation, QuotationLine, TermsVersion
 from reservations.serializers.availability import AvailabilityBookingSerializer
 from reservations.serializers.concierge_overview import ConciergeOverviewSerializer
-from reservations.services.person_sync import person_for_guest
 
 
 @pytest.fixture
@@ -45,32 +43,22 @@ def staff(db: None) -> User:
     )
 
 
-def _repoint_person(guest: Guest) -> Person:
-    """Edit the Person mirror so its name / email / phone differ from the Guest.
-
-    Simulates a staff edit to the unified record after the Guest was linked —
-    the whole point of Person becoming the read source. Returns the edited
-    Person (always non-null — ``person_for_guest`` creates it if missing).
-    """
-    person = person_for_guest(guest)
-    person.first_name = "Grace"
-    person.last_name = "Hopper"
-    person.save(update_fields=["first_name", "last_name", "updated_at"])
-    primary_email = person.emails.filter(is_primary=True).first()
-    assert primary_email is not None
-    primary_email.email = "grace@navy.mil"
-    primary_email.save(update_fields=["email", "updated_at"])
-    PersonPhone.objects.create(
-        contact=person,
-        number="+15125550100",
-        label=PhoneLabel.MOBILE.value,
-        is_primary=True,
+@pytest.fixture
+def customer(db: None) -> Person:
+    """A CUSTOMER Person with name + primary email + primary phone set."""
+    return cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Grace",
+            last_name="Hopper",
+            primary_email="grace@navy.mil",
+            primary_phone="+15125550100",
+        ),
     )
-    return person
 
 
 def _booking_with_person(
-    guest: Guest,
+    person: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -78,10 +66,8 @@ def _booking_with_person(
     status: str = "awaiting_deposit",
     day_offset: int = 0,
 ) -> Booking:
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
+        enquiry=Enquiry.objects.create(person=person),
         person=person,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
@@ -97,7 +83,6 @@ def _booking_with_person(
     )
     booking = Booking.objects.create(
         quotation_line=line,
-        guest=guest,
         person=person,
         property=property_,
         date_from=line.date_from,
@@ -121,14 +106,10 @@ def _booking_with_person(
 
 
 @pytest.mark.django_db
-def test_person_primary_helpers_read_prefetch_cache(guest: Guest) -> None:
-    person = person_for_guest(guest)
-    PersonPhone.objects.create(
-        contact=person, number="+15125550100", label=PhoneLabel.MOBILE.value, is_primary=True
-    )
-    assert person.display_name == "Ada Lovelace"
-    assert person.primary_email() == "ada@example.com"
-    assert person.primary_phone() == "+15125550100"
+def test_person_primary_helpers_read_prefetch_cache(customer: Person) -> None:
+    assert customer.display_name == "Grace Hopper"
+    assert customer.primary_email() == "grace@navy.mil"
+    assert customer.primary_phone() == "+15125550100"
 
 
 @pytest.mark.django_db
@@ -138,12 +119,11 @@ def test_person_display_name_blank_when_no_name() -> None:
 
 
 @pytest.mark.django_db
-def test_person_primary_email_falls_back_to_oldest_when_none_flagged(guest: Guest) -> None:
-    person = person_for_guest(guest)
+def test_person_primary_email_falls_back_to_oldest_when_none_flagged(customer: Person) -> None:
     # Drop the is_primary flag so the oldest-by-pk fallback path is exercised.
-    person.emails.update(is_primary=False)
-    person = Person.objects.prefetch_related("emails").get(pk=person.pk)
-    assert person.primary_email() == "ada@example.com"
+    customer.emails.update(is_primary=False)
+    person = Person.objects.prefetch_related("emails").get(pk=customer.pk)
+    assert person.primary_email() == "grace@navy.mil"
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +135,12 @@ def test_person_primary_email_falls_back_to_oldest_when_none_flagged(guest: Gues
 def test_booking_list_reads_person_name_and_email(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
+    booking = _booking_with_person(customer, gbp, terms, property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/bookings")
@@ -176,13 +155,12 @@ def test_booking_list_reads_person_name_and_email(
 def test_booking_detail_reads_person_name_and_email(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
+    booking = _booking_with_person(customer, gbp, terms, property_)
 
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/bookings/{booking.pk}")
@@ -201,13 +179,12 @@ def test_booking_detail_reads_person_name_and_email(
 def test_quotation_list_reads_person_name(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
+    _booking_with_person(customer, gbp, terms, property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/quotations")
@@ -218,7 +195,7 @@ def test_quotation_list_reads_person_name(
 
 
 # ---------------------------------------------------------------------------
-# Enquiry — triple fallback (person → guest → enquiry-own denorm)
+# Enquiry — person → enquiry-own denorm fallback
 # ---------------------------------------------------------------------------
 
 
@@ -226,12 +203,10 @@ def test_quotation_list_reads_person_name(
 def test_enquiry_list_reads_person_name_email_phone(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
-    person = person_for_guest(guest)
-    enquiry = Enquiry.objects.create(guest=guest, person=person, property=property_)
-    _repoint_person(guest)
+    enquiry = Enquiry.objects.create(person=customer, property=property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/enquiries")
@@ -244,17 +219,15 @@ def test_enquiry_list_reads_person_name_email_phone(
 
 
 @pytest.mark.django_db
-def test_enquiry_with_person_and_no_guest_still_serialises(
+def test_enquiry_with_person_serialises_name_email_phone(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     property_: Property,
 ) -> None:
-    """GAP-045 Unit 3d-3 guard: person is the sole source, so an enquiry with the
-    Person set and the guest column cleared (it vanishes in 3d-4) still serialises
-    the person's name / email / phone."""
-    person = _repoint_person(guest)
-    enquiry = Enquiry.objects.create(guest=None, person=person, property=property_)
+    """Person is the sole source: an enquiry with the Person set serialises the
+    person's name / email / phone / preferred method."""
+    enquiry = Enquiry.objects.create(person=customer, property=property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/enquiries")
@@ -264,12 +237,12 @@ def test_enquiry_with_person_and_no_guest_still_serialises(
     assert row["guest_name"] == "Grace Hopper"
     assert row["guest_email"] == "grace@navy.mil"
     assert row["guest_phone"] == "+15125550100"
-    # contact_method also resolves solely from the Person (no guest leg).
-    assert row["guest_contact_method"] == person.preferred_method
+    # contact_method resolves solely from the Person.
+    assert row["guest_contact_method"] == customer.preferred_method
 
 
 @pytest.mark.django_db
-def test_enquiry_name_falls_back_to_denorm_when_no_person_or_guest(
+def test_enquiry_name_falls_back_to_denorm_when_no_person(
     api_client: APIClient,
     staff: User,
     property_: Property,
@@ -295,14 +268,14 @@ def test_enquiry_contact_method_reads_person_preferred_method(
     staff: User,
     property_: Property,
 ) -> None:
-    """GAP-045 Unit 3d-2: contact_method now resolves from the Person mirror's
-    ``preferred_method``. A guest with no contact_method therefore reports the
-    mirror's "email" default — the documented null→"email" value change (this
-    reverses the interim 3c-2a guest-sourced behaviour)."""
-    guest = Guest.objects.create(first_name="No", last_name="Method", email="nm@example.com")
-    person = person_for_guest(guest)
-    assert person.preferred_method == "email"  # mirror coerced null → email
-    enquiry = Enquiry.objects.create(guest=guest, person=person, property=property_)
+    """GAP-045: contact_method resolves from the Person's ``preferred_method``.
+    A customer Person defaults to "email"."""
+    person = cast(
+        Person,
+        CustomerPersonFactory(first_name="No", last_name="Method", primary_email="nm@example.com"),
+    )
+    assert person.preferred_method == "email"
+    enquiry = Enquiry.objects.create(person=person, property=property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/enquiries")
@@ -318,27 +291,25 @@ def test_enquiry_contact_method_reads_person_preferred_method(
 
 @pytest.mark.django_db
 def test_availability_serializer_reads_person_name(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
-    fresh = Booking.objects.select_related("guest", "person").get(pk=booking.pk)
+    booking = _booking_with_person(customer, gbp, terms, property_)
+    fresh = Booking.objects.select_related("person").get(pk=booking.pk)
     assert AvailabilityBookingSerializer(fresh).data["guest_name"] == "Grace Hopper"
 
 
 @pytest.mark.django_db
 def test_concierge_serializer_reads_person_name(
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
-    fresh = Booking.objects.select_related("guest", "person").get(pk=booking.pk)
+    booking = _booking_with_person(customer, gbp, terms, property_)
+    fresh = Booking.objects.select_related("person").get(pk=booking.pk)
     data = ConciergeOverviewSerializer(fresh, context={"today": date(2026, 6, 1)}).data
     assert data["guest_name"] == "Grace Hopper"
 
@@ -350,23 +321,18 @@ def test_concierge_serializer_reads_person_name(
 
 @pytest.mark.django_db
 def test_quotation_render_context_reads_person_name(
-    guest: Guest,
+    customer: Person,
     terms: TermsVersion,
 ) -> None:
     from reservations.services.quotation_render import build_quotation_context
 
-    person = person_for_guest(guest)
     quotation = Quotation.objects.create(
-        enquiry=guest.enquiries.create(person=person),
-        guest=guest,
-        person=person,
+        enquiry=Enquiry.objects.create(person=customer),
+        person=customer,
         expires_at=timezone.now() + timedelta(days=7),
         terms_version=terms,
     )
-    _repoint_person(guest)
-    # Re-fetch so the seam reads the repointed Person, not the stale instance
-    # cached on the in-memory quotation (the live send loads it fresh).
-    fresh = Quotation.objects.select_related("person", "guest").get(pk=quotation.pk)
+    fresh = Quotation.objects.select_related("person").get(pk=quotation.pk)
 
     ctx = build_quotation_context(fresh)
 
@@ -383,13 +349,12 @@ def test_quotation_render_context_reads_person_name(
 def test_booking_search_matches_person_name(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    _repoint_person(guest)
+    booking = _booking_with_person(customer, gbp, terms, property_)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/bookings", {"q": "Hopper"})
@@ -402,7 +367,7 @@ def test_booking_search_matches_person_name(
 def test_booking_search_matches_person_email_without_inflating_count(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -410,11 +375,10 @@ def test_booking_search_matches_person_email_without_inflating_count(
     """Person email lives in a multi-valued child table; the filter matches it
     via ``Exists()`` so the paginator COUNT stays at one row, not one row per
     PersonEmail (the LEFT-JOIN inflation django_res/CLAUDE.md warns about)."""
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    person = _repoint_person(guest)
+    booking = _booking_with_person(customer, gbp, terms, property_)
     # A second email on the same person would multiply rows under a join-based
     # OR; under Exists() it must not.
-    person.emails.create(email="grace2@navy.mil", is_primary=False)
+    customer.emails.create(email="grace2@navy.mil", is_primary=False)
 
     api_client.force_login(staff)
     response = api_client.get("/api/v1/bookings", {"q": "grace@navy.mil"})
@@ -428,15 +392,14 @@ def test_booking_search_matches_person_email_without_inflating_count(
 def test_booking_status_counts_not_inflated_by_person_emails(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
 ) -> None:
-    booking = _booking_with_person(guest, gbp, terms, property_)
-    person = _repoint_person(guest)
-    person.emails.create(email="grace2@navy.mil", is_primary=False)
-    person.emails.create(email="grace3@navy.mil", is_primary=False)
+    booking = _booking_with_person(customer, gbp, terms, property_)
+    customer.emails.create(email="grace2@navy.mil", is_primary=False)
+    customer.emails.create(email="grace3@navy.mil", is_primary=False)
 
     api_client.force_login(staff)
     # Unfiltered: the booking is counted once, not once per PersonEmail.
@@ -453,7 +416,7 @@ def test_booking_status_counts_not_inflated_by_person_emails(
 def test_booking_list_person_reads_stay_within_query_budget(
     api_client: APIClient,
     staff: User,
-    guest: Guest,
+    customer: Person,
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
@@ -461,11 +424,16 @@ def test_booking_list_person_reads_stay_within_query_budget(
     """Adding more person-linked bookings must not grow the query count — the
     person join + email prefetch keep the list at a constant budget."""
     for i in range(3):
-        g = Guest.objects.create(
-            first_name="Extra", last_name="Guest", email=f"extra{i}@example.com"
+        extra = cast(
+            Person,
+            CustomerPersonFactory(
+                first_name="Extra",
+                last_name="Guest",
+                primary_email=f"extra{i}@example.com",
+            ),
         )
-        _booking_with_person(g, gbp, terms, property_, day_offset=i + 1)
-    _booking_with_person(guest, gbp, terms, property_, day_offset=0)
+        _booking_with_person(extra, gbp, terms, property_, day_offset=i + 1)
+    _booking_with_person(customer, gbp, terms, property_, day_offset=0)
 
     api_client.force_login(staff)
     api_client.get("/api/v1/bookings")  # warm caches

@@ -144,9 +144,6 @@ def test_reset_removes_demo_data() -> None:
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not PropertyCalendarFeed.objects.filter(url=_FEED_URL).exists()
     assert not OwnerBlock.objects.filter(idempotency_key="2026-07-01_2026-07-05").exists()
-    from reservations.models import Guest
-
-    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
 
 
 @respx.mock
@@ -162,21 +159,18 @@ def test_reset_after_booking_conflict_cleans_up() -> None:
 
     from accounts.models import Person
 
-    # The demo Guest was mirrored into a Person by the 3c-1a sync signal; the
-    # booking-clash enquiry it owns has person=NULL (made via
-    # make_occupying_booking), so the union teardown filter must catch it on the
-    # guest leg.
+    # The demo customer is a CUSTOMER Person; the booking-clash enquiry it owns
+    # is reachable via its primary email.
     assert Person.objects.filter(emails__email=GUEST_EMAIL).exists()
 
     _run("--reset")  # would raise ProtectedError if the Booking weren't deleted
 
-    from reservations.models import Booking, Guest
+    from reservations.models import Booking
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Booking.objects.filter(person__emails__email=GUEST_EMAIL).exists()
-    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
-    # The Person mirror (and its PII-bearing email/phone children) must not be
-    # stranded — otherwise mirrors accumulate and --reset stops being idempotent.
+    # The customer Person (and its PII-bearing email/phone children) must not be
+    # stranded — otherwise rows accumulate and --reset stops being idempotent.
     assert not Person.objects.filter(emails__email=GUEST_EMAIL).exists()
 
 
@@ -208,7 +202,6 @@ def test_reset_clears_protecting_rows_on_property() -> None:
         BookingEvent,
         Enquiry,
         EnquiryEvent,
-        Guest,
         Quotation,
         QuotationLine,
         TermsVersion,
@@ -275,7 +268,6 @@ def test_reset_clears_protecting_rows_on_property() -> None:
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Booking.objects.filter(person__emails__email=GUEST_EMAIL).exists()
-    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
 
 
 @respx.mock
@@ -296,11 +288,10 @@ def test_reset_after_quotation_conflict_clears_person_mirror() -> None:
 
     _run("--reset")
 
-    from reservations.models import Guest, Quotation
+    from reservations.models import Quotation
 
     assert not Property.objects.filter(slug=PROPERTY_SLUG).exists()
     assert not Quotation.objects.filter(person__emails__email=GUEST_EMAIL).exists()
-    assert not Guest.objects.filter(email=GUEST_EMAIL).exists()
     assert not Person.objects.filter(emails__email=GUEST_EMAIL).exists()
 
 

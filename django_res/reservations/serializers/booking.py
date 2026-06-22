@@ -39,7 +39,6 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
             "status",
             "property",
             "property_name",
-            "guest",
             "guest_name",
             "guest_email",
             "agent",

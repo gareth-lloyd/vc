@@ -1,13 +1,9 @@
-"""GAP-045 — every customer write path fills `person`; 3d-C drops the guest leg.
+"""GAP-045 — every customer write path fills `person`.
 
-The reservation models carried a parallel `person` FK alongside `guest` through
-the expand/contract cutover. Unit 3c-1b made every write set `person`; Unit 3d-C
-made `person` the SOLE persisted customer FK on the production request/service
-paths (services / EnquiryWriteSerializer / denorm signal / :duplicate action) —
-those now write `guest=None`. Dev/test tooling (factories, make_occupying_booking,
-seeding) still writes the harmless nullable guest leg until 3d-E removes the
-field. These tests drive each path and assert `person` landed, and that the
-production paths no longer persist `guest`.
+`person` is the sole customer FK on the reservation models (the legacy `guest`
+leg was dropped in D5-4c). These tests drive each write path — DRF, services,
+factory, denorm signal, :duplicate action, legacy loaders — and assert `person`
+landed.
 """
 
 from __future__ import annotations
@@ -16,7 +12,6 @@ from datetime import date, timedelta
 from typing import cast
 
 import pytest
-from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -30,14 +25,12 @@ from reservations.factories import make_occupying_booking
 from reservations.models import (
     BookingGuest,
     Enquiry,
-    Guest,
     Quotation,
     QuotationLine,
     TermsVersion,
 )
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.services.bookings import BookingService
-from reservations.services.person_sync import person_for_guest
 from reservations.services.quotations import QuotationService
 
 
@@ -401,44 +394,3 @@ def test_quotation_loader_transform_sets_person() -> None:
 
     assert defaults is not None
     assert defaults["person"] == person_for_client("88") == client
-
-
-# ---------------------------------------------------------------------------
-# link_person_fks delta linker — safety net
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_link_person_fks_links_null_rows_and_is_idempotent(
-    quotation_line: QuotationLine,
-    terms: TermsVersion,
-    guest: Guest,
-) -> None:
-    # GAP-045 Unit 3d-A made `person` NOT NULL on Quotation/Booking/BookingGuest/
-    # GuestPreference, so only Enquiry can still carry a null person (anonymous
-    # leads). The delta linker therefore only has real work to do for Enquiry;
-    # the other four are no-ops it must not choke on.
-    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
-    quotation = quotation_line.quotation
-    enquiry = quotation.enquiry
-
-    # Simulate a row written before the inline-setting code shipped: it carries
-    # the legacy `guest` leg but a NULL `person`. The linker re-derives person
-    # from guest, so attach the guest leg and NULL person via a bulk .update()
-    # (bypasses the inline write paths). `quotation_line`'s graph is person-first
-    # (no guest leg), so the guest is wired on here explicitly.
-    Enquiry.objects.filter(pk=enquiry.pk).update(person=None, guest=guest)
-
-    call_command("link_person_fks")
-
-    expected = person_for_guest(guest)
-    enquiry.refresh_from_db()
-    assert enquiry.person == expected
-    # The always-customer models were already linked at write time and untouched.
-    booking.refresh_from_db()
-    assert booking.person == quotation_line.quotation.person
-
-    # Second run is a no-op — nothing is NULL anymore.
-    call_command("link_person_fks")
-    enquiry.refresh_from_db()
-    assert enquiry.person == expected

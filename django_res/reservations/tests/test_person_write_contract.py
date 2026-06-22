@@ -1,15 +1,14 @@
 """GAP-045 D3-1 — Enquiry/Quotation accept & expose `person` directly.
 
-The SPA migrates off `/guests` onto `/contacts`, so it holds **Person ids**, not
-Guest ids. These tests pin the backend write/read contract that migration needs:
+The SPA holds **Person ids** off `/contacts`. These tests pin the backend
+write/read contract:
 
-- writes ACCEPT a `person` id on Enquiry + Quotation (precedence person > guest;
-  `guest` stays a transitional input the loaders/legacy callers still use);
+- writes ACCEPT a `person` id on Enquiry + Quotation;
 - reads EXPOSE the `person` id so the SPA can show / navigate to the customer;
 - the quote-create service builds a Quotation (and its auto-minted enquiry) from
-  a Person, with no Guest in play.
+  a Person.
 
-`guest` is removed entirely in D4/D5; until then both legs are accepted.
+`person` is the sole customer FK (the legacy `guest` leg was dropped in D5-4c).
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from core.enums import StaffRole
 from pricing.models import Currency
 from properties.models import Property
 from reservations.enums import EnquirySource
-from reservations.models import Enquiry, Guest, Quotation, TermsVersion
+from reservations.models import Enquiry, Quotation, TermsVersion
 from reservations.services.quotations import QuotationService
 
 
@@ -106,27 +105,22 @@ def test_create_enquiry_accepts_person(api_client: APIClient, staff: User) -> No
     assert response.status_code == 201, response.data
     enquiry = Enquiry.objects.get()
     assert enquiry.person_id == person.pk
-    # `person` is the sole persisted customer leg — no guest written.
-    assert enquiry.guest_id is None
 
 
 @pytest.mark.django_db
-def test_create_enquiry_ignores_guest_input(
-    api_client: APIClient, staff: User, guest: Guest
-) -> None:
-    """GAP-045 D5-2: `guest` is no longer a write field — a body sending only a
-    `guest` id writes no customer (it's silently ignored), leaving person null."""
+def test_create_enquiry_ignores_unknown_guest_input(api_client: APIClient, staff: User) -> None:
+    """GAP-045: `guest` is not a write field — a body sending only a `guest` id
+    writes no customer (the unknown key is ignored), leaving person null."""
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/enquiries",
-        {"guest": guest.pk, "adults": 2},
+        {"guest": 999, "adults": 2},
         format="json",
     )
 
     assert response.status_code == 201, response.data
     enquiry = Enquiry.objects.get()
     assert enquiry.person_id is None
-    assert enquiry.guest_id is None
 
 
 @pytest.mark.django_db
@@ -186,22 +180,21 @@ def test_create_quotation_accepts_person(
     assert response.status_code == 201, response.data
     quotation = Quotation.objects.get()
     assert quotation.person_id == person.pk
-    assert quotation.guest_id is None
 
 
 @pytest.mark.django_db
-def test_create_quotation_ignores_guest_field(
-    api_client: APIClient, staff: User, guest: Guest, gbp: Currency, terms: TermsVersion
+def test_create_quotation_ignores_unknown_guest_field(
+    api_client: APIClient, staff: User, gbp: Currency, terms: TermsVersion
 ) -> None:
-    """GAP-045 D5-2: the quotation write serializer no longer accepts `guest` —
-    a `guest` id in the body is ignored; only `person` drives the customer."""
+    """GAP-045: the quotation write serializer does not accept `guest` — a stray
+    `guest` id in the body is ignored; only `person` drives the customer."""
     person = _customer("Q", "Win")
     api_client.force_login(staff)
     response = api_client.post(
         "/api/v1/quotations",
         {
             "person": person.pk,
-            "guest": guest.pk,
+            "guest": 999,
             "currency": gbp.pk,
             "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
             "terms_version": terms.pk,
@@ -212,29 +205,6 @@ def test_create_quotation_ignores_guest_field(
     assert response.status_code == 201, response.data
     quotation = Quotation.objects.get()
     assert quotation.person_id == person.pk
-
-
-@pytest.mark.django_db
-def test_create_quotation_guest_only_is_400(
-    api_client: APIClient, staff: User, guest: Guest, gbp: Currency, terms: TermsVersion
-) -> None:
-    """GAP-045 D5-2: `guest` is no longer resolved — a create carrying only a
-    `guest` (no `person`) is rejected with a clean 400, not silently accepted."""
-    api_client.force_login(staff)
-    response = api_client.post(
-        "/api/v1/quotations",
-        {
-            "guest": guest.pk,
-            "currency": gbp.pk,
-            "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
-            "terms_version": terms.pk,
-        },
-        format="json",
-    )
-
-    assert response.status_code == 400, response.data
-    assert "person" in response.data["field_errors"]
-    assert not Quotation.objects.exists()
 
 
 @pytest.mark.django_db
@@ -278,8 +248,7 @@ def test_agent_direct_quote_from_person_mints_enquiry(
     rate_rule: object,
 ) -> None:
     """No enquiry + a `person` id → the service mints the AGENT_PORTAL enquiry
-    from the Person (display name / primary email / preferred method), with no
-    Guest anywhere."""
+    from the Person (display name / primary email / preferred method)."""
     person = _customer("Agent", "Direct")
     api_client.force_login(staff)
     response = api_client.post(
@@ -304,11 +273,9 @@ def test_agent_direct_quote_from_person_mints_enquiry(
     assert response.status_code == 201, response.data
     quotation = Quotation.objects.get()
     assert quotation.person_id == person.pk
-    assert quotation.guest_id is None
     enquiry = quotation.enquiry
     assert enquiry is not None
     assert enquiry.person_id == person.pk
-    assert enquiry.guest_id is None
     assert enquiry.site_source == EnquirySource.AGENT_PORTAL.value
     assert enquiry.email == person.primary_email()
 
@@ -325,7 +292,6 @@ def test_minimal_enquiry_for_seeds_from_person() -> None:
     enquiry = QuotationService.minimal_enquiry_for(person)
 
     assert enquiry.person_id == person.pk
-    assert enquiry.guest_id is None
     assert enquiry.first_name == person.first_name
     assert enquiry.last_name == person.last_name
     assert enquiry.email == person.primary_email()

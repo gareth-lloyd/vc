@@ -8,12 +8,6 @@ from __future__ import annotations
 from django.db import models
 
 
-class GuestStatus(models.TextChoices):
-    ACTIVE = "active", "Active"
-    ARCHIVED = "archived", "Archived"
-    ANONYMIZED = "anonymized", "Anonymized"
-
-
 class ContactMethod(models.TextChoices):
     EMAIL = "email", "Email"
     PHONE = "phone", "Phone"
@@ -249,10 +243,10 @@ class PaymentMethod(models.TextChoices):
 
 
 class BookingGuestRole(models.TextChoices):
-    """Role a Guest plays on a Booking via the BookingGuest through-model.
+    """Role a guest plays on a Booking via the BookingGuest through-model.
 
     - LEAD: primary guest — exactly one per booking. Mirrored on
-      `Booking.guest` (denormalised pointer kept in sync via signal).
+      `Booking.person` (denormalised pointer kept in sync via signal).
     - CO_TRAVELLER: additional party member; zero-or-more per booking.
     - PAYER: party paying for the stay if not the lead; at most one per
       booking.

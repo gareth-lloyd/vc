@@ -16,13 +16,6 @@ from core.audit import record_merge, scrub_pii
 from core.fields import CIEmailField
 from core.models.base import AuditedModel, TimestampedModel
 
-# GAP-045: the namespaced ``legacy_id`` prefix stamped on Persons back-filled
-# from ``reservations.Guest`` (migration reservations/0033). A migration-only
-# sentinel — never an application lookup key. Used to filter Guest-derived rows
-# out of the owner/agent ``/contacts`` directory until Unit 3c reworks it into a
-# proper filtered view. Mirror of the literal in that migration (frozen there).
-GUEST_LEGACY_PREFIX = "guest-"
-
 
 class Person(AuditedModel):
     """Villa owner, property manager, or external agent.

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-from reservations.models import Guest
 from reservations.phone import to_e164
 
 
@@ -30,27 +27,3 @@ class TestToE164:
         assert to_e164("") == ""
         assert to_e164("   ") == ""
         assert to_e164(None) == ""
-
-
-@pytest.mark.django_db
-class TestGuestSavesNormalizedPhone:
-    def test_save_normalizes_international_phone(self) -> None:
-        guest = Guest.objects.create(
-            first_name="A",
-            last_name="B",
-            email="a@b.com",
-            phone="+44 7911 123456",
-        )
-        guest.refresh_from_db()
-        assert guest.phone == "+447911123456"
-
-    def test_save_leaves_unanchorable_national_phone_untouched(self) -> None:
-        guest = Guest.objects.create(
-            first_name="A",
-            last_name="B",
-            email="a@b.com",
-            phone="07911 123456",
-        )
-        guest.refresh_from_db()
-        # No region on the Guest write path, so it can't be resolved — kept raw.
-        assert guest.phone == "07911 123456"

@@ -108,15 +108,7 @@ class Booking(AuditedModel):
         on_delete=models.PROTECT,
         related_name="bookings",
     )
-    guest = models.ForeignKey(
-        "reservations.Guest",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="bookings",
-    )
-    # GAP-045 Unit 3d-A: `person` is now the authoritative customer FK; `guest`
-    # is the legacy leg, nullable during the contract phase and dropped in 3d-E.
+    # GAP-045: `person` is the authoritative customer FK.
     person = models.ForeignKey(
         "accounts.Person",
         on_delete=models.PROTECT,

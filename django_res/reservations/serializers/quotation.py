@@ -217,7 +217,6 @@ class QuotationListSerializer(serializers.ModelSerializer[Quotation]):
             "reference",
             "enquiry",
             "enquiry_reference",
-            "guest",
             "person",
             "guest_name",
             "agent",

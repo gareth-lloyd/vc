@@ -12,7 +12,6 @@ from reservations.models.booking_guest import BookingGuest
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.concierge import BookingConciergeItem
 from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
-from reservations.models.guest import Guest
 from reservations.models.owner_block import OwnerBlock
 from reservations.models.owner_block_update import OwnerBlockUpdate
 from reservations.models.owner_block_update_seen import OwnerBlockUpdateSeen
@@ -33,7 +32,6 @@ __all__ = [
     "Enquiry",
     "EnquiryEvent",
     "EnquiryNote",
-    "Guest",
     "GuestPreference",
     "GuestPreferenceType",
     "OwnerBlock",

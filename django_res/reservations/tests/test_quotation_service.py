@@ -554,7 +554,6 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     assert enquiry.site_source == EnquirySource.AGENT_PORTAL.value
     # GAP-045 3d-C: `person` is the sole persisted customer FK; the person
     # snapshot seeds the denormalised contact fields below.
-    assert enquiry.guest_id is None
     assert enquiry.person_id == customer.pk
     assert enquiry.email == customer.primary_email()
     assert enquiry.contact_method == ContactMethod.EMAIL.value

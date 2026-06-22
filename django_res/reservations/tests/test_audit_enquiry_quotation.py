@@ -91,7 +91,7 @@ def test_quotation_status_transition_writes_audit_row(customer: Person) -> None:
 
 
 # ---------------------------------------------------------------------------
-# GAP-045 Unit 3c-3a — person_id is audit-tracked alongside guest_id
+# GAP-045 — person_id is the audit-tracked customer FK (guest_id retired in D5-4c)
 # ---------------------------------------------------------------------------
 
 
@@ -138,18 +138,12 @@ def test_quotation_person_reassignment_writes_audit_row(customer: Person) -> Non
 
 
 @pytest.mark.django_db
-def test_booking_birth_audits_guest_and_person(
-    gbp: object, terms: TermsVersion, property_: object
-) -> None:
-    """Booking tracks guest_id + person_id (a pre-existing audit gap). The
-    customer it was born with is captured in the creation diff; post-create LEAD
-    reassignment is audited on BookingGuest (it mutates Booking only via a
+def test_booking_birth_audits_person(gbp: object, terms: TermsVersion, property_: object) -> None:
+    """Booking tracks person_id (a pre-existing audit gap closed in GAP-045).
+    The customer it was born with is captured in the creation diff; post-create
+    LEAD reassignment is audited on BookingGuest (it mutates Booking only via a
     signal .update(), which bypasses the trail by design). The creation row is
-    keyed to object_id="" — pre_save fires before the INSERT assigns the pk.
-
-    GAP-045 D5-1: `make_occupying_booking` is now person-only, so the booking is
-    born with `guest_id` NULL — the audit still captures both columns (person_id
-    carries the customer; guest_id is the now-vestigial leg, born `[None, None]`)."""
+    keyed to object_id="" — pre_save fires before the INSERT assigns the pk."""
     from datetime import date
 
     from reservations.factories import make_occupying_booking
@@ -167,10 +161,9 @@ def test_booking_birth_audits_guest_and_person(
     birth = [
         r
         for r in AuditLog.objects.filter(content_type=ct, object_id="")
-        if "guest_id" in r.field_diffs and "person_id" in r.field_diffs
+        if "person_id" in r.field_diffs
     ]
-    assert birth, "expected the Booking creation diff to capture guest_id + person_id"
-    assert birth[-1].field_diffs["guest_id"] == [None, None]
+    assert birth, "expected the Booking creation diff to capture person_id"
     assert birth[-1].field_diffs["person_id"] == [None, booking.person_id]
     assert booking.person_id is not None
 
@@ -179,7 +172,7 @@ def test_booking_birth_audits_guest_and_person(
 def test_booking_guest_birth_audits_person(
     gbp: object, terms: TermsVersion, property_: object
 ) -> None:
-    """The LEAD BookingGuest row also tracks person_id alongside guest_id."""
+    """The LEAD BookingGuest row tracks person_id (the customer FK)."""
     from datetime import date
 
     from reservations.factories import make_occupying_booking

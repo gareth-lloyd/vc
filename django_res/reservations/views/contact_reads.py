@@ -8,10 +8,8 @@ the bottom of the import spine and cannot serialise reservations rows, so the
 routes live here (a clean downward reservations → accounts edge; precedent:
 `reservations/urls.py` already hosts `comms.views.BookingEmailViewSet`).
 
-These reads resolve a Person by pk directly, bypassing the `/contacts`
-directory's `guest-` mirror exclusion: during 3c the customer Person IS the
-`guest-` mirror, so the reads must reach it. 3d folds Guest into Person and this
-is the surviving customer-history surface.
+These reads resolve a Person by pk directly. With Guest folded into Person
+(GAP-045 D5), this is the surviving customer-history surface.
 """
 
 from __future__ import annotations

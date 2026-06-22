@@ -83,7 +83,5 @@ def test_enquiry_factory_populates_person() -> None:
     assert enquiry.person is not None
     assert enquiry.person.kind == PersonKind.CUSTOMER.value
     assert enquiry.person.primary_email() is not None
-    # Person-first: no legacy guest leg, and the Person is a real customer (not a
-    # `guest-*` mirror row).
-    assert enquiry.guest_id is None
+    # Person-first: the Person is a real customer (not a `guest-*` mirror row).
     assert enquiry.person.legacy_id is None

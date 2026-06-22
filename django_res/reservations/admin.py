@@ -14,7 +14,6 @@ from reservations.models import (
     Enquiry,
     EnquiryEvent,
     EnquiryNote,
-    Guest,
     OwnerBlock,
     Quotation,
     QuotationLine,
@@ -22,19 +21,12 @@ from reservations.models import (
 )
 
 
-@admin.register(Guest)
-class GuestAdmin(admin.ModelAdmin):
-    list_display = ("pk", "last_name", "first_name", "email", "status")
-    list_filter = ("status",)
-    search_fields = ("first_name", "last_name", "email")
-
-
 @admin.register(Enquiry)
 class EnquiryAdmin(admin.ModelAdmin):
     list_display = ("reference", "status", "property", "date_from", "date_to", "created_at")
     list_filter = ("status", "site_source")
     search_fields = ("reference", "email", "first_name", "last_name")
-    raw_id_fields = ("guest", "person", "agent")
+    raw_id_fields = ("person", "agent")
 
 
 @admin.register(EnquiryNote)
@@ -54,7 +46,7 @@ class QuotationAdmin(admin.ModelAdmin):
     list_display = ("reference", "status", "expires_at")
     list_filter = ("status",)
     search_fields = ("reference",)
-    raw_id_fields = ("guest", "person", "agent")
+    raw_id_fields = ("person", "agent")
 
 
 @admin.register(QuotationLine)
@@ -85,7 +77,7 @@ class BookingAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "is_archived", "payment_method")
     search_fields = ("reference",)
-    raw_id_fields = ("guest", "person", "agent")
+    raw_id_fields = ("person", "agent")
 
 
 @admin.register(BookingHold)
@@ -116,7 +108,7 @@ class BookingNoteAdmin(admin.ModelAdmin):
 
 @admin.register(BookingGuest)
 class BookingGuestAdmin(admin.ModelAdmin):
-    list_display = ("pk", "booking", "guest", "role", "email_override")
+    list_display = ("pk", "booking", "person", "role", "email_override")
     list_filter = ("role",)
     search_fields = (
         "booking__reference",
@@ -124,7 +116,7 @@ class BookingGuestAdmin(admin.ModelAdmin):
         "person__first_name",
         "person__emails__email",
     )
-    raw_id_fields = ("booking", "guest", "person")
+    raw_id_fields = ("booking", "person")
 
 
 @admin.register(BookingConciergeItem)

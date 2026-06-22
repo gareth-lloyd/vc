@@ -54,7 +54,6 @@ def test_loader_writes_person_not_guest(_guest_and_pref_type: None) -> None:
     person = person_for_client(55)
     pref = GuestPreference.objects.get(legacy_id="1")
     assert pref.person_id == person.pk
-    assert pref.guest_id is None
 
 
 @pytest.mark.django_db

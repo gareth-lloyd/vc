@@ -18,7 +18,7 @@ _UNKNOWN = "__unknown__"
 # Canonical `legacy_id` prefix for the customer Persons `ClientLoader` writes
 # (`client-{VillaClientDetailsId}`). Single source of truth so the loader write,
 # the `person_for_client` read, and the `reconcile_legacy` count slices can never
-# drift (mirrors the `GUEST_LEGACY_PREFIX` pattern in `accounts.models`).
+# drift.
 CLIENT_LEGACY_PREFIX = "client-"
 
 # Fixed legacy_id for the `unknown_client` sentinel Person. Carries the

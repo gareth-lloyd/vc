@@ -14,6 +14,10 @@ export const clientListItemSchema = z.object({
   primary_phone: z.string().nullable().optional(),
   // Booking channel: true if any of the client's deals names a travel agent.
   is_agent: z.boolean(),
+  // Distinct region slugs the client has been quoted / booked in (GAP-047
+  // Unit 2). Default to [] so a row missing them still parses.
+  quoted_region_slugs: z.array(z.string()).default([]),
+  booked_region_slugs: z.array(z.string()).default([]),
   status: clientStatusSchema,
 });
 export type ClientListItem = z.infer<typeof clientListItemSchema>;

@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { drfPage } from "@/test/drf";
 import { ClientsListPage } from "../ClientsListPage";
 
 const fixture = {
@@ -50,6 +51,12 @@ function renderList(extraRoutes?: React.ReactNode) {
 }
 
 describe("ClientsListPage", () => {
+  // The region-chip cells fire useRegions(); give every test a default handler
+  // (fixtures use empty region arrays, so an empty page suffices).
+  beforeEach(() => {
+    server.use(http.get("/api/v1/regions", () => HttpResponse.json(drfPage([]))));
+  });
+
   it("renders renter rows with capacity badges", async () => {
     server.use(http.get("/api/v1/clients", () => HttpResponse.json(fixture)));
     renderList();
@@ -59,6 +66,31 @@ describe("ClientsListPage", () => {
     // Ada is direct, Grace is an agent client.
     expect(screen.getByText("Direct")).toBeInTheDocument();
     expect(screen.getByText("Agent")).toBeInTheDocument();
+  });
+
+  it("renders quoted/booked region chips by name", async () => {
+    server.use(
+      http.get("/api/v1/regions", () =>
+        HttpResponse.json(drfPage([{ id: 7, country: 1, name: "Tuscany", slug: "tuscany" }])),
+      ),
+      http.get("/api/v1/clients", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...fixture.results[0],
+              quoted_region_slugs: ["tuscany"],
+              booked_region_slugs: ["tuscany"],
+            },
+          ],
+        }),
+      ),
+    );
+    renderList();
+    // Tuscany shows in both the quoted and booked columns for the row.
+    expect(await screen.findAllByText("Tuscany")).toHaveLength(2);
   });
 
   it("renders an empty state when no rows", async () => {

@@ -3,6 +3,7 @@ import i18n from "@/i18n";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { clientDisplayName } from "./display";
+import { RegionChips } from "./RegionChips";
 import type { ClientListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
@@ -44,6 +45,18 @@ export const clientColumns: ColumnDef<ClientListItem>[] = [
       ) : (
         <Badge variant="outline">{i18n.t("clients:capacity.direct")}</Badge>
       ),
+  },
+  {
+    id: "quoted_regions",
+    header: () => i18n.t("clients:fields.quoted_regions"),
+    enableSorting: false,
+    cell: ({ row }) => <RegionChips slugs={row.original.quoted_region_slugs} />,
+  },
+  {
+    id: "booked_regions",
+    header: () => i18n.t("clients:fields.booked_regions"),
+    enableSorting: false,
+    cell: ({ row }) => <RegionChips slugs={row.original.booked_region_slugs} />,
   },
   {
     accessorKey: "status",

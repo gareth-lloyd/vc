@@ -8,6 +8,8 @@
     "email": "Email",
     "phone": "Phone",
     "capacity": "Channel",
+    "quoted_regions": "Quoted regions",
+    "booked_regions": "Booked regions",
     "status": "Status"
   },
   "placeholders": {

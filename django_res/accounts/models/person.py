@@ -27,12 +27,12 @@ class Person(AuditedModel):
     title = models.CharField(max_length=16, blank=True)
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
-    company = models.CharField(max_length=128, blank=True)
-    # GAP-046: structured agency link, the successor to the free-text `company`
-    # above (which is dropped in the contract step once reads are switched).
-    # "Is an agent" stays derived (has an agency / referenced as an `.agent`) —
-    # no capacity column (GAP-045 rule). PROTECT: an Organisation with agents
-    # can't be deleted out from under them (merge repoints first).
+    # GAP-046: structured agency link — the successor to the free-text `company`
+    # field, which was dropped once every read was switched to `agency`/
+    # `agency_name` (migration 0012). "Is an agent" stays derived (has an agency /
+    # referenced as an `.agent`) — no capacity column (GAP-045 rule). PROTECT: an
+    # Organisation with agents can't be deleted out from under them (merge
+    # repoints first).
     agency = models.ForeignKey(
         "accounts.Organisation",
         on_delete=models.PROTECT,
@@ -88,7 +88,6 @@ class Person(AuditedModel):
         "title",
         "first_name",
         "last_name",
-        "company",
         "address_line_1",
         "address_line_2",
         "town",
@@ -176,7 +175,6 @@ class Person(AuditedModel):
         """
         self.first_name = "[REDACTED]"
         self.last_name = "[REDACTED]"
-        self.company = ""
         self.notes = ""
         self.address_line_1 = ""
         self.address_line_2 = ""
@@ -188,7 +186,6 @@ class Person(AuditedModel):
             update_fields=[
                 "first_name",
                 "last_name",
-                "company",
                 "notes",
                 "address_line_1",
                 "address_line_2",

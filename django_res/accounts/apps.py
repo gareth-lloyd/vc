@@ -18,7 +18,6 @@ class AccountsConfig(AppConfig):
                 "title",
                 "first_name",
                 "last_name",
-                "company",
                 "address_line_1",
                 "address_line_2",
                 "town",

@@ -63,7 +63,6 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "title",
             "first_name",
             "last_name",
-            "company",
             "agency",
             "agency_detail",
             "website_url",

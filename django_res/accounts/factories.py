@@ -50,7 +50,6 @@ class PersonFactory(DjangoModelFactory):
 
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
-    company = factory.Faker("company")
     status = PersonStatus.ACTIVE
 
 

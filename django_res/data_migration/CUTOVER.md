@@ -208,11 +208,15 @@ It never merges; fold a confirmed duplicate with `POST /organisations/{id}:merge
 (distinct normalised `VillaContact.Company` vs loaded agency count) so a silent
 "zero orgs created" regression turns the cutover RED.
 
-**Existing-DB upgrade (no fresh rebuild):** the company→agency backfill for an
-already-loaded DB runs inside a `RemoveField` migration that recomputes the same
-`company_dedup_key` and drops `Person.company` (GAP-046 Unit 5b — *forthcoming*,
-not yet shipped). Until that lands, a fresh rebuild via the loaders above is the
-only path that populates `Person.agency`.
+**Existing-DB upgrade (no fresh rebuild):** migration
+`accounts/0012_drop_person_company` is the company→agency backfill for an
+already-loaded DB. Its `RunPython` recomputes the SAME `company_dedup_key`
+(a frozen, sync-tested copy of `accounts.services.organisations.company_dedup_key`)
+to get-or-create the deduped agency `Organisation` and link `Person.agency`, then
+its `RemoveField` drops `Person.company` — in that order. Idempotent and
+collision-safe (case/whitespace variants converge on one row; an already-linked
+Person is skipped). So both paths — a fresh rebuild via the loaders above and an
+in-place `migrate` of an existing DB — populate `Person.agency`.
 
 ## 5. Verify with `reconcile_legacy`
 

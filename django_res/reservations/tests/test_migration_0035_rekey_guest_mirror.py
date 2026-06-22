@@ -54,13 +54,18 @@ def _migrate(target: str) -> None:
 def _historical_state() -> ProjectState:
     """Project state just before 0035 runs.
 
-    Uses migration 0035's own dependency set so the projected ``accounts.Person``
-    carries the ``kind`` field (added in accounts 0009) — matching what
-    ``_rekey_forward`` sees in production — while the ``reservations.Guest``
-    table + ``guest`` FKs (dropped *by* 0035) are still present.
+    Pins ``reservations`` at 0034 (the ``Guest`` table + ``guest`` FKs that 0035
+    drops are still present) but every OTHER app — notably ``accounts`` — at its
+    LIVE leaf, so the projected ``accounts.Person`` matches the real DB schema.
+    Using 0035's own frozen dependency set would resurrect columns since dropped
+    downstream (GAP-046 removed ``Person.company`` in accounts 0012), and the
+    historical INSERT would then fail against the live, company-less table.
+    ``accounts`` sits below ``reservations`` on the import/migration spine, so
+    pinning it forward while ``reservations`` stays at 0034 is consistent.
     """
     loader = MigrationExecutor(connection).loader
-    return loader.project_state(_migration.Migration.dependencies)
+    targets = [(_APP, _BEFORE)] + [leaf for leaf in loader.graph.leaf_nodes() if leaf[0] != _APP]
+    return loader.project_state(targets)
 
 
 def _rekey() -> None:

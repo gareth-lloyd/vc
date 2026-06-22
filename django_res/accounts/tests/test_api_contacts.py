@@ -351,17 +351,20 @@ def test_patch_cannot_change_kind(api_client: APIClient, staff: User, contact: P
 
 @pytest.mark.django_db
 def test_patch_contact(api_client: APIClient, staff: User, contact: Person) -> None:
+    # GAP-046: free-text `company` is gone; a contact's employer is the
+    # structured `agency` FK, set by PK.
+    agency = cast(Organisation, OrganisationFactory(name="Bell Labs"))
     api_client.force_login(staff)
 
     response = api_client.patch(
         f"/api/v1/contacts/{contact.pk}",
-        {"company": "Bell Labs"},
+        {"agency": agency.pk},
         format="json",
     )
 
     assert response.status_code == 200
     contact.refresh_from_db()
-    assert contact.company == "Bell Labs"
+    assert contact.agency_id == agency.pk
 
 
 @pytest.mark.django_db

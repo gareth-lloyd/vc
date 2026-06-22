@@ -474,13 +474,12 @@ def _make_owner_contact(
     email: str | None = "olivia@owner.example",
     phone: str | None = "+44 7700 900111",
 ) -> Person:
-    # GAP-046: the owner block sources its `company` key from the linked agency
-    # name now, so route the free-text name through the same chokepoint as the
-    # legacy backfill. (`company=` is still written until Unit 5b drops it.)
+    # GAP-046: the owner block sources its `company` output key from the linked
+    # agency name, so route the free-text name through the same chokepoint as the
+    # legacy backfill (a blank name yields no agency → owner company == "").
     contact = Person.objects.create(
         first_name=first_name,
         last_name=last_name,
-        company=company,
         agency=organisation_for_company_name(company),
         address_line_1=address_line_1,
         address_line_2=address_line_2,

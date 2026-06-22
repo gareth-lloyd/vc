@@ -36,6 +36,10 @@ def _backfill_agency_from_company(apps: Any, schema_editor: Any) -> None:
     ``agency__isnull=True`` filter means a re-run touches nothing and an already
     -linked Person is never clobbered. Mirrors the live chokepoint
     ``organisation_for_company_name`` (raw name → key, stripped name → display).
+
+    Finishes with ``SET CONSTRAINTS ALL IMMEDIATE`` — see the comment below the
+    loop for why the *next* operation (``RemoveField``) needs the deferred FK
+    queue flushed first.
     """
     Person = apps.get_model("accounts", "Person")
     Organisation = apps.get_model("accounts", "Organisation")
@@ -50,6 +54,16 @@ def _backfill_agency_from_company(apps: Any, schema_editor: Any) -> None:
         )
         person.agency_id = org.pk
         person.save(update_fields=["agency"])
+    # Each ``agency`` write above queues a DEFERRED FK trigger event (Django
+    # creates FK constraints DEFERRABLE INITIALLY DEFERRED). The very next
+    # operation in this migration — ``RemoveField(company)`` — issues an
+    # ``ALTER TABLE`` on accounts_person, and Postgres refuses to alter a table
+    # that has pending trigger events ("cannot ALTER TABLE ... because it has
+    # pending trigger events"). Flush the queue now, inside this transaction, so
+    # the DDL sees a clean table. On a fresh rebuild the loop touches zero rows,
+    # so the queue is already empty — which is exactly why the empty test DB in
+    # CI never tripped this and only a populated DB does.
+    schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
 
 class Migration(migrations.Migration):

@@ -29,7 +29,8 @@
     "payments": "Payments",
     "concierge": "Concierge",
     "comms": "Comms",
-    "owner": "Owner"
+    "owner": "Owner",
+    "history": "History"
   },
   "labels": {
     "status": {

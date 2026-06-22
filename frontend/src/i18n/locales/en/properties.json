@@ -56,7 +56,8 @@
     "people": "People",
     "media": "Media",
     "features": "Features",
-    "settings": "Settings"
+    "settings": "Settings",
+    "history": "History"
   },
   "detail": {
     "not_found_title": "Property not found",

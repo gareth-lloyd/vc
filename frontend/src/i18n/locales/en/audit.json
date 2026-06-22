@@ -2,36 +2,48 @@
   "entry": {
     "by": "by {{actor}}",
     "system_actor": "System",
-    "show_changes": "Show changes",
-    "hide_changes": "Hide changes",
     "no_changes": "No field changes recorded."
   },
-  "fields": {
-    "actor": "Actor",
-    "action": "Action",
-    "created_at": "When",
-    "field_diffs": "Changes"
+  "labels": {
+    "update": "Updated",
+    "delete": "Deleted",
+    "merge": "Merged"
+  },
+  "banner": {
+    "deleted": "This record was deleted.",
+    "merged": "Merged into record #{{target}}.",
+    "rewrites_one": "{{count}} reference reassigned.",
+    "rewrites_other": "{{count}} references reassigned."
+  },
+  "value": {
+    "empty": "—",
+    "redacted": "hidden",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "diff": {
+    "arrow": "→"
+  },
+  "filters": {
+    "from": "From",
+    "to": "To",
+    "clear": "Clear"
   },
   "actions": {
     "previous_page": "Previous",
     "next_page": "Next"
   },
   "empty": {
-    "title": "No audit entries",
-    "description": "Audit entries will appear here once changes are recorded."
+    "title": "No history yet",
+    "description": "Changes to this record will appear here once they are made."
   },
   "errors": {
-    "load_failed": "Couldn't load audit entries",
-    "permission_denied_title": "Audit log requires admin permission",
+    "load_failed": "Couldn't load history",
+    "permission_denied_title": "History requires admin access",
     "permission_denied_description": "Ask an administrator to grant you access to the audit log."
   },
-  "labels": {
-    "create": "Created",
-    "update": "Updated",
-    "delete": "Deleted",
-    "archive": "Archived",
-    "restore": "Restored",
-    "merge": "Merged",
-    "default": "Change"
+  "sections": {
+    "record": "Record changes",
+    "finance": "Finance changes (commission, deposits, bank details)"
   }
 }

@@ -142,3 +142,41 @@ def test_backfill_links_dedupes_and_is_idempotent() -> None:
         _delete_rows("accounts_person", person_pks)  # FK to org (PROTECT) → persons first
         _delete_rows("accounts_organisation", org_pks)
         _migrate(_LEAF)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_forward_migration_drops_column_with_company_rows_present() -> None:
+    """Migrating *forward* through 0012 must succeed even when company-bearing
+    rows exist — the regression case the empty CI test DB never exercised.
+
+    The backfill writes ``agency`` (a DEFERRABLE INITIALLY DEFERRED FK), queuing
+    deferred trigger events; the following ``RemoveField`` then issues
+    ``ALTER TABLE accounts_person DROP COLUMN company``. Without the migration's
+    ``SET CONSTRAINTS ALL IMMEDIATE`` flush, Postgres raises "cannot ALTER TABLE
+    ... because it has pending trigger events". Unlike the test above, this one
+    leaves the rows in place across the forward migration — that's the point.
+    """
+    _migrate(_BEFORE)
+    state = _historical_state()
+    HPerson: Any = state.apps.get_model(_APP, "Person")
+    person = _make_person(HPerson, company="Forward Travel Co")
+    person_pk = person.pk
+
+    # Forward migration runs backfill (writes deferred FK) *then* drops the
+    # column in the same transaction — this is the line that used to blow up.
+    _migrate(_LEAF)
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT agency_id FROM accounts_person WHERE id = %s", [person_pk])
+        (agency_id,) = cursor.fetchone()
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'accounts_person' AND column_name = 'company'"
+        )
+        company_column_exists = cursor.fetchone() is not None
+
+    assert company_column_exists is False, "0012 should have dropped the company column"
+    assert agency_id is not None, "backfill should have linked the person to an agency"
+
+    _delete_rows("accounts_person", [person_pk])
+    _delete_rows("accounts_organisation", [agency_id])

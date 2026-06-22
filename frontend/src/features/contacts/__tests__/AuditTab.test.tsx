@@ -2,7 +2,6 @@ import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { ContactDetailLayout } from "../ContactDetailLayout";
@@ -41,11 +40,11 @@ interface AuditEntryFixture {
 function entry(overrides: Partial<AuditEntryFixture> = {}): AuditEntryFixture {
   return {
     id: "00000000-0000-0000-0000-000000000001",
-    entity_type: "accounts.contact",
+    entity_type: "accounts.person",
     object_id: String(CONTACT_ID),
     actor: 1,
     actor_email: "ops@example.com",
-    field_diffs: { first_name: { from: "A", to: "B" } },
+    field_diffs: { first_name: ["A", "B"] },
     correlation_id: null,
     created_at: "2026-05-10T10:00:00Z",
     ...overrides,
@@ -77,23 +76,29 @@ afterEach(() => {
   server.resetHandlers();
 });
 
-describe("AuditTab", () => {
-  it("renders entries and expands field diffs", async () => {
+describe("contacts AuditTab", () => {
+  it("queries the unified Person content type and renders a formatted diff row", async () => {
+    let capturedUrl: URL | null = null;
     server.use(
       http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
-      http.get("/api/v1/audit-log", () =>
-        HttpResponse.json(
-          listResponse([entry({ id: "a", field_diffs: { first_name: { from: "A", to: "B" } } })]),
-        ),
-      ),
+      http.get("/api/v1/audit-log", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json(listResponse([entry()]));
+      }),
     );
     setup();
 
     await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument());
-    expect(screen.getByText(/ops@example\.com/)).toBeInTheDocument();
+    // The bug being fixed: GAP-045 renamed the model, so the entity_type must be
+    // `accounts.person`, not the now-nonexistent `accounts.contact`.
+    expect(capturedUrl!.searchParams.get("entity_type")).toBe("accounts.person");
+    expect(capturedUrl!.searchParams.get("entity_id")).toBe(String(CONTACT_ID));
 
-    await userEvent.click(screen.getByRole("button", { name: /show changes/i }));
-    expect(screen.getByText(/"first_name"/)).toBeInTheDocument();
+    // Formatted `field: old → new` row, not a raw JSON dump.
+    expect(screen.getByText("First name")).toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByText("B")).toBeInTheDocument();
+    expect(screen.getByText(/ops@example\.com/)).toBeInTheDocument();
   });
 
   it("renders an empty state when there are no entries", async () => {
@@ -102,7 +107,7 @@ describe("AuditTab", () => {
       http.get("/api/v1/audit-log", () => HttpResponse.json(listResponse([]))),
     );
     setup();
-    expect(await screen.findByText(/no audit entries/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no history yet/i)).toBeInTheDocument();
   });
 
   it("renders a permission notice on 403", async () => {
@@ -113,14 +118,14 @@ describe("AuditTab", () => {
       ),
     );
     setup();
-    expect(await screen.findByText(/Audit log requires admin permission/i)).toBeInTheDocument();
+    expect(await screen.findByText(/history requires admin access/i)).toBeInTheDocument();
   });
 
   it("shows pagination controls when next is present", async () => {
     server.use(
       http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
       http.get("/api/v1/audit-log", () =>
-        HttpResponse.json(listResponse([entry({ id: "a" })], { next: "/api/v1/audit-log?page=2" })),
+        HttpResponse.json(listResponse([entry()], { next: "/api/v1/audit-log?page=2" })),
       ),
     );
     setup();
@@ -129,14 +134,19 @@ describe("AuditTab", () => {
     expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
   });
 
-  it("creates the correct entry-type label for create diffs", async () => {
+  it("renders a deletion banner for a delete row", async () => {
     server.use(
       http.get(`/api/v1/contacts/${CONTACT_ID}`, () => HttpResponse.json(contactFixture)),
       http.get("/api/v1/audit-log", () =>
-        HttpResponse.json(listResponse([entry({ id: "c", field_diffs: { __created__: true } })])),
+        HttpResponse.json(
+          listResponse([
+            entry({ id: "d", field_diffs: { __deleted__: true, last_name: ["Lovelace", null] } }),
+          ]),
+        ),
       ),
     );
     setup();
-    expect(await screen.findByText("Created")).toBeInTheDocument();
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByText(/this record was deleted/i)).toBeInTheDocument();
   });
 });

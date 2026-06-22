@@ -8,6 +8,7 @@ export const PROPERTY_TABS = [
   { slug: "media", labelKey: "tabs.media" },
   { slug: "features", labelKey: "tabs.features" },
   { slug: "settings", labelKey: "tabs.settings" },
+  { slug: "history", labelKey: "tabs.history" },
 ] as const;
 
 export type PropertyTabSlug = (typeof PROPERTY_TABS)[number]["slug"];

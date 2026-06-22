@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.enums import EmailLabel, PhoneLabel
 from accounts.models import Person, PersonEmail, PersonPhone, User
+from accounts.services.organisations import organisation_for_company_name
 from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency, RateRule
@@ -473,10 +474,14 @@ def _make_owner_contact(
     email: str | None = "olivia@owner.example",
     phone: str | None = "+44 7700 900111",
 ) -> Person:
+    # GAP-046: the owner block sources its `company` key from the linked agency
+    # name now, so route the free-text name through the same chokepoint as the
+    # legacy backfill. (`company=` is still written until Unit 5b drops it.)
     contact = Person.objects.create(
         first_name=first_name,
         last_name=last_name,
         company=company,
+        agency=organisation_for_company_name(company),
         address_line_1=address_line_1,
         address_line_2=address_line_2,
     )
@@ -586,6 +591,25 @@ def test_owner_is_null_when_finance_has_no_contact(
         "amount": "500.00",
         "note": "",
     }
+
+
+@pytest.mark.django_db
+def test_owner_company_blank_when_contact_has_no_agency(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GAP-046: an owner contact with no linked agency surfaces `company == ""`
+    (the FE OwnerTab contract is `z.string()`, never null) — the structured
+    successor to the dropped free-text `company` returns an empty string, not a
+    stale or null value, when the contact isn't linked to an Organisation."""
+    owner = _make_owner_contact(company="")  # blank → no agency (chokepoint returns None)
+    assert owner.agency_id is None
+    _make_finance(booking.property, contact=owner)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["owner"]["company"] == ""
 
 
 @pytest.mark.django_db

@@ -86,6 +86,26 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
 
 
 @pytest.mark.django_db
+def test_agent_name_falls_back_to_agency_when_agent_unnamed(
+    api_client: APIClient, staff: User, quotation: Quotation
+) -> None:
+    """GAP-046: a nameless agent's `agent_name` resolves to its agency name —
+    the structured successor to the dropped free-text `company` fallback."""
+    from accounts.services.organisations import organisation_for_company_name
+
+    agency = organisation_for_company_name("Dune Travel")
+    quotation.agent = Person.objects.create(first_name="", last_name="", agency=agency)
+    quotation.save(update_fields=["agent"])
+
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/quotations")
+
+    assert response.status_code == 200
+    row = next(r for r in response.data["results"] if r["id"] == quotation.pk)
+    assert row["agent_name"] == "Dune Travel"
+
+
+@pytest.mark.django_db
 def test_list_quotations_excludes_legacy_synthetic_quotations(
     api_client: APIClient,
     staff: User,

@@ -112,6 +112,20 @@ class Person(AuditedModel):
         """Full name for staff lists, or ``None`` when both name parts blank."""
         return f"{self.first_name} {self.last_name}".strip() or None
 
+    @property
+    def agency_name(self) -> str:
+        """Display name of the linked agency, or ``""`` when unlinked (GAP-046).
+
+        The structured successor to the free-text ``company`` (dropped in the
+        contract step): readers that fell back to ``company`` now read this.
+        A null FK returns ``""`` without firing a query (the descriptor yields
+        ``None`` for an unset ``agency_id``); the live read paths select_related
+        ``agency`` so the linked case is cache-hit too. Callers wanting an
+        Optional treat ``""`` as falsy (``agency_name or None``).
+        """
+        agency = self.agency
+        return agency.name if agency is not None else ""
+
     def primary_email(self) -> str | None:
         """Primary email address, read from the prefetch cache.
 

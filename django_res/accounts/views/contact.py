@@ -61,9 +61,10 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ContactFilterSet
-    # `agency__name` is a single-valued forward FK → no row multiplication, so no
-    # COUNT inflation (the CLAUDE.md multi-valued search_fields caveat is N/A).
-    search_fields = ["first_name", "last_name", "company", "agency__name", "emails__email"]
+    # GAP-046: search the structured `agency__name` (a single-valued forward FK →
+    # no row multiplication, so no COUNT inflation — the CLAUDE.md multi-valued
+    # search_fields caveat is N/A), not the free-text `company` it replaced.
+    search_fields = ["first_name", "last_name", "agency__name", "emails__email"]
     ordering_fields = ["last_name", "first_name", "created_at"]
 
     @action(detail=True, methods=["get"], url_path="properties")

@@ -90,6 +90,31 @@ def test_list_enquiries__staff_sees_all(
 
 
 @pytest.mark.django_db
+def test_agent_name_falls_back_to_agency_when_agent_unnamed(
+    api_client: APIClient, staff: User
+) -> None:
+    """GAP-046: a nameless agent's `agent_name` resolves to its agency name —
+    the structured successor to the dropped free-text `company` fallback."""
+    from accounts.services.organisations import organisation_for_company_name
+
+    agency = organisation_for_company_name("Dune Travel")
+    agent = Person.objects.create(first_name="", last_name="", agency=agency)
+    enquiry = Enquiry.objects.create(
+        first_name="Ada",
+        last_name="Lovelace",
+        email="ada@example.com",
+        adults=2,
+        agent=agent,
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["agent_name"] == "Dune Travel"
+
+
+@pytest.mark.django_db
 def test_enquiry_exposes_guest_contact_fields(api_client: APIClient, staff: User) -> None:
     """Customer-linked enquiries often have blank denormalised contact fields;
     the API exposes read-only `guest_email` / `guest_phone` /

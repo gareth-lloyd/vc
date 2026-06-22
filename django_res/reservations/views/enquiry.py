@@ -44,7 +44,9 @@ def _quotations_prefetch() -> Prefetch:
         # guest name solely from the Person mirror, so join it here too — without
         # it each nested quote fires a per-row Person lookup. Name only → no
         # email/phone prefetch needed on the nested quotes.
-        .select_related("person", "agent", "enquiry")
+        # GAP-046: agent_name falls back to the agency name when the agent has no
+        # personal name, so join `agent__agency` too (same query, no N+1).
+        .select_related("person", "agent__agency", "enquiry")
         .prefetch_related(
             "lines__property__images",
             "lines__currency",
@@ -62,7 +64,9 @@ def _detail_queryset() -> Any:
     quote-stack prefetched so `EnquiryDetailSerializer` walks `.quotations.lines`
     without an N+1."""
     return (
-        Enquiry.objects.select_related("person", "property", "region", "agent", "assigned_to")
+        Enquiry.objects.select_related(
+            "person", "property", "region", "agent__agency", "assigned_to"
+        )
         .prefetch_related("person__emails", "person__phones")
         .prefetch_related(_quotations_prefetch())
     )
@@ -72,7 +76,7 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
     """`/enquiries` CRUD plus colon-verb action endpoints."""
 
     queryset = Enquiry.objects.select_related(
-        "person", "property", "region", "agent", "assigned_to"
+        "person", "property", "region", "agent__agency", "assigned_to"
     ).prefetch_related("person__emails", "person__phones")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
     pagination_class = ConfigurablePageSizePagination

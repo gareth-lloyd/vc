@@ -33,8 +33,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from accounts.enums import EmailLabel, PersonKind, PersonPreferredMethod, PersonStatus, PhoneLabel
-from accounts.models import GUEST_LEGACY_PREFIX, Person, PersonEmail, PersonPhone
+from accounts.enums import PersonKind, PersonPreferredMethod, PersonStatus
+from accounts.models import GUEST_LEGACY_PREFIX, Person
+from accounts.services.person_channels import reconcile_primary_email, reconcile_primary_phone
 from reservations.enums import GuestStatus
 
 if TYPE_CHECKING:
@@ -131,62 +132,8 @@ def person_for_guest(guest: Guest) -> Person:
     return sync_person_from_guest(guest)
 
 
-def reconcile_primary_email(person: Person, email: str | None) -> None:
-    """Make the Person's PRIMARY email match a single source email column.
-
-    Shared in-place reconciler (GAP-045 D5-3): both `sync_person_from_guest`
-    (the Guest→Person mirror) and the legacy `ClientLoader` (VillaClientDetails
-    → Person, no Guest) call this so a re-run never blind-creates a SECOND
-    PRIMARY row and trips `one_primary_email_per_contact`.
-
-    Assumes this is the only writer of the row's PRIMARY channel: it manages
-    exactly the one PRIMARY row. If a secondary channel equal to the new value
-    is ever added by another path, the in-place update could trip
-    `unique_contact_email` — revisit when channels gain another writer.
-    """
-    existing = person.emails.filter(is_primary=True).first()
-    if email:
-        if existing is None:
-            PersonEmail.objects.create(
-                contact=person,
-                email=email,
-                label=EmailLabel.PRIMARY.value,
-                is_primary=True,
-            )
-        elif existing.email != email:
-            existing.email = email
-            existing.save(update_fields=["email", "updated_at"])
-    elif existing is not None:
-        # Guest.save collapses "" → NULL, so a falsy email means "no email" —
-        # drop the mirror so comms can't pick up a dead address.
-        existing.delete()
-
-
-def reconcile_primary_phone(person: Person, phone: str) -> None:
-    """Make the Person's PRIMARY phone match a single source phone column.
-
-    Shared in-place reconciler — see `reconcile_primary_email` for the why.
-    """
-    existing = person.phones.filter(is_primary=True).first()
-    if phone:
-        if existing is None:
-            PersonPhone.objects.create(
-                contact=person,
-                number=phone,
-                label=PhoneLabel.MOBILE.value,
-                is_primary=True,
-            )
-        elif existing.number != phone:
-            existing.number = phone
-            existing.save(update_fields=["number", "updated_at"])
-    elif existing is not None:
-        existing.delete()
-
-
 __all__ = [
     "SYNCED_GUEST_FIELDS",
     "person_for_guest",
-    "reconcile_primary_email",
-    "reconcile_primary_phone",
     "sync_person_from_guest",
 ]

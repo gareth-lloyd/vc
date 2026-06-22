@@ -19,6 +19,10 @@ from typing import Any
 
 from accounts.enums import ContactRole, PersonKind, PersonStatus
 from accounts.models import Person
+from accounts.services.person_channels import (
+    reconcile_primary_email,
+    reconcile_primary_phone,
+)
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX
 from properties.models.contacts import PropertyContactAssignment
@@ -27,10 +31,6 @@ from properties.models.property import Property
 from reservations.enums import EnquirySource, EnquiryStatus
 from reservations.models.enquiry import Enquiry
 from reservations.phone import to_e164
-from reservations.services.person_sync import (
-    reconcile_primary_email,
-    reconcile_primary_phone,
-)
 
 _ROLE_MAP = {
     1: ContactRole.OWNER,

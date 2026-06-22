@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from django.db.models import Exists, OuterRef, Q, QuerySet
+from django.db.models.expressions import Combinable
 from django_filters import rest_framework as filters
 
-from accounts.models import PersonEmail
+from accounts.models import Person, PersonEmail
 from reservations.enums import TERMINAL_BOOKING_STATUSES
 from reservations.models import Booking, Enquiry, Quotation
 
@@ -133,3 +134,46 @@ class BookingFilter(filters.FilterSet):
             | Q(Exists(person_email_match))
             | Q(property__name__icontains=value)
         )
+
+
+def client_is_agent_expression() -> Combinable:
+    """Boolean expression: the client (`Person`) has any deal that names a
+    travel agent — the "agent" booking channel (GAP-047).
+
+    Scalar `EXISTS` per relation (no JOIN row-multiplication, so a paginator
+    COUNT over it stays honest), OR'd into one boolean. The single source of
+    truth shared by `ClientListView`'s `is_agent` annotation and
+    `ClientFilterSet.capacity` so the two can't drift.
+    """
+    agent_deal = {"person": OuterRef("pk"), "agent__isnull": False}
+    return (
+        Exists(Booking.objects.filter(**agent_deal))
+        | Exists(Quotation.objects.filter(**agent_deal))
+        | Exists(Enquiry.objects.filter(**agent_deal))
+    )
+
+
+class ClientFilterSet(filters.FilterSet):
+    """Filter shape for `GET /clients` (GAP-047).
+
+    `capacity` partitions the directory by booking channel — `agent` (the client
+    has an enquiry/quote/booking that names a travel agent) vs `direct`.
+    """
+
+    status = filters.CharFilter(field_name="status")
+    capacity = filters.ChoiceFilter(
+        method="filter_capacity",
+        choices=[("direct", "Direct"), ("agent", "Agent")],
+    )
+
+    class Meta:
+        model = Person
+        fields = ["status", "capacity"]
+
+    def filter_capacity(
+        self, queryset: QuerySet[Person], _name: str, value: str
+    ) -> QuerySet[Person]:
+        if value not in ("agent", "direct"):
+            return queryset
+        is_agent = Q(client_is_agent_expression())
+        return queryset.filter(is_agent if value == "agent" else ~is_agent)

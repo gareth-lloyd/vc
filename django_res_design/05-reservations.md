@@ -9,66 +9,43 @@ reservations/
 ├── enums.py
 ├── models/
 │   ├── __init__.py
-│   ├── guest.py        # Guest
 │   ├── enquiry.py      # Enquiry, EnquiryNote, EnquiryEvent
 │   ├── preferences.py  # GuestPreferenceType, GuestPreference
 │   ├── quotation.py    # Quotation, QuotationLine
 │   ├── booking.py      # Booking, BookingHold, BookingEvent, BookingNote
+│   ├── booking_guest.py # BookingGuest
 │   ├── concierge.py    # BookingConciergeItem
 │   └── terms.py        # TermsVersion
+# The customer/traveller identity itself is accounts.Person (GAP-045 folded
+# the old reservations.Guest into it); see 01-accounts.md.
 ├── services.py         # QuotationService, BookingService, HoldService
 ├── signals.py
 └── tasks.py            # Celery: expire holds, advance balance-due, send reminders
 ```
 
-## Guest
+## Customer identity → `accounts.Person`
 
-### `Guest(AuditedModel)`
+> ✅ **GAP-045 (delivered 2026-06-22).** The old `reservations.Guest` model was
+> **folded into `accounts.Person`** — there is now one unified human-identity
+> model. Booking-side customers are `Person` rows with `kind=CUSTOMER`;
+> operator-side owners/managers/agents are `kind=CONTACT`. The customer fields
+> (name, `marketing_consent`, address, `country`, the opportunistic `user`
+> OneToOne) and the `merge()` / `anonymize()` lifecycle now live on `Person`;
+> the scalar `email`/`phone` columns became `PersonEmail` / `PersonPhone`
+> children. See **`01-accounts.md`** for the full `Person` spec.
 
-> ⚠️ **Being folded into `accounts.Person` (2026-06-18).** Per the
-> `people-model-cleanup.md` banner + `10-decisions.md`, `Guest` merges with
-> `accounts.Contact` into one `Person` identity; `BookingGuest` survives
-> (repointed). Tracked by `todo/gap-045`. The fields/constraints below move onto
-> `Person`.
+This app holds the booking-side **relations** to that identity: the `person` FK
+on `Enquiry` / `Quotation` / `Booking`, the `BookingGuest` through-model for
+multi-person bookings, and `GuestPreference` for travel preferences. All point
+at `accounts.Person`. The reverse accessors on `Person` are
+`enquiries_as_customer`, `quotations_as_customer`, `bookings_as_customer`,
+`booking_guests`, and `travel_preferences`.
 
-Unified entity replacing the legacy `VillaEnquire` form fields + `VillaClientDetail`. Reused across enquiries, quotations, and bookings.
-
-- `first_name`, `last_name` — CharField
-- `title` — CharField(blank=True)
-- `email` — `CIEmailField(db_index=True, null=True)` (case-insensitive via `citext`; **not** unique — same person legitimately books from different addresses; **optional** — a phone-only guest is valid, see contactability constraint below. No synthetic fabrication.) See `people-model-cleanup.md`.
-- `phone` — CharField(blank=True) — stored **normalized E.164** (`phonenumbers`); the advisory dedup key
-- `address_line_1`, `address_line_2` — CharField(blank=True)
-- `town`, `post_code` — CharField(blank=True)
-- `country` — FK properties.Country PROTECT, null=True
-- `contact_method` — TextChoices (`EMAIL`, `PHONE`, `SMS`), null=True
-- `marketing_consent` — bool(default=False)
-- `notes` — TextField(blank=True)
-- `status` — TextChoices (`ACTIVE`, `ARCHIVED`, `ANONYMIZED`), default `ACTIVE`
-- `anonymized_at` — DateTimeField(null=True, blank=True) — set by `anonymize()`
-- `user` — OneToOneField(User, null=True, blank=True, on_delete=SET_NULL) — opportunistic link if guest registers later
-- `legacy_id` — nullable, indexed
-
-Indexes: `(status, last_name, first_name)`, `email`.
-
-Constraints (see `people-model-cleanup.md`) — **scoped to `status=ACTIVE` rows
-only** (`ARCHIVED`/`ANONYMIZED` are exempt; a channel-less historical row is
-dispositioned, never forced to carry a channel):
-- **Contactability** — `email IS NOT NULL` **OR** `phone <> ''` (email is now
-  nullable; phone uses blank `''`, not NULL). Replaces the old fake
-  email-required + synthetic-email fabrication.
-- **Actionable preference** — `contact_method=EMAIL ⇒ email IS NOT NULL`;
-  `contact_method IN (PHONE, SMS) ⇒ phone <> ''` (legacy `ContactType` parity).
-
-Dedup is **advisory**: a resolve-or-create suggests a match on normalized
-email → normalized phone; the operator confirms reuse or proceeds as new (no
-silent auto-merge). `email` stays **non-unique** by design.
-
-#### Lifecycle (per `00-conventions.md`)
-
-- **Wrong guest captured, no relationships yet** — hard delete.
-- **Guest no longer relevant but bookings exist** — set `status=ARCHIVED`. Still queryable; hidden from default operator search only by an explicit `?status=` filter at the call site, not a hidden manager.
-- **`Guest.merge(target: Guest)`** — destructive. Atomically rewrites FKs on `Enquiry`, `Quotation`, `Booking` (and any `BookingConciergeItem` reached via `Booking`) from `self` to `target`. Writes one `AuditLog` row per rewrite. Then **hard-deletes** `self`. There is no `merged_into` self-FK and no surviving tombstone — the `AuditLog` is the only trail.
-- **`Guest.anonymize()`** — overwrites `first_name`, `last_name`, `email` (set to `NULL` — `status=ANONYMIZED` marks the row, so no synthetic tombstone is needed; the contactability/preference constraints are ACTIVE-only, so an anonymized row needs no channel), `phone` (empty), `address_line_1`, `address_line_2`, `town`, `post_code`, `notes`; clears `marketing_consent`; sets `status=ANONYMIZED`, `anonymized_at=now()`. Bookings retain the FK pointing at the anonymized row. Reporting that should exclude anonymized guests filters `status` explicitly.
+Legacy `VillaClientDetail` rows load to `accounts.Person`
+(`legacy_id="client-{Id}"`, `kind=CUSTOMER`) via `ClientLoader` — **not** a
+`GuestLoader`. The `/guests` REST API is retired; customers are managed through
+the kind-aware `/contacts` API (`?kind=customer`). See
+`data_migration/CUTOVER.md`.
 
 ### `GuestPreferenceType(TimestampedModel)`
 Operator-curated catalogue of guest preferences (legacy `VillaClientPrefMaster` — bed configurations, dietary, etc.).
@@ -78,15 +55,15 @@ Operator-curated catalogue of guest preferences (legacy `VillaClientPrefMaster` 
 - `legacy_id` — nullable, indexed
 
 ### `GuestPreference(TimestampedModel)`
-A typed preference attached to a guest, optionally scoped to a quotation when captured during quoting.
+A typed travel preference attached to a person, optionally scoped to a quotation when captured during quoting.
 
-- `guest` — FK Guest CASCADE, `related_name="preferences"`
+- `person` — FK accounts.Person CASCADE, `related_name="travel_preferences"`
 - `preference_type` — FK GuestPreferenceType PROTECT
 - `quotation` — FK Quotation SET_NULL, null=True, blank=True, `related_name="guest_preferences"`
 - `notes` — TextField(blank=True)
 - `legacy_id` — nullable, indexed
 
-Constraints: `UniqueConstraint(guest, preference_type, quotation)`.
+Constraints: `UniqueConstraint(person, preference_type, quotation, name="unique_person_preference")`.
 
 ## Enquiry
 
@@ -94,9 +71,9 @@ Constraints: `UniqueConstraint(guest, preference_type, quotation)`.
 Anonymous / unstructured inquiry from website or agent. **Kept separate from Quotation** — different shape, different audit needs, different lifecycle. Bridge is `Quotation.enquiry`, now a **non-null `PROTECT` FK** (agent-direct quotes auto-create a minimal enquiry — see the `Quotation` field spec below and `10-decisions.md`); the earlier nullable-bridge was reversed.
 
 - `reference` — CharField(unique=True) — short slug, e.g. `E-2026-000123`
-- `guest` — FK Guest SET_NULL, null=True (set once captured; for purely anonymous form submits, hold the form fields below)
-- `first_name`, `last_name`, `email`, `phone` — denormalised for anonymous submits (the raw inbound capture snapshot; **no** contactability constraint here — the enquiry is the permissive capture surface, `Guest` is the enforced-clean entity)
-- `contact_method` — TextChoices (`EMAIL`, `PHONE`, `SMS`), null=True — captured preference that survives before a `Guest` exists; carried onto the `Guest` on resolve. See `people-model-cleanup.md`.
+- `person` — FK accounts.Person SET_NULL, null=True, related_name="enquiries_as_customer" (set once captured; for purely anonymous form submits, hold the form fields below)
+- `first_name`, `last_name`, `email`, `phone` — denormalised for anonymous submits (the raw inbound capture snapshot; **no** contactability constraint here — the enquiry is the permissive capture surface, the `Person` is the enforced-clean entity)
+- `contact_method` — TextChoices (`EMAIL`, `PHONE`, `SMS`), null=True — captured preference that survives before a `Person` exists; carried onto the `Person` on resolve. See `people-model-cleanup.md`.
 - `property` — FK properties.Property SET_NULL, null=True
 - `region` — FK properties.Region SET_NULL, null=True
 - `date_from` — DateField(null=True)
@@ -108,7 +85,7 @@ Anonymous / unstructured inquiry from website or agent. **Kept separate from Quo
 - `min_bedrooms` — PositiveSmallInteger(null=True)
 - `request_type` — TextChoices (`AVAILABILITY`, `INFO`, `QUOTE`, `BROCHURE`, `OTHER`)
 - `referral_code` — CharField(blank=True)
-- `agent` — FK accounts.Contact SET_NULL, null=True  # external agent / intermediary representing the guest; distinct from `assigned_to`
+- `agent` — FK accounts.Person SET_NULL, null=True  # external agent / intermediary (a `kind=CONTACT` person) representing the guest; distinct from `assigned_to`
 - `assigned_to` — FK User SET_NULL, null=True, blank=True, related_name="assigned_enquiries"  # internal staff owner of this enquiry, backing `?assigned_to=` filter and `:assign` action. Separate from `agent`: `agent` is who is *acting on behalf of the guest*; `assigned_to` is *which staff member owns the work*. See reconciliation issue #26.
 - `site_source` — TextChoices (`MAIN_WEBSITE`, `AGENT_PORTAL`, `EMAIL_INBOUND`, `PHONE`, `OTHER`)
 - `status` — TextChoices (`NEW`, `CONTACTED`, `QUOTED`, `LOST`, `CONVERTED`) — the **workflow stage**, advanced only by transition methods (below), never a free-choice edit
@@ -217,8 +194,8 @@ See reconciliation issue #27.
 - `number` — PositiveIntegerField(null=True, unique=True) — canonical sequence-backed integer (`quotation_number_seq`); NULL only on synthesised/interim rows
 - `reference` — CharField(unique) — `QVC123` (legacy parity), derived from `number` via `core.refs.quotation_prefix()`
 - `enquiry` — FK Enquiry PROTECT, **null=False** — every quotation has a parent enquiry. Agent-direct quotes **auto-create a minimal enquiry** in the quote-creation service (legacy `sp_quotationMaster` parity), tagged via `site_source`, rather than carrying a null bridge. See `people-model-cleanup.md` (migration backfills existing null rows first).
-- `guest` — FK Guest PROTECT — required (anonymous must convert to a Guest before quoting)
-- `agent` — FK accounts.Contact PROTECT, null=True
+- `person` — FK accounts.Person PROTECT, related_name="quotations_as_customer" — required (an anonymous enquiry must resolve to a `Person` before quoting)
+- `agent` — FK accounts.Person PROTECT, null=True  # external agent (a `kind=CONTACT` person)
 - `currency` — FK pricing.Currency PROTECT
 - `is_unbranded` — bool(default=False)  # legacy concept retained
 - `status` — TextChoices (`DRAFT`, `SENT`, `ACCEPTED`, `EXPIRED`, `CANCELLED`)
@@ -250,7 +227,7 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 
 - `reference` — CharField(unique) — `VC123` (legacy parity), **carried forward** from the source quotation's `number` (`QVC123` → `VC123`); falls to a `VC-TMP-…` sentinel when the quotation has no `number`. See `core.refs.booking_prefix()` and GAP-006.
 - `quotation_line` — FK QuotationLine PROTECT  # real FK, not the legacy integer `QuotationNo`
-- `guest` — FK Guest PROTECT
+- `person` — FK accounts.Person PROTECT, related_name="bookings_as_customer"  # the lead customer; denormalised from the LEAD `BookingGuest` row (see "`Booking.person` denorm + LEAD invariant" below)
 - `property` — FK properties.Property PROTECT  # denormalised from quotation_line for query speed; enforced equal in clean()
 - `date_from`, `date_to` — DateField
 - `adults`, `children` — PositiveSmallInteger
@@ -262,7 +239,7 @@ The reservation. Proper FK to the source `QuotationLine`, with the price locked 
 - `balance_due` — Decimal(12, 2)  # computed at creation. Despite the name this is the **denormalised engine-gross total** (snapshot `total`), never decremented as payments settle — outstanding is computed from Payment rows (07-payments.md). The API `total` is `balance_due` **plus the live Σ of `BookingChargeItem` rows** (no denormalised charges column — computed via a Subquery annotation / per-row aggregate), so a re-price rewriting `balance_due` never wipes manual charges. The legacy loader fills it from `RentalPrice` (legacy `BalanceDue` is a DATETIME — the due *date* — not money).
 - `balance_due_at` — DateField  # derived from PaymentSchedule; the legacy loader maps `VillaBooking.BalanceDue` (datetime) here
 - `status` — TextChoices (see 06-availability.md for full machine)
-- `agent` — FK accounts.Contact SET_NULL, null=True  # external agent / intermediary; same distinction as Enquiry.agent
+- `agent` — FK accounts.Person SET_NULL, null=True  # external agent / intermediary (a `kind=CONTACT` person); same distinction as Enquiry.agent
 - `assigned_to` — FK User SET_NULL, null=True, blank=True, related_name="assigned_bookings"  # internal staff owner of this booking, backing `?assigned_to=` filter and `:assign` action. See reconciliation issue #26.
 - `site_source` — TextChoices (mirror Enquiry.site_source)
 - `terms_version` — FK TermsVersion PROTECT
@@ -317,43 +294,43 @@ Ordering: `created_at` ascending. Editing rewrites the same row (PATCH); deletio
 
 ### `BookingGuest(AuditedModel)`
 
-Through-model linking a `Booking` to the `Guest` rows involved with it. Replaces the legacy single-`Booking.guest` shape that captured the lead traveller and dropped everyone else into free-text notes. Every person the agent CC'd, the family member on the trip, the PA who organised the booking, the third-party payer — all become addressable `Guest` rows, retained for marketing and future-booking continuity. (Per scoping-session 2026-05-26: a decade of CC'd family contacts have been lost under the legacy model.)
+Through-model linking a `Booking` to the `accounts.Person` rows involved with it. Replaces the legacy single-`Booking.guest` shape that captured the lead traveller and dropped everyone else into free-text notes. Every person the agent CC'd, the family member on the trip, the PA who organised the booking, the third-party payer — all become addressable `Person` rows, retained for marketing and future-booking continuity. (Per scoping-session 2026-05-26: a decade of CC'd family contacts have been lost under the legacy model.)
 
-Links to `reservations.Guest`, **not** `accounts.Contact`. `Contact` is the operator-side CRM model (owners, managers, agents); `Guest` is the booking-side person model (with `marketing_consent`, opportunistic `user` OneToOne, etc.). The split stays.
+Links to `accounts.Person` (GAP-045 folded the old `reservations.Guest` into `Person`). Booking-side people are `kind=CUSTOMER`; operator-side owners/managers/agents are `kind=CONTACT` — but both are the same model. `Person` carries `marketing_consent`, the opportunistic `user` OneToOne, and the `PersonEmail` / `PersonPhone` children. See `01-accounts.md`.
 
-- `booking` — FK Booking CASCADE
-- `guest` — FK Guest PROTECT
-- `role` — TextChoices (`LEAD`, `CO_TRAVELLER`, `PAYER`, `CC_ONLY`)
-- `email_override` — `CIEmailField(blank=True)` — when set, transactional emails directed at this `(booking, guest, role)` go here instead of `guest.email`. Lets agents capture a per-trip email (a wedding planner's address, an assistant's address) without polluting the guest's standing email.
+- `booking` — FK Booking CASCADE, related_name="booking_guests"
+- `person` — FK accounts.Person PROTECT, related_name="booking_guests"
+- `role` — TextChoices (`LEAD`, `CO_TRAVELLER`, `PAYER`, `CC_ONLY`) (`BookingGuestRole`)
+- `email_override` — `CIEmailField(blank=True, default="")` — when set, transactional emails directed at this `(booking, person, role)` go here instead of the person's primary email. Lets agents capture a per-trip email (a wedding planner's address, an assistant's address) without polluting the person's standing email.
 - `notes` — TextField(blank=True)
 
 Constraints:
-- `UniqueConstraint(booking, guest, role, name="unique_booking_guest_role")` — one role per `(booking, guest)`; a single person can hold multiple roles per booking (e.g. LEAD + PAYER) but each only once.
-- `UniqueConstraint(booking, condition=Q(role="LEAD"), name="one_lead_per_booking")` — exactly one LEAD.
-- `UniqueConstraint(booking, condition=Q(role="PAYER"), name="at_most_one_payer_per_booking")` — at most one PAYER (zero is allowed when the LEAD also pays).
+- `UniqueConstraint(booking, person, role, name="bookingguest_unique_booking_person_role")` — one role per `(booking, person)`; a single person can hold multiple roles per booking (e.g. LEAD + PAYER) but each only once.
+- `UniqueConstraint(booking, condition=Q(role="LEAD"), name="bookingguest_one_lead_per_booking")` — exactly one LEAD.
+- `UniqueConstraint(booking, condition=Q(role="PAYER"), name="bookingguest_one_payer_per_booking")` — at most one PAYER (zero is allowed when the LEAD also pays).
 
-Indexes: `(booking, role)`, `guest`.
+Indexes: `(booking, role)`, `(person, role)`.
 
 #### Role semantics
 
 - `LEAD` — the primary traveller; the booking's "host". Required on every booking. Carries the address / preferences that previously denormalised onto the booking.
 - `CO_TRAVELLER` — anyone else on the trip whom the agent has captured (other family members, friends in the party). Receives itinerary email by default; not addressed for payment.
-- `PAYER` — the person settling the invoice. May be the same `Guest` as the LEAD (in which case no separate `BookingGuest(role=PAYER)` row is created — the LEAD also pays, by convention), or a different person who signs off and pays but does not travel (the PA-payer case). Receives payment-related comms.
+- `PAYER` — the person settling the invoice. May be the same `Person` as the LEAD (in which case no separate `BookingGuest(role=PAYER)` row is created — the LEAD also pays, by convention), or a different person who signs off and pays but does not travel (the PA-payer case). Receives payment-related comms.
 - `CC_ONLY` — addressable for comms (booking summary, arrival reminder) but with no semantic role in the trip. Captures the legacy "CC the spouse / PA / family member" pattern; retained for marketing and continuity.
 
-All four roles appear in marketing audiences by default — no role is silently excluded from outreach. Per-`Guest` `marketing_consent` is the opt-out signal, not the role.
+All four roles appear in marketing audiences by default — no role is silently excluded from outreach. Per-`Person` `marketing_consent` is the opt-out signal, not the role.
 
 #### Comms routing
 
-The `comms.EmailService` dispatcher, when sending to "all guests on this booking", reads `BookingGuest` rows and addresses each one at `email_override or guest.email`. Per-role gating (e.g. payment reminders to PAYER only, itinerary to LEAD + CO_TRAVELLERs) is expressed in the email template's `to_roles` configuration rather than in the dispatcher. See `10-comms.md`.
+The `comms.EmailService` dispatcher, when sending to "all guests on this booking", reads `BookingGuest` rows and addresses each one at `email_override or person.primary_email()`. Per-role gating (e.g. payment reminders to PAYER only, itinerary to LEAD + CO_TRAVELLERs) is expressed in the email template's `to_roles` configuration rather than in the dispatcher. See `10-comms.md`.
 
-#### `Booking.guest` denorm + LEAD invariant
+#### `Booking.person` denorm + LEAD invariant
 
-`Booking.guest` is kept as a denormalised pointer to the LEAD guest, kept in sync from `BookingGuest` by signal:
+`Booking.person` is kept as a denormalised pointer to the LEAD person, kept in sync from `BookingGuest` by signal:
 
-- `_booking_guest_post_save` mirrors the LEAD row onto `Booking.guest` via queryset `.update()` (skips `Booking.save()` so the audit trail stays on `BookingGuest` and `Booking.updated_at` is not bumped by denorm churn).
+- `_booking_guest_post_save` mirrors the LEAD row onto `Booking.person` via queryset `.update()` (skips `Booking.save()` so the audit trail stays on `BookingGuest` and `Booking.updated_at` is not bumped by denorm churn).
 - `_booking_guest_pre_delete` raises `LeadGuestProtectedError(ProtectedError)` if a LEAD row is deleted while its booking still exists. Cascade-safe via Django's `origin` kwarg — `Booking.delete()` cascades through `BookingGuest` cleanly without firing the guard.
-- Recommended swap pattern (when the LEAD guest changes mid-booking): demote the old LEAD to `CO_TRAVELLER` and create the new LEAD row, both inside one `transaction.atomic`. Deleting the old LEAD first will raise.
+- Recommended swap pattern (when the LEAD person changes mid-booking): demote the old LEAD to `CO_TRAVELLER` and create the new LEAD row, both inside one `transaction.atomic`. Deleting the old LEAD first will raise.
 
 `BookingService.create_from_quotation_line` creates the `BookingGuest(role=LEAD)` row inside the same `transaction.atomic` as the `Booking` — so the invariant is established at booking creation, not papered on by a signal. `data_migration.loaders.bookings.BookingLoader` does the same via idempotent `get_or_create`, so re-runs don't double up.
 
@@ -453,7 +430,7 @@ Both `Quotation.terms_version` and `Booking.terms_version` snapshot the version 
 ## Dropped from legacy
 
 - `VillaArchiveBooking` — replaced by `Booking.is_archived=True` (operator hide-from-list flag) plus `BookingEvent` history. The terminal post-stay state itself is `Booking.status='CHECKED_OUT'`; archive is orthogonal to status.
-- `VillaCheckoutDetail` — its fields scatter across `Booking`, `Guest`, and `Payment`. No separate entity; the checkout-page form posts to multiple endpoints.
+- `VillaCheckoutDetail` — its fields scatter across `Booking`, `accounts.Person`, and `Payment`. No separate entity; the checkout-page form posts to multiple endpoints.
 - `IsActive`, `Tbc` booleans on Booking — collapsed into `status`.
 - `IsOwnerConfirmed`, `IsDepositePaid`, `IsBankPaid` booleans — collapsed into `status`.
 - `BookingUrl` — generated on demand via `reverse()`, not stored.

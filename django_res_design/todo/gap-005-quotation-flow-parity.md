@@ -198,7 +198,7 @@ quotes (`EnquireId` NOT NULL). The rebuild already matches on guest/agent
 `reservations/models/quotation.py:23–41`); `Quotation.enquiry` is tightened to
 NOT NULL here (M4). ⇒ the searchable "client" is the first-class **`Guest`**
 (`GET /guests?search=`, already has `phone` + `contact_method`); the optional
-travel agent stays a separate `accounts.Contact` field via the existing
+travel agent stays a separate `accounts.Person` field via the existing
 `ContactPicker`.
 
 > **Not strict parity:** legacy captured the guest as per-enquiry free-text and

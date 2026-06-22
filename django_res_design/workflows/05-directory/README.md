@@ -39,7 +39,7 @@ Contact records and their relationships to properties. A contact may be an owner
 
 ## Open design questions for the Django redesign
 
-- The data-model design (`../01-accounts.md`) plans `accounts.Contact`, `accounts.ContactEmail`, `accounts.ContactPhone`, and `accounts.Role` — this maps cleanly.
+- The data-model design (`../01-accounts.md`) provides the unified `accounts.Person` (GAP-045 folded `Contact`+`Guest` into one model), `accounts.PersonEmail`, `accounts.PersonPhone`, and `accounts.Role` — this maps cleanly.
 - The 12 access/notify flags on `VillaContactMapping` look like a half-baked permission system. Replace with a small named-permission set or roles that aggregate them.
 - Address-on-contact (`AddressLine1`/`AddressLine2`) is too thin — the legacy quote/booking flows carry a richer address shape (Town, PostCode, Country, etc.) on `EnquireDetails`/`ClientDetails`. Reconcile.
 - Bank accounts are currently on `VillaFinance` (the property) rather than on the **owner contact**. Re-attach in the redesign.

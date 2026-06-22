@@ -1,17 +1,22 @@
 # People model cleanup — Enquiry / Guest / Contact
 
+> ✅ **DELIVERED (GAP-045, 2026-06-22).** Contact + `reservations.Guest` are now
+> the single `accounts.Person` model (`kind=CUSTOMER/CONTACT`), merged to local
+> main. The analysis below is the historical rationale; the live model is in
+> `01-accounts.md`.
+>
 > ⚠️ **SUPERSEDED IN PART (2026-06-18) — unified `Person` identity model.**
 > The owner's 2026-06-17 Contacts review drove a domain re-assessment that
-> **overturns "Locked decision #1" below** (Guest kept distinct from Contact).
-> The new direction: a **single `Person` identity** absorbs both
+> **overturned "Locked decision #1" below** (Guest kept distinct from Contact).
+> The direction taken: a **single `Person` identity** absorbs both
 > `accounts.Contact` and `reservations.Guest`; capacity (traveller / agent /
 > owner / manager / …) is a **role/relationship, never a `kind` column**; a real
 > **`Organisation`** entity replaces the free-text `company`; **`User` stays
 > first-class** as a login `OneToOne → Person`. The owner's directories
 > (Clients / Villa Contacts / Companies) become **filtered views**. This also
-> **resolves** the "Guest channel richness" item under *Deferred* (Person carries
+> **resolved** the "Guest channel richness" item under *Deferred* (Person carries
 > Contact's child email/phone tables). The dedup, contactability-CHECK, and
-> E.164 rationale below **still hold** — they move onto `Person`. Migration is
+> E.164 rationale below **still hold** — they moved onto `Person`. Migration was
 > tracked by **`todo/gap-045`–`gap-048`**; the decision is logged in
 > `10-decisions.md` (2026-06-18). The section below is retained for its
 > field-level rationale, read through the lens of this banner.

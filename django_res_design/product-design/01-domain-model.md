@@ -15,12 +15,12 @@ Apply to every entity unless noted.
 ### Lifecycle (no soft delete)
 There is no soft-delete pattern anywhere — no `deleted_at` column, no `all_objects` manager, no `SoftDeleteModel` base class. Every entity's lifecycle is expressed as something a SQL query can see directly:
 
-- **`status` TextChoices** for state-machine models (`Property`, `Booking`, `Quotation`, `Enquiry`, `Refund`, `Payment`, `Contact`, `Guest`, `SecurityDeposit`) — with dated entry timestamps (`archived_at`, `cancelled_at`, `anonymized_at`) when audit demands them.
+- **`status` TextChoices** for state-machine models (`Property`, `Booking`, `Quotation`, `Enquiry`, `Refund`, `Payment`, `Person`, `SecurityDeposit`) — with dated entry timestamps (`archived_at`, `cancelled_at`, `anonymized_at`) when audit demands them.
 - **`is_active` boolean** for catalogue/lookup toggles (`Country`, `Region`, `Currency`, `Feature`, `Collection`, `RatePlan`, `RateCard`, `Extra`, `Discount`, etc.).
 - **Hard delete** for owned child rows (CASCADE from owner; PROTECT from cross-aggregate references blocks accidents).
 - **Append-only event tables** (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookEvent`, `AuditLog`) for history.
-- **GDPR erasure** uses anonymization-in-place (`Contact.anonymize()`, `Guest.anonymize()`): PII fields overwritten with sentinels, `status=ANONYMIZED`, row preserved for FK integrity on historical bookings.
-- **Merge** flows (`Contact.merge(target)`, `Guest.merge(target)`) rewrite FKs then hard-delete the merged-from row, with an `AuditLog` entry per rewrite.
+- **GDPR erasure** uses anonymization-in-place (`Person.anonymize()`): PII fields overwritten with sentinels, `status=ANONYMIZED`, row preserved for FK integrity on historical bookings.
+- **Merge** flows (`Person.merge(target)`) rewrite FKs then hard-delete the merged-from row, with an `AuditLog` entry per rewrite.
 
 See `../00-conventions.md` and `../09-departures.md` ("Soft delete eliminated") for full rationale and per-model assignments.
 
@@ -30,7 +30,7 @@ See `../00-conventions.md` and `../09-departures.md` ("Soft delete eliminated") 
 ### Not multi-tenant
 This is a single-tenant application. There is no `Site` model and no `site` FK on any entity. Investigation of the legacy production database confirmed the `VillaSite` migration was never deployed; the original `vw_villa_sites` view was an *outbound publishing-target registry* (one back-office fans listings out to multiple WordPress storefronts via REST), not a tenant partition.
 
-Where the inbound channel matters for reporting, entities carry a flat `site_source` TextChoices field (currently on `Enquiry` and `Booking`). Outbound fan-out to WordPress storefronts is modelled as `integrations.SyncRecord` with provider `WORDPRESS_SITE` (see `08-integrations.md`). Owner-portal scoping is per-`Contact` via `ContactPropertyMapping` — not tenancy.
+Where the inbound channel matters for reporting, entities carry a flat `site_source` TextChoices field (currently on `Enquiry` and `Booking`). Outbound fan-out to WordPress storefronts is modelled as `integrations.SyncRecord` with provider `WORDPRESS_SITE` (see `08-integrations.md`). Owner-portal scoping is per-`Person` (kind=CONTACT) via `ContactPropertyMapping` — not tenancy.
 
 ### Money fields
 Stored as **`Decimal(12, 2) amount + 3-char ISO `currency_code`** — never a bare number. The current original column `Price` becomes `(price_amount, price_currency)`. Reports that aggregate across currencies require an explicit FX policy (snapshot at booking creation? real-time? — open question in `06-verification.md`).
@@ -165,7 +165,7 @@ Fields: `card` (FK, nullable), `property` (FK, used when `card` null), `name`, `
 ### Enquiry
 Inbound lead, sometimes pre-quotation. Original `VillaEnquire`.
 
-Fields: `site_source` (enum — which inbound channel/WP storefront produced the lead), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`), `guest` (FK to Guest), `referral_code`, `agent` (FK to Contact, nullable — **external** agent / intermediary representing the guest), `zoho_id`. See reconciliation issue #26 for the two-field rationale.
+Fields: `site_source` (enum — which inbound channel/WP storefront produced the lead), `status` (enum), `source` (enum: `website` / `phone` / `email` / `referral` / `agent`), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`), `person` (FK to `accounts.Person`, kind=CUSTOMER — the customer), `referral_code`, `agent` (FK to `accounts.Person`, kind=CONTACT, nullable — **external** agent / intermediary representing the guest), `zoho_id`. See reconciliation issue #26 for the two-field rationale.
 
 Trip-search constraints (denormalised for query speed):
 - `from_date`, `to_date`, `dates_flexible` (bool), `flex_days`, `adults`, `children`, `infants`, `min_bedrooms`, `max_bedrooms`, `country` (FK), `regions` (M2M), `features` (M2M), `budget_min_amount`, `budget_max_amount`, `budget_currency`.
@@ -184,7 +184,7 @@ Fields: `enquiry` (FK), `author` (FK User), `kind` (`general` / `internal` / `pr
 ### Quotation
 Header for a multi-villa quote. Original `VillaQuotationMaster`.
 
-Fields: `enquiry` (FK, nullable), `guest` (FK), `agent` (FK to Contact, nullable), `number` (int, sequence-backed, unique), `reference` (e.g., `QVC184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
+Fields: `enquiry` (FK, nullable), `person` (FK to `accounts.Person`, kind=CUSTOMER — the customer), `agent` (FK to `accounts.Person`, kind=CONTACT, nullable), `number` (int, sequence-backed, unique), `reference` (e.g., `QVC184`), `status` (enum), `from_date`, `to_date`, `total_weeks`, `guests` (adult+child), `created_by`, `sent_at`, `zoho_id`.
 
 **Status**: `draft`, `sent`, `viewed`, `converted`, `withdrawn`, `lost`.
 
@@ -200,7 +200,7 @@ Fields: `quotation` (FK), `property` (FK), `from_date`, `to_date`, `nights`, `pr
 ### Booking
 The confirmed reservation. Original `VillaBooking`.
 
-Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `guest` (FK), `payer` (FK to Guest, nullable — defaults to guest), `agent` (FK to Contact, nullable — **external** agent / intermediary), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`. Backs `?assigned_to=` filter and `:assign` action — see reconciliation issue #26), `reference` (e.g., `VC2391` — carried forward from the quotation's `QVC2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
+Fields: `property` (FK), `quotation` (FK, nullable), `enquiry` (FK, nullable — denormalised for reporting), `person` (FK to `accounts.Person`, kind=CUSTOMER — the lead customer), the **payer** is a `Person` too, modelled via the `BookingGuest` PAYER role (defaults to the lead when not separately set), `agent` (FK to `accounts.Person`, kind=CONTACT, nullable — **external** agent / intermediary), `assigned_to` (FK to User, nullable — **internal** staff owner; distinct from `agent`. Backs `?assigned_to=` filter and `:assign` action — see reconciliation issue #26), `reference` (e.g., `VC2391` — carried forward from the quotation's `QVC2391`), `status` (enum), `site_source` (enum — which inbound channel/WP storefront), `from_date`, `to_date`, `adults`, `children`, `infants`, `currency` (FK), `rental_amount`, `discount_amount`, `discount_reason`, `adjustment_amount`, `adjustment_reason`, `tbc` (to-be-confirmed flag for tentative bookings), `concierge_tier` (`quintessential` / `signature`), `concierge_price_amount`, `arrival_time`, `departure_time`, `flight_info`, `special_requests`, `origin` (`enquiry` / `quote` / `direct` / `ota` / `import`), `channel` (enum: `direct_onsite` / `direct_offsite` / `agent_onsite` / `agent_offsite` / `airbnb` / `booking_com` / `vrbo`), `is_owner_confirmed`, `requires_owner_approval` (denorm from property setting at booking time), `zoho_id`.
 
 Note: operator notes (legacy `Notes`, `ConciergeNotes`, internal-notes, villa-notes textareas) are not stored as flat columns. They live in `BookingNote` (below), keyed by `kind`.
 
@@ -225,7 +225,7 @@ Note: `archived` is **not** a status value. It is a boolean flag (`Booking.is_ar
 ### ConciergeLineItem
 Original `VillaBookingConcierge` / `VillaConcierge` (the original had two parallel tables — collapsed here). There is no upstream `ConciergeService` catalogue model: legacy `VillaConciergeServices` held only 2 tier-label rows ("Quintessential", "Signature"); those collapse to a `ConciergeTier` TextChoices on the line item and the per-item name/description/unit-price/unit/currency live directly on the row. See reconciliation issue #34.
 
-Fields: `booking` (FK), `tier` (`quintessential` / `signature`), `name`, `description` (rich text), `quantity`, `unit` (`day` / `stay` / `event` / `hour`), `unit_price`, `currency` (FK), `supplier` (FK to Contact, nullable), `supplier_cost_amount` (internal-only), `payment_timing` (`now` / `with_balance` / `on_completion` / `included`), `payment_status` (enum), `assigned_to` (FK to User, nullable), `scheduled_at`, `confirmed_at`, `notes`, `display_order`.
+Fields: `booking` (FK), `tier` (`quintessential` / `signature`), `name`, `description` (rich text), `quantity`, `unit` (`day` / `stay` / `event` / `hour`), `unit_price`, `currency` (FK), `supplier` (FK to `accounts.Person`, kind=CONTACT, nullable), `supplier_cost_amount` (internal-only), `payment_timing` (`now` / `with_balance` / `on_completion` / `included`), `payment_status` (enum), `assigned_to` (FK to User, nullable), `scheduled_at`, `confirmed_at`, `notes`, `display_order`.
 
 **Status** (`ConciergeLineItem.payment_status`): `awaiting`, `sent`, `paid`, `failed`, `included`, `refunded`.
 
@@ -271,19 +271,23 @@ Hold-expiry is processed by a Celery beat job — no client endpoint.
 
 ## 6. People cluster
 
-### Contact
-Owner, manager, agent, accountant, supplier — anyone other than the booking-side guest. Original `VillaContact`.
+### Person
+The single unified human-identity model (GAP-045 folded the former `Guest` into the model formerly called `Contact`, renaming it `Person`). One row per human, whether a booking-side customer or an operator-side owner / manager / agent / accountant / supplier. Original `VillaContact` + `VillaClientDetail`.
 
-Fields: `title`, `first_name`, `last_name`, `company`, `address_*`, `country` (FK), `preferred_method` (`email` / `phone` / `whatsapp`), `notes`, `is_active`, `zoho_id`. (No `password` etc. — Contacts are not auth users; if they need portal access, a `User` row is linked with a `contact` FK.)
+A `kind` enum (`CUSTOMER` vs `CONTACT`) distinguishes the two sides: `CUSTOMER` is the booking-side customer (Enquiry / Quotation / Booking); `CONTACT` is the operator-side party (owner / manager / agent / …). The kind-aware `/contacts` API manages both (e.g. `?kind=customer` for customers); the old `/guests` API is retired.
+
+Fields: `kind` (enum), `title`, `first_name`, `last_name`, `company`, `address_*`, `country` (FK), `region` (FK, nullable), `preferred_method` (`email` / `phone` / `whatsapp`), `dietary_notes`, `accessibility_notes`, `language`, `marketing_consent`, `notes`, `status` (`PersonStatus`: ACTIVE / INACTIVE / ANONYMIZED), `anonymized_at` (nullable), `zoho_id`. Optional `OneToOne` to `User` (for portal / staff access; if a person needs portal access a `User` row is linked). PII-anonymizable via `Person.anonymize()`; duplicate identities collapse via `Person.merge()`.
 
 Sub-resources:
-- `ContactEmail` — `contact` FK, `email`, `is_primary`, `is_verified`.
-- `ContactPhone` — `contact` FK, `phone`, `is_primary`.
+- `PersonEmail` — `person` FK, `email`, `is_primary`, `is_verified`.
+- `PersonPhone` — `person` FK, `phone`, `is_primary`.
+
+Reverse accessors for the customer side: `Person.bookings_as_customer`, `Person.enquiries_as_customer`, `Person.quotations_as_customer`, `Person.travel_preferences` (see `GuestPreference` — kept as the travel-preferences child, now FK to `person`).
 
 ### ContactPropertyMapping
 The granular permission/notification mapping. Original `VillaContactMapping`.
 
-Fields: `contact` (FK), `property` (FK), `role` (enum: `owner` / `manager` / `agent` / `concierge` / `accountant` / `read_only` / `viewer` / `custom`), `is_primary_contact`, `is_cc`, `notes`.
+Fields: `contact` (FK to `accounts.Person`, kind=CONTACT), `property` (FK), `role` (enum: `owner` / `manager` / `agent` / `concierge` / `accountant` / `read_only` / `viewer` / `custom`), `is_primary_contact`, `is_cc`, `notes`.
 
 Permission flags (only consulted when `role=custom`; otherwise role implies):
 - `access_info`, `access_avail`, `access_rates`, `access_booking`, `access_confirm_auth`, `access_slip`.
@@ -293,19 +297,15 @@ When a role preset is chosen, the booleans are still set (computed from the role
 
 **Dropped from original**: `VillaContactMap` (overlapped), `VillaContactRoleMapping` (rolled into the `role` field), `VillaContactGroupMap` (dropped — group-level contact assignment was unused in legacy; if a real need surfaces, add a `PropertyGroup` FK on `ContactPropertyMapping` or a sibling table).
 
-### Guest
-Booking-side customer (separate from `Contact`). Original `VillaClientDetail`.
-
-Fields: `title`, `first_name`, `last_name`, `email`, `phone`, `country` (FK), `region` (FK, nullable), `address_*`, `dietary_notes`, `accessibility_notes`, `language`, `marketing_consent`, `gdpr_anonymized_at` (nullable).
-
-`Guest.bookings` reverse, `Guest.enquiries` reverse, `Guest.quotations` reverse.
+### Guest (folded into Person)
+The booking-side customer is no longer a separate model. GAP-045 folded the former `Guest` into `accounts.Person` (kind=CUSTOMER) — see the `### Person` entry above and `01-accounts.md` for the unified spec. The former `Guest.bookings` / `enquiries` / `quotations` reverse accessors are now `Person.bookings_as_customer` / `enquiries_as_customer` / `quotations_as_customer`. The traveller / "guest" concept (a person staying at a villa) is unchanged; multi-person bookings still link via `BookingGuest` (now FK to `person`) and travel preferences via `GuestPreference` (now FK to `person`).
 
 ### User
-Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_superuser` (Django built-in — replaces legacy `IsSystemAdmin`), `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`, `role` (fixed `StaffRole` TextChoices: `ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER`). Linked optionally to a `Contact` (for owner-portal users).
+Staff account. `email` (PK alt to id), `first_name`, `last_name`, `password_hash`, `is_active`, `is_superuser` (Django built-in — replaces legacy `IsSystemAdmin`), `is_2fa_enabled`, `2fa_secret`, `last_login_at`, `last_login_ip`, `failed_attempts`, `locked_until`, `timezone`, `language`, `avatar_key`, `role` (fixed `StaffRole` TextChoices: `ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER`). Linked optionally to a `Person` (for owner-portal users).
 
 `User.role` is a hard-coded enum, not a row in a table. Each enum value maps to a fixed Django `auth.Group` (created via migration) that carries the actual `auth.Permission` rows. Admin UI exposes the enum as a read-only `/roles` list and `?role=` filter; there is no `/roles` CRUD. The legacy app had no editable staff-role table either — staff power was a single `UserMaster.IsSystemAdmin` boolean. See reconciliation issue #9.
 
-**Do not confuse `User.role` (staff capability) with `PropertyContactAssignment.role` (how a `Contact` relates to a `Property`: owner / manager / agent / housekeeper / owner's-rep — the `accounts.ContactRole` enum, §6 below).** They are different concepts; only `User.role` is what `/roles` API refers to.
+**Do not confuse `User.role` (staff capability) with `PropertyContactAssignment.role` (how a `Person` (kind=CONTACT) relates to a `Property`: owner / manager / agent / housekeeper / owner's-rep — the `accounts.ContactRole` enum, §6 below).** They are different concepts; only `User.role` is what `/roles` API refers to.
 
 `UserSession` — active sessions for self-management.
 
@@ -347,7 +347,7 @@ Fields: `track` (polymorphic FK or three nullable FKs to the three tracks above)
 **Status**: `pending`, `succeeded`, `failed`, `refunded`, `disputed`, `voided`, `expired`, `waived`. `waived` is operator-applied to a scheduled `DEPOSIT` or `BALANCE` row (the `:waive` API action) — terminal, no money moves; the booking advances as if the payment had succeeded. `:mark-paid` is a separate transition that writes a manual receipt (`provider=MANUAL_BANK_TRANSFER`, `status=succeeded`); not a status of its own. See reconciliation issue #24.
 
 ### PaymentInstrument
-Per-charge audit record of the card/bank instrument used. Fields: `guest` (FK), `gateway`, `gateway_token`, `last_four`, `brand`, `expiry_month`, `expiry_year`, `created_at`. Original `VillaPayment`. **Note:** v1 does not expose a multi-method wallet to operators or guests — `PaymentMethod` API endpoints are deferred (see reconciliation issue #13). Records are write-once metadata attached to a `PaymentEvent`, not a reusable selection list; the `is_default` flag and tokenize/detach surfaces revisit when multi-method picker is in scope.
+Per-charge audit record of the card/bank instrument used. Fields: `person` (FK to `accounts.Person`, kind=CUSTOMER), `gateway`, `gateway_token`, `last_four`, `brand`, `expiry_month`, `expiry_year`, `created_at`. Original `VillaPayment`. **Note:** v1 does not expose a multi-method wallet to operators or guests — `PaymentMethod` API endpoints are deferred (see reconciliation issue #13). Records are write-once metadata attached to a `PaymentEvent`, not a reusable selection list; the `is_default` flag and tokenize/detach surfaces revisit when multi-method picker is in scope.
 
 ### Refund
 First-class workflow object for money flowing back to the guest. Owns the approve/reject/execute lifecycle; spawns one `PaymentEvent` (purpose=refund) per gateway transaction on execute.
@@ -449,7 +449,7 @@ Property (1) ──── (1)   PropertyFinance
 Property (1) ──── (1)   PriceDisplayConfig
 Property (many)──(many) Feature           (via PropertyFeature)
 Property (many)──(many) Collection        (via PropertyCollection)
-Property (many)──(many) Contact           (via ContactPropertyMapping)
+Property (many)──(many) Person            (kind=CONTACT, via ContactPropertyMapping)
 Property (many)──── (1) Region
 Property (many)──── (1) Country
 Property (many)──── (1) Currency
@@ -470,12 +470,12 @@ Enquiry (1) ──── (many) EnquiryEvent      (state-machine + assignment ti
 Enquiry (many)──── (0..1) User            (assigned_to — internal staff owner)
 Quotation (1) ──── (many) QuotationLine
 QuotationLine (many)── (1) Property
-Enquiry (many)──── (1) Guest
+Enquiry (many)──── (1) Person             (customer; kind=CUSTOMER)
 
 Booking (many)──── (1) Property
-Booking (many)──── (1) Guest              (lead guest)
-Booking (0..1)──── (0..1) Guest           (payer if different)
-Booking (many)──── (0..1) Contact         (agent — external)
+Booking (many)──── (1) Person             (lead customer; kind=CUSTOMER)
+Booking (0..1)──── (0..1) Person          (payer if different; via BookingGuest PAYER role)
+Booking (many)──── (0..1) Person          (agent — external; kind=CONTACT)
 Booking (many)──── (0..1) User            (assigned_to — internal staff owner)
 Booking (many)──── (0..1) Quotation
 Booking (1) ──── (1) DepositPaymentTrack
@@ -489,15 +489,17 @@ Booking (1) ──── (many) Refund
 Each PaymentTrack (1) ──── (many) PaymentEvent
 Each PaymentTrack (1) ──── (many) Refund
 
-Contact (1) ──── (many) ContactEmail
-Contact (1) ──── (many) ContactPhone
-Contact (many)──(many) Property           (via ContactPropertyMapping)
-Contact (0..1)──── (0..1) User            (when contact has portal access)
+Person (1) ──── (many) PersonEmail
+Person (1) ──── (many) PersonPhone
+Person (many)──(many) Property            (kind=CONTACT, via ContactPropertyMapping)
+Person (0..1)──── (0..1) User             (when person has portal access)
 
-Guest (1) ──── (many) Booking
-Guest (1) ──── (many) Enquiry
-Guest (1) ──── (many) Quotation
-Guest (1) ──── (many) PaymentInstrument
+Person (1) ──── (many) Booking            (as customer; kind=CUSTOMER)
+Person (1) ──── (many) Enquiry            (as customer)
+Person (1) ──── (many) Quotation          (as customer)
+Person (1) ──── (many) PaymentInstrument
+Person (1) ──── (many) BookingGuest       (LEAD / CO_TRAVELLER / PAYER / CC_ONLY roles)
+Person (1) ──── (many) GuestPreference    (travel preferences)
 
 User (1) ──── (many) UserSession
 User (1) ──── (many) Notification
@@ -537,7 +539,7 @@ For the migration script's reference.
 | `VillaQuotationMaster` + `VillaQuotationDetail` | Renamed `Quotation` + `QuotationLine`. |
 | `VillaEnquire` | Renamed `Enquiry`. |
 | `VillaBooking` | Renamed `Booking`. |
-| `VillaClientDetail` | Renamed `Guest`. |
-| `VillaClientPrefMaster`, `ClientPreferenceDetail` | Folded into `Guest.preferences` (rich text) or dropped if unused. Verify with ops during migration. |
+| `VillaClientDetail` | Mapped to `accounts.Person` (kind=CUSTOMER, keyed `legacy_id="client-{Id}"`). The former `Guest` model was folded into `Person` by GAP-045. |
+| `VillaClientPrefMaster`, `ClientPreferenceDetail` | Folded into the Person's travel preferences (`GuestPreference` rows keyed on `person`). Verify with ops during migration. |
 
 All other `Villa*` tables map 1:1 to entities above with the `Villa` prefix removed.

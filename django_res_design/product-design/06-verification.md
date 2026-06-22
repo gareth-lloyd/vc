@@ -89,7 +89,7 @@ These are flagged in the design but not resolved. Each blocks at least one slice
 
 9. **Multi-site inventory sharing** — `VillaBooking` originally had a `Booked-VC` status indicating a booking from another VC site. The design carries this over. Confirm sites do share inventory (one villa visible on multiple branded sites), or whether each villa is exclusive to one site.
 
-10. **Guest data retention / GDPR** — `04-rest-api-surface.md` §2.17 lists `POST /guests/{id}:anonymize`. Confirm retention policy (default keep-forever, anonymise on request? Or auto-anonymise N years after last booking?).
+10. **Customer data retention / GDPR** — anonymisation runs against the unified `accounts.Person` via the kind-aware `/contacts` API (the former `/guests` endpoint is retired). Confirm retention policy (default keep-forever, anonymise on request? Or auto-anonymise N years after last booking?).
 
 11. **Email templates inheritance** — design assumes templates can be per-site (white-labelled). Confirm; clarify the inheritance chain (system default → site override → property override?).
 

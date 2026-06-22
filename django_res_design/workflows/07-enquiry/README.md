@@ -32,7 +32,7 @@ Enquiry → Quotation (one-or-more) → Booking → Payment → Stay
 
 ## Open design questions for the Django redesign
 
-- The data-model design (`../05-reservations.md`) plans `reservations.Enquiry` with FKs to `Guest` and `Property` collections. The migration drops most of the comma-delimited string columns.
+- The data-model design (`../05-reservations.md`) plans `reservations.Enquiry` with a `person` FK to `accounts.Person` and FKs to `Property` collections. The migration drops most of the comma-delimited string columns.
 - Status enum should be `TextChoices` not magic integers (1/2/3).
 - `EnquireSaurce` text values are computed at the legacy boundary (see `enquiry-intake.md`). Make them an enum.
 - The "sign-up via enquiry" branch (`IsSignUp=true`) — decide whether this still belongs here or moves to a separate sign-up workflow.

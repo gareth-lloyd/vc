@@ -110,7 +110,7 @@ class SyncClient:
 ```
 
 ### `ZohoSyncClient`
-Pushes `Property`, `Quotation`, `Booking`, `Guest` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
+Pushes `Property`, `Quotation`, `Booking`, `Person` to Zoho CRM. Pulls limited fields back (mostly status changes from CRM-side activity). Reconciliation compares fingerprints daily.
 
 Enquiries also carry CRM tags on push: `Enquiry.lead_status` (the `HOT`/`WARM`/`COLD`/`DEAD` TextChoices added in `05-reservations.md`) is pushed to Zoho as a lead tag, alongside the existing loss reason captured on the `LOST` `EnquiryEvent`. See `05-reservations.md`.
 

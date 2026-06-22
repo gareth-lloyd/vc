@@ -17,7 +17,7 @@ OneToOne with `Property`. All operator-editable fields are nullable; `NULL` mean
 ### Anchor
 - `property` — OneToOne Property CASCADE primary_key
 - `season` — FK `pricing.RatePlan` SET_NULL, null=True (legacy `SeasonId`; ties finance to a rate plan in rare cases)
-- `contact` — FK accounts.Contact PROTECT, null=True — financial recipient (owner who gets paid)
+- `contact` — FK accounts.Person PROTECT, null=True — financial recipient (owner who gets paid)
 - `parent` — self-FK null=True (legacy `ParentId`; allows finance overrides for a sub-period referencing a parent finance config)
 - `notes` — TextField(blank=True)
 

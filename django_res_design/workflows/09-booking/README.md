@@ -46,4 +46,4 @@ Confirmed reservations. A booking is the row that locks a villa for a guest, gen
 - Replace `VillaBooking.IsOwnerConfirmed` boolean with an explicit `OwnerConfirmation` state machine + event log.
 - Decompose the payment-method int enum into a typed enum.
 - The 3-tier payment schedule (Deposit / Balance / Security Deposit) is hard-coded in code branches — model it as configurable payment-schedule templates on the property.
-- The "client details captured at booking time" (`VillaClientDetails`) is **separate from** the `VillaContact` master directory and **separate from** the client fields denormalised on `VillaQuotationMaster`. The redesign should unify on a single `Guest` model with snapshots taken at booking time for audit.
+- The "client details captured at booking time" (`VillaClientDetails`) is **separate from** the `VillaContact` master directory and **separate from** the client fields denormalised on `VillaQuotationMaster`. The redesign unifies on a single `accounts.Person` identity model (GAP-045 folded the former `reservations.Guest` into it), with snapshots taken at booking time for audit.

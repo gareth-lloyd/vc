@@ -34,7 +34,7 @@ Plus pricing-engine SPs (see `04-pricing/pricing-engine.md`).
 
 ## Open design questions for the Django redesign
 
-- The data-model design (`../05-reservations.md`) plans `reservations.Quotation` and `reservations.QuotationLine` with proper relational design and FKs to `Guest`, `Agent`, `Property`. Drop the denormalised copies on the master.
+- The data-model design (`../05-reservations.md`) plans `reservations.Quotation` and `reservations.QuotationLine` with proper relational design and FKs to `accounts.Person` (the `person` customer FK, plus the `agent` FK) and `Property`. Drop the denormalised copies on the master.
 - Stage as `TextChoices`; explicit state transitions with audit rows.
 - **No quotation PDF.** Delivery is the inline HTML email (legacy parity —
   legacy sends HTML only, never a PDF). A guest-saveable PDF was considered

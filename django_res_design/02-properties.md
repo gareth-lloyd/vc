@@ -243,9 +243,9 @@ The through model carries curation metadata that a naive `PUT /properties/{id}/c
 ## Property–Contact assignment
 
 ### `PropertyContactAssignment(AuditedModel)`
-Through model linking properties to `accounts.Contact`. Lifecycle is the `end_date` field: an open-ended assignment has `end_date IS NULL`; ending the relationship sets `end_date` to the last date the contact held the role. The row is never hidden; queries that want the current set filter `end_date IS NULL`.
+Through model linking properties to `accounts.Person`. Lifecycle is the `end_date` field: an open-ended assignment has `end_date IS NULL`; ending the relationship sets `end_date` to the last date the contact held the role. The row is never hidden; queries that want the current set filter `end_date IS NULL`.
 - `property` — FK CASCADE
-- `contact` — FK accounts.Contact PROTECT
+- `contact` — FK accounts.Person PROTECT
 - `role` — TextChoices `accounts.ContactRole`
 - `start_date` — DateField(null=True, blank=True)
 - `end_date` — DateField(null=True, blank=True) — null = open-ended; set to a date when the assignment terminates
@@ -265,7 +265,7 @@ primary contact" must label which role it is resolving. See `10-decisions.md`.
 
 Surfaced on Property:
 ```python
-contacts = M2M("accounts.Contact", through="PropertyContactAssignment", related_name="properties")
+contacts = M2M("accounts.Person", through="PropertyContactAssignment", related_name="properties")
 ```
 
 ## Things explicitly dropped or moved

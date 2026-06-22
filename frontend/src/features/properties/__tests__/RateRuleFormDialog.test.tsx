@@ -327,3 +327,94 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
     await waitFor(() => expect(screen.queryByText("£")).not.toBeInTheDocument());
   });
 });
+
+describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  const pct20 = { calculation_type: "percent", amount: "20.00" };
+  const exemptTax = { percentage: "0", is_exempt: true };
+
+  it("shows the derived owner net for a GROSS plan", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+        priceBasis="gross"
+        commission={pct20}
+        tax={exemptTax}
+      />,
+    );
+    // gross 1000, 20% commission carved out → owner net 800
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "1000");
+    const hint = await screen.findByTestId("derived-counterpart");
+    expect(hint).toHaveTextContent(/Owner net/i);
+    expect(hint).toHaveTextContent("€800.00");
+  });
+
+  it("shows the derived guest price for a NET plan (÷(1−pct), not ×(1+pct))", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+        priceBasis="net"
+        commission={pct20}
+        tax={exemptTax}
+      />,
+    );
+    // net 800, 20% commission → guest price 1000 (800 / 0.8)
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "800");
+    const hint = await screen.findByTestId("derived-counterpart");
+    expect(hint).toHaveTextContent(/Guest price/i);
+    expect(hint).toHaveTextContent("€1,000.00");
+  });
+
+  it("shows no hint when the basis is unknown", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+        commission={pct20}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "1000");
+    expect(screen.queryByTestId("derived-counterpart")).not.toBeInTheDocument();
+  });
+
+  it("hides the hint once POA masks the price inputs", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateRuleFormDialog
+        seasonId={11}
+        cardId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+        priceBasis="gross"
+        commission={pct20}
+        tax={exemptTax}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "1000");
+    expect(await screen.findByTestId("derived-counterpart")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/price on application/i));
+    await waitFor(() =>
+      expect(screen.queryByTestId("derived-counterpart")).not.toBeInTheDocument(),
+    );
+  });
+});

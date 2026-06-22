@@ -14,7 +14,8 @@ import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { addDaysIso, suggestRateBandEnd } from "@/lib/format/date";
-import { currencyAdornment } from "@/lib/format/money";
+import { currencyAdornment, formatMoney } from "@/lib/format/money";
+import { deriveNetGross, type CommissionInput, type TaxInput } from "@/lib/pricing/netGross";
 import { useCreateRateRule, useUpdateRateRule } from "../hooks";
 import {
   rateRuleWriteInputSchema,
@@ -36,6 +37,14 @@ interface CommonProps {
   /** The rate plan's currency code (GAP-026), shown as an adornment beside the
    * nightly/weekly inputs. Null when the season has no currency. */
   currencyCode?: string | null;
+  /** GAP-035 net↔gross derivation inputs. `priceBasis` is the season's
+   * `price_basis` (what the typed figure represents); `commission`/`tax` are the
+   * property's group-resolved effective policy. When all are present the form
+   * shows the derived counterpart (owner net for a GROSS plan, guest price for a
+   * NET plan) live beside each price input. Absent → no hint, no behaviour change. */
+  priceBasis?: string | null;
+  commission?: CommissionInput | null;
+  tax?: TaxInput | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -87,9 +96,51 @@ function toPayload(values: RateRuleWriteInput): RateRuleWritePayload {
   };
 }
 
+/** GAP-035: live net↔gross hint under a price input. Renders the counterpart of
+ * the typed figure — owner net for a GROSS plan, guest price for a NET plan —
+ * or nothing when the basis/currency is unknown or there's nothing to derive
+ * (empty/POA/unpriceable). Display-only; the stored figure is what was typed. */
+function DerivedCounterpartHint({
+  amount,
+  basis,
+  commission,
+  tax,
+  currencyCode,
+}: {
+  amount: string | undefined;
+  basis?: string | null;
+  commission?: CommissionInput | null;
+  tax?: TaxInput | null;
+  currencyCode?: string | null;
+}) {
+  const { t } = useTranslation("properties");
+  if ((basis !== "net" && basis !== "gross") || !currencyCode) return null;
+  const derived = deriveNetGross(amount, basis, commission ?? null, tax ?? null);
+  if (!derived) return null;
+  const label =
+    basis === "gross"
+      ? t("pricing.rule.dialog.derived.owner_net")
+      : t("pricing.rule.dialog.derived.guest_price");
+  return (
+    <p className="text-muted-foreground text-xs" data-testid="derived-counterpart">
+      {label}: {formatMoney(derived.counterpart, currencyCode)}
+    </p>
+  );
+}
+
 export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
-  const { seasonId, cardId, open, onOpenChange, changeoverDay, minNightsRental, currencyCode } =
-    props;
+  const {
+    seasonId,
+    cardId,
+    open,
+    onOpenChange,
+    changeoverDay,
+    minNightsRental,
+    currencyCode,
+    priceBasis,
+    commission,
+    tax,
+  } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const priceAdornment = currencyAdornment(currencyCode);
@@ -167,6 +218,8 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
   };
 
   const isPoa = form.watch("is_poa");
+  const nightly = form.watch("nightly");
+  const weekly = form.watch("weekly");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -273,6 +326,15 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
                   {fieldErrorText(t, form.formState.errors.nightly.message)}
                 </p>
               ) : null}
+              {!isPoa ? (
+                <DerivedCounterpartHint
+                  amount={nightly}
+                  basis={priceBasis}
+                  commission={commission}
+                  tax={tax}
+                  currencyCode={currencyCode}
+                />
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -288,6 +350,15 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
                 <p className="text-destructive text-sm" role="alert">
                   {fieldErrorText(t, form.formState.errors.weekly.message)}
                 </p>
+              ) : null}
+              {!isPoa ? (
+                <DerivedCounterpartHint
+                  amount={weekly}
+                  basis={priceBasis}
+                  commission={commission}
+                  tax={tax}
+                  currencyCode={currencyCode}
+                />
               ) : null}
             </div>
           </div>

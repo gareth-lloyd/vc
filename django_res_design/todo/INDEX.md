@@ -26,7 +26,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | Id | Title | Status |
 |---|---|---|
 | [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ decision-blocked (DamageClaim in v1?) |
-| [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ⬜ code deferred to finance rewrite; **spec slice NOT written** (04-pricing has no GROSS carve-out / NET gross-up) |
+| [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | 🟨 spec written (04-pricing 8-9 GROSS carve-out / NET gross-up + 10-decisions deferred row + engine TODO/assembly pointers); **engine code deferred to finance rewrite** (x-ref GAP-035 single-source-of-truth) |
 
 ## 🟠 Footguns
 

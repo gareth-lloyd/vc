@@ -56,7 +56,7 @@ Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. 
 - `property` — FK properties.Property PROTECT
 - `name` — CharField (e.g. "Summer 2026", "2026 Agent Net")
 - `currency` — FK Currency PROTECT
-- `price_basis` — TextChoices (`GROSS`, `NET`) — gross is customer-facing, net is agent. **Owner-facing views must show net.** The legacy build leaked **gross** figures onto the owner booking-confirmation (a "big low moment a couple of weeks in", 2026-06-08 demo) — a genuine logic bug, not a config gap. The rebuild closes it: `PricingEngine` computes `net_to_owner` explicitly (step 10) and owner-facing serializers read that field directly rather than recomputing. Treat "owner confirmation shows net" as an acceptance criterion, not an implementation detail.
+- `price_basis` — TextChoices (`GROSS`, `NET`) — gross is customer-facing, net is agent. **Owner-facing views must show net.** The legacy build leaked **gross** figures onto the owner booking-confirmation (a "big low moment a couple of weeks in", 2026-06-08 demo) — a genuine logic bug, not a config gap. The rebuild closes it: `PricingEngine` derives commission/tax `price_basis`-aware (GROSS carve-out vs NET gross-up — Services steps 8-9, BUG-009) and computes `net_to_owner` explicitly (step 10), and owner-facing serializers read that field directly rather than recomputing. Treat "owner confirmation shows net" as an acceptance criterion, not an implementation detail. **Engine status:** the mode-aware branch is *specified* here but its **code is deferred to the finance rewrite** — today's engine always adds commission/tax on top, which over-charges the (currently universal) GROSS plans; see `todo/bug-009-price-basis-ignored-by-engine.md`.
 - `effective_from` — DateField
 - `effective_to` — DateField(null=True, blank=True) — open-ended
 - `is_active` — bool
@@ -432,9 +432,29 @@ Steps:
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).
 6. Apply caller-supplied opt-in `Extra`s (the `opt_in_extras` argument).
 7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE) plus optional PROMO_CODE. `REPEAT_GUEST` is a recognised enum member but **not implemented in v1** (no repeat-guest detection exists yet); the engine excludes it at the queryset so it can never silently mis-apply (see GAP-009).
-8. Apply commission from `property.finance.effective_commission()` (the resolver in `03-finance-config.md`).
-9. Apply tax last from `property.finance.effective_tax_policy()` — tax base is rate subtotal + extras − discounts.
-10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). The breakdown carries `total`, `commission`, `tax`, `is_projected`, `projection` (provenance, or `null`), and `net_to_owner = total - commission - tax` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.
+8. **Derive commission and tax `price_basis`-aware (BUG-009).** Read the resolved `RatePlan.price_basis` (authoritative — see "Which basis field" below). The rate is either the guest-facing gross or the owner net, and commission/tax are derived differently in each mode, with **mode-dependent bases**, mirroring legacy `RatesModel.Calculate()` (`ResSystem/NewResSystem.Core/Services/Properties/RatesModel.cs:112-252`). Let `base = rate_subtotal + extras − discounts`.
+   - **GROSS** — the rate already includes tax and commission; **carve them out, never add on top**:
+     - `tax = base × tax_rate/100` (tax base = the gross `base`)
+     - `commission = (base − tax) × commission_pct/100` (commission base = gross − tax)
+     - `total = base` (the guest pays the gross); `net_to_owner = base − tax − commission`
+   - **NET** — the rate is the owner net; **gross up**:
+     - `commission = base/(1 − commission_pct/100) − base` (commission base = net)
+     - `tax = (base + commission)/(1 − tax_rate/100) − (base + commission)` (tax base = net + commission)
+     - `total = base + commission + tax`; `net_to_owner = base`
+
+   Legacy applied the mode maths per rate row (on the weekly/nightly figure), not to extras; the rebuild applies them to the combined `base` — revisit if extras must ever be tax-exempt (finance rewrite). The tax base and the commission base differ by mode (note the order: GROSS taxes the gross then commissions the post-tax remainder; NET commissions the net then taxes net+commission).
+9. **Fixed vs percentage commission; exemption.** A *percentage* commission scales with its mode base as above. A *fixed* commission is the flat amount in **both** modes (legacy `CommissionAmount = Commission`). Tax is skipped entirely when `effective_tax_policy` reports exempt. The `effective_commission` / `effective_tax_policy` resolvers live in `03-finance-config.md`; `PropertyFinance` does **not** model NET/GROSS — basis lives on `RatePlan`, so the finance side only supplies pct / fixed / exempt and needs no new field. *(Implementation note: today's engine treats a **fixed** commission as an owner-payout concern and omits it from the guest-price line — a deliberate divergence from legacy that the finance rewrite must close or ratify; see BUG-009.)*
+10. Snapshot full breakdown to `Quote.breakdown` (this is what `QuotationLine.pricing_snapshot` and `Booking.pricing_snapshot` persist). `total` is assembled per the plan's `price_basis` (step 8 — added-on-top for NET, identical to the gross rate for GROSS), but `net_to_owner = total - commission - tax` holds in **both** modes. The breakdown carries `total`, `commission`, `tax`, `is_projected`, `projection` (provenance, or `null`), and `net_to_owner` as explicit fields — owner-facing serializers read `net_to_owner` directly from the snapshot rather than recomputing. Legacy-loader snapshots (`BookingLoader` writes `{}`) and pre-this-contract snapshots fall back to subtracting client-side; new snapshots written by `PricingEngine.quote` always carry `net_to_owner`.
+
+> **Which basis field is authoritative (BUG-009 ↔ GAP-035).** The engine reads
+> **`RatePlan.price_basis`** — basis is a per-plan property (a villa may run a
+> GROSS public plan and a NET agent plan at once), so it resolves *with the plan*,
+> not the property. `PropertySettings.prices_entered_as` / `GroupSettings.prices_entered_as`
+> is a **separate** property-level field the loader sets to `GROSS` and the Booking
+> owner-statement serializer currently reads (`reservations/serializers/booking.py`).
+> The two are a latent dual-source-of-truth; reconcile to one in the finance
+> rewrite — tracked in `todo/gap-035-net-gross-commission-derivation.md`. Until
+> then `RatePlan.price_basis` is canonical for pricing.
 
 **Breakdown enrichment (2026-06 quote-builder rework).** The breakdown additionally carries plan/card metadata the quote builder renders on each result line — all from data already in memory at quote time, zero extra queries: `inclusion` (the winning plan's inclusion text, which also seeds `QuotationLine.inclusions` at line creation — legacy `ResService.cs:1241` parity), `changeover_day` (the effective day code, `null` when unconstrained), `min_nights`/`max_nights` (the winning card's bounds, `null` on an all-fallback stay), and `occupancy_pricing` (true when the winning card has >1 distinct party band, i.e. the price moves with party size).
 

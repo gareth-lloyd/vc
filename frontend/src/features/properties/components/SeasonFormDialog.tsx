@@ -46,11 +46,27 @@ interface EditProps extends CommonProps {
 
 type SeasonFormDialogProps = CreateProps | EditProps;
 
-function createDefaults(currencyId: number | null): RatePlanWriteInput {
+type PriceBasisValue = (typeof PROPERTY_PRICE_BASES)[number];
+
+/** Narrow the settings endpoint's `prices_entered_as_effective` (a free string)
+ * to a valid basis, falling back to GROSS. */
+function asPriceBasis(value: string | null | undefined): PriceBasisValue {
+  return (PROPERTY_PRICE_BASES as readonly string[]).includes(value ?? "")
+    ? (value as PriceBasisValue)
+    : "gross";
+}
+
+function createDefaults(
+  currencyId: number | null,
+  basis: PriceBasisValue = "gross",
+): RatePlanWriteInput {
   return {
     name: "",
     currency: currencyId ?? 0,
-    price_basis: "gross",
+    // GAP-035: a new season inherits the property's default basis
+    // (prices_entered_as) so staff don't re-pick GROSS/NET every time. Still
+    // freely editable per plan — basis is a per-plan property.
+    price_basis: basis,
     effective_from: "",
     effective_to: "",
     is_active: true,
@@ -79,10 +95,13 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
 
   const settings = usePropertySettings(propertyId);
   const defaultCurrency = settings.data?.currency ?? null;
+  const defaultBasis = asPriceBasis(settings.data?.prices_entered_as_effective);
 
   const form = useForm<RatePlanWriteInput>({
     resolver: zodResolver(ratePlanWriteInputSchema),
-    defaultValues: isCreate ? createDefaults(defaultCurrency) : defaultsFromSeason(props.season),
+    defaultValues: isCreate
+      ? createDefaults(defaultCurrency, defaultBasis)
+      : defaultsFromSeason(props.season),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -91,12 +110,19 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
-    if (open) {
-      form.reset(isCreate ? createDefaults(defaultCurrency) : defaultsFromSeason(props.season));
-      setTopLevelError(null);
-    }
+    if (!open) return;
+    // Create defaults (currency, basis) arrive asynchronously from
+    // usePropertySettings, so this effect re-fires when they land to seed the
+    // still-pristine form. Once the operator has started editing, skip the
+    // re-seed — a late-arriving default must not form.reset() over their input
+    // (the open-edge reset already ran while the form was clean).
+    if (isCreate && form.formState.isDirty) return;
+    form.reset(
+      isCreate ? createDefaults(defaultCurrency, defaultBasis) : defaultsFromSeason(props.season),
+    );
+    setTopLevelError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isCreate ? defaultCurrency : props.season.id]);
+  }, [open, isCreate ? defaultCurrency : props.season.id, isCreate ? defaultBasis : null]);
 
   const handleSubmit = async (values: RatePlanWriteInput) => {
     setTopLevelError(null);

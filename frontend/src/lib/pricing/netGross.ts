@@ -32,18 +32,20 @@ import { parseMoney } from "@/lib/format/money";
 
 export type PriceBasis = "net" | "gross";
 
+// Fields are optional/nullable to accept the API's read shape verbatim (the
+// settings endpoint's `commission` / `tax` objects) without a mapping step.
 export interface CommissionInput {
   /** `"percent"` | `"fixed"` (or null when no finance is configured). */
-  calculation_type: string | null;
+  calculation_type?: string | null;
   /** Decimal string: a percentage when `percent`, an absolute amount when `fixed`. */
-  amount: string | null;
+  amount?: string | null;
 }
 
 export interface TaxInput {
   /** Decimal-string percentage, e.g. `"13.00"`. */
-  percentage: string | null;
+  percentage?: string | null;
   /** When true (or the policy is missing) tax is skipped entirely. */
-  is_exempt: boolean | null;
+  is_exempt?: boolean | null;
 }
 
 export interface DerivedCounterpart {
@@ -77,7 +79,7 @@ export function roundHalfEven(value: number, dp = 2): number {
   return (sign * unit) / factor;
 }
 
-function pct(value: string | null): number {
+function pct(value: string | null | undefined): number {
   const parsed = parseMoney(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }

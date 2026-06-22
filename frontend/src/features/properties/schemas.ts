@@ -661,6 +661,24 @@ export const propertySettingsSchema = z.object({
   currency_code: z.string().nullable().optional(),
   // GAP-034: the owner's online (non-iCal) calendar webpage; null when unset.
   calendar_url: z.string().nullable().optional(),
+  // GAP-035 rate-entry derivation context (read-only). The group-resolved
+  // default basis pre-fills a new season's `price_basis`; the effective
+  // commission + tax policy drive the rate-band form's net↔gross derivation.
+  prices_entered_as_effective: z.string().nullable().optional(),
+  commission: z
+    .object({
+      calculation_type: z.string().nullable().optional(),
+      amount: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  tax: z
+    .object({
+      percentage: z.string().nullable().optional(),
+      is_exempt: z.boolean().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 

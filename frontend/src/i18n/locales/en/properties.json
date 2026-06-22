@@ -400,6 +400,10 @@
           "save": "Save",
           "save_and_add": "Save & add another",
           "saving": "Saving…"
+        },
+        "derived": {
+          "owner_net": "Owner net",
+          "guest_price": "Guest price"
         }
       },
       "toasts": {

@@ -22,9 +22,17 @@ class PropertySettingsView(generics.RetrieveUpdateAPIView):
         # field read fires an extra uncached SELECT:
         #   - `location` (reverse-OneToOne) for `property.location.timezone`;
         #   - `group__settings__currency` for the group-fallback leg of
-        #     `effective("currency")` (GAP-026 `currency_code`).
+        #     `effective("currency")` (GAP-026 `currency_code`) — `group__settings`
+        #     also covers `effective("prices_entered_as")` (GAP-035);
+        #   - `finance` + `group__finance` for the property → group commission/tax
+        #     resolution behind the GAP-035 rate-entry derivation context.
         property_obj = get_object_or_404(
-            Property.objects.select_related("location", "group__settings__currency"),
+            Property.objects.select_related(
+                "location",
+                "group__settings__currency",
+                "finance",
+                "group__finance",
+            ),
             pk=self.kwargs["property_id"],
         )
         # `select_related("currency")` loads the property-level leg of

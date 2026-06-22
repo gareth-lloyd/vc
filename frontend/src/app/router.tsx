@@ -258,6 +258,37 @@ export const router = createBrowserRouter([
                         ],
                       },
                       {
+                        path: "/companies",
+                        lazy: async () => {
+                          const m = await import("@/features/companies/CompaniesListPage");
+                          return { Component: m.CompaniesListPage };
+                        },
+                      },
+                      {
+                        path: "/companies/:id",
+                        lazy: async () => {
+                          const m = await import("@/features/companies/CompanyDetailLayout");
+                          return { Component: m.CompanyDetailLayout };
+                        },
+                        children: [
+                          { index: true, element: <Navigate to="details" replace /> },
+                          {
+                            path: "details",
+                            lazy: async () => {
+                              const m = await import("@/features/companies/tabs/DetailsTab");
+                              return { Component: m.DetailsTab };
+                            },
+                          },
+                          {
+                            path: "audit",
+                            lazy: async () => {
+                              const m = await import("@/features/companies/tabs/AuditTab");
+                              return { Component: m.AuditTab };
+                            },
+                          },
+                        ],
+                      },
+                      {
                         // Section layout mounts the Enquiries↔Quotes tab strip
                         // once above the active child (list/board or quotes).
                         path: "/enquiries",

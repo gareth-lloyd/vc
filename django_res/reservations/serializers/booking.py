@@ -177,7 +177,7 @@ class BookingDetailSerializer(BookingListSerializer):
             "id": contact.pk,
             "first_name": contact.first_name,
             "last_name": contact.last_name,
-            "company": contact.company,
+            "company": contact.agency_name,
             "primary_email": primary_emails[0].email if primary_emails else None,
             "primary_phone": primary_phones[0].number if primary_phones else None,
             "address_line_1": contact.address_line_1,

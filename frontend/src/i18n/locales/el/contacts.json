@@ -42,7 +42,7 @@
   },
   "fields": {
     "name": "Όνομα",
-    "company": "Εταιρεία",
+    "agency": "Πρακτορείο",
     "email": "Email",
     "phone": "Τηλέφωνο",
     "status": "Κατάσταση",
@@ -65,7 +65,7 @@
     "end": "Λήξη"
   },
   "placeholders": {
-    "search": "Αναζήτηση κατά όνομα, εταιρεία ή email…",
+    "search": "Αναζήτηση κατά όνομα, πρακτορείο ή email…",
     "title": "Κος, Κα…",
     "preferred_method": "email, τηλέφωνο…",
     "email": "name@example.com",
@@ -126,7 +126,7 @@
     "detail_load_failed_title": "Δεν ήταν δυνατή η φόρτωση αυτής της επαφής",
     "detail_not_found_body": "Μπορεί να έχει διαγραφεί ή να μην έχετε πρόσβαση.",
     "detail_load_failed_body": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
-    "name_or_company_required": "Απαιτείται τουλάχιστον όνομα ή εταιρεία",
+    "name_or_agency_required": "Απαιτείται τουλάχιστον όνομα ή πρακτορείο",
     "channel_required": "Προσθέστε τουλάχιστον ένα email ή τηλέφωνο ώστε η επαφή να είναι προσβάσιμη"
   },
   "tooltips": {

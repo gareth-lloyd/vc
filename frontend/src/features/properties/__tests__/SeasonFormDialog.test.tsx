@@ -112,6 +112,38 @@ describe("SeasonFormDialog — create", () => {
     useAuthStore.getState().clear();
   });
 
+  it("defaults price_basis from the property's prices_entered_as (GAP-035)", async () => {
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([eurCurrency, gbpCurrency]))),
+      http.get("/api/v1/properties/7/settings", () =>
+        HttpResponse.json({ property: 7, currency: 42, prices_entered_as_effective: "net" }),
+      ),
+    );
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/properties/7/seasons", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 99, property: 7, ...postBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(
+      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
+    );
+    // The basis select reflects the property default before any edit.
+    const basisTrigger = await screen.findByLabelText(/Price basis/i);
+    await waitFor(() => expect(within(basisTrigger).getByText(/^Net$/i)).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText(/^Name$/i), "Agent net 2027");
+    await userEvent.type(screen.getByLabelText(/Effective from/i), "2027-06-01");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({ price_basis: "net" });
+    useAuthStore.getState().clear();
+  });
+
   it("surfaces field errors from a 400 response", async () => {
     setReservationsUser();
     installBaseHandlers(42);

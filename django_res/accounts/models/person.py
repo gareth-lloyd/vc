@@ -27,7 +27,19 @@ class Person(AuditedModel):
     title = models.CharField(max_length=16, blank=True)
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
-    company = models.CharField(max_length=128, blank=True)
+    # GAP-046: structured agency link — the successor to the free-text `company`
+    # field, which was dropped once every read was switched to `agency`/
+    # `agency_name` (migration 0012). "Is an agent" stays derived (has an agency /
+    # referenced as an `.agent`) — no capacity column (GAP-045 rule). PROTECT: an
+    # Organisation with agents can't be deleted out from under them (merge
+    # repoints first).
+    agency = models.ForeignKey(
+        "accounts.Organisation",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="agents",
+    )
     website_url = models.URLField(blank=True)
     preferred_method = models.CharField(
         max_length=8,
@@ -76,7 +88,6 @@ class Person(AuditedModel):
         "title",
         "first_name",
         "last_name",
-        "company",
         "address_line_1",
         "address_line_2",
         "town",
@@ -99,6 +110,20 @@ class Person(AuditedModel):
     def display_name(self) -> str | None:
         """Full name for staff lists, or ``None`` when both name parts blank."""
         return f"{self.first_name} {self.last_name}".strip() or None
+
+    @property
+    def agency_name(self) -> str:
+        """Display name of the linked agency, or ``""`` when unlinked (GAP-046).
+
+        The structured successor to the free-text ``company`` (dropped in the
+        contract step): readers that fell back to ``company`` now read this.
+        A null FK returns ``""`` without firing a query (the descriptor yields
+        ``None`` for an unset ``agency_id``); the live read paths select_related
+        ``agency`` so the linked case is cache-hit too. Callers wanting an
+        Optional treat ``""`` as falsy (``agency_name or None``).
+        """
+        agency = self.agency
+        return agency.name if agency is not None else ""
 
     def primary_email(self) -> str | None:
         """Primary email address, read from the prefetch cache.
@@ -150,7 +175,6 @@ class Person(AuditedModel):
         """
         self.first_name = "[REDACTED]"
         self.last_name = "[REDACTED]"
-        self.company = ""
         self.notes = ""
         self.address_line_1 = ""
         self.address_line_2 = ""
@@ -162,7 +186,6 @@ class Person(AuditedModel):
             update_fields=[
                 "first_name",
                 "last_name",
-                "company",
                 "notes",
                 "address_line_1",
                 "address_line_2",

@@ -74,7 +74,9 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
             # so the join suffices (no email/phone prefetch).
             "person",
             "enquiry",
-            "agent",
+            # GAP-046: agent_name falls back to the agency name, so join
+            # `agent__agency` (one query, no per-row Person/Organisation lookup).
+            "agent__agency",
         )
         # The detail serializer nests `lines`, each of which derives a
         # hero_image_url from its property's images, renders its own

@@ -215,6 +215,11 @@ export function SeasonDetailPanel({
     !!propertyCurrencyCode &&
     !!seasonCurrencyCode &&
     propertyCurrencyCode.toUpperCase() !== seasonCurrencyCode.toUpperCase();
+  // GAP-035: the season's basis + the property's group-resolved effective
+  // commission/tax drive the rate-band form's live net↔gross derivation hint.
+  const seasonPriceBasis = detail.data?.price_basis ?? null;
+  const commission = settings.data?.commission ?? null;
+  const tax = settings.data?.tax ?? null;
   const dash = t("common.unset");
 
   const deleteCardMutation = useDeleteRateCard(seasonId);
@@ -380,6 +385,9 @@ export function SeasonDetailPanel({
           changeoverDay={changeoverDay}
           minNightsRental={minNightsRental}
           currencyCode={seasonCurrencyCode}
+          priceBasis={seasonPriceBasis}
+          commission={commission}
+          tax={tax}
         />
       ) : null}
       {editingRule ? (
@@ -391,6 +399,9 @@ export function SeasonDetailPanel({
           mode="edit"
           rule={editingRule}
           currencyCode={seasonCurrencyCode}
+          priceBasis={seasonPriceBasis}
+          commission={commission}
+          tax={tax}
         />
       ) : null}
       {deletingCard ? (

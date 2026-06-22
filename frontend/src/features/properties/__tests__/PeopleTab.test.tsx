@@ -85,7 +85,13 @@ describe("PeopleTab", () => {
           id: 102,
           first_name: null,
           last_name: null,
-          company: "Sparkle Cleaning Ltd",
+          agency: 102,
+          agency_detail: {
+            id: 102,
+            name: "Sparkle Cleaning Ltd",
+            org_type: "agency",
+            status: "active",
+          },
           emails: [],
           phones: [],
         }),
@@ -292,7 +298,8 @@ describe("PeopleTab", () => {
             id: 500,
             first_name: "Fresh",
             last_name: "Owner",
-            company: "",
+            agency: null,
+            agency_detail: null,
             emails: [],
             phones: [],
           },
@@ -312,8 +319,11 @@ describe("PeopleTab", () => {
     await userEvent.click(pickerTrigger());
     await userEvent.click(await screen.findByRole("button", { name: /create new contact/i }));
 
-    // Fill the inline contact form and create.
+    // Fill the inline contact form and create. A new active contact needs at
+    // least one channel (the create schema's channel_required rule), so supply
+    // an email — otherwise the form blocks submit and never hands back.
     await userEvent.type(await screen.findByLabelText(/first name/i), "Fresh");
+    await userEvent.type(screen.getByLabelText(/^email$/i), "fresh@example.com");
     await userEvent.click(screen.getByRole("button", { name: /^create contact$/i }));
 
     // The assignment dialog re-opens with the new contact already selected:
@@ -351,7 +361,8 @@ describe("PeopleTab", () => {
           id: 999,
           first_name: null,
           last_name: null,
-          company: null,
+          agency: null,
+          agency_detail: null,
           emails: [],
           phones: [],
         }),

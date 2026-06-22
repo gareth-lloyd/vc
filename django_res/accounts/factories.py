@@ -6,7 +6,14 @@ import factory
 from factory.django import DjangoModelFactory
 
 from accounts import models
-from accounts.enums import EmailLabel, PersonKind, PersonStatus, PhoneLabel
+from accounts.enums import (
+    EmailLabel,
+    OrgStatus,
+    OrgType,
+    PersonKind,
+    PersonStatus,
+    PhoneLabel,
+)
 from core.enums import StaffRole
 from core.factories import RUN_TOKEN
 
@@ -28,13 +35,21 @@ class UserFactory(DjangoModelFactory):
     password = factory.PostGenerationMethodCall("set_password", "seed-password")
 
 
+class OrganisationFactory(DjangoModelFactory):
+    class Meta:
+        model = models.Organisation
+
+    name = factory.Sequence(lambda n: f"Org {RUN_TOKEN}-{n}")
+    org_type = OrgType.AGENCY
+    status = OrgStatus.ACTIVE
+
+
 class PersonFactory(DjangoModelFactory):
     class Meta:
         model = models.Person
 
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
-    company = factory.Faker("company")
     status = PersonStatus.ACTIVE
 
 

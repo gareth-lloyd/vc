@@ -1,0 +1,86 @@
+{
+  "aria": {
+    "picker_search": "Search companies",
+    "picker_results": "Search results"
+  },
+  "headings": {
+    "list_title": "Companies",
+    "library": "Library",
+    "create_dialog": "Create company",
+    "edit_dialog": "Edit company",
+    "overview": "Overview",
+    "sections_aria": "Company sections"
+  },
+  "tabs": {
+    "details": "Details",
+    "audit": "Audit"
+  },
+  "actions": {
+    "new": "New company",
+    "create": "Create company",
+    "create_new_inline": "+ Create new company"
+  },
+  "fields": {
+    "name": "Name",
+    "org_type": "Type",
+    "email": "Email",
+    "phone": "Phone",
+    "address_line_1": "Address line 1",
+    "address_line_2": "Address line 2",
+    "town": "Town",
+    "post_code": "Post code",
+    "website": "Website",
+    "notes": "Notes",
+    "status": "Status"
+  },
+  "placeholders": {
+    "search": "Search by name or email…",
+    "email": "name@example.com",
+    "phone": "+34 600 123 456",
+    "picker_trigger": "Select a company…",
+    "picker_search": "Search companies…"
+  },
+  "status": {
+    "any": "Any status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "org_type": {
+    "agency": "Agency",
+    "mgmt": "Management company",
+    "supplier": "Supplier"
+  },
+  "filters": {
+    "filter_status_aria": "Filter by status"
+  },
+  "toasts": {
+    "created": "Company created",
+    "updated": "Company updated",
+    "deleted": "Company deleted",
+    "delete_protected": "This company can't be deleted while it still has linked agents."
+  },
+  "empty": {
+    "list_title": "No companies match these filters",
+    "list_hint": "Try clearing the search or changing the status filter.",
+    "picker_min_chars": "Type at least 2 characters to search",
+    "picker_no_results": "No companies found"
+  },
+  "errors": {
+    "load_failed": "Couldn't load companies.",
+    "picker_search_failed": "Search failed",
+    "detail_not_found_title": "Company not found",
+    "detail_load_failed_title": "Couldn't load this company",
+    "detail_not_found_body": "It may have been deleted or you may not have access.",
+    "detail_load_failed_body": "Try again or head back to the list."
+  },
+  "tooltips": {
+    "create_role_required": "You need the Reservations role to create companies"
+  },
+  "confirm": {
+    "delete_title": "Delete this company?",
+    "delete_body": "This will permanently remove the company. Companies with linked agents can't be deleted."
+  },
+  "fallback": {
+    "name_with_id": "Company #{{id}}"
+  }
+}

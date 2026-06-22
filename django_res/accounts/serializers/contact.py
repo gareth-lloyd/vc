@@ -8,7 +8,8 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.enums import PersonStatus
-from accounts.models import Person, PersonEmail, PersonPhone
+from accounts.models import Organisation, Person, PersonEmail, PersonPhone
+from accounts.serializers.organisation import OrganisationSummarySerializer
 
 
 class ContactMergeSerializer(serializers.Serializer[None]):
@@ -48,6 +49,12 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     user: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
         read_only=True, allow_null=True
     )
+    # GAP-046: writable agency by pk + a read-only nested view under a distinct
+    # name so the write pk and the read object don't collide on `source`.
+    agency = serializers.PrimaryKeyRelatedField(
+        queryset=Organisation.objects.all(), allow_null=True, required=False
+    )
+    agency_detail = OrganisationSummarySerializer(source="agency", read_only=True)
 
     class Meta:
         model = Person
@@ -56,7 +63,8 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "title",
             "first_name",
             "last_name",
-            "company",
+            "agency",
+            "agency_detail",
             "website_url",
             "preferred_method",
             "address_line_1",

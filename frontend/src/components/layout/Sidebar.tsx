@@ -98,6 +98,12 @@ export function Sidebar() {
       prefetch: () => import("@/features/contacts/ContactsListPage"),
     },
     {
+      to: "/companies",
+      label: t("nav.companies"),
+      icon: Building2,
+      prefetch: () => import("@/features/companies/CompaniesListPage"),
+    },
+    {
       to: "/bookings",
       label: t("nav.bookings"),
       icon: CalendarCheck,

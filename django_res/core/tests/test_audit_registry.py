@@ -18,6 +18,7 @@ from django.apps import apps
 from core.audit import get_spec
 
 EXPECTED_TRACKED_MODELS = {
+    "accounts.Organisation",
     "accounts.Person",
     "accounts.User",
     "comms.EmailLog",

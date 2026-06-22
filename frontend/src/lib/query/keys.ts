@@ -2,6 +2,7 @@ export type PropertyId = string | number;
 export type BookingId = string | number;
 export type SeasonId = string | number;
 export type ContactId = string | number;
+export type CompanyId = string | number;
 export type EnquiryId = string | number;
 export type UserId = string | number;
 export type QuotationId = string | number;
@@ -77,6 +78,15 @@ export const queryKeys = {
     // serve the other's results.
     search: (q: string, kind: string = "contact", status?: string) =>
       ["contacts", "search", kind, status ?? "all", q] as const,
+  },
+  companies: {
+    all: () => ["companies"] as const,
+    lists: () => ["companies", "list"] as const,
+    list: <F>(filters: F) => ["companies", "list", filters] as const,
+    detail: (id: CompanyId) => ["companies", "detail", k(id)] as const,
+    // `status` is part of the cache key so a search scoped to active orgs can't
+    // collide with an unscoped one and serve the wrong picker results.
+    search: (q: string, status?: string) => ["companies", "search", status ?? "all", q] as const,
   },
   bookings: {
     all: () => ["bookings"] as const,

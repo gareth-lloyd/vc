@@ -56,12 +56,15 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
     # GAP-045 D2: `/contacts` is a kind-aware directory of ALL Persons —
     # customers included. Filter with `?kind=customer` / `?kind=contact`; no
     # param lists both (fork 3).
-    queryset = Person.objects.prefetch_related("emails", "phones")
+    queryset = Person.objects.select_related("agency").prefetch_related("emails", "phones")
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ContactFilterSet
-    search_fields = ["first_name", "last_name", "company", "emails__email"]
+    # GAP-046: search the structured `agency__name` (a single-valued forward FK →
+    # no row multiplication, so no COUNT inflation — the CLAUDE.md multi-valued
+    # search_fields caveat is N/A), not the free-text `company` it replaced.
+    search_fields = ["first_name", "last_name", "agency__name", "emails__email"]
     ordering_fields = ["last_name", "first_name", "created_at"]
 
     @action(detail=True, methods=["get"], url_path="properties")

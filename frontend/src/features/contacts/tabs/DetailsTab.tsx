@@ -293,7 +293,7 @@ export function DetailsTab() {
           <FactRow label={t("fields.title")} value={contact.title || "—"} />
           <FactRow label={t("fields.first_name")} value={contact.first_name || "—"} />
           <FactRow label={t("fields.last_name")} value={contact.last_name || "—"} />
-          <FactRow label={t("fields.company")} value={contact.company || "—"} />
+          <FactRow label={t("fields.agency")} value={contact.agency_detail?.name || "—"} />
           <FactRow
             label={t("fields.website")}
             value={

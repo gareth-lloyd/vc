@@ -296,6 +296,31 @@ def test_blank_external_id_record_does_not_mask_a_missing_id(
         _run("--integrations")
 
 
+@pytest.mark.django_db
+def test_organisation_agency_check_counts_only_agencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GAP-046: the Organisation check compares distinct normalised legacy
+    companies against the loaded *agency* count (non-agency orgs are excluded),
+    catching a silent 'zero orgs created' backfill regression."""
+    from accounts.enums import OrgType
+    from accounts.factories import OrganisationFactory
+
+    OrganisationFactory(org_type=OrgType.AGENCY)
+    OrganisationFactory(org_type=OrgType.AGENCY)
+    OrganisationFactory(org_type=OrgType.SUPPLIER)  # excluded from the agency count
+
+    org_check = next(c for c in reconcile_legacy._CHECKS if c.label == "Organisation (agency)")
+    _patch(
+        monkeypatch,
+        [org_check],
+        responses={"DISTINCT LTRIM(RTRIM(Company))": 2},  # legacy 2 - loaded 2 agencies = gap 0
+    )
+
+    output = _run()
+
+    assert "Organisation (agency)" in output
+    assert "OK" in output and "BLOCKER" not in output
+
+
 def test_documented_expected_gaps_are_encoded() -> None:
     # The six documented carve-outs from CUTOVER.md must live in code (this
     # module is their single source of truth).

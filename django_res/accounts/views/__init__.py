@@ -30,6 +30,7 @@ from accounts.views.contact import (
     SetPrimaryEmailView,
     SetPrimaryPhoneView,
 )
+from accounts.views.organisation import OrganisationMergeView, OrganisationViewSet
 from accounts.views.role import role_list
 from accounts.views.user import (
     UserSessionRevokeView,
@@ -52,6 +53,8 @@ __all__ = [
     "MagicLinkConsumeView",
     "MagicLinkRequestView",
     "MeView",
+    "OrganisationMergeView",
+    "OrganisationViewSet",
     "PasswordChangeView",
     "PasswordResetConfirmView",
     "PasswordResetRequestView",

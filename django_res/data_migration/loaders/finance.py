@@ -23,7 +23,7 @@ from accounts.models import Person
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
-from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
+from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
 from pricing.models.currency import Currency
 from pricing.services.currency import resolve_property_currency
 from properties.enums import (
@@ -37,10 +37,8 @@ from properties.models.finance import GroupFinance, PropertyFinance
 from properties.models.property import Property, PropertyGroup
 from reservations.enums import QuotationStatus
 from reservations.models.enquiry import Enquiry
-from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
-from reservations.services.person_sync import person_for_guest
 
 _COMMISSION_TYPE_MAP = {
     1: CommissionCalcType.PERCENT,
@@ -316,8 +314,8 @@ class QuotationLoader(BaseLoader):
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        guest = Guest.objects.filter(legacy_id=str(row.get("ClientDetailsId") or "")).first()
-        if guest is None:
+        person = person_for_client(row.get("ClientDetailsId"))
+        if person is None:
             return None
         agent = (
             Person.objects.filter(legacy_id=str(row["AgentId"])).first()
@@ -331,7 +329,7 @@ class QuotationLoader(BaseLoader):
         if row.get("EnquireId"):
             enquiry = Enquiry.objects.filter(legacy_id=str(row["EnquireId"])).first()
         if enquiry is None:
-            enquiry = ensure_enquiry(guest, legacy_id=f"q{row['Id']}-autoenquiry", agent=agent)
+            enquiry = ensure_enquiry(person, legacy_id=f"q{row['Id']}-autoenquiry", agent=agent)
         terms = _ensure_default_terms()
         # Carry the legacy QuotationNo forward as the canonical `number` so the
         # booking can derive `VC{number}` from `QVC{number}`. Setting both
@@ -348,11 +346,10 @@ class QuotationLoader(BaseLoader):
         defaults: dict[str, Any] = {
             "reference": quotation_reference(display)[:32],
             "enquiry": enquiry,
-            # GAP-045 Unit 3d-B: `person` is the sole customer FK written on the
-            # real legacy quotation upsert; the legacy `guest` leg is dropped
-            # from the schema in 3d-E. `guest` is still resolved (non-None —
-            # early return above) to drive `ensure_enquiry`/`person_for_guest`.
-            "person": person_for_guest(guest),
+            # GAP-045 D5-3: `person` (resolved from the legacy client id via
+            # `person_for_client`) is the sole customer FK written on the real
+            # legacy quotation upsert. No `Guest` is touched.
+            "person": person,
             "agent": agent,
             "expires_at": timezone.now() + timedelta(days=7),
             "status": QuotationStatus.DRAFT,

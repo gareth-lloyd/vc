@@ -1,10 +1,9 @@
-"""GuestPreferenceLoader — person-keyed dedup + idempotency (GAP-045 Unit 3d-B).
+"""GuestPreferenceLoader — person-keyed dedup + idempotency (GAP-045 D5-3).
 
-The loader writes only the unified `person` FK (not the legacy `guest` leg) and
-dedups on (person, preference_type, quotation) to match the
-`unique_person_preference` constraint. A guest-keyed dedup would stop matching
-prior rows (born `guest=NULL`) on re-run and trip the constraint; guest → person
-is 1:1, so the person-keyed dedup is exactly equivalent.
+The loader resolves the customer via `person_for_client` (the `client-{id}`
+Person — no Guest in the graph) and writes only the unified `person` FK, dedups
+on (person, preference_type, quotation) to match the `unique_person_preference`
+constraint. Duplicates (same triple) collapse to the first occurrence.
 """
 
 from __future__ import annotations
@@ -13,9 +12,8 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.preferences import GuestPreferenceLoader
-from reservations.models.guest import Guest
+from data_migration.loaders.reservations import ClientLoader
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
-from reservations.services.person_sync import person_for_guest
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -31,17 +29,29 @@ def _row(**overrides: object) -> dict[str, object]:
 
 @pytest.fixture
 def _guest_and_pref_type(db: None) -> None:
-    Guest.objects.create(
-        first_name="Ada", last_name="Lovelace", email="ada@example.com", legacy_id="55"
+    # GAP-045 D5-3: the preference's customer is a `client-55` Person, written by
+    # ClientLoader from a legacy VillaClientDetails row (Id=55); the loader
+    # resolves it via `person_for_client`, no Guest in the graph.
+    ClientLoader()._process_row(
+        {
+            "Id": 55,
+            "FirstName": "Ada",
+            "LastName": "Lovelace",
+            "Email": "ada@example.com",
+            "MobileNo": "",
+        },
+        LoadReport(loader="client"),
     )
     GuestPreferenceType.objects.create(name="Late checkout", legacy_id="7")
 
 
 @pytest.mark.django_db
 def test_loader_writes_person_not_guest(_guest_and_pref_type: None) -> None:
+    from data_migration.loaders._util import person_for_client
+
     GuestPreferenceLoader()._process_row(_row(), LoadReport(loader="guest_preference"))
 
-    person = person_for_guest(Guest.objects.get(legacy_id="55"))
+    person = person_for_client(55)
     pref = GuestPreference.objects.get(legacy_id="1")
     assert pref.person_id == person.pk
     assert pref.guest_id is None

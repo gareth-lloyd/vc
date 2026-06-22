@@ -169,6 +169,35 @@ def test_check_has_no_dead_extra_filter_field() -> None:
     assert "extra_filter" not in field_names
 
 
+@pytest.mark.django_db
+def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GAP-045 D5-3: VillaContact (owner/agent) and VillaClientDetails (client)
+    both land in `accounts.Person`. Each reconcile check must count only its own
+    `legacy_id` slice — a bare `Person.count()` would double-count and turn both
+    RED. The `unknown_client` sentinel is in neither slice.
+    """
+    from accounts.factories import PersonFactory
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    PersonFactory(legacy_id="10")  # owner/agent (bare legacy_id)
+    PersonFactory(legacy_id="11")  # owner/agent
+    PersonFactory(legacy_id="client-55")  # client
+    PersonFactory(legacy_id="client-__unknown__")  # sentinel — counted by neither
+
+    by_label = {c.label: c for c in _CHECKS}
+    owner_check = by_label["Person (owner/agent)"]
+    client_check = by_label["Person (client)"]
+    assert owner_check.loaded_count is not None
+    assert client_check.loaded_count is not None
+
+    # owner/agent slice = the two bare-legacy_id rows (excludes both client rows).
+    assert owner_check.loaded_count(owner_check.model) == 2
+    # client slice = the one real client row (excludes owner/agent AND sentinel).
+    assert client_check.loaded_count(client_check.model) == 1
+    # The client check keeps the documented no-name gap.
+    assert client_check.expected_gap == 1
+
+
 # --- --integrations flag (P0b) ---
 
 

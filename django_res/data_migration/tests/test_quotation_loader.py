@@ -10,12 +10,13 @@ from datetime import date
 
 import pytest
 
+from data_migration.base import LoadReport
 from data_migration.loaders.finance import QuotationLineLoader, QuotationLoader
+from data_migration.loaders.reservations import ClientLoader
 from pricing.models.currency import Currency
 from properties.models.geo import Country, Region
 from properties.models.property import Property, PropertyCategory, PropertyGroup
 from properties.models.settings import PropertySettings
-from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation
 
 
@@ -33,8 +34,18 @@ def _row(**overrides: object) -> dict[str, object]:
 
 @pytest.fixture
 def _guest_and_currency(db: None) -> None:
-    Guest.objects.create(
-        first_name="Ada", last_name="Lovelace", email="ada@example.com", legacy_id="55"
+    # GAP-045 D5-3: the quotation's customer is a `client-55` Person, written by
+    # ClientLoader from a legacy VillaClientDetails row (Id=55); QuotationLoader
+    # resolves it via `person_for_client`, no Guest in the graph.
+    ClientLoader()._process_row(
+        {
+            "Id": 55,
+            "FirstName": "Ada",
+            "LastName": "Lovelace",
+            "Email": "ada@example.com",
+            "MobileNo": "",
+        },
+        LoadReport(loader="client"),
     )
     Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="2")
 
@@ -76,14 +87,15 @@ def test_transform_returns_no_currency_key(_guest_and_currency: None) -> None:
 
 @pytest.mark.django_db
 def test_transform_writes_person_not_guest(_guest_and_currency: None) -> None:
-    """GAP-045 Unit 3d-B: the loader writes only the unified `person` mirror,
-    not the legacy `guest` leg, onto the Quotation."""
-    from reservations.services.person_sync import person_for_guest
+    """GAP-045 D5-3: the loader resolves the customer via `person_for_client`
+    (the `client-{id}` Person) and writes only that `person`, not a legacy
+    `guest` leg, onto the Quotation."""
+    from data_migration.loaders._util import person_for_client
 
     kwargs = QuotationLoader().transform(_row())
     assert kwargs is not None
     assert "guest" not in kwargs
-    assert kwargs["person"] == person_for_guest(Guest.objects.get(legacy_id="55"))
+    assert kwargs["person"] == person_for_client(55)
 
 
 def _line_row(**overrides: object) -> dict[str, object]:

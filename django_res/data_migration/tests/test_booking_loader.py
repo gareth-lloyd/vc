@@ -16,10 +16,10 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.bookings import BookingLoader
+from data_migration.loaders.reservations import ClientLoader
 from pricing.models.currency import Currency
 from properties.models.property import Property
 from reservations.models.booking import Booking
-from reservations.models.guest import Guest
 
 
 @pytest.fixture
@@ -41,8 +41,18 @@ def seeded(db: None) -> Property:
         region=region,
         legacy_id="900",
     )
-    Guest.objects.create(
-        first_name="Ada", last_name="Lovelace", email="ada@example.com", legacy_id="55"
+    # GAP-045 D5-3: the booking's customer is a `client-55` Person, written by
+    # ClientLoader from a legacy VillaClientDetails row (Id=55) — the loader now
+    # resolves it via `person_for_client`, no Guest in the graph.
+    ClientLoader()._process_row(
+        {
+            "Id": 55,
+            "FirstName": "Ada",
+            "LastName": "Lovelace",
+            "Email": "ada@example.com",
+            "MobileNo": "",
+        },
+        LoadReport(loader="client"),
     )
     Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="2")
     return prop
@@ -127,17 +137,18 @@ def test_booking_loader_is_idempotent(seeded: Property) -> None:
 
 @pytest.mark.django_db
 def test_booking_loader_writes_person_not_guest(seeded: Property) -> None:
-    """GAP-045 Unit 3d-B: the loader populates `person` (the authoritative
-    customer FK) and leaves the legacy `guest` leg NULL on the synthesised
-    Quotation, the Booking, and its LEAD BookingGuest."""
+    """GAP-045 D5-3: the loader resolves the customer via `person_for_client`
+    (the `client-{id}` Person) and populates `person` (the authoritative customer
+    FK), leaving the legacy `guest` leg NULL on the synthesised Quotation, the
+    Booking, and its LEAD BookingGuest."""
+    from data_migration.loaders._util import person_for_client
     from reservations.enums import BookingGuestRole
     from reservations.models.booking_guest import BookingGuest
     from reservations.models.quotation import Quotation
-    from reservations.services.person_sync import person_for_guest
 
     BookingLoader()._process_row(_row(), LoadReport(loader="booking"))
 
-    person = person_for_guest(Guest.objects.get(legacy_id="55"))
+    person = person_for_client(55)
 
     booking = Booking.objects.get(legacy_id="7")
     assert booking.person_id == person.pk

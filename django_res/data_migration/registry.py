@@ -48,8 +48,8 @@ from data_migration.loaders.property_children import (
     RoomLoader,
 )
 from data_migration.loaders.reservations import (
+    ClientLoader,
     EnquiryLoader,
-    GuestLoader,
     PropertyContactAssignmentLoader,
 )
 
@@ -76,7 +76,11 @@ LOADERS: dict[str, type[Loader]] = {
     RatePlanLoader.name: RatePlanLoader,
     RateRuleLoader.name: RateRuleLoader,
     PropertyContactAssignmentLoader.name: PropertyContactAssignmentLoader,
-    GuestLoader.name: GuestLoader,
+    # ClientLoader (VillaClientDetails → Person, keyed `client-{id}`) MUST stay
+    # ahead of preferences / finance / booking: those loaders resolve the
+    # customer via `person_for_client`, so the `client-{id}` Persons must already
+    # exist when they run.
+    ClientLoader.name: ClientLoader,
     GuestPreferenceTypeLoader.name: GuestPreferenceTypeLoader,
     GuestPreferenceLoader.name: GuestPreferenceLoader,
     EnquiryLoader.name: EnquiryLoader,

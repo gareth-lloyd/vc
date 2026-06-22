@@ -106,8 +106,8 @@ def sync_person_from_guest(guest: Guest) -> Person:
             "kind": PersonKind.CUSTOMER.value,
         },
     )
-    _reconcile_email(person, guest.email)
-    _reconcile_phone(person, guest.phone)
+    reconcile_primary_email(person, guest.email)
+    reconcile_primary_phone(person, guest.phone)
     if guest.status == GuestStatus.ANONYMIZED.value:
         # The Guest has been anonymized (Guest.anonymize scrubbed ITS audit
         # trail). The per-save mirror has been writing the guest's real PII onto
@@ -131,12 +131,17 @@ def person_for_guest(guest: Guest) -> Person:
     return sync_person_from_guest(guest)
 
 
-def _reconcile_email(person: Person, email: str | None) -> None:
-    """Make the Person's PRIMARY email match the Guest's single email column.
+def reconcile_primary_email(person: Person, email: str | None) -> None:
+    """Make the Person's PRIMARY email match a single source email column.
 
-    Assumes this sync is the only writer of the mirror's channels (true during
-    3c): it manages exactly the one PRIMARY row. If a secondary channel equal to
-    the new value is ever added by another path, the in-place update could trip
+    Shared in-place reconciler (GAP-045 D5-3): both `sync_person_from_guest`
+    (the Guest→Person mirror) and the legacy `ClientLoader` (VillaClientDetails
+    → Person, no Guest) call this so a re-run never blind-creates a SECOND
+    PRIMARY row and trips `one_primary_email_per_contact`.
+
+    Assumes this is the only writer of the row's PRIMARY channel: it manages
+    exactly the one PRIMARY row. If a secondary channel equal to the new value
+    is ever added by another path, the in-place update could trip
     `unique_contact_email` — revisit when channels gain another writer.
     """
     existing = person.emails.filter(is_primary=True).first()
@@ -157,8 +162,11 @@ def _reconcile_email(person: Person, email: str | None) -> None:
         existing.delete()
 
 
-def _reconcile_phone(person: Person, phone: str) -> None:
-    """Make the Person's PRIMARY phone match the Guest's single phone column."""
+def reconcile_primary_phone(person: Person, phone: str) -> None:
+    """Make the Person's PRIMARY phone match a single source phone column.
+
+    Shared in-place reconciler — see `reconcile_primary_email` for the why.
+    """
     existing = person.phones.filter(is_primary=True).first()
     if phone:
         if existing is None:
@@ -175,4 +183,10 @@ def _reconcile_phone(person: Person, phone: str) -> None:
         existing.delete()
 
 
-__all__ = ["SYNCED_GUEST_FIELDS", "person_for_guest", "sync_person_from_guest"]
+__all__ = [
+    "SYNCED_GUEST_FIELDS",
+    "person_for_guest",
+    "reconcile_primary_email",
+    "reconcile_primary_phone",
+    "sync_person_from_guest",
+]

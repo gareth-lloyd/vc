@@ -27,6 +27,7 @@ against live counts.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +39,7 @@ from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders.integrations import SyncRecordZohoLoader
+from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, UNKNOWN_CLIENT_LEGACY_ID
 from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
@@ -57,7 +59,6 @@ from properties.models.property import Property, PropertyCategory, PropertyGroup
 from properties.models.rooms import Room
 from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
-from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
 
 
@@ -67,6 +68,12 @@ class _Check:
     model: type[Any]
     label: str
     expected_gap: int = 0
+    # Optional override for the loaded-row count. Defaults to a bare
+    # `model._default_manager.count()`; supply a callable when the model is
+    # partitioned by a `legacy_id` prefix (GAP-045 D5-3: VillaContact and
+    # VillaClientDetails both land in `accounts.Person`, so each check counts
+    # only its own slice). The callable takes the model and returns the count.
+    loaded_count: Callable[[type[Any]], int] | None = None
 
 
 _CHECKS: list[_Check] = [
@@ -97,7 +104,19 @@ _CHECKS: list[_Check] = [
         "Feature",
     ),
     _Check("SELECT COUNT(*) FROM UserMaster WHERE DeletedAt IS NULL", User, "User"),
-    _Check("SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL", Person, "Person"),
+    _Check(
+        "SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL",
+        Person,
+        "Person (owner/agent)",
+        # VillaContact owner/agent rows keep the bare legacy_id; GAP-045 D5-3
+        # also lands VillaClientDetails customers in Person (keyed `client-{id}`),
+        # so exclude every `client-` row here (the customer rows AND the
+        # `unknown_client` sentinel) or they'd inflate the loaded count and turn
+        # this check RED. The `client-` slice is checked separately below.
+        loaded_count=lambda m: m._default_manager.exclude(
+            legacy_id__startswith=CLIENT_LEGACY_PREFIX
+        ).count(),
+    ),
     _Check("SELECT COUNT(*) FROM VillaContactEmail", PersonEmail, "PersonEmail"),
     _Check("SELECT COUNT(*) FROM VillaContactTele", PersonPhone, "PersonPhone"),
     _Check(
@@ -172,9 +191,20 @@ _CHECKS: list[_Check] = [
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaClientDetails",
-        Guest,
-        "Guest",
-        expected_gap=1,  # one legacy row with neither FirstName nor LastName.
+        Person,
+        "Person (client)",
+        # GAP-045 D5-3: VillaClientDetails now loads to Person directly (keyed
+        # `client-{id}`), not Guest. Count only that slice, excluding the
+        # `unknown_client` sentinel (minted only when a downstream row references
+        # a skipped client — its presence must not move this count). The single
+        # legacy row with neither FirstName nor LastName is still skipped
+        # (expected_gap=1).
+        expected_gap=1,
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            .exclude(legacy_id=UNKNOWN_CLIENT_LEGACY_ID)
+            .count()
+        ),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaEnquire",
@@ -256,7 +286,11 @@ class Command(BaseCommand):
         for check in _CHECKS:
             cursor.execute(check.legacy_query)
             legacy_count = int(cursor.fetchone()[0])
-            loaded_count = check.model._default_manager.count()
+            loaded_count = (
+                check.loaded_count(check.model)
+                if check.loaded_count is not None
+                else check.model._default_manager.count()
+            )
             gap = legacy_count - loaded_count
             ok = gap == check.expected_gap
             if not ok:

@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no
+from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
 from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
@@ -30,9 +30,7 @@ from properties.models.property import Property
 from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
-from reservations.models.guest import Guest
 from reservations.models.quotation import Quotation, QuotationLine
-from reservations.services.person_sync import person_for_guest
 
 
 def _decimal(v: Any) -> Decimal | None:
@@ -62,8 +60,8 @@ class BookingLoader(BaseLoader):
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
-        guest = Guest.objects.filter(legacy_id=str(row.get("Guest") or "")).first()
-        if prop is None or guest is None:
+        person = person_for_client(row.get("Guest"))
+        if prop is None or person is None:
             report.skipped += 1
             return
         currency = None
@@ -92,13 +90,10 @@ class BookingLoader(BaseLoader):
 
         terms = _ensure_default_terms()
         booking_legacy = f"booking-{row['Id']}"
-        # GAP-045 Unit 3d-B: `person` is now the sole customer FK the loader
-        # writes onto the synthesised Quotation / Booking / LEAD BookingGuest;
-        # the legacy `guest` leg is left to the still-dual-FK Enquiry path
-        # (`ensure_enquiry` below) and dropped from the schema in 3d-E. `guest`
-        # is still resolved (early-returned non-None above) to drive
-        # `ensure_enquiry` and `person_for_guest`.
-        person = person_for_guest(guest)
+        # GAP-045 D5-3: `person` (resolved from the legacy client id via
+        # `person_for_client`) is the sole customer FK the loader writes onto the
+        # synthesised Quotation / Booking / LEAD BookingGuest and the back-created
+        # enquiry. No `Guest` is touched.
 
         # The synthesised quotation is an internal artifact (hidden from public
         # APIs via the `booking-` legacy_id prefix) and must NOT claim the
@@ -107,7 +102,7 @@ class BookingLoader(BaseLoader):
         # `number`/`reference` are unique. So we leave `number` NULL and pin a
         # deterministic per-booking sentinel reference instead. The legacy
         # number is carried forward on the *booking* reference below.
-        enquiry = ensure_enquiry(guest, legacy_id=booking_legacy)
+        enquiry = ensure_enquiry(person, legacy_id=booking_legacy)
         quotation, _ = Quotation.objects.update_or_create(
             legacy_id=booking_legacy,
             defaults={

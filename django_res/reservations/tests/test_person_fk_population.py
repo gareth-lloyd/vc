@@ -304,30 +304,33 @@ def test_lead_booking_guest_save_mirrors_person_to_booking(
 
 
 @pytest.mark.django_db
-def test_guest_preference_loader_transform_sets_person(guest: Guest) -> None:
-    """The legacy loader's transform must carry `person` into the upsert."""
+def test_guest_preference_loader_transform_sets_person() -> None:
+    """The legacy loader's transform must carry `person` into the upsert.
+
+    GAP-045 D5-3: the customer is resolved via `person_for_client` (the
+    `client-{ClientDetailsId}` Person written by ClientLoader), not a Guest.
+    """
+    from data_migration.loaders._util import person_for_client
     from data_migration.loaders.preferences import GuestPreferenceLoader
 
-    # Loader resolves the type by legacy_id, so the row must exist (unused var).
     GuestPreferenceType.objects.create(name="Late checkout", legacy_id="pt-1")
-    guest.legacy_id = "g-1"
-    guest.save(update_fields=["legacy_id", "updated_at"])
+    client = Person.objects.create(first_name="Ada", last_name="Lovelace", legacy_id="client-77")
 
     loader = GuestPreferenceLoader()
     kwargs = loader.transform(
         {
             "Id": "1",
-            "ClientDetailsId": "g-1",
+            "ClientDetailsId": "77",
             "ClientPrefMasterId": "pt-1",
             "QuotationMasterId": None,
         }
     )
 
     assert kwargs is not None
-    assert kwargs["person"] == person_for_guest(guest)
+    assert kwargs["person"] == person_for_client("77") == client
 
     pref = GuestPreference.objects.create(**kwargs)
-    assert pref.person == person_for_guest(guest)
+    assert pref.person == client
 
 
 # ---------------------------------------------------------------------------
@@ -374,26 +377,36 @@ def test_quotation_duplicate_action_sets_person_on_clone(
 
 
 @pytest.mark.django_db
-def test_ensure_enquiry_sets_person(guest: Guest) -> None:
-    """Both legacy quotation paths back-create enquiries through ensure_enquiry."""
+def test_ensure_enquiry_sets_person() -> None:
+    """Both legacy quotation paths back-create enquiries through ensure_enquiry.
+
+    GAP-045 D5-3: `ensure_enquiry` now takes the unified `person` (not a Guest)
+    and sources the contact fields off the Person + its PRIMARY email/phone.
+    """
     from data_migration.loaders._util import ensure_enquiry
 
-    enquiry = ensure_enquiry(guest, legacy_id="ensure-1")
+    person = cast(Person, CustomerPersonFactory(primary_email="ada@example.com"))
 
-    assert enquiry.person == person_for_guest(guest)
+    enquiry = ensure_enquiry(person, legacy_id="ensure-1")
+
+    assert enquiry.person == person
+    assert enquiry.guest_id is None
+    assert enquiry.email == "ada@example.com"
 
 
 @pytest.mark.django_db
-def test_quotation_loader_transform_sets_person(guest: Guest) -> None:
+def test_quotation_loader_transform_sets_person() -> None:
+    """GAP-045 D5-3: the loader resolves the customer via `person_for_client`
+    (the `client-{ClientDetailsId}` Person), not a Guest."""
+    from data_migration.loaders._util import person_for_client
     from data_migration.loaders.finance import QuotationLoader
 
-    guest.legacy_id = "ql-guest-1"
-    guest.save(update_fields=["legacy_id", "updated_at"])
+    client = Person.objects.create(first_name="Ada", last_name="Lovelace", legacy_id="client-88")
 
     defaults = QuotationLoader().transform(
         {
             "Id": "1",
-            "ClientDetailsId": "ql-guest-1",
+            "ClientDetailsId": "88",
             "AgentId": None,
             "EnquireId": None,
             "QuotationNo": 42,
@@ -401,7 +414,7 @@ def test_quotation_loader_transform_sets_person(guest: Guest) -> None:
     )
 
     assert defaults is not None
-    assert defaults["person"] == person_for_guest(guest)
+    assert defaults["person"] == person_for_client("88") == client
 
 
 # ---------------------------------------------------------------------------

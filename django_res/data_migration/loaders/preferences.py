@@ -1,8 +1,9 @@
 """GuestPreferenceType + GuestPreference loaders.
 
 VillaClientPrefMaster (13 rows) → GuestPreferenceType (declarative rename).
-ClientPreferenceDetails (167 rows) → GuestPreference, joining on guest,
-preference_type, and optional quotation by legacy_id.
+ClientPreferenceDetails (167 rows) → GuestPreference, joining on the unified
+`Person` (resolved from the legacy ClientDetailsId via `person_for_client`,
+GAP-045 D5-3), preference_type, and optional quotation by legacy_id.
 """
 
 from __future__ import annotations
@@ -11,10 +12,9 @@ from typing import Any
 
 from data_migration.base import BaseLoader
 from data_migration.declarative import DeclarativeLoader
-from reservations.models.guest import Guest
+from data_migration.loaders._util import person_for_client
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation
-from reservations.services.person_sync import person_for_guest
 
 
 class GuestPreferenceTypeLoader(DeclarativeLoader):
@@ -44,25 +44,23 @@ class GuestPreferenceLoader(BaseLoader):
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        guest = Guest.objects.filter(legacy_id=str(row.get("ClientDetailsId") or "")).first()
+        person = person_for_client(row.get("ClientDetailsId"))
         pref_type = GuestPreferenceType.objects.filter(
             legacy_id=str(row.get("ClientPrefMasterId") or ""),
         ).first()
-        if guest is None or pref_type is None:
+        if person is None or pref_type is None:
             return None
-        person = person_for_guest(guest)
         quotation = (
             Quotation.objects.filter(legacy_id=str(row["QuotationMasterId"])).first()
             if row.get("QuotationMasterId")
             else None
         )
-        # GAP-045 Unit 3d-B: the dedup is keyed on `person` to match the
+        # GAP-045 D5-3: the customer is resolved straight to its unified
+        # `Person` (keyed `client-{ClientDetailsId}`) via `person_for_client`,
+        # and the dedup is keyed on `person` to match the
         # `unique_person_preference` constraint (person, preference_type,
-        # quotation) — `person` is now the sole customer FK written, so a
-        # guest-keyed dedup would stop matching prior rows (born guest-NULL) on
-        # re-run and trip the constraint. guest → person is 1:1 (mirror key
-        # `guest-{pk}`), so this is exactly equivalent. Duplicates (same triple)
-        # collapse to the first occurrence so the loader stays idempotent.
+        # quotation). Duplicates (same triple) collapse to the first occurrence
+        # so the loader stays idempotent.
         existing = (
             GuestPreference.objects.filter(
                 person=person,

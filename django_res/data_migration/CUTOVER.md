@@ -134,6 +134,41 @@ The Enquiry/Payment/Refund/SecurityDeposit reference sequences (BUG-007) need
 numeric `EnquiryNo`) is disjoint from the organic `E-{year}-{n}` shape, so an
 organic reference can never collide with an imported one.
 
+## 4d. Customers load straight to `Person` (GAP-045)
+
+`VillaClientDetails` no longer loads to a `reservations.Guest` — `ClientLoader`
+writes a unified `accounts.Person` **directly**, keyed `legacy_id="client-{Id}"`
+with `kind=CUSTOMER`, reconciling each row's single legacy email/phone onto a
+PRIMARY `PersonEmail`/`PersonPhone` child in place (idempotent on re-run). The
+downstream loaders (quotation, booking, preference) resolve their customer FK
+through `person_for_client("{Id}")` → that same `client-{Id}` Person; the rare
+no-name client `ClientLoader` skips falls back to the `unknown_client` sentinel
+rather than dropping the referencing row.
+
+This changes nothing about the cutover **order**: the standard
+
+```bash
+uv run python manage.py migrate
+uv run python manage.py loadlegacy --all
+```
+
+is sufficient. `ClientLoader` is registered ahead of the preference / finance /
+booking loaders in `registry.py`, so every `client-{Id}` Person exists before a
+downstream loader resolves it.
+
+**Do NOT run `link_person_fks` during this cutover.** That command was the
+one-shot Unit-3c backfill that filled the (now-removed) parallel `person` FK
+from `guest` via `person_for_guest`; the loaders write `person` directly now, so
+it has nothing to do and is dead for cutover. The `Guest` model and its
+`_guest_post_save` mirror signal still exist transitionally (they are retired in
+GAP-045 D5-4), but no loader touches `Guest`, so a fresh `loadlegacy --all`
+creates no `Guest` rows at all.
+
+In `reconcile_legacy`, `VillaClientDetails` is checked against the `client-`
+slice of `Person` (`expected_gap=1`, the no-name row), and the `VillaContact`
+owner/agent check excludes that slice — see the two `Person (...)` rows in the
+table below.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash
@@ -157,6 +192,7 @@ is where the dry-run calibration happens), not just here.
 | `VillaSeasonRate`         | 3727         | 3462 pre-resolver gap (rows with no price — unusable in legacy too — plus rows on the 67 unloaded seasons) + 265 rows newly dropped by overlap resolution (see below; 389 total drops, but 124 sit on unloaded seasons and were already counted). |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
+| `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
 
 Any other gap is a **blocker**. Track it down before proceeding.
 

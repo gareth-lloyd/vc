@@ -78,6 +78,36 @@ describe("AuditHistory", () => {
     });
   });
 
+  it("resets page (and filters) when the target entity changes", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/v1/audit-log", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(
+          listResponse([entry({ commission_amount: ["1", "2"] })], {
+            next: "/api/v1/audit-log?page=2",
+          }),
+        );
+      }),
+    );
+
+    const { rerender } = renderWithProviders(
+      <AuditHistory entityType="properties.propertyfinance" entityId={5} />,
+    );
+    await waitFor(() => expect(screen.getByText("Commission amount")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(new URL(urls.at(-1)!).searchParams.get("page")).toBe("2"));
+
+    // Switch to a sibling entity on the same (reused) component instance.
+    rerender(<AuditHistory entityType="properties.propertyfinance" entityId={8} />);
+    await waitFor(() => {
+      const params = new URL(urls.at(-1)!).searchParams;
+      expect(params.get("entity_id")).toBe("8");
+      expect(params.get("page")).toBeNull(); // back to page 1, not the stale page 2
+    });
+  });
+
   it("renders a merge banner with the target record and reassignment count", async () => {
     server.use(
       http.get("/api/v1/audit-log", () =>

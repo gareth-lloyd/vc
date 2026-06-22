@@ -50,17 +50,19 @@ function asNonAdmin() {
 
 afterEach(() => {
   server.resetHandlers();
+  // Reset the module-global auth store so role state can't leak between tests.
+  useAuthStore.getState().clear();
 });
 
 describe("property HistoryTab", () => {
   it("queries both the property and its finance audit trails (finance pk == property id)", async () => {
     const entityTypes: string[] = [];
+    const entityIds: (string | null)[] = [];
     server.use(
       http.get("/api/v1/audit-log", ({ request }) => {
         const params = new URL(request.url).searchParams;
         entityTypes.push(params.get("entity_type") ?? "");
-        // every panel must target the property's own id
-        expect(params.get("entity_id")).toBe("5");
+        entityIds.push(params.get("entity_id"));
         return HttpResponse.json({ count: 0, next: null, previous: null, results: [] });
       }),
     );
@@ -78,6 +80,11 @@ describe("property HistoryTab", () => {
     await waitFor(() => expect(entityTypes.length).toBeGreaterThanOrEqual(2));
     expect(entityTypes).toContain("properties.property");
     expect(entityTypes).toContain("properties.propertyfinance");
+    // every panel must target the property's own id (finance pk == property id).
+    // Asserted out here, not inside the resolver, so a wrong id fails the test
+    // rather than turning into an error response MSW swallows.
+    expect(entityIds.every((id) => id === "5")).toBe(true);
+    expect(entityIds.length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Record changes")).toBeInTheDocument();
     expect(screen.getByText(/Finance changes/i)).toBeInTheDocument();
   });

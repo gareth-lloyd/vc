@@ -115,6 +115,18 @@ export function AuditHistory({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  // Reset paging + filters when the target entity changes. The detail route
+  // reuses this component across sibling records (e.g. /bookings/:id/history),
+  // so without this the previous record's page/filters would leak onto the next.
+  const target = `${entityType}:${entityId}`;
+  const [prevTarget, setPrevTarget] = useState(target);
+  if (target !== prevTarget) {
+    setPrevTarget(target);
+    setPage(1);
+    setFrom("");
+    setTo("");
+  }
+
   const query = useAuditLog({
     entity_type: entityType,
     entity_id: entityId,
@@ -193,12 +205,20 @@ export function AuditHistory({
         />
       );
     }
-    return <ErrorState title={t("errors.load_failed")} onRetry={() => query.refetch()} />;
+    return (
+      <div className="space-y-4">
+        {filterBar}
+        <ErrorState title={t("errors.load_failed")} onRetry={() => query.refetch()} />
+      </div>
+    );
   }
 
   const entries = query.data?.results ?? [];
   const hasNext = query.data?.next != null;
-  const hasPrevious = query.data?.previous != null || page > 1;
+  // `page` is the authoritative local source for the Previous control — you can
+  // always step back from page > 1. (The server's `previous` is redundant here
+  // and goes stale if the result set shrinks between loads.)
+  const hasPrevious = page > 1;
 
   return (
     <div className="space-y-4">

@@ -80,6 +80,8 @@ function asNonAdmin() {
 
 afterEach(() => {
   server.resetHandlers();
+  // Reset the module-global auth store so role state can't leak between tests.
+  useAuthStore.getState().clear();
 });
 
 describe("booking HistoryTab", () => {

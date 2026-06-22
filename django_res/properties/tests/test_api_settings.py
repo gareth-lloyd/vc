@@ -7,16 +7,21 @@ check-in/out times it contextualises.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.tests import assert_max_queries
 from pricing.models import Currency
+from properties.enums import CommissionCalcType, PriceBasis
 from properties.models import (
     Country,
+    GroupFinance,
     GroupSettings,
     Property,
+    PropertyFinance,
     PropertyLocation,
     PropertySettings,
 )
@@ -295,3 +300,140 @@ def test_patch_settings_invalid_calendar_url_returns_400(
     )
     assert response.status_code == 400, response.content
     assert "calendar_url" in response.json()["field_errors"]
+
+
+# --- GAP-035: net↔gross rate-entry derivation context -----------------------
+#
+# The rate-band form derives the net/gross counterpart on display (never
+# persisting it — that would double-count against the BUG-009 engine carve-out).
+# The math needs three group-resolved inputs the settings endpoint surfaces
+# read-only beside `currency_code`: the property's *default* basis
+# (`prices_entered_as_effective`), the effective commission, and the effective
+# tax policy.
+
+
+@pytest.mark.django_db
+def test_prices_entered_as_effective_uses_property_level(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    PropertySettings.objects.update_or_create(
+        property=property_, defaults={"prices_entered_as": PriceBasis.NET}
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["prices_entered_as_effective"] == "net"
+
+
+@pytest.mark.django_db
+def test_prices_entered_as_effective_falls_back_to_group_default(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Property null → the GroupSettings floor, which defaults to GROSS."""
+    PropertySettings.objects.update_or_create(
+        property=property_, defaults={"prices_entered_as": None}
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["prices_entered_as_effective"] == "gross"
+
+
+@pytest.mark.django_db
+def test_rate_entry_commission_reflects_property_level(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A property-level commission override wins over the group floor."""
+    PropertyFinance.objects.update_or_create(
+        property=property_,
+        defaults={
+            "commission_calculation_type": CommissionCalcType.PERCENT,
+            "commission_amount": Decimal("15.00"),
+        },
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["commission"] == {"calculation_type": "percent", "amount": "15.00"}
+
+
+@pytest.mark.django_db
+def test_rate_entry_commission_falls_back_to_group(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Null property-level commission inherits the group floor."""
+    GroupFinance.objects.update_or_create(
+        group=property_.group,
+        defaults={
+            "commission_calculation_type": CommissionCalcType.FIXED,
+            "commission_amount": Decimal("500.00"),
+        },
+    )
+    PropertyFinance.objects.update_or_create(
+        property=property_,
+        defaults={"commission_calculation_type": None, "commission_amount": None},
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["commission"] == {"calculation_type": "fixed", "amount": "500.00"}
+
+
+@pytest.mark.django_db
+def test_rate_entry_commission_present_without_property_finance_row(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """No PropertyFinance row at all still resolves to the group floor (the
+    signal-seeded GroupFinance) — not null, not a 500."""
+    GroupFinance.objects.update_or_create(
+        group=property_.group,
+        defaults={
+            "commission_calculation_type": CommissionCalcType.PERCENT,
+            "commission_amount": Decimal("20.00"),
+        },
+    )
+    assert not PropertyFinance.objects.filter(property=property_).exists()
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["commission"] == {"calculation_type": "percent", "amount": "20.00"}
+
+
+@pytest.mark.django_db
+def test_rate_entry_tax_reflects_effective_policy(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    PropertyFinance.objects.update_or_create(
+        property=property_,
+        defaults={"tax_is_exempt": False, "tax_percentage": Decimal("13.00")},
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["tax"] == {"percentage": "13.00", "is_exempt": False}
+
+
+@pytest.mark.django_db
+def test_get_settings_query_count_includes_finance_chain(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+) -> None:
+    """The effective commission/tax legs (`finance`, `group__finance`) are
+    select_related, so resolving the derivation context adds no per-request
+    SELECT. Pin the count so a dropped join (the N+1 regression) is caught."""
+    PropertyFinance.objects.update_or_create(
+        property=property_,
+        defaults={
+            "commission_calculation_type": CommissionCalcType.PERCENT,
+            "commission_amount": Decimal("18.00"),
+        },
+    )
+    api_client.force_login(staff)
+    # Warm the request so the PropertySettings `get_or_create` is a SELECT.
+    api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+
+    with assert_max_queries(6):
+        response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["commission"]["amount"] == "18.00"

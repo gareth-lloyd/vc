@@ -238,7 +238,7 @@ Modelled as `BookingHold` rows with `reason=OWNER_BLOCK` or `MAINTENANCE`, no `e
 
 ## Out of scope (future)
 
-- **iCal feed ingest from owners.** ~30 villas already publish public iCal feeds that the legacy team mirrors manually through Outlook; pulling them in writes `BookingHold(reason=OWNER_BLOCK, …)` rows directly onto the availability surface with no change to the model above. High-value v2 force-multiplier, **not in MVP**. Full spec, verified assumptions, and postponed decisions: **`todo/gap-011-ical-feed-ingest.md`**.
+- **iCal feed ingest from owners.** ~30 villas already publish public iCal feeds that the legacy team mirrors manually through Outlook; pulling them in writes `BookingHold(reason=OWNER_BLOCK, …)` rows directly onto the availability surface with no change to the model above. Post-MVP force-multiplier that has **since been built** (engine + conflict alert + in-app `OwnerBlockUpdate` awareness feed; the per-poll awareness *digest email* deferred in favour of that feed). Full spec, verified assumptions, and resolution: **`todo/done/gap-011-ical-feed-ingest.md`** (✅ resolved 2026-06-22).
 
 ## Dropped from legacy
 

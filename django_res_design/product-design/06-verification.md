@@ -83,8 +83,6 @@ These are flagged in the design but not resolved. Each blocks at least one slice
 
 5. **Currency display normalisation in reports** — `02-frontend-design.md` §3.15 mentions "normalise to a chosen base currency for charts". Confirm the base (GBP? EUR? per-site?) and FX source (real-time? daily snapshot?).
 
-6. **Owner statement scheduling** — flow 18 references "Run this monthly". Confirm cadence (monthly / quarterly / on-demand) and delivery channel (email PDF attachment / portal-only / both).
-
 7. **Concierge supplier directory** — the design treats suppliers as contacts (flow 9). Confirm this matches the operating model, or whether suppliers need their own entity with contracts, payment terms, etc.
 
 8. **2FA enforcement** — design says "admin-forced for users with `is_admin` and any operator who touches refunds". Confirm.
@@ -98,6 +96,8 @@ These are flagged in the design but not resolved. Each blocks at least one slice
 ## Resolved questions
 
 - **Payment gateway** → **Flywire** (continuing the legacy integration; no Stripe / multi-provider in v1). See `10-decisions.md` and `workflows/11-integrations/flywire-gateway.md`.
+
+- **Owner statement scheduling** (was open Q6) → **monthly is the canonical statement period, with on-demand generation for any custom range; delivery is portal-only** (owners download PDF + CSV from the flow-14 Statements tab — no emailed statements in v1); **operator-triggered generation in v1, scheduled auto-send deferred to v2.** Statement generator + portal screen are decision-unblocked but blocked on the finance model (commission / deductions / net-payout). See `todo/done/q-006-owner-statement-scheduling.md`.
 
 13. **Rate card "incomplete pricing"** — flow 2 step 4 references "if villa's rate card incomplete for some nights, card flags 'Incomplete pricing — manual quote'". Confirm whether this is acceptable (operator types a price) or whether incomplete pricing should hide the villa entirely from results.
 

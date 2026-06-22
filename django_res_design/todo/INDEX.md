@@ -12,7 +12,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-21): **77 done** (73 resolved + 4 dropped), **47 open**
+Scoreboard (2026-06-22): **78 done** (74 resolved + 4 dropped), **46 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -93,7 +93,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 | Id | Title | Status |
 |---|---|---|
-| [Q-006](q-006-owner-statement-scheduling.md) | Owner statement cadence + delivery | ⬜ no code yet |
 | [Q-007](q-007-concierge-supplier-directory.md) | Concierge supplier directory shape | ⬜ |
 | [Q-008](q-008-2fa-enforcement.md) | 2FA enforcement scope | ⬜ |
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
@@ -109,7 +108,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **Q-006** — Owner statement cadence + delivery (no code exists yet)
 - **BUG-008** — `DamageClaim` in v1? (scope call; blocks the SD damage slice)
 - **Q-019** — Structured room attributes (owner vocabulary; blocks room-attribute write surface)
 
@@ -168,6 +166,7 @@ problem, fix, and commit. Listed here for traceability.
 | [Q-003](done/q-003-channel-sync-scope.md) | Channel sync scope → out of v1 |
 | [Q-004](done/q-004-hold-expiry-default.md) | Hold expiry default (shape) |
 | [Q-005](done/q-005-currency-display-base.md) | Reports base currency + FX → EUR base, daily snapshot |
+| [Q-006](done/q-006-owner-statement-scheduling.md) | Owner statements → monthly + on-demand, portal-only (PDF+CSV), auto-send deferred to v2 |
 | [Q-009](done/q-009-multi-site-inventory-sharing.md) | Multi-site inventory sharing → single site v1 |
 | [Q-011](done/q-011-email-template-inheritance.md) | Email template inheritance → system → site |
 | [Q-013](done/q-013-rate-card-incomplete-pricing.md) | Rate-card incomplete pricing → flag + manual quote |

@@ -6,13 +6,16 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from reservations.enums import (
     EnquiryEventKind,
+    EnquiryLostReason,
     EnquiryNoteKind,
     EnquiryStatus,
+    LeadStatus,
 )
 from reservations.models import (
     Enquiry,
@@ -42,14 +45,30 @@ def quotation(db: None, customer: Person, gbp: Currency, terms: TermsVersion) ->
     )
 
 
+def test_enquiry_status_vocabulary() -> None:
+    """Stage values match the operator-facing UI vocabulary (GAP-038/039).
+
+    `contacted`/`quoted`/`lost` were renamed to `progressing`/`quote_sent`/`dead`
+    so the DB, API, and dashboard share one set of stage names.
+    """
+    assert [s.value for s in EnquiryStatus] == [
+        "new",
+        "progressing",
+        "quote_sent",
+        "follow_up",
+        "dead",
+        "converted",
+    ]
+
+
 @pytest.mark.django_db
 def test_contact_new_to_contacted_writes_event(enquiry: Enquiry) -> None:
     enquiry.contact()
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.CONTACTED.value
+    assert enquiry.status == EnquiryStatus.PROGRESSING.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.CONTACTED.value)
     assert event.from_status == EnquiryStatus.NEW.value
-    assert event.to_status == EnquiryStatus.CONTACTED.value
+    assert event.to_status == EnquiryStatus.PROGRESSING.value
 
 
 @pytest.mark.django_db
@@ -63,7 +82,7 @@ def test_contact_from_wrong_state_raises(enquiry: Enquiry) -> None:
 def test_quote_sent_writes_event_with_quotation_id(enquiry: Enquiry, quotation: Quotation) -> None:
     enquiry.quote_sent(quotation, send_path="smtp")
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.QUOTE_SENT.value)
     assert event.meta == {"quotation_id": quotation.pk, "send_path": "smtp"}
 
@@ -106,7 +125,7 @@ def test_convert_from_new_raises(enquiry: Enquiry, quotation: Quotation) -> None
 def test_lose_writes_lost_event(enquiry: Enquiry) -> None:
     enquiry.lose("client went elsewhere")
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.LOST.value
+    assert enquiry.status == EnquiryStatus.DEAD.value
     event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.LOST.value)
     assert event.reason == "client went elsewhere"
 
@@ -133,6 +152,155 @@ def test_reopen_from_new_raises(enquiry: Enquiry) -> None:
         enquiry.reopen()
 
 
+# ---------------------------------------------------------------------------
+# Follow-up stage (Q2: operator-set; re-quote returns to Quote Sent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_follow_up_from_quote_sent(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.FOLLOW_UP.value
+    event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.FOLLOW_UP.value)
+    assert event.from_status == EnquiryStatus.QUOTE_SENT.value
+    assert event.to_status == EnquiryStatus.FOLLOW_UP.value
+
+
+@pytest.mark.django_db
+def test_follow_up_from_progressing(enquiry: Enquiry) -> None:
+    enquiry.contact()  # NEW -> PROGRESSING
+    enquiry.follow_up()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.FOLLOW_UP.value
+
+
+@pytest.mark.django_db
+def test_follow_up_from_new_raises(enquiry: Enquiry) -> None:
+    with pytest.raises(InvalidTransition):
+        enquiry.follow_up()
+
+
+@pytest.mark.django_db
+def test_requote_from_follow_up_returns_to_quote_sent(
+    enquiry: Enquiry, quotation: Quotation
+) -> None:
+    """A new quote sent on a Follow-up enquiry moves it back to Quote Sent (Q2)."""
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
+
+
+@pytest.mark.django_db
+def test_convert_from_follow_up(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.convert(quotation)
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+
+
+@pytest.mark.django_db
+def test_lose_from_follow_up(enquiry: Enquiry, quotation: Quotation) -> None:
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    enquiry.lose("no response")
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+
+
+# ---------------------------------------------------------------------------
+# Structured lost_reason (Unit 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_lose_stores_structured_lost_reason(enquiry: Enquiry) -> None:
+    enquiry.lose("client emailed", lost_reason=EnquiryLostReason.AVAILABILITY.value)
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+    assert enquiry.lost_reason == EnquiryLostReason.AVAILABILITY.value
+    # The free-text positional reason still lands on the event, unchanged.
+    event = EnquiryEvent.objects.get(enquiry=enquiry, kind=EnquiryEventKind.LOST.value)
+    assert event.reason == "client emailed"
+
+
+@pytest.mark.django_db
+def test_lose_defaults_lost_reason_to_unknown(enquiry: Enquiry) -> None:
+    enquiry.lose()
+    enquiry.refresh_from_db()
+    assert enquiry.lost_reason == EnquiryLostReason.UNKNOWN.value
+
+
+@pytest.mark.django_db
+def test_reopen_clears_lost_reason(enquiry: Enquiry) -> None:
+    enquiry.lose(lost_reason=EnquiryLostReason.NO_GROUP_CONSENSUS.value)
+    enquiry.reopen()
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.NEW.value
+    assert enquiry.lost_reason == ""
+
+
+@pytest.mark.django_db
+def test_dead_requires_non_empty_lost_reason_constraint(customer: Person) -> None:
+    """The DB constraint rejects a DEAD enquiry with an empty lost_reason."""
+    with pytest.raises(IntegrityError):
+        Enquiry.objects.create(
+            person=customer,
+            email="x@example.com",
+            status=EnquiryStatus.DEAD.value,
+            lost_reason="",
+        )
+
+
+@pytest.mark.django_db
+def test_non_dead_enquiry_allows_empty_lost_reason(customer: Person) -> None:
+    """A non-DEAD enquiry is unaffected — empty lost_reason is fine."""
+    e = Enquiry.objects.create(person=customer, email="ok@example.com")
+    assert e.lost_reason == ""
+
+
+@pytest.mark.django_db
+def test_accept_converts_follow_up_enquiry(
+    enquiry: Enquiry,
+    quotation: Quotation,
+    property_: Any,
+    gbp: Currency,
+) -> None:
+    """Accepting a quote whose enquiry is in FOLLOW_UP must still convert it.
+
+    Regression guard: `Quotation.accept()` previously auto-converted only from
+    QUOTE_SENT/PROGRESSING, so a Follow-up enquiry whose quote was accepted would
+    have silently stayed in Follow-up.
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    from reservations.models import QuotationLine
+
+    quotation.enquiry = enquiry
+    quotation.save(update_fields=["enquiry"])
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        currency=gbp,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+        total=Decimal("1400.00"),
+    )
+    enquiry.quote_sent(quotation, send_path="smtp")
+    enquiry.follow_up()
+    quotation.send()
+    quotation.accept(line)
+
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.CONVERTED.value
+
+
 @pytest.mark.django_db
 def test_enquiry_note_post_save_emits_note_added_event(enquiry: Enquiry) -> None:
     EnquiryNote.objects.create(enquiry=enquiry, kind=EnquiryNoteKind.GENERAL.value, body="hi")
@@ -143,6 +311,53 @@ def test_enquiry_note_post_save_emits_note_added_event(enquiry: Enquiry) -> None
 @pytest.mark.django_db
 def test_reference_auto_generated(enquiry: Enquiry) -> None:
     assert enquiry.reference.startswith("E-")
+
+
+# ---------------------------------------------------------------------------
+# lead_status — lead temperature, orthogonal to the workflow stage (Unit 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_lead_status_defaults_to_warm(enquiry: Enquiry) -> None:
+    assert enquiry.lead_status == LeadStatus.WARM.value
+
+
+@pytest.mark.django_db
+def test_set_lead_status_writes_non_transitional_event(enquiry: Enquiry) -> None:
+    enquiry.set_lead_status(LeadStatus.HOT.value)
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.HOT.value
+    # Workflow stage is untouched — lead temperature is orthogonal.
+    assert enquiry.status == EnquiryStatus.NEW.value
+    event = EnquiryEvent.objects.get(
+        enquiry=enquiry, kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value
+    )
+    assert event.from_status == event.to_status == EnquiryStatus.NEW.value
+    assert event.meta == {
+        "lead_status_from": LeadStatus.WARM.value,
+        "lead_status_to": LeadStatus.HOT.value,
+    }
+
+
+@pytest.mark.django_db
+def test_set_lead_status_to_same_value_is_noop(enquiry: Enquiry) -> None:
+    """Setting the temperature to its current value writes no timeline noise."""
+    enquiry.set_lead_status(LeadStatus.WARM.value)
+    assert not EnquiryEvent.objects.filter(
+        enquiry=enquiry, kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status_invalid_raises(enquiry: Enquiry) -> None:
+    with pytest.raises(ValueError):
+        enquiry.set_lead_status("lukewarm")
+
+
+def test_lead_status_status_index_present() -> None:
+    """The `(lead_status, status)` composite index backs the dashboard filters."""
+    assert any(idx.fields == ["lead_status", "status"] for idx in Enquiry._meta.indexes)
 
 
 # ---------------------------------------------------------------------------

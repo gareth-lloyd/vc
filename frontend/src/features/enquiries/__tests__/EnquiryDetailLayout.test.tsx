@@ -46,12 +46,30 @@ const baseEnquiry = {
 
 const quotedEnquiry = {
   ...baseEnquiry,
-  status: "quoted" as const,
+  status: "quote_sent" as const,
   quotations: [
     {
       id: 50,
       reference: "QVC50",
       status: "draft",
+      is_unbranded: false,
+      cancel_reason: "",
+      lines: [],
+    },
+  ] satisfies QuotationDetail[],
+};
+
+// A converted enquiry carries the GAP-038 conversion metric: the count of real
+// operator quotes up to & including the accepted one.
+const convertedEnquiry = {
+  ...baseEnquiry,
+  status: "converted" as const,
+  quotes_to_convert: 3,
+  quotations: [
+    {
+      id: 50,
+      reference: "QVC50",
+      status: "accepted",
       is_unbranded: false,
       cancel_reason: "",
       lines: [],
@@ -129,11 +147,11 @@ describe("EnquiryDetailLayout", () => {
     expect(screen.getByRole("button", { name: /reopen/i })).toBeDisabled();
   });
 
-  it("enables Reopen + disables Close when status is lost", async () => {
+  it("enables Reopen + disables Close when status is dead", async () => {
     asReservationsUser();
     server.use(
       http.get("/api/v1/enquiries/7", () =>
-        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+        HttpResponse.json({ ...baseEnquiry, status: "dead", quotations: [] }),
       ),
     );
     setup("/enquiries/7");
@@ -201,6 +219,21 @@ describe("EnquiryDetailLayout", () => {
     expect(await screen.findByRole("button", { name: /^search$/i })).toBeInTheDocument();
   });
 
+  it("surfaces the GAP-038 conversion count on a converted enquiry", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(convertedEnquiry)));
+    setup("/enquiries/7");
+    expect(await screen.findByText(/converted in 3 quotes/i)).toBeInTheDocument();
+  });
+
+  it("omits the conversion count when quotes_to_convert is null", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)));
+    setup("/enquiries/7");
+    await screen.findByRole("link", { name: /QVC50/ });
+    expect(screen.queryByText(/converted in/i)).not.toBeInTheDocument();
+  });
+
   it("does not fetch the activity timeline until the rail panel is expanded", async () => {
     asReservationsUser();
     let activityCalls = 0;
@@ -213,7 +246,7 @@ describe("EnquiryDetailLayout", () => {
             id: 1,
             enquiry: 7,
             from_status: "new",
-            to_status: "contacted",
+            to_status: "progressing",
             kind: "contacted",
             actor: null,
             source: "user",
@@ -231,20 +264,20 @@ describe("EnquiryDetailLayout", () => {
     expect(activityCalls).toBe(0);
 
     await userEvent.click(screen.getByRole("button", { name: /^activity$/i }));
-    expect(await screen.findByText("new → contacted")).toBeInTheDocument();
+    expect(await screen.findByText("new → progressing")).toBeInTheDocument();
     expect(activityCalls).toBe(1);
   });
 
-  it("suppresses the inline builder and disables the toggle on a lost enquiry", async () => {
+  it("suppresses the inline builder and disables the toggle on a dead enquiry", async () => {
     asReservationsUser();
     server.use(
       http.get("/api/v1/enquiries/7", () =>
-        HttpResponse.json({ ...baseEnquiry, status: "lost", quotations: [] }),
+        HttpResponse.json({ ...baseEnquiry, status: "dead", quotations: [] }),
       ),
     );
     setup("/enquiries/7");
     // Builder must not auto-open for a final enquiry (no search button), and the
-    // build toggle is disabled — quoting a lost enquiry is blocked.
+    // build toggle is disabled — quoting a dead enquiry is blocked.
     await screen.findByRole("button", { name: /assign/i });
     expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /build a quote/i })).toBeDisabled();

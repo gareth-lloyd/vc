@@ -178,8 +178,9 @@ class Quotation(AuditedModel):
         # rolls the entire accept() atomic block back.
         enquiry = self.enquiry
         if enquiry is not None and enquiry.status in (
-            EnquiryStatus.QUOTED.value,
-            EnquiryStatus.CONTACTED.value,
+            EnquiryStatus.QUOTE_SENT.value,
+            EnquiryStatus.PROGRESSING.value,
+            EnquiryStatus.FOLLOW_UP.value,
         ):
             enquiry.convert(self, actor=actor)
         return self

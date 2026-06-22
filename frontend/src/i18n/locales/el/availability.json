@@ -34,7 +34,10 @@
     "none": "—",
     "guide_value": "~{{value}}",
     "guide_title": "Ενδεικτική τιμή",
-    "changeover_label": "({{day}})"
+    "from_per_week": "από {{value}}/εβδ.",
+    "week_booked": "Κρατημένο",
+    "week_held": "Σε αναμονή",
+    "changeover_aria": "Ημέρα αλλαγής"
   },
   "gate": {
     "title": "Φιλτράρετε για να δείτε διαθεσιμότητα",

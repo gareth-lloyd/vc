@@ -1,5 +1,27 @@
 # SMELL-018 — Boot-time owner probe uses a 403 as control flow (console-error noise every staff session)
 
+> **✅ RESOLVED (2026-06-20)** — Adopted Option 1. `OwnerMeView` relaxed from
+> `IsOwner` to `IsAuthenticated`; an authenticated non-owner now gets
+> `200 {user, is_owner: false, organisations: []}` (the not-owner branch reuses
+> the already-listed `memberships`, predicate-identical to
+> `owners.permissions.is_owner` — no extra query; the owner path drops 3→2
+> queries). The SPA branches on `me.is_owner` instead of catching a 403:
+> `ownerMeSchema.is_owner` relaxed `z.literal(true)` → `z.boolean()`, and
+> `useOwnerMe` does `if (me.is_owner) setOwner else setNotOwner`, with any thrown
+> error (5xx/network/parse, incl. a 403) now → retryable `error` rather than a
+> false `not_owner`. No authz surface widens — the owner *data* endpoints
+> (`/owner/properties`, …) keep `IsOwner`; the probe leaks nothing (empty orgs).
+> A staff boot now logs zero console 403s. **Deviation from acceptance #?:**
+> anonymous is rejected with **403** (not the ticket's stated 401) because this
+> repo's `SessionAuth + BasicAuth` combo sets no `WWW-Authenticate` header under
+> `IsAuthenticated`; it is still rejected, never a 200, so the intent holds.
+> Option 2 (fold into `/auth/me`) and FG-009 left out of scope. Commits
+> `d71cba5` (backend) + `89d6e9f` (frontend). Tests (TDD): `test_me_api` +
+> `test_staff_api_isolation` flipped to the 200 not-owner contract (+ a new
+> `/owner/properties` stays-403 pin); `ownerProbe`/`ownerHooks`/`schemas` FE
+> tests assert not_owner from a 200 body and error from a 403. Backend `owners`
+> 50 ✓, frontend 1128 ✓.
+
 - **Severity:** 🟡 Smell (works correctly today; pollutes the console and will pollute prod error-tracking)
 - **Source:** 2026-06-18 DEV frontend-observability sweep (Playwright + the query/render
   instrumentation layer) — first signal observed on `/dashboard` load.

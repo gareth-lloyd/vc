@@ -28,7 +28,11 @@ from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.geo import Country, Region
 from properties.models.property import Property
-from reservations.enums import EnquirySource, EnquiryStatus
+from reservations.enums import (
+    EnquiryLostReason,
+    EnquirySource,
+    EnquiryStatus,
+)
 from reservations.models.enquiry import Enquiry
 from reservations.phone import to_e164
 
@@ -185,10 +189,10 @@ class ClientLoader(BaseLoader):
 
 _ENQUIRY_STATUS_MAP = {
     1: EnquiryStatus.NEW,
-    2: EnquiryStatus.CONTACTED,
-    3: EnquiryStatus.QUOTED,
+    2: EnquiryStatus.PROGRESSING,
+    3: EnquiryStatus.QUOTE_SENT,
     4: EnquiryStatus.CONVERTED,
-    5: EnquiryStatus.LOST,
+    5: EnquiryStatus.DEAD,
 }
 
 
@@ -251,6 +255,8 @@ class EnquiryLoader(BaseLoader):
         if "@" not in email:
             email = ""
 
+        status = _ENQUIRY_STATUS_MAP.get(row.get("Status") or 0, EnquiryStatus.NEW)
+
         return {
             "reference": (row.get("EnquiryNo") or f"E-{row['Id']:06d}")[:32],
             "first_name": first,
@@ -267,6 +273,12 @@ class EnquiryLoader(BaseLoader):
             "min_bedrooms": (int(row["MinBed"]) if row.get("MinBed") else None),
             "referral_code": (row.get("ReferralCode") or "").strip()[:64],
             "site_source": EnquirySource.MAIN_WEBSITE,
-            "status": _ENQUIRY_STATUS_MAP.get(row.get("Status") or 0, EnquiryStatus.NEW),
+            "status": status,
+            # Legacy carries no structured lost reason; a DEAD enquiry must
+            # satisfy the dead-requires-lost-reason constraint, so backfill
+            # UNKNOWN. Non-dead rows stay blank.
+            "lost_reason": (
+                EnquiryLostReason.UNKNOWN.value if status == EnquiryStatus.DEAD else ""
+            ),
             "inbound_message": (row.get("Notes") or "").strip(),
         }

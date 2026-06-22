@@ -74,6 +74,13 @@ class PropertySettings(AuditedModel):
         blank=True,
     )
     hold_duration_hours = models.PositiveSmallIntegerField(null=True, blank=True)
+    # The owner's online (non-iCal) calendar webpage, surfaced to sales as a
+    # quick link (GAP-034). Distinct from the secret iCal feed `url`
+    # (`PropertyCalendarFeed`). Per-villa, never inherited, so it is NOT in
+    # `_INHERITABLE_FIELDS` nor mirrored on `GroupSettings`. `null=True` (not
+    # just `blank=True`) so the SettingsTab's `blankToNull`-on-submit can clear
+    # it by sending `null`.
+    calendar_url = models.URLField(max_length=500, null=True, blank=True)
 
     def __str__(self) -> str:
         return f"Settings for property #{self.property_id}"

@@ -97,8 +97,14 @@
     "PT": "Πορτογαλία",
     "GR": "Ελλάδα"
   },
+  "calendar_source": {
+    "ical_badge": "iCal",
+    "ical_tooltip": "Η διαθεσιμότητα συγχρονίζεται αυτόματα από τη ροή iCal του ιδιοκτήτη",
+    "online_link": "Διαδικτυακό ημερολόγιο"
+  },
   "filters": {
-    "any_country": "Όλες οι χώρες"
+    "any_country": "Όλες οι χώρες",
+    "any_region": "Όλες οι περιοχές"
   },
   "zod": {
     "invalid_type": "Υποχρεωτικό",

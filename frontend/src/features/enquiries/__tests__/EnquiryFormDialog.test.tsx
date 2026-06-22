@@ -272,6 +272,9 @@ describe("EnquiryFormDialog date-spread stepper", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      lead_status: "warm" as const,
+      lost_reason: "" as const,
+      quotes_to_convert: null,
       quotations: [],
     };
 
@@ -397,6 +400,9 @@ describe("EnquiryFormDialog phone + contact_method capture", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      lead_status: "warm" as const,
+      lost_reason: "" as const,
+      quotes_to_convert: null,
       quotations: [],
     };
 
@@ -432,6 +438,9 @@ describe("EnquiryFormDialog server-side field errors", () => {
     min_bedrooms: null,
     referral_code: "",
     inbound_message: "",
+    lead_status: "warm" as const,
+    lost_reason: "" as const,
+    quotes_to_convert: null,
     quotations: [],
   };
 
@@ -591,6 +600,9 @@ describe("EnquiryFormDialog contact resolve-or-create", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      lead_status: "warm" as const,
+      lost_reason: "" as const,
+      quotes_to_convert: null,
       quotations: [],
     };
 
@@ -629,6 +641,9 @@ describe("EnquiryFormDialog contact resolve-or-create", () => {
       min_bedrooms: null,
       referral_code: "",
       inbound_message: "",
+      lead_status: "warm" as const,
+      lost_reason: "" as const,
+      quotes_to_convert: null,
       quotations: [],
     };
 

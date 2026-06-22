@@ -51,10 +51,18 @@ def test_anonymous_is_rejected(api_client: APIClient) -> None:
     assert api_client.get(URL).status_code in (401, 403)
 
 
-def test_staff_non_owner_gets_403(api_client: APIClient) -> None:
+def test_staff_non_owner_gets_200_not_owner(api_client: APIClient) -> None:
+    # The probe is readable by any authenticated user — a non-owner gets a 200
+    # with is_owner:false (no console 403 driving shell selection). It leaks
+    # nothing: organisations is empty. Owner *data* endpoints stay IsOwner-gated.
     staff = cast(User, UserFactory(role=StaffRole.RESERVATIONS))
     api_client.force_authenticate(staff)
-    assert api_client.get(URL).status_code == 403
+    resp = api_client.get(URL)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_owner"] is False
+    assert body["organisations"] == []
+    assert body["user"]["id"] == staff.id
 
 
 def test_owner_payload(api_client: APIClient) -> None:

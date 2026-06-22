@@ -118,6 +118,9 @@ def test_approve_and_execute_separation_of_duties(
     api_client.force_login(requester)
     self_approve = api_client.post(f"/api/v1/refunds/{refund.pk}:approve")
     assert self_approve.status_code == 403
+    # Canonical error shape (SMELL-010): the service raises `AuthorizationError`
+    # and the canonical handler maps it — no per-view `except PermissionError`.
+    assert self_approve.data["code"] == "forbidden"
     refund.refresh_from_db()
     assert refund.status == RefundStatus.PENDING.value
 

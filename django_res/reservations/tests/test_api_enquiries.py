@@ -18,7 +18,13 @@ from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.enums import ImageKind
 from properties.models import Property, PropertyImage
-from reservations.enums import ContactMethod, EnquiryStatus
+from reservations.enums import (
+    ContactMethod,
+    EnquiryLostReason,
+    EnquiryStatus,
+    LeadStatus,
+    QuotationStatus,
+)
 from reservations.models import (
     Enquiry,
     EnquiryEvent,
@@ -154,15 +160,153 @@ def test_list_enquiries__filter_by_status(
         first_name="C",
         last_name="D",
         email="c@d.com",
-        status=EnquiryStatus.LOST.value,
+        status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.UNKNOWN.value,
     )
     api_client.force_login(staff)
 
-    response = api_client.get("/api/v1/enquiries", {"status": EnquiryStatus.LOST.value})
+    response = api_client.get("/api/v1/enquiries", {"status": EnquiryStatus.DEAD.value})
 
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == lost.pk
+
+
+@pytest.mark.django_db
+def test_enquiry_exposes_lead_status_and_lost_reason(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    """The lead temperature + structured lost-reason land on both list and
+    detail payloads (read-only) so the dashboard can render + filter them."""
+    enquiry = Enquiry.objects.create(
+        person=customer,
+        first_name="C",
+        last_name="D",
+        email="c@d.com",
+        status=EnquiryStatus.DEAD.value,
+        lead_status=LeadStatus.HOT.value,
+        lost_reason=EnquiryLostReason.AVAILABILITY.value,
+    )
+    api_client.force_login(staff)
+
+    for payload in (
+        api_client.get("/api/v1/enquiries").data["results"][0],
+        api_client.get(f"/api/v1/enquiries/{enquiry.pk}").data,
+    ):
+        assert payload["lead_status"] == LeadStatus.HOT.value
+        assert payload["lost_reason"] == EnquiryLostReason.AVAILABILITY.value
+
+
+@pytest.mark.django_db
+def test_enquiry_lead_status_is_read_only_on_write(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """`lead_status` is mutated only via the audited :set-lead-status action; a
+    plain PATCH must not change it (it isn't on the write serializer)."""
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value  # unchanged (model default)
+
+
+@pytest.mark.django_db
+def test_list_enquiry_exposes_flexibility_fields(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    """The Flex? list column derives from `is_flexible` + `flexibility_days`, so
+    both must ride the *list* serializer — they were detail-only before GAP-039."""
+    Enquiry.objects.create(
+        person=customer, email="flex@x.com", is_flexible=True, flexibility_days=2
+    )
+    api_client.force_login(staff)
+
+    row = api_client.get("/api/v1/enquiries").data["results"][0]
+
+    assert row["is_flexible"] is True
+    assert row["flexibility_days"] == 2
+
+
+@pytest.mark.django_db
+def test_list_enquiries__filter_by_lead_status(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    Enquiry.objects.create(person=customer, email="warm@x.com")  # default warm
+    hot = Enquiry.objects.create(
+        person=customer, email="hot@x.com", lead_status=LeadStatus.HOT.value
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries", {"lead_status": LeadStatus.HOT.value})
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == hot.pk
+
+
+@pytest.mark.django_db
+def test_list_enquiries__filter_by_lost_reason(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    Enquiry.objects.create(person=customer, email="open@x.com")
+    dead = Enquiry.objects.create(
+        person=customer,
+        email="dead@x.com",
+        status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.AVAILABILITY.value,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(
+        "/api/v1/enquiries", {"lost_reason": EnquiryLostReason.AVAILABILITY.value}
+    )
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == dead.pk
+
+
+@pytest.mark.django_db
+def test_list_enquiries__filter_assigned_to_id_and_unassigned(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    """The salesperson filter accepts a numeric user id and the `unassigned`
+    sentinel (NumberFilter can't express IS NULL, which the dashboard's
+    "— Unassigned —" option needs)."""
+    unowned = Enquiry.objects.create(person=customer, email="unowned@x.com")
+    owned = Enquiry.objects.create(person=customer, email="owned@x.com", assigned_to=staff)
+    api_client.force_login(staff)
+
+    by_id = api_client.get("/api/v1/enquiries", {"assigned_to": staff.pk})
+    assert {r["id"] for r in by_id.data["results"]} == {owned.pk}
+
+    unassigned = api_client.get("/api/v1/enquiries", {"assigned_to": "unassigned"})
+    ids = {r["id"] for r in unassigned.data["results"]}
+    assert unowned.pk in ids
+    assert owned.pk not in ids
+
+
+@pytest.mark.django_db
+def test_list_enquiries__respects_page_size(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    """The dashboard page-size selector relies on the enquiry list honouring a
+    `page_size` query param (ConfigurablePageSizePagination)."""
+    for i in range(3):
+        Enquiry.objects.create(person=customer, email=f"e{i}@x.com")
+    api_client.force_login(staff)
+
+    response = api_client.get("/api/v1/enquiries", {"page_size": 2})
+
+    assert response.status_code == 200
+    assert response.data["count"] == 3
+    assert len(response.data["results"]) == 2
 
 
 @pytest.mark.django_db
@@ -620,6 +764,195 @@ def test_enquiry_detail_quote_stack_constant_query_count(
 
 
 @pytest.mark.django_db
+def test_quotes_to_convert__counts_real_quotes_up_to_accepted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """GAP-038: the metric counts real quotes issued up to and including the
+    accepted one — a later draft must not inflate it."""
+    quotes = [
+        Quotation.objects.create(
+            enquiry=enquiry,
+            person=customer,
+            expires_at=timezone.now() + timedelta(days=7 + i),
+            terms_version=terms,
+        )
+        for i in range(3)
+    ]
+    quotes[1].status = QuotationStatus.ACCEPTED.value
+    quotes[1].save(update_fields=["status"])
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__null_when_not_converted(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """A non-converted enquiry (no accepted real quote) reads null — the metric
+    measures won deals only."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] is None
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__null_when_converted_without_accepted_real_quote(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Converted but with no ACCEPTED real quote (e.g. legacy bookings migrate as
+    NEW with a synthetic DRAFT quote) → null, not 0 (L4 caveat)."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] is None
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__excludes_synthetic_booking_quotes(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """Synthetic `booking-` quotes never count (the detail prefetch is `.real()`),
+    so a single real accepted quote reads 1 despite an earlier synthetic row."""
+    Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+        legacy_id="booking-99",
+    )
+    real = Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=timezone.now() + timedelta(days=14),
+        terms_version=terms,
+        status=QuotationStatus.ACCEPTED.value,
+    )
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 1
+    assert {row["reference"] for row in response.data["quotations"]} == {real.reference}
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__tie_breaks_by_pk(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """When two quotes share a created_at, ordering falls back to pk so the count
+    is deterministic — accepting the higher-pk twin yields 2, not 1 (L3)."""
+    shared = timezone.now()
+    q1 = Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=shared + timedelta(days=7),
+        terms_version=terms,
+    )
+    q2 = Quotation.objects.create(
+        enquiry=enquiry,
+        person=customer,
+        expires_at=shared + timedelta(days=7),
+        terms_version=terms,
+        status=QuotationStatus.ACCEPTED.value,
+    )
+    Quotation.objects.filter(pk__in=[q1.pk, q2.pk]).update(created_at=shared)
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
+def test_quotes_to_convert__stays_within_query_budget(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    """The metric is pure-Python over the already-prefetched quote-stack, so it
+    must not add a query to the detail endpoint's budget."""
+    quotes = [
+        Quotation.objects.create(
+            enquiry=enquiry,
+            person=customer,
+            expires_at=timezone.now() + timedelta(days=7 + i),
+            terms_version=terms,
+        )
+        for i in range(3)
+    ]
+    quotes[1].status = QuotationStatus.ACCEPTED.value
+    quotes[1].save(update_fields=["status"])
+    enquiry.status = EnquiryStatus.CONVERTED.value
+    enquiry.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    with assert_max_queries(9):
+        response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}")
+
+    assert response.status_code == 200
+    assert response.data["quotes_to_convert"] == 2
+
+
+@pytest.mark.django_db
 def test_enquiry_list_does_not_include_nested_quotations(
     api_client: APIClient,
     staff: User,
@@ -770,6 +1103,64 @@ def test_enquiry_convert_endpoint_still_works_when_quoted(
 
 
 @pytest.mark.django_db
+def test_convert_response_is_query_bounded(
+    api_client: APIClient,
+    staff: User,
+    enquiry: Enquiry,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """`:convert` runs `refresh_locked()`, which wipes the instance's prefetch
+    cache, so the response must re-fetch through the detail queryset
+    (`_detail_response`). Otherwise the `quotes_to_convert` metric + nested
+    quote-stack re-query per quote/line — an N+1, and an unscoped read that drops
+    the `.real()` synthetic-quote filter. Pinned constant regardless of quote
+    count to lock that regression out."""
+    PropertyImage.objects.create(
+        property=property_,
+        kind=ImageKind.HERO,
+        image=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+    )
+    enquiry.contact()
+    quotations = []
+    for q_offset in range(3):
+        quotation = Quotation.objects.create(
+            enquiry=enquiry,
+            person=customer,
+            expires_at=timezone.now() + timedelta(days=7 + q_offset),
+            terms_version=terms,
+        )
+        quotations.append(quotation)
+        for line_offset in range(2):
+            QuotationLine.objects.create(
+                quotation=quotation,
+                property=property_,
+                currency=gbp,
+                date_from=date(2026, 6, 10 + line_offset),
+                date_to=date(2026, 6, 17 + line_offset),
+                adults=2,
+                total=Decimal("1400.00"),
+            )
+    api_client.force_login(staff)
+
+    with assert_max_queries(25):
+        response = api_client.post(
+            f"/api/v1/enquiries/{enquiry.pk}:convert",
+            {"quotation": quotations[0].pk},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["status"] == EnquiryStatus.CONVERTED.value
+    # Detail shape: the GAP-038 metric is computed (null here — no accepted quote)
+    # without an extra query, proving the re-fetch carried the `.real()` prefetch.
+    assert "quotes_to_convert" in response.data
+    assert response.data["quotes_to_convert"] is None
+
+
+@pytest.mark.django_db
 def test_close_enquiry__marks_lost(api_client: APIClient, staff: User, enquiry: Enquiry) -> None:
     api_client.force_login(staff)
 
@@ -781,7 +1172,120 @@ def test_close_enquiry__marks_lost(api_client: APIClient, staff: User, enquiry: 
 
     assert response.status_code == 200
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.LOST.value
+    assert enquiry.status == EnquiryStatus.DEAD.value
+    # No structured reason supplied → defaults to UNKNOWN (constraint-safe).
+    assert enquiry.lost_reason == EnquiryLostReason.UNKNOWN.value
+
+
+@pytest.mark.django_db
+def test_close_enquiry__stores_structured_lost_reason(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:close",
+        {"reason": "found a villa with a pool", "lost_reason": "found_alternative"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.DEAD.value
+    assert enquiry.lost_reason == EnquiryLostReason.FOUND_ALTERNATIVE.value
+
+
+@pytest.mark.django_db
+def test_close_enquiry__rejects_unknown_lost_reason(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:close",
+        {"lost_reason": "not_a_real_reason"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.status == EnquiryStatus.NEW.value  # unchanged
+
+
+@pytest.mark.django_db
+def test_set_lead_status__updates_field_and_writes_event(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """`:set-lead-status` mutates the temperature through the audited model
+    method (writing a LEAD_STATUS_CHANGED event) and returns the detail shape."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["lead_status"] == LeadStatus.HOT.value
+    assert "quotations" in response.data  # detail shape, not the bare instance
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.HOT.value
+    assert EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").count() == 1
+
+
+@pytest.mark.django_db
+def test_set_lead_status__rejects_invalid_value(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """An unknown value is rejected with 400 (not surfaced as the model's 500
+    ValueError); the row and timeline are untouched."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": "banana"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value  # unchanged default
+    assert not EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status__noop_when_unchanged(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    """Re-setting the current value returns 200 without padding the timeline."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.WARM.value},  # already the model default
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert not EnquiryEvent.objects.filter(enquiry=enquiry, kind="lead_status_changed").exists()
+
+
+@pytest.mark.django_db
+def test_set_lead_status__requires_writer(
+    api_client: APIClient, viewer: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(viewer)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:set-lead-status",
+        {"lead_status": LeadStatus.HOT.value},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    enquiry.refresh_from_db()
+    assert enquiry.lead_status == LeadStatus.WARM.value
 
 
 @pytest.mark.django_db
@@ -794,7 +1298,7 @@ def test_activity_returns_event_timeline(
     response = api_client.get(f"/api/v1/enquiries/{enquiry.pk}/activity")
 
     assert response.status_code == 200
-    assert any(row["to_status"] == EnquiryStatus.CONTACTED.value for row in response.data)
+    assert any(row["to_status"] == EnquiryStatus.PROGRESSING.value for row in response.data)
 
 
 @pytest.mark.django_db
@@ -843,14 +1347,15 @@ def test_enquiry_status_counts__groups_by_status(
         first_name="C",
         last_name="D",
         email="c@d.com",
-        status=EnquiryStatus.LOST.value,
+        status=EnquiryStatus.DEAD.value,
+        lost_reason=EnquiryLostReason.UNKNOWN.value,
     )
     api_client.force_login(staff)
 
     response = api_client.get("/api/v1/enquiries/status-counts")
 
     assert response.status_code == 200
-    assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.LOST.value: 1}
+    assert response.data == {EnquiryStatus.NEW.value: 1, EnquiryStatus.DEAD.value: 1}
 
 
 @pytest.mark.django_db

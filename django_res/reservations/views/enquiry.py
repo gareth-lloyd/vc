@@ -13,8 +13,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from accounts.models import User
+from core.api.pagination import ConfigurablePageSizePagination
 from core.api.permissions import IsReservationsWriter
-from reservations.enums import EnquiryStatus
+from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
@@ -74,6 +75,7 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         "person", "property", "region", "agent", "assigned_to"
     ).prefetch_related("person__emails", "person__phones")
     permission_classes = [IsAuthenticated, IsReservationsWriter]
+    pagination_class = ConfigurablePageSizePagination
     filterset_class = EnquiryFilter
     ordering_fields = ["created_at", "updated_at", "status"]
     ordering = ["-created_at"]
@@ -158,22 +160,60 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         """
         enquiry = self.get_object()
         if enquiry.status == EnquiryStatus.CONVERTED.value:
-            return Response(EnquiryDetailSerializer(enquiry).data)
+            return self._detail_response(enquiry, status.HTTP_200_OK)
         quotation_id = request.data.get("quotation")
         # Scoped to *this* enquiry's quotations — citing another enquiry's
         # quote would mark this one converted with an audit pointer at an
         # unrelated quotation.
         quotation = get_object_or_404(Quotation, pk=quotation_id, enquiry=enquiry)
         enquiry.convert(quotation, actor=request.user)
-        return Response(EnquiryDetailSerializer(enquiry).data)
+        # Re-fetch through the prefetched detail queryset: convert() runs
+        # refresh_locked(), which wipes this instance's prefetch cache, so a bare
+        # serialization would re-query `quotations` through the *default* manager
+        # (an N+1 and, for the now-CONVERTED status, an unscoped read that drops
+        # the `.real()` synthetic-quote filter the `quotes_to_convert` metric and
+        # quote-stack rely on). `_detail_response` re-fetches with the `.real()`
+        # prefetch intact.
+        return self._detail_response(enquiry, status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request: Request, pk: str | None = None) -> Response:
-        """Mark closed-lost. Body: `{"reason": "..."}`."""
+        """Mark closed-dead. Body: `{"reason": "...", "lost_reason": "..."}`.
+
+        `reason` is the free-text note; `lost_reason` is an optional structured
+        `EnquiryLostReason` (defaults to UNKNOWN). An unknown structured value
+        is rejected rather than silently coerced.
+        """
         enquiry = self.get_object()
         reason = request.data.get("reason", "")
-        enquiry.lose(reason=reason, actor=request.user)
+        lost_reason = request.data.get("lost_reason") or EnquiryLostReason.UNKNOWN.value
+        if lost_reason not in EnquiryLostReason.values:
+            return Response(
+                {"lost_reason": [f"'{lost_reason}' is not a valid lost reason."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        enquiry.lose(reason=reason, lost_reason=lost_reason, actor=request.user)
         return Response(EnquiryDetailSerializer(enquiry).data)
+
+    @action(detail=True, methods=["post"], url_path="set-lead-status")
+    def set_lead_status(self, request: Request, pk: str | None = None) -> Response:
+        """Set the lead temperature. Body: `{"lead_status": "hot|warm|cold|dead"}`.
+
+        Audited via the model's `set_lead_status` (writes a LEAD_STATUS_CHANGED
+        event; a no-op when unchanged). An unknown value is rejected with 400
+        rather than surfaced as the model's bare `ValueError` (a 500); validating
+        here also guarantees no mutation on a bad value. Returns the detail shape
+        (re-fetched through the prefetched queryset, mirroring `:close`).
+        """
+        enquiry = self.get_object()
+        lead_status = request.data.get("lead_status")
+        if lead_status not in LeadStatus.values:
+            return Response(
+                {"lead_status": [f"'{lead_status}' is not a valid lead status."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        enquiry.set_lead_status(lead_status, actor=request.user)
+        return self._detail_response(enquiry, status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="reopen")
     def reopen(self, request: Request, pk: str | None = None) -> Response:

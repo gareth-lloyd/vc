@@ -24,7 +24,7 @@ const HISTORY = {
     {
       id: 2,
       reference: "E-2026-000002",
-      status: "quoted",
+      status: "quote_sent",
       site_source: "agent_portal",
       request_type: "quote",
       created_at: "2026-04-01T00:00:00Z",

@@ -11,17 +11,20 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from core.tests import assert_max_queries
 from properties import factories
 from properties.enums import ImageKind, PropertyStatus
 from properties.models import (
     Feature,
     FeatureCategory,
     Property,
+    PropertyCalendarFeed,
     PropertyCategory,
     PropertyFeature,
     PropertyGroup,
     PropertyImage,
     PropertyLocation,
+    PropertySettings,
     Region,
 )
 
@@ -449,3 +452,216 @@ def test_import_from_zoho_returns_501(
     response = api_client.post(f"/api/v1/properties/{property_.pk}:import-from-zoho")
     assert response.status_code == 501
     assert response.json()["code"] == "not_implemented"
+
+
+# --- GAP-034: calendar-source indicators on property list/detail ---------------
+
+
+def _list_row(payload: dict, property_id: int) -> dict:
+    """Pluck a single property's row out of the paginated list payload."""
+    rows = [row for row in payload["results"] if row["id"] == property_id]
+    assert len(rows) == 1, f"expected exactly one row for property {property_id}"
+    return rows[0]
+
+
+@pytest.mark.django_db
+def test_list_has_active_ical_feed_true_with_active_feed(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """An active `PropertyCalendarFeed` flips the list flag to true."""
+    PropertyCalendarFeed.objects.create(
+        property=property_, url="https://example.test/ical/a.ics", is_active=True
+    )
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200, response.content
+    assert _list_row(response.json(), property_.pk)["has_active_ical_feed"] is True
+
+
+@pytest.mark.django_db
+def test_list_has_active_ical_feed_false_without_feed(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """No feed → flag is false (never absent/null)."""
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200, response.content
+    assert _list_row(response.json(), property_.pk)["has_active_ical_feed"] is False
+
+
+@pytest.mark.django_db
+def test_has_active_ical_feed_false_with_only_inactive_feed(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """An inactive feed must not count — only `is_active=True` feeds flip it."""
+    PropertyCalendarFeed.objects.create(
+        property=property_, url="https://example.test/ical/off.ics", is_active=False
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["has_active_ical_feed"] is False
+
+
+@pytest.mark.django_db
+def test_detail_has_active_ical_feed_true_with_active_feed(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    PropertyCalendarFeed.objects.create(
+        property=property_, url="https://example.test/ical/d.ics", is_active=True
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["has_active_ical_feed"] is True
+
+
+@pytest.mark.django_db
+def test_feed_url_never_serialized_in_property_payloads(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """The feed `url` is a secret capability URL — it must never appear in any
+    property payload (list or detail), only the boolean flag (GAP-011/GAP-034)."""
+    secret = "https://secret.example.test/ical/SUPERSECRETTOKEN.ics"
+    PropertyCalendarFeed.objects.create(property=property_, url=secret, is_active=True)
+    api_client.force_login(staff)
+
+    list_response = api_client.get("/api/v1/properties")
+    assert secret not in list_response.content.decode()
+    detail_response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert secret not in detail_response.content.decode()
+    # And no feed/url-shaped keys leak into the row at all.
+    row = _list_row(list_response.json(), property_.pk)
+    assert "url" not in row
+    assert "calendar_feeds" not in row
+
+
+@pytest.mark.django_db
+def test_calendar_url_surfaced_on_list_and_detail(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`calendar_url` from `PropertySettings` is surfaced on both shapes."""
+    url = "https://owner.example.com/calendar"
+    PropertySettings.objects.create(property=property_, calendar_url=url)
+    api_client.force_login(staff)
+
+    list_response = api_client.get("/api/v1/properties")
+    assert _list_row(list_response.json(), property_.pk)["calendar_url"] == url
+    detail_response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert detail_response.json()["calendar_url"] == url
+
+
+@pytest.mark.django_db
+def test_calendar_url_null_when_no_settings_row(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A settings-less property (the `property_` fixture) reports null, not a 500
+    — the `ObjectDoesNotExist`-guarded read path."""
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["calendar_url"] is None
+
+
+@pytest.mark.django_db
+def test_property_with_both_feed_and_calendar_url(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Precedence is a FE concern: the BE exposes BOTH the flag and the url when a
+    property has an active feed and a `calendar_url`."""
+    PropertyCalendarFeed.objects.create(
+        property=property_, url="https://example.test/ical/both.ics", is_active=True
+    )
+    PropertySettings.objects.create(
+        property=property_, calendar_url="https://owner.example.com/calendar"
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}")
+    body = response.json()
+    assert body["has_active_ical_feed"] is True
+    assert body["calendar_url"] == "https://owner.example.com/calendar"
+
+
+@pytest.mark.django_db
+def test_create_response_includes_flag_via_fallback(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    """`create` serializes a fresh, non-annotated instance — the SMF must fall
+    back to `.exists()` instead of crashing on the missing annotation."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/properties",
+        data={
+            "name": "Fresh Villa",
+            "display_name": "Fresh Villa",
+            "slug": "fresh-villa",
+            "category": category.pk,
+            "group": group.pk,
+            "region": region.pk,
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    assert response.json()["has_active_ical_feed"] is False
+    assert response.json()["calendar_url"] is None
+
+
+@pytest.mark.django_db
+def test_duplicate_response_includes_flag_via_fallback(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`duplicate` also returns a fresh, non-annotated clone — same fallback."""
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+    assert response.json()["has_active_ical_feed"] is False
+
+
+@pytest.mark.django_db
+def test_list_query_count_constant_with_feeds_and_settings(
+    api_client: APIClient,
+    staff: User,
+    category: PropertyCategory,
+    group: PropertyGroup,
+    region: Region,
+) -> None:
+    """Surfacing the flag (a scalar `Exists`) and `calendar_url`
+    (`select_related("settings")`) must add no per-row query — the count stays
+    flat as the property set grows. Guards against an accidental N+1."""
+
+    def _make(n_start: int, n: int) -> None:
+        for idx in range(n_start, n_start + n):
+            prop = Property.objects.create(
+                name=f"QC Villa {idx}",
+                display_name=f"QC Villa {idx}",
+                slug=f"qc-villa-{idx}",
+                category=category,
+                group=group,
+                region=region,
+            )
+            PropertySettings.objects.create(
+                property=prop, calendar_url=f"https://owner.example.com/{idx}"
+            )
+            PropertyCalendarFeed.objects.create(
+                property=prop, url=f"https://example.test/ical/qc-{idx}.ics", is_active=True
+            )
+
+    _make(0, 5)
+    api_client.force_login(staff)
+    api_client.get("/api/v1/properties")  # warm caches
+    # Fixed ceiling (catches a constant baseline regression) AND scale-invariance
+    # (the larger set must stay within the small-set count → no per-row N+1).
+    with assert_max_queries(15) as small:
+        response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200, response.content
+    baseline = len(small.captured_queries)
+
+    _make(5, 10)
+    with assert_max_queries(baseline) as large:
+        response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200, response.content
+    assert len(large.captured_queries) <= baseline

@@ -227,3 +227,71 @@ def test_get_settings_query_count_pins_property_currency_join(
         response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
     assert response.status_code == 200, response.content
     assert response.json()["currency_code"] == "GBP"
+
+
+# --- calendar_url (GAP-034): owner's online (non-iCal) calendar webpage ---
+
+
+@pytest.mark.django_db
+def test_get_settings_calendar_url_null_when_unset(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`calendar_url` is exposed and defaults to null when never set."""
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert response.status_code == 200, response.content
+    assert response.json()["calendar_url"] is None
+
+
+@pytest.mark.django_db
+def test_patch_settings_sets_calendar_url(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """PATCHing a URL persists it and GET echoes it back."""
+    api_client.force_login(staff)
+    url = "https://owner.example.com/calendar"
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"calendar_url": url},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["calendar_url"] == url
+
+    get_response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert get_response.json()["calendar_url"] == url
+
+
+@pytest.mark.django_db
+def test_patch_settings_null_clears_calendar_url(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Clearing the field is the real FE path: SettingsTab's `blankToNull` turns
+    an emptied input into `null` on submit, so `null` must clear (not 400)."""
+    PropertySettings.objects.update_or_create(
+        property=property_, defaults={"calendar_url": "https://owner.example.com/calendar"}
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"calendar_url": None},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["calendar_url"] is None
+
+
+@pytest.mark.django_db
+def test_patch_settings_invalid_calendar_url_returns_400(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """The Django `URLField` validator is stricter than the FE's; a malformed
+    URL is rejected server-side."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"calendar_url": "not a url"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "calendar_url" in response.json()["field_errors"]

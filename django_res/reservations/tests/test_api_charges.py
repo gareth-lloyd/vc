@@ -239,6 +239,10 @@ def test_currency_defaults_to_booking_and_mismatch_is_rejected(
         format="json",
     )
     assert mismatch.status_code == 400
+    # Canonical error shape (SMELL-010): the service raises a typed
+    # `DomainValidationError`, not a DRF `ValidationError`, so the handler
+    # still emits `{code, detail, field_errors}` with a stable code.
+    assert mismatch.data["code"] == "validation_error"
     assert "currency" in mismatch.data["field_errors"]
 
 

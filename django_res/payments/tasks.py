@@ -147,8 +147,10 @@ def _send_payment_reminders(today: Any) -> int:
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
             booking__date_from__gte=today,
         )
-        .select_related("booking", "booking__person", "booking__property", "currency")
-        .prefetch_related("booking__person__emails")
+        .select_related(
+            "booking", "booking__person", "booking__property", "booking__currency", "currency"
+        )
+        .prefetch_related("booking__person__emails", "booking__charge_items")
         .order_by("pk")
     )
 
@@ -216,8 +218,10 @@ def _send_security_deposit_reminders(today: Any) -> int:
             status__in=list(SECURITY_DEPOSIT_OPEN_STATUSES),
             booking__status__in=list(ACTIVE_BOOKING_STATUSES),
         )
-        .select_related("booking", "booking__person", "booking__property", "currency")
-        .prefetch_related("booking__person__emails")
+        .select_related(
+            "booking", "booking__person", "booking__property", "booking__currency", "currency"
+        )
+        .prefetch_related("booking__person__emails", "booking__charge_items")
         .order_by("pk")
     )
 
@@ -373,6 +377,12 @@ def _reminder_context(
 ) -> dict[str, Any]:
     from comms.recipients import recipient_first_name
 
+    # `amount` is the schedule slice due now; `charge_breakdown` is the whole
+    # booking decomposed (subtotal + charge lines + grand total). Both ride the
+    # context — the deposit/balance templates render the breakdown; the
+    # security-deposit request ignores it (a separate refundable hold).
+    from reservations.services.charges import booking_charge_breakdown
+
     return {
         "booking_reference": booking.reference,
         "guest_first_name": recipient_first_name(booking.person),
@@ -383,6 +393,7 @@ def _reminder_context(
         "currency": currency_code,
         "due_on": format_date(due_at) if due_at else "",
         "payment_reference": payment.reference if payment is not None else "",
+        "charge_breakdown": booking_charge_breakdown(booking),
     }
 
 

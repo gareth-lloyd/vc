@@ -136,4 +136,4 @@ def test_enquiry_transition_refuses_stale_instance(customer: Person) -> None:
     )
     assert contacted_events.count() == 1
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.CONTACTED.value
+    assert enquiry.status == EnquiryStatus.PROGRESSING.value

@@ -12,8 +12,8 @@ interface CloseDialogProps {
 
 const DEFAULTS: CloseEnquiryInput = { reason: "" };
 
-// Backend only models a single "lost" outcome — a successful enquiry becomes
-// CONVERTED via convert(). So "Close" maps to lose.
+// Backend only models a single "dead" outcome — a successful enquiry becomes
+// CONVERTED via convert(). So "Close" maps to lose().
 export function CloseDialog({ enquiryId, open, onOpenChange }: CloseDialogProps) {
   const { t } = useTranslation("enquiries");
   const mutation = useCloseEnquiry(enquiryId);

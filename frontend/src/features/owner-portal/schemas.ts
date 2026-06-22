@@ -23,7 +23,9 @@ export type OwnerOrganisation = z.infer<typeof ownerOrganisationSchema>;
 
 export const ownerMeSchema = z.object({
   user: userMeSchema,
-  is_owner: z.literal(true),
+  // The boot probe returns is_owner:false (with empty organisations) for an
+  // authenticated non-owner — the SPA branches on this instead of a 403.
+  is_owner: z.boolean(),
   organisations: z.array(ownerOrganisationSchema),
 });
 export type OwnerMe = z.infer<typeof ownerMeSchema>;

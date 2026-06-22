@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from reservations.enums import EnquiryLostReason
 from reservations.factories import EnquiryFactory
 from reservations.models.enquiry import Enquiry
 from seeding._booking_helpers import pick_guest
@@ -30,7 +31,7 @@ def _run(ctx: SeedContext) -> int:
         prop = active_properties[i % len(active_properties)]
         enquiry = cast(Enquiry, EnquiryFactory(person=pick_guest(ctx), property=prop))
         ctx.enquiry_pks.append(enquiry.pk)
-        enquiry.lose("No suitable match")
+        enquiry.lose("No suitable match", lost_reason=EnquiryLostReason.AVAILABILITY.value)
         made += 1
     for i in range(contacted):
         prop = active_properties[(i + 1) % len(active_properties)]

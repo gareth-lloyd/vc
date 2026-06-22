@@ -16,8 +16,10 @@ class EnquiryFilter(filters.FilterSet):
     """Filter shape for `GET /enquiries`."""
 
     status = filters.CharFilter(field_name="status")
+    lead_status = filters.CharFilter(field_name="lead_status")
+    lost_reason = filters.CharFilter(field_name="lost_reason")
     site = filters.CharFilter(field_name="site_source")
-    assigned_to = filters.NumberFilter(field_name="assigned_to_id")
+    assigned_to = filters.CharFilter(method="filter_assigned_to")
     source = filters.CharFilter(field_name="site_source")
     created_after = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="gte")
     created_before = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="lte")
@@ -25,7 +27,31 @@ class EnquiryFilter(filters.FilterSet):
 
     class Meta:
         model = Enquiry
-        fields = ["status", "site", "assigned_to", "source", "created_after", "created_before", "q"]
+        fields = [
+            "status",
+            "lead_status",
+            "lost_reason",
+            "site",
+            "assigned_to",
+            "source",
+            "created_after",
+            "created_before",
+            "q",
+        ]
+
+    def filter_assigned_to(
+        self, queryset: QuerySet[Enquiry], _name: str, value: str
+    ) -> QuerySet[Enquiry]:
+        """Salesperson filter: a numeric user id (exact), or the `unassigned`
+        sentinel for IS NULL (the dashboard's "— Unassigned —" option, which a
+        plain NumberFilter can't express). Anything else is ignored."""
+        if not value:
+            return queryset
+        if value == "unassigned":
+            return queryset.filter(assigned_to__isnull=True)
+        if value.isdigit():
+            return queryset.filter(assigned_to_id=int(value))
+        return queryset
 
     def filter_q(self, queryset: QuerySet[Enquiry], _name: str, value: str) -> QuerySet[Enquiry]:
         if not value:

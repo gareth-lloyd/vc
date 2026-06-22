@@ -207,9 +207,9 @@ def test_seed_dev_mixed_graph_has_full_variety() -> None:
     enquiry_statuses = set(Enquiry.objects.values_list("status", flat=True))
     assert EnquiryStatus.CONVERTED.value in enquiry_statuses
     expected_others = {
-        EnquiryStatus.QUOTED.value,
-        EnquiryStatus.CONTACTED.value,
-        EnquiryStatus.LOST.value,
+        EnquiryStatus.QUOTE_SENT.value,
+        EnquiryStatus.PROGRESSING.value,
+        EnquiryStatus.DEAD.value,
     }
     assert enquiry_statuses & expected_others, (
         f"expected at least one of {expected_others} in {enquiry_statuses}"

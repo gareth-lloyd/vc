@@ -79,6 +79,9 @@ function settingsDefaults(s: PropertySettings): PropertySettingsWriteInput {
     min_nights_rental: s.min_nights_rental ?? null,
     min_nights_rental_note: s.min_nights_rental_note ?? "",
     prices_entered_as: s.prices_entered_as ?? null,
+    // Empty string in the input; `blankToNull` turns a cleared field into null
+    // on submit so the URL can be removed (the server accepts null).
+    calendar_url: s.calendar_url ?? "",
   };
 }
 
@@ -305,6 +308,24 @@ function OperationalForm({
           disabled={!canWrite}
           {...form.register("min_nights_rental_note")}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="prop-settings-calendar-url">
+          {t("settings.operational.fields.calendar_url")}
+        </Label>
+        <Input
+          id="prop-settings-calendar-url"
+          type="url"
+          inputMode="url"
+          placeholder={t("settings.operational.fields.calendar_url_placeholder")}
+          disabled={!canWrite}
+          aria-describedby="prop-settings-calendar-url-help"
+          {...form.register("calendar_url")}
+        />
+        <p id="prop-settings-calendar-url-help" className="text-muted-foreground text-xs">
+          {t("settings.operational.fields.calendar_url_help")}
+        </p>
       </div>
 
       <div className="space-y-2">

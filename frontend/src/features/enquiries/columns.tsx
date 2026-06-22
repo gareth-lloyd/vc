@@ -1,11 +1,25 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { ColumnDef } from "@tanstack/react-table";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
+import { LeadStatusCell } from "./components/LeadStatusCell";
 import { enquirySourceLabel, enquiryStatusLabel, type EnquiryListItem } from "./schemas";
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;
+
+/**
+ * Maps the stored flexibility shape to the Flex? cell. The structured spread is
+ * capped at 0–3 today (the `± 7 days` variant arrives with GAP-043), so this is
+ * an interim three-way label: a positive spread → `± N days`; otherwise the
+ * open-ended `is_flexible` flag → `Flexible`; else fixed `Specific dates`.
+ */
+function flexLabel(t: TFunction<"enquiries">, isFlexible: boolean, days: number): string {
+  if (days > 0) return t("columns.flex.spread", { count: days });
+  if (isFlexible) return t("columns.flex.flexible");
+  return t("columns.flex.specific");
+}
 
 export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
   const { t } = useTranslation("enquiries");
@@ -51,6 +65,19 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         },
       },
       {
+        id: "region",
+        header: t("columns.region"),
+        enableSorting: false,
+        cell: ({ row }) => {
+          const name = row.original.region_name;
+          if (name) return <span className="text-sm">{name}</span>;
+          if (row.original.region != null) {
+            return <span className="text-muted-foreground text-sm">#{row.original.region}</span>;
+          }
+          return MUTED_DASH;
+        },
+      },
+      {
         accessorKey: "date_from",
         header: t("columns.dates"),
         enableSorting: true,
@@ -65,6 +92,16 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         },
       },
       {
+        id: "flex",
+        header: t("columns.flex.header"),
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-sm">
+            {flexLabel(t, row.original.is_flexible, row.original.flexibility_days)}
+          </span>
+        ),
+      },
+      {
         id: "party",
         header: t("columns.party"),
         enableSorting: false,
@@ -74,6 +111,21 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
             ? t("detail.rail.party_format_with_children", { adults, children })
             : t("detail.rail.party_format", { adults });
           return <span className="text-sm">{party}</span>;
+        },
+      },
+      {
+        id: "assigned_to",
+        header: t("columns.sales_person"),
+        enableSorting: false,
+        cell: ({ row }) => {
+          const name = row.original.assigned_to_name;
+          if (name) return <span className="text-sm">{name}</span>;
+          if (row.original.assigned_to != null) {
+            return (
+              <span className="text-muted-foreground text-sm">#{row.original.assigned_to}</span>
+            );
+          }
+          return <span className="text-muted-foreground text-sm">{t("columns.unassigned")}</span>;
         },
       },
       {
@@ -89,6 +141,18 @@ export function useEnquiryColumns(): ColumnDef<EnquiryListItem>[] {
         header: t("columns.status"),
         enableSorting: true,
         cell: ({ row }) => <StatusBadge status={enquiryStatusLabel(row.original.status)} />,
+      },
+      {
+        accessorKey: "lead_status",
+        header: t("columns.lead_status"),
+        enableSorting: false,
+        cell: ({ row }) => (
+          <LeadStatusCell
+            enquiryId={row.original.id}
+            reference={row.original.reference}
+            value={row.original.lead_status}
+          />
+        ),
       },
       {
         accessorKey: "created_at",

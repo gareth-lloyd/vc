@@ -108,6 +108,11 @@ _enquiry_actions: list[URLPattern | URLResolver] = [
         name="enquiry-reopen",
     ),
     path(
+        "enquiries/<int:pk>:set-lead-status",
+        EnquiryViewSet.as_view({"post": "set_lead_status"}),
+        name="enquiry-set-lead-status",
+    ),
+    path(
         "enquiries/<int:pk>/activity",
         EnquiryViewSet.as_view({"get": "activity"}),
         name="enquiry-activity",

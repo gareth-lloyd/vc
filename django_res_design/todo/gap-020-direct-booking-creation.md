@@ -1,3 +1,13 @@
+> **⚠️ DEPENDENCY STALE (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — This ticket
+> treats the `kind` enum as folding in SMELL-014 "for free." It no longer does:
+> **SMELL-014 closed independently on 2026-06-18** by keeping the string-prefix
+> `.real()` (`reservations/models/quotation.py:23-39`), *not* by a `kind` enum.
+> So the `kind` refactor is now **net-new structural scope** — re-justify it on
+> its own merits (a machine-readable `origin` for direct bookings) or drop it for
+> the simpler prefix path. The synthetic-quotation decision below is unaffected.
+>
+> _Original ticket preserved below for context._
+
 # GAP-020 — Direct booking creation (legacy rate-lookup "book now", done properly)
 
 - **Severity:** 🟢 Gap / feature — **design ready; implementation deliberately
@@ -103,7 +113,7 @@ unsent); do not "reclaim" such numbers.
 
 ## Proposed design
 
-### 1. Synthetic-row marking — `kind` enum, not `legacy_id` (folds SMELL-014)
+### 1. Synthetic-row marking — `kind` enum, not `legacy_id` (net-new; SMELL-014 already closed separately)
 
 `legacy_id` is migration metadata only (`django_res/CLAUDE.md`) and must not
 be minted for organic rows. Instead:
@@ -326,7 +336,9 @@ existing value fits.
 ## Dependencies
 
 - **GAP-006** (resolved) — number sequence + carry-forward this design rides on.
-- **SMELL-014** — the `kind` enum is its fix; land together.
+- **SMELL-014** — ~~the `kind` enum is its fix; land together~~ **closed
+  2026-06-18 via the string-prefix `.real()`** (see `done/`); the `kind` enum is
+  no longer SMELL-014's fix. See the stale-dependency banner at the top.
 - **Q-013** (resolved) — manual-price behaviour.
 - **GAP-014** (resolved) — currency semantics for the engine call.
 - **GAP-016 / GAP-018** — post-create price adjustment surfaces that justify

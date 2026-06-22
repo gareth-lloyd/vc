@@ -242,7 +242,7 @@ def test_reset_clears_protecting_rows_on_property() -> None:
     EnquiryEvent.objects.create(
         enquiry=other_enquiry,
         from_status=EnquiryStatus.NEW,
-        to_status=EnquiryStatus.QUOTED,
+        to_status=EnquiryStatus.QUOTE_SENT,
         kind=EnquiryEventKind.QUOTE_SENT,
     )
     terms = TermsVersion.objects.create(

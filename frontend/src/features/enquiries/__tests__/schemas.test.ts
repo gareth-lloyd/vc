@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   enquiryDetailSchema,
+  enquiryEventKindSchema,
   enquiryListItemSchema,
   enquiryStatusSchema,
   enquiryWriteInputSchema,
+  leadStatusLabel,
+  leadStatusSchema,
+  lostReasonLabel,
+  lostReasonSchema,
 } from "../schemas";
 
 describe("enquiryStatusSchema", () => {
   it("parses each known status", () => {
-    for (const s of ["new", "contacted", "quoted", "lost", "converted"] as const) {
+    for (const s of [
+      "new",
+      "progressing",
+      "quote_sent",
+      "follow_up",
+      "dead",
+      "converted",
+    ] as const) {
       expect(enquiryStatusSchema.parse(s)).toBe(s);
     }
   });
@@ -16,6 +28,36 @@ describe("enquiryStatusSchema", () => {
   it("rejects unknown statuses", () => {
     expect(enquiryStatusSchema.safeParse("won").success).toBe(false);
     expect(enquiryStatusSchema.safeParse("").success).toBe(false);
+  });
+});
+
+describe("leadStatusSchema", () => {
+  it("parses each lead status", () => {
+    for (const s of ["hot", "warm", "cold", "dead"] as const) {
+      expect(leadStatusSchema.parse(s)).toBe(s);
+    }
+  });
+
+  it("rejects unknown lead statuses", () => {
+    expect(leadStatusSchema.safeParse("banana").success).toBe(false);
+  });
+});
+
+describe("lostReasonSchema", () => {
+  it("parses each lost reason", () => {
+    for (const r of [
+      "found_alternative",
+      "availability",
+      "different_destination",
+      "no_group_consensus",
+      "unknown",
+    ] as const) {
+      expect(lostReasonSchema.parse(r)).toBe(r);
+    }
+  });
+
+  it("rejects unknown reasons", () => {
+    expect(lostReasonSchema.safeParse("nope").success).toBe(false);
   });
 });
 
@@ -57,13 +99,34 @@ describe("enquiryListItemSchema", () => {
   it("rejects bad status enum values", () => {
     expect(enquiryListItemSchema.safeParse({ ...valid, status: "unknown" }).success).toBe(false);
   });
+
+  it("parses lead_status and lost_reason when present", () => {
+    const parsed = enquiryListItemSchema.parse({
+      ...valid,
+      status: "dead",
+      lead_status: "hot",
+      lost_reason: "availability",
+    });
+    expect(parsed.lead_status).toBe("hot");
+    expect(parsed.lost_reason).toBe("availability");
+  });
+
+  it("defaults lead_status to warm and lost_reason to empty when absent", () => {
+    const parsed = enquiryListItemSchema.parse(valid);
+    expect(parsed.lead_status).toBe("warm");
+    expect(parsed.lost_reason).toBe("");
+  });
+
+  it("rejects a bad lead_status enum value", () => {
+    expect(enquiryListItemSchema.safeParse({ ...valid, lead_status: "tepid" }).success).toBe(false);
+  });
 });
 
 describe("enquiryDetailSchema", () => {
   const base = {
     id: 1,
     reference: "E-AAA-001",
-    status: "quoted",
+    status: "quote_sent",
     adults: 2,
     request_type: "quote",
     site_source: "main_website",
@@ -90,6 +153,46 @@ describe("enquiryDetailSchema", () => {
   it("defaults quotations to an empty array when the field is absent", () => {
     const parsed = enquiryDetailSchema.parse(base);
     expect(parsed.quotations).toEqual([]);
+  });
+
+  it("parses the quotes_to_convert metric (number or null)", () => {
+    expect(enquiryDetailSchema.parse({ ...base, quotes_to_convert: 3 }).quotes_to_convert).toBe(3);
+    expect(
+      enquiryDetailSchema.parse({ ...base, quotes_to_convert: null }).quotes_to_convert,
+    ).toBeNull();
+  });
+
+  it("defaults quotes_to_convert to null when absent", () => {
+    expect(enquiryDetailSchema.parse(base).quotes_to_convert).toBeNull();
+  });
+});
+
+describe("enquiryEventKindSchema", () => {
+  it("includes lead_status_changed", () => {
+    expect(enquiryEventKindSchema.parse("lead_status_changed")).toBe("lead_status_changed");
+  });
+});
+
+describe("lead status + lost reason labels", () => {
+  it("maps each lead status to its English label", () => {
+    expect(leadStatusLabel("hot")).toBe("Hot");
+    expect(leadStatusLabel("warm")).toBe("Warm");
+    expect(leadStatusLabel("cold")).toBe("Cold");
+    expect(leadStatusLabel("dead")).toBe("Dead");
+  });
+
+  it("maps each lost reason to a resolved, non-empty label", () => {
+    for (const r of [
+      "found_alternative",
+      "availability",
+      "different_destination",
+      "no_group_consensus",
+      "unknown",
+    ] as const) {
+      const label = lostReasonLabel(r);
+      expect(label).toBeTruthy();
+      expect(label).not.toContain("lost_reason");
+    }
   });
 });
 

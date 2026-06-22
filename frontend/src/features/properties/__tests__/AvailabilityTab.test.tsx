@@ -338,4 +338,31 @@ describe("AvailabilityTab", () => {
 
     expect(await screen.findByText(/Couldn't load availability/i)).toBeInTheDocument();
   });
+
+  it("shows an iCal badge in the header when the property has an active feed (GAP-034)", async () => {
+    server.use(
+      http.get("/api/v1/properties/casa-norte", () =>
+        HttpResponse.json({ ...propertyFixture, has_active_ical_feed: true }),
+      ),
+    );
+    installCalendar([]);
+    setup();
+
+    expect(await screen.findByText("iCal")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Online calendar" })).not.toBeInTheDocument();
+  });
+
+  it("shows an online-calendar link in the header when there is a calendar_url and no feed", async () => {
+    server.use(
+      http.get("/api/v1/properties/casa-norte", () =>
+        HttpResponse.json({ ...propertyFixture, calendar_url: "https://owner.example.com/c" }),
+      ),
+    );
+    installCalendar([]);
+    setup();
+
+    const link = await screen.findByRole("link", { name: "Online calendar" });
+    expect(link).toHaveAttribute("href", "https://owner.example.com/c");
+    expect(screen.queryByText("iCal")).not.toBeInTheDocument();
+  });
 });

@@ -20,6 +20,42 @@ class DomainError(Exception):
     status_code: int = 409
 
 
+class DomainValidationError(DomainError):
+    """Malformed or non-resolvable input refused by a service.
+
+    The service-layer counterpart to DRF's `ValidationError`: lets a service
+    reject bad input without importing the HTTP framework (SMELL-010) while
+    still surfacing per-field messages through the canonical handler's
+    `field_errors` slot. Defaults to 400 (the request was wrong) rather than
+    the base 409 (a state refused an otherwise-valid request).
+    """
+
+    code = "validation_error"
+    status_code = 400
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        field_errors: dict[str, list[str]] | None = None,
+    ) -> None:
+        super().__init__(message or "Validation failed")
+        self.field_errors = field_errors or {}
+
+
+class AuthorizationError(DomainError):
+    """The acting user is authenticated but not permitted this operation.
+
+    The service-layer 403: raised by `actor_has_perm`-gated transitions (e.g.
+    refund approve/execute) so the canonical handler maps them to a 403
+    `forbidden` without a per-view `except PermissionError` re-mapping
+    (SMELL-010).
+    """
+
+    code = "forbidden"
+    status_code = 403
+
+
 class InvalidTransition(DomainError):
     """A state machine transition was attempted from a disallowed source."""
 

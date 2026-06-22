@@ -2,17 +2,30 @@ import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 import { quotationDetailSchema } from "@/features/quotations/schemas";
+import { LEAD_STATUSES, type LeadStatus } from "@/styles/tokens";
 
-export const enquiryStatusSchema = z.enum(["new", "contacted", "quoted", "lost", "converted"]);
+export const enquiryStatusSchema = z.enum([
+  "new",
+  "progressing",
+  "quote_sent",
+  "follow_up",
+  "dead",
+  "converted",
+]);
 export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
 
-// Columns shown on the Kanban board. Both `lost` and `contacted` are excluded:
-// `lost` is reachable via Close, but `contacted` has no forward affordance in the
-// app (nothing calls Enquiry.contact(); it only arrives via the legacy data
-// migration). The board therefore shows the funnel operators can actually drive —
-// new → quoted → converted. Either excluded status is still filterable in the
+// Columns shown on the Kanban board. `dead`, `progressing`, and `follow_up` are
+// excluded: `dead` is reachable via Close, while `progressing`/`follow_up` have no
+// forward affordance in the app yet (nothing calls Enquiry.contact()/follow_up();
+// they arrive via the legacy data migration or an operator stage change landing in
+// GAP-039). The board therefore shows the funnel operators can actually drive —
+// new → quote_sent → converted. Every excluded status is still filterable in the
 // list view.
-export const KANBAN_STATUSES: readonly EnquiryStatus[] = ["new", "quoted", "converted"] as const;
+export const KANBAN_STATUSES: readonly EnquiryStatus[] = [
+  "new",
+  "quote_sent",
+  "converted",
+] as const;
 
 export const enquirySourceSchema = z.enum([
   "main_website",
@@ -35,18 +48,37 @@ export type EnquiryRequestType = z.infer<typeof enquiryRequestTypeSchema>;
 export const contactMethodSchema = z.enum(["email", "phone", "sms"]);
 export type ContactMethod = z.infer<typeof contactMethodSchema>;
 
+// Lead temperature — operator-set, orthogonal to the workflow `status`. Reuses
+// the single source of truth in `styles/tokens` (which also owns the badge
+// colour map) so the values can't drift between the schema and the styling.
+export const leadStatusSchema = z.enum(LEAD_STATUSES);
+
+// Structured reason a `dead` enquiry was lost. The API returns `""` for any
+// non-dead enquiry, so the field below accepts the empty string too.
+export const lostReasonSchema = z.enum([
+  "found_alternative",
+  "availability",
+  "different_destination",
+  "no_group_consensus",
+  "unknown",
+]);
+export type LostReason = z.infer<typeof lostReasonSchema>;
+
 export const enquiryListItemSchema = z.object({
   id: z.number(),
   reference: z.string(),
   status: enquiryStatusSchema,
-  // GAP-045: `person` is the authoritative customer FK; `guest` is transitional
-  // and still emitted by the backend until the Guest model is retired (D5).
+  // GAP-045: `person` is the authoritative (and sole) customer FK.
   person: z.number().nullable().optional(),
-  guest: z.number().nullable().optional(),
+  // Operator-set lead temperature (default `warm` server-side) + structured
+  // lost-reason (empty unless the enquiry is dead). Both read-only here; written
+  // via the :set-lead-status / :close actions respectively.
+  lead_status: leadStatusSchema.optional().default("warm"),
+  lost_reason: lostReasonSchema.or(z.literal("")).optional().default(""),
   guest_name: z.string().nullable().optional(),
-  // Read-only contact details sourced from the linked Guest — the
+  // Read-only contact details sourced from the linked Person — the
   // denormalised email/phone/contact_method below are blank for
-  // guest-linked enquiries.
+  // person-linked enquiries.
   guest_email: z.string().nullable().optional(),
   guest_phone: z.string().nullable().optional(),
   guest_contact_method: contactMethodSchema.nullable().optional(),
@@ -61,6 +93,10 @@ export const enquiryListItemSchema = z.object({
   region_name: z.string().nullable().optional(),
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),
+  // Date flexibility rides the list so the Flex? column can render without a
+  // detail fetch: `is_flexible` (open-ended) + the structured `± N days` spread.
+  is_flexible: z.boolean().optional().default(false),
+  flexibility_days: z.number().int().optional().default(0),
   adults: z.number(),
   children: z.number().default(0),
   request_type: enquiryRequestTypeSchema,
@@ -75,16 +111,17 @@ export const enquiryListItemSchema = z.object({
 export type EnquiryListItem = z.infer<typeof enquiryListItemSchema>;
 
 export const enquiryDetailSchema = enquiryListItemSchema.extend({
-  is_flexible: z.boolean().optional().default(false),
-  // Structured "± N days" spread; dates stay the client's true requested
-  // dates and the quote search widens by this value.
-  flexibility_days: z.number().int().optional().default(0),
+  // is_flexible / flexibility_days are inherited from the list schema above.
   min_bedrooms: z.number().nullable().optional(),
   referral_code: z.string().optional().default(""),
   inbound_message: z.string().optional().default(""),
   // The full quote-stack the merged workspace renders inline. The backend
   // already excludes `booking-` synthetic rows (see `Quotation.objects.real()`).
   quotations: z.array(quotationDetailSchema).optional().default([]),
+  // GAP-038 conversion metric: how many real quotes it took to win this enquiry
+  // (count up to & including the accepted one). Null unless converted with an
+  // accepted real quote — detail-only.
+  quotes_to_convert: z.number().int().nullable().optional().default(null),
 });
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>;
 
@@ -104,8 +141,10 @@ export const enquiryEventKindSchema = z.enum([
   "unassigned",
   "contacted",
   "quote_sent",
+  "follow_up",
   "converted",
   "lost",
+  "lead_status_changed",
   "reopened",
   "note_added",
 ]);
@@ -209,14 +248,24 @@ export interface EnquiryFilters {
   q?: string;
   status?: EnquiryStatus;
   site_source?: EnquirySource;
+  lead_status?: LeadStatus;
+  // Either a numeric user id (as a string) or the `unassigned` sentinel — the
+  // backend filter resolves both (CharFilter method, see EnquiryFilter).
+  assigned_to?: string;
+  created_after?: string;
+  created_before?: string;
   ordering?: string;
   page?: number;
+  page_size?: number;
 }
 
-// A "final" enquiry (lost or converted) is closed to new quotes: the workspace
+/** The salesperson filter's "no owner" sentinel (matches the backend filter). */
+export const UNASSIGNED_FILTER_VALUE = "unassigned";
+
+// A "final" enquiry (dead or converted) is closed to new quotes: the workspace
 // suppresses the inline builder and the close action is disabled for these.
 export function isFinalStatus(status: EnquiryStatus): boolean {
-  return status === "converted" || status === "lost";
+  return status === "converted" || status === "dead";
 }
 
 export function enquiryStatusLabel(status: EnquiryStatus): string {
@@ -225,6 +274,14 @@ export function enquiryStatusLabel(status: EnquiryStatus): string {
 
 export function enquirySourceLabel(source: EnquirySource): string {
   return i18n.t(`enquiries:labels.source.${source}`);
+}
+
+export function leadStatusLabel(value: LeadStatus): string {
+  return i18n.t(`enquiries:labels.lead_status.${value}`);
+}
+
+export function lostReasonLabel(value: LostReason): string {
+  return i18n.t(`enquiries:labels.lost_reason.${value}`);
 }
 
 export function enquiryNoteKindLabel(kind: EnquiryNoteKind): string {
@@ -241,6 +298,11 @@ export function contactMethodLabel(value: ContactMethod): string {
 
 export const enquiryStatusOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
   enquiryStatusSchema.options.map((value) => ({ value, label: enquiryStatusLabel(value) }));
+
+// The dashboard stage tabs cover the live funnel only — the terminal stages
+// (dead/converted) drop out of the tab set (still filterable by deep-link/URL).
+export const enquiryStageTabOptions = (): Array<{ value: EnquiryStatus; label: string }> =>
+  enquiryStatusOptions().filter(({ value }) => !isFinalStatus(value));
 
 export const enquirySourceOptions = (): Array<{ value: EnquirySource; label: string }> =>
   enquirySourceSchema.options.map((value) => ({ value, label: enquirySourceLabel(value) }));
@@ -259,3 +321,9 @@ export const enquiryRequestTypeOptions = (): Array<{
 
 export const contactMethodOptions = (): Array<{ value: ContactMethod; label: string }> =>
   contactMethodSchema.options.map((value) => ({ value, label: contactMethodLabel(value) }));
+
+export const leadStatusOptions = (): Array<{ value: LeadStatus; label: string }> =>
+  leadStatusSchema.options.map((value) => ({ value, label: leadStatusLabel(value) }));
+
+export const lostReasonOptions = (): Array<{ value: LostReason; label: string }> =>
+  lostReasonSchema.options.map((value) => ({ value, label: lostReasonLabel(value) }));

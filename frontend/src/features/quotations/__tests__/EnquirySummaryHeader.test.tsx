@@ -10,7 +10,7 @@ function enquiry(overrides: Partial<EnquiryDetail> = {}): EnquiryDetail {
     id: 99,
     reference: "ENQ-99",
     status: "new",
-    guest: null,
+    person: null,
     first_name: "Ada",
     last_name: "Lovelace",
     email: "ada@example.com",
@@ -33,6 +33,9 @@ function enquiry(overrides: Partial<EnquiryDetail> = {}): EnquiryDetail {
     min_bedrooms: null,
     referral_code: "",
     inbound_message: "",
+    lead_status: "warm",
+    lost_reason: "",
+    quotes_to_convert: null,
     quotations: [],
     ...overrides,
   };

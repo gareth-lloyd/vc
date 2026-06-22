@@ -60,6 +60,12 @@ export const propertyListItemSchema = z.object({
   // Whether the row is free across the request's date_from..date_to window;
   // null when the request carried no date range (availability undefined).
   available_for_range: z.boolean().nullable().optional(),
+  // GAP-034 calendar-source indicators. `has_active_ical_feed` defaults to false
+  // so older fixtures that omit it still parse; `calendar_url` is the owner's
+  // online (non-iCal) calendar webpage (null when unset). Precedence (badge wins
+  // over link) is decided by `CalendarSourceIndicator`.
+  has_active_ical_feed: z.boolean().optional().default(false),
+  calendar_url: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -653,6 +659,8 @@ export const propertySettingsSchema = z.object({
   // currency money inputs commit to, with the raw `currency` FK's inheritance
   // already applied. Null when neither property nor group sets a currency.
   currency_code: z.string().nullable().optional(),
+  // GAP-034: the owner's online (non-iCal) calendar webpage; null when unset.
+  calendar_url: z.string().nullable().optional(),
 });
 export type PropertySettings = z.infer<typeof propertySettingsSchema>;
 
@@ -667,6 +675,13 @@ export const propertySettingsWriteInputSchema = z.object({
   min_nights_rental: z.number().int().min(0).nullable().optional(),
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
+  // GAP-034: the owner's online calendar webpage. The OperationalForm runs
+  // `blankToNull` on submit, so a cleared input arrives as null. URL *format* is
+  // validated server-side (Django `URLField`): the OperationalForm surfaces the
+  // 400 through its `FormErrorAlert` (which renders messages verbatim, so a
+  // client-side i18n-key zod message would leak as a raw key). Client-side we
+  // only constrain the shape.
+  calendar_url: z.string().nullable().optional(),
   // `timezone` is read-only on settings (surfaced for context in the response);
   // it is written via the property location endpoint, not here.
 });

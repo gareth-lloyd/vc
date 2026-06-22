@@ -14,6 +14,7 @@ from properties.models.settings import PropertySettings
 from reservations.enums import (
     BookingHoldReason,
     ContactMethod,
+    EnquiryLostReason,
     EnquirySource,
     EnquiryStatus,
 )
@@ -65,7 +66,7 @@ def test_create_from_enquiry_happy_path(
 
     # Enquiry advanced to QUOTED.
     enquiry.refresh_from_db()
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
 
 
 @pytest.mark.django_db
@@ -134,7 +135,7 @@ def test_create_from_enquiry_requires_person(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("final_status", [EnquiryStatus.LOST.value, EnquiryStatus.CONVERTED.value])
+@pytest.mark.parametrize("final_status", [EnquiryStatus.DEAD.value, EnquiryStatus.CONVERTED.value])
 def test_create_from_enquiry_rejects_final_enquiry(
     final_status: str,
     customer: Person,
@@ -144,14 +145,21 @@ def test_create_from_enquiry_rejects_final_enquiry(
     rate_rule: RateRule,
 ) -> None:
     """A lost/converted enquiry is closed to new quotes — the service rejects
-    it with a 400-mapping ValidationError and writes nothing."""
-    from rest_framework.exceptions import ValidationError
+    it with a 400-mapping DomainValidationError and writes nothing."""
+    from core.exceptions import DomainValidationError
 
+    # A DEAD enquiry must carry a lost_reason (constraint); CONVERTED leaves it blank.
+    lost_reason = (
+        EnquiryLostReason.UNKNOWN.value if final_status == EnquiryStatus.DEAD.value else ""
+    )
     enquiry = Enquiry.objects.create(
-        person=customer, email=customer.primary_email() or "", status=final_status
+        person=customer,
+        email=customer.primary_email() or "",
+        status=final_status,
+        lost_reason=lost_reason,
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(DomainValidationError) as exc_info:
         QuotationService.create_from_enquiry(
             enquiry,
             [
@@ -166,6 +174,11 @@ def test_create_from_enquiry_rejects_final_enquiry(
             expires_at=timezone.now() + timedelta(days=7),
         )
 
+    # SMELL-010: the rejection carries the canonical code/status the handler
+    # emits, decoupled from DRF (the same `DomainValidationError` whose
+    # `{code: "validation_error"}` API shape is pinned in test_api_charges).
+    assert exc_info.value.code == "validation_error"
+    assert exc_info.value.status_code == 400
     assert Quotation.objects.filter(enquiry=enquiry).count() == 0
 
 
@@ -558,7 +571,7 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     assert enquiry.email == customer.primary_email()
     assert enquiry.contact_method == ContactMethod.EMAIL.value
     # The service path advances the enquiry to QUOTED (audited).
-    assert enquiry.status == EnquiryStatus.QUOTED.value
+    assert enquiry.status == EnquiryStatus.QUOTE_SENT.value
     # And conversion reporting sees it.
     assert quotation.lines.count() == 1
 

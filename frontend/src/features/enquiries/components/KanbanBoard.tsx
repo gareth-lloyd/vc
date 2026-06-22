@@ -38,7 +38,7 @@ function Column({ id, title, count, children }: ColumnProps) {
 
 // Read-only lane board: cards group by status and click through to the detail
 // page, where transitions are performed with their required context. There is no
-// drag-and-drop — the forward transitions (quoted, converted) are records of work
+// drag-and-drop — the forward transitions (quote_sent, converted) are records of work
 // done elsewhere and each needs captured metadata, so a generic "move the card"
 // gesture is the wrong affordance for them.
 export function KanbanBoard<T>({ columns, renderCard, getItemId }: KanbanBoardProps<T>) {

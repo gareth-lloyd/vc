@@ -56,10 +56,22 @@ describe("useOwnerMe", () => {
     expect(useOwnerStore.getState().organisations[0].name).toBe("Kostas Hospitality Ltd");
   });
 
-  it("records not_owner on a 403 without throwing", async () => {
+  it("records not_owner on a 200 {is_owner:false} body without throwing", async () => {
     server.use(
       http.get("/api/v1/owner/me", () =>
-        HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+        HttpResponse.json({
+          user: {
+            id: 1,
+            email: "owner@example.com",
+            first_name: "Kostas",
+            last_name: "Papas",
+            is_active: true,
+            is_staff: false,
+            is_superuser: false,
+          },
+          is_owner: false,
+          organisations: [],
+        }),
       ),
     );
     const client = createClient();

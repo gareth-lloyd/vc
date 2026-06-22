@@ -6,6 +6,7 @@ from typing import Any
 
 from rest_framework import serializers
 
+from reservations.enums import EnquiryStatus, QuotationStatus
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.serializers._contact_reads import contact_email, contact_name, contact_phone
 from reservations.serializers.quotation import QuotationDetailSerializer
@@ -29,6 +30,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "id",
             "reference",
             "status",
+            "lead_status",
+            "lost_reason",
             "person",
             "guest_name",
             "guest_email",
@@ -45,6 +48,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
             "region_name",
             "date_from",
             "date_to",
+            "is_flexible",
+            "flexibility_days",
             "adults",
             "children",
             "request_type",
@@ -59,6 +64,8 @@ class EnquiryListSerializer(serializers.ModelSerializer[Enquiry]):
         read_only_fields = [
             "id",
             "reference",
+            "lead_status",
+            "lost_reason",
             "guest_name",
             "guest_email",
             "guest_phone",
@@ -136,18 +143,52 @@ class EnquiryDetailSerializer(EnquiryListSerializer):
 
     quotations = QuotationDetailSerializer(many=True, read_only=True)
     is_converted = serializers.BooleanField(read_only=True)
+    quotes_to_convert = serializers.SerializerMethodField()
 
     class Meta(EnquiryListSerializer.Meta):
         fields = [
             *EnquiryListSerializer.Meta.fields,
-            "is_flexible",
-            "flexibility_days",
+            # is_flexible / flexibility_days now ride the list serializer (the
+            # GAP-039 Flex? column needs them) — inherited here, not re-declared.
             "min_bedrooms",
             "referral_code",
             "inbound_message",
             "quotations",
             "is_converted",
+            "quotes_to_convert",
         ]
+
+    def get_quotes_to_convert(self, obj: Enquiry) -> int | None:
+        """GAP-038 conversion metric: how many real operator quotes it took to win
+        this enquiry — the count of real quotes issued up to and including the
+        accepted one (the first ACCEPTED quote ordered by ``(created_at, pk)``).
+
+        Only meaningful for a CONVERTED enquiry that has an accepted real quote;
+        otherwise ``None``. (Legacy bookings migrate as NEW enquiries with a
+        single synthetic DRAFT quote, so they read null — the metric covers
+        rebuild-era conversions only.)
+
+        Computed in pure Python over the already-prefetched ``obj.quotations`` —
+        the detail prefetch is ``Quotation.objects.real()``, so synthetic
+        ``booking-`` rows are excluded and no extra query is issued. This relies
+        on the serializer only ever running against the prefetched detail
+        queryset: GET-detail uses ``EnquiryViewSet.get_queryset``'s prefetch, and
+        the write/action responses re-fetch through ``_detail_response`` (the
+        ``:convert`` action in particular, because ``convert()`` →
+        ``refresh_locked()`` wipes the instance's prefetch cache). pk is the
+        tie-break because ``(created_at, pk)`` is a total order — no
+        single-ACCEPTED row is DB-enforced.
+        """
+        if obj.status != EnquiryStatus.CONVERTED.value:
+            return None
+        quotes = sorted(obj.quotations.all(), key=lambda q: (q.created_at, q.pk))
+        accepted_index = next(
+            (i for i, q in enumerate(quotes) if q.status == QuotationStatus.ACCEPTED.value),
+            None,
+        )
+        if accepted_index is None:
+            return None
+        return accepted_index + 1
 
 
 class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):

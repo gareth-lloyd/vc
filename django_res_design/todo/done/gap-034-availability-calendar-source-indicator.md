@@ -1,3 +1,24 @@
+> **✅ RESOLVED (2026-06-21)** — Sales now see, per villa, where on-screen
+> availability comes from. The property list/detail serializers expose
+> `has_active_ical_feed` (an N+1-safe scalar `Exists` annotation on the list
+> viewset, with a `.exists()` fallback for fresh `create`/`duplicate` instances)
+> and `calendar_url`, read off `PropertySettings` via a shared
+> `_CalendarSourceMixin`; the secret feed `url` is never serialized (a test pins
+> its absence from every payload). `calendar_url` is a new
+> `URLField(max_length=500, null=True, blank=True)` on `PropertySettings`
+> (migration `properties/0020`, **not** inheritable, **not** on `GroupSettings`),
+> editable through the existing settings endpoint and the property Settings tab's
+> Operational form (cleared input → `null` via `blankToNull`; URL format validated
+> server-side by Django's `URLField`). A single shared `CalendarSourceIndicator`
+> (`components/data/`) renders the precedence — active iCal feed → "iCal" badge
+> (link suppressed); else the owner's online-calendar quick link; else nothing —
+> wired into both the sales timeline (`TimelineGrid` row) and the property
+> AvailabilityTab header, with i18n in both `en` + `el`. Deferred (see below): the
+> feed-health tooltip and any `GroupSettings`/back-office management beyond the
+> Settings input. Commits `fe75db0` (settings field), `ab07735` (serializer
+> surfacing), `18f1fe9` (FE schemas + component), `8b8f0c7` (timeline), `45382da`
+> (AvailabilityTab), `ee0dfc1` (Settings input).
+
 # GAP-034 — Sales-view calendar-source indicator: iCal badge + owner calendar link
 
 - **Severity:** Gap (sales-team UX; builds on the shipped iCal feed model)

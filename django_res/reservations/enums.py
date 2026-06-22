@@ -15,11 +15,36 @@ class ContactMethod(models.TextChoices):
 
 
 class EnquiryStatus(models.TextChoices):
+    # Stage vocabulary mirrors the operator-facing dashboard (GAP-038/039):
+    # progressing / quote_sent / dead were formerly contacted / quoted / lost.
     NEW = "new", "New"
-    CONTACTED = "contacted", "Contacted"
-    QUOTED = "quoted", "Quoted"
-    LOST = "lost", "Lost"
+    PROGRESSING = "progressing", "Progressing"
+    QUOTE_SENT = "quote_sent", "Quote sent"
+    FOLLOW_UP = "follow_up", "Follow-up"
+    DEAD = "dead", "Dead"
     CONVERTED = "converted", "Converted"
+
+
+class LeadStatus(models.TextChoices):
+    """Lead temperature — a subjective sales signal the operator sets directly,
+    orthogonal to the workflow `EnquiryStatus`. New in the rebuild (legacy had
+    no lead-quality field); pushed to Zoho as a CRM tag."""
+
+    HOT = "hot", "Hot"
+    WARM = "warm", "Warm"
+    COLD = "cold", "Cold"
+    DEAD = "dead", "Dead"
+
+
+class EnquiryLostReason(models.TextChoices):
+    """Why a dead enquiry was lost. Required whenever status is DEAD; the
+    `enquiry_dead_requires_lost_reason` constraint enforces non-empty."""
+
+    FOUND_ALTERNATIVE = "found_alternative", "Found alternative"
+    AVAILABILITY = "availability", "Availability"
+    DIFFERENT_DESTINATION = "different_destination", "Different destination"
+    NO_GROUP_CONSENSUS = "no_group_consensus", "No group consensus"
+    UNKNOWN = "unknown", "Unknown"
 
 
 class EnquirySource(models.TextChoices):
@@ -50,10 +75,12 @@ class EnquiryEventKind(models.TextChoices):
     UNASSIGNED = "unassigned", "Unassigned"
     CONTACTED = "contacted", "Contacted"
     QUOTE_SENT = "quote_sent", "Quote sent"
+    FOLLOW_UP = "follow_up", "Follow-up"
     CONVERTED = "converted", "Converted"
     LOST = "lost", "Lost"
     REOPENED = "reopened", "Reopened"
     NOTE_ADDED = "note_added", "Note added"
+    LEAD_STATUS_CHANGED = "lead_status_changed", "Lead status changed"
 
 
 class QuotationStatus(models.TextChoices):

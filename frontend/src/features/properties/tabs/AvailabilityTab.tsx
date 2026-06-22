@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { CalendarSourceIndicator } from "@/components/data/CalendarSourceIndicator";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { cellsByDate, useMonthGrid, WEEKDAYS } from "@/lib/monthGrid";
 import { reasonClasses } from "../availabilityTokens";
@@ -226,7 +227,13 @@ export function AvailabilityTab() {
             {t("availability.today")}
           </Button>
         </div>
-        {addButton}
+        <div className="flex items-center gap-2">
+          <CalendarSourceIndicator
+            hasActiveIcalFeed={property.has_active_ical_feed}
+            calendarUrl={property.calendar_url}
+          />
+          {addButton}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-4 text-xs">

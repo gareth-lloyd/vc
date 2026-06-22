@@ -37,8 +37,11 @@ def is_owner(user: User | AnonymousUser) -> bool:
 class IsOwner(BasePermission):
     """Grant access only to users with an ACTIVE membership of an ACTIVE org.
 
-    Staff-only users (no membership) are rejected with 403; the SPA chooses
-    its shell from which of `/auth/me` / `/owner/me` succeeds.
+    Gates the owner *data* endpoints (`/owner/properties`, …): a staff-only
+    user (no membership) is rejected with 403. The boot probe `/owner/me` is
+    deliberately NOT gated by this — it stays `IsAuthenticated` and returns
+    `200 {is_owner: false}` for a non-owner, so the SPA picks its shell from
+    the body instead of provoking a console 403.
     """
 
     message = "Owner access required."

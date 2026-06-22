@@ -20,12 +20,19 @@ from core.formats import format_date
 
 
 def booking_context(booking: Any) -> dict[str, Any]:
+    # The charge breakdown is built for every booking email so the operator
+    # preview matches a live send; only the templates that opt in (the
+    # confirmation, today) render it. Import kept local per this module's
+    # no-import-time-cycles convention.
+    from reservations.services.charges import booking_charge_breakdown
+
     return {
         "booking_reference": booking.reference,
         "guest_first_name": recipient_first_name(booking.person),
         "property_name": booking.property.display_name or booking.property.name,
         "date_from": format_date(booking.date_from),
         "date_to": format_date(booking.date_to),
+        "charge_breakdown": booking_charge_breakdown(booking),
     }
 
 
@@ -73,7 +80,10 @@ def resolve_context(
         from reservations.models import Booking
 
         booking = get_object_or_404(
-            Booking.objects.select_related("person", "property"), pk=booking_id
+            Booking.objects.select_related("person", "property", "currency").prefetch_related(
+                "charge_items"
+            ),
+            pk=booking_id,
         )
         return booking_context(booking)
     if quotation_id is not None:

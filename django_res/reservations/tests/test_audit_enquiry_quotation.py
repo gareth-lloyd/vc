@@ -35,7 +35,7 @@ def test_enquiry_status_transition_writes_audit_row() -> None:
     assert status_rows, "expected an AuditLog row capturing the enquiry status change"
     assert status_rows[-1].field_diffs["status"] == [
         EnquiryStatus.NEW.value,
-        EnquiryStatus.CONTACTED.value,
+        EnquiryStatus.PROGRESSING.value,
     ]
 
 

@@ -17,11 +17,13 @@ from core.refs import reference_db_default
 from reservations.enums import (
     ContactMethod,
     EnquiryEventKind,
+    EnquiryLostReason,
     EnquiryNoteKind,
     EnquiryRequestType,
     EnquirySource,
     EnquiryStatus,
     EventSource,
+    LeadStatus,
     QuotationStatus,
 )
 
@@ -123,6 +125,25 @@ class Enquiry(AuditedModel):
         choices=EnquiryStatus.choices,
         default=EnquiryStatus.NEW,
     )
+    # Structured reason a DEAD enquiry was lost. The
+    # `enquiry_dead_requires_lost_reason` constraint enforces only one
+    # direction — DEAD ⇒ non-empty; non-DEAD rows are left blank by convention
+    # (`lose()` sets it, default UNKNOWN; `reopen()` clears it in the same
+    # locked UPDATE), not by the DB.
+    lost_reason = models.CharField(
+        max_length=32,
+        choices=EnquiryLostReason.choices,
+        blank=True,
+        default="",
+    )
+    # Lead temperature — a subjective sales signal, orthogonal to the workflow
+    # `status`. Operator-set via `set_lead_status()` (an inline dropdown in
+    # GAP-039); pushed to Zoho as a CRM tag.
+    lead_status = models.CharField(
+        max_length=8,
+        choices=LeadStatus.choices,
+        default=LeadStatus.WARM,
+    )
     inbound_message = models.TextField(blank=True)
 
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
@@ -132,6 +153,15 @@ class Enquiry(AuditedModel):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["email"]),
             models.Index(fields=["property", "date_from"]),
+            models.Index(fields=["lead_status", "status"]),
+        ]
+        constraints = [
+            # A DEAD enquiry must carry a structured lost reason; every other
+            # state leaves it blank.
+            models.CheckConstraint(
+                condition=(~models.Q(status=EnquiryStatus.DEAD) | ~models.Q(lost_reason="")),
+                name="enquiry_dead_requires_lost_reason",
+            ),
         ]
         ordering = ["-created_at"]
         verbose_name_plural = "enquiries"
@@ -201,6 +231,7 @@ class Enquiry(AuditedModel):
         source: str = EventSource.USER.value,
         reason: str = "",
         meta: dict[str, Any] | None = None,
+        set_fields: dict[str, Any] | None = None,
     ) -> None:
         with transaction.atomic():
             # Guard against *locked, current* state — a stale instance's
@@ -211,7 +242,15 @@ class Enquiry(AuditedModel):
                 raise InvalidTransition(self.status, to, allowed=list(allowed_from))
             prev = self.status
             self.status = to
-            self.save(update_fields=["status", "updated_at"])
+            update_fields = ["status", "updated_at"]
+            # `set_fields` are applied *after* the lock-refresh (which discards
+            # in-memory changes) so they persist in the same UPDATE as the
+            # status change — e.g. lost_reason on lose(), cleared on reopen().
+            if set_fields:
+                for field, value in set_fields.items():
+                    setattr(self, field, value)
+                update_fields += list(set_fields)
+            self.save(update_fields=update_fields)
             self._write_event(
                 from_status=prev,
                 to_status=to,
@@ -223,10 +262,10 @@ class Enquiry(AuditedModel):
             )
 
     def contact(self, *, actor: Any = None, reason: str = "") -> Enquiry:
-        """Mark this enquiry as contacted (operator reached out)."""
+        """Move a NEW enquiry to PROGRESSING (operator reached out)."""
         self._transition(
             allowed_from=(EnquiryStatus.NEW.value,),
-            to=EnquiryStatus.CONTACTED.value,
+            to=EnquiryStatus.PROGRESSING.value,
             kind=EnquiryEventKind.CONTACTED.value,
             actor=actor,
             reason=reason,
@@ -257,11 +296,34 @@ class Enquiry(AuditedModel):
         if meta:
             event_meta.update(meta)
         self._transition(
-            allowed_from=(EnquiryStatus.NEW.value, EnquiryStatus.CONTACTED.value),
-            to=EnquiryStatus.QUOTED.value,
+            allowed_from=(
+                EnquiryStatus.NEW.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.FOLLOW_UP.value,
+            ),
+            to=EnquiryStatus.QUOTE_SENT.value,
             kind=EnquiryEventKind.QUOTE_SENT.value,
             actor=actor,
             meta=event_meta,
+        )
+        return self
+
+    def follow_up(self, *, actor: Any = None, reason: str = "") -> Enquiry:
+        """Operator-set Follow-up: chasing a Progressing / Quote-sent lead (Q2).
+
+        Sending a new quote moves it back to QUOTE_SENT (`quote_sent`), an
+        accepted quote converts it (`convert` / `Quotation.accept`), and Close
+        marks it DEAD (`lose`).
+        """
+        self._transition(
+            allowed_from=(
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.QUOTE_SENT.value,
+            ),
+            to=EnquiryStatus.FOLLOW_UP.value,
+            kind=EnquiryEventKind.FOLLOW_UP.value,
+            actor=actor,
+            reason=reason,
         )
         return self
 
@@ -287,10 +349,39 @@ class Enquiry(AuditedModel):
             )
         return self
 
+    def set_lead_status(self, lead_status: str, *, actor: Any = None) -> Enquiry:
+        """Set the lead temperature (HOT / WARM / COLD / DEAD).
+
+        Non-transitional: leaves `status` unchanged and writes a
+        LEAD_STATUS_CHANGED event (from_status == to_status) carrying the
+        temperature change in `meta`. A no-op when the value is unchanged, so
+        the activity timeline isn't padded with redundant rows.
+        """
+        if lead_status not in LeadStatus.values:
+            raise ValueError(f"Invalid lead status: {lead_status!r}")
+        prev = self.lead_status
+        if prev == lead_status:
+            return self
+        with transaction.atomic():
+            self.lead_status = lead_status
+            self.save(update_fields=["lead_status", "updated_at"])
+            self._write_event(
+                from_status=self.status,
+                to_status=self.status,
+                kind=EnquiryEventKind.LEAD_STATUS_CHANGED.value,
+                actor=actor,
+                meta={"lead_status_from": prev, "lead_status_to": lead_status},
+            )
+        return self
+
     def convert(self, quotation: Quotation, *, actor: Any = None) -> Enquiry:
         """Mark this enquiry as converted (a booking was made from a quotation)."""
         self._transition(
-            allowed_from=(EnquiryStatus.QUOTED.value, EnquiryStatus.CONTACTED.value),
+            allowed_from=(
+                EnquiryStatus.QUOTE_SENT.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.FOLLOW_UP.value,
+            ),
             to=EnquiryStatus.CONVERTED.value,
             kind=EnquiryEventKind.CONVERTED.value,
             actor=actor,
@@ -298,29 +389,48 @@ class Enquiry(AuditedModel):
         )
         return self
 
-    def lose(self, reason: str = "", *, actor: Any = None) -> Enquiry:
-        """Mark as lost; reachable from any non-converted state."""
+    def lose(
+        self,
+        reason: str = "",
+        *,
+        lost_reason: str = EnquiryLostReason.UNKNOWN.value,
+        actor: Any = None,
+    ) -> Enquiry:
+        """Mark as dead; reachable from any non-converted state.
+
+        `reason` is the free-text note recorded on the event (unchanged).
+        `lost_reason` is the structured `EnquiryLostReason` stored on the row;
+        it defaults to UNKNOWN so the `enquiry_dead_requires_lost_reason`
+        constraint is always satisfied without forcing every caller to choose.
+        """
         self._transition(
             allowed_from=(
                 EnquiryStatus.NEW.value,
-                EnquiryStatus.CONTACTED.value,
-                EnquiryStatus.QUOTED.value,
+                EnquiryStatus.PROGRESSING.value,
+                EnquiryStatus.QUOTE_SENT.value,
+                EnquiryStatus.FOLLOW_UP.value,
             ),
-            to=EnquiryStatus.LOST.value,
+            to=EnquiryStatus.DEAD.value,
             kind=EnquiryEventKind.LOST.value,
             actor=actor,
             reason=reason,
+            set_fields={"lost_reason": lost_reason},
         )
         return self
 
     def reopen(self, *, actor: Any = None, reason: str = "") -> Enquiry:
-        """Bring a LOST enquiry back to NEW for renewed work."""
+        """Bring a DEAD enquiry back to NEW for renewed work.
+
+        Clears `lost_reason` in the same locked UPDATE as the status change so
+        the reopened (non-DEAD) row satisfies the constraint with no window.
+        """
         self._transition(
-            allowed_from=(EnquiryStatus.LOST.value,),
+            allowed_from=(EnquiryStatus.DEAD.value,),
             to=EnquiryStatus.NEW.value,
             kind=EnquiryEventKind.REOPENED.value,
             actor=actor,
             reason=reason,
+            set_fields={"lost_reason": ""},
         )
         return self
 

@@ -39,7 +39,7 @@ const listFixture = {
       ...baseEnquiry,
       id: 2,
       reference: "E-BBB-002",
-      status: "contacted" as const,
+      status: "progressing" as const,
       first_name: "Grace",
       last_name: "Hopper",
       email: "grace@example.com",
@@ -48,7 +48,7 @@ const listFixture = {
       ...baseEnquiry,
       id: 3,
       reference: "E-CCC-003",
-      status: "quoted" as const,
+      status: "quote_sent" as const,
       first_name: "Linus",
       last_name: "Torvalds",
       email: "linus@example.com",
@@ -73,13 +73,13 @@ describe("EnquiriesListPage", () => {
 
     await screen.findByTestId("kanban-column-new");
     const newCol = screen.getByTestId("kanban-column-new");
-    const quotedCol = screen.getByTestId("kanban-column-quoted");
+    const quotedCol = screen.getByTestId("kanban-column-quote_sent");
 
     expect(within(newCol).getByText("Ada Lovelace")).toBeInTheDocument();
     expect(within(quotedCol).getByText("Linus Torvalds")).toBeInTheDocument();
-    // `contacted` has no forward affordance in the app, so the board omits that
-    // column — a contacted (migrated) enquiry doesn't appear on the board.
-    expect(screen.queryByTestId("kanban-column-contacted")).not.toBeInTheDocument();
+    // `progressing` has no forward affordance in the app, so the board omits that
+    // column — a progressing (migrated) enquiry doesn't appear on the board.
+    expect(screen.queryByTestId("kanban-column-progressing")).not.toBeInTheDocument();
     expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
   });
 
@@ -139,8 +139,29 @@ describe("EnquiriesListPage", () => {
     await waitFor(() => expect(seenStatus).toBeNull());
     // …so cards from other statuses still populate their columns.
     expect(
-      within(screen.getByTestId("kanban-column-quoted")).getByText("Linus Torvalds"),
+      within(screen.getByTestId("kanban-column-quote_sent")).getByText("Linus Torvalds"),
     ).toBeInTheDocument();
+  });
+
+  it("drops page/page_size from the kanban board query so the board isn't windowed", async () => {
+    // The list view's pagination controls write `page`/`page_size` to the URL.
+    // The Kanban isn't paginated, so a switch back to the board must ignore them
+    // or the board would show only one truncated page across all columns.
+    let seenPage: string | null = "unset";
+    let seenPageSize: string | null = "unset";
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        const url = new URL(request.url);
+        seenPage = url.searchParams.get("page");
+        seenPageSize = url.searchParams.get("page_size");
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=kanban&page=3&page_size=25");
+
+    await screen.findByTestId("kanban-column-new");
+    await waitFor(() => expect(seenPage).toBeNull());
+    expect(seenPageSize).toBeNull();
   });
 
   it("kanban toggle remains reachable when a status filter is active", async () => {
@@ -168,5 +189,156 @@ describe("EnquiriesListPage", () => {
     setup("/enquiries?view=list");
     await userEvent.click(await screen.findByText("E-AAA-001"));
     expect(await screen.findByText("Detail page")).toBeInTheDocument();
+  });
+
+  it("renders the GAP-039 enrichment columns in list view", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...baseEnquiry,
+              region: 5,
+              region_name: "Cyclades",
+              assigned_to: 7,
+              assigned_to_name: "Mona Sales",
+              lead_status: "hot",
+              is_flexible: false,
+              flexibility_days: 2,
+            },
+          ],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    // New columns + their derived cell values all render.
+    expect(screen.getByText("Region")).toBeInTheDocument();
+    expect(screen.getByText("Cyclades")).toBeInTheDocument();
+    expect(screen.getByText("Sales person")).toBeInTheDocument();
+    expect(screen.getByText("Mona Sales")).toBeInTheDocument();
+    expect(screen.getByText("Lead status")).toBeInTheDocument();
+    expect(screen.getByText("Hot")).toBeInTheDocument();
+    expect(screen.getByText("± 2 days")).toBeInTheDocument();
+  });
+
+  it("maps the Flex? column across specific / spread / open-ended", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 3,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...baseEnquiry,
+              id: 1,
+              reference: "E-SPECIFIC",
+              is_flexible: false,
+              flexibility_days: 0,
+            },
+            {
+              ...baseEnquiry,
+              id: 2,
+              reference: "E-SPREAD",
+              is_flexible: true,
+              flexibility_days: 3,
+            },
+            { ...baseEnquiry, id: 3, reference: "E-OPEN", is_flexible: true, flexibility_days: 0 },
+          ],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-SPECIFIC");
+    expect(screen.getByText("Specific dates")).toBeInTheDocument();
+    expect(screen.getByText("± 3 days")).toBeInTheDocument();
+    expect(screen.getByText("Flexible")).toBeInTheDocument();
+  });
+
+  it("falls back to — for region and 'Unassigned' for an unowned enquiry", async () => {
+    server.use(
+      http.get("/api/v1/enquiries", () =>
+        HttpResponse.json({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{ ...baseEnquiry, region: null, assigned_to: null }],
+        }),
+      ),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
+
+  it("excludes Dead and Converted from the stage tabs", async () => {
+    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    expect(screen.getByRole("tab", { name: /new/i })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /dead/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /converted/i })).not.toBeInTheDocument();
+  });
+
+  it("forwards the lead_status filter to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("lead_status"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by lead status/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Hot" }));
+
+    await waitFor(() => expect(seen).toContain("hot"));
+  });
+
+  it("forwards the salesperson 'unassigned' filter to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/users", () =>
+        HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
+      ),
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("assigned_to"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by sales person/i }));
+    await userEvent.click(await screen.findByRole("option", { name: /unassigned/i }));
+
+    await waitFor(() => expect(seen).toContain("unassigned"));
+  });
+
+  it("forwards the page_size selection to the API", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("page_size"));
+        return HttpResponse.json(listFixture);
+      }),
+    );
+    setup("/enquiries?view=list");
+
+    await screen.findByText("E-AAA-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /rows per page/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "100 / page" }));
+
+    await waitFor(() => expect(seen).toContain("100"));
   });
 });

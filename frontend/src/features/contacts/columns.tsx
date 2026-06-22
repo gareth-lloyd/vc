@@ -29,7 +29,7 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
         id: c.id,
         first_name: c.first_name,
         last_name: c.last_name,
-        company: c.company,
+        agency_detail: c.agency_detail,
         emails: [],
         phones: [],
       });
@@ -50,15 +50,15 @@ export const contactColumns: ColumnDef<ContactListItem>[] = [
     },
   },
   {
-    accessorKey: "company",
-    header: () => i18n.t("contacts:fields.company"),
+    id: "agency",
+    header: () => i18n.t("contacts:fields.agency"),
     enableSorting: false,
     cell: ({ row }) => {
-      const company = row.original.company;
-      // Avoid duplicating the company name when it's already serving as the display name.
+      const agencyName = row.original.agency_detail?.name;
+      // Avoid duplicating the agency name when it's already serving as the display name.
       const hasPerson = !!(row.original.first_name || row.original.last_name);
-      if (!company || !hasPerson) return MUTED_DASH;
-      return <span className="text-sm">{company}</span>;
+      if (!agencyName || !hasPerson) return MUTED_DASH;
+      return <span className="text-sm">{agencyName}</span>;
     },
   },
   {

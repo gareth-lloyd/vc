@@ -49,13 +49,13 @@ describe("contactWriteInputSchema", () => {
     expect(result.first_name).toBe("Alice");
   });
 
-  it("accepts a contact with company only", () => {
-    const result = contactWriteInputSchema.parse({ company: "Acme Ltd" });
-    expect(result.company).toBe("Acme Ltd");
+  it("accepts a contact with agency only", () => {
+    const result = contactWriteInputSchema.parse({ agency: 42 });
+    expect(result.agency).toBe(42);
   });
 
-  it("rejects a contact with no name or company", () => {
-    expect(() => contactWriteInputSchema.parse({})).toThrow(/name or company/i);
+  it("rejects a contact with no name or agency", () => {
+    expect(() => contactWriteInputSchema.parse({})).toThrow(/name or agency/i);
   });
 
   it("trims whitespace from fields", () => {
@@ -85,10 +85,15 @@ describe("contactCreateInputSchema", () => {
     expect(() => contactCreateInputSchema.parse({ first_name: "Alice" })).toThrow(/reachable/i);
   });
 
-  it("rejects a contact with no name or company", () => {
+  it("rejects a contact with no name or agency", () => {
     expect(() => contactCreateInputSchema.parse({ email: "alice@example.com" })).toThrow(
-      /name or company/i,
+      /name or agency/i,
     );
+  });
+
+  it("accepts an agency-only contact with a channel", () => {
+    const result = contactCreateInputSchema.parse({ agency: 7, email: "ops@acme.com" });
+    expect(result.agency).toBe(7);
   });
 
   it("rejects an invalid email when one is supplied", () => {

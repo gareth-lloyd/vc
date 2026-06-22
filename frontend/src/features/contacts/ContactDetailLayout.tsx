@@ -119,8 +119,8 @@ function RailSummary({ contact }: { contact: Contact }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-foreground font-serif text-lg font-semibold">{name}</h2>
-        {contact.company && (contact.first_name || contact.last_name) ? (
-          <p className="text-muted-foreground text-sm">{contact.company}</p>
+        {contact.agency_detail?.name && (contact.first_name || contact.last_name) ? (
+          <p className="text-muted-foreground text-sm">{contact.agency_detail.name}</p>
         ) : null}
       </div>
       {contact.status ? <StatusBadge status={contact.status} /> : null}
@@ -166,7 +166,9 @@ export function ContactDetailLayout() {
       <PageHeader
         title={name}
         subtitle={
-          contact.company && (contact.first_name || contact.last_name) ? contact.company : undefined
+          contact.agency_detail?.name && (contact.first_name || contact.last_name)
+            ? contact.agency_detail.name
+            : undefined
         }
         breadcrumbs={[{ label: t("headings.list_title"), to: "/contacts" }, { label: name }]}
         actions={<HeaderActions contact={contact} />}

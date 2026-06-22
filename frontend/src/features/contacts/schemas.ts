@@ -3,6 +3,19 @@ import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 import { bookingStatusSchema } from "@/features/bookings/schemas";
 import { enquiryStatusSchema } from "@/features/enquiries/schemas";
+import { orgStatusSchema, orgTypeSchema } from "@/features/companies/schemas";
+
+// The agent's agency (GAP-046): the contact API exposes a writable `agency` PK
+// plus a read-only nested `agency_detail`. Reusing the companies enums keeps
+// `agency_detail` structurally assignable to `Company`, so the form can seed the
+// CompanyPicker straight from it without a cast.
+export const agencyDetailSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  org_type: orgTypeSchema,
+  status: orgStatusSchema,
+});
+export type AgencyDetail = z.infer<typeof agencyDetailSchema>;
 
 export const contactEmailSchema = z.object({
   id: z.number(),
@@ -39,15 +52,17 @@ export const contactWriteInputSchema = z
     title: z.string().trim().max(40).optional(),
     first_name: z.string().trim().max(80).optional(),
     last_name: z.string().trim().max(80).optional(),
-    company: z.string().trim().max(160).optional(),
+    // GAP-046: the free-text `company` was replaced by an `Organisation` FK; the
+    // form sends the agency's PK (or null to clear it).
+    agency: z.number().nullable().optional(),
     website_url: z.string().trim().max(255).optional(),
     preferred_method: z.string().trim().max(40).optional(),
     address_line_1: z.string().trim().max(255).optional(),
     address_line_2: z.string().trim().max(255).optional(),
     notes: z.string().trim().max(2000).optional(),
   })
-  .refine((v) => v.first_name || v.last_name || v.company, {
-    message: i18n.t("contacts:errors.name_or_company_required"),
+  .refine((v) => v.first_name || v.last_name || v.agency, {
+    message: i18n.t("contacts:errors.name_or_agency_required"),
     path: ["first_name"],
   });
 export type ContactWriteInput = z.infer<typeof contactWriteInputSchema>;
@@ -61,7 +76,7 @@ export const contactCreateInputSchema = z
     title: z.string().trim().max(40).optional(),
     first_name: z.string().trim().max(80).optional(),
     last_name: z.string().trim().max(80).optional(),
-    company: z.string().trim().max(160).optional(),
+    agency: z.number().nullable().optional(),
     website_url: z.string().trim().max(255).optional(),
     preferred_method: z.string().trim().max(40).optional(),
     address_line_1: z.string().trim().max(255).optional(),
@@ -77,8 +92,8 @@ export const contactCreateInputSchema = z
       }),
     phone: z.string().trim().max(40).optional(),
   })
-  .refine((v) => v.first_name || v.last_name || v.company, {
-    message: i18n.t("contacts:errors.name_or_company_required"),
+  .refine((v) => v.first_name || v.last_name || v.agency, {
+    message: i18n.t("contacts:errors.name_or_agency_required"),
     path: ["first_name"],
   })
   .refine((v) => Boolean(v.email || v.phone), {
@@ -102,7 +117,10 @@ export const contactSchema = z.object({
   title: z.string().nullable().optional(),
   first_name: z.string().nullable().optional(),
   last_name: z.string().nullable().optional(),
-  company: z.string().nullable().optional(),
+  // GAP-046: `agency` is the writable FK PK; `agency_detail` is the read-only
+  // resolved org (the common case is no agency → both null).
+  agency: z.number().nullable().optional(),
+  agency_detail: agencyDetailSchema.nullable().optional(),
   website_url: z.string().nullable().optional(),
   preferred_method: z.string().nullable().optional(),
   address_line_1: z.string().nullable().optional(),
@@ -130,7 +148,8 @@ export const contactListItemSchema = z.object({
   title: z.string().nullable().optional(),
   first_name: z.string().nullable().optional(),
   last_name: z.string().nullable().optional(),
-  company: z.string().nullable().optional(),
+  agency: z.number().nullable().optional(),
+  agency_detail: agencyDetailSchema.nullable().optional(),
   status: z.string().nullable().optional(),
   // GAP-045 D2: CUSTOMER (was Guest) vs CONTACT (owner/manager/agent) — drives
   // the directory's kind filter + column.

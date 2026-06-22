@@ -15,6 +15,8 @@ interface CompanyPickerProps {
   disabled?: boolean;
   // Scope the search by status (e.g. only `active` agencies).
   status?: string;
+  // Applied to the trigger so a `<Label htmlFor>` can associate with the picker.
+  id?: string;
 }
 
 export function CompanyPicker({
@@ -23,6 +25,7 @@ export function CompanyPicker({
   onCreateNew,
   disabled,
   status,
+  id,
 }: CompanyPickerProps) {
   const { t } = useTranslation("companies");
   const [open, setOpen] = useState(false);
@@ -55,6 +58,7 @@ export function CompanyPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}

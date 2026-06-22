@@ -34,7 +34,8 @@ from typing import Any
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
 
-from accounts.models import Person, User
+from accounts.enums import OrgType
+from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
@@ -119,6 +120,21 @@ _CHECKS: list[_Check] = [
     ),
     _Check("SELECT COUNT(*) FROM VillaContactEmail", PersonEmail, "PersonEmail"),
     _Check("SELECT COUNT(*) FROM VillaContactTele", PersonPhone, "PersonPhone"),
+    _Check(
+        # GAP-046: every distinct (case/space-normalised) VillaContact.Company
+        # becomes one Organisation(agency) via organisation_for_company_name, so
+        # the loader actually created the orgs (catches a silent "zero orgs"
+        # regression). SQL Server's default collation folds case + trailing
+        # space but NOT internal whitespace, so the rare "Dune  Travel" vs
+        # "Dune Travel" pair the helper merges shows as a small positive gap —
+        # bump expected_gap at the first dry-run if so. Blank companies are
+        # excluded both sides (helper returns None → no org).
+        "SELECT COUNT(DISTINCT LTRIM(RTRIM(Company))) FROM VillaContact "
+        "WHERE LTRIM(RTRIM(ISNULL(Company, ''))) <> ''",
+        Organisation,
+        "Organisation (agency)",
+        loaded_count=lambda m: m._default_manager.filter(org_type=OrgType.AGENCY).count(),
+    ),
     _Check(
         "SELECT COUNT(*) FROM VillaGroup WHERE DeletedAt IS NULL",
         PropertyGroup,

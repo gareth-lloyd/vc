@@ -183,6 +183,37 @@ slice of `Person` (`expected_gap=1`, the no-name row), and the `VillaContact`
 owner/agent check excludes that slice — see the two `Person (...)` rows in the
 table below.
 
+## 4e. Free-text companies fold into `Organisation` (GAP-046)
+
+`VillaContact.Company` is no longer copied into a free-text `Person.company`
+column. `ContactLoader` routes each non-blank company string through
+`accounts.services.organisations.organisation_for_company_name`, which
+get-or-creates a deduped `Organisation(org_type=agency)` keyed on a content hash
+of the **case/whitespace-normalised** name (`dedup_key`, never `legacy_id`) and
+links the contact via `Person.agency`. A blank company → `None` → null agency.
+The `get_or_create` runs inside the same per-row savepoint as the `Person`
+write, so a failed contact row rolls its org back too — no orphan organisations.
+
+Only **exact** (normalised) name matches dedupe automatically. Genuine
+near-duplicates ("Dune Travel" vs "Dune Travel Ltd") are left intact and
+surfaced for human review — run the **read-only** reporter after the load:
+
+```bash
+uv run python manage.py dedupe_organisations            # all org types
+uv run python manage.py dedupe_organisations --org-type agency --threshold 0.9
+```
+
+It never merges; fold a confirmed duplicate with `POST /organisations/{id}:merge`
+(admin-only). `reconcile_legacy` includes an `Organisation (agency)` check
+(distinct normalised `VillaContact.Company` vs loaded agency count) so a silent
+"zero orgs created" regression turns the cutover RED.
+
+**Existing-DB upgrade (no fresh rebuild):** the company→agency backfill for an
+already-loaded DB runs inside a `RemoveField` migration that recomputes the same
+`company_dedup_key` and drops `Person.company` (GAP-046 Unit 5b — *forthcoming*,
+not yet shipped). Until that lands, a fresh rebuild via the loaders above is the
+only path that populates `Person.agency`.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash

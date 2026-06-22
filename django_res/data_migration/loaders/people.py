@@ -16,6 +16,7 @@ from typing import Any
 
 from accounts.enums import EmailLabel, PersonPreferredMethod, PersonStatus, PhoneLabel
 from accounts.models import Person, PersonEmail, PersonPhone, User
+from accounts.services.organisations import organisation_for_company_name
 from core.enums import StaffRole
 from data_migration.base import BaseLoader
 
@@ -47,6 +48,15 @@ class UserLoader(BaseLoader):
 
 
 class ContactLoader(BaseLoader):
+    """VillaContact → Person.
+
+    NOTE: unlike the usual pure `transform` (legacy dict → kwargs), this one
+    performs a DB write — `organisation_for_company_name` get-or-creates the
+    contact's agency Organisation (GAP-046). It's safe because `transform` runs
+    inside the per-row savepoint (`base._load_rows`), but its tests therefore
+    need `@pytest.mark.django_db`.
+    """
+
     name = "contact"
     target_model = Person
     legacy_query = (
@@ -66,11 +76,16 @@ class ContactLoader(BaseLoader):
         last = (row.get("LastName") or "").strip()[:128]
         if not (first or last):
             return None
+        # GAP-046: route the free-text Company into a deduped Organisation(agency)
+        # and link it via `agency` instead of writing the legacy `company` string
+        # (dropped in Unit 5b). The get_or_create runs inside this row's savepoint
+        # (base._load_rows), so a failed Person write rolls the org back too —
+        # no orphan org. None for a blank company → null agency.
         return {
             "title": (row.get("Title") or "").strip()[:16],
             "first_name": first or "(unknown)",
             "last_name": last or "(unknown)",
-            "company": (row.get("Company") or "").strip()[:128],
+            "agency": organisation_for_company_name(row.get("Company")),
             "website_url": (row.get("WebsiteUrl") or "").strip()[:200],
             "notes": (row.get("Notes") or "").strip(),
             "preferred_method": self._method_map.get(

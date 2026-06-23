@@ -276,4 +276,9 @@ delete) live in the root `CLAUDE.md`. Backend-specific structure:
      justification, never silently. `seeding` and `data_migration` sit outside
      the layers contract but still obey the `core` rule.
 
-2. One model per file in `<app>/models/*`.
+2. One **aggregate** per file in `<app>/models/*`: a root model and its
+   dependent rows (children, events, through models) live together; unrelated
+   roots get their own module. (The codebase already follows this — e.g.
+   `reservations/models/booking.py` holds Booking + its dependents — so the rule
+   describes reality rather than the older "one model per file" wording it
+   replaces; do not churn files to split aggregates apart.)

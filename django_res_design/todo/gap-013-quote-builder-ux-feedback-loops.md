@@ -9,10 +9,10 @@
 - **Files (all `frontend/src/features/quotations/components/`):**
   - `QuoteBuilder.tsx` — `handleRemove` (the currency `Select` /
     `handleCurrencyChange` references are gone — removed by GAP-014)
-  - `QuoteCart.tsx` — `CartActions` disable-reason tooltip (L92–113), `expandedId`
-    ownership (L30)
-  - `QuoteCartLine.tsx` — collapsed header (L52–73), money inputs (discount
-    L94–115, total L141–156), `ChangeoverShiftedNote` render (L69)
+  - `QuoteShortlist.tsx` (was `QuoteCart.tsx`) — `ShortlistActions` disable-reason
+    tooltip, `expandedId` ownership
+  - `QuoteShortlistLine.tsx` (was `QuoteCartLine.tsx`) — collapsed header, money
+    inputs (discount, total), `ChangeoverShiftedNote` render
   - `QuoteResultsList.tsx` — available row (L61–93), results `aria-live`
   - `ChangeoverShiftedNote.tsx`
   - `SaveQuoteDialog.tsx` — send-intent button copy, expiry hint
@@ -26,8 +26,8 @@ loops** — the operator often can't see *why* something is blocked or *what* ju
 changed:
 
 1. **Invalid lines are hard to locate.** A bad manual line disables Save/Send
-   with a generic tooltip, but the operator must expand each `QuoteCartLine` to
-   find the offending one.
+   with a generic tooltip, but the operator must expand each `QuoteShortlistLine`
+   to find the offending one.
 2. **Line removal is silent + instant** (`handleRemove`) — no confirm, no undo,
    though staged lines are pure client state (cheaply recoverable).
 3. ~~**Currency change wipes a non-empty cart**~~ **Moot** —

@@ -1,30 +1,27 @@
 # GAP-029 — Contact first_name/last_name FE/BE required-field divergence
 
-> ⏸️ **DEFERRED — blocked on GAP-045/046 (Person/Organisation); do not close
-> until the unified model lands (2026-06-18).** The divergence exists because the
-> FE allows *company-only* contacts while the BE `Contact` requires
-> `first_name`/`last_name`. It dissolves under the unified-`Person` model: a
-> company becomes a first-class **`Organisation`** (GAP-046) and a `Person`
-> always has a name — so "company-only contact" stops being a `Person` shape.
-> But GAP-045/046 are **design-complete and uncoded** (likely months out), so a
-> standalone backend loosening now (`blank=True` on an audited/PII model + a
-> name-or-company validator) would be throwaway, and closing this would make a
-> **live bug** look resolved.
+> ▶️ **UNBLOCKED (2026-06-23) — the blocker has landed.** This was deferred
+> behind GAP-045/046; both are now in `done/`: `Contact` was renamed/unified to
+> **`accounts.Person`** and **`Organisation`** shipped as a first-class entity
+> (`accounts/models/organisation.py`, full stack). The "wait for the unified
+> model" rationale is spent — the standalone loosening is no longer throwaway.
 >
-> **Known live friction (documented, not silent):** creating a company-only
-> contact **fails with a 400** today and stays broken until Person/Organisation
-> ships. Kept open in `todo/` deliberately; fold into GAP-046 when it lands. The
-> body below is retained for context.
+> **The live bug still exists.** `accounts/models/person.py:28-29` still declares
+> `first_name`/`last_name` as `CharField` **without** `blank=True`, so a
+> company-only contact still **400s** today. Now actionable: add `blank=True`
+> (+ migration) and a name-OR-organisation `validate()`, with tests on both
+> layers. Paths below are pre-rename; current targets are `person.py` /
+> `accounts/serializers/person.py`. Body retained for context.
 
-- **Severity:** Gap (data-quality / contract divergence)
+- **Severity:** Gap (data-quality / contract divergence) — **live 400, now unblocked**
 - **Source:** spun out of GAP-027 during the 2026-06-11
   add-property-flow critique.
 - **Files:**
   `frontend/src/features/contacts/schemas.ts`
   (`contactWriteInputSchema`, ~35-50),
-  `django_res/accounts/models/contact.py` (~26-27,
-  `first_name`/`last_name`),
-  `django_res/accounts/serializers/contact.py`
+  `django_res/accounts/models/person.py` (`first_name`/`last_name`, ~28-29;
+  was `models/contact.py`),
+  `django_res/accounts/serializers/person.py`
 
 ## Problem
 

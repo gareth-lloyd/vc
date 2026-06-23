@@ -4,13 +4,8 @@ from __future__ import annotations
 
 from django.urls import URLPattern, URLResolver, include, path
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework.routers import SimpleRouter
 
-from core.api.permissions import IsAccountsWriter
 from payments.views import (
     PaymentViewSet,
     RefundViewSet,
@@ -27,17 +22,7 @@ from payments.views import (
     security_track_action,
     webhook_view,
 )
-from payments.views.refund import list_refunds_for_booking, request_refund_for_booking
-
-
-@api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated, IsAccountsWriter])
-def refunds_for_booking(request: Request, booking_pk: int) -> Response:
-    """Dispatcher for `/bookings/{id}/refunds`."""
-    if request.method == "GET":
-        return list_refunds_for_booking(request, booking_pk)
-    return request_refund_for_booking(request, booking_pk)
-
+from payments.views.refund import refunds_for_booking
 
 _router = SimpleRouter(trailing_slash=False)
 _router.register("payments", PaymentViewSet, basename="payment")

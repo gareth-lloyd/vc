@@ -4,11 +4,21 @@
 > idempotency is done entirely by `core/idempotency.py` meta-key stamping on
 > per-model `meta` JSON (used by `payments/services/refund.py`,
 > `manual_payment.py`), and `done/FG-010` shipped DB backstops there instead. So
-> the `user`-required FK blocks nothing today. **Decide first:** delete the dead
-> table, or revive it as the canonical backstop — the nullable-FK fix below only
-> applies under "revive."
+> the `user`-required FK blocks nothing today.
 >
-> _Original ticket preserved below for context._
+> **DECISION (2026-06-23): delete the dead table.** Live dedupe is the
+> `core/idempotency.py` meta-key path; `IdempotencyRecord` has zero runtime
+> writers (`grep IdempotencyRecord.objects` → only the class def + migration).
+> The nullable-FK redesign below is therefore moot — **do not implement it.**
+> Remaining work is removal, not repair:
+>
+> - Drop the `IdempotencyRecord` model (`core/models/idempotency.py`) + its
+>   `core/models/__init__.py` export, with a `core/` migration to drop the table.
+> - Confirm nothing imports it (only migrations should reference it after).
+> - Acceptance becomes: table gone, `lint-imports`/tests green, no behaviour
+>   change (live dedupe already lives in `core/idempotency.py`).
+>
+> _Original (revive-path) ticket preserved below for context only._
 
 # FG-005 — `IdempotencyRecord.user` is required; system actors can't dedupe
 

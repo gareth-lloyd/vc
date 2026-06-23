@@ -3,6 +3,7 @@ import {
   contactCreateInputSchema,
   contactEmailWriteInputSchema,
   contactPhoneWriteInputSchema,
+  contactSchema,
   contactWriteInputSchema,
 } from "../schemas";
 
@@ -61,6 +62,24 @@ describe("contactWriteInputSchema", () => {
   it("trims whitespace from fields", () => {
     const result = contactWriteInputSchema.parse({ first_name: "  Alice  " });
     expect(result.first_name).toBe("Alice");
+  });
+
+  it("accepts a tags array", () => {
+    const result = contactWriteInputSchema.parse({ first_name: "Alice", tags: ["vip", "trade"] });
+    expect(result.tags).toEqual(["vip", "trade"]);
+  });
+});
+
+describe("contactSchema tags", () => {
+  it("parses a tags array", () => {
+    const result = contactSchema.parse({ id: 1, tags: ["vip"] });
+    expect(result.tags).toEqual(["vip"]);
+  });
+
+  it("treats tags as absent (undefined) when omitted, so callers default to []", () => {
+    const result = contactSchema.parse({ id: 1 });
+    expect(result.tags).toBeUndefined();
+    expect(result.tags ?? []).toEqual([]);
   });
 });
 

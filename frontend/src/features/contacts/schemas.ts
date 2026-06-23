@@ -60,6 +60,11 @@ export const contactWriteInputSchema = z
     address_line_1: z.string().trim().max(255).optional(),
     address_line_2: z.string().trim().max(255).optional(),
     notes: z.string().trim().max(2000).optional(),
+    // GAP-040 F1: a fixed taxonomy (see PERSON_TAGS). PATCH replaces the whole
+    // set; the backend canonicalises (sort + dedupe) and rejects unknown values.
+    // Left optional (no `.default`) so a Partial<ContactWriteInput> PATCH can
+    // omit it, and the create/write bodies don't force callers to send it.
+    tags: z.array(z.string()).optional(),
   })
   .refine((v) => v.first_name || v.last_name || v.agency, {
     message: i18n.t("contacts:errors.name_or_agency_required"),
@@ -129,6 +134,11 @@ export const contactSchema = z.object({
   status: z.string().nullable().optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
+  // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left
+  // `.optional()` (no `.default`) so the inferred `Contact.tags` stays
+  // `string[] | undefined` and existing fixtures/call sites needn't be updated;
+  // every consumer reads it as `contact.tags ?? []`.
+  tags: z.array(z.string()).optional(),
 });
 export type Contact = z.infer<typeof contactSchema>;
 
@@ -162,6 +172,7 @@ export const contactListItemSchema = z.object({
   primary_phone: z.string().nullable().optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
+  tags: z.array(z.string()).optional(),
 });
 export type ContactListItem = z.infer<typeof contactListItemSchema>;
 

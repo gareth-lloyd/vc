@@ -22,6 +22,8 @@
     "overview": "Overview",
     "emails": "Emails",
     "phones": "Phones",
+    "tags": "Tags",
+    "edit_tags_dialog": "Edit tags",
     "property_assignments": "Property assignments",
     "sections_aria": "Contact sections"
   },
@@ -36,9 +38,22 @@
     "create": "Create contact",
     "add_email": "Add email",
     "add_phone": "Add phone",
+    "edit_tags": "Edit tags",
     "set_as_primary": "Set as primary",
     "actions_menu_aria": "Actions",
     "create_new_inline": "+ Create new contact"
+  },
+  "tags": {
+    "vip": "VIP",
+    "trade": "Trade",
+    "pa": "PA",
+    "nicks_friend": "Nick's friend",
+    "nicks_network": "Nick's network",
+    "disability": "Disability",
+    "approach_with_care": "Approach with care",
+    "past_issues": "Past issues",
+    "specific_preferences": "Specific preferences",
+    "time_waster": "Time waster"
   },
   "fields": {
     "name": "Name",
@@ -104,6 +119,7 @@
     "phone_added": "Phone added",
     "phone_updated": "Phone updated",
     "phone_removed": "Phone removed",
+    "tags_updated": "Tags updated",
     "email_remove_failed": "Failed to remove email",
     "phone_remove_failed": "Failed to remove phone",
     "set_primary_failed": "Failed to set primary"
@@ -113,6 +129,7 @@
     "list_hint": "Try clearing the search or changing the status filter.",
     "emails": "No emails yet",
     "phones": "No phones yet",
+    "tags": "No tags yet",
     "property_assignments": "No property assignments",
     "picker_min_chars": "Type at least 2 characters to search",
     "picker_no_results": "No contacts found"

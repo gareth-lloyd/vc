@@ -22,6 +22,8 @@
     "overview": "Επισκόπηση",
     "emails": "Emails",
     "phones": "Τηλέφωνα",
+    "tags": "Ετικέτες",
+    "edit_tags_dialog": "Επεξεργασία ετικετών",
     "property_assignments": "Αναθέσεις ακινήτων",
     "sections_aria": "Ενότητες επαφής"
   },
@@ -36,9 +38,22 @@
     "create": "Δημιουργία επαφής",
     "add_email": "Προσθήκη email",
     "add_phone": "Προσθήκη τηλεφώνου",
+    "edit_tags": "Επεξεργασία ετικετών",
     "set_as_primary": "Ορισμός ως κύριο",
     "actions_menu_aria": "Ενέργειες",
     "create_new_inline": "+ Δημιουργία νέας επαφής"
+  },
+  "tags": {
+    "vip": "VIP",
+    "trade": "Επαγγελματίας",
+    "pa": "Προσωπικός βοηθός",
+    "nicks_friend": "Φίλος του Nick",
+    "nicks_network": "Δίκτυο του Nick",
+    "disability": "Αναπηρία",
+    "approach_with_care": "Προσέγγιση με προσοχή",
+    "past_issues": "Προηγούμενα ζητήματα",
+    "specific_preferences": "Συγκεκριμένες προτιμήσεις",
+    "time_waster": "Χάσιμο χρόνου"
   },
   "fields": {
     "name": "Όνομα",
@@ -104,6 +119,7 @@
     "phone_added": "Το τηλέφωνο προστέθηκε",
     "phone_updated": "Το τηλέφωνο ενημερώθηκε",
     "phone_removed": "Το τηλέφωνο αφαιρέθηκε",
+    "tags_updated": "Οι ετικέτες ενημερώθηκαν",
     "email_remove_failed": "Αποτυχία αφαίρεσης email",
     "phone_remove_failed": "Αποτυχία αφαίρεσης τηλεφώνου",
     "set_primary_failed": "Αποτυχία ορισμού ως κύριο"
@@ -113,6 +129,7 @@
     "list_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε το φίλτρο κατάστασης.",
     "emails": "Δεν υπάρχουν emails ακόμα",
     "phones": "Δεν υπάρχουν τηλέφωνα ακόμα",
+    "tags": "Δεν υπάρχουν ετικέτες ακόμα",
     "property_assignments": "Δεν υπάρχουν αναθέσεις ακινήτων",
     "picker_min_chars": "Πληκτρολογήστε τουλάχιστον 2 χαρακτήρες για αναζήτηση",
     "picker_no_results": "Δεν βρέθηκαν επαφές"

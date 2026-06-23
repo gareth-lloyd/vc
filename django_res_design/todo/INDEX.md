@@ -4,8 +4,9 @@ Live status of every ticket. **Open work is at the top; resolved and
 dropped tickets are listed at the bottom and their files live in
 [`done/`](done/)** (each carries a top-of-file `✅ RESOLVED` / `❌ DROPPED`
 banner with the problem, fix, and commit). See `README.md` for conventions;
-`CRITIQUE-2026-05-27.md` (superseded) and `CRITIQUE-2026-06-19.md` (current)
-for the reviews that drove the status changes.
+`CRITIQUE-2026-06-19.md` (current) for the review that drove the latest status
+changes. (The superseded `CRITIQUE-2026-05-27.md` was cut once fully worked
+through; its outcomes survive in the `done/` ticket banners.)
 
 Status icons:
 - ⬜ open (default)

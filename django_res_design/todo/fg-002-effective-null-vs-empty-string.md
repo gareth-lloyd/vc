@@ -1,8 +1,8 @@
 # FG-002 — `effective()` conflates `""` and `NULL` as "inherit"
 
-- **Severity:** 🟡 Smell — demoted from 🟠 Footgun by the
-  [2026-05-27 critique](CRITIQUE-2026-05-27.md) (low real-world risk today:
-  no inheritable field currently relies on distinguishing `""` from inherit).
+- **Severity:** 🟡 Smell — demoted from 🟠 Footgun by the 2026-05-27 critique
+  (since cut; low real-world risk today: no inheritable field currently relies
+  on distinguishing `""` from inherit).
 - **Source:** the 2026-05-26 data-model deep audit §F2
 - **Files:** `properties/models/finance.py:36–41`,
   `properties/models/settings.py:79–89`

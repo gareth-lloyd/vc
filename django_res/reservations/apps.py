@@ -16,6 +16,7 @@ class ReservationsConfig(AppConfig):
             BookingGuest,
             BookingHold,
             BookingServiceCoverage,
+            DamageClaim,
             Enquiry,
             OwnerBlock,
             Quotation,
@@ -50,6 +51,24 @@ class ReservationsConfig(AppConfig):
                 "cancelled_at",
                 "is_archived",
                 "archived_at",
+            ],
+        )
+        # DamageClaim (BUG-008): money + lifecycle columns behind an SD capture.
+        # `description` is unbounded operator free-text that may incidentally
+        # carry guest PII, and DamageClaim has no `anonymize()`/`scrub_pii`
+        # erasure path — so it's skipped rather than tracked plainly, mirroring
+        # how Enquiry skips its free-text `inbound_message`. The `itemized_lines`
+        # / `photos` JSON scaffolds are chatty blobs, also skipped per the audit
+        # convention. What remains is the money + lifecycle that an SD capture
+        # turns on.
+        track(
+            DamageClaim,
+            fields=[
+                "status",
+                "amount",
+                "currency_id",
+                "booking_id",
+                "accepted_by_guest_at",
             ],
         )
         # Enquiry: the lead-capture surface carrying denormalised PII before a

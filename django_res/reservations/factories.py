@@ -27,6 +27,7 @@ from reservations.enums import (
     BookingNoteVisibility,
     BookingStatus,
     ConciergeService,
+    DamageClaimStatus,
     EnquiryNoteKind,
     EnquiryRequestType,
     EnquiryStatus,
@@ -147,6 +148,22 @@ class BookingServiceCoverageFactory(DjangoModelFactory):
     service = ConciergeService.CHEF
     status = ServiceStatus.NOT_STARTED
     notes = ""
+
+
+class DamageClaimFactory(DjangoModelFactory):
+    """A damages claim against a booking (BUG-008). Caller must supply
+    `booking=` and `currency=` (`Booking` rows are service-built, and the
+    currency must match the booking's, so neither has a SubFactory default —
+    mirrors `BookingChargeItemFactory`)."""
+
+    class Meta:
+        model = models.DamageClaim
+
+    booking = None  # required: provided by caller
+    currency = None  # required: provided by caller (must equal booking.currency)
+    amount = Decimal("500.00")
+    description = factory.Faker("sentence")
+    status = DamageClaimStatus.OPEN
 
 
 def make_occupying_booking(

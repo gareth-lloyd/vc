@@ -294,6 +294,23 @@ class PaymentMethod(models.TextChoices):
     BANK_TRANSFER = "bank_transfer", "Bank transfer"
 
 
+class DamageClaimStatus(models.TextChoices):
+    """Lifecycle of a damages claim raised against a booking's security deposit.
+
+    A claim is OPEN when filed, APPROVED once an operator signs off the
+    deduction, SETTLED once the deposit has been captured against it, and
+    WITHDRAWN if dropped. The enforced state machine (approval gating, the
+    threshold permissions, the guest-acceptance flow) lands with workflow 8;
+    v1 ships the field + default so the lifecycle has somewhere to live and the
+    audit trail captures status moves.
+    """
+
+    OPEN = "open", "Open"
+    APPROVED = "approved", "Approved"
+    SETTLED = "settled", "Settled"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
 class BookingGuestRole(models.TextChoices):
     """Role a guest plays on a Booking via the BookingGuest through-model.
 

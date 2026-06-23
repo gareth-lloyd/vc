@@ -53,5 +53,7 @@ design intent. Either is workable — the cost is in not deciding.
 
 ## Dependencies
 
-Related: FG-013 (edits the same layers list — coordinate), SMELL-015
-(retry fix is independent of this decision).
+Related: SMELL-015 (retry fix is independent of this decision). (FG-013 —
+which edited the same layers list — has since landed in `done/`, so there is
+no longer a coordination dependency; the `owners` app is already inside the
+contract.)

@@ -20,9 +20,10 @@ Four structural concerns each have multiple coexisting shapes:
 - **Routers**: `DefaultRouter` (core, comms, properties, accounts, pricing)
   vs `SimpleRouter` (payments, reservations), with differing
   `trailing_slash` handling implied.
-- **Views in URL files**: the `refunds_for_booking` dispatcher is a full
-  `@api_view` defined inside `payments/urls.py:33–39` rather than in
-  `payments/views/`.
+- **Views in URL files**: ~~the `refunds_for_booking` dispatcher is a full
+  `@api_view` defined inside `payments/urls.py`~~ **DONE (2026-06-23)** — moved
+  into `payments/views/refund.py` (beside its `list_/request_` helpers); `urls.py`
+  now just imports it. The remaining three concerns below are still open.
 
 None of this is broken; all of it makes "where does X go?" a per-app
 archaeology exercise for contributors and agents.
@@ -39,8 +40,7 @@ app — no big-bang rename commit.
 ## Acceptance
 
 - CLAUDE.md names the chosen shape for each concern.
-- `refunds_for_booking` moves into `payments/views/` (the one mechanical
-  fix worth doing immediately).
+- ~~`refunds_for_booking` moves into `payments/views/`~~ ✅ done 2026-06-23.
 
 ## Dependencies
 

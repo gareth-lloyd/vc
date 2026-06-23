@@ -130,16 +130,34 @@ def _link_person_fks(apps, guest_to_person):
 def _reverse(apps, schema_editor):
     """Unlink the parallel FKs, then delete the Guest-derived Persons.
 
-    Deleting the ``guest-`` Persons cascades their PersonEmail/PersonPhone
-    children. Safe because nothing else points at them yet (reads cut over in
-    Unit 3c).
+    Deleting the ``guest-`` Persons must drop their PersonEmail/PersonPhone
+    children too. Safe because nothing else points at them yet (reads cut over
+    in Unit 3c) and the parallel reservations FKs are nulled just above.
+
+    We do NOT use ``QuerySet.delete()`` on Person: its cascade collector issues a
+    ``SELECT *``, and the *historical* Person here carries columns added by
+    LATER accounts migrations (e.g. ``agency_id`` from 0011) — the migration
+    state accumulates the whole topological plan, not just this node's
+    ancestors. During a project-wide *backwards* run those later migrations have
+    already dropped their columns before this reverse executes, so a ``SELECT *``
+    references a column that no longer exists. We therefore touch only ``id``
+    (via ``values_list``) and a raw DELETE, never the ahead-of-DB columns.
     """
     for model_name in _FK_MODELS:
         model = apps.get_model("reservations", model_name)
         model.objects.filter(person__legacy_id__startswith="guest-").update(person=None)
 
     Person = apps.get_model("accounts", "Person")
-    Person.objects.filter(legacy_id__startswith="guest-").delete()
+    PersonEmail = apps.get_model("accounts", "PersonEmail")
+    PersonPhone = apps.get_model("accounts", "PersonPhone")
+
+    guest_person_pks = list(
+        Person.objects.filter(legacy_id__startswith="guest-").values_list("pk", flat=True)
+    )
+    PersonEmail.objects.filter(contact_id__in=guest_person_pks).delete()
+    PersonPhone.objects.filter(contact_id__in=guest_person_pks).delete()
+    persons = Person.objects.filter(pk__in=guest_person_pks)
+    persons._raw_delete(persons.db)
 
 
 class Migration(migrations.Migration):

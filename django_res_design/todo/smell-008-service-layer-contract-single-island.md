@@ -15,7 +15,9 @@ the 32 service modules:
 
 - `actor_has_perm`: 2 files (`payments/services/refund.py`,
   `reservations/services/service_coverage.py`).
-- `log_operation`: 1 file (`refund.py`).
+- `log_operation`: **4 files** (refreshed 2026-06-23 — `payments/services/`
+  `refund.py`, `security_deposit.py`, `manual_payment.py`,
+  `payment_scheduler.py`); spreading, but still payments-only.
 - `idempotency_key`: 4 runtime adopters (`refund.py`, `owner_block.py`,
   `ical_ingest.py`, `comms/services.py`).
 
@@ -42,6 +44,9 @@ money-path services vs opportunistic elsewhere.
 
 ## Dependencies
 
-Related: SMELL-010 (error-signalling convergence — same files, do
-together), BUG-011 (the SD slice), FG-012 (`_track_payments` bypasses the
-contract entirely).
+Related: SMELL-010 (error-signalling convergence — **now in `done/`**; the
+DRF-`ValidationError` ban shipped as ruff `TID251`), BUG-011 (the SD slice),
+FG-012 (`_track_payments` bypasses the contract entirely).
+
+> **Still open:** the mandatory-vs-aspirational call in `django_res/CLAUDE.md`
+> has not landed. That's the remaining decision — counts above are just refreshed.

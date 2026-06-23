@@ -64,7 +64,9 @@ to curate the taxonomy.
 
 ## Dependencies
 
-GAP-022 (per-property ordering) and Q-019 (room-derived features) shape
-the same `Feature` surface — coordinate the seed list. The Feature seed
-list should be curated alongside **GAP-022**: the through-model + loader
-rewrite is the cheapest moment to settle the taxonomy.
+Q-019 (room-derived features) shapes the same `Feature` surface — coordinate
+the seed list. **GAP-022 (per-property ordering) has since landed (`done/`),**
+so its through-model + loader rewrite — previously called out as "the cheapest
+moment" to settle the taxonomy — is built. Seed the group defaults and curate
+the taxonomy **now**, standalone; there is no longer a ticket to ride along
+with.

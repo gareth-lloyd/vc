@@ -8,7 +8,7 @@ from typing import Any
 from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -125,3 +125,12 @@ def list_refunds_for_booking(request: Request, booking_pk: int) -> Response:
     booking = get_object_or_404(Booking, pk=booking_pk)
     refunds = Refund.objects.filter(booking=booking).order_by("-created_at")
     return Response(RefundSerializer(refunds, many=True).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsAccountsWriter])
+def refunds_for_booking(request: Request, booking_pk: int) -> Response:
+    """Dispatcher for `/bookings/{id}/refunds` (GET list, POST create)."""
+    if request.method == "GET":
+        return list_refunds_for_booking(request, booking_pk)
+    return request_refund_for_booking(request, booking_pk)

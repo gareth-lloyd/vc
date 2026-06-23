@@ -12,6 +12,7 @@ from reservations.serializers.charge_item import (
     BookingChargeItemSerializer,
     BookingChargeItemWriteSerializer,
 )
+from reservations.serializers.client import ClientListSerializer
 from reservations.serializers.concierge import (
     BookingConciergeItemSerializer,
     BookingConciergeItemWriteSerializer,
@@ -46,6 +47,7 @@ __all__ = [
     "BookingListSerializer",
     "BookingNoteSerializer",
     "BookingWriteSerializer",
+    "ClientListSerializer",
     "ContactBookingSerializer",
     "ContactEnquirySerializer",
     "ContactQuotationSerializer",

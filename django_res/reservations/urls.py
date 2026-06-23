@@ -23,6 +23,7 @@ from reservations.views import (
     BookingConciergeItemViewSet,
     BookingNoteViewSet,
     BookingViewSet,
+    ClientListView,
     ConciergeOverviewViewSet,
     ContactCustomerReadViewSet,
     EnquiryNoteViewSet,
@@ -80,6 +81,17 @@ _contact_read_routes: list[URLPattern | URLResolver] = [
         ContactCustomerReadViewSet.as_view({"get": "travel_preferences"}),
         name="contact-travel-preferences",
     ),
+]
+
+
+# ----------------------------------------------------------------------
+# Clients (renter) directory (GAP-047). Hosted here, not in `accounts`: the
+# list annotates over reservations deal models for the booking-channel
+# `is_agent` flag, and `accounts` is the bottom of the import spine. List-only —
+# rows link to the existing `/contacts/{id}` detail.
+# ----------------------------------------------------------------------
+_client_routes: list[URLPattern | URLResolver] = [
+    path("clients", ClientListView.as_view(), name="client-list"),
 ]
 
 
@@ -496,6 +508,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     # Action / nested patterns precede the router's CRUD routes: DRF's
     # `/<pk>` regex (`[^/.]+`) would otherwise swallow `1:duplicate` as the pk.
     *_contact_read_routes,
+    *_client_routes,
     *_owner_routes,
     *_owner_block_update_routes,
     *_enquiry_actions,

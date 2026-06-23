@@ -18,6 +18,7 @@ from reservations.views.booking import (
     BookingViewSet,
 )
 from reservations.views.charge_item import BookingChargeItemViewSet
+from reservations.views.client import ClientListView
 from reservations.views.concierge import BookingConciergeItemViewSet
 from reservations.views.concierge_overview import ConciergeOverviewViewSet
 from reservations.views.contact_reads import ContactCustomerReadViewSet
@@ -50,6 +51,7 @@ __all__ = [
     "BookingConciergeItemViewSet",
     "BookingNoteViewSet",
     "BookingViewSet",
+    "ClientListView",
     "ConciergeOverviewViewSet",
     "ContactCustomerReadViewSet",
     "EnquiryNoteViewSet",

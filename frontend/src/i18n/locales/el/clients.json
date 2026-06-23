@@ -1,0 +1,42 @@
+{
+  "headings": {
+    "list_title": "Πελάτες",
+    "library": "Βιβλιοθήκη"
+  },
+  "fields": {
+    "name": "Όνομα",
+    "email": "Email",
+    "phone": "Τηλέφωνο",
+    "capacity": "Κανάλι",
+    "quoted_regions": "Περιοχές προσφορών",
+    "booked_regions": "Περιοχές κρατήσεων",
+    "status": "Κατάσταση"
+  },
+  "placeholders": {
+    "search": "Αναζήτηση κατά όνομα ή email…"
+  },
+  "status": {
+    "any": "Οποιαδήποτε κατάσταση",
+    "active": "Ενεργός",
+    "inactive": "Ανενεργός"
+  },
+  "capacity": {
+    "any": "Οποιοδήποτε κανάλι",
+    "direct": "Άμεσος",
+    "agent": "Πράκτορας"
+  },
+  "filters": {
+    "filter_status_aria": "Φιλτράρισμα κατά κατάσταση",
+    "filter_capacity_aria": "Φιλτράρισμα κατά κανάλι"
+  },
+  "empty": {
+    "list_title": "Δεν υπάρχουν πελάτες που να ταιριάζουν με τα φίλτρα",
+    "list_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε τα φίλτρα."
+  },
+  "errors": {
+    "load_failed": "Αδυναμία φόρτωσης πελατών."
+  },
+  "fallback": {
+    "name_with_id": "Πελάτης #{{id}}"
+  }
+}

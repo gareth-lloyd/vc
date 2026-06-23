@@ -265,6 +265,15 @@ export const router = createBrowserRouter([
                         },
                       },
                       {
+                        // List-only (GAP-047): rows link to /contacts/:id; no
+                        // /clients/:id detail until GAP-042 builds the profile.
+                        path: "/clients",
+                        lazy: async () => {
+                          const m = await import("@/features/clients/ClientsListPage");
+                          return { Component: m.ClientsListPage };
+                        },
+                      },
+                      {
                         path: "/companies/:id",
                         lazy: async () => {
                           const m = await import("@/features/companies/CompanyDetailLayout");

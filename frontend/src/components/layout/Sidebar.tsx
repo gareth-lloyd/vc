@@ -8,6 +8,7 @@ import {
   ConciergeBell,
   Globe,
   Home,
+  Luggage,
   Mail,
   MessageSquare,
   Settings,
@@ -96,6 +97,12 @@ export function Sidebar() {
       label: t("nav.contacts"),
       icon: Users,
       prefetch: () => import("@/features/contacts/ContactsListPage"),
+    },
+    {
+      to: "/clients",
+      label: t("nav.clients"),
+      icon: Luggage,
+      prefetch: () => import("@/features/clients/ClientsListPage"),
     },
     {
       to: "/companies",

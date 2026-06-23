@@ -6,7 +6,7 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
 
-from accounts.enums import PersonStatus
+from accounts.enums import PersonStatus, PersonTag
 from accounts.models import Person, PersonEmail, PersonPhone
 from core.audit import REDACTED
 from core.models import AuditLog
@@ -151,6 +151,70 @@ def test_primary_email_and_phone_fail_closed_when_anonymized(contact: Person) ->
     assert contact.emails.filter(email__endswith="@anonymized.local").exists()
     assert contact.primary_email() is None
     assert contact.primary_phone() is None
+
+
+@pytest.mark.django_db
+def test_tags_default_empty(contact: Person) -> None:
+    """GAP-040: a Person carries no tags by default."""
+    contact.refresh_from_db()
+    assert contact.tags == []
+
+
+@pytest.mark.django_db
+def test_tags_persist_normalized_sorted_and_deduped(contact: Person) -> None:
+    """save() canonicalizes tags to a sorted, de-duplicated list so the same set
+    in any order is one value (no spurious audit row on reorder)."""
+    contact.tags = [PersonTag.VIP, PersonTag.TRADE, PersonTag.VIP]
+    contact.save(update_fields=["tags"])
+
+    contact.refresh_from_db()
+    assert contact.tags == ["trade", "vip"]
+
+
+@pytest.mark.django_db
+def test_tags_change_is_audited(contact: Person) -> None:
+    """GAP-040: tag changes land in the AuditLog trail (not PII — kept in clear)."""
+    contact.tags = [PersonTag.VIP]
+    contact.save(update_fields=["tags"])
+
+    ct = ContentType.objects.get_for_model(Person)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk))
+    assert any(r.field_diffs.get("tags") == [[], ["vip"]] for r in rows)
+
+
+@pytest.mark.django_db
+def test_anonymize_clears_tags() -> None:
+    """GAP-040: tags (Disability / Approach-with-care are special-category data)
+    are dropped on erasure."""
+    c = Person.objects.create(
+        first_name="Ada",
+        last_name="Lovelace",
+        tags=[PersonTag.DISABILITY, PersonTag.VIP],
+    )
+
+    c.anonymize()
+
+    c.refresh_from_db()
+    assert c.tags == []
+
+
+@pytest.mark.django_db
+def test_anonymize_scrubs_tags_from_audit_log() -> None:
+    """A Disability tag is special-category data — anonymize must scrub it from
+    the AuditLog trail, not just the live record (else it stays recoverable)."""
+    c = Person.objects.create(first_name="Ada", last_name="Lovelace")
+    c.tags = [PersonTag.DISABILITY]
+    c.save(update_fields=["tags"])
+
+    ct = ContentType.objects.get_for_model(Person)
+    pre_rows = AuditLog.objects.filter(content_type=ct, object_id=str(c.pk))
+    assert any("disability" in str(r.field_diffs) for r in pre_rows)
+
+    c.anonymize()
+
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(c.pk))
+    for r in rows:
+        assert "disability" not in str(r.field_diffs)
 
 
 @pytest.mark.django_db

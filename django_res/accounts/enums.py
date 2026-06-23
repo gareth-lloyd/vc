@@ -26,6 +26,28 @@ class PersonKind(models.TextChoices):
     CONTACT = "contact", "Contact"
 
 
+class PersonTag(models.TextChoices):
+    """Operator-applied flags on a customer record (GAP-040).
+
+    A fixed taxonomy seeded from the 2026-06-17 owner Loom + the New-Quote
+    client-block mockup. Stored as an `ArrayField` on `Person.tags`; surfaced as
+    at-a-glance chips on the profile / enquiry screens and filterable via
+    `?tags=`. "Repeat" is deliberately absent — it's derivable from prior
+    bookings and ships as a derived badge in GAP-042, not a manual flag.
+    """
+
+    VIP = "vip", "VIP"
+    TRADE = "trade", "Trade"
+    PA = "pa", "PA"
+    NICKS_FRIEND = "nicks_friend", "Nick's friend"
+    NICKS_NETWORK = "nicks_network", "Nick's network"
+    DISABILITY = "disability", "Disability"
+    APPROACH_WITH_CARE = "approach_with_care", "Approach with care"
+    PAST_ISSUES = "past_issues", "Past issues"
+    SPECIFIC_PREFERENCES = "specific_preferences", "Specific preferences"
+    TIME_WASTER = "time_waster", "Time waster"
+
+
 class PersonPreferredMethod(models.TextChoices):
     EMAIL = "email", "Email"
     PHONE = "phone", "Phone"

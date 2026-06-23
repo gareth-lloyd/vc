@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -10,6 +13,7 @@ from accounts.enums import (
     PersonKind,
     PersonPreferredMethod,
     PersonStatus,
+    PersonTag,
     PhoneLabel,
 )
 from core.audit import record_merge, scrub_pii
@@ -58,6 +62,17 @@ class Person(AuditedModel):
         related_name="+",
     )
     marketing_consent = models.BooleanField(default=False)
+    # GAP-040: operator-applied flags (VIP / Trade / Disability / …). A fixed
+    # `PersonTag` taxonomy stored as a Postgres array — queryable (`tags__overlap`)
+    # and audited as a whole-set replace. `save()` normalizes to a sorted,
+    # de-duplicated list so the same set in any order is one canonical value (no
+    # spurious audit row on a checkbox reorder). Membership validation lives in
+    # the serializer (ChoiceField), not a DB constraint, mirroring `kind`/`status`.
+    tags = ArrayField(
+        models.CharField(max_length=32, choices=PersonTag.choices),
+        default=list,
+        blank=True,
+    )
     notes = models.TextField(blank=True)
     status = models.CharField(
         max_length=16,
@@ -100,6 +115,15 @@ class Person(AuditedModel):
             models.Index(fields=["status", "last_name", "first_name"]),
         ]
         ordering = ["last_name", "first_name"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # GAP-040: canonicalize tags to a sorted, de-duplicated list. The audit
+        # diff is order-sensitive (core/audit.py compares old != new by value), so
+        # normalizing here makes a reorder a no-op write on every path — serializer,
+        # seed_dev, data-migration loaders, shell — not just the serializer.
+        if self.tags:
+            self.tags = sorted(set(self.tags))
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         if self.status == PersonStatus.ANONYMIZED:
@@ -180,6 +204,12 @@ class Person(AuditedModel):
         self.address_line_2 = ""
         self.town = ""
         self.post_code = ""
+        # GAP-040: tags can carry special-category data (Disability /
+        # Approach-with-care) — drop them from the live record on erasure, and
+        # scrub them from the audit trail below (else "disability was added" stays
+        # recoverable). In normal operation tags are kept in clear (auditable);
+        # only a true erasure redacts them.
+        self.tags = []
         self.status = PersonStatus.ANONYMIZED
         self.anonymized_at = timezone.now()
         self.save(
@@ -191,6 +221,7 @@ class Person(AuditedModel):
                 "address_line_2",
                 "town",
                 "post_code",
+                "tags",
                 "status",
                 "anonymized_at",
                 "updated_at",
@@ -203,8 +234,11 @@ class Person(AuditedModel):
             phone.number = ""
             phone.save(update_fields=["number", "updated_at"])
         # Scrub *after* the save so the freshly written [old, sentinel] row is
-        # caught alongside the historical trail (BUG-012).
-        scrub_pii(self, self._AUDIT_PII_FIELDS)
+        # caught alongside the historical trail (BUG-012). `tags` rides along
+        # (special-category data, GAP-040) even though it's absent from
+        # `_AUDIT_PII_FIELDS` — that tuple gates merge's scrub, where tags are not
+        # erased, only here on a true erasure.
+        scrub_pii(self, (*self._AUDIT_PII_FIELDS, "tags"))
 
     @transaction.atomic
     def merge(self, target: Person) -> None:

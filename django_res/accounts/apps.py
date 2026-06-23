@@ -26,6 +26,7 @@ class AccountsConfig(AppConfig):
                 "notes",
                 "status",
                 "kind",
+                "tags",
             ],
         )
         # User auth/role/2FA changes — record what shifted, never the

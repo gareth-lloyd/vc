@@ -127,6 +127,16 @@ contact_nested_patterns = [
         name="contact-phone-set-primary",
     ),
     path(
+        "contacts/<int:contact_pk>/relationships",
+        views.ContactRelationshipViewSet.as_view({"get": "list", "post": "create"}),
+        name="contact-relationships",
+    ),
+    path(
+        "contacts/<int:contact_pk>/relationships/<int:pk>",
+        views.ContactRelationshipViewSet.as_view({"delete": "destroy"}),
+        name="contact-relationship-detail",
+    ),
+    path(
         "contacts/<int:contact_pk>:invite-portal",
         views.ContactInvitePortalView.as_view({"post": "create"}),
         name="contact-invite-portal",

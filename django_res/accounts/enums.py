@@ -81,6 +81,22 @@ RELATIONSHIP_INVERSE_LABEL: dict[str, str] = {
     PersonRelationshipKind.OTHER.value: "Other",
 }
 
+# Storable inverse *kind* for a stored kind — used to detect a "mirror" row (the
+# same fact recorded from the other party's side) so we never persist a second
+# row that the inverse label was meant to render. Symmetric kinds map to
+# themselves; CHILD↔PARENT swap. PA is omitted on purpose: its inverse
+# ("Principal") has no storable kind, so the PA direction is the only form and a
+# reverse `(Bob, Alice, PA)` is a genuinely different fact (a different person is
+# the PA), not a mirror to dedup.
+RELATIONSHIP_INVERSE_KIND: dict[str, str] = {
+    PersonRelationshipKind.SPOUSE.value: PersonRelationshipKind.SPOUSE.value,
+    PersonRelationshipKind.PARTNER.value: PersonRelationshipKind.PARTNER.value,
+    PersonRelationshipKind.SIBLING.value: PersonRelationshipKind.SIBLING.value,
+    PersonRelationshipKind.OTHER.value: PersonRelationshipKind.OTHER.value,
+    PersonRelationshipKind.CHILD.value: PersonRelationshipKind.PARENT.value,
+    PersonRelationshipKind.PARENT.value: PersonRelationshipKind.CHILD.value,
+}
+
 
 class PersonPreferredMethod(models.TextChoices):
     EMAIL = "email", "Email"

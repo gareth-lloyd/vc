@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
+from django.db.models import Q
 
 from accounts.enums import PersonRelationshipKind
 from accounts.models import Person, PersonRelationship
@@ -159,6 +160,28 @@ def test_merge_moved_relationship_leaves_audit_row() -> None:
     ct = ContentType.objects.get_for_model(PersonRelationship)
     rows = AuditLog.objects.filter(content_type=ct, object_id=str(rel.pk))
     assert any(r.field_diffs.get("from_person_id") == [dup.pk, keep.pk] for r in rows)
+
+
+@pytest.mark.django_db
+def test_merge_drops_mirror_of_existing_target_link() -> None:
+    """(e) Merge can turn a source row into the mirror of a target row:
+    target holds (keep, carol, SPOUSE); source holds (carol, dup, SPOUSE) which
+    repoints to (carol, keep, SPOUSE) — the same fact. The mirror is dropped, so
+    the merged person isn't linked to carol twice."""
+    keep, dup, carol = _person("Keep"), _person("Dup"), _person("Carol")
+    PersonRelationship.objects.create(
+        from_person=keep, to_person=carol, kind=PersonRelationshipKind.SPOUSE
+    )
+    PersonRelationship.objects.create(
+        from_person=carol, to_person=dup, kind=PersonRelationshipKind.SPOUSE
+    )
+
+    dup.merge(keep)
+
+    links = PersonRelationship.objects.filter(
+        Q(from_person=keep, to_person=carol) | Q(from_person=carol, to_person=keep)
+    )
+    assert links.count() == 1
 
 
 @pytest.mark.django_db

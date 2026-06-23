@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.enums import (
+    RELATIONSHIP_INVERSE_KIND,
     EmailLabel,
     PersonKind,
     PersonPreferredMethod,
@@ -453,8 +454,15 @@ class Person(AuditedModel):
                 row.delete()  # the two merged people were linked → self-link
                 continue
             signature = (new_from, new_to, row.kind)
-            if signature in existing:
-                row.delete()  # target already has this exact relationship
+            # A mirror of an existing target row is the same fact (the merge can
+            # turn (Carol, dup, SPOUSE) into (Carol, keep, SPOUSE) while the
+            # target already holds (keep, Carol, SPOUSE)). Drop it so the merge
+            # upholds the single-source-of-truth invariant, not just the DB
+            # constraint. PA has no storable inverse → never a mirror.
+            inverse_kind = RELATIONSHIP_INVERSE_KIND.get(row.kind)
+            mirror = (new_to, new_from, inverse_kind) if inverse_kind is not None else None
+            if signature in existing or (mirror is not None and mirror in existing):
+                row.delete()  # target already has this relationship (either way round)
                 continue
             existing.add(signature)
             row.from_person_id = new_from

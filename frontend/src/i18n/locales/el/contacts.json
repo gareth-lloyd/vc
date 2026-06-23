@@ -22,8 +22,29 @@
     "overview": "Επισκόπηση",
     "emails": "Emails",
     "phones": "Τηλέφωνα",
+    "tags": "Ετικέτες",
+    "edit_tags_dialog": "Επεξεργασία ετικετών",
     "property_assignments": "Αναθέσεις ακινήτων",
+    "linked_contacts": "Συνδεδεμένες επαφές ({{count}})",
     "sections_aria": "Ενότητες επαφής"
+  },
+  "relationship_kinds": {
+    "spouse": "Σύζυγος",
+    "partner": "Σύντροφος",
+    "child": "Παιδί",
+    "parent": "Γονέας",
+    "pa": "Προσωπικός βοηθός",
+    "sibling": "Αδελφός/ή",
+    "other": "Άλλο"
+  },
+  "relationship_inverse": {
+    "spouse": "Σύζυγος",
+    "partner": "Σύντροφος",
+    "child": "Γονέας",
+    "parent": "Παιδί",
+    "pa": "Εντολέας",
+    "sibling": "Αδελφός/ή",
+    "other": "Άλλο"
   },
   "tabs": {
     "details": "Στοιχεία",
@@ -36,9 +57,23 @@
     "create": "Δημιουργία επαφής",
     "add_email": "Προσθήκη email",
     "add_phone": "Προσθήκη τηλεφώνου",
+    "edit_tags": "Επεξεργασία ετικετών",
     "set_as_primary": "Ορισμός ως κύριο",
     "actions_menu_aria": "Ενέργειες",
-    "create_new_inline": "+ Δημιουργία νέας επαφής"
+    "create_new_inline": "+ Δημιουργία νέας επαφής",
+    "link_contact": "Σύνδεση επαφής"
+  },
+  "tags": {
+    "vip": "VIP",
+    "trade": "Επαγγελματίας",
+    "pa": "Προσωπικός βοηθός",
+    "nicks_friend": "Φίλος του Nick",
+    "nicks_network": "Δίκτυο του Nick",
+    "disability": "Αναπηρία",
+    "approach_with_care": "Προσέγγιση με προσοχή",
+    "past_issues": "Προηγούμενα ζητήματα",
+    "specific_preferences": "Συγκεκριμένες προτιμήσεις",
+    "time_waster": "Χάσιμο χρόνου"
   },
   "fields": {
     "name": "Όνομα",
@@ -62,7 +97,10 @@
     "role": "Ρόλος",
     "primary": "Κύριο",
     "start": "Έναρξη",
-    "end": "Λήξη"
+    "end": "Λήξη",
+    "relationship_kind": "Σχέση",
+    "linked_contact": "Επαφή",
+    "note": "Σημείωση"
   },
   "placeholders": {
     "search": "Αναζήτηση κατά όνομα, πρακτορείο ή email…",
@@ -73,7 +111,8 @@
     "email_label": "π.χ. εργασία, προσωπικό",
     "phone_label": "π.χ. κινητό, γραφείο",
     "picker_trigger": "Επιλέξτε μια επαφή…",
-    "picker_search": "Αναζήτηση επαφών…"
+    "picker_search": "Αναζήτηση επαφών…",
+    "select_relationship_kind": "Επιλέξτε σχέση…"
   },
   "status": {
     "any": "Οποιαδήποτε κατάσταση",
@@ -104,18 +143,25 @@
     "phone_added": "Το τηλέφωνο προστέθηκε",
     "phone_updated": "Το τηλέφωνο ενημερώθηκε",
     "phone_removed": "Το τηλέφωνο αφαιρέθηκε",
+    "tags_updated": "Οι ετικέτες ενημερώθηκαν",
     "email_remove_failed": "Αποτυχία αφαίρεσης email",
     "phone_remove_failed": "Αποτυχία αφαίρεσης τηλεφώνου",
-    "set_primary_failed": "Αποτυχία ορισμού ως κύριο"
+    "set_primary_failed": "Αποτυχία ορισμού ως κύριο",
+    "link_added": "Η επαφή συνδέθηκε",
+    "link_removed": "Ο σύνδεσμος αφαιρέθηκε",
+    "link_add_failed": "Αποτυχία σύνδεσης επαφής",
+    "link_remove_failed": "Αποτυχία αφαίρεσης συνδέσμου"
   },
   "empty": {
     "list_title": "Δεν υπάρχουν επαφές που να ταιριάζουν με αυτά τα φίλτρα",
     "list_hint": "Δοκιμάστε να καθαρίσετε την αναζήτηση ή να αλλάξετε το φίλτρο κατάστασης.",
     "emails": "Δεν υπάρχουν emails ακόμα",
     "phones": "Δεν υπάρχουν τηλέφωνα ακόμα",
+    "tags": "Δεν υπάρχουν ετικέτες ακόμα",
     "property_assignments": "Δεν υπάρχουν αναθέσεις ακινήτων",
     "picker_min_chars": "Πληκτρολογήστε τουλάχιστον 2 χαρακτήρες για αναζήτηση",
-    "picker_no_results": "Δεν βρέθηκαν επαφές"
+    "picker_no_results": "Δεν βρέθηκαν επαφές",
+    "linked_contacts": "Δεν υπάρχουν συνδεδεμένες επαφές ακόμα"
   },
   "errors": {
     "load_failed": "Δεν ήταν δυνατή η φόρτωση επαφών.",
@@ -127,7 +173,10 @@
     "detail_not_found_body": "Μπορεί να έχει διαγραφεί ή να μην έχετε πρόσβαση.",
     "detail_load_failed_body": "Δοκιμάστε ξανά ή επιστρέψτε στη λίστα.",
     "name_or_agency_required": "Απαιτείται τουλάχιστον όνομα ή πρακτορείο",
-    "channel_required": "Προσθέστε τουλάχιστον ένα email ή τηλέφωνο ώστε η επαφή να είναι προσβάσιμη"
+    "channel_required": "Προσθέστε τουλάχιστον ένα email ή τηλέφωνο ώστε η επαφή να είναι προσβάσιμη",
+    "relationship_kind_required": "Επιλέξτε τύπο σχέσης",
+    "linked_contact_required": "Επιλέξτε επαφή για σύνδεση",
+    "relationships_load_failed": "Δεν ήταν δυνατή η φόρτωση των συνδεδεμένων επαφών."
   },
   "tooltips": {
     "create_role_required": "Χρειάζεστε τον ρόλο Κρατήσεων για να δημιουργήσετε επαφές"
@@ -138,7 +187,9 @@
     "remove_email_title": "Αφαίρεση email;",
     "remove_email_body": "Αυτή η διεύθυνση email θα αφαιρεθεί οριστικά από αυτή την επαφή.",
     "remove_phone_title": "Αφαίρεση τηλεφώνου;",
-    "remove_phone_body": "Αυτός ο αριθμός τηλεφώνου θα αφαιρεθεί οριστικά από αυτή την επαφή."
+    "remove_phone_body": "Αυτός ο αριθμός τηλεφώνου θα αφαιρεθεί οριστικά από αυτή την επαφή.",
+    "remove_link_title": "Αφαίρεση συνδέσμου;",
+    "remove_link_body": "Αυτό θα αφαιρέσει τον σύνδεσμο μεταξύ αυτών των δύο επαφών."
   },
   "fallback": {
     "name_with_id": "Επαφή #{{id}}"

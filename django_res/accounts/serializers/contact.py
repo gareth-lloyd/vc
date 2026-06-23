@@ -7,7 +7,7 @@ from typing import Any
 from django.db import transaction
 from rest_framework import serializers
 
-from accounts.enums import PersonStatus
+from accounts.enums import PersonStatus, PersonTag
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
 from accounts.serializers.organisation import OrganisationSummarySerializer
 
@@ -55,6 +55,13 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         queryset=Organisation.objects.all(), allow_null=True, required=False
     )
     agency_detail = OrganisationSummarySerializer(source="agency", read_only=True)
+    # GAP-040: operator tags as a writable list of `PersonTag` values. ChoiceField
+    # rejects unknown values with a clean 400; the model `save()` canonicalizes
+    # order/dups, so no sort is needed here. A PATCH replaces the whole set.
+    tags = serializers.ListField(
+        child=serializers.ChoiceField(choices=PersonTag.choices),
+        required=False,
+    )
 
     class Meta:
         model = Person
@@ -72,6 +79,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "notes",
             "status",
             "kind",
+            "tags",
             "anonymized_at",
             "user",
             "emails",

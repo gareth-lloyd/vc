@@ -10,6 +10,8 @@ import {
   contactPropertyAssignmentSchema,
   contactSchema,
   contactsListResponseSchema,
+  linkedContactSchema,
+  linkedContactsResponseSchema,
   type Contact,
   type ContactCreateBody,
   type ContactEmail,
@@ -21,6 +23,8 @@ import {
   type ContactPhoneWriteInput,
   type ContactPropertyAssignment,
   type ContactWriteInput,
+  type LinkedContact,
+  type RelationshipWriteInput,
 } from "./schemas";
 import { paginated } from "@/lib/api/pagination";
 
@@ -56,6 +60,28 @@ export async function fetchContactEnquiries(
 ): Promise<Paginated<ContactEnquiryHistoryItem>> {
   const data = await apiGet<unknown>(`/contacts/${contactId}/enquiries`);
   return contactEnquiryHistoryResponseSchema.parse(data);
+}
+
+export async function fetchContactRelationships(
+  contactId: ContactId,
+): Promise<Paginated<LinkedContact>> {
+  const data = await apiGet<unknown>(`/contacts/${contactId}/relationships`);
+  return linkedContactsResponseSchema.parse(data);
+}
+
+export async function createContactRelationship(
+  contactId: ContactId,
+  body: RelationshipWriteInput,
+): Promise<LinkedContact> {
+  const data = await apiSend<unknown>("POST", `/contacts/${contactId}/relationships`, body);
+  return linkedContactSchema.parse(data);
+}
+
+export async function deleteContactRelationship(
+  contactId: ContactId,
+  relId: number,
+): Promise<void> {
+  await apiSend<void>("DELETE", `/contacts/${contactId}/relationships/${relId}`);
 }
 
 export async function searchContacts(

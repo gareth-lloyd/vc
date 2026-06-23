@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.db import models, transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet
+from django_filters.rest_framework import CharFilter, DjangoFilterBackend, FilterSet
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
-from accounts.enums import PersonStatus
-from accounts.models import Person, PersonEmail, PersonPhone
+from accounts.enums import PersonStatus, PersonTag
+from accounts.models import Person, PersonEmail, PersonPhone, PersonRelationship
 from accounts.serializers import (
     ContactEmailSerializer,
     ContactMergeSerializer,
     ContactPhoneSerializer,
     ContactSerializer,
+    LinkedContactSerializer,
 )
 from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
@@ -38,6 +42,11 @@ def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones:
 
 
 class ContactFilterSet(FilterSet):
+    # GAP-040: `?tags=vip,trade` → customers carrying ANY of the listed tags
+    # (overlap). A method filter because the Meta dict shorthand can't express
+    # the `__overlap` array lookup.
+    tags = CharFilter(method="filter_tags")
+
     class Meta:
         model = Person
         fields = {
@@ -48,6 +57,17 @@ class ContactFilterSet(FilterSet):
             # `kind=contact` so it never offers customer mirrors.
             "kind": ["exact"],
         }
+
+    def filter_tags(
+        self, queryset: models.QuerySet[Person], _name: str, value: str
+    ) -> models.QuerySet[Person]:
+        valid = {t.value for t in PersonTag}
+        wanted = [tok for tok in (raw.strip() for raw in value.split(",")) if tok in valid]
+        if not wanted:
+            # All tokens unknown (or empty) — ignore the filter rather than 400
+            # or return a silently-empty page.
+            return queryset
+        return queryset.filter(tags__overlap=wanted)
 
 
 class ContactViewSet(viewsets.ModelViewSet[Person]):
@@ -192,6 +212,38 @@ class ContactPhoneViewSet(viewsets.ModelViewSet[PersonPhone]):
             keeping_phones=contact.phones.exclude(pk=instance.pk).count(),
         )
         instance.delete()
+
+
+class ContactRelationshipViewSet(viewsets.ModelViewSet[PersonRelationship]):
+    """Nested `/contacts/{contact_id}/relationships` (GAP-041).
+
+    Lists BOTH directions of a contact's standing links in one query (the row is
+    bidirectional — one source-of-truth row, rendered with an inverse label on
+    the to_person side). Create makes an outgoing row from the URL contact;
+    delete removes the shared row from either profile.
+    """
+
+    serializer_class = LinkedContactSerializer
+    permission_classes = [IsStaff]
+
+    def get_queryset(self) -> models.QuerySet[PersonRelationship]:
+        contact_id = self.kwargs["contact_pk"]
+        return (
+            PersonRelationship.objects.filter(
+                Q(from_person_id=contact_id) | Q(to_person_id=contact_id)
+            )
+            .select_related("from_person", "to_person")
+            .order_by("id")
+        )
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        context = super().get_serializer_context()
+        context["viewed_person_id"] = int(self.kwargs["contact_pk"])
+        return context
+
+    def perform_create(self, serializer: BaseSerializer[PersonRelationship]) -> None:
+        from_person = get_object_or_404(Person, pk=self.kwargs["contact_pk"])
+        serializer.save(from_person=from_person)
 
 
 class ContactPropertiesView(viewsets.ViewSet):

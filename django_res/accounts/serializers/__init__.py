@@ -23,6 +23,7 @@ from accounts.serializers.organisation import (
     OrganisationSerializer,
     OrganisationSummarySerializer,
 )
+from accounts.serializers.person_relationship import LinkedContactSerializer
 from accounts.serializers.user import UserCreateSerializer, UserSerializer
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "ContactMergeSerializer",
     "ContactPhoneSerializer",
     "ContactSerializer",
+    "LinkedContactSerializer",
     "LoginSerializer",
     "OrganisationMergeSerializer",
     "OrganisationSerializer",

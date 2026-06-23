@@ -1,3 +1,15 @@
+> **✅ RESOLVED (2026-06-23)** — Shipped on local `main` (unpushed) via
+> feat/gap-040-041 (B1 `baa69de`, B2 `36b2749`, F1 `c8fc246`).
+> `accounts.Person.tags` is a fixed `PersonTag` `ArrayField` (10 tags; **"Repeat"
+> excluded** → derived badge deferred to GAP-042). `save()` canonicalises to a
+> sorted, de-duplicated set; the change is audit-tracked and **scrubbed from the
+> trail on erasure** (Disability / Approach-with-care are special-category).
+> Queryable via `?tags=vip,trade` (overlap, unknown tokens dropped). Surfaced on
+> the contact profile: a checkbox-dialog editor + read-only chips (rail + Details
+> tab). **Deferred:** read-only chips on the enquiry/quote client block (needs an
+> enquiry/quotation serializer change beyond this ticket) and the curated/
+> ops-editable taxonomy (Q-021).
+
 # GAP-040 — Customer tags taxonomy
 
 - **Severity:** Gap (backend model + frontend) — new area, not in spec

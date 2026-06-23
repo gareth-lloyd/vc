@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 from rest_framework.test import APIClient
 
-from accounts.enums import PersonKind, PersonStatus
+from accounts.enums import PersonKind, PersonStatus, PersonTag
 from accounts.factories import OrganisationFactory
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone, User
 from core.enums import StaffRole
@@ -365,6 +365,121 @@ def test_patch_contact(api_client: APIClient, staff: User, contact: Person) -> N
     assert response.status_code == 200
     contact.refresh_from_db()
     assert contact.agency_id == agency.pk
+
+
+@pytest.mark.django_db
+def test_get_contact_includes_tags(api_client: APIClient, staff: User, contact: Person) -> None:
+    contact.tags = [PersonTag.VIP]
+    contact.save(update_fields=["tags"])
+    api_client.force_login(staff)
+
+    response = api_client.get(f"/api/v1/contacts/{contact.pk}")
+
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["vip"]
+
+
+@pytest.mark.django_db
+def test_patch_contact_sets_tags(api_client: APIClient, staff: User, contact: Person) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"tags": ["vip", "trade"]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    # Model save() canonicalizes to sorted+deduped.
+    assert contact.tags == ["trade", "vip"]
+    assert response.json()["tags"] == ["trade", "vip"]
+
+
+@pytest.mark.django_db
+def test_patch_contact_rejects_unknown_tag(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"tags": ["vip", "not_a_real_tag"]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "tags" in response.json()["field_errors"]
+    contact.refresh_from_db()
+    assert contact.tags == []
+
+
+@pytest.mark.django_db
+def test_create_contact_with_tags(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "first_name": "Vee",
+            "last_name": "Eye-Pee",
+            "tags": ["vip"],
+            "emails": [{"email": "vip@example.com", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert Person.objects.get(pk=response.json()["id"]).tags == ["vip"]
+
+
+@pytest.mark.django_db
+def test_filter_contacts_by_tags(api_client: APIClient, staff: User) -> None:
+    api_client.force_login(staff)
+    vip = Person.objects.create(first_name="V", last_name="One", tags=[PersonTag.VIP])
+    trade = Person.objects.create(first_name="T", last_name="Two", tags=[PersonTag.TRADE])
+    Person.objects.create(first_name="N", last_name="None")
+
+    rows = api_client.get("/api/v1/contacts?tags=vip").json()["results"]
+    assert {r["id"] for r in rows} == {vip.pk}
+
+    # Overlap: a comma list matches a person carrying ANY of the tags.
+    rows = api_client.get("/api/v1/contacts?tags=vip,trade").json()["results"]
+    assert {r["id"] for r in rows} == {vip.pk, trade.pk}
+
+
+@pytest.mark.django_db
+def test_filter_contacts_by_tags_ignores_unknown_token(api_client: APIClient, staff: User) -> None:
+    """An unknown token is dropped, not 400'd; a known token still filters.
+    An all-garbage value is ignored (returns the unfiltered list), never a
+    silent empty page."""
+    api_client.force_login(staff)
+    vip = Person.objects.create(first_name="V", last_name="One", tags=[PersonTag.VIP])
+    plain = Person.objects.create(first_name="N", last_name="None")
+
+    mixed = api_client.get("/api/v1/contacts?tags=vip,bogus").json()["results"]
+    assert {r["id"] for r in mixed} == {vip.pk}
+
+    garbage = api_client.get("/api/v1/contacts?tags=bogus").json()["results"]
+    assert {vip.pk, plain.pk} <= {r["id"] for r in garbage}
+
+
+@pytest.mark.django_db
+def test_patch_tags_is_audited(api_client: APIClient, staff: User, contact: Person) -> None:
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+
+    api_client.force_login(staff)
+    api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"tags": ["vip"]},
+        format="json",
+    )
+
+    ct = ContentType.objects.get_for_model(Person)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk))
+    assert any(r.field_diffs.get("tags") == [[], ["vip"]] for r in rows)
 
 
 @pytest.mark.django_db

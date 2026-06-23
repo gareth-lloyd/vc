@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+from typing import Any
+
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from accounts.enums import (
+    RELATIONSHIP_INVERSE_KIND,
     EmailLabel,
     PersonKind,
     PersonPreferredMethod,
     PersonStatus,
+    PersonTag,
     PhoneLabel,
 )
 from core.audit import record_merge, scrub_pii
@@ -58,6 +63,17 @@ class Person(AuditedModel):
         related_name="+",
     )
     marketing_consent = models.BooleanField(default=False)
+    # GAP-040: operator-applied flags (VIP / Trade / Disability / …). A fixed
+    # `PersonTag` taxonomy stored as a Postgres array — queryable (`tags__overlap`)
+    # and audited as a whole-set replace. `save()` normalizes to a sorted,
+    # de-duplicated list so the same set in any order is one canonical value (no
+    # spurious audit row on a checkbox reorder). Membership validation lives in
+    # the serializer (ChoiceField), not a DB constraint, mirroring `kind`/`status`.
+    tags = ArrayField(
+        models.CharField(max_length=32, choices=PersonTag.choices),
+        default=list,
+        blank=True,
+    )
     notes = models.TextField(blank=True)
     status = models.CharField(
         max_length=16,
@@ -100,6 +116,15 @@ class Person(AuditedModel):
             models.Index(fields=["status", "last_name", "first_name"]),
         ]
         ordering = ["last_name", "first_name"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # GAP-040: canonicalize tags to a sorted, de-duplicated list. The audit
+        # diff is order-sensitive (core/audit.py compares old != new by value), so
+        # normalizing here makes a reorder a no-op write on every path — serializer,
+        # seed_dev, data-migration loaders, shell — not just the serializer.
+        if self.tags:
+            self.tags = sorted(set(self.tags))
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         if self.status == PersonStatus.ANONYMIZED:
@@ -180,6 +205,12 @@ class Person(AuditedModel):
         self.address_line_2 = ""
         self.town = ""
         self.post_code = ""
+        # GAP-040: tags can carry special-category data (Disability /
+        # Approach-with-care) — drop them from the live record on erasure, and
+        # scrub them from the audit trail below (else "disability was added" stays
+        # recoverable). In normal operation tags are kept in clear (auditable);
+        # only a true erasure redacts them.
+        self.tags = []
         self.status = PersonStatus.ANONYMIZED
         self.anonymized_at = timezone.now()
         self.save(
@@ -191,6 +222,7 @@ class Person(AuditedModel):
                 "address_line_2",
                 "town",
                 "post_code",
+                "tags",
                 "status",
                 "anonymized_at",
                 "updated_at",
@@ -202,9 +234,22 @@ class Person(AuditedModel):
         for phone in self.phones.all():
             phone.number = ""
             phone.save(update_fields=["number", "updated_at"])
+        # GAP-041: drop standing relationships on erasure — a surviving link
+        # leaks "X is [redacted]'s spouse". Per-instance delete keeps the
+        # PersonRelationship audit trail. Lazy import: person_relationship imports
+        # Person, so a module-level import here would cycle.
+        from accounts.models.person_relationship import PersonRelationship
+
+        for rel in PersonRelationship._default_manager.filter(
+            Q(from_person=self) | Q(to_person=self)
+        ):
+            rel.delete()
         # Scrub *after* the save so the freshly written [old, sentinel] row is
-        # caught alongside the historical trail (BUG-012).
-        scrub_pii(self, self._AUDIT_PII_FIELDS)
+        # caught alongside the historical trail (BUG-012). `tags` rides along
+        # (special-category data, GAP-040) even though it's absent from
+        # `_AUDIT_PII_FIELDS` — that tuple gates merge's scrub, where tags are not
+        # erased, only here on a true erasure.
+        scrub_pii(self, (*self._AUDIT_PII_FIELDS, "tags"))
 
     @transaction.atomic
     def merge(self, target: Person) -> None:
@@ -215,6 +260,8 @@ class Person(AuditedModel):
         """
         if target.pk == self.pk:
             raise ValueError("Cannot merge a person into itself")
+        from accounts.models.person_relationship import PersonRelationship
+
         # Apps that hold FKs to Person are properties.PropertyContactAssignment,
         # reservations.Enquiry/Quotation/Booking (agent FKs),
         # properties.PropertyFinance.contact. Their migrations create the
@@ -240,6 +287,12 @@ class Person(AuditedModel):
             # M2M field raises FieldError because it isn't a column.
             if rel.many_to_many:
                 continue
+            # PersonRelationship surfaces TWICE here (its from_person + to_person
+            # FKs both point at Person), and a blind per-FK rewrite would repoint
+            # a link between the two merged people into a self-link (tripping the
+            # CheckConstraint) or a duplicate. Fold both legs once, below.
+            if related_model is PersonRelationship:
+                continue
             field_name = rel.field.name
             value_field = channel_value_fields.get(related_model)
             if value_field is not None:
@@ -248,6 +301,11 @@ class Person(AuditedModel):
                 count = self._merge_relation(target, related_model, field_name)
             if count:
                 rewrites[f"{related_model._meta.label}.{field_name}"] = count
+        # One-shot relationship fold (both FK legs), after the generic loop.
+        rel_label = PersonRelationship._meta.label
+        for leg, count in self._merge_relationships(target).items():
+            if count:
+                rewrites[f"{rel_label}.{leg}"] = count
         dead_pk = self.pk
         target_pk = target.pk
         self.delete()
@@ -353,6 +411,65 @@ class Person(AuditedModel):
         if not moved_pks:
             return 0
         return model._default_manager.filter(pk__in=moved_pks).update(**{field_name: target})
+
+    def _merge_relationships(self, target: Person) -> dict[str, int]:
+        """Fold ``self``'s PersonRelationship rows onto ``target`` across both FK
+        legs without tripping the no-self-link CheckConstraint or the
+        ``(from, to, kind)`` UniqueConstraint.
+
+        Called once from ``merge`` (PersonRelationship is skipped in the generic
+        ``related_objects`` loop, where it would otherwise surface twice and
+        double-rewrite). For each row, compute its post-repoint ``(from, to,
+        kind)`` and:
+
+        - **drop** it (per-instance ``.delete()``) if that collapses to a
+          self-link (the two merged people were linked to each other) or
+          duplicates a relationship the target already has;
+        - otherwise **repoint** the leg(s) that pointed at ``self`` via
+          per-instance ``.save()``.
+
+        Per-instance writes (never bulk ``.update()``/``.delete()``) keep the
+        tracked audit trail intact, mirroring ``_merge_channel``. Returns moved
+        counts keyed by leg (``from_person`` / ``to_person``) for the merge
+        summary.
+        """
+        from accounts.models.person_relationship import PersonRelationship
+
+        moved = {"from_person": 0, "to_person": 0}
+        # Signatures already on the target (either leg) to dedup against; a row
+        # could only be on one leg of self (the constraint forbids from == to).
+        existing = {
+            (r.from_person_id, r.to_person_id, r.kind)
+            for r in PersonRelationship._default_manager.filter(
+                Q(from_person=target) | Q(to_person=target)
+            )
+        }
+        for row in PersonRelationship._default_manager.filter(
+            Q(from_person=self) | Q(to_person=self)
+        ):
+            leg = "from_person" if row.from_person_id == self.pk else "to_person"
+            new_from = target.pk if row.from_person_id == self.pk else row.from_person_id
+            new_to = target.pk if row.to_person_id == self.pk else row.to_person_id
+            if new_from == new_to:
+                row.delete()  # the two merged people were linked → self-link
+                continue
+            signature = (new_from, new_to, row.kind)
+            # A mirror of an existing target row is the same fact (the merge can
+            # turn (Carol, dup, SPOUSE) into (Carol, keep, SPOUSE) while the
+            # target already holds (keep, Carol, SPOUSE)). Drop it so the merge
+            # upholds the single-source-of-truth invariant, not just the DB
+            # constraint. PA has no storable inverse → never a mirror.
+            inverse_kind = RELATIONSHIP_INVERSE_KIND.get(row.kind)
+            mirror = (new_to, new_from, inverse_kind) if inverse_kind is not None else None
+            if signature in existing or (mirror is not None and mirror in existing):
+                row.delete()  # target already has this relationship (either way round)
+                continue
+            existing.add(signature)
+            row.from_person_id = new_from
+            row.to_person_id = new_to
+            row.save(update_fields=["from_person", "to_person", "updated_at"])
+            moved[leg] += 1
+        return moved
 
 
 class PersonEmail(TimestampedModel):

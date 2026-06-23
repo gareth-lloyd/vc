@@ -16,6 +16,7 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useContact, useDeleteContact } from "./hooks";
 import { contactDisplayName } from "./display";
 import { ContactFormDialog } from "./components/ContactFormDialog";
+import { TagChips } from "./components/TagChips";
 import type { Contact } from "./schemas";
 
 const CONTACT_TABS = [
@@ -124,6 +125,7 @@ function RailSummary({ contact }: { contact: Contact }) {
         ) : null}
       </div>
       {contact.status ? <StatusBadge status={contact.status} /> : null}
+      {(contact.tags ?? []).length > 0 ? <TagChips tags={contact.tags ?? []} /> : null}
     </div>
   );
 }

@@ -26,6 +26,9 @@ import {
 } from "../hooks";
 import { EmailFormDialog } from "../components/EmailFormDialog";
 import { PhoneFormDialog } from "../components/PhoneFormDialog";
+import { TagsFormDialog } from "../components/TagsFormDialog";
+import { TagChips } from "../components/TagChips";
+import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -281,6 +284,45 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
   );
 }
 
+function TagsSection({ contact, canWrite }: { contact: Contact; canWrite: boolean }) {
+  const { t } = useTranslation("contacts");
+  const [editOpen, setEditOpen] = useState(false);
+  const tags = contact.tags ?? [];
+
+  const editButton = canWrite ? (
+    <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+      {t("actions.edit_tags")}
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button size="sm" variant="outline" disabled>
+            {t("actions.edit_tags")}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
+    </Tooltip>
+  );
+
+  return (
+    <Section title={t("headings.tags")}>
+      <div className="flex items-center justify-end">{editButton}</div>
+      {tags.length === 0 ? <EmptyState title={t("empty.tags")} /> : <TagChips tags={tags} />}
+
+      {editOpen ? (
+        <TagsFormDialog
+          contactId={contact.id}
+          tags={tags}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      ) : null}
+    </Section>
+  );
+}
+
 export function DetailsTab() {
   const { t } = useTranslation("contacts");
   const { contact } = useOutletContext<ContactOutletContext>();
@@ -325,6 +367,8 @@ export function DetailsTab() {
 
       <EmailsSection contact={contact} canWrite={canWrite} />
       <PhonesSection contact={contact} canWrite={canWrite} />
+      <TagsSection contact={contact} canWrite={canWrite} />
+      <LinkedContactsAccordion contactId={contact.id} />
     </div>
   );
 }

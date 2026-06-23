@@ -11,6 +11,7 @@ from accounts.enums import (
     OrgStatus,
     OrgType,
     PersonKind,
+    PersonRelationshipKind,
     PersonStatus,
     PhoneLabel,
 )
@@ -91,6 +92,15 @@ class CustomerPersonFactory(PersonFactory):
         number = extracted if extracted is not None else f"+44 7700 9{obj.pk:05d} x{RUN_TOKEN}"
         if number:
             PersonPhoneFactory(contact=obj, number=number)
+
+
+class PersonRelationshipFactory(DjangoModelFactory):
+    class Meta:
+        model = models.PersonRelationship
+
+    from_person = factory.SubFactory(PersonFactory)
+    to_person = factory.SubFactory(PersonFactory)
+    kind = PersonRelationshipKind.SPOUSE
 
 
 class PersonEmailFactory(DjangoModelFactory):

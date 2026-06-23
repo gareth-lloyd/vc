@@ -1,3 +1,16 @@
+> **✅ RESOLVED (2026-06-23)** — Shipped on local `main` (unpushed) via
+> feat/gap-040-041 (B3 `1daf9f2`, B4 `4714f17`, F2 `11f77da`).
+> `accounts.PersonRelationship` is a directed `(from_person, to_person, kind)`
+> row with a DB no-self-link `CheckConstraint` + `(from,to,kind)` unique. One
+> source-of-truth row is rendered with an **inverse label** on the reverse
+> profile (CHILD↔PARENT, PA→Principal; symmetric kinds self-inverse) — no mirror
+> row. Kinds: SPOUSE/PARTNER/CHILD/PARENT/PA/SIBLING/OTHER. `Person.merge` folds
+> links (drops self-links, duplicates, **and mirrors**, per-instance so the audit
+> trail survives); `anonymize()` deletes them. Surfaced at
+> `/contacts/{id}/relationships` (both directions, one query) and a "Linked
+> contacts (N)" accordion reusing the GAP-027 picker + inline-create. Distinct
+> from per-booking `BookingGuest` roles, as required.
+
 # GAP-041 — Standing linked contacts (spouse / child / PA)
 
 - **Severity:** Gap (backend model + frontend) — new area, not in spec

@@ -130,6 +130,28 @@ def test_contact_bookings_returns_linked_rows(
 
 
 @pytest.mark.django_db
+def test_contact_detail_marks_repeat_customer(
+    api_client: APIClient,
+    staff: User,
+    person: Person,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    # GAP-042: the customer-360 profile derives a property-agnostic "Repeat"
+    # badge from the person's booking count.
+    enquiry = Enquiry.objects.create(person=person, first_name="Ada", adults=2)
+    quote = _quote(enquiry=enquiry, person=person, terms=terms)
+    _booking_for(quotation=quote, person=person, property_=property_, gbp=gbp, terms=terms)
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["booking_count"] == 1
+    assert body["is_repeat_customer"] is True
+
+
+@pytest.mark.django_db
 def test_contact_enquiries_includes_quote_count_and_converted_booking(
     api_client: APIClient,
     staff: User,

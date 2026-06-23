@@ -76,7 +76,13 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
     # GAP-045 D2: `/contacts` is a kind-aware directory of ALL Persons —
     # customers included. Filter with `?kind=customer` / `?kind=contact`; no
     # param lists both (fork 3).
-    queryset = Person.objects.select_related("agency").prefetch_related("emails", "phones")
+    # GAP-042: select_related country so country_name is cache-hit on the
+    # directory. The booking_count annotation is added per-action in
+    # get_queryset (it LEFT JOINs the multi-valued bookings relation, so it must
+    # be gated per django_res/CLAUDE.md, not bolted onto the class queryset).
+    queryset = Person.objects.select_related("agency", "country").prefetch_related(
+        "emails", "phones"
+    )
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -86,6 +92,16 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
     # search_fields caveat is N/A), not the free-text `company` it replaced.
     search_fields = ["first_name", "last_name", "agency__name", "emails__email"]
     ordering_fields = ["last_name", "first_name", "created_at"]
+
+    def get_queryset(self) -> models.QuerySet[Person]:
+        # GAP-042: the "Repeat" badge needs booking_count only where a Person is
+        # serialized (list + retrieve). Count() coalesces to a real 0 and is
+        # gated here so the LEFT JOIN never lands on the colon-verb actions
+        # (merge/anonymize/properties) — django_res/CLAUDE.md.
+        qs = super().get_queryset()
+        if self.action in ("list", "retrieve"):
+            qs = qs.annotate(booking_count=models.Count("bookings_as_customer", distinct=True))
+        return qs
 
     @action(detail=True, methods=["get"], url_path="properties")
     def properties(self, request: Request, pk: str | None = None) -> Response:

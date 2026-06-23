@@ -62,6 +62,18 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         child=serializers.ChoiceField(choices=PersonTag.choices),
         required=False,
     )
+    # GAP-042: country is display-only on the 360 profile for now — surface the
+    # FK pk (read-only) plus its name; editing country (a picker) is deferred.
+    country: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
+        read_only=True, allow_null=True
+    )
+    country_name = serializers.SerializerMethodField()
+    # GAP-042: derived booking summary for the "Repeat" badge. Reads the
+    # `booking_count` annotation applied by ContactViewSet when present (one
+    # GROUP BY, no N+1); falls back to a count query for callers that render the
+    # serializer off an un-annotated instance (merge/anonymize responses).
+    booking_count = serializers.SerializerMethodField()
+    is_repeat_customer = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
@@ -76,10 +88,16 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "preferred_method",
             "address_line_1",
             "address_line_2",
+            "town",
+            "post_code",
+            "country",
+            "country_name",
             "notes",
             "status",
             "kind",
             "tags",
+            "booking_count",
+            "is_repeat_customer",
             "anonymized_at",
             "user",
             "emails",
@@ -94,6 +112,21 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "created_at",
             "updated_at",
         ]
+
+    def get_country_name(self, obj: Person) -> str | None:
+        country = obj.country
+        return country.name if country is not None else None
+
+    def get_booking_count(self, obj: Person) -> int:
+        count = getattr(obj, "booking_count", None)
+        if count is None:
+            count = obj.bookings_as_customer.count()
+        return count
+
+    def get_is_repeat_customer(self, obj: Person) -> bool:
+        # GAP-042 (confirmed): a returning client is one with >= 1 booking,
+        # property-agnostic. Distinct from the owner API's property-scoped flag.
+        return self.get_booking_count(obj) >= 1
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Enforce contactability: an ACTIVE contact must be reachable by at

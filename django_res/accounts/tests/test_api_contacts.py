@@ -380,6 +380,84 @@ def test_get_contact_includes_tags(api_client: APIClient, staff: User, contact: 
 
 
 @pytest.mark.django_db
+def test_get_contact_includes_address_and_country_name(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # GAP-042: the 360 profile surfaces town/post_code plus the country name
+    # (the FK pk alone is useless to the sales team).
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QX", defaults={"iso3": "QXX", "name": "Testopia"}
+    )
+    contact.town = "Athens"
+    contact.post_code = "10557"
+    contact.country = country
+    contact.save(update_fields=["town", "post_code", "country"])
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["town"] == "Athens"
+    assert body["post_code"] == "10557"
+    assert body["country"] == country.pk
+    assert body["country_name"] == "Testopia"
+
+
+@pytest.mark.django_db
+def test_patch_contact_round_trips_town_and_postcode(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"town": "Bath", "post_code": "BA1 1AA"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    assert contact.town == "Bath"
+    assert contact.post_code == "BA1 1AA"
+
+
+@pytest.mark.django_db
+def test_patch_contact_cannot_change_country(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # GAP-042: country is display-only for now (write deferred — needs a picker).
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QY", defaults={"iso3": "QYY", "name": "Testlandia"}
+    )
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"country": country.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    assert contact.country_id is None
+
+
+@pytest.mark.django_db
+def test_get_contact_without_bookings_is_not_repeat(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["booking_count"] == 0
+    assert body["is_repeat_customer"] is False
+
+
+@pytest.mark.django_db
 def test_patch_contact_sets_tags(api_client: APIClient, staff: User, contact: Person) -> None:
     api_client.force_login(staff)
 

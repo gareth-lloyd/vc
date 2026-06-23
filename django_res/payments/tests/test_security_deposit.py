@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -17,6 +17,9 @@ from payments.enums import (
 )
 from payments.models import Payment, SecurityDeposit
 from payments.services.security_deposit import SecurityDepositService
+
+if TYPE_CHECKING:
+    from reservations.models import DamageClaim
 
 
 @pytest.mark.django_db
@@ -144,9 +147,18 @@ def test_pre_auth_path__hold_release(
     assert pre_auth_sd.released_at is not None
 
 
+@pytest.fixture
+def damage_claim(booking: Any, gbp: Any) -> DamageClaim:
+    """A DamageClaim on the same booking as the SD fixtures, for capture."""
+    from reservations.factories import DamageClaimFactory
+
+    return cast("DamageClaim", DamageClaimFactory(booking=booking, currency=gbp))
+
+
 @pytest.mark.django_db
 def test_pre_auth_path__claim_captures(
     pre_auth_sd: SecurityDeposit,
+    damage_claim: DamageClaim,
 ) -> None:
     SecurityDepositService.hold(
         pre_auth_sd,
@@ -155,14 +167,111 @@ def test_pre_auth_path__claim_captures(
     )
     SecurityDepositService.claim(
         pre_auth_sd,
-        damage_claim=42,  # placeholder for the future DamageClaim FK
+        damage_claim=damage_claim,
         captured_amount=Decimal("250.00"),
         actor=None,
     )
     pre_auth_sd.refresh_from_db()
     assert pre_auth_sd.status == SecurityDepositStatus.CAPTURED.value
     assert pre_auth_sd.captured_amount == Decimal("250.00")
-    assert pre_auth_sd.damage_claim_id == 42
+    assert pre_auth_sd.damage_claim_id == damage_claim.pk
+
+
+# --- BUG-008: the damage_claim link is a real FK ------------------------------
+
+
+@pytest.mark.django_db
+def test_deleting_a_damage_claim_nulls_the_sd_link(
+    pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    """on_delete=SET_NULL: a claim can be hard-deleted without dragging the
+    SD's money history down; the link just nulls out."""
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim, captured_amount=Decimal("100.00"), actor=None
+    )
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.damage_claim_id == damage_claim.pk
+
+    damage_claim.delete()
+
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.damage_claim_id is None
+    # The captured_amount audit survives the claim's deletion.
+    assert pre_auth_sd.captured_amount == Decimal("100.00")
+
+
+@pytest.mark.django_db
+def test_claim_resolves_a_raw_pk(pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim) -> None:
+    """The operator API passes a raw PK; the service resolves it to the row."""
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim.pk, captured_amount=Decimal("100.00"), actor=None
+    )
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.damage_claim_id == damage_claim.pk
+
+
+@pytest.mark.django_db
+def test_claim_with_unknown_pk_is_a_clean_validation_error(
+    pre_auth_sd: SecurityDeposit,
+) -> None:
+    """A bad PK is a 400 DomainValidationError raised before any capture write,
+    not a 500 IntegrityError part-way through the transaction."""
+    from core.exceptions import DomainValidationError
+
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    with pytest.raises(DomainValidationError):
+        SecurityDepositService.claim(
+            pre_auth_sd, damage_claim=999_999, captured_amount=Decimal("100.00"), actor=None
+        )
+
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.status == SecurityDepositStatus.PRE_AUTHED.value
+    assert pre_auth_sd.captured_amount is None
+
+
+@pytest.mark.django_db
+def test_claim_with_non_numeric_damage_claim_is_a_clean_validation_error(
+    pre_auth_sd: SecurityDeposit,
+) -> None:
+    """A non-coercible JSON value (`request.data['damage_claim'] == 'abc'`) is a
+    400, not the ValueError-mapped 500 the bare DoesNotExist catch would leave."""
+    from core.exceptions import DomainValidationError
+
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    with pytest.raises(DomainValidationError):
+        SecurityDepositService.claim(
+            pre_auth_sd, damage_claim="abc", captured_amount=Decimal("100.00"), actor=None
+        )
+
+
+@pytest.mark.django_db
+def test_claim_rejects_a_damage_claim_from_a_different_booking(
+    pre_auth_sd: SecurityDeposit, property_: Any, customer: Any, gbp: Any, terms: Any
+) -> None:
+    """A claim must belong to the deposit's own booking — otherwise a capture
+    could be justified by an unrelated booking's damages."""
+    from datetime import date, timedelta
+
+    from core.exceptions import DomainValidationError
+    from reservations.factories import DamageClaimFactory, make_occupying_booking
+
+    other_booking = make_occupying_booking(
+        property=property_,
+        person=customer,
+        currency=gbp,
+        terms=terms,
+        date_from=date.today() + timedelta(days=300),
+        date_to=date.today() + timedelta(days=307),
+    )
+    other_claim = DamageClaimFactory(booking=other_booking, currency=gbp)
+
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    with pytest.raises(DomainValidationError):
+        SecurityDepositService.claim(
+            pre_auth_sd, damage_claim=other_claim, captured_amount=Decimal("100.00"), actor=None
+        )
 
 
 @pytest.mark.django_db
@@ -276,7 +385,9 @@ def test_security_deposit_service_emits_structured_events(
 
 
 @pytest.mark.django_db
-def test_bt_mark_paid_and_claim_emit_structured_events(bt_sd: SecurityDeposit) -> None:
+def test_bt_mark_paid_and_claim_emit_structured_events(
+    bt_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
     from structlog.testing import capture_logs
 
     with capture_logs() as logs:
@@ -290,7 +401,7 @@ def test_bt_mark_paid_and_claim_emit_structured_events(bt_sd: SecurityDeposit) -
         )
         SecurityDepositService.claim(
             bt_sd,
-            damage_claim=42,
+            damage_claim=damage_claim,
             captured_amount=Decimal("150.00"),
             actor=None,
         )

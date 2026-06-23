@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from django.db import transaction
 from django.utils import timezone
 
-from core.exceptions import InvalidSecurityDepositKind
+from core.exceptions import DomainValidationError, InvalidSecurityDepositKind
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
 from payments.enums import (
@@ -33,6 +33,9 @@ from payments.models.payment import Payment
 from payments.models.security_deposit import SecurityDeposit
 from pricing.services.currency import quantise_money
 from properties.enums import SecurityDepositCalcType, SecurityDepositPaymentMethod
+
+if TYPE_CHECKING:
+    from reservations.models import DamageClaim
 
 logger = structlog.get_logger(__name__)
 
@@ -387,6 +390,11 @@ class SecurityDepositService:
     ) -> SecurityDeposit:
         """PRE_AUTHED → CAPTURED          (gateway capture)
         HELD       → PARTIALLY_REFUNDED (Refund for the residual)
+
+        `damage_claim` may arrive as a `DamageClaim` instance (internal callers)
+        or a raw PK (the operator API passes `request.data['damage_claim']`).
+        It is resolved to a real, booking-matched row up front so a bad PK is a
+        clean 400 rather than the DB FK constraint raising a 500 mid-capture.
         """
         with log_operation(
             "security_deposit.claim",
@@ -398,6 +406,9 @@ class SecurityDepositService:
             currency=sd.currency.code,
             kind=sd.kind,
         ):
+            # Resolve inside the operation block so a rejected claim still emits
+            # the `.failed` event (the logging triple covers this fallible read).
+            damage_claim = cls._resolve_damage_claim(sd, damage_claim)
             if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
                 # The capture supersedes the pre-auth hold: settle the held
                 # authorisation into a captured charge. Retire the still-active
@@ -427,6 +438,38 @@ class SecurityDepositService:
                 damage_claim=damage_claim,
                 actor=actor,
             )
+
+    @staticmethod
+    def _resolve_damage_claim(sd: SecurityDeposit, damage_claim: Any) -> DamageClaim | None:
+        """Coerce an instance-or-PK-or-None into a booking-matched DamageClaim.
+
+        `None` is allowed (a capture may not yet carry a formal claim — the
+        mandatory-claim gating is part of the deferred approval workflow). A
+        provided value must resolve to an existing claim on the *same booking*
+        as the deposit; otherwise `DomainValidationError` (400), never the FK
+        constraint's IntegrityError (500).
+        """
+        from reservations.models import DamageClaim
+
+        if damage_claim is None or isinstance(damage_claim, DamageClaim):
+            claim = damage_claim
+        else:
+            try:
+                claim = DamageClaim.objects.get(pk=damage_claim)
+            except (DamageClaim.DoesNotExist, ValueError, TypeError):
+                # DoesNotExist: no such row. ValueError/TypeError: the JSON value
+                # (`request.data['damage_claim']`) wasn't a coercible PK at all
+                # (e.g. "abc", a list) — still a 400, never a 500.
+                raise DomainValidationError(
+                    f"No DamageClaim with id {damage_claim!r}.",
+                    field_errors={"damage_claim": ["No such damage claim."]},
+                ) from None
+        if claim is not None and claim.booking_id != sd.booking_id:
+            raise DomainValidationError(
+                "DamageClaim belongs to a different booking than the deposit.",
+                field_errors={"damage_claim": ["Claim is for a different booking."]},
+            )
+        return claim
 
     @classmethod
     @transaction.atomic

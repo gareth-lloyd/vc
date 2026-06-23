@@ -27,6 +27,7 @@ from payments.enums import (
 
 if TYPE_CHECKING:
     from payments.models.payment_event import PaymentEvent
+    from reservations.models import DamageClaim
 
 
 class SecurityDeposit(AuditedModel):
@@ -70,11 +71,16 @@ class SecurityDeposit(AuditedModel):
         null=True,
         blank=True,
     )
-    # `DamageClaim` lives in `reservations/` per 05-reservations.md but is not
-    # yet implemented by the parallel agent. Track the link as a plain PK
-    # column for now; flip back to a FK once the model lands.
-    # TODO: convert `damage_claim_id` to FK("reservations.DamageClaim", on_delete=SET_NULL)
-    damage_claim_id = models.PositiveBigIntegerField(null=True, blank=True)
+    # The structured claim that justifies a capture / partial refund (BUG-008).
+    # SET_NULL: a claim may be hard-deleted without dragging the SD's money
+    # history down with it, but the SD keeps its captured_amount audit.
+    damage_claim = models.ForeignKey(
+        "reservations.DamageClaim",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="security_deposits",
+    )
     requested_by = models.ForeignKey(
         "accounts.User",
         on_delete=models.SET_NULL,
@@ -196,7 +202,7 @@ class SecurityDeposit(AuditedModel):
         self,
         *,
         captured_amount: Decimal,
-        damage_claim: Any,
+        damage_claim: DamageClaim | None,
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
@@ -207,8 +213,8 @@ class SecurityDeposit(AuditedModel):
             raise ValueError(f"SD {self.reference}: cannot :claim from status {self.status!r}")
         self._assert_capturable_amount(captured_amount)
         self.captured_amount = captured_amount
-        self.damage_claim_id = getattr(damage_claim, "pk", damage_claim)
-        self.save(update_fields=["captured_amount", "damage_claim_id", "updated_at"])
+        self.damage_claim = damage_claim
+        self.save(update_fields=["captured_amount", "damage_claim", "updated_at"])
         return self._transition(
             SecurityDepositStatus.CAPTURED.value,
             actor=actor,
@@ -221,7 +227,7 @@ class SecurityDeposit(AuditedModel):
         self,
         *,
         captured_amount: Decimal,
-        damage_claim: Any,
+        damage_claim: DamageClaim | None,
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
@@ -239,13 +245,13 @@ class SecurityDeposit(AuditedModel):
         self._assert_capturable_amount(captured_amount)
         self.captured_amount = captured_amount
         self.refunded_amount = self.amount - captured_amount
-        self.damage_claim_id = getattr(damage_claim, "pk", damage_claim)
+        self.damage_claim = damage_claim
         self.released_at = timezone.now()
         self.save(
             update_fields=[
                 "captured_amount",
                 "refunded_amount",
-                "damage_claim_id",
+                "damage_claim",
                 "released_at",
                 "updated_at",
             ]

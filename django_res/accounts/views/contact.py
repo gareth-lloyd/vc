@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from django.db import models, transaction
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet
+from django_filters.rest_framework import CharFilter, DjangoFilterBackend, FilterSet
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
-from accounts.enums import PersonStatus
+from accounts.enums import PersonStatus, PersonTag
 from accounts.models import Person, PersonEmail, PersonPhone
 from accounts.serializers import (
     ContactEmailSerializer,
@@ -38,6 +38,11 @@ def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones:
 
 
 class ContactFilterSet(FilterSet):
+    # GAP-040: `?tags=vip,trade` → customers carrying ANY of the listed tags
+    # (overlap). A method filter because the Meta dict shorthand can't express
+    # the `__overlap` array lookup.
+    tags = CharFilter(method="filter_tags")
+
     class Meta:
         model = Person
         fields = {
@@ -48,6 +53,17 @@ class ContactFilterSet(FilterSet):
             # `kind=contact` so it never offers customer mirrors.
             "kind": ["exact"],
         }
+
+    def filter_tags(
+        self, queryset: models.QuerySet[Person], _name: str, value: str
+    ) -> models.QuerySet[Person]:
+        valid = {t.value for t in PersonTag}
+        wanted = [tok for tok in (raw.strip() for raw in value.split(",")) if tok in valid]
+        if not wanted:
+            # All tokens unknown (or empty) — ignore the filter rather than 400
+            # or return a silently-empty page.
+            return queryset
+        return queryset.filter(tags__overlap=wanted)
 
 
 class ContactViewSet(viewsets.ModelViewSet[Person]):

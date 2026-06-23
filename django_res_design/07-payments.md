@@ -85,7 +85,7 @@ The legacy `Payment.status` enum cannot express the pre-auth lifecycle on its ow
 - `released_at` — DateTimeField(null=True, blank=True)
 - `captured_amount` — Decimal(12, 2, null=True, blank=True)  # set when `kind=PRE_AUTH_HOLD` is partially or fully captured against damages
 - `refunded_amount` — Decimal(12, 2, null=True, blank=True)  # set on the BT-refundable path as refunds accumulate
-- `damage_claim` — FK reservations.DamageClaim SET_NULL, null=True, blank=True  # link to the structured claim that justifies a capture / partial refund. (`DamageClaim` lives in `reservations/` per `05-reservations.md`; documented separately if not yet covered there — open follow-up.)
+- `damage_claim` — FK reservations.DamageClaim SET_NULL, null=True, blank=True  # link to the structured claim that justifies a capture / partial refund. (`DamageClaim` ships in `reservations/models/damage_claim.py`, BUG-008; `SecurityDepositService.claim()` resolves + booking-validates it. The damages *workflow* — report sub-form, photos, threshold permissions, the damages email, the enforced approval state machine — is deferred to workflow 8/17.)
 - `requested_by` — FK User SET_NULL, null=True, related_name="security_deposits_requested"
 - `requested_at` — DateTimeField(default=now)
 - `meta` — JSONField(default=dict)

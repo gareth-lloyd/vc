@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-23): **87 done** (83 resolved + 4 dropped), **38 open**
+Scoreboard (2026-06-23): **88 done** (84 resolved + 4 dropped), **37 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -26,7 +26,7 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 | Id | Title | Status |
 |---|---|---|
-| [BUG-008](bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ⬜ decision-blocked (DamageClaim in v1?) |
+| [BUG-008](done/bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ✅ resolved (2026-06-23) — `DamageClaim` shipped in `reservations/` (v1, "fuller" model: reference seq, booking/currency FKs, status, `itemized_lines`/`photos`/`accepted_by_guest_at` scaffolds, audited) + `SecurityDeposit.damage_claim` → real `FK(SET_NULL)`; `claim()` resolves PK/instance/None into a booking-matched claim, `DomainValidationError` (400) on bad/foreign ref; damages workflow (report/photos/thresholds/email/approval SM) deferred to wf 8/17 |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | 🟨 spec written (04-pricing 8-9 GROSS carve-out / NET gross-up + 10-decisions deferred row + engine TODO/assembly pointers); **engine code deferred to finance rewrite**; single-source-of-truth with `prices_entered_as` **resolved** by GAP-035 (`RatePlan.price_basis` canonical) |
 
 ## 🟠 Footguns
@@ -107,7 +107,6 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **BUG-008** — `DamageClaim` in v1? (scope call; blocks the SD damage slice)
 - **Q-019** — Structured room attributes (owner vocabulary; blocks room-attribute write surface)
 
 ---

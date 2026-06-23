@@ -1,3 +1,19 @@
+> **✅ RESOLVED (2026-06-23)** — Decision (with user): `DamageClaim` **is in
+> v1** — shipped the "fuller" model in `reservations/`
+> (`reservations/models/damage_claim.py`, migration 0037: reference sequence,
+> booking + currency FKs, amount/status/description, `itemized_lines`/`photos`
+> JSON scaffolds, `accepted_by_guest_at`; audited) and converted
+> `SecurityDeposit.damage_claim_id` → a real
+> `ForeignKey("reservations.DamageClaim", on_delete=SET_NULL)` (payments 0009).
+> `SecurityDepositService.claim()` resolves the API's PK/instance/None into a
+> booking-matched claim, raising `DomainValidationError` (400) on a bad/foreign
+> reference so the integrity hole is a clean 400, never a 500. The damages
+> workflow itself — operator report sub-form, photo upload, threshold
+> permissions, the damages email, the enforced approval state machine — stays
+> **deferred to workflow 8/17**. Commits: ded547d, 61d5810, 8d5f914.
+>
+> _Original ticket preserved below for context._
+
 # BUG-008 — `SecurityDeposit.damage_claim_id` is a hand-rolled FK without integrity
 
 - **Severity:** 🔴 Bug

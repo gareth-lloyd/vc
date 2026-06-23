@@ -30,6 +30,8 @@ import { PhoneFormDialog } from "../components/PhoneFormDialog";
 import { TagsFormDialog } from "../components/TagsFormDialog";
 import { TagChips } from "../components/TagChips";
 import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
+import { ContactEnquiryHistory } from "../components/ContactEnquiryHistory";
+import { ContactBookingHistory } from "../components/ContactBookingHistory";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -393,6 +395,8 @@ export function DetailsTab() {
       <PhonesSection contact={contact} canWrite={canWrite} />
       <TagsSection contact={contact} canWrite={canWrite} />
       <LinkedContactsAccordion contactId={contact.id} />
+      <ContactEnquiryHistory contactId={contact.id} />
+      <ContactBookingHistory contactId={contact.id} />
     </div>
   );
 }

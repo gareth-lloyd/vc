@@ -234,6 +234,25 @@ export type ContactEnquiryHistoryItem = z.infer<typeof contactEnquiryHistorySche
 
 export const contactEnquiryHistoryResponseSchema = paginated(contactEnquiryHistorySchema);
 
+// GAP-042: `/contacts/{id}/bookings` previous-booking history (mirrors the
+// backend ContactBookingSerializer). `property` is the bare FK pk — the shallow
+// read doesn't resolve a name, so the row shows reference + status + dates.
+export const contactBookingHistorySchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  status: bookingStatusSchema,
+  property: z.number().nullable().optional(),
+  date_from: z.string().nullable().optional(),
+  date_to: z.string().nullable().optional(),
+  adults: z.number().nullable().optional(),
+  children: z.number().nullable().optional(),
+  is_archived: z.boolean().optional(),
+  created_at: z.string().nullable().optional(),
+});
+export type ContactBookingHistoryItem = z.infer<typeof contactBookingHistorySchema>;
+
+export const contactBookingHistoryResponseSchema = paginated(contactBookingHistorySchema);
+
 // GAP-041 F2: `/contacts/{id}/relationships`. A row is a single directed link
 // (from_person → to_person) seen from this contact's side: `direction` is
 // "outgoing" when this contact is the from_person, "incoming" when it's the

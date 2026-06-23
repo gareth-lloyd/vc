@@ -4,6 +4,7 @@ import type { Paginated } from "@/types/api";
 import type { ContactId } from "@/lib/query/keys";
 import { z } from "zod";
 import {
+  contactBookingHistoryResponseSchema,
   contactEmailSchema,
   contactEnquiryHistoryResponseSchema,
   contactPhoneSchema,
@@ -16,6 +17,7 @@ import {
   type ContactCreateBody,
   type ContactEmail,
   type ContactEmailWriteInput,
+  type ContactBookingHistoryItem,
   type ContactEnquiryHistoryItem,
   type ContactFilters,
   type ContactListItem,
@@ -60,6 +62,13 @@ export async function fetchContactEnquiries(
 ): Promise<Paginated<ContactEnquiryHistoryItem>> {
   const data = await apiGet<unknown>(`/contacts/${contactId}/enquiries`);
   return contactEnquiryHistoryResponseSchema.parse(data);
+}
+
+export async function fetchContactBookings(
+  contactId: ContactId,
+): Promise<Paginated<ContactBookingHistoryItem>> {
+  const data = await apiGet<unknown>(`/contacts/${contactId}/bookings`);
+  return contactBookingHistoryResponseSchema.parse(data);
 }
 
 export async function fetchContactRelationships(

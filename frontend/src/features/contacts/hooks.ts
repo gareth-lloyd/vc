@@ -11,6 +11,7 @@ import {
   deleteContactPhone,
   deleteContactRelationship,
   fetchContact,
+  fetchContactBookings,
   fetchContactEnquiries,
   fetchContactProperties,
   fetchContactRelationships,
@@ -48,6 +49,10 @@ export function useContactProperties(id: ContactId | undefined) {
 
 export function useContactEnquiries(id: ContactId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.contacts.enquiries, fetchContactEnquiries));
+}
+
+export function useContactBookings(id: ContactId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.contacts.bookings, fetchContactBookings));
 }
 
 export function useContactRelationships(id: ContactId | undefined) {

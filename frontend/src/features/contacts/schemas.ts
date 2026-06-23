@@ -216,3 +216,41 @@ export const contactEnquiryHistorySchema = z.object({
 export type ContactEnquiryHistoryItem = z.infer<typeof contactEnquiryHistorySchema>;
 
 export const contactEnquiryHistoryResponseSchema = paginated(contactEnquiryHistorySchema);
+
+// GAP-041 F2: `/contacts/{id}/relationships`. A row is a single directed link
+// (from_person → to_person) seen from this contact's side: `direction` is
+// "outgoing" when this contact is the from_person, "incoming" when it's the
+// to_person. `kind` is the raw stored kind; `kind_label` is the backend's
+// ENGLISH label and is tolerated but NEVER rendered — the UI computes its own
+// localized label from `kind` + `direction` (see relationshipLabelKey).
+export const relationshipPersonSchema = z.object({
+  id: z.number(),
+  first_name: z.string().nullable().optional(),
+  last_name: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  kind: z.string(),
+});
+export type RelationshipPerson = z.infer<typeof relationshipPersonSchema>;
+
+export const linkedContactSchema = z.object({
+  id: z.number(),
+  kind: z.string(),
+  kind_label: z.string(),
+  note: z.string(),
+  other_person: relationshipPersonSchema,
+  direction: z.enum(["outgoing", "incoming"]),
+  created_at: z.string(),
+});
+export type LinkedContact = z.infer<typeof linkedContactSchema>;
+
+export const linkedContactsResponseSchema = paginated(linkedContactSchema);
+
+export const relationshipWriteInputSchema = z.object({
+  // `.positive()` so the empty default (0, no contact picked) fails client-side
+  // with a "choose a contact" message instead of POSTing to_person:0 and bouncing
+  // off the backend's PK validation.
+  to_person: z.number().int().positive(i18n.t("contacts:errors.linked_contact_required")),
+  kind: z.string().min(1, i18n.t("contacts:errors.relationship_kind_required")),
+  note: z.string().trim().max(2000).optional(),
+});
+export type RelationshipWriteInput = z.infer<typeof relationshipWriteInputSchema>;

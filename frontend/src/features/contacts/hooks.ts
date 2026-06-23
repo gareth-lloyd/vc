@@ -5,12 +5,15 @@ import {
   createContact,
   createContactEmail,
   createContactPhone,
+  createContactRelationship,
   deleteContact,
   deleteContactEmail,
   deleteContactPhone,
+  deleteContactRelationship,
   fetchContact,
   fetchContactEnquiries,
   fetchContactProperties,
+  fetchContactRelationships,
   fetchContacts,
   searchContacts,
   setPrimaryContactEmail,
@@ -25,6 +28,7 @@ import type {
   ContactFilters,
   ContactPhoneWriteInput,
   ContactWriteInput,
+  RelationshipWriteInput,
 } from "./schemas";
 
 export function useContacts(filters: ContactFilters) {
@@ -44,6 +48,34 @@ export function useContactProperties(id: ContactId | undefined) {
 
 export function useContactEnquiries(id: ContactId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.contacts.enquiries, fetchContactEnquiries));
+}
+
+export function useContactRelationships(id: ContactId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.contacts.relationships, fetchContactRelationships));
+}
+
+export function useCreateContactRelationship(contactId: ContactId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RelationshipWriteInput) => createContactRelationship(contactId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contacts.relationships(contactId),
+      });
+    },
+  });
+}
+
+export function useDeleteContactRelationship(contactId: ContactId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ relId }: { relId: number }) => deleteContactRelationship(contactId, relId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contacts.relationships(contactId),
+      });
+    },
+  });
 }
 
 export function useSearchContacts(

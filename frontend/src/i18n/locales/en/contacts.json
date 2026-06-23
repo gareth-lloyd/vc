@@ -25,7 +25,26 @@
     "tags": "Tags",
     "edit_tags_dialog": "Edit tags",
     "property_assignments": "Property assignments",
+    "linked_contacts": "Linked contacts ({{count}})",
     "sections_aria": "Contact sections"
+  },
+  "relationship_kinds": {
+    "spouse": "Spouse",
+    "partner": "Partner",
+    "child": "Child",
+    "parent": "Parent",
+    "pa": "PA",
+    "sibling": "Sibling",
+    "other": "Other"
+  },
+  "relationship_inverse": {
+    "spouse": "Spouse",
+    "partner": "Partner",
+    "child": "Parent",
+    "parent": "Child",
+    "pa": "Principal",
+    "sibling": "Sibling",
+    "other": "Other"
   },
   "tabs": {
     "details": "Details",
@@ -41,7 +60,8 @@
     "edit_tags": "Edit tags",
     "set_as_primary": "Set as primary",
     "actions_menu_aria": "Actions",
-    "create_new_inline": "+ Create new contact"
+    "create_new_inline": "+ Create new contact",
+    "link_contact": "Link contact"
   },
   "tags": {
     "vip": "VIP",
@@ -77,7 +97,10 @@
     "role": "Role",
     "primary": "Primary",
     "start": "Start",
-    "end": "End"
+    "end": "End",
+    "relationship_kind": "Relationship",
+    "linked_contact": "Contact",
+    "note": "Note"
   },
   "placeholders": {
     "search": "Search by name, agency, or email…",
@@ -88,7 +111,8 @@
     "email_label": "e.g. work, personal",
     "phone_label": "e.g. mobile, office",
     "picker_trigger": "Select a contact…",
-    "picker_search": "Search contacts…"
+    "picker_search": "Search contacts…",
+    "select_relationship_kind": "Select a relationship…"
   },
   "status": {
     "any": "Any status",
@@ -122,7 +146,11 @@
     "tags_updated": "Tags updated",
     "email_remove_failed": "Failed to remove email",
     "phone_remove_failed": "Failed to remove phone",
-    "set_primary_failed": "Failed to set primary"
+    "set_primary_failed": "Failed to set primary",
+    "link_added": "Contact linked",
+    "link_removed": "Link removed",
+    "link_add_failed": "Failed to link contact",
+    "link_remove_failed": "Failed to remove link"
   },
   "empty": {
     "list_title": "No contacts match these filters",
@@ -132,7 +160,8 @@
     "tags": "No tags yet",
     "property_assignments": "No property assignments",
     "picker_min_chars": "Type at least 2 characters to search",
-    "picker_no_results": "No contacts found"
+    "picker_no_results": "No contacts found",
+    "linked_contacts": "No linked contacts yet"
   },
   "errors": {
     "load_failed": "Couldn't load contacts.",
@@ -144,7 +173,10 @@
     "detail_not_found_body": "It may have been deleted or you may not have access.",
     "detail_load_failed_body": "Try again or head back to the list.",
     "name_or_agency_required": "At least a name or agency is required",
-    "channel_required": "Add at least one email or phone so the contact is reachable"
+    "channel_required": "Add at least one email or phone so the contact is reachable",
+    "relationship_kind_required": "Choose a relationship type",
+    "linked_contact_required": "Choose a contact to link",
+    "relationships_load_failed": "Couldn't load linked contacts."
   },
   "tooltips": {
     "create_role_required": "You need the Reservations role to create contacts"
@@ -155,7 +187,9 @@
     "remove_email_title": "Remove email?",
     "remove_email_body": "This email address will be permanently removed from this contact.",
     "remove_phone_title": "Remove phone?",
-    "remove_phone_body": "This phone number will be permanently removed from this contact."
+    "remove_phone_body": "This phone number will be permanently removed from this contact.",
+    "remove_link_title": "Remove link?",
+    "remove_link_body": "This will remove the link between these two contacts."
   },
   "fallback": {
     "name_with_id": "Contact #{{id}}"

@@ -28,6 +28,7 @@ import { EmailFormDialog } from "../components/EmailFormDialog";
 import { PhoneFormDialog } from "../components/PhoneFormDialog";
 import { TagsFormDialog } from "../components/TagsFormDialog";
 import { TagChips } from "../components/TagChips";
+import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -367,6 +368,7 @@ export function DetailsTab() {
       <EmailsSection contact={contact} canWrite={canWrite} />
       <PhonesSection contact={contact} canWrite={canWrite} />
       <TagsSection contact={contact} canWrite={canWrite} />
+      <LinkedContactsAccordion contactId={contact.id} />
     </div>
   );
 }

@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-23): **87 done** (83 resolved + 4 dropped), **38 open**
+Scoreboard (2026-06-23): **89 done** (85 resolved + 4 dropped), **36 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
@@ -76,8 +76,8 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-037](gap-037-services-as-separate-entity-and-tab.md) | Services as a separate entity + tab, split from season inclusions | ⬜ reconcile 3 inclusion concepts; model + UX decision |
 | [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md) | Enquiry pipeline: stage taxonomy + quotes-to-convert metric | ✅ resolved (2026-06-19) — stage taxonomy + structured `lost_reason` (Phase 0, migr. 0032–0035) exposed read-only; `quotes_to_convert` query-pinned `SerializerMethodField` + "Converted in N quote(s)" detail badge; per-quote chips already from GAP-005. Rebuild-era only (migrated history reads null) |
 | [GAP-039](done/gap-039-enquiry-dashboard-enrichment.md) | Enquiry list/dashboard enrichment to the Ben/owner mockup | ✅ resolved (2026-06-19) — delivered: enriched read columns, inline lead-status edit, lead-status/salesperson/page-size filters, stage tabs (excl. Dead/Converted), en/el i18n. Remaining inline salesperson/stage/lost-reason edits + date-range/delete/select carved out to GAP-050 |
-| [GAP-040](gap-040-customer-tags-taxonomy.md) | Customer tags taxonomy (VIP/Trade/Disability/…) | ⬜ owner Loom 2026-06-17; new area, model-shape decision first |
-| [GAP-041](gap-041-standing-linked-contacts.md) | Standing linked contacts (spouse/child/PA) | ⬜ owner Loom 2026-06-17; new area |
+| [GAP-040](done/gap-040-customer-tags-taxonomy.md) | Customer tags taxonomy (VIP/Trade/Disability/…) | ✅ resolved (2026-06-23) — fixed `PersonTag` `ArrayField` on `Person` (10 tags; "Repeat" → derived badge in GAP-042), audited + erasure-scrubbed (special-category), `?tags=` overlap filter; FE checkbox-dialog editor + read-only chips on the contact profile (merge feat/gap-040-041, B1/B2/F1). Enquiry/quote chips + curated taxonomy (Q-021) deferred |
+| [GAP-041](done/gap-041-standing-linked-contacts.md) | Standing linked contacts (spouse/child/PA) | ✅ resolved (2026-06-23) — directed `PersonRelationship(from,to,kind)` (DB no-self-link + `(from,to,kind)` unique), one row rendered with an inverse label (CHILD↔PARENT, PA→Principal); merge folds links dropping self-links/dupes/mirrors, anonymize deletes them; `/contacts/{id}/relationships` + "Linked contacts (N)" accordion reusing the GAP-027 picker (B3/B4/F2) |
 | [GAP-042](gap-042-customer-360-profile-view.md) | Customer 360 profile for the sales team | ⬜ owner Loom 2026-06-17; consumes GAP-040/041; "calls" needs activity-log decision |
 | [GAP-043](gap-043-quote-builder-multi-week-range.md) | Quote builder: multi-week date-range selection | ⬜ owner Loom 2026-06-17; reverses the flexibility_days rework (replace-vs-coexist open) |
 | [GAP-044](gap-044-occupancy-band-fanout-builder.md) | Quote builder: occupancy-band fan-out (all bands, default-checked) | ⬜ owner Loom 2026-06-17; reverses 04-pricing "no auto fan-out" |

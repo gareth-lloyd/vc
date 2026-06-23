@@ -1,3 +1,20 @@
+> **✅ RESOLVED (2026-06-23)** — Shipped on local `main` (unpushed) via
+> feat/gap-042 (B1 `0d0f9ea`, F1 `df116e5`, F2 `08d574d`, F3 `bd33c32`). The
+> sales-team 360 profile is assembled over the unified `accounts.Person` —
+> *compose*, not a new aggregate endpoint. `GET /contacts/{id}` now serializes
+> town/post_code/country (+ `country_name`) and a property-agnostic
+> `booking_count` + `is_repeat_customer` (>= 1 booking; the annotation is gated
+> to list/retrieve in `get_queryset` per the multi-valued-join rule). The FE
+> `CustomerProfilePanel` (identity + Repeat badge + tags + collapsible address +
+> linked-contacts + enquiry & booking-history accordions, the latter wiring in
+> the previously-dead `ContactEnquiryHistory`) is reused by the contact detail
+> page and embedded in the enquiry- and quotation-detail rails. **Deferred:**
+> "calls"/activity-log history (no model — see Q-017), rich-text notes (plain
+> `notes` for now), country editing (display-only), quote-builder inline embed
+> (no rail). Tests: 968 backend + 1260 frontend green.
+
+---
+
 # GAP-042 — Customer 360 profile for the sales team
 
 - **Severity:** Gap (backend endpoint + frontend) — assembles the full client view

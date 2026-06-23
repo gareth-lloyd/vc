@@ -233,6 +233,16 @@ class Person(AuditedModel):
         for phone in self.phones.all():
             phone.number = ""
             phone.save(update_fields=["number", "updated_at"])
+        # GAP-041: drop standing relationships on erasure — a surviving link
+        # leaks "X is [redacted]'s spouse". Per-instance delete keeps the
+        # PersonRelationship audit trail. Lazy import: person_relationship imports
+        # Person, so a module-level import here would cycle.
+        from accounts.models.person_relationship import PersonRelationship
+
+        for rel in PersonRelationship._default_manager.filter(
+            Q(from_person=self) | Q(to_person=self)
+        ):
+            rel.delete()
         # Scrub *after* the save so the freshly written [old, sentinel] row is
         # caught alongside the historical trail (BUG-012). `tags` rides along
         # (special-category data, GAP-040) even though it's absent from
@@ -249,6 +259,8 @@ class Person(AuditedModel):
         """
         if target.pk == self.pk:
             raise ValueError("Cannot merge a person into itself")
+        from accounts.models.person_relationship import PersonRelationship
+
         # Apps that hold FKs to Person are properties.PropertyContactAssignment,
         # reservations.Enquiry/Quotation/Booking (agent FKs),
         # properties.PropertyFinance.contact. Their migrations create the
@@ -274,6 +286,12 @@ class Person(AuditedModel):
             # M2M field raises FieldError because it isn't a column.
             if rel.many_to_many:
                 continue
+            # PersonRelationship surfaces TWICE here (its from_person + to_person
+            # FKs both point at Person), and a blind per-FK rewrite would repoint
+            # a link between the two merged people into a self-link (tripping the
+            # CheckConstraint) or a duplicate. Fold both legs once, below.
+            if related_model is PersonRelationship:
+                continue
             field_name = rel.field.name
             value_field = channel_value_fields.get(related_model)
             if value_field is not None:
@@ -282,6 +300,11 @@ class Person(AuditedModel):
                 count = self._merge_relation(target, related_model, field_name)
             if count:
                 rewrites[f"{related_model._meta.label}.{field_name}"] = count
+        # One-shot relationship fold (both FK legs), after the generic loop.
+        rel_label = PersonRelationship._meta.label
+        for leg, count in self._merge_relationships(target).items():
+            if count:
+                rewrites[f"{rel_label}.{leg}"] = count
         dead_pk = self.pk
         target_pk = target.pk
         self.delete()
@@ -387,6 +410,58 @@ class Person(AuditedModel):
         if not moved_pks:
             return 0
         return model._default_manager.filter(pk__in=moved_pks).update(**{field_name: target})
+
+    def _merge_relationships(self, target: Person) -> dict[str, int]:
+        """Fold ``self``'s PersonRelationship rows onto ``target`` across both FK
+        legs without tripping the no-self-link CheckConstraint or the
+        ``(from, to, kind)`` UniqueConstraint.
+
+        Called once from ``merge`` (PersonRelationship is skipped in the generic
+        ``related_objects`` loop, where it would otherwise surface twice and
+        double-rewrite). For each row, compute its post-repoint ``(from, to,
+        kind)`` and:
+
+        - **drop** it (per-instance ``.delete()``) if that collapses to a
+          self-link (the two merged people were linked to each other) or
+          duplicates a relationship the target already has;
+        - otherwise **repoint** the leg(s) that pointed at ``self`` via
+          per-instance ``.save()``.
+
+        Per-instance writes (never bulk ``.update()``/``.delete()``) keep the
+        tracked audit trail intact, mirroring ``_merge_channel``. Returns moved
+        counts keyed by leg (``from_person`` / ``to_person``) for the merge
+        summary.
+        """
+        from accounts.models.person_relationship import PersonRelationship
+
+        moved = {"from_person": 0, "to_person": 0}
+        # Signatures already on the target (either leg) to dedup against; a row
+        # could only be on one leg of self (the constraint forbids from == to).
+        existing = {
+            (r.from_person_id, r.to_person_id, r.kind)
+            for r in PersonRelationship._default_manager.filter(
+                Q(from_person=target) | Q(to_person=target)
+            )
+        }
+        for row in PersonRelationship._default_manager.filter(
+            Q(from_person=self) | Q(to_person=self)
+        ):
+            leg = "from_person" if row.from_person_id == self.pk else "to_person"
+            new_from = target.pk if row.from_person_id == self.pk else row.from_person_id
+            new_to = target.pk if row.to_person_id == self.pk else row.to_person_id
+            if new_from == new_to:
+                row.delete()  # the two merged people were linked → self-link
+                continue
+            signature = (new_from, new_to, row.kind)
+            if signature in existing:
+                row.delete()  # target already has this exact relationship
+                continue
+            existing.add(signature)
+            row.from_person_id = new_from
+            row.to_person_id = new_to
+            row.save(update_fields=["from_person", "to_person", "updated_at"])
+            moved[leg] += 1
+        return moved
 
 
 class PersonEmail(TimestampedModel):

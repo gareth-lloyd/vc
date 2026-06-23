@@ -9,7 +9,12 @@ class AccountsConfig(AppConfig):
 
     def ready(self) -> None:
         from accounts import signals  # noqa: F401
-        from accounts.models import Organisation, Person, User
+        from accounts.models import (
+            Organisation,
+            Person,
+            PersonRelationship,
+            User,
+        )
         from core.audit import track
 
         track(
@@ -48,6 +53,23 @@ class AccountsConfig(AppConfig):
                 "preferred_language",
             ],
             sensitive=["tfa_secret"],
+        )
+        # GAP-041: standing person-to-person links. Tracked so add/remove/retype
+        # of a relationship is in the trail; bulk merge rewrites go per-instance
+        # (Person._merge_relationships) so they hit these signals.
+        #
+        # `note` is deliberately NOT tracked: it's operator free-text that may
+        # carry special-category PII, and on erasure the row is hard-deleted —
+        # the post_delete audit row then lives under the PersonRelationship
+        # content-type, which Person.scrub_pii (keyed on the Person content-type)
+        # can't reach. Auditing the parties + kind captures the link's meaning;
+        # the free-text gloss stays out of an unscrubportable trail.
+        track(
+            PersonRelationship,
+            # FK columns by their `_id` attname (per the payments/owners
+            # convention) so the diff records the pk, not an unserializable
+            # Person instance.
+            fields=["from_person_id", "to_person_id", "kind"],
         )
         # Organisation carries contact detail (email/phone/address) → audited.
         # No `sensitive` fields and no erasure scrub: an organisation is not a

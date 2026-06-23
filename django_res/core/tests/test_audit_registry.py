@@ -20,6 +20,7 @@ from core.audit import get_spec
 EXPECTED_TRACKED_MODELS = {
     "accounts.Organisation",
     "accounts.Person",
+    "accounts.PersonRelationship",
     "accounts.User",
     "comms.EmailLog",
     "comms.EmailTemplate",

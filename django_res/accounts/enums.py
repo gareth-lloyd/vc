@@ -48,6 +48,40 @@ class PersonTag(models.TextChoices):
     TIME_WASTER = "time_waster", "Time waster"
 
 
+class PersonRelationshipKind(models.TextChoices):
+    """Durable person-to-person link types on a customer profile (GAP-041).
+
+    Distinct from per-booking `BookingGuest` trip roles — these persist across
+    bookings. A row `(from_person, to_person, kind)` reads "*to_person* is
+    *from_person*'s *{kind}*", so the same fact renders with an inverse label on
+    the other party's profile (see `RELATIONSHIP_INVERSE_LABEL`).
+    """
+
+    SPOUSE = "spouse", "Spouse"
+    PARTNER = "partner", "Partner"
+    CHILD = "child", "Child"
+    PARENT = "parent", "Parent"
+    PA = "pa", "PA"
+    SIBLING = "sibling", "Sibling"
+    OTHER = "other", "Other"
+
+
+# Reverse-direction display label for a stored kind, used when a relationship is
+# rendered on the *to_person*'s profile. Row "(Alice, Bob, PA)" = "Bob is Alice's
+# PA"; on Bob's profile Alice shows as his "Principal". Most kinds are
+# self-inverse; CHILD↔PARENT swap; PA's inverse ("Principal") is a display-only
+# label with no storable kind of its own (you always create the PA direction).
+RELATIONSHIP_INVERSE_LABEL: dict[str, str] = {
+    PersonRelationshipKind.SPOUSE.value: "Spouse",
+    PersonRelationshipKind.PARTNER.value: "Partner",
+    PersonRelationshipKind.CHILD.value: "Parent",
+    PersonRelationshipKind.PARENT.value: "Child",
+    PersonRelationshipKind.PA.value: "Principal",
+    PersonRelationshipKind.SIBLING.value: "Sibling",
+    PersonRelationshipKind.OTHER.value: "Other",
+}
+
+
 class PersonPreferredMethod(models.TextChoices):
     EMAIL = "email", "Email"
     PHONE = "phone", "Phone"

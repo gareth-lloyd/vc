@@ -62,9 +62,26 @@ def _historical_state() -> ProjectState:
     historical INSERT would then fail against the live, company-less table.
     ``accounts`` sits below ``reservations`` on the import/migration spine, so
     pinning it forward while ``reservations`` stays at 0034 is consistent.
+
+    A leaf of an app *above* reservations on the spine may FK into a reservations
+    model created after 0034 (e.g. ``payments.SecurityDeposit.damage_claim`` →
+    ``reservations.DamageClaim`` in 0037, BUG-008); including such a leaf as a
+    target would drag reservations forward past the 0035 Guest drop and the
+    historical ``Guest`` model would vanish. Exclude any other-app leaf whose
+    forwards-plan requires a reservations migration newer than 0034.
     """
     loader = MigrationExecutor(connection).loader
-    targets = [(_APP, _BEFORE)] + [leaf for leaf in loader.graph.leaf_nodes() if leaf[0] != _APP]
+    before = (_APP, _BEFORE)
+    # reservations nodes strictly after 0034 (the 0035 branches, the 0036 merge,
+    # 0037, …) — a target whose plan touches any of these moves reservations on.
+    res_after_before = {n for n in loader.graph.nodes if n[0] == _APP} - set(
+        loader.graph.forwards_plan(before)
+    )
+    targets = [before] + [
+        leaf
+        for leaf in loader.graph.leaf_nodes()
+        if leaf[0] != _APP and not res_after_before.intersection(loader.graph.forwards_plan(leaf))
+    ]
     return loader.project_state(targets)
 
 

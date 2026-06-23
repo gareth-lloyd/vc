@@ -59,6 +59,9 @@ export const contactWriteInputSchema = z
     preferred_method: z.string().trim().max(40).optional(),
     address_line_1: z.string().trim().max(255).optional(),
     address_line_2: z.string().trim().max(255).optional(),
+    // GAP-042: town/post_code are editable; country edit is deferred (read-only).
+    town: z.string().trim().max(128).optional(),
+    post_code: z.string().trim().max(32).optional(),
     notes: z.string().trim().max(2000).optional(),
     // GAP-040 F1: a fixed taxonomy (see PERSON_TAGS). PATCH replaces the whole
     // set; the backend canonicalises (sort + dedupe) and rejects unknown values.
@@ -86,6 +89,8 @@ export const contactCreateInputSchema = z
     preferred_method: z.string().trim().max(40).optional(),
     address_line_1: z.string().trim().max(255).optional(),
     address_line_2: z.string().trim().max(255).optional(),
+    town: z.string().trim().max(128).optional(),
+    post_code: z.string().trim().max(32).optional(),
     notes: z.string().trim().max(2000).optional(),
     email: z
       .string()
@@ -130,8 +135,20 @@ export const contactSchema = z.object({
   preferred_method: z.string().nullable().optional(),
   address_line_1: z.string().nullable().optional(),
   address_line_2: z.string().nullable().optional(),
+  // GAP-042: town/post_code/country round-trip; country is read-only (display
+  // name resolved server-side as country_name).
+  town: z.string().nullable().optional(),
+  post_code: z.string().nullable().optional(),
+  country: z.number().nullable().optional(),
+  country_name: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
+  // GAP-042: derived booking summary for the "Repeat" badge (property-agnostic,
+  // >= 1 booking). Left `.optional()` (no `.default`, like `tags`) so the
+  // inferred `Contact` stays assignable from existing fixtures; consumers read
+  // `?? 0` / `?? false`.
+  booking_count: z.number().optional(),
+  is_repeat_customer: z.boolean().optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left

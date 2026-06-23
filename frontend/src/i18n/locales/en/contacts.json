@@ -20,6 +20,7 @@
     "add_phone_dialog": "Add phone",
     "edit_phone_dialog": "Edit phone",
     "overview": "Overview",
+    "address": "Address",
     "emails": "Emails",
     "phones": "Phones",
     "tags": "Tags",
@@ -90,6 +91,9 @@
     "preferred_method": "Preferred method",
     "address_line_1": "Address line 1",
     "address_line_2": "Address line 2",
+    "town": "Town / City",
+    "post_code": "Postcode",
+    "country": "Country",
     "notes": "Notes",
     "label": "Label",
     "phone_number": "Phone number",
@@ -204,5 +208,19 @@
     "quote_count_other": "{{count}} quotes",
     "more_one": "+{{count}} more enquiry not shown",
     "more_other": "+{{count}} more enquiries not shown"
+  },
+  "profile": {
+    "title": "Customer profile",
+    "repeat": "Repeat",
+    "booking_count_one": "{{count}} booking",
+    "booking_count_other": "{{count}} bookings",
+    "bookings_title": "Previous bookings",
+    "bookings_toggle_aria": "Toggle previous bookings",
+    "bookings_empty": "No previous bookings.",
+    "bookings_loading": "Loading bookings…",
+    "bookings_error": "Couldn't load this contact's bookings.",
+    "bookings_more_one": "+{{count}} more booking not shown",
+    "bookings_more_other": "+{{count}} more bookings not shown",
+    "empty": "No customer linked."
   }
 }

@@ -20,6 +20,7 @@
     "add_phone_dialog": "Προσθήκη τηλεφώνου",
     "edit_phone_dialog": "Επεξεργασία τηλεφώνου",
     "overview": "Επισκόπηση",
+    "address": "Διεύθυνση",
     "emails": "Emails",
     "phones": "Τηλέφωνα",
     "tags": "Ετικέτες",
@@ -90,6 +91,9 @@
     "preferred_method": "Προτιμώμενος τρόπος",
     "address_line_1": "Διεύθυνση γραμμή 1",
     "address_line_2": "Διεύθυνση γραμμή 2",
+    "town": "Πόλη",
+    "post_code": "Ταχυδρομικός κώδικας",
+    "country": "Χώρα",
     "notes": "Σημειώσεις",
     "label": "Ετικέτα",
     "phone_number": "Αριθμός τηλεφώνου",
@@ -204,5 +208,19 @@
     "quote_count_other": "{{count}} προσφορές",
     "more_one": "+{{count}} αίτημα που δεν εμφανίζεται",
     "more_other": "+{{count}} αιτήματα που δεν εμφανίζονται"
+  },
+  "profile": {
+    "title": "Προφίλ πελάτη",
+    "repeat": "Επαναλαμβανόμενος",
+    "booking_count_one": "{{count}} κράτηση",
+    "booking_count_other": "{{count}} κρατήσεις",
+    "bookings_title": "Προηγούμενες κρατήσεις",
+    "bookings_toggle_aria": "Εναλλαγή προηγούμενων κρατήσεων",
+    "bookings_empty": "Δεν υπάρχουν προηγούμενες κρατήσεις.",
+    "bookings_loading": "Φόρτωση κρατήσεων…",
+    "bookings_error": "Δεν ήταν δυνατή η φόρτωση των κρατήσεων αυτής της επαφής.",
+    "bookings_more_one": "+{{count}} κράτηση που δεν εμφανίζεται",
+    "bookings_more_other": "+{{count}} κρατήσεις που δεν εμφανίζονται",
+    "empty": "Δεν έχει συνδεθεί πελάτης."
   }
 }

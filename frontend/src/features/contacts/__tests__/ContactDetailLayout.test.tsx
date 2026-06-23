@@ -57,6 +57,51 @@ describe("ContactDetailLayout", () => {
   });
 });
 
+describe("ContactDetailLayout customer-360 profile (GAP-042)", () => {
+  it("shows the Repeat badge and booking count for a returning customer", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({ ...contactFixture, booking_count: 3, is_repeat_customer: true }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await waitFor(() => expect(screen.getAllByText("Ada Lovelace")[0]).toBeInTheDocument());
+    expect(screen.getByText("Repeat")).toBeInTheDocument();
+    expect(screen.getByText("3 bookings")).toBeInTheDocument();
+  });
+
+  it("omits the Repeat badge for a first-time contact", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({ ...contactFixture, booking_count: 0, is_repeat_customer: false }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.queryByText("Repeat")).not.toBeInTheDocument();
+  });
+
+  it("hides the address behind a collapsible section", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          ...contactFixture,
+          town: "Athens",
+          post_code: "10557",
+          country_name: "Greece",
+        }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    // Collapsed by default — the town is not rendered until expanded.
+    expect(screen.queryByText("Athens")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Address" }));
+    expect(await screen.findByText("Athens")).toBeInTheDocument();
+    expect(screen.getByText("Greece")).toBeInTheDocument();
+  });
+});
+
 describe("ContactDetailLayout error differentiation", () => {
   it("shows 'Contact not found' on 404 without a retry button", async () => {
     server.use(

@@ -52,6 +52,8 @@ const CREATE_DEFAULTS: ContactCreateInput = {
   preferred_method: "",
   address_line_1: "",
   address_line_2: "",
+  town: "",
+  post_code: "",
   notes: "",
   email: "",
   phone: "",
@@ -67,6 +69,8 @@ function defaultsFromContact(c: Contact): ContactCreateInput {
     preferred_method: c.preferred_method ?? "",
     address_line_1: c.address_line_1 ?? "",
     address_line_2: c.address_line_2 ?? "",
+    town: c.town ?? "",
+    post_code: c.post_code ?? "",
     notes: c.notes ?? "",
     // Channels are edited through the dedicated email/phone dialogs, not here.
     email: "",
@@ -259,6 +263,17 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
             <div className="space-y-2">
               <Label htmlFor="contact-address-2">{t("fields.address_line_2")}</Label>
               <Input id="contact-address-2" {...form.register("address_line_2")} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="contact-town">{t("fields.town")}</Label>
+                <Input id="contact-town" {...form.register("town")} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-post-code">{t("fields.post_code")}</Label>
+                <Input id="contact-post-code" {...form.register("post_code")} />
+              </div>
             </div>
 
             <div className="space-y-2">

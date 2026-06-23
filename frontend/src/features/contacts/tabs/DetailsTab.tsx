@@ -14,7 +14,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FactList, FactRow } from "@/components/data/FactList";
 import { Section } from "@/components/data/Section";
-import { Collapsible } from "@/components/ui/collapsible";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ApiError } from "@/lib/api/errors";
@@ -32,6 +31,7 @@ import { TagChips } from "../components/TagChips";
 import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
 import { ContactEnquiryHistory } from "../components/ContactEnquiryHistory";
 import { ContactBookingHistory } from "../components/ContactBookingHistory";
+import { ContactAddressSection } from "../components/ContactAddressSection";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -326,29 +326,6 @@ function TagsSection({ contact, canWrite }: { contact: Contact; canWrite: boolea
   );
 }
 
-// GAP-042: address is collapsible — the owner noted it "could be hidden … useful
-// to have it there". Collapsed by default so the profile leads with identity.
-function AddressSection({ contact }: { contact: Contact }) {
-  const { t } = useTranslation("contacts");
-  return (
-    <Collapsible
-      className="rounded-md border"
-      headerClassName="px-3 py-2 text-sm font-medium"
-      title={t("headings.address")}
-    >
-      <div className="border-border border-t px-3 py-2">
-        <FactList>
-          <FactRow label={t("fields.address_line_1")} value={contact.address_line_1 || "—"} />
-          <FactRow label={t("fields.address_line_2")} value={contact.address_line_2 || "—"} />
-          <FactRow label={t("fields.town")} value={contact.town || "—"} />
-          <FactRow label={t("fields.post_code")} value={contact.post_code || "—"} />
-          <FactRow label={t("fields.country")} value={contact.country_name || "—"} />
-        </FactList>
-      </div>
-    </Collapsible>
-  );
-}
-
 export function DetailsTab() {
   const { t } = useTranslation("contacts");
   const { contact } = useOutletContext<ContactOutletContext>();
@@ -389,7 +366,7 @@ export function DetailsTab() {
         </FactList>
       </Section>
 
-      <AddressSection contact={contact} />
+      <ContactAddressSection contact={contact} />
 
       <EmailsSection contact={contact} canWrite={canWrite} />
       <PhonesSection contact={contact} canWrite={canWrite} />

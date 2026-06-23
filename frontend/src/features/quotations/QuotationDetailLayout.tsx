@@ -10,6 +10,8 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible } from "@/components/ui/collapsible";
+import { CustomerProfilePanel } from "@/features/contacts/components/CustomerProfilePanel";
 import { ActionButton } from "@/components/feedback/ActionButton";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
@@ -369,16 +371,27 @@ export function QuotationDetailLayout() {
 
       <TwoColumn
         rightRail={
-          <RailSummary
-            quotation={quotation}
-            canWrite={canWrite}
-            onOpen={setDialog}
-            onDuplicate={handleDuplicate}
-            duplicating={duplicate.isPending}
-            onCopy={handleCopyToClipboard}
-            copying={copying || markManuallySent.isPending}
-            copyReason={previewHtml ? null : t("detail.actions.disable_reasons.preview_loading")}
-          />
+          <div className="space-y-4">
+            <RailSummary
+              quotation={quotation}
+              canWrite={canWrite}
+              onOpen={setDialog}
+              onDuplicate={handleDuplicate}
+              duplicating={duplicate.isPending}
+              onCopy={handleCopyToClipboard}
+              copying={copying || markManuallySent.isPending}
+              copyReason={previewHtml ? null : t("detail.actions.disable_reasons.preview_loading")}
+            />
+            <Collapsible
+              title={<span>{t("contacts:profile.title")}</span>}
+              className="border-border border-t pt-4"
+              headerClassName="text-foreground text-sm font-semibold"
+            >
+              <div className="mt-2">
+                <CustomerProfilePanel personId={quotation.guest} />
+              </div>
+            </Collapsible>
+          </div>
         }
       >
         <section className="space-y-3">

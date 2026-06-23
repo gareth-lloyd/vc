@@ -23,6 +23,7 @@ import { EnquiryQuoteStack } from "./components/EnquiryQuoteStack";
 import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { NotesTab } from "./tabs/NotesTab";
+import { CustomerProfilePanel } from "@/features/contacts/components/CustomerProfilePanel";
 import {
   enquirySourceLabel,
   enquiryStatusLabel,
@@ -260,6 +261,9 @@ export function EnquiryDetailLayout() {
         rightRail={
           <div className="space-y-4">
             <RailSummary enquiry={enquiry} onOpenDialog={setDialog} />
+            <RailPanel title={t("contacts:profile.title")}>
+              <CustomerProfilePanel personId={enquiry.person} />
+            </RailPanel>
             <RailPanel title={t("tabs.activity")}>
               <ActivityTab enquiryId={enquiry.id} />
             </RailPanel>

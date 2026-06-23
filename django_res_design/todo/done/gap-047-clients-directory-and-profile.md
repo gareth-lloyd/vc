@@ -1,5 +1,18 @@
 # GAP-047 — Clients (renter) directory: a browsable list + direct/agent filter
 
+> **✅ RESOLVED (2026-06-23)** — shipped to local `main` (merge `16680fd`), 4
+> units (endpoint → region aggregation → FE list/nav → region chip columns):
+> - **`/clients` directory list endpoint** over `Person` filtered to customer
+>   capacity, with the direct/agent filter — `0bb1066`.
+> - **Quoted/booked region aggregation** on `/clients` (query-pinned) — `8778d78`.
+> - **Clients directory list page** + `Sidebar` nav entry + route — `780ad2b`
+>   (+ Sidebar nav-order test `58a0d2d`).
+> - **Quoted/booked region chip columns** on the list — `9f70fd4`.
+>
+> Scope was the standalone *directory/list* only, as specified. The customer
+> **detail/profile** and its building blocks remain open in their own tickets:
+> tags → **GAP-040**, linked contacts → **GAP-041**, Customer 360 → **GAP-042**.
+
 - **Severity:** Gap (frontend + endpoint) — after GAP-045 / GAP-046
 - **Source:** 2026-06-17 owner Contacts-feature review transcript
   ("it's important for the new system to have a **client list**" … filter

@@ -4,6 +4,7 @@ import { useOutletContext } from "react-router-dom";
 import { Section } from "@/components/data/Section";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useBalanceTrack, useDepositTrack, useSecurityTrack } from "../hooks";
+import { DamageClaimsSection } from "../components/DamageClaimsSection";
 import { PaymentTrack } from "../components/PaymentTrack";
 import { TransactionsTable } from "../components/TransactionsTable";
 import type { TrackName } from "../api";
@@ -57,6 +58,8 @@ export function PaymentsTab() {
       <Section title={t("payments.transactions_heading")}>
         <TransactionsTable bookingId={booking.id} currency={currency} />
       </Section>
+
+      <DamageClaimsSection bookingId={booking.id} currency={currency} canWrite={canWrite} />
     </div>
   );
 }

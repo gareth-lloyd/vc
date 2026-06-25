@@ -88,6 +88,12 @@
       "card": "Card",
       "bank_transfer": "Bank transfer",
       "other": "Other"
+    },
+    "damage_claim_status": {
+      "open": "Open",
+      "approved": "Approved",
+      "settled": "Settled",
+      "withdrawn": "Withdrawn"
     }
   },
   "columns": {
@@ -337,6 +343,57 @@
       "reason_label": "Reason",
       "submit_label": "Waive",
       "success_message": "{{track}} waived"
+    }
+  },
+  "damage_claims": {
+    "title": "Damage claims",
+    "file": "File claim",
+    "role_required_tooltip": "You need the Reservations role to file a claim",
+    "load_failed_title": "Couldn't load damage claims",
+    "load_failed_body": "Try again.",
+    "empty_title": "No damage claims",
+    "empty_description": "File a claim to justify a deduction from the security deposit.",
+    "columns": {
+      "reference": "Ref",
+      "description": "Description",
+      "status": "Status",
+      "amount": "Amount"
+    },
+    "row": {
+      "withdraw": "Withdraw",
+      "edit_for": "Edit claim {{reference}}",
+      "withdraw_for": "Withdraw claim {{reference}}"
+    },
+    "confirm_withdraw": {
+      "title": "Withdraw this claim?",
+      "description": "Claim {{reference}} will be marked withdrawn. This doesn't delete the record.",
+      "confirm_label": "Withdraw claim"
+    },
+    "toasts": {
+      "filed": "Damage claim filed",
+      "updated": "Damage claim updated",
+      "withdrawn": "Damage claim withdrawn",
+      "withdraw_failed": "Couldn't withdraw the claim"
+    },
+    "form_dialog": {
+      "create_title": "File damage claim",
+      "edit_title": "Edit damage claim",
+      "description": "Record the damages and the amount claimed against the security deposit.",
+      "submit_create": "File claim",
+      "fields": {
+        "description": "Description",
+        "amount": "Amount",
+        "currency": "Currency"
+      },
+      "itemized": {
+        "heading": "Itemised breakdown",
+        "add_line": "Add line",
+        "label_placeholder": "e.g. Replace sofa cushion",
+        "line_label": "Line {{n}} description",
+        "line_amount": "Line {{n}} amount",
+        "remove_line": "Remove line {{n}}",
+        "lines_total": "Lines total: {{total}}"
+      }
     }
   },
   "concierge": {

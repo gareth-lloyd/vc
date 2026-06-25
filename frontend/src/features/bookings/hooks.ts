@@ -365,12 +365,11 @@ export function useBookingDamageClaims(id: BookingId | undefined) {
 }
 
 // A damage claim never enters the booking `total` (the money moves on the SD
-// capture, not the booking balance), so invalidate narrowly — the claim list,
-// plus detail/activity since a claim shows on the timeline.
+// capture, not the booking balance) and isn't yet surfaced on the booking
+// detail or activity feed, so invalidate only the claim list. Widen this when
+// the workflow-8 timeline/email integration starts emitting claim events.
 function invalidateDamageClaimDependents(queryClient: QueryClient, bookingId: BookingId): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.damageClaims(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
 }
 
 export function useCreateDamageClaim(bookingId: BookingId) {

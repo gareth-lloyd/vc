@@ -352,8 +352,9 @@ export type DamageClaim = z.infer<typeof damageClaimSchema>;
 
 export const damageClaimsResponseSchema = paginated(damageClaimSchema);
 
-// Itemised line as entered in the form repeater — both fields required once a
-// row exists (empty rows are dropped before submit).
+// Itemised line as entered in the form repeater — both fields are required, so
+// a blank/partial row blocks submit with an inline error (the operator must
+// fill it in or remove it; there is no silent drop).
 export const damageClaimLineInputSchema = z.object({
   label: z.string().trim().min(1, i18n.t("bookings:schema_errors.line_label_required")),
   amount: z

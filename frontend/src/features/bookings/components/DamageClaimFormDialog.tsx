@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, parseMoney } from "@/lib/format/money";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import type { BookingId } from "@/lib/query/keys";
 import { useCreateDamageClaim, useUpdateDamageClaim } from "../hooks";
@@ -81,7 +81,7 @@ export function DamageClaimFormDialog(props: Props) {
   // the claim amount (the money that moves is the SD capture, not this sum).
   const watchedLines = form.watch("itemized_lines");
   const linesTotal = watchedLines.reduce((sum, line) => {
-    const n = Number(line.amount);
+    const n = parseMoney(line.amount);
     return Number.isFinite(n) ? sum + n : sum;
   }, 0);
 

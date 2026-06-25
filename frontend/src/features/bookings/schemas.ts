@@ -315,6 +315,71 @@ export const conciergeUnitOptions = (): Array<{ value: ConciergeUnit; label: str
   conciergeUnitSchema.options.map((value) => ({ value, label: conciergeUnitLabel(value) }));
 
 // ----------------------------------------------------------------------
+// Damage claims — structured claims against a booking's security deposit.
+// ----------------------------------------------------------------------
+
+export const damageClaimStatusSchema = z.enum(["open", "approved", "settled", "withdrawn"]);
+export type DamageClaimStatus = z.infer<typeof damageClaimStatusSchema>;
+
+export function damageClaimStatusLabel(status: DamageClaimStatus): string {
+  return i18n.t(`bookings:labels.damage_claim_status.${status}`);
+}
+
+// A single itemised breakdown line. Display-only — the sum need not reconcile
+// to `amount` (the money that moves is the SD capture, not the claim total).
+export const damageClaimLineSchema = z.object({
+  label: z.string(),
+  amount: z.string(),
+});
+export type DamageClaimLine = z.infer<typeof damageClaimLineSchema>;
+
+export const damageClaimSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  booking: z.number().optional(),
+  amount: z.string(),
+  description: z.string(),
+  status: damageClaimStatusSchema,
+  currency: z.number(),
+  currency_code: z.string().nullable().optional(),
+  itemized_lines: z.array(damageClaimLineSchema).default([]),
+  photos: z.array(z.unknown()).default([]),
+  accepted_by_guest_at: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type DamageClaim = z.infer<typeof damageClaimSchema>;
+
+export const damageClaimsResponseSchema = paginated(damageClaimSchema);
+
+// Itemised line as entered in the form repeater — both fields required once a
+// row exists (empty rows are dropped before submit).
+export const damageClaimLineInputSchema = z.object({
+  label: z.string().trim().min(1, i18n.t("bookings:schema_errors.line_label_required")),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format")),
+});
+export type DamageClaimLineInput = z.infer<typeof damageClaimLineInputSchema>;
+
+// Currency is pinned to the booking's server-side, so it is absent here.
+export const damageClaimWriteInputSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(1, i18n.t("bookings:schema_errors.description_required"))
+    .max(2000),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+  itemized_lines: z.array(damageClaimLineInputSchema),
+});
+export type DamageClaimWriteInput = z.infer<typeof damageClaimWriteInputSchema>;
+
+// ----------------------------------------------------------------------
 // Manual charge items — signed money lines outside the pricing snapshot.
 // ----------------------------------------------------------------------
 

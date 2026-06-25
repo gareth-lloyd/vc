@@ -107,6 +107,7 @@ export const queryKeys = {
     notes: (id: BookingId) => ["bookings", "detail", k(id), "notes"] as const,
     conciergeItems: (id: BookingId) => ["bookings", "detail", k(id), "concierge-items"] as const,
     chargeItems: (id: BookingId) => ["bookings", "detail", k(id), "charge-items"] as const,
+    damageClaims: (id: BookingId) => ["bookings", "detail", k(id), "damage-claims"] as const,
     deposit: (id: BookingId) => ["bookings", "detail", k(id), "deposit"] as const,
     balance: (id: BookingId) => ["bookings", "detail", k(id), "balance"] as const,
     security: (id: BookingId) => ["bookings", "detail", k(id), "security"] as const,

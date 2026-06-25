@@ -434,7 +434,10 @@
     "body_required": "Body is required",
     "label_required": "Label is required",
     "signed_decimal_format": "Use a decimal like 150.00 or -150.00",
-    "amount_nonzero": "Amount must not be zero"
+    "amount_nonzero": "Amount must not be zero",
+    "description_required": "Description is required",
+    "amount_positive": "Amount must be greater than zero",
+    "line_label_required": "Line label is required"
   },
   "finance": {
     "title": "Finance",

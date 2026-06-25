@@ -16,15 +16,18 @@ import {
   createBookingNote,
   createChargeItem,
   createConciergeItem,
+  createDamageClaim,
   declineBooking,
   deleteBookingNote,
   deleteChargeItem,
   deleteConciergeItem,
+  deleteDamageClaim,
   fetchBalanceTrack,
   fetchBooking,
   fetchBookingActivity,
   fetchBookingChargeItems,
   fetchBookingConciergeItems,
+  fetchBookingDamageClaims,
   fetchBookingEmails,
   fetchBookingNotes,
   fetchBookings,
@@ -40,7 +43,9 @@ import {
   updateBookingNote,
   updateChargeItem,
   updateConciergeItem,
+  updateDamageClaim,
   waiveTrack,
+  withdrawDamageClaim,
   type TrackName,
 } from "./api";
 import type {
@@ -51,6 +56,7 @@ import type {
   CancelBookingInput,
   ChargeItemWriteInput,
   ConciergeItemWriteInput,
+  DamageClaimWriteInput,
   DeclineBookingInput,
   MarkPaidInput,
   ModifyDatesInput,
@@ -347,6 +353,61 @@ export function useDeleteChargeItem(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ itemId }: { itemId: number }) => deleteChargeItem(bookingId, itemId),
     onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Damage claims
+// ----------------------------------------------------------------------
+
+export function useBookingDamageClaims(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.damageClaims, fetchBookingDamageClaims));
+}
+
+// A damage claim never enters the booking `total` (the money moves on the SD
+// capture, not the booking balance), so invalidate narrowly — the claim list,
+// plus detail/activity since a claim shows on the timeline.
+function invalidateDamageClaimDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.damageClaims(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+}
+
+export function useCreateDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DamageClaimWriteInput) => createDamageClaim(bookingId, input),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+interface UpdateDamageClaimVars {
+  claimId: number;
+  input: Partial<DamageClaimWriteInput>;
+}
+
+export function useUpdateDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, input }: UpdateDamageClaimVars) =>
+      updateDamageClaim(bookingId, claimId, input),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useWithdrawDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => withdrawDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useDeleteDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => deleteDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
   });
 }
 

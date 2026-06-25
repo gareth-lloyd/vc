@@ -9,6 +9,8 @@ import {
   bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
+  damageClaimSchema,
+  damageClaimsResponseSchema,
   bookingEmailSchema,
   bookingEmailsResponseSchema,
   bookingListResponseSchema,
@@ -28,6 +30,8 @@ import {
   type CancelBookingInput,
   type ChargeItemWriteInput,
   type ConciergeItemWriteInput,
+  type DamageClaim,
+  type DamageClaimWriteInput,
   type DeclineBookingInput,
   type MarkPaidInput,
   type ModifyDatesInput,
@@ -276,6 +280,51 @@ export async function updateChargeItem(
 
 export async function deleteChargeItem(bookingId: BookingId, itemId: number): Promise<void> {
   await apiSend<void>("DELETE", `/bookings/${bookingId}/charge-items/${itemId}`);
+}
+
+// ----------------------------------------------------------------------
+// Damage claims
+// ----------------------------------------------------------------------
+
+export async function fetchBookingDamageClaims(id: BookingId): Promise<Paginated<DamageClaim>> {
+  const data = await apiGet<unknown>(`/bookings/${id}/damage-claims`);
+  return damageClaimsResponseSchema.parse(data);
+}
+
+export async function createDamageClaim(
+  bookingId: BookingId,
+  body: DamageClaimWriteInput,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/damage-claims`, body);
+  return damageClaimSchema.parse(data);
+}
+
+export async function updateDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+  body: Partial<DamageClaimWriteInput>,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "PATCH",
+    `/bookings/${bookingId}/damage-claims/${claimId}`,
+    body,
+  );
+  return damageClaimSchema.parse(data);
+}
+
+export async function withdrawDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/damage-claims/${claimId}:withdraw`,
+  );
+  return damageClaimSchema.parse(data);
+}
+
+export async function deleteDamageClaim(bookingId: BookingId, claimId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/bookings/${bookingId}/damage-claims/${claimId}`);
 }
 
 // ----------------------------------------------------------------------

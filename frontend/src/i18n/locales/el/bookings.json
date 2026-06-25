@@ -88,6 +88,12 @@
       "card": "Κάρτα",
       "bank_transfer": "Τραπεζική μεταφορά",
       "other": "Άλλο"
+    },
+    "damage_claim_status": {
+      "open": "Ανοιχτή",
+      "approved": "Εγκρίθηκε",
+      "settled": "Διευθετήθηκε",
+      "withdrawn": "Αποσύρθηκε"
     }
   },
   "columns": {
@@ -339,6 +345,57 @@
       "success_message": "{{track}} εξαιρέθηκε"
     }
   },
+  "damage_claims": {
+    "title": "Αξιώσεις ζημιών",
+    "file": "Καταχώριση αξίωσης",
+    "role_required_tooltip": "Χρειάζεστε τον ρόλο Reservations για καταχώριση αξίωσης",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση των αξιώσεων ζημιών",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty_title": "Καμία αξίωση ζημιών",
+    "empty_description": "Καταχωρίστε μια αξίωση για να αιτιολογήσετε κράτηση από την εγγύηση.",
+    "columns": {
+      "reference": "Αναφ.",
+      "description": "Περιγραφή",
+      "status": "Κατάσταση",
+      "amount": "Ποσό"
+    },
+    "row": {
+      "withdraw": "Απόσυρση",
+      "edit_for": "Επεξεργασία αξίωσης {{reference}}",
+      "withdraw_for": "Απόσυρση αξίωσης {{reference}}"
+    },
+    "confirm_withdraw": {
+      "title": "Απόσυρση αυτής της αξίωσης;",
+      "description": "Η αξίωση {{reference}} θα σημανθεί ως αποσυρμένη. Αυτό δεν διαγράφει την εγγραφή.",
+      "confirm_label": "Απόσυρση αξίωσης"
+    },
+    "toasts": {
+      "filed": "Η αξίωση ζημιών καταχωρίστηκε",
+      "updated": "Η αξίωση ζημιών ενημερώθηκε",
+      "withdrawn": "Η αξίωση ζημιών αποσύρθηκε",
+      "withdraw_failed": "Δεν ήταν δυνατή η απόσυρση της αξίωσης"
+    },
+    "form_dialog": {
+      "create_title": "Καταχώριση αξίωσης ζημιών",
+      "edit_title": "Επεξεργασία αξίωσης ζημιών",
+      "description": "Καταγράψτε τις ζημιές και το ποσό που αξιώνεται από την εγγύηση.",
+      "submit_create": "Καταχώριση αξίωσης",
+      "fields": {
+        "description": "Περιγραφή",
+        "amount": "Ποσό",
+        "currency": "Νόμισμα"
+      },
+      "itemized": {
+        "heading": "Αναλυτική κατανομή",
+        "add_line": "Προσθήκη γραμμής",
+        "label_placeholder": "π.χ. Αντικατάσταση μαξιλαριού καναπέ",
+        "line_label": "Περιγραφή γραμμής {{n}}",
+        "line_amount": "Ποσό γραμμής {{n}}",
+        "remove_line": "Αφαίρεση γραμμής {{n}}",
+        "lines_total": "Σύνολο γραμμών: {{total}}"
+      }
+    }
+  },
   "concierge": {
     "heading": "Concierge",
     "add_service": "Προσθήκη υπηρεσίας",
@@ -434,7 +491,10 @@
     "body_required": "Το κείμενο είναι υποχρεωτικό",
     "label_required": "Η ετικέτα είναι υποχρεωτική",
     "signed_decimal_format": "Χρησιμοποιήστε δεκαδικό όπως 150.00 ή -150.00",
-    "amount_nonzero": "Το ποσό δεν μπορεί να είναι μηδέν"
+    "amount_nonzero": "Το ποσό δεν μπορεί να είναι μηδέν",
+    "description_required": "Η περιγραφή είναι υποχρεωτική",
+    "amount_positive": "Το ποσό πρέπει να είναι μεγαλύτερο από το μηδέν",
+    "line_label_required": "Η ετικέτα γραμμής είναι υποχρεωτική"
   },
   "finance": {
     "title": "Οικονομικά",

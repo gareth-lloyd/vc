@@ -168,6 +168,37 @@ def test_non_positive_amount_is_a_400(api_client: APIClient, staff: User, bookin
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("bad_lines", ["garbage", {"foo": 1}, [{"label": "no amount"}], [42]])
+def test_malformed_itemized_lines_rejected(
+    api_client: APIClient, staff: User, booking: Booking, bad_lines: object
+) -> None:
+    api_client.force_login(staff)
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims",
+        {"amount": "100.00", "description": "x", "itemized_lines": bad_lines},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "itemized_lines" in resp.data["field_errors"]
+    assert not DamageClaim.objects.exists()
+
+
+@pytest.mark.django_db
+def test_valid_itemized_lines_accepted(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    lines = [{"label": "Sofa", "amount": "60.00"}, {"label": "Rug", "amount": "40.00"}]
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims",
+        {"amount": "100.00", "description": "Lounge", "itemized_lines": lines},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["itemized_lines"] == lines
+
+
+@pytest.mark.django_db
 def test_viewer_cannot_write(api_client: APIClient, viewer: User, booking: Booking) -> None:
     api_client.force_login(viewer)
     resp = api_client.post(

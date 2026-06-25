@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from rest_framework import serializers
 
@@ -57,4 +58,17 @@ class DamageClaimWriteSerializer(serializers.ModelSerializer[DamageClaim]):
         # instead of a 500 IntegrityError (claims are never negative).
         if value <= 0:
             raise serializers.ValidationError("Amount must be greater than zero.")
+        return value
+
+    def validate_itemized_lines(self, value: Any) -> list[dict[str, Any]]:
+        # The model field is a bare JSONField (display-only breakdown). Guard
+        # the shape the read side / FE iterates — a list of {label, amount} —
+        # so a malformed blob can't persist into a money-bearing record.
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Itemized lines must be a list.")
+        for line in value:
+            if not isinstance(line, dict) or "label" not in line or "amount" not in line:
+                raise serializers.ValidationError(
+                    "Each itemized line must be an object with 'label' and 'amount'."
+                )
         return value

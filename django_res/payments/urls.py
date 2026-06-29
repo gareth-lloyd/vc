@@ -16,6 +16,7 @@ from payments.views import (
     deposit_track,
     deposit_track_action,
     payment_action,
+    security_detail,
     security_payment_action,
     security_payments,
     security_track,
@@ -141,6 +142,11 @@ _balance_routes: list[URLPattern | URLResolver] = [
 # Security deposit track
 _security_routes: list[URLPattern | URLResolver] = [
     path("bookings/<int:booking_pk>/security", security_track, name="booking-security"),
+    path(
+        "bookings/<int:booking_pk>/security/deposit",
+        security_detail,
+        name="booking-security-deposit",
+    ),
     path(
         "bookings/<int:booking_pk>/security/payments",
         security_payments,

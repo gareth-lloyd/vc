@@ -41,6 +41,7 @@ from payments.models import Payment, SecurityDeposit
 from payments.serializers import (
     ManualPaymentCreateSerializer,
     PaymentSerializer,
+    SecurityDepositSerializer,
     TrackSerializer,
 )
 from payments.services.manual_payment import ManualPaymentService
@@ -197,6 +198,28 @@ def balance_track_action(request: Request, booking_pk: int, action: str) -> Resp
 def security_track(request: Request, booking_pk: int) -> Response:
     booking = get_object_or_404(Booking, pk=booking_pk)
     return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAccountsWriter])
+def security_detail(request: Request, booking_pk: int) -> Response:
+    """`/bookings/{id}/security/deposit` — the SD row itself, for the wf-8 panel.
+
+    Returns the booking's most-recent `SecurityDeposit` (incl. terminal, so the
+    panel can show a final CAPTURED/RELEASED state — unlike `_get_active_sd`,
+    which excludes terminals), or HTTP 200 + `null` body when none exists (a 404
+    would be worse here; the FE schema parses the boundary as nullable).
+    """
+    booking = get_object_or_404(Booking, pk=booking_pk)
+    sd = (
+        SecurityDeposit.objects.filter(booking=booking)
+        .select_related("currency")
+        .order_by("-created_at")
+        .first()
+    )
+    if sd is None:
+        return Response(None)
+    return Response(SecurityDepositSerializer(sd).data)
 
 
 @api_view(["GET", "POST"])

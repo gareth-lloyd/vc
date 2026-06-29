@@ -498,6 +498,126 @@ def test_patch_country_is_audited(api_client: APIClient, staff: User, contact: P
 
 
 @pytest.mark.django_db
+def test_contact_types_surfaces_customer_and_property_role(
+    api_client: APIClient, staff: User
+) -> None:
+    # GAP-052: a person can wear several hats — surface every one. A CUSTOMER
+    # who is also a property OWNER shows both, sorted.
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Dual", last_name="Hat", kind=PersonKind.CUSTOMER.value
+    )
+    PropertyContactAssignmentFactory(contact=person, role=ContactRole.OWNER)
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["customer", "owner"]
+
+
+@pytest.mark.django_db
+def test_contact_types_includes_agent_for_agency_member(api_client: APIClient, staff: User) -> None:
+    # GAP-052/046: belonging to an agency makes a contact an Agent.
+    agency = cast(Organisation, OrganisationFactory())
+    person = Person.objects.create(
+        first_name="Aggie", last_name="Agent", kind=PersonKind.CONTACT.value, agency=agency
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["agent"]
+
+
+@pytest.mark.django_db
+def test_contact_types_empty_for_plain_contact(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # A bare CONTACT with no bookings, agency, or property role has no type.
+    contact.kind = PersonKind.CONTACT.value
+    contact.save(update_fields=["kind"])
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["contact_types"] == []
+
+
+@pytest.mark.django_db
+def test_contact_types_dedupes_role_and_active_only(api_client: APIClient, staff: User) -> None:
+    # Only ACTIVE (end_date IS NULL) assignments count; an ended role drops off.
+    from datetime import date
+
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Past", last_name="Manager", kind=PersonKind.CONTACT.value
+    )
+    PropertyContactAssignmentFactory(contact=person, role=ContactRole.MANAGER)
+    PropertyContactAssignmentFactory(
+        contact=person, role=ContactRole.OWNER, end_date=date(2020, 1, 1)
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["manager"]
+
+
+@pytest.mark.django_db
+def test_retrieve_contact_types_is_query_pinned(api_client: APIClient, staff: User) -> None:
+    # GAP-052: contact_types rides a correlated Subquery, not a per-row fetch —
+    # query count stays flat regardless of how many active assignments exist.
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Many", last_name="Roles", kind=PersonKind.CUSTOMER.value
+    )
+    for role in (ContactRole.OWNER, ContactRole.MANAGER, ContactRole.HOUSEKEEPER):
+        PropertyContactAssignmentFactory(contact=person, role=role)
+    api_client.force_login(staff)
+
+    with assert_max_queries(8):
+        api_client.get(f"/api/v1/contacts/{person.pk}")
+
+
+@pytest.mark.django_db
+def test_list_contact_types_query_count_is_flat(api_client: APIClient, staff: User) -> None:
+    # GAP-052: the active_roles subquery must NOT cross-join the booking_count
+    # Count — list query count stays flat (and the paginator COUNT accurate)
+    # whether one or many contacts each hold several roles.
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    def make(n: int) -> Person:
+        p = Person.objects.create(
+            first_name=f"C{n}", last_name="Roles", kind=PersonKind.CUSTOMER.value
+        )
+        for role in (ContactRole.OWNER, ContactRole.MANAGER):
+            PropertyContactAssignmentFactory(contact=p, role=role)
+        return p
+
+    api_client.force_login(staff)
+    make(1)
+    with assert_max_queries(8):
+        first = api_client.get("/api/v1/contacts").json()
+    for n in range(2, 6):
+        make(n)
+    with assert_max_queries(8):
+        many = api_client.get("/api/v1/contacts").json()
+
+    assert first["count"] == 1
+    assert many["count"] == 5  # COUNT not inflated by roles
+    assert sorted(many["results"][0]["contact_types"]) == ["customer", "manager", "owner"]
+
+
+@pytest.mark.django_db
 def test_get_contact_without_bookings_is_not_repeat(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:

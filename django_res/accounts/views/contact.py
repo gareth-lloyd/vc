@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import CharFilter, DjangoFilterBackend, FilterSet
 from rest_framework import filters, serializers, status, viewsets
@@ -26,6 +27,28 @@ from accounts.serializers import (
 from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
 _LAST_CHANNEL_MESSAGE = "Cannot remove the last contact channel of an active contact."
+
+
+def _active_roles_subquery() -> Subquery:
+    """Correlated `ArrayAgg` of a contact's ACTIVE property-assignment roles.
+
+    Feeds the serializer's `contact_types` derivation. A correlated subquery —
+    NOT a second `ArrayAgg` JOIN beside the `booking_count` Count — so the two
+    multi-valued relations never cross-join and inflate each other (and the
+    paginator COUNT). Empty group → no row → NULL, coalesced to `[]` in the
+    serializer. Resolved at call time (runtime, app-registry ready), so
+    `accounts` reaches `properties.PropertyContactAssignment` through the reverse
+    relation's model meta without importing it (import-spine floor).
+    """
+    assignment_model = Person._meta.get_field("property_assignments").related_model
+    assert assignment_model is not None and not isinstance(assignment_model, str)
+    return Subquery(
+        assignment_model._default_manager.filter(contact=OuterRef("pk"), end_date__isnull=True)
+        .order_by()
+        .values("contact")
+        .annotate(roles=ArrayAgg("role", distinct=True))
+        .values("roles")
+    )
 
 
 def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones: int) -> None:
@@ -100,7 +123,11 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
         # (merge/anonymize/properties) — django_res/CLAUDE.md.
         qs = super().get_queryset()
         if self.action in ("list", "retrieve"):
-            qs = qs.annotate(booking_count=models.Count("bookings_as_customer", distinct=True))
+            qs = qs.annotate(
+                booking_count=models.Count("bookings_as_customer", distinct=True),
+                # GAP-052: active property-assignment roles feed `contact_types`.
+                active_roles=_active_roles_subquery(),
+            )
         return qs
 
     @action(detail=True, methods=["get"], url_path="properties")

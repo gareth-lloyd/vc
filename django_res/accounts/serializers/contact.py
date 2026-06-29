@@ -62,11 +62,13 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         child=serializers.ChoiceField(choices=PersonTag.choices),
         required=False,
     )
-    # GAP-042: country is display-only on the 360 profile for now — surface the
-    # FK pk (read-only) plus its name; editing country (a picker) is deferred.
-    country: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
-        read_only=True, allow_null=True
-    )
+    # GAP-052: country is operator-editable via a picker (overturns the GAP-042
+    # display-only interim). No explicit declaration — ModelSerializer
+    # auto-generates a writable, `allow_null`, `required=False` PK field from the
+    # nullable `country` model FK, resolving `properties.Country` through the
+    # model meta at bind time (runtime, app-registry ready). That keeps `accounts`
+    # off an import of `properties` (import-spine floor) without resolving the FK
+    # eagerly at module-import time. `country_name` carries the derived label.
     country_name = serializers.SerializerMethodField()
     # GAP-042: derived booking summary for the "Repeat" badge. Reads the
     # `booking_count` annotation applied by ContactViewSet when present (one

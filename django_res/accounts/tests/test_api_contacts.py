@@ -423,10 +423,11 @@ def test_patch_contact_round_trips_town_and_postcode(
 
 
 @pytest.mark.django_db
-def test_patch_contact_cannot_change_country(
+def test_patch_contact_can_change_country(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:
-    # GAP-042: country is display-only for now (write deferred — needs a picker).
+    # GAP-052: country is now operator-editable via a picker (overturns the
+    # GAP-042 display-only interim).
     from properties.models import Country
 
     country, _ = Country.objects.get_or_create(
@@ -441,8 +442,59 @@ def test_patch_contact_cannot_change_country(
     )
 
     assert response.status_code == 200
+    assert response.json()["country"] == country.pk
+    assert response.json()["country_name"] == "Testlandia"
+    contact.refresh_from_db()
+    assert contact.country_id == country.pk
+
+
+@pytest.mark.django_db
+def test_patch_contact_can_clear_country(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # GAP-052: country is nullable — clearing it is a valid edit.
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QZ", defaults={"iso3": "QZZ", "name": "Testovia"}
+    )
+    contact.country = country
+    contact.save(update_fields=["country"])
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"country": None},
+        format="json",
+    )
+
+    assert response.status_code == 200
     contact.refresh_from_db()
     assert contact.country_id is None
+
+
+@pytest.mark.django_db
+def test_patch_country_is_audited(api_client: APIClient, staff: User, contact: Person) -> None:
+    # GAP-052: editing country leaves an AuditLog trail (the FK pk, not the
+    # unserializable Country instance — tracked as `country_id`).
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QW", defaults={"iso3": "QWW", "name": "Testburg"}
+    )
+    api_client.force_login(staff)
+    api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"country": country.pk},
+        format="json",
+    )
+
+    ct = ContentType.objects.get_for_model(Person)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk))
+    assert any(r.field_diffs.get("country_id") == [None, country.pk] for r in rows)
 
 
 @pytest.mark.django_db

@@ -37,9 +37,20 @@ Contact records and their relationships to properties. A contact may be an owner
 - **`RoleId` stored as comma-delimited string on a mapping** is a half-normalised pattern that coexists with the proper `VillaContactRoleMapping` junction. Pick one.
 - **Email validation** is a regex on the client; no DB-level constraint. Multiple contacts may share an email.
 
+## Redesign status (owner Loom 2026-06-29)
+
+The legacy single `/contacts` page becomes **three capacity-scoped directory views** over the one `accounts.Person` (GAP-045). See `10-decisions.md` and `01-accounts.md` "Directory views":
+
+- **Clients** — customers + **agents** (direct/agent filter; agents fold in, no separate Agents page). Client-only **tags** with VIP/Trade/Repeat one-click chip filters + inline (no-dialog) tag checkboxes — GAP-040/042/047/**053**.
+- **Suppliers** — operator-side people with a property role (owner/villa-manager/villa-admin/management-company); renamed from "Contacts", scoped, role-column surfaced — GAP-**048**. Tags do **not** appear here. Resolve the "Suppliers" name collision with concierge in-resort suppliers (Q-007).
+- **Companies** — B2B agency `Organisation`s — GAP-046.
+
+Contact **address + notes are operator-editable** and the detail shows derived **contact-type badge(s)** across both human directories — GAP-**052** (overturns the GAP-042 display-only interim).
+
 ## Open design questions for the Django redesign
 
 - The data-model design (`../01-accounts.md`) provides the unified `accounts.Person` (GAP-045 folded `Contact`+`Guest` into one model), `accounts.PersonEmail`, `accounts.PersonPhone`, and `accounts.Role` — this maps cleanly.
 - The 12 access/notify flags on `VillaContactMapping` look like a half-baked permission system. Replace with a small named-permission set or roles that aggregate them.
-- Address-on-contact (`AddressLine1`/`AddressLine2`) is too thin — the legacy quote/booking flows carry a richer address shape (Town, PostCode, Country, etc.) on `EnquireDetails`/`ClientDetails`. Reconcile.
+- Address-on-contact (`AddressLine1`/`AddressLine2`) is too thin — the legacy quote/booking flows carry a richer address shape (Town, PostCode, Country, etc.) on `EnquireDetails`/`ClientDetails`. **Resolved:** `Person` now carries `town`/`post_code`/`country` (FK) + `address_line_1/2` (GAP-045), made editable by GAP-052.
+- The `ContactRole` enum drifted from the legacy five (Owner / Agent / Villa Admin / Villa Manager / Management Company) — **reconciled by GAP-048** (`contact-roles.md` is the role-mapping workflow).
 - Bank accounts are currently on `VillaFinance` (the property) rather than on the **owner contact**. Re-attach in the redesign.

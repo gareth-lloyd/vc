@@ -13,10 +13,12 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-06-23): **91 done** (87 resolved + 4 dropped), **34 open**
+Scoreboard (2026-06-29): **91 done** (87 resolved + 4 dropped), **37 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
-enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
+enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
+GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
+follow-up.)
 
 ---
 
@@ -84,9 +86,12 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom.)
 | [GAP-045](done/gap-045-unify-person-identity.md) | **Unify human identity into one `Person`** (folds in `Guest`; agent off the supply-side bag) | ✅ resolved (2026-06-22) — full expand/contract shipped across 3a–3d / D1–D5 (merge `51feb1a`): `reservations.Guest` + the 5 `guest` FKs deleted; `accounts.Person` is the sole human identity (PersonEmail/PersonPhone children, `kind`, merge/anonymize); legacy import writes `Person` directly (`client-{Id}`) with a one-shot mirror re-key migration; `/contacts` is the unified `?kind=`-filtered directory, `/guests` retired. Unblocks GAP-046/047/048 |
 | [GAP-046](done/gap-046-organisation-and-agent-capacity.md) | `Organisation` entity + agent capacity (B2B Companies) | ✅ resolved (2026-06-22) — `accounts.Organisation` (org_type-scoped) + `Person.agency` FK shipped (merge `8184ab2`, 7 units); free-text `Person.company` migrated to Organisation(agency) + dropped (migration `0012`, content-hash dedup + `dedupe_organisations` reporter); FE `/companies` directory + CompanyPicker, contacts form swapped to the agency FK. `.agent` repoint already done in GAP-045. Dissolves GAP-029; mgmt/supplier screens (GAP-048/q-007), agent filter (GAP-047) + FE `:merge` UI deferred |
 | [GAP-047](done/gap-047-clients-directory-and-profile.md) | Clients (renter) directory: browsable list + direct/agent filter | ✅ resolved (2026-06-23) — `/clients` list endpoint over customer-capacity `Person` + direct/agent filter, quoted/booked region aggregation (query-pinned) + region chip columns, FE Clients directory page + Sidebar nav/route; pytest+vitest (merge `16680fd`, 4 units). List only — detail = GAP-042, tags = GAP-040, links = GAP-041 |
-| [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Villa Contacts directory + role taxonomy (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co) | ⬜ ready — GAP-045/046 landed; `Organisation` assignees now available. Role-enum reconciliation is the live half (address fields already on `Person`) |
+| [GAP-048](gap-048-villa-contacts-directory-and-roles.md) | Suppliers directory (rename from Contacts) + role taxonomy + type surfacing | ⬜ reworked 2026-06-29 owner Loom — rename "Contacts"→"Suppliers" + capacity-scope to owner/manager/admin/mgmt-co (customers+agents → Clients), role-enum reconciliation (Owner/Agent/Villa Admin/Villa Manager/Mgmt Co), `Organisation` assignees, Suppliers/concierge-Suppliers name collision (Q-007) |
 | [GAP-049](done/gap-049-create-property-ui.md) | No "create property" UI — create flow is API-only | ✅ resolved (2026-06-18) — `CreatePropertyDialog` (6-field form, slug auto-derive, category/group hooks + `useRegions`), role-gated "New villa" button (disabled-with-tooltip), `slugify` helper, en+el i18n, unit+component tests; no backend change |
 | [GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md) | Enquiry grid: inline salesperson/stage/lost-reason edits + remaining mockup controls | ⬜ follow-up to GAP-039; inline assign/stage/reason cells, date-range filter UI (params already plumbed), delete (ADMIN) + select columns, page-size 10. Stage-dropdown blocked on `05-reservations.md` decision |
+| [GAP-051](gap-051-checkout-charge-itemisation.md) | Itemise charge lines on the guest checkout page | ⬜ deferred until the guest checkout page exists |
+| [GAP-052](gap-052-contact-detail-edit-completeness.md) | Contact detail: editable address + editable/finished notes + contact-type badges | ⬜ 2026-06-29 owner Loom — overturns GAP-042 address-display-only; spans Clients profile + Suppliers detail |
+| [GAP-053](gap-053-clients-tag-filters-and-inline-tag-editor.md) | Clients directory: VIP/Trade/Repeat chip filters + inline (no-dialog) client-only tag editor | ⬜ 2026-06-29 owner Loom — follow-up to GAP-047/040; Repeat filter = derived annotation |
 
 ## Open product questions
 

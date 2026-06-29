@@ -35,6 +35,11 @@ export function useLogin() {
       // fetched, so one user is never served another's cached queries. The
       // subsequent `useMe` mount repopulates auth.me.
       resetAuthQueryCache(queryClient);
+      // The login payload already carries the user, so flip the store to
+      // "authenticated" now — otherwise status stays "idle" and the
+      // redirect-after-login loses the race against the background `useMe`
+      // refetch, forcing a second submit. `useMe` fills in permissions shortly.
+      useAuthStore.getState().setMe(data.user);
     },
   });
 }

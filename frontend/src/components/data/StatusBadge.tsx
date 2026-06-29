@@ -61,6 +61,15 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
   expired: "error",
   failed: "error",
   overdue: "error",
+  // Security-deposit statuses (wf 8). `expired`/`failed` already map above.
+  awaiting_details: "pending",
+  awaiting_bt: "pending",
+  pre_authed: "active",
+  held: "active",
+  captured: "active",
+  partially_refunded: "active",
+  released: "archived",
+  refunded: "archived",
 };
 
 interface StatusBadgeProps {

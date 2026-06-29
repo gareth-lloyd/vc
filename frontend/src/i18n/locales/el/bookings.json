@@ -94,6 +94,22 @@
       "approved": "Εγκρίθηκε",
       "settled": "Διευθετήθηκε",
       "withdrawn": "Αποσύρθηκε"
+    },
+    "security_deposit_kind": {
+      "pre_auth_hold": "Προέγκριση κάρτας",
+      "bt_refundable": "Επιστρεπτέο έμβασμα"
+    },
+    "security_deposit_status": {
+      "awaiting_details": "Αναμονή στοιχείων κάρτας",
+      "pre_authed": "Προεγκρίθηκε",
+      "released": "Αποδεσμεύθηκε",
+      "captured": "Δεσμεύθηκε",
+      "expired": "Έληξε",
+      "failed": "Απέτυχε",
+      "awaiting_bt": "Αναμονή εμβάσματος",
+      "held": "Σε εκκρεμότητα",
+      "refunded": "Επιστράφηκε",
+      "partially_refunded": "Μερική επιστροφή"
     }
   },
   "columns": {
@@ -396,6 +412,46 @@
       }
     }
   },
+  "security_deposit": {
+    "title": "Εγγύηση",
+    "role_required_tooltip": "Χρειάζεστε τον ρόλο Λογιστηρίου για αποδέσμευση ή δέσμευση της εγγύησης",
+    "load_failed_title": "Δεν ήταν δυνατή η φόρτωση της εγγύησης",
+    "load_failed_body": "Δοκιμάστε ξανά.",
+    "empty_title": "Καμία εγγύηση",
+    "empty_description": "Αυτή η κράτηση δεν έχει καταχωρημένη εγγύηση.",
+    "fields": {
+      "amount": "Ποσό",
+      "hold_expires_at": "Λήξη δέσμευσης",
+      "release_scheduled_for": "Προγραμματισμένη αποδέσμευση",
+      "captured_amount": "Ποσό δέσμευσης",
+      "refunded_amount": "Ποσό επιστροφής"
+    },
+    "actions": {
+      "release": "Αποδέσμευση",
+      "capture": "Δέσμευση για ζημιές"
+    },
+    "confirm_release": {
+      "title": "Αποδέσμευση αυτής της εγγύησης;",
+      "description": "Ολόκληρη η εγγύηση θα αποδεσμευτεί στον επισκέπτη. Δεν αναιρείται.",
+      "confirm_label": "Αποδέσμευση εγγύησης"
+    },
+    "capture_dialog": {
+      "title": "Δέσμευση για ζημιές",
+      "description": "Δέσμευση από την εγγύηση {{amount}}. Επιλέξτε την απαίτηση ζημιάς που τη δικαιολογεί.",
+      "submit": "Δέσμευση",
+      "no_open_claims": "Καμία ανοιχτή απαίτηση ζημιάς για δέσμευση. Καταχωρήστε πρώτα μια απαίτηση.",
+      "fields": {
+        "claim": "Απαίτηση ζημιάς",
+        "claim_placeholder": "Επιλέξτε απαίτηση",
+        "captured_amount": "Ποσό προς δέσμευση"
+      }
+    },
+    "toasts": {
+      "released": "Η εγγύηση αποδεσμεύθηκε",
+      "release_failed": "Δεν ήταν δυνατή η αποδέσμευση της εγγύησης",
+      "captured": "Δεσμεύθηκε από την εγγύηση"
+    }
+  },
   "concierge": {
     "heading": "Concierge",
     "add_service": "Προσθήκη υπηρεσίας",
@@ -494,7 +550,8 @@
     "amount_nonzero": "Το ποσό δεν μπορεί να είναι μηδέν",
     "description_required": "Η περιγραφή είναι υποχρεωτική",
     "amount_positive": "Το ποσό πρέπει να είναι μεγαλύτερο από το μηδέν",
-    "line_label_required": "Η ετικέτα γραμμής είναι υποχρεωτική"
+    "line_label_required": "Η ετικέτα γραμμής είναι υποχρεωτική",
+    "capture_exceeds_amount": "Δεν μπορείτε να δεσμεύσετε περισσότερα από την εγγύηση"
   },
   "finance": {
     "title": "Οικονομικά",

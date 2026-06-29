@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { drfPage } from "@/test/drf";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import { BookingDetailLayout } from "../BookingDetailLayout";
@@ -139,6 +140,9 @@ beforeEach(() => {
     http.get(`/api/v1/bookings/${BOOKING_ID}/deposit/payments`, () => HttpResponse.json([])),
     http.get(`/api/v1/bookings/${BOOKING_ID}/balance/payments`, () => HttpResponse.json([])),
     http.get(`/api/v1/bookings/${BOOKING_ID}/security/payments`, () => HttpResponse.json([])),
+    // The SD management panel + damage-claims card also mount in this tab.
+    http.get(`/api/v1/bookings/${BOOKING_ID}/security/deposit`, () => HttpResponse.json(null)),
+    http.get(`/api/v1/bookings/${BOOKING_ID}/damage-claims`, () => HttpResponse.json(drfPage([]))),
   );
 });
 
@@ -153,7 +157,9 @@ describe("PaymentsTab", () => {
     setup();
     expect(await screen.findByText("Deposit")).toBeInTheDocument();
     expect(screen.getByText("Balance")).toBeInTheDocument();
-    expect(screen.getByText("Security deposit")).toBeInTheDocument();
+    // "Security deposit" labels both the payment track row and the SD panel;
+    // the track is first in DOM order.
+    expect(screen.getAllByText("Security deposit")[0]).toBeInTheDocument();
     // Balance: 0.00 of 1500.00
     await waitFor(() => expect(screen.getByText(/£0\.00 of £1,500\.00 paid/i)).toBeInTheDocument());
   });
@@ -180,7 +186,7 @@ describe("PaymentsTab", () => {
     expect(paid.closest('[data-slot="badge"]')).toHaveClass("text-success");
     // Security (failed) renders its label with error styling — STATUS_TO_KIND
     // keys on the raw status, not the display text.
-    const securitySection = screen.getByText("Security deposit").closest("section")!;
+    const securitySection = screen.getAllByText("Security deposit")[0].closest("section")!;
     const failed = await within(securitySection).findByText("Failed");
     expect(failed.closest('[data-slot="badge"]')).toHaveClass("text-danger");
   });
@@ -214,8 +220,8 @@ describe("PaymentsTab", () => {
       ),
     );
     setup();
-    await screen.findByText("Security deposit");
-    const securitySection = screen.getByText("Security deposit").closest("section")!;
+    await screen.findByText("Deposit");
+    const securitySection = screen.getAllByText("Security deposit")[0].closest("section")!;
     expect(within(securitySection).getByRole("button", { name: /send reminder/i })).toBeDisabled();
     // A non-zero pending track keeps its request button live.
     const balanceSection = screen.getByText("Balance").closest("section")!;

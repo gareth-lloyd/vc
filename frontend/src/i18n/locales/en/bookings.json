@@ -94,6 +94,22 @@
       "approved": "Approved",
       "settled": "Settled",
       "withdrawn": "Withdrawn"
+    },
+    "security_deposit_kind": {
+      "pre_auth_hold": "Card pre-authorisation",
+      "bt_refundable": "Refundable bank transfer"
+    },
+    "security_deposit_status": {
+      "awaiting_details": "Awaiting card details",
+      "pre_authed": "Pre-authorised",
+      "released": "Released",
+      "captured": "Captured",
+      "expired": "Expired",
+      "failed": "Failed",
+      "awaiting_bt": "Awaiting bank transfer",
+      "held": "Held",
+      "refunded": "Refunded",
+      "partially_refunded": "Partially refunded"
     }
   },
   "columns": {
@@ -396,6 +412,46 @@
       }
     }
   },
+  "security_deposit": {
+    "title": "Security deposit",
+    "role_required_tooltip": "You need the Accounts role to release or capture the deposit",
+    "load_failed_title": "Couldn't load the security deposit",
+    "load_failed_body": "Try again.",
+    "empty_title": "No security deposit",
+    "empty_description": "This booking has no security deposit on file.",
+    "fields": {
+      "amount": "Amount",
+      "hold_expires_at": "Hold expires",
+      "release_scheduled_for": "Release scheduled",
+      "captured_amount": "Captured amount",
+      "refunded_amount": "Refunded amount"
+    },
+    "actions": {
+      "release": "Release",
+      "capture": "Capture for damages"
+    },
+    "confirm_release": {
+      "title": "Release this deposit?",
+      "description": "The full deposit will be released back to the guest. This can't be undone.",
+      "confirm_label": "Release deposit"
+    },
+    "capture_dialog": {
+      "title": "Capture for damages",
+      "description": "Capture against the {{amount}} held deposit. Select the damage claim that justifies it.",
+      "submit": "Capture",
+      "no_open_claims": "No open damage claims to capture against. File a claim first.",
+      "fields": {
+        "claim": "Damage claim",
+        "claim_placeholder": "Select a claim",
+        "captured_amount": "Amount to capture"
+      }
+    },
+    "toasts": {
+      "released": "Security deposit released",
+      "release_failed": "Couldn't release the deposit",
+      "captured": "Captured against the deposit"
+    }
+  },
   "concierge": {
     "heading": "Concierge",
     "add_service": "Add service",
@@ -494,7 +550,8 @@
     "amount_nonzero": "Amount must not be zero",
     "description_required": "Description is required",
     "amount_positive": "Amount must be greater than zero",
-    "line_label_required": "Line label is required"
+    "line_label_required": "Line label is required",
+    "capture_exceeds_amount": "Can't capture more than the held deposit"
   },
   "finance": {
     "title": "Finance",

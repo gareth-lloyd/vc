@@ -51,7 +51,6 @@ function makeBooking(status: BookingStatus, is_archived = false): BookingDetail 
     reference: "B-X",
     status,
     property: 1,
-    guest: 1,
     agent: null,
     assigned_to: null,
     date_from: "2026-07-01",

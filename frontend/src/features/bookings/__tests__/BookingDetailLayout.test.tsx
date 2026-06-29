@@ -16,7 +16,6 @@ const bookingFixture = {
   reference: "B-AAA-001",
   status: "deposit_paid",
   property: 12,
-  guest: 99,
   agent: null,
   assigned_to: null,
   date_from: "2026-07-01",
@@ -183,9 +182,9 @@ describe("BookingDetailLayout", () => {
   });
 
   it("renders guest names as plain text and links property names to the property", async () => {
-    // booking.guest is a reservations.Guest id, NOT an accounts.Contact id —
-    // linking /contacts/{guest} opened a stranger's record. No Guests page
-    // yet, so the name renders unlinked.
+    // The guest name renders unlinked — there is no Guests page, and since
+    // GAP-045 deleted the Guest model the payload carries no guest/person id
+    // to link to anyway.
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(bookingFixture)));
     setup("/bookings/51/overview");
     const guestNames = await screen.findAllByText("Ada Lovelace");
@@ -209,8 +208,11 @@ describe("BookingDetailLayout", () => {
     };
     server.use(http.get("/api/v1/bookings/51", () => HttpResponse.json(noNames)));
     setup("/bookings/51/overview");
-    await waitFor(() => expect(screen.getAllByText(/Guest #99/i).length).toBeGreaterThan(0));
-    expect(screen.getAllByText(/Property #12/i).length).toBeGreaterThan(0);
+    // Property keeps its "#id" placeholder; the guest has no id in the payload
+    // anymore (GAP-045 deleted the Guest model) so it falls back to an em-dash.
+    await waitFor(() => expect(screen.getAllByText(/Property #12/i).length).toBeGreaterThan(0));
+    expect(screen.queryByText(/Guest #/i)).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("renders error state and recovers on retry", async () => {

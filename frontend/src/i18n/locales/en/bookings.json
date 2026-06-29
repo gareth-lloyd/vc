@@ -116,8 +116,7 @@
       "due": "Due"
     },
     "fallback": {
-      "property_with_id": "Property #{{id}}",
-      "guest_with_id": "Guest #{{id}}"
+      "property_with_id": "Property #{{id}}"
     }
   },
   "overview": {

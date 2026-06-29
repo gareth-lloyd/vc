@@ -22,7 +22,8 @@ export const bookingListItemSchema = z.object({
   reference: z.string(),
   status: bookingStatusSchema,
   property: z.number(),
-  guest: z.number(),
+  // GAP-045 deleted the Guest model — the payload carries no raw guest/person
+  // FK anymore, only the denormalised `guest_name` / `guest_email` below.
   agent: z.number().nullable().optional(),
   assigned_to: z.number().nullable().optional(),
   date_from: z.string(),

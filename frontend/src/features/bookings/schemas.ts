@@ -381,6 +381,73 @@ export const damageClaimWriteInputSchema = z.object({
 export type DamageClaimWriteInput = z.infer<typeof damageClaimWriteInputSchema>;
 
 // ----------------------------------------------------------------------
+// Security deposit (wf 8) — the SD workflow row itself, read from
+// `GET /bookings/{id}/security/deposit`. Distinct from the Payment-aggregate
+// `paymentTrackSchema` below: this carries the SD's own kind/status and the
+// captured/refunded amounts the operator panel branches on.
+// ----------------------------------------------------------------------
+
+export const securityDepositKindSchema = z.enum(["pre_auth_hold", "bt_refundable"]);
+export type SecurityDepositKind = z.infer<typeof securityDepositKindSchema>;
+
+export function securityDepositKindLabel(kind: SecurityDepositKind): string {
+  return i18n.t(`bookings:labels.security_deposit_kind.${kind}`);
+}
+
+// All ten SD statuses the backend `SecurityDepositStatus` TextChoices emit
+// (lowercase `.value`s).
+export const securityDepositStatusSchema = z.enum([
+  "awaiting_details",
+  "pre_authed",
+  "released",
+  "captured",
+  "expired",
+  "failed",
+  "awaiting_bt",
+  "held",
+  "refunded",
+  "partially_refunded",
+]);
+export type SecurityDepositStatus = z.infer<typeof securityDepositStatusSchema>;
+
+export function securityDepositStatusLabel(status: SecurityDepositStatus): string {
+  return i18n.t(`bookings:labels.security_deposit_status.${status}`);
+}
+
+export const securityDepositSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  kind: securityDepositKindSchema,
+  status: securityDepositStatusSchema,
+  amount: z.string(),
+  currency_code: z.string().nullable().optional(),
+  // `release_scheduled_for` is a DateField → a `YYYY-MM-DD` string; the others
+  // are datetimes. All optional/nullable so an unstarted SD parses cleanly.
+  hold_expires_at: z.string().nullable().optional(),
+  due_at: z.string().nullable().optional(),
+  release_scheduled_for: z.string().nullable().optional(),
+  captured_amount: z.string().nullable().optional(),
+  refunded_amount: z.string().nullable().optional(),
+  damage_claim: z.number().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type SecurityDeposit = z.infer<typeof securityDepositSchema>;
+
+// Body for `POST /bookings/{id}/security:claim`. `captured_amount` is FE-bound
+// to `> 0` here; the `<= sd.amount` ceiling is enforced in the dialog where the
+// SD amount is in scope. The backend tolerates 0, but the panel never sends it.
+export const captureForDamagesInputSchema = z.object({
+  damage_claim: z.number(),
+  captured_amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+});
+export type CaptureForDamagesInput = z.infer<typeof captureForDamagesInputSchema>;
+
+// ----------------------------------------------------------------------
 // Manual charge items — signed money lines outside the pricing snapshot.
 // ----------------------------------------------------------------------
 

@@ -111,6 +111,7 @@ export const queryKeys = {
     deposit: (id: BookingId) => ["bookings", "detail", k(id), "deposit"] as const,
     balance: (id: BookingId) => ["bookings", "detail", k(id), "balance"] as const,
     security: (id: BookingId) => ["bookings", "detail", k(id), "security"] as const,
+    securityDeposit: (id: BookingId) => ["bookings", "detail", k(id), "security-deposit"] as const,
     emails: (id: BookingId) => ["bookings", "detail", k(id), "emails"] as const,
   },
   enquiries: {

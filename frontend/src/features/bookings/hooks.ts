@@ -15,6 +15,7 @@ import {
   confirmConciergeItem,
   createBookingNote,
   createChargeItem,
+  captureSecurityDepositForDamages,
   createConciergeItem,
   createDamageClaim,
   declineBooking,
@@ -32,8 +33,10 @@ import {
   fetchBookingNotes,
   fetchBookings,
   fetchDepositTrack,
+  fetchSecurityDeposit,
   fetchSecurityTrack,
   markPaid,
+  releaseSecurityDeposit,
   modifyBookingDates,
   modifyBookingGuests,
   requestPayment,
@@ -54,6 +57,7 @@ import type {
   BookingNote,
   BookingNoteWriteInput,
   CancelBookingInput,
+  CaptureForDamagesInput,
   ChargeItemWriteInput,
   ConciergeItemWriteInput,
   DamageClaimWriteInput,
@@ -407,6 +411,41 @@ export function useDeleteDamageClaim(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ claimId }: { claimId: number }) => deleteDamageClaim(bookingId, claimId),
     onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Security deposit (wf 8)
+// ----------------------------------------------------------------------
+
+export function useSecurityDeposit(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.securityDeposit, fetchSecurityDeposit));
+}
+
+// A release/capture moves the SD row state, the Payment-aggregate security
+// track (`paid_amount`), and — for a capture — the consumed damage claim.
+// Invalidate all three, plus the activity feed (the transition emits an event).
+function invalidateSecurityDepositDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.damageClaims(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+}
+
+export function useReleaseSecurityDeposit(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => releaseSecurityDeposit(bookingId),
+    onSuccess: () => invalidateSecurityDepositDependents(queryClient, bookingId),
+  });
+}
+
+export function useCaptureSecurityDepositForDamages(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CaptureForDamagesInput) =>
+      captureSecurityDepositForDamages(bookingId, input),
+    onSuccess: () => invalidateSecurityDepositDependents(queryClient, bookingId),
   });
 }
 

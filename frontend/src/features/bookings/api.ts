@@ -18,6 +18,7 @@ import {
   bookingNotesResponseSchema,
   paymentRecordsListSchema,
   paymentTrackSchema,
+  securityDepositSchema,
   type BookingChargeItem,
   type BookingConciergeItem,
   type BookingDetail,
@@ -38,6 +39,8 @@ import {
   type ModifyGuestsInput,
   type PaymentRecord,
   type PaymentTrack,
+  type CaptureForDamagesInput,
+  type SecurityDeposit,
   type WaiveTrackInput,
 } from "./schemas";
 
@@ -325,6 +328,32 @@ export async function withdrawDamageClaim(
 
 export async function deleteDamageClaim(bookingId: BookingId, claimId: number): Promise<void> {
   await apiSend<void>("DELETE", `/bookings/${bookingId}/damage-claims/${claimId}`);
+}
+
+// ----------------------------------------------------------------------
+// Security deposit (wf 8)
+// ----------------------------------------------------------------------
+
+// The endpoint returns the SD row or a literal `null` body (HTTP 200) when the
+// booking has none — the nullable parse handles both.
+export async function fetchSecurityDeposit(id: BookingId): Promise<SecurityDeposit | null> {
+  const data = await apiGet<unknown>(`/bookings/${id}/security/deposit`);
+  return securityDepositSchema.nullable().parse(data);
+}
+
+// Release / claim return the Payment-aggregate track (the backend response);
+// the panel re-reads the SD via its own query, which the hooks invalidate.
+export async function releaseSecurityDeposit(id: BookingId): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/security:release`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function captureSecurityDepositForDamages(
+  id: BookingId,
+  body: CaptureForDamagesInput,
+): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/security:claim`, body);
+  return paymentTrackSchema.parse(data);
 }
 
 // ----------------------------------------------------------------------

@@ -167,20 +167,6 @@ _security_routes: list[URLPattern | URLResolver] = [
         name="booking-security-payment-hold",
     ),
     path(
-        "bookings/<int:booking_pk>/security/payments/<int:payment_pk>:release",
-        lambda request, booking_pk, payment_pk: security_payment_action(
-            request, booking_pk, payment_pk, "release"
-        ),
-        name="booking-security-payment-release",
-    ),
-    path(
-        "bookings/<int:booking_pk>/security/payments/<int:payment_pk>:claim",
-        lambda request, booking_pk, payment_pk: security_payment_action(
-            request, booking_pk, payment_pk, "claim"
-        ),
-        name="booking-security-payment-claim",
-    ),
-    path(
         "bookings/<int:booking_pk>/security:request-payment",
         lambda request, booking_pk: security_track_action(request, booking_pk, "request-payment"),
         name="booking-security-request-payment",
@@ -189,6 +175,18 @@ _security_routes: list[URLPattern | URLResolver] = [
         "bookings/<int:booking_pk>/security:mark-paid",
         lambda request, booking_pk: security_track_action(request, booking_pk, "mark-paid"),
         name="booking-security-mark-paid",
+    ),
+    # `:release` / `:claim` resolve the *active* SD, not a payment, so they live
+    # at the track level (the payment-nested form discarded its pk — 2B).
+    path(
+        "bookings/<int:booking_pk>/security:release",
+        lambda request, booking_pk: security_track_action(request, booking_pk, "release"),
+        name="booking-security-release",
+    ),
+    path(
+        "bookings/<int:booking_pk>/security:claim",
+        lambda request, booking_pk: security_track_action(request, booking_pk, "claim"),
+        name="booking-security-claim",
     ),
 ]
 

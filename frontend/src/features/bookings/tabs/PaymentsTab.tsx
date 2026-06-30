@@ -6,6 +6,7 @@ import { useHasAccountsRole, useHasReservationsRole } from "@/lib/auth/useHasRol
 import { useBalanceTrack, useDepositTrack, useSecurityTrack } from "../hooks";
 import { DamageClaimsSection } from "../components/DamageClaimsSection";
 import { PaymentTrack } from "../components/PaymentTrack";
+import { RefundsSection } from "../components/RefundsSection";
 import { SecurityDepositPanel } from "../components/SecurityDepositPanel";
 import { TransactionsTable } from "../components/TransactionsTable";
 import type { TrackName } from "../api";
@@ -70,6 +71,8 @@ export function PaymentsTab() {
         currency={currency}
         canWrite={canMoveSecurityMoney}
       />
+
+      <RefundsSection bookingId={booking.id} currency={currency} canWrite={canMoveSecurityMoney} />
     </div>
   );
 }

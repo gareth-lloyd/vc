@@ -481,6 +481,74 @@
       "captured": "Captured against the deposit"
     }
   },
+  "refunds": {
+    "title": "Refunds",
+    "request": "Request refund",
+    "role_required_tooltip": "You need the Accounts role to request a refund",
+    "load_failed_title": "Couldn't load refunds",
+    "load_failed_body": "Try again.",
+    "empty_title": "No refunds",
+    "empty_description": "Refunds against this booking will appear here.",
+    "columns": {
+      "reference": "Reference",
+      "status": "Status",
+      "method": "Method",
+      "amount": "Amount"
+    },
+    "form_dialog": {
+      "create_title": "Request a refund",
+      "description": "Record a refund against this booking. It still needs approval before it can be executed.",
+      "submit_create": "Request refund",
+      "fields": {
+        "amount": "Amount",
+        "currency": "Currency",
+        "purpose_track": "Track",
+        "method": "Method",
+        "reason_code": "Reason",
+        "notes": "Notes (optional)"
+      }
+    },
+    "row": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "execute": "Execute",
+      "cancel": "Cancel",
+      "approve_for": "Approve refund {{reference}}",
+      "reject_for": "Reject refund {{reference}}",
+      "execute_for": "Execute refund {{reference}}",
+      "cancel_for": "Cancel refund {{reference}}",
+      "self_approve_tooltip": "You requested this refund — a different approver must approve it"
+    },
+    "confirm_approve": {
+      "title": "Approve this refund?",
+      "description": "Approving {{reference}} clears it for execution. A separate person must execute it.",
+      "confirm_label": "Approve"
+    },
+    "confirm_execute": {
+      "title": "Start executing this refund?",
+      "description": "This starts the refund of {{amount}}. Online refunds settle once the gateway confirms; manual and offline refunds settle immediately.",
+      "confirm_label": "Start execution"
+    },
+    "confirm_cancel": {
+      "title": "Cancel this refund?",
+      "description": "Cancelling {{reference}} closes it without paying anything out. This can't be undone.",
+      "confirm_label": "Cancel refund"
+    },
+    "reject_dialog": {
+      "title": "Reject this refund",
+      "description": "Give a reason for rejecting {{reference}}.",
+      "reason_label": "Reason",
+      "submit": "Reject refund"
+    },
+    "toasts": {
+      "requested": "Refund requested",
+      "approved": "Refund approved",
+      "rejected": "Refund rejected",
+      "executed": "Refund execution started",
+      "cancelled": "Refund cancelled",
+      "action_failed": "Couldn't complete that action"
+    }
+  },
   "concierge": {
     "heading": "Concierge",
     "add_service": "Add service",

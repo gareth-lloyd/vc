@@ -140,9 +140,12 @@ beforeEach(() => {
     http.get(`/api/v1/bookings/${BOOKING_ID}/deposit/payments`, () => HttpResponse.json([])),
     http.get(`/api/v1/bookings/${BOOKING_ID}/balance/payments`, () => HttpResponse.json([])),
     http.get(`/api/v1/bookings/${BOOKING_ID}/security/payments`, () => HttpResponse.json([])),
-    // The SD management panel + damage-claims card also mount in this tab.
+    // The SD management panel + damage-claims card + refunds section also mount
+    // in this tab.
     http.get(`/api/v1/bookings/${BOOKING_ID}/security/deposit`, () => HttpResponse.json(null)),
     http.get(`/api/v1/bookings/${BOOKING_ID}/damage-claims`, () => HttpResponse.json(drfPage([]))),
+    // The booking refunds endpoint is a plain array, not DRF-paginated.
+    http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () => HttpResponse.json([])),
   );
 });
 

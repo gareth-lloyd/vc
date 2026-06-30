@@ -7,10 +7,14 @@ constraint's 500), and the `created_by`/`updated_by` actor is stamped. The
 AuditLog trail rides the model's `track()` registration (BUG-008), so `.save()`
 / `.delete()` here are audited without extra plumbing.
 
-Lifecycle is the `DamageClaimStatus` enum: `withdraw()` is the operator "cancel"
-(→ WITHDRAWN); a true mistake can still be hard-deleted (the SD FK is SET_NULL,
-so the deposit's money trail survives). The approval state machine and the
-SD-capture wiring land with workflow 8/17.
+Lifecycle is the `DamageClaimStatus` enum, enforced as a small state machine:
+`OPEN → APPROVED → SETTLED`, with `WITHDRAWN` reachable from either live state.
+`approve()` is the operator sign-off; `settle()` is the side effect of the
+security-deposit capture linking the claim (wired from
+`payments.SecurityDepositService.claim`); `withdraw()` is the operator "cancel".
+SETTLED/WITHDRAWN are terminal (no further transitions, no edits). A true
+mistake can still be hard-deleted (the SD FK is SET_NULL, so the deposit's
+money trail survives).
 """
 
 from __future__ import annotations
@@ -20,9 +24,27 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 
-from core.exceptions import DomainValidationError
+from core.exceptions import DomainValidationError, InvalidTransition
+from core.locking import refresh_locked
 from reservations.enums import DamageClaimStatus
 from reservations.models import DamageClaim
+
+_OPEN = DamageClaimStatus.OPEN.value
+_APPROVED = DamageClaimStatus.APPROVED.value
+_SETTLED = DamageClaimStatus.SETTLED.value
+_WITHDRAWN = DamageClaimStatus.WITHDRAWN.value
+
+#: Allowed status transitions. SETTLED/WITHDRAWN are terminal (empty sets).
+_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    _OPEN: {_APPROVED, _SETTLED, _WITHDRAWN},
+    _APPROVED: {_SETTLED, _WITHDRAWN},
+    _SETTLED: set(),
+    _WITHDRAWN: set(),
+}
+
+#: Closed records — no further edits. Derived from the terminal (empty) rows of
+#: the transition table so the two can't drift.
+_CLOSED_STATES = frozenset(s for s, allowed in _ALLOWED_TRANSITIONS.items() if not allowed)
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -65,6 +87,14 @@ class DamageClaimService:
         actor: Any = None,
         **fields: Any,
     ) -> DamageClaim:
+        # Lock + reload before the closed-state guard so a concurrent
+        # settle/withdraw can't slip past it and then be clobbered by the
+        # full-row save below (same race `_transition` closes).
+        refresh_locked(claim)
+        if claim.status in _CLOSED_STATES:
+            raise DomainValidationError(
+                message="A settled or withdrawn claim cannot be edited.",
+            )
         if "currency" in fields:
             fields["currency"] = cls._resolve_currency(claim.booking, fields["currency"])
         if "amount" in fields:
@@ -77,16 +107,53 @@ class DamageClaimService:
 
     @classmethod
     @transaction.atomic
+    def approve(cls, claim: DamageClaim, *, actor: Any = None) -> DamageClaim:
+        """Operator sign-off: OPEN → APPROVED."""
+        return cls._transition(claim, _APPROVED, actor=actor)
+
+    @classmethod
+    @transaction.atomic
+    def settle(cls, claim: DamageClaim, *, actor: Any = None) -> DamageClaim:
+        """Settle the claim (OPEN/APPROVED → SETTLED).
+
+        Driven by the SD capture linking the claim, not a separate operator
+        click — settlement is the money-move's side effect.
+        """
+        return cls._transition(claim, _SETTLED, actor=actor)
+
+    @classmethod
+    @transaction.atomic
     def withdraw(cls, claim: DamageClaim, *, actor: Any = None) -> DamageClaim:
-        claim.status = DamageClaimStatus.WITHDRAWN.value
-        claim.updated_by = actor
-        claim.save(update_fields=["status", "updated_by", "updated_at"])
-        return claim
+        """Operator cancel: OPEN/APPROVED → WITHDRAWN."""
+        return cls._transition(claim, _WITHDRAWN, actor=actor)
 
     @classmethod
     @transaction.atomic
     def delete(cls, claim: DamageClaim, *, actor: Any = None) -> None:
         claim.delete()
+
+    # ------------------------------------------------------------------
+    # State machine
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _transition(claim: DamageClaim, to_status: str, *, actor: Any = None) -> DamageClaim:
+        """Lock + reload the row, guard the transition, stamp + save in place.
+
+        `refresh_locked` (the shared `core.locking` helper, as in
+        `Refund._transition`) takes `SELECT … FOR UPDATE` and reloads `claim`
+        before the guard, closing the read-modify-write race between two
+        concurrent transitions (e.g. an operator withdraw racing an SD-capture
+        settle). Mutating the caller's own instance keeps `updated_at` fresh for
+        a view that serialises the response without a refetch.
+        """
+        refresh_locked(claim)
+        allowed = _ALLOWED_TRANSITIONS[claim.status]
+        if to_status not in allowed:
+            raise InvalidTransition(claim.status, to_status, allowed=sorted(allowed))
+        claim.status = to_status
+        claim.updated_by = actor
+        claim.save(update_fields=["status", "updated_by", "updated_at"])
+        return claim
 
     # ------------------------------------------------------------------
     # Invariants

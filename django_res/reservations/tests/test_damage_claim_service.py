@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from core.exceptions import DomainValidationError
+from core.exceptions import DomainValidationError, InvalidTransition
 from pricing.models import Currency
 from reservations.enums import DamageClaimStatus
 from reservations.factories import make_occupying_booking
@@ -147,6 +147,110 @@ def test_withdraw_sets_status(booking: Booking, actor: User) -> None:
     withdrawn.refresh_from_db()
     assert withdrawn.status == DamageClaimStatus.WITHDRAWN.value
     assert withdrawn.updated_by_id == actor.pk
+
+
+# ---------------------------------------------------------------------------
+# Approval state machine (OPEN → APPROVED → SETTLED, + WITHDRAWN)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_approve_open_claim(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+
+    approved = DamageClaimService.approve(claim, actor=actor)
+
+    approved.refresh_from_db()
+    assert approved.status == DamageClaimStatus.APPROVED.value
+    assert approved.updated_by_id == actor.pk
+
+
+@pytest.mark.django_db
+def test_settle_from_approved(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.approve(claim, actor=actor)
+
+    settled = DamageClaimService.settle(claim, actor=actor)
+
+    settled.refresh_from_db()
+    assert settled.status == DamageClaimStatus.SETTLED.value
+    assert settled.updated_by_id == actor.pk
+
+
+@pytest.mark.django_db
+def test_settle_directly_from_open(booking: Booking, actor: User) -> None:
+    # Capture can settle a never-approved claim (threshold approval is deferred).
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+
+    settled = DamageClaimService.settle(claim, actor=actor)
+
+    settled.refresh_from_db()
+    assert settled.status == DamageClaimStatus.SETTLED.value
+
+
+@pytest.mark.django_db
+def test_withdraw_from_approved(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.approve(claim, actor=actor)
+
+    withdrawn = DamageClaimService.withdraw(claim, actor=actor)
+
+    withdrawn.refresh_from_db()
+    assert withdrawn.status == DamageClaimStatus.WITHDRAWN.value
+
+
+@pytest.mark.django_db
+def test_approve_settled_claim_is_invalid(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.settle(claim, actor=actor)
+
+    with pytest.raises(InvalidTransition):
+        DamageClaimService.approve(claim, actor=actor)
+
+
+@pytest.mark.django_db
+def test_withdraw_settled_claim_is_invalid(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.settle(claim, actor=actor)
+
+    with pytest.raises(InvalidTransition):
+        DamageClaimService.withdraw(claim, actor=actor)
+
+
+@pytest.mark.django_db
+def test_settle_withdrawn_claim_is_invalid(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.withdraw(claim, actor=actor)
+
+    with pytest.raises(InvalidTransition):
+        DamageClaimService.settle(claim, actor=actor)
+
+
+@pytest.mark.django_db
+def test_update_refused_on_settled_claim(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.settle(claim, actor=actor)
+
+    with pytest.raises(DomainValidationError):
+        DamageClaimService.update(claim, amount=Decimal("175.00"), actor=actor)
+
+
+@pytest.mark.django_db
+def test_update_refused_on_withdrawn_claim(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.withdraw(claim, actor=actor)
+
+    with pytest.raises(DomainValidationError):
+        DamageClaimService.update(claim, amount=Decimal("175.00"), actor=actor)
+
+
+@pytest.mark.django_db
+def test_update_allowed_on_approved_claim(booking: Booking, actor: User) -> None:
+    claim = DamageClaimService.create(booking, amount=Decimal("100.00"), description="x")
+    DamageClaimService.approve(claim, actor=actor)
+
+    updated = DamageClaimService.update(claim, amount=Decimal("175.00"), actor=actor)
+
+    updated.refresh_from_db()
+    assert updated.amount == Decimal("175.00")
 
 
 @pytest.mark.django_db

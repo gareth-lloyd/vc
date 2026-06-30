@@ -9,6 +9,8 @@ import {
   bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
+  damageClaimSchema,
+  damageClaimsResponseSchema,
   bookingEmailSchema,
   bookingEmailsResponseSchema,
   bookingListResponseSchema,
@@ -16,6 +18,9 @@ import {
   bookingNotesResponseSchema,
   paymentRecordsListSchema,
   paymentTrackSchema,
+  refundSchema,
+  refundsListSchema,
+  securityDepositSchema,
   type BookingChargeItem,
   type BookingConciergeItem,
   type BookingDetail,
@@ -28,12 +33,18 @@ import {
   type CancelBookingInput,
   type ChargeItemWriteInput,
   type ConciergeItemWriteInput,
+  type DamageClaim,
+  type DamageClaimWriteInput,
   type DeclineBookingInput,
   type MarkPaidInput,
   type ModifyDatesInput,
   type ModifyGuestsInput,
   type PaymentRecord,
   type PaymentTrack,
+  type CaptureForDamagesInput,
+  type Refund,
+  type RefundRequestInput,
+  type SecurityDeposit,
   type WaiveTrackInput,
 } from "./schemas";
 
@@ -276,6 +287,115 @@ export async function updateChargeItem(
 
 export async function deleteChargeItem(bookingId: BookingId, itemId: number): Promise<void> {
   await apiSend<void>("DELETE", `/bookings/${bookingId}/charge-items/${itemId}`);
+}
+
+// ----------------------------------------------------------------------
+// Damage claims
+// ----------------------------------------------------------------------
+
+export async function fetchBookingDamageClaims(id: BookingId): Promise<Paginated<DamageClaim>> {
+  const data = await apiGet<unknown>(`/bookings/${id}/damage-claims`);
+  return damageClaimsResponseSchema.parse(data);
+}
+
+export async function createDamageClaim(
+  bookingId: BookingId,
+  body: DamageClaimWriteInput,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/damage-claims`, body);
+  return damageClaimSchema.parse(data);
+}
+
+export async function updateDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+  body: Partial<DamageClaimWriteInput>,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "PATCH",
+    `/bookings/${bookingId}/damage-claims/${claimId}`,
+    body,
+  );
+  return damageClaimSchema.parse(data);
+}
+
+export async function withdrawDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/damage-claims/${claimId}:withdraw`,
+  );
+  return damageClaimSchema.parse(data);
+}
+
+export async function deleteDamageClaim(bookingId: BookingId, claimId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/bookings/${bookingId}/damage-claims/${claimId}`);
+}
+
+// ----------------------------------------------------------------------
+// Security deposit (wf 8)
+// ----------------------------------------------------------------------
+
+// The endpoint returns the SD row or a literal `null` body (HTTP 200) when the
+// booking has none — the nullable parse handles both.
+export async function fetchSecurityDeposit(id: BookingId): Promise<SecurityDeposit | null> {
+  const data = await apiGet<unknown>(`/bookings/${id}/security/deposit`);
+  return securityDepositSchema.nullable().parse(data);
+}
+
+// Release / claim return the Payment-aggregate track (the backend response);
+// the panel re-reads the SD via its own query, which the hooks invalidate.
+export async function releaseSecurityDeposit(id: BookingId): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/security:release`);
+  return paymentTrackSchema.parse(data);
+}
+
+export async function captureSecurityDepositForDamages(
+  id: BookingId,
+  body: CaptureForDamagesInput,
+): Promise<PaymentTrack> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/security:claim`, body);
+  return paymentTrackSchema.parse(data);
+}
+
+// ----------------------------------------------------------------------
+// Refunds (wf 17)
+// ----------------------------------------------------------------------
+
+// The booking refunds endpoint returns a plain array (not DRF-paginated).
+export async function fetchBookingRefunds(id: BookingId): Promise<Refund[]> {
+  const data = await apiGet<unknown>(`/bookings/${id}/refunds`);
+  return refundsListSchema.parse(data);
+}
+
+export async function createRefund(id: BookingId, body: RefundRequestInput): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/refunds`, body);
+  return refundSchema.parse(data);
+}
+
+// The lifecycle actions are top-level colon-verbs on the Refund itself
+// (`POST /refunds/{id}:<verb>`), NOT booking-nested — each returns the updated
+// Refund row.
+export async function approveRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:approve`);
+  return refundSchema.parse(data);
+}
+
+export async function rejectRefund(refundId: number, reason: string): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:reject`, { reason });
+  return refundSchema.parse(data);
+}
+
+export async function executeRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:execute`);
+  return refundSchema.parse(data);
+}
+
+export async function cancelRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:cancel`);
+  return refundSchema.parse(data);
 }
 
 // ----------------------------------------------------------------------

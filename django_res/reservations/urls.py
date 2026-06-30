@@ -26,6 +26,7 @@ from reservations.views import (
     ClientListView,
     ConciergeOverviewViewSet,
     ContactCustomerReadViewSet,
+    DamageClaimViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
     OwnerBlockViewSet,
@@ -322,6 +323,36 @@ _charge_routes: list[URLPattern | URLResolver] = [
 
 
 # ----------------------------------------------------------------------
+# Damage-claim nested routes
+# ----------------------------------------------------------------------
+_damage_claim_routes: list[URLPattern | URLResolver] = [
+    # `:withdraw` precedes the `/<pk>` route (DRF's `[^/.]+` pk regex would
+    # otherwise swallow `1:withdraw` as the pk).
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>:withdraw",
+        DamageClaimViewSet.as_view({"post": "withdraw"}),
+        name="booking-damage-claim-withdraw",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims",
+        DamageClaimViewSet.as_view({"get": "list", "post": "create"}),
+        name="booking-damage-claims",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>",
+        DamageClaimViewSet.as_view(
+            {
+                "get": "retrieve",
+                "patch": "partial_update",
+                "delete": "destroy",
+            }
+        ),
+        name="booking-damage-claim-detail",
+    ),
+]
+
+
+# ----------------------------------------------------------------------
 # Concierge nested routes
 # ----------------------------------------------------------------------
 _concierge_routes: list[URLPattern | URLResolver] = [
@@ -515,6 +546,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     *_quotation_actions,
     *_booking_actions,
     *_charge_routes,
+    *_damage_claim_routes,
     *_concierge_routes,
     *_concierge_overview_routes,
     *_availability_routes,

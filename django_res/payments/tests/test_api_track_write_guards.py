@@ -253,17 +253,10 @@ def test_claim_bt_bounds_captured_amount(
 ) -> None:
     """BT-path claim must bound 0 <= captured_amount <= sd.amount — a
     captured_amount above the deposit produced a negative refunded_amount."""
-    sd_payment = Payment.objects.create(
-        booking=booking,
-        purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-        amount=Decimal("500.00"),
-        currency=gbp,
-        status=PaymentStatus.SUCCEEDED.value,
-    )
     api_client.force_login(accounts_user)
 
     response = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/security/payments/{sd_payment.pk}:claim",
+        f"/api/v1/bookings/{booking.pk}/security:claim",
         {"captured_amount": captured},
         format="json",
     )
@@ -289,17 +282,10 @@ def test_captured_sd_is_not_served_as_active(
         amount=Decimal("500.00"),
         currency=gbp,
     )
-    sd_payment = Payment.objects.create(
-        booking=booking,
-        purpose=PaymentPurpose.SECURITY_DEPOSIT.value,
-        amount=Decimal("500.00"),
-        currency=gbp,
-        status=PaymentStatus.SUCCEEDED.value,
-    )
     api_client.force_login(accounts_user)
 
     response = api_client.post(
-        f"/api/v1/bookings/{booking.pk}/security/payments/{sd_payment.pk}:release",
+        f"/api/v1/bookings/{booking.pk}/security:release",
         {},
         format="json",
     )

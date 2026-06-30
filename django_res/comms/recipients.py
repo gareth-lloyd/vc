@@ -71,6 +71,7 @@ def primary_owner_email(property_: Property) -> str | None:
         property_.contact_assignments.filter(
             role=ContactRole.OWNER,
             is_primary=True,
+            contact__isnull=False,
         )
         .filter(Q(end_date__isnull=True) | Q(end_date__gt=today))
         .select_related("contact")

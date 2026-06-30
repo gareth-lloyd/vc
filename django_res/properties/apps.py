@@ -126,6 +126,7 @@ class PropertiesConfig(AppConfig):
             fields=(
                 "property_id",
                 "contact_id",
+                "organisation_id",
                 "role",
                 "start_date",
                 "end_date",

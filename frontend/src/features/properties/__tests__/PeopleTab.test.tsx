@@ -110,6 +110,37 @@ describe("PeopleTab", () => {
     expect(screen.getByText("cleaner")).toBeInTheDocument();
   });
 
+  it("renders an organisation-assignee row by org name without a contact fetch", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/5/contacts", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 3,
+              property: 5,
+              contact: null,
+              organisation: 7,
+              organisation_detail: { id: 7, name: "Acme Management Co" },
+              role: "management_company",
+              start_date: "2024-01-01",
+              end_date: null,
+              is_primary: false,
+            },
+          ]),
+        ),
+      ),
+      // No /api/v1/contacts/* handler: an org row must NOT fetch a Person.
+      // MSW is configured with onUnhandledRequest: "error", so a stray fetch
+      // would fail this test.
+    );
+
+    setup();
+
+    expect(await screen.findByText("Acme Management Co")).toBeInTheDocument();
+    expect(screen.getByText("Organisation")).toBeInTheDocument();
+  });
+
   it("splits active and ended assignments", async () => {
     installBaseHandlers();
     server.use(

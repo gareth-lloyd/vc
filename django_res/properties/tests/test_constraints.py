@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import cast
 
 import pytest
 from django.db import IntegrityError
 
 from accounts.enums import ContactRole
-from accounts.models import Person
+from accounts.factories import OrganisationFactory
+from accounts.models import Organisation, Person
 from properties.enums import ImageKind
 from properties.models import (
     Collection,
@@ -64,6 +66,27 @@ def prop(
 @pytest.fixture
 def contact(db: None) -> Person:
     return Person.objects.create(first_name="Owner", last_name="One")
+
+
+@pytest.fixture
+def organisation(db: None) -> Organisation:
+    return cast(Organisation, OrganisationFactory())
+
+
+@pytest.fixture
+def prop2(
+    group: PropertyGroup,
+    category: PropertyCategory,
+    region: Region,
+) -> Property:
+    return Property.objects.create(
+        name="Hill View",
+        display_name="Hill View",
+        slug="hill-view",
+        group=group,
+        category=category,
+        region=region,
+    )
 
 
 @pytest.mark.django_db
@@ -171,3 +194,159 @@ def test_contact_assignment_only_one_primary_per_role(prop: Property, contact: P
             role=ContactRole.OWNER,
             is_primary=True,
         )
+
+
+# --- GAP-048 L2-2: Organisation assignee --------------------------------------
+
+
+@pytest.mark.django_db
+def test_assignment_requires_contact_xor_organisation_neither(prop: Property) -> None:
+    """A row with neither a contact nor an organisation violates the XOR check."""
+    with pytest.raises(IntegrityError):
+        PropertyContactAssignment.objects.create(
+            property=prop,
+            role=ContactRole.MANAGEMENT_COMPANY,
+        )
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_both_contact_and_organisation(
+    prop: Property, contact: Person, organisation: Organisation
+) -> None:
+    """A row with both a contact and an organisation violates the XOR check."""
+    with pytest.raises(IntegrityError):
+        PropertyContactAssignment.objects.create(
+            property=prop,
+            contact=contact,
+            organisation=organisation,
+            role=ContactRole.MANAGEMENT_COMPANY,
+        )
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_organisation_with_non_management_role(
+    prop: Property, organisation: Organisation
+) -> None:
+    """An Organisation assignee is only valid for the management_company role —
+    enforced at the DB so a loader/ORM write can't persist e.g. an org as OWNER."""
+    with pytest.raises(IntegrityError):
+        PropertyContactAssignment.objects.create(
+            property=prop,
+            organisation=organisation,
+            role=ContactRole.OWNER,
+        )
+
+
+@pytest.mark.django_db
+def test_assignment_person_may_hold_management_company_role(
+    prop: Property, contact: Person
+) -> None:
+    """The org→role constraint only bites org rows; a Person may hold any role,
+    including management_company (the legacy loader maps role id 5 to a Person)."""
+    PropertyContactAssignment.objects.create(
+        property=prop,
+        contact=contact,
+        role=ContactRole.MANAGEMENT_COMPANY,
+    )
+
+
+@pytest.mark.django_db
+def test_assignment_accepts_organisation_only(prop: Property, organisation: Organisation) -> None:
+    assignment = PropertyContactAssignment.objects.create(
+        property=prop,
+        organisation=organisation,
+        role=ContactRole.MANAGEMENT_COMPANY,
+    )
+    assert assignment.contact_id is None
+    assert assignment.organisation_id == organisation.pk
+
+
+@pytest.mark.django_db
+def test_assignment_org_unique_active_role(prop: Property, organisation: Organisation) -> None:
+    other_org = cast(Organisation, OrganisationFactory())
+    PropertyContactAssignment.objects.create(
+        property=prop,
+        organisation=organisation,
+        role=ContactRole.MANAGEMENT_COMPANY,
+    )
+    # A second OPEN org assignment for a different org on the same (property, role)
+    # is allowed (distinct organisation); but the SAME org twice collides.
+    PropertyContactAssignment.objects.create(
+        property=prop,
+        organisation=other_org,
+        role=ContactRole.MANAGEMENT_COMPANY,
+    )
+    with pytest.raises(IntegrityError):
+        PropertyContactAssignment.objects.create(
+            property=prop,
+            organisation=organisation,
+            role=ContactRole.MANAGEMENT_COMPANY,
+        )
+
+
+@pytest.mark.django_db
+def test_assignment_org_can_reopen_after_end_date(
+    prop: Property, organisation: Organisation
+) -> None:
+    PropertyContactAssignment.objects.create(
+        property=prop,
+        organisation=organisation,
+        role=ContactRole.MANAGEMENT_COMPANY,
+        end_date=date(2024, 1, 1),
+    )
+    # Closed row does not block a fresh open one for the same (property, org, role).
+    PropertyContactAssignment.objects.create(
+        property=prop,
+        organisation=organisation,
+        role=ContactRole.MANAGEMENT_COMPANY,
+    )
+
+
+@pytest.mark.django_db
+def test_organisation_merge_dedupes_colliding_assignment(
+    prop: Property, organisation: Organisation
+) -> None:
+    """Two orgs each holding an open assignment on the same (property, role): the
+    merge must drop the colliding source row, not raise IntegrityError."""
+    source = organisation
+    target = cast(Organisation, OrganisationFactory())
+    PropertyContactAssignment.objects.create(
+        property=prop, organisation=source, role=ContactRole.MANAGEMENT_COMPANY
+    )
+    PropertyContactAssignment.objects.create(
+        property=prop, organisation=target, role=ContactRole.MANAGEMENT_COMPANY
+    )
+
+    source.merge(target)
+
+    assert not Organisation.objects.filter(pk=source.pk).exists()
+    surviving = PropertyContactAssignment.objects.filter(
+        property=prop, role=ContactRole.MANAGEMENT_COMPANY
+    )
+    assert surviving.count() == 1
+    assert surviving.get().organisation_id == target.pk
+
+
+@pytest.mark.django_db
+def test_organisation_merge_moves_noncolliding_assignment(
+    prop: Property, prop2: Property, organisation: Organisation
+) -> None:
+    """Assignments on distinct (property, role) move onto the target intact."""
+    source = organisation
+    target = cast(Organisation, OrganisationFactory())
+    PropertyContactAssignment.objects.create(
+        property=prop, organisation=source, role=ContactRole.MANAGEMENT_COMPANY
+    )
+    PropertyContactAssignment.objects.create(
+        property=prop2, organisation=target, role=ContactRole.MANAGEMENT_COMPANY
+    )
+
+    source.merge(target)
+
+    assert not Organisation.objects.filter(pk=source.pk).exists()
+    assert (
+        PropertyContactAssignment.objects.filter(
+            organisation=target, role=ContactRole.MANAGEMENT_COMPANY
+        ).count()
+        == 2
+    )

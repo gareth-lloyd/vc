@@ -447,10 +447,12 @@
       "add_phone": "+ Προσθήκη τηλεφώνου",
       "menu_label": "Ενέργειες",
       "edit": "Επεξεργασία",
-      "set_as_primary": "Ορισμός ως κύριο"
+      "set_as_primary": "Ορισμός ως κύριο",
+      "organisation": "Οργανισμός"
     },
     "fallback": {
       "contact_with_id": "Επαφή #{{id}}",
+      "org_with_id": "Οργανισμός #{{id}}",
       "no_email": "—",
       "role_unset": "—"
     },

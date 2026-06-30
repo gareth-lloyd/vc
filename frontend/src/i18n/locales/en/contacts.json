@@ -76,6 +76,14 @@
     "specific_preferences": "Specific preferences",
     "time_waster": "Time waster"
   },
+  "types": {
+    "customer": "Customer",
+    "agent": "Agent",
+    "owner": "Owner",
+    "manager": "Manager",
+    "housekeeper": "Housekeeper",
+    "owners_rep": "Owner's representative"
+  },
   "fields": {
     "name": "Name",
     "agency": "Agency",

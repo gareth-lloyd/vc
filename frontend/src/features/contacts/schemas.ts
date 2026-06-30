@@ -149,6 +149,10 @@ export const contactSchema = z.object({
   // `?? 0` / `?? false`.
   booking_count: z.number().optional(),
   is_repeat_customer: z.boolean().optional(),
+  // GAP-052: derived type(s) the person holds (customer / agent / property
+  // roles). Left `.optional()` like `tags`/`booking_count` so existing fixtures
+  // stay assignable; consumers read `contact.contact_types ?? []`.
+  contact_types: z.array(z.string()).optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left

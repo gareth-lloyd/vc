@@ -76,6 +76,14 @@
     "specific_preferences": "Συγκεκριμένες προτιμήσεις",
     "time_waster": "Χάσιμο χρόνου"
   },
+  "types": {
+    "customer": "Πελάτης",
+    "agent": "Πράκτορας",
+    "owner": "Ιδιοκτήτης",
+    "manager": "Διαχειριστής",
+    "housekeeper": "Οικονόμος",
+    "owners_rep": "Εκπρόσωπος ιδιοκτήτη"
+  },
   "fields": {
     "name": "Όνομα",
     "agency": "Πρακτορείο",

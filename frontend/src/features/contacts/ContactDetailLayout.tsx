@@ -18,6 +18,7 @@ import { contactDisplayName } from "./display";
 import { ContactFormDialog } from "./components/ContactFormDialog";
 import { TagChips } from "./components/TagChips";
 import { RepeatBadge } from "./components/RepeatBadge";
+import { ContactTypeBadges } from "./components/ContactTypeBadges";
 import type { Contact } from "./schemas";
 
 const CONTACT_TABS = [
@@ -126,6 +127,7 @@ function RailSummary({ contact }: { contact: Contact }) {
         ) : null}
       </div>
       {contact.status ? <StatusBadge status={contact.status} /> : null}
+      <ContactTypeBadges types={contact.contact_types ?? []} />
       <RepeatBadge
         bookingCount={contact.booking_count ?? 0}
         isRepeat={contact.is_repeat_customer ?? false}

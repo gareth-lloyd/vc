@@ -13,20 +13,46 @@ if TYPE_CHECKING:
     from rest_framework.views import APIView
 
 
-def _user_role(request: Request) -> str | None:
-    user = getattr(request, "user", None)
-    if user is None or not user.is_authenticated:
+# The operator roles that may be set as an enquiry/booking assignee — the same
+# write floor `IsReservationsWriter` enforces and the FE operator picker filters
+# on. Named once so the boundary guards and the permission classes can't drift.
+ASSIGNABLE_STAFF_ROLES = frozenset({StaffRole.ADMIN.value, StaffRole.RESERVATIONS.value})
+
+
+def effective_staff_role(user: Any) -> str | None:
+    """The staff role that actually applies to `user`, or `None`.
+
+    `User.role` defaults to VIEWER for *every* user, including non-staff
+    principals such as portal owners. A staff role is only meaningful for a
+    staff user — without this gate an owner would inherit VIEWER read access
+    across the entire staff API. Superusers resolve to ADMIN regardless of the
+    stored role.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
         return None
-    # `User.role` defaults to VIEWER for *every* user, including non-staff
-    # principals such as portal owners. A staff role is only meaningful for a
-    # staff user — without this gate an owner would inherit VIEWER read access
-    # across the entire staff API.
     if not getattr(user, "is_staff", False):
         return None
     if getattr(user, "is_superuser", False):
         return StaffRole.ADMIN.value
     role = getattr(user, "role", None)
     return role if isinstance(role, str) else None
+
+
+def is_assignable_operator(user: Any) -> bool:
+    """True if `user` may be set as an enquiry/booking assignee.
+
+    The "assignable operator" predicate enforced at the API boundary: an
+    *active staff user with an operator role*. Server-side input validation so
+    a hand-rolled request (bypassing the FE picker) can't make a non-staff user
+    — e.g. a portal owner — the salesperson.
+    """
+    if user is None or not getattr(user, "is_active", False):
+        return False
+    return effective_staff_role(user) in ASSIGNABLE_STAFF_ROLES
+
+
+def _user_role(request: Request) -> str | None:
+    return effective_staff_role(getattr(request, "user", None))
 
 
 def actor_has_perm(actor: Any, perm: str) -> bool:

@@ -319,6 +319,17 @@ export async function updateDamageClaim(
   return damageClaimSchema.parse(data);
 }
 
+export async function approveDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/damage-claims/${claimId}:approve`,
+  );
+  return damageClaimSchema.parse(data);
+}
+
 export async function withdrawDamageClaim(
   bookingId: BookingId,
   claimId: number,

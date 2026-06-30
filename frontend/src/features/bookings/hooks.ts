@@ -19,6 +19,7 @@ import {
   createChargeItem,
   createRefund,
   captureSecurityDepositForDamages,
+  approveDamageClaim,
   createConciergeItem,
   createDamageClaim,
   executeRefund,
@@ -401,6 +402,14 @@ export function useUpdateDamageClaim(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ claimId, input }: UpdateDamageClaimVars) =>
       updateDamageClaim(bookingId, claimId, input),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useApproveDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => approveDamageClaim(bookingId, claimId),
     onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
   });
 }

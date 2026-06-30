@@ -404,9 +404,16 @@
       "amount": "Amount"
     },
     "row": {
+      "approve": "Approve",
       "withdraw": "Withdraw",
       "edit_for": "Edit claim {{reference}}",
+      "approve_for": "Approve claim {{reference}}",
       "withdraw_for": "Withdraw claim {{reference}}"
+    },
+    "confirm_approve": {
+      "title": "Approve this claim?",
+      "description": "Claim {{reference}} will be marked approved, signing off the damages before the deposit is captured.",
+      "confirm_label": "Approve claim"
     },
     "confirm_withdraw": {
       "title": "Withdraw this claim?",
@@ -416,6 +423,8 @@
     "toasts": {
       "filed": "Damage claim filed",
       "updated": "Damage claim updated",
+      "approved": "Damage claim approved",
+      "approve_failed": "Couldn't approve the claim",
       "withdrawn": "Damage claim withdrawn",
       "withdraw_failed": "Couldn't withdraw the claim"
     },

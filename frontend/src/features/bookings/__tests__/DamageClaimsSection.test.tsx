@@ -102,4 +102,81 @@ describe("DamageClaimsSection", () => {
     const fileButton = await screen.findByRole("button", { name: /file claim/i });
     expect(fileButton).toBeDisabled();
   });
+
+  it("approves an open claim and flips the badge", async () => {
+    let approved = false;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/damage-claims`, () =>
+        HttpResponse.json(drfPage([makeClaim({ status: approved ? "approved" : "open" })])),
+      ),
+      http.post(`/api/v1/bookings/${BOOKING_ID}/damage-claims/7:approve`, () => {
+        approved = true;
+        return HttpResponse.json(makeClaim({ status: "approved" }));
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /approve claim DC-000007/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Approve claim" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(await screen.findByText("Approved")).toBeInTheDocument();
+  });
+
+  it("offers edit + approve + withdraw on an open claim", async () => {
+    server.use(listHandler([makeClaim({ status: "open" })]));
+    setup();
+
+    expect(
+      await screen.findByRole("button", { name: /edit claim DC-000007/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve claim DC-000007/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /withdraw claim DC-000007/i })).toBeInTheDocument();
+  });
+
+  it("hides edit + approve but keeps withdraw once approved", async () => {
+    server.use(listHandler([makeClaim({ status: "approved" })]));
+    setup();
+
+    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit claim DC-000007/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /approve claim DC-000007/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /withdraw claim DC-000007/i })).toBeInTheDocument();
+  });
+
+  it("shows no row actions on a settled claim", async () => {
+    server.use(listHandler([makeClaim({ status: "settled" })]));
+    setup();
+
+    expect(await screen.findByText("Settled")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit claim DC-000007/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /approve claim DC-000007/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /withdraw claim DC-000007/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("surfaces the backend detail when approve 409s", async () => {
+    server.use(
+      listHandler([makeClaim({ status: "open" })]),
+      http.post(`/api/v1/bookings/${BOOKING_ID}/damage-claims/7:approve`, () =>
+        HttpResponse.json(
+          { detail: "Cannot move a settled claim to approved.", code: "invalid_transition" },
+          { status: 409 },
+        ),
+      ),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /approve claim DC-000007/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Approve claim" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Cannot move a settled claim to approved."),
+    );
+  });
 });

@@ -177,6 +177,106 @@ def test_pre_auth_path__claim_captures(
     assert pre_auth_sd.damage_claim_id == damage_claim.pk
 
 
+# --- wf8: capture settles the linked claim ------------------------------------
+
+
+@pytest.mark.django_db
+def test_capture_settles_an_open_claim(
+    pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    """The capture is the settlement: linking an OPEN claim moves it to SETTLED."""
+    from reservations.enums import DamageClaimStatus
+
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim, captured_amount=Decimal("250.00"), actor=None
+    )
+
+    damage_claim.refresh_from_db()
+    assert damage_claim.status == DamageClaimStatus.SETTLED.value
+
+
+@pytest.mark.django_db
+def test_capture_settles_an_approved_claim(
+    pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    from reservations.enums import DamageClaimStatus
+    from reservations.services.damage_claims import DamageClaimService
+
+    DamageClaimService.approve(damage_claim, actor=None)
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim, captured_amount=Decimal("250.00"), actor=None
+    )
+
+    damage_claim.refresh_from_db()
+    assert damage_claim.status == DamageClaimStatus.SETTLED.value
+
+
+@pytest.mark.django_db
+def test_partial_refund_capture_settles_the_claim(
+    bt_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    """The HELD → PARTIALLY_REFUNDED branch settles the claim too."""
+    from reservations.enums import DamageClaimStatus
+
+    SecurityDepositService.mark_paid(
+        bt_sd,
+        amount=Decimal("500.00"),
+        paid_at=datetime(2026, 4, 1, 12, 0, tzinfo=UTC),
+        method=PaymentMethod.BANK_TRANSFER.value,
+        reference="wire-001",
+        actor=None,
+    )
+    SecurityDepositService.claim(
+        bt_sd, damage_claim=damage_claim, captured_amount=Decimal("200.00"), actor=None
+    )
+
+    damage_claim.refresh_from_db()
+    assert damage_claim.status == DamageClaimStatus.SETTLED.value
+
+
+@pytest.mark.django_db
+def test_capture_against_an_already_settled_claim_does_not_raise(
+    pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    """The OPEN/APPROVED guard makes a capture linking an already-SETTLED claim
+    a no-op rather than an InvalidTransition (SETTLED is terminal)."""
+    from reservations.enums import DamageClaimStatus
+
+    damage_claim.status = DamageClaimStatus.SETTLED.value
+    damage_claim.save(update_fields=["status"])
+
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    # Must not raise even though the linked claim cannot transition.
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim, captured_amount=Decimal("250.00"), actor=None
+    )
+
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.status == SecurityDepositStatus.CAPTURED.value
+    damage_claim.refresh_from_db()
+    assert damage_claim.status == DamageClaimStatus.SETTLED.value
+
+
+@pytest.mark.django_db
+def test_capture_leaves_a_withdrawn_claim_withdrawn(
+    pre_auth_sd: SecurityDeposit, damage_claim: DamageClaim
+) -> None:
+    """A WITHDRAWN linked claim is not silently revived to SETTLED by a capture."""
+    from reservations.enums import DamageClaimStatus
+    from reservations.services.damage_claims import DamageClaimService
+
+    DamageClaimService.withdraw(damage_claim, actor=None)
+    SecurityDepositService.hold(pre_auth_sd, gateway_response={"provider": "flywire"}, actor=None)
+    SecurityDepositService.claim(
+        pre_auth_sd, damage_claim=damage_claim, captured_amount=Decimal("250.00"), actor=None
+    )
+
+    damage_claim.refresh_from_db()
+    assert damage_claim.status == DamageClaimStatus.WITHDRAWN.value
+
+
 # --- BUG-008: the damage_claim link is a real FK ------------------------------
 
 

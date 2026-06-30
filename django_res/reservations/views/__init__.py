@@ -22,7 +22,11 @@ from reservations.views.client import ClientListView
 from reservations.views.concierge import BookingConciergeItemViewSet
 from reservations.views.concierge_overview import ConciergeOverviewViewSet
 from reservations.views.contact_reads import ContactCustomerReadViewSet
-from reservations.views.damage_claim import DamageClaimViewSet
+from reservations.views.damage_claim import (
+    DamageClaimPhotoDetailView,
+    DamageClaimPhotoListCreateView,
+    DamageClaimViewSet,
+)
 from reservations.views.enquiry import EnquiryNoteViewSet, EnquiryViewSet
 from reservations.views.owner import (
     OwnerBlockViewSet,
@@ -55,6 +59,8 @@ __all__ = [
     "ClientListView",
     "ConciergeOverviewViewSet",
     "ContactCustomerReadViewSet",
+    "DamageClaimPhotoDetailView",
+    "DamageClaimPhotoListCreateView",
     "DamageClaimViewSet",
     "EnquiryNoteViewSet",
     "EnquiryViewSet",

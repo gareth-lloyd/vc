@@ -26,6 +26,8 @@ from reservations.views import (
     ClientListView,
     ConciergeOverviewViewSet,
     ContactCustomerReadViewSet,
+    DamageClaimPhotoDetailView,
+    DamageClaimPhotoListCreateView,
     DamageClaimViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
@@ -353,6 +355,18 @@ _damage_claim_routes: list[URLPattern | URLResolver] = [
             }
         ),
         name="booking-damage-claim-detail",
+    ),
+    # Photos nested under a claim (slash-separated, so the `<int:pk>` detail
+    # route above can't swallow them). Double-scoped by booking + claim.
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos",
+        DamageClaimPhotoListCreateView.as_view(),
+        name="booking-damage-claim-photos",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos/<int:photo_id>",
+        DamageClaimPhotoDetailView.as_view(),
+        name="booking-damage-claim-photo-detail",
     ),
 ]
 

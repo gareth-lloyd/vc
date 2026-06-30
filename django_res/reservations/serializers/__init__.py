@@ -25,6 +25,7 @@ from reservations.serializers.contact import (
 )
 from reservations.serializers.damage_claim import (
     DamageClaimPhotoSerializer,
+    DamageClaimPhotoWriteSerializer,
     DamageClaimSerializer,
     DamageClaimWriteSerializer,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "ContactQuotationSerializer",
     "ContactTravelPreferenceSerializer",
     "DamageClaimPhotoSerializer",
+    "DamageClaimPhotoWriteSerializer",
     "DamageClaimSerializer",
     "DamageClaimWriteSerializer",
     "EnquiryDetailSerializer",

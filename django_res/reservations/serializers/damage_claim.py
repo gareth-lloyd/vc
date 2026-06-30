@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from django.conf import settings
 from rest_framework import serializers
 
 from reservations.models import DamageClaim, DamageClaimPhoto
@@ -26,6 +27,25 @@ class DamageClaimPhotoSerializer(serializers.ModelSerializer[DamageClaimPhoto]):
         if not obj.image:
             return None
         return obj.image.url
+
+
+class DamageClaimPhotoWriteSerializer(serializers.Serializer[DamageClaimPhoto]):
+    """Multipart upload: the evidence image plus an optional caption.
+
+    Bytes land wherever `STORAGES["default"]` points — local MEDIA_ROOT in
+    dev/test, the S3 bucket on staging/prod. Mirrors
+    `PropertyImageWriteSerializer`'s `MAX_IMAGE_BYTES` guard.
+    """
+
+    image = serializers.ImageField()
+    caption = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate_image(self, value: object) -> object:
+        max_bytes: int = settings.MAX_IMAGE_BYTES
+        size = getattr(value, "size", 0)
+        if size > max_bytes:
+            raise serializers.ValidationError(f"Image is {size} bytes; the maximum is {max_bytes}.")
+        return value
 
 
 class DamageClaimSerializer(serializers.ModelSerializer[DamageClaim]):

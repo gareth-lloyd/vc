@@ -1021,6 +1021,93 @@ def test_assign_enquiry__sets_assigned_to(
 
 
 @pytest.mark.django_db
+def test_assign_enquiry__rejects_non_staff_user(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    # The Andreas case: a non-staff owner-portal user (even hand-bumped to
+    # role=admin) must be rejected at the boundary, not just hidden by the FE.
+    owner = User.objects.create_user(
+        is_staff=False,
+        email="owner@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:assign",
+        {"user": owner.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.assigned_to_id is None
+
+
+@pytest.mark.django_db
+def test_assign_enquiry__rejects_staff_viewer(
+    api_client: APIClient, staff: User, viewer: User, enquiry: Enquiry
+) -> None:
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:assign",
+        {"user": viewer.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    enquiry.refresh_from_db()
+    assert enquiry.assigned_to_id is None
+
+
+@pytest.mark.django_db
+def test_assign_enquiry__allows_unassign(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    enquiry.assigned_to = staff
+    enquiry.save(update_fields=["assigned_to"])
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/enquiries/{enquiry.pk}:assign",
+        {"user": None},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    enquiry.refresh_from_db()
+    assert enquiry.assigned_to_id is None
+
+
+@pytest.mark.django_db
+def test_write_enquiry__rejects_non_staff_assignee(
+    api_client: APIClient, staff: User, enquiry: Enquiry
+) -> None:
+    # The serializer is the universal write boundary — a PATCH carrying a
+    # non-staff assigned_to must 400 too (not only the :assign action).
+    owner = User.objects.create_user(
+        is_staff=False,
+        email="owner2@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/enquiries/{enquiry.pk}",
+        {"assigned_to": owner.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "assigned_to" in response.data["field_errors"]
+    enquiry.refresh_from_db()
+    assert enquiry.assigned_to_id is None
+
+
+@pytest.mark.django_db
 def test_convert_enquiry__transitions_to_converted(
     api_client: APIClient,
     staff: User,

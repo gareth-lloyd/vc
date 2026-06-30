@@ -18,6 +18,11 @@ if TYPE_CHECKING:
 # on. Named once so the boundary guards and the permission classes can't drift.
 ASSIGNABLE_STAFF_ROLES = frozenset({StaffRole.ADMIN.value, StaffRole.RESERVATIONS.value})
 
+# Rejection message shared by the enquiry/booking assignee guards.
+NON_OPERATOR_ASSIGNEE_MSG = (
+    "Assignee must be an active staff member with a reservations or admin role."
+)
+
 
 def effective_staff_role(user: Any) -> str | None:
     """The staff role that actually applies to `user`, or `None`.

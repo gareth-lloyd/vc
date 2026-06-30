@@ -6,6 +6,8 @@ from typing import Any
 
 from rest_framework import serializers
 
+from accounts.models import User
+from core.api.permissions import NON_OPERATOR_ASSIGNEE_MSG, is_assignable_operator
 from reservations.enums import EnquiryStatus, QuotationStatus
 from reservations.models import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.serializers._contact_reads import contact_email, contact_name, contact_phone
@@ -219,6 +221,13 @@ class EnquiryWriteSerializer(serializers.ModelSerializer[Enquiry]):
             "site_source",
             "inbound_message",
         ]
+
+    def validate_assigned_to(self, value: User | None) -> User | None:
+        # Server-side enforcement of the assignable-operator rule — the API
+        # must not trust the FE picker. Unassign (None) always allowed.
+        if value is not None and not is_assignable_operator(value):
+            raise serializers.ValidationError(NON_OPERATOR_ASSIGNEE_MSG)
+        return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         # Enquiry dates are an optional, independent capture surface (the model

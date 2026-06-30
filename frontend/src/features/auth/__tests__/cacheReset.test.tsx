@@ -79,6 +79,24 @@ describe("auth boundaries reset the whole query cache", () => {
     await waitFor(() => expect(queryClient.getQueryData(LEAKY_KEY)).toBeUndefined());
   });
 
+  it("useLogin (no 2FA) marks the store authenticated from the login payload", async () => {
+    server.use(
+      http.post("/api/v1/auth/login", () =>
+        HttpResponse.json({ tfa_required: false, user: fixtureUser }),
+      ),
+    );
+    const queryClient = makeClient();
+
+    const { result } = renderHook(() => useLogin(), { wrapper: wrapperFor(queryClient) });
+    await result.current.mutateAsync({ email: "ops@vc.test", password: "secret" });
+
+    // The login response already carries the user — the store must flip to
+    // "authenticated" synchronously, so the redirect doesn't lose the race
+    // against the background useMe refetch (the "submit twice" bug).
+    await waitFor(() => expect(useAuthStore.getState().status).toBe("authenticated"));
+    expect(useAuthStore.getState().user?.email).toBe("ops@vc.test");
+  });
+
   it("useLogin with 2FA required does NOT clear yet (challenge still pending)", async () => {
     server.use(
       http.post("/api/v1/auth/login", () =>

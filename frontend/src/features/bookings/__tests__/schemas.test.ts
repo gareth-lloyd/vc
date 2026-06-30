@@ -24,7 +24,6 @@ const baseListItem = {
   reference: "B-AAA-001",
   status: "deposit_paid" as const,
   property: 12,
-  guest: 99,
   agent: null,
   assigned_to: null,
   date_from: "2026-07-01",
@@ -71,6 +70,14 @@ describe("bookingListItemSchema", () => {
     const parsed = bookingListItemSchema.parse(baseListItem);
     expect(parsed.reference).toBe("B-AAA-001");
     expect(parsed.property_name).toBeUndefined();
+  });
+
+  // GAP-045 deleted the Guest model: the booking payload no longer carries a
+  // raw `guest` FK, only the denormalised `guest_name` / `guest_email`. The
+  // schema must not require it, or every list/detail fetch fails validation.
+  it("parses a payload with no `guest` field", () => {
+    expect(() => bookingListItemSchema.parse(baseListItem)).not.toThrow();
+    expect("guest" in baseListItem).toBe(false);
   });
 
   it("parses a payload WITH denormalised name fields", () => {

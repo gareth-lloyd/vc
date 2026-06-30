@@ -23,7 +23,6 @@ const bookingFixture = {
   reference: "B-PAY-001",
   status: "awaiting_balance",
   property: 12,
-  guest: 99,
   agent: null,
   assigned_to: null,
   date_from: "2026-07-01",

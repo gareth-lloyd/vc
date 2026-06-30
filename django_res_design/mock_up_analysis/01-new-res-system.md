@@ -312,6 +312,7 @@ Settings
   - **`Trade` flag** overlaps semantically with the Agent record — i.e. a guest can be "trade" without being a formalised Agent. New behaviour.
   - **"Connected Contacts" with relationship enum** — implies a `GuestRelationship` model (self-referential or to a Contact). Not in `01-domain-model.md`.
   - **"Quoted regions" and "Booked regions" chips** on the list view — derived/cached, but mockup makes them prominent. Implies a per-client analytics rollup.
+- **Decision (owner Loom 2026-06-29):** the VIP/Trade/Repeat list chips are **one-click filters** (Repeat = derived `is_repeat_customer`, not a stored tag) — GAP-053. The 11-flag tag editor on the detail moves from a **dialog to inline checkboxes** and is **client-only** (hidden on Suppliers) — GAP-053. Client Information **address + notes are editable** (not display-only) and the detail shows derived **contact-type badge(s)** — GAP-052. Agents appear **in this list** behind the direct/agent filter, not on a separate page (see §2.13). Recorded in `10-decisions.md`.
 
 ### 2.13 Agents
 
@@ -329,6 +330,7 @@ Settings
   - **Agent type Individual vs Company as a first-class toggle** with **Sub-Agents** as a sub-collection — this is a real structural difference from "Contact with a role". The spec models Agent as Contact + role; the mockup models Agent (Company) → Sub-Agents (1:N), separate from Contacts. See §3.
   - **"Agent nick name"** field is new — used to refer to the agent in client-facing materials.
   - Mockup has a **separate "Agents" sidebar entry** distinct from "Suppliers" (which is the existing Contacts page) — confirming the spec's open question (in `workflows/07-enquiry/README.md §Open design questions for the Django redesign`, lines 33+) about whether agents are first-class.
+- **Decision (owner Loom 2026-06-29) — OVERRULED.** The owner overruled Ben's separate-Agents-page model: "an agent is effectively a client … should sit in the same list, just a different category." **No separate Agents page.** Agents fold into the **Clients** list (§2.12) behind a direct/agent filter; B2B agency **companies** get their own **Companies** section (`Organisation`, GAP-046). The "Agent nick name" field and company→sub-agents shape still need a home on the Clients/Companies surfaces. Recorded in `10-decisions.md`; GAP-046/047.
 
 ### 2.14 Suppliers (= `ContactsPage`)
 
@@ -345,6 +347,7 @@ Settings
 - **Departures:**
   - **Page is labelled "Suppliers"** but the underlying entity is the legacy `Contact` with roles `Owner | Agent | Villa Admin | Villa Manager | Management Company`. Confusing dual nomenclature — see §5 Conflicts.
   - **Note:** there's *also* a separate `Suppliers` concept inside Concierge for in-resort vendors (chef, transfers, car hire), managed in **Settings → Concierge Settings → Suppliers** and per-booking on the **Concierge Suppliers tab**. Two different concepts share the word "Supplier". This needs renaming.
+- **Decision (owner Loom 2026-06-29):** confirm the rename — the operator-side directory is **"Suppliers"** (was "Contacts"), **capacity-scoped** to owner/villa-manager/villa-admin/management-company people (customers + agents excluded → Clients §2.12). The role multi-select reconciles to **Owner / Agent / Villa Admin / Villa Manager / Management Company** (GAP-048), `management_company` may point at an `Organisation`. **Address editable**, **type badges** on detail (GAP-052), **tags hidden here** (GAP-053). The **Suppliers ↔ Concierge-Suppliers name collision** must be resolved (Q-007). Recorded in `10-decisions.md`.
 
 ### 2.15 Finance & Invoicing
 

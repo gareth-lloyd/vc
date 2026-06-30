@@ -167,8 +167,7 @@
       "due": "Οφειλόμενο"
     },
     "fallback": {
-      "property_with_id": "Ακίνητο #{{id}}",
-      "guest_with_id": "Επισκέπτης #{{id}}"
+      "property_with_id": "Ακίνητο #{{id}}"
     }
   },
   "overview": {

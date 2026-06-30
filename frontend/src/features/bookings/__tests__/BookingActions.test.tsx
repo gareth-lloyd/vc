@@ -39,7 +39,6 @@ function makeBookingDetail(overrides: Partial<BookingDetail> = {}): BookingDetai
     reference: "B-AAA-001",
     status: "draft",
     property: 12,
-    guest: 99,
     agent: null,
     assigned_to: null,
     date_from: "2026-07-01",

@@ -134,13 +134,18 @@ API surface: `GET /roles` is a read-only enum listing for FE dropdowns; there is
 
 ### Contact roles (`ContactRole` on `PropertyContactAssignment`)
 
-How is a `Person` (a CONTACT-kind one — an owner / manager / agent) related to a `Property`? Different concept entirely — referenced from `properties.PropertyContactAssignment`:
+How is a `Person` (a CONTACT-kind one — an owner / manager / agent) related to a `Property`? Different concept entirely — referenced from `properties.PropertyContactAssignment`.
+
+> ⚠️ **Taxonomy reconciliation pending — GAP-048.** The owner / legacy / mockup §2.14 set is **Owner / Agent / Villa Admin / Villa Manager / Management Company**. The built enum (below) instead reads `OWNER / MANAGER / AGENT / HOUSEKEEPER / OWNERS_REPRESENTATIVE` — it drops `villa_admin` + `management_company` and adds `housekeeper` + `owners_rep`. GAP-048 re-introduces the two missing roles, records the keep/drop call on housekeeper/owners_rep in `10-decisions.md`, and lets `management_company` point at an `Organisation` (GAP-046), not only a `Person`.
 
 ```python
 class ContactRole(models.TextChoices):
     OWNER = "owner", "Owner"
-    MANAGER = "manager", "Manager"
     AGENT = "agent", "Agent"
+    VILLA_ADMIN = "villa_admin", "Villa Admin"          # GAP-048: re-introduced
+    MANAGER = "manager", "Villa Manager"
+    MANAGEMENT_COMPANY = "management_company", "Management Company"  # GAP-048: re-introduced
+    # Kept-or-dropped pending the GAP-048 / 10-decisions call:
     HOUSEKEEPER = "housekeeper", "Housekeeper"
     OWNERS_REPRESENTATIVE = "owners_rep", "Owner's representative"
 ```
@@ -285,6 +290,16 @@ There is **one** `accounts.Person` human-identity model — there is no separate
 `kind` is a directory filter hint (it powers `/contacts?kind=customer`), **not** access control — customer-history reads and agent relations work regardless of `kind`. Both kinds carry `marketing_consent`, the opportunistic `user` OneToOne, and the `PersonEmail` / `PersonPhone` channel children.
 
 Multi-person bookings link a `Booking` to several `Person` rows via `reservations.BookingGuest` (`LEAD` / `CO_TRAVELLER` / `PAYER` / `CC_ONLY`); the LEAD is mirrored onto `Booking.person` for read convenience. See `05-reservations.md`.
+
+### Directory views over the one `Person` (owner Loom 2026-06-29)
+
+The single `Person` identity surfaces in the SPA as **three capacity-scoped directory views**, not three tables:
+
+- **Clients** — `kind=CUSTOMER` **and agent-capacity** people (an agent is a client with a different category, filtered direct-vs-agent — the owner overruled the separate-Agents-page mockup §2.13; see `10-decisions.md`). Carries the client-only **tags** (GAP-040) and tag chip filters (GAP-053). Directory = GAP-047; profile = GAP-042.
+- **Suppliers** — operator-side `kind=CONTACT` people with a property role (owner / villa manager / villa admin / management company). Renamed from "Contacts" (GAP-048). Tags do **not** appear here.
+- **Companies** — B2B agency `Organisation`s (GAP-046).
+
+A **dual-capacity human** (owner who also rents; agent who books personally) is **one** `Person` appearing in more than one view, with **type badges** (GAP-052) showing every capacity they hold — surface the overlap, don't hide it. Contact **address and notes are operator-editable** on the detail (GAP-052, overturning the GAP-042 display-only call).
 
 ## Out of scope here
 

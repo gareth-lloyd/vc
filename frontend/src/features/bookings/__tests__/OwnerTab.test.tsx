@@ -33,7 +33,6 @@ function bookingFixture(
     reference: "B-OWN-001",
     status: "deposit_paid",
     property: 12,
-    guest: 99,
     agent: null,
     assigned_to: null,
     date_from: "2026-07-01",

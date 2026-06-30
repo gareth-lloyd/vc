@@ -27,7 +27,13 @@
   },
   "filters": {
     "filter_status_aria": "Φιλτράρισμα κατά κατάσταση",
-    "filter_capacity_aria": "Φιλτράρισμα κατά κανάλι"
+    "filter_capacity_aria": "Φιλτράρισμα κατά κανάλι",
+    "quick_chips_aria": "Γρήγορα φίλτρα"
+  },
+  "chips": {
+    "vip": "VIP",
+    "trade": "Επαγγελματίας",
+    "repeat": "Επαναλαμβανόμενος"
   },
   "empty": {
     "list_title": "Δεν υπάρχουν πελάτες που να ταιριάζουν με τα φίλτρα",

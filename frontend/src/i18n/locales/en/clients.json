@@ -27,7 +27,13 @@
   },
   "filters": {
     "filter_status_aria": "Filter by status",
-    "filter_capacity_aria": "Filter by channel"
+    "filter_capacity_aria": "Filter by channel",
+    "quick_chips_aria": "Quick filters"
+  },
+  "chips": {
+    "vip": "VIP",
+    "trade": "Trade",
+    "repeat": "Repeat"
   },
   "empty": {
     "list_title": "No clients match these filters",

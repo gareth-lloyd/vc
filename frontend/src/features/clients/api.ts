@@ -8,6 +8,8 @@ function toQuery(filters: ClientFilters): QueryParams {
     search: filters.search || undefined,
     status: filters.status || undefined,
     capacity: filters.capacity || undefined,
+    tags: filters.tags || undefined,
+    repeat: filters.repeat ? "true" : undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
   };

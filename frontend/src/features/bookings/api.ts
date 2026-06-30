@@ -18,6 +18,8 @@ import {
   bookingNotesResponseSchema,
   paymentRecordsListSchema,
   paymentTrackSchema,
+  refundSchema,
+  refundsListSchema,
   securityDepositSchema,
   type BookingChargeItem,
   type BookingConciergeItem,
@@ -40,6 +42,8 @@ import {
   type PaymentRecord,
   type PaymentTrack,
   type CaptureForDamagesInput,
+  type Refund,
+  type RefundRequestInput,
   type SecurityDeposit,
   type WaiveTrackInput,
 } from "./schemas";
@@ -354,6 +358,44 @@ export async function captureSecurityDepositForDamages(
 ): Promise<PaymentTrack> {
   const data = await apiSend<unknown>("POST", `/bookings/${id}/security:claim`, body);
   return paymentTrackSchema.parse(data);
+}
+
+// ----------------------------------------------------------------------
+// Refunds (wf 17)
+// ----------------------------------------------------------------------
+
+// The booking refunds endpoint returns a plain array (not DRF-paginated).
+export async function fetchBookingRefunds(id: BookingId): Promise<Refund[]> {
+  const data = await apiGet<unknown>(`/bookings/${id}/refunds`);
+  return refundsListSchema.parse(data);
+}
+
+export async function createRefund(id: BookingId, body: RefundRequestInput): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}/refunds`, body);
+  return refundSchema.parse(data);
+}
+
+// The lifecycle actions are top-level colon-verbs on the Refund itself
+// (`POST /refunds/{id}:<verb>`), NOT booking-nested — each returns the updated
+// Refund row.
+export async function approveRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:approve`);
+  return refundSchema.parse(data);
+}
+
+export async function rejectRefund(refundId: number, reason: string): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:reject`, { reason });
+  return refundSchema.parse(data);
+}
+
+export async function executeRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:execute`);
+  return refundSchema.parse(data);
+}
+
+export async function cancelRefund(refundId: number): Promise<Refund> {
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:cancel`);
+  return refundSchema.parse(data);
 }
 
 // ----------------------------------------------------------------------

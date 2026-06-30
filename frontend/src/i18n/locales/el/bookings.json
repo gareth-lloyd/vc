@@ -110,6 +110,35 @@
       "held": "Σε εκκρεμότητα",
       "refunded": "Επιστράφηκε",
       "partially_refunded": "Μερική επιστροφή"
+    },
+    "refund_status": {
+      "pending": "Αναμονή έγκρισης",
+      "approved": "Εγκρίθηκε",
+      "rejected": "Απορρίφθηκε",
+      "executing": "Σε εξέλιξη — αναμονή διακανονισμού",
+      "succeeded": "Ολοκληρώθηκε",
+      "failed": "Απέτυχε",
+      "cancelled": "Ακυρώθηκε"
+    },
+    "refund_method": {
+      "online_gateway": "Διαδικτυακή πύλη",
+      "manual_bank_transfer": "Χειροκίνητο τραπεζικό έμβασμα",
+      "offline": "Εκτός σύνδεσης"
+    },
+    "refund_reason_code": {
+      "cancellation": "Ακύρωση",
+      "overpayment": "Υπερπληρωμή",
+      "goodwill": "Καλή θέληση",
+      "security_deposit_release": "Αποδέσμευση εγγύησης",
+      "duplicate_charge": "Διπλή χρέωση",
+      "other": "Άλλο"
+    },
+    "refund_purpose_track": {
+      "deposit": "Προκαταβολή",
+      "balance": "Υπόλοιπο",
+      "security_deposit": "Εγγύηση",
+      "adjustment": "Προσαρμογή",
+      "goodwill": "Καλή θέληση"
     }
   },
   "columns": {

@@ -110,6 +110,35 @@
       "held": "Held",
       "refunded": "Refunded",
       "partially_refunded": "Partially refunded"
+    },
+    "refund_status": {
+      "pending": "Pending approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "executing": "Executing — awaiting settlement",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "refund_method": {
+      "online_gateway": "Online gateway",
+      "manual_bank_transfer": "Manual bank transfer",
+      "offline": "Offline"
+    },
+    "refund_reason_code": {
+      "cancellation": "Cancellation",
+      "overpayment": "Overpayment",
+      "goodwill": "Goodwill",
+      "security_deposit_release": "Security deposit release",
+      "duplicate_charge": "Duplicate charge",
+      "other": "Other"
+    },
+    "refund_purpose_track": {
+      "deposit": "Deposit",
+      "balance": "Balance",
+      "security_deposit": "Security deposit",
+      "adjustment": "Adjustment",
+      "goodwill": "Goodwill"
     }
   },
   "columns": {

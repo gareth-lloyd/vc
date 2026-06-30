@@ -448,6 +448,126 @@ export const captureForDamagesInputSchema = z.object({
 export type CaptureForDamagesInput = z.infer<typeof captureForDamagesInputSchema>;
 
 // ----------------------------------------------------------------------
+// Refunds (wf 17) — operator-driven refund requests against a booking,
+// driven through the approve → execute lifecycle. Read from the plain-array
+// `GET /bookings/{id}/refunds`; actions POST to `/refunds/{id}:<verb>`.
+// ----------------------------------------------------------------------
+
+export const refundStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+  "executing",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+export type RefundStatus = z.infer<typeof refundStatusSchema>;
+
+export const refundMethodSchema = z.enum(["online_gateway", "manual_bank_transfer", "offline"]);
+export type RefundMethod = z.infer<typeof refundMethodSchema>;
+
+export const refundReasonCodeSchema = z.enum([
+  "cancellation",
+  "overpayment",
+  "goodwill",
+  "security_deposit_release",
+  "duplicate_charge",
+  "other",
+]);
+export type RefundReasonCode = z.infer<typeof refundReasonCodeSchema>;
+
+export const refundPurposeTrackSchema = z.enum([
+  "deposit",
+  "balance",
+  "security_deposit",
+  "adjustment",
+  "goodwill",
+]);
+export type RefundPurposeTrack = z.infer<typeof refundPurposeTrackSchema>;
+
+export function refundStatusLabel(status: RefundStatus): string {
+  return i18n.t(`bookings:labels.refund_status.${status}`);
+}
+
+export function refundMethodLabel(method: RefundMethod): string {
+  return i18n.t(`bookings:labels.refund_method.${method}`);
+}
+
+export function refundReasonCodeLabel(code: RefundReasonCode): string {
+  return i18n.t(`bookings:labels.refund_reason_code.${code}`);
+}
+
+export function refundPurposeTrackLabel(track: RefundPurposeTrack): string {
+  return i18n.t(`bookings:labels.refund_purpose_track.${track}`);
+}
+
+export const refundReasonCodeOptions = (): Array<{ value: RefundReasonCode; label: string }> =>
+  refundReasonCodeSchema.options.map((value) => ({ value, label: refundReasonCodeLabel(value) }));
+
+export const refundMethodOptions = (): Array<{ value: RefundMethod; label: string }> =>
+  refundMethodSchema.options.map((value) => ({ value, label: refundMethodLabel(value) }));
+
+export const refundPurposeTrackOptions = (): Array<{ value: RefundPurposeTrack; label: string }> =>
+  refundPurposeTrackSchema.options.map((value) => ({
+    value,
+    label: refundPurposeTrackLabel(value),
+  }));
+
+// `currency` serializes as a PK int only — there is no denormalised
+// `currency_code`, so the UI formats refund money with the booking's currency.
+export const refundSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  booking: z.number().optional(),
+  against_payment: z.number().nullable().optional(),
+  purpose_track: refundPurposeTrackSchema,
+  amount: z.string(),
+  currency: z.number(),
+  status: refundStatusSchema,
+  reason_code: refundReasonCodeSchema,
+  reason_notes: z.string().optional().default(""),
+  method: refundMethodSchema,
+  requested_by: z.number().nullable().optional(),
+  requested_at: z.string().nullable().optional(),
+  approved_by: z.number().nullable().optional(),
+  approved_at: z.string().nullable().optional(),
+  rejected_by: z.number().nullable().optional(),
+  rejected_at: z.string().nullable().optional(),
+  rejection_reason: z.string().optional().default(""),
+  executed_by: z.number().nullable().optional(),
+  executed_at: z.string().nullable().optional(),
+  cancelled_at: z.string().nullable().optional(),
+  settled_at: z.string().nullable().optional(),
+  failure_reason: z.string().optional().default(""),
+  meta: z.record(z.string(), z.unknown()).optional().default({}),
+  security_deposit: z.number().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type Refund = z.infer<typeof refundSchema>;
+
+// The booking refunds endpoint returns a bare array (not DRF-paginated),
+// ordered -created_at — mirror `paymentRecordsListSchema`.
+export const refundsListSchema = z.array(refundSchema);
+
+// Body for `POST /bookings/{id}/refunds`. `currency` is omitted — the backend
+// defaults it to the booking's. `against_payment` is deferred (v1 refunds are
+// booking-level), so it is absent here too.
+export const refundRequestInputSchema = z.object({
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+  purpose_track: refundPurposeTrackSchema,
+  reason_code: refundReasonCodeSchema,
+  method: refundMethodSchema,
+  reason_notes: z.string().trim().max(2000),
+});
+export type RefundRequestInput = z.infer<typeof refundRequestInputSchema>;
+
+// ----------------------------------------------------------------------
 // Manual charge items — signed money lines outside the pricing snapshot.
 // ----------------------------------------------------------------------
 

@@ -70,6 +70,11 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
   partially_refunded: "active",
   released: "archived",
   refunded: "archived",
+  // Refund workflow (wf 17). `pending`/`approved`/`succeeded`/`failed`/
+  // `cancelled` already map above; `executing` is an in-flight (not green)
+  // state and `rejected` is a closed-without-paying state.
+  executing: "pending",
+  rejected: "archived",
 };
 
 interface StatusBadgeProps {

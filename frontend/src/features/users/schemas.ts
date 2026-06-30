@@ -58,6 +58,7 @@ export type UserUpdateInput = z.infer<typeof userUpdateInputSchema>;
 export interface UserFilters {
   role?: string;
   is_active?: boolean;
+  is_staff?: boolean;
   search?: string;
   page?: number;
   ordering?: string;

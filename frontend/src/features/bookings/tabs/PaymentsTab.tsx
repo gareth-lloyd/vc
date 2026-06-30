@@ -2,9 +2,12 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { Section } from "@/components/data/Section";
-import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { useHasAccountsRole, useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useBalanceTrack, useDepositTrack, useSecurityTrack } from "../hooks";
+import { DamageClaimsSection } from "../components/DamageClaimsSection";
 import { PaymentTrack } from "../components/PaymentTrack";
+import { RefundsSection } from "../components/RefundsSection";
+import { SecurityDepositPanel } from "../components/SecurityDepositPanel";
 import { TransactionsTable } from "../components/TransactionsTable";
 import type { TrackName } from "../api";
 import type { BookingOutletContext } from "../BookingDetailLayout";
@@ -13,6 +16,9 @@ export function PaymentsTab() {
   const { t } = useTranslation("bookings");
   const { booking } = useOutletContext<BookingOutletContext>();
   const canWrite = useHasReservationsRole();
+  // SD money moves (release / capture) are accounts work, separate from the
+  // reservations-gated claim filing — same split as the backend gates.
+  const canMoveSecurityMoney = useHasAccountsRole();
   const currency = booking.currency_code ?? null;
 
   const tracks: { name: TrackName; label: string }[] = useMemo(
@@ -57,6 +63,16 @@ export function PaymentsTab() {
       <Section title={t("payments.transactions_heading")}>
         <TransactionsTable bookingId={booking.id} currency={currency} />
       </Section>
+
+      <DamageClaimsSection bookingId={booking.id} currency={currency} canWrite={canWrite} />
+
+      <SecurityDepositPanel
+        bookingId={booking.id}
+        currency={currency}
+        canWrite={canMoveSecurityMoney}
+      />
+
+      <RefundsSection bookingId={booking.id} currency={currency} canWrite={canMoveSecurityMoney} />
     </div>
   );
 }

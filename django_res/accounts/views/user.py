@@ -27,6 +27,7 @@ class UserFilterSet(FilterSet):
         fields = {
             "role": ["exact"],
             "is_active": ["exact"],
+            "is_staff": ["exact"],
         }
 
 

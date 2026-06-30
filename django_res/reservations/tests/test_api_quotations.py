@@ -86,6 +86,46 @@ def test_list_quotations(api_client: APIClient, staff: User, quotation: Quotatio
 
 
 @pytest.mark.django_db
+def test_list_quotations_q_filters_by_reference_customer_name_and_email(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    terms: TermsVersion,
+) -> None:
+    """`?q=` searches the quotation reference + the unified customer's
+    name/email (GAP-045 `person`), mirroring the booking-list `filter_q`.
+    Without it the term was silently dropped and every quotation came back."""
+    from typing import cast
+
+    from accounts.factories import CustomerPersonFactory
+
+    grace = cast(
+        Person,
+        CustomerPersonFactory(
+            first_name="Grace", last_name="Hopper", primary_email="grace@example.com"
+        ),
+    )
+    other = Quotation.objects.create(
+        enquiry=grace.enquiries_as_customer.create(),
+        person=grace,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=terms,
+    )
+    api_client.force_login(staff)
+
+    by_name = api_client.get("/api/v1/quotations?q=Hopper")
+    assert {r["id"] for r in by_name.data["results"]} == {other.pk}
+
+    # The unified customer email lives in the multi-valued PersonEmail child —
+    # matched via a scalar Exists() so the paginator COUNT stays honest.
+    by_email = api_client.get("/api/v1/quotations?q=ada@example.com")
+    assert {r["id"] for r in by_email.data["results"]} == {quotation.pk}
+
+    by_ref = api_client.get(f"/api/v1/quotations?q={quotation.reference}")
+    assert {r["id"] for r in by_ref.data["results"]} == {quotation.pk}
+
+
+@pytest.mark.django_db
 def test_agent_name_falls_back_to_agency_when_agent_unnamed(
     api_client: APIClient, staff: User, quotation: Quotation
 ) -> None:

@@ -51,12 +51,30 @@ const STATUS_TO_KIND: Record<string, StatusKind> = {
   awaiting_deposit: "pending",
   awaiting_balance: "pending",
   hold: "pending",
+  open: "pending",
+  approved: "active",
+  settled: "active",
+  withdrawn: "archived",
   cancelled: "error",
   canceled: "error",
   declined: "error",
   expired: "error",
   failed: "error",
   overdue: "error",
+  // Security-deposit statuses (wf 8). `expired`/`failed` already map above.
+  awaiting_details: "pending",
+  awaiting_bt: "pending",
+  pre_authed: "active",
+  held: "active",
+  captured: "active",
+  partially_refunded: "active",
+  released: "archived",
+  refunded: "archived",
+  // Refund workflow (wf 17). `pending`/`approved`/`succeeded`/`failed`/
+  // `cancelled` already map above; `executing` is an in-flight (not green)
+  // state and `rejected` is a closed-without-paying state.
+  executing: "pending",
+  rejected: "archived",
 };
 
 interface StatusBadgeProps {

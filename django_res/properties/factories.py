@@ -434,3 +434,17 @@ class PropertyCalendarFeedFactory(DjangoModelFactory):
     url = factory.Sequence(lambda n: f"https://example.test/ical/{RUN_TOKEN}-{n}.ics")
     label = factory.Sequence(lambda n: f"Feed {RUN_TOKEN}-{n}")
     is_active = True
+
+
+class PropertyServiceFactory(DjangoModelFactory):
+    """An included, date-ranged service (chef, housekeeping…). Year-round by
+    default (null band); pass `applies_from`/`applies_to` for a seasonal one."""
+
+    class Meta:
+        model = models.PropertyService
+
+    property = factory.SubFactory(PropertyFactory)
+    name = factory.Sequence(lambda n: f"Service {RUN_TOKEN}-{n}")
+    copy = factory.Faker("sentence")
+    sort_order = factory.Sequence(lambda n: n)
+    is_active = True

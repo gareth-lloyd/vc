@@ -128,7 +128,8 @@ class RateCarryoverService:
                     else None
                 ),
                 is_active=anchor.is_active,
-                inclusion=anchor.inclusion,
+                # GAP-037: inclusions are property-scoped PropertyService rows
+                # that already persist across years — nothing to carry per-plan.
                 notes=f"Carried forward from plan #{anchor.pk} ({anchor.effective_from.year}).",
             )
             # Same active-card / approved-rule set the projection quotes, via the

@@ -13,7 +13,7 @@ from accounts.models import Person, User
 from core.enums import StaffRole
 from pricing.models import Currency, RateCard, RatePlan, RateRule
 from properties.enums import PrefilledChangeOverDay
-from properties.models import Property
+from properties.models import Property, PropertyService
 from properties.models.settings import PropertySettings
 from reservations.enums import QuotationStatus
 from reservations.models import (
@@ -622,8 +622,9 @@ def test_create_line_seeds_inclusions_from_winning_plan(
     rate_rule: object,
     plan: RatePlan,
 ) -> None:
-    plan.inclusion = "Daily maid service, pool heating"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(
+        property=property_, name="Maid", copy="Daily maid service, pool heating"
+    )
     api_client.force_login(staff)
 
     create = api_client.post(
@@ -653,8 +654,7 @@ def test_create_line_keeps_operator_supplied_inclusions(
     rate_rule: object,
     plan: RatePlan,
 ) -> None:
-    plan.inclusion = "Daily maid service"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(property=property_, name="Maid", copy="Daily maid service")
     api_client.force_login(staff)
 
     create = api_client.post(
@@ -686,8 +686,7 @@ def test_reprice_does_not_resurrect_blanked_inclusions(
 ) -> None:
     """An edit that triggers a reprice must not re-seed a deliberately
     blanked `inclusions` from the plan."""
-    plan.inclusion = "Daily maid service"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(property=property_, name="Maid", copy="Daily maid service")
     api_client.force_login(staff)
     create = api_client.post(
         f"/api/v1/quotations/{quotation.pk}/lines",
@@ -725,8 +724,7 @@ def test_manual_line_inclusions_not_seeded(
     plan: RatePlan,
 ) -> None:
     """Manual lines skip the engine, so there is no winning plan to seed from."""
-    plan.inclusion = "Daily maid service"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(property=property_, name="Maid", copy="Daily maid service")
     api_client.force_login(staff)
 
     create = api_client.post(

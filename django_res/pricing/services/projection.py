@@ -222,7 +222,6 @@ class RateProjectionService:
                 else None
             ),
             is_active=anchor.is_active,
-            inclusion=anchor.inclusion,
         )
 
         proj_cards: list[RateCard] = []

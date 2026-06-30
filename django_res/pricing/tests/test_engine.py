@@ -12,7 +12,7 @@ from core.tests import assert_max_queries
 from pricing.enums import ExtraCalc, ExtraKind
 from pricing.models import Currency, Extra, RateCard, RatePlan, RateRule
 from pricing.services import PricingContext, PricingEngine
-from properties.models import Property
+from properties.models import Property, PropertyService
 
 
 @pytest.mark.django_db
@@ -741,14 +741,15 @@ def test_quote_allow_projection_false_raises_even_with_anchor(
 
 
 @pytest.mark.django_db
-def test_breakdown_carries_plan_inclusion(
+def test_breakdown_carries_property_service_inclusion(
     property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    """The winning plan's `inclusion` text rides on the breakdown so the
-    builder can seed staged-line inclusions from it (legacy ResService.cs:1241
+    """The property's date-banded PropertyService copy rides on the breakdown so
+    the builder can seed staged-line inclusions from it (legacy ResService.cs:1241
     seeded line inclusions from the season)."""
-    plan.inclusion = "Daily maid service, pool heating"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(
+        property=property_, name="Maid", copy="Daily maid service, pool heating"
+    )
 
     quote = PricingEngine.quote(
         property=property_,
@@ -759,6 +760,101 @@ def test_breakdown_carries_plan_inclusion(
     )
 
     assert quote.breakdown["inclusion"] == "Daily maid service, pool heating"
+
+
+@pytest.mark.django_db
+def test_inclusion_reflects_service_date_band(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """A summer-only chef joins a year-round housekeeping service in July but
+    drops out in autumn — inclusions vary by stay date, not by rate season."""
+    PropertyService.objects.create(
+        property=property_, name="Housekeeping", copy="Daily housekeeping.", sort_order=0
+    )
+    PropertyService.objects.create(
+        property=property_,
+        name="Chef",
+        copy="Private chef.",
+        sort_order=1,
+        applies_from=date(2026, 6, 1),
+        applies_to=date(2026, 8, 31),
+    )
+
+    july = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 7, 4),
+        date_to=date(2026, 7, 11),
+        party=4,
+        currency=gbp,
+    )
+    assert july.breakdown["inclusion"] == "Daily housekeeping.\nPrivate chef."
+
+    # An out-of-band stay needs its own plan; reuse the same villa in November.
+    RateRule.objects.create(
+        card=rule.card,
+        date_from=date(2026, 11, 1),
+        date_to=date(2026, 11, 30),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("150.00"),
+    )
+    november = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 11, 7),
+        date_to=date(2026, 11, 14),
+        party=4,
+        currency=gbp,
+    )
+    assert november.breakdown["inclusion"] == "Daily housekeeping."
+
+
+@pytest.mark.django_db
+def test_inactive_service_excluded_from_inclusions(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """A deactivated service drops out of the inclusion blob."""
+    PropertyService.objects.create(
+        property=property_, name="Chef", copy="Private chef.", is_active=False
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+    assert quote.breakdown["inclusion"] == ""
+
+
+@pytest.mark.django_db
+def test_projected_quote_remaps_inclusions_to_anchor_year(
+    property_: Property, gbp: Currency, rule: RateRule
+) -> None:
+    """F1 guard: a future-year July quote, priced by projecting the 2026 anchor,
+    still surfaces the summer chef whose absolute band sits in 2026."""
+    PropertyService.objects.create(
+        property=property_, name="Housekeeping", copy="Daily housekeeping.", sort_order=0
+    )
+    PropertyService.objects.create(
+        property=property_,
+        name="Chef",
+        copy="Private chef.",
+        sort_order=1,
+        applies_from=date(2026, 6, 1),
+        applies_to=date(2026, 8, 31),
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2028, 7, 4),
+        date_to=date(2028, 7, 11),
+        party=4,
+        currency=gbp,
+    )
+
+    assert quote.is_projected is True
+    assert quote.breakdown["inclusion"] == "Daily housekeeping.\nPrivate chef."
 
 
 @pytest.mark.django_db
@@ -978,8 +1074,9 @@ def test_quote_reuses_a_preloaded_context_without_rate_queries(
     )
     assert context is not None
 
-    # Changeover/extras/discounts still hit the DB; the rate triple must not.
-    with assert_max_queries(3):
+    # Changeover/extras/discounts/services still hit the DB; the rate triple
+    # must not (services derive the GAP-037 inclusion blob — one property query).
+    with assert_max_queries(4):
         reused = PricingEngine.quote(
             property=property_,
             date_from=date(2026, 6, 10),

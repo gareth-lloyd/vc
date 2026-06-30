@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from accounts.enums import PersonPreferredMethod
 from properties.enums import PrefilledChangeOverDay
+from properties.models import PropertyService
 from properties.models.settings import PropertySettings
 from reservations.enums import (
     BookingHoldReason,
@@ -586,9 +587,7 @@ def test_create_from_enquiry_seeds_line_inclusions_from_plan(
 ) -> None:
     """Service-path lines are seeded from the winning plan's inclusion text
     too — parity with the API `add_line` path (legacy ResService.cs:1241)."""
-    plan = rate_rule.card.plan
-    plan.inclusion = "Daily maid service"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(property=property_, name="Maid", copy="Daily maid service")
     enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
 
     quotation = QuotationService.create_from_enquiry(

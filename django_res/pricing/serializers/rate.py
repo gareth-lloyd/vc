@@ -163,7 +163,6 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "effective_to",
             "is_active",
             "notes",
-            "inclusion",
         ]
         read_only_fields = ["id"]
 

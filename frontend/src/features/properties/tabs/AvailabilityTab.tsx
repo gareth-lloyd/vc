@@ -5,6 +5,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { resolveDragRange, type DragRange } from "@/lib/dragRange";
+import { formatRelative } from "@/lib/format/date";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +26,7 @@ import {
   usePropertyBookingsForRange,
   usePropertyHolds,
   useDeletePropertyBlock,
+  useConfirmPropertyAvailability,
 } from "../hooks";
 import type { AvailabilityCell, PropertyDetail } from "../schemas";
 import {
@@ -80,6 +82,16 @@ export function AvailabilityTab() {
   // open the edit dialog, so skip the fetch entirely for them.
   const holds = usePropertyHolds(canWrite ? property.id : undefined, from, to);
   const deleteMutation = useDeletePropertyBlock(property.id);
+  const confirmMutation = useConfirmPropertyAvailability({ id: property.id, slug: property.slug });
+
+  const handleConfirmAvailability = async () => {
+    try {
+      await confirmMutation.mutateAsync();
+      toast.success(t("availability.freshness.confirm_toast"));
+    } catch {
+      toast.error(t("availability.freshness.confirm_failed"));
+    }
+  };
 
   const cellByIso = useMemo(
     () => cellsByDate<AvailabilityCell>(calendar.data?.cells),
@@ -200,6 +212,28 @@ export function AvailabilityTab() {
     </Tooltip>
   );
 
+  const confirmButton = canWrite ? (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleConfirmAvailability}
+      disabled={confirmMutation.isPending}
+    >
+      {t("availability.freshness.confirm_button")}
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button variant="outline" size="sm" disabled>
+            {t("availability.freshness.confirm_button")}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("availability.freshness.confirm_disabled_tooltip")}</TooltipContent>
+    </Tooltip>
+  );
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -234,6 +268,44 @@ export function AvailabilityTab() {
           />
           {addButton}
         </div>
+      </div>
+
+      {/* GAP-033: three separate freshness signals, never conflated. The
+          calendar-import line only appears for villas with an active iCal feed;
+          "Confirmed by VC staff" is the staff vouch the button refreshes. */}
+      <div className="border-border bg-muted/30 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm">
+        <dl className="flex flex-wrap gap-x-6 gap-y-1">
+          <div className="flex items-center gap-1.5">
+            <dt className="text-muted-foreground">
+              {t("availability.freshness.owner_updated_label")}
+            </dt>
+            <dd className="text-foreground font-medium">
+              {formatRelative(property.availability_owner_updated_at)}
+            </dd>
+          </div>
+          {property.has_active_ical_feed ? (
+            <div className="flex items-center gap-1.5">
+              <dt className="text-muted-foreground">
+                {t("availability.freshness.calendar_imported_label")}
+              </dt>
+              <dd className="text-foreground font-medium">
+                {formatRelative(property.calendar_last_imported_at)}
+              </dd>
+            </div>
+          ) : null}
+          <div className="flex items-center gap-1.5">
+            <dt className="text-muted-foreground">{t("availability.freshness.confirmed_label")}</dt>
+            <dd className="text-foreground font-medium">
+              {property.availability_confirmed_at
+                ? t("availability.freshness.confirmed_value", {
+                    name: property.availability_confirmed_by_name ?? "",
+                    when: formatRelative(property.availability_confirmed_at),
+                  })
+                : t("availability.freshness.not_confirmed")}
+            </dd>
+          </div>
+        </dl>
+        {confirmButton}
       </div>
 
       <div className="flex flex-wrap gap-4 text-xs">

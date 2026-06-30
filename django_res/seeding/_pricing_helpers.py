@@ -85,7 +85,14 @@ def _next_month(day: date) -> date:
 
 def _season_segments(window_from: date, window_to: date) -> list[tuple[date, date, int]]:
     """Maximal same-season month runs covering `[window_from, window_to]`
-    (inclusive on both ends, matching RateRule date semantics), gap-free."""
+    (inclusive on both ends, matching RateRule date semantics), gap-free.
+
+    A window starting on a month's last day that rolls straight into a
+    different season (e.g. May 31 Mid → June 1 Peak) would otherwise leave a
+    1-day `from == to` segment, which the strict `raterule_date_from_lt_date_to`
+    CHECK rejects. Such a sliver is folded into its neighbour so every segment
+    has `from < to` while coverage stays gap-free.
+    """
     segments: list[tuple[date, date, int]] = []
     run_start = window_from
     current = _MONTH_SEASON[window_from.month]
@@ -97,7 +104,31 @@ def _season_segments(window_from: date, window_to: date) -> list[tuple[date, dat
             run_start, current = cursor, season
         cursor = _next_month(cursor)
     segments.append((run_start, window_to, current))
-    return segments
+    return _merge_thin_segments(segments)
+
+
+def _merge_thin_segments(
+    segments: list[tuple[date, date, int]],
+) -> list[tuple[date, date, int]]:
+    """Fold any zero-width (`from == to`) segment into a neighbour, keeping the
+    cover gap-free and every surviving segment strictly positive. A leading
+    sliver extends the following segment's start back; any other sliver extends
+    the previous segment's end forward."""
+    merged: list[tuple[date, date, int]] = []
+    carry_from: date | None = None
+    for seg_from, seg_to, season in segments:
+        if carry_from is not None:
+            seg_from, carry_from = carry_from, None
+        if seg_from == seg_to:
+            if merged:
+                prev_from, _prev_to, prev_season = merged[-1]
+                merged[-1] = (prev_from, seg_to, prev_season)
+            else:
+                carry_from = seg_from
+            continue
+        merged.append((seg_from, seg_to, season))
+    # A trailing carry means the window was a single day — nothing to merge into.
+    return merged or segments
 
 
 def build_seasonal_cards(

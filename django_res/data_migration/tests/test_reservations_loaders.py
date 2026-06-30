@@ -11,10 +11,33 @@ from __future__ import annotations
 
 import pytest
 
-from accounts.enums import PersonKind, PersonStatus
+from accounts.enums import ContactRole, PersonKind, PersonStatus
 from accounts.models import Person
 from data_migration.base import LoadReport
-from data_migration.loaders.reservations import ClientLoader, EnquiryLoader
+from data_migration.loaders.reservations import ClientLoader, EnquiryLoader, _role_for
+
+
+@pytest.mark.parametrize(
+    "role_id,expected",
+    [
+        (1, ContactRole.OWNER),
+        (2, ContactRole.AGENT),
+        (3, ContactRole.VILLA_ADMIN),
+        (4, ContactRole.MANAGER),
+        (5, ContactRole.MANAGEMENT_COMPANY),
+    ],
+)
+def test_role_for_maps_verified_legacy_villaroles(role_id: int, expected: str) -> None:
+    """Legacy VillaRoles ids (1=Owner 2=Agent 3=Villa Admin 4=Villa Manager
+    5=Management Company; see 07-api-schema-reconciliation.md) map 1:1."""
+    assert _role_for(role_id) == expected
+
+
+def test_role_for_unmapped_or_null_defaults_to_owner() -> None:
+    # Legacy had exactly ids 1-5; a NULL/absent role mapping falls back to owner.
+    assert _role_for(None) == ContactRole.OWNER
+    assert _role_for(0) == ContactRole.OWNER
+    assert _role_for(99) == ContactRole.OWNER
 
 
 def _client_row(**overrides: object) -> dict[str, object]:

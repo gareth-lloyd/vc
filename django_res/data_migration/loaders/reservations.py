@@ -36,13 +36,32 @@ from reservations.enums import (
 from reservations.models.enquiry import Enquiry
 from reservations.phone import to_e164
 
+# Legacy VillaRoles id -> ContactRole. Verified 1:1 against the legacy DB dump
+# (1=Owner, 2=Agent, 3=Villa Admin, 4=Villa Manager, 5=Management Company; see
+# django_res_design/product-design/07-api-schema-reconciliation.md). Ids 3 & 5
+# were previously collapsed to MANAGER / OWNERS_REPRESENTATIVE — a forward-only
+# correction (cutover has not run; next reload emits the right roles).
 _ROLE_MAP = {
     1: ContactRole.OWNER,
     2: ContactRole.AGENT,
-    3: ContactRole.MANAGER,
+    3: ContactRole.VILLA_ADMIN,
     4: ContactRole.MANAGER,
-    5: ContactRole.OWNERS_REPRESENTATIVE,
+    5: ContactRole.MANAGEMENT_COMPANY,
 }
+
+
+def _role_for(role_id: int | None) -> ContactRole:
+    """Map a legacy VillaRoles id to a ContactRole. The 5 ids are verified 1:1
+    (see _ROLE_MAP); a NULL/absent/unknown id falls back to OWNER.
+
+    CAVEAT (verify before cutover — CUTOVER.md §4f): this loader reads RoleId
+    only from the LEFT-JOINed VillaContactRoleMapping (`r`). The schema doc
+    (07-api-schema-reconciliation.md) notes VillaRoles is also FK'd from the base
+    VillaContactMapping — if a mapping carries its own RoleId with no child role
+    row, it arrives here as None and defaults to OWNER, silently dropping the
+    real role. Count such rows against the legacy dump; if non-zero, source the
+    role via COALESCE(r.RoleId, m.RoleId) in `legacy_query`."""
+    return _ROLE_MAP.get(role_id or 0, ContactRole.OWNER)
 
 
 class PropertyContactAssignmentLoader(BaseLoader):
@@ -66,7 +85,7 @@ class PropertyContactAssignmentLoader(BaseLoader):
         if prop is None or contact is None:
             report.skipped += 1
             return
-        role = _ROLE_MAP.get(row.get("RoleId") or 0, ContactRole.OWNER)
+        role = _role_for(row.get("RoleId"))
         composite = f"{row['MappingId']}-{row.get('RoleId') or 0}"
         is_primary = bool(row.get("IsPrimaryContact"))
         # One primary per (property, role).

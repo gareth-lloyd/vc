@@ -82,7 +82,9 @@
     "customer": "Customer",
     "agent": "Agent",
     "owner": "Owner",
-    "manager": "Manager",
+    "manager": "Villa Manager",
+    "villa_admin": "Villa Admin",
+    "management_company": "Management Company",
     "housekeeper": "Housekeeper",
     "owners_rep": "Owner's representative"
   },

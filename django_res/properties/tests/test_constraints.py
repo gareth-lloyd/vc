@@ -126,6 +126,18 @@ def test_contact_assignment_unique_active_role(prop: Property, contact: Person) 
 
 
 @pytest.mark.django_db
+def test_contact_assignment_accepts_reconciled_roles(prop: Property, contact: Person) -> None:
+    """GAP-048: villa_admin & management_company are valid roles (legacy ids 3 & 5,
+    previously collapsed to manager / owners_rep on import). CharField choices are
+    only enforced by model validation, so assert via full_clean."""
+    for role in (ContactRole.VILLA_ADMIN, ContactRole.MANAGEMENT_COMPANY):
+        assignment = PropertyContactAssignment(property=prop, contact=contact, role=role)
+        assignment.full_clean()  # choices validation must pass
+        assignment.save()
+    assert PropertyContactAssignment.objects.filter(property=prop).count() == 2
+
+
+@pytest.mark.django_db
 def test_contact_assignment_can_reopen_after_end_date(prop: Property, contact: Person) -> None:
     PropertyContactAssignment.objects.create(
         property=prop,

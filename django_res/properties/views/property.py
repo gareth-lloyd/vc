@@ -6,7 +6,7 @@ view is a thin orchestrator around it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from django.db import transaction
 from django.db.models import Exists, OuterRef
@@ -29,11 +29,13 @@ from properties.serializers import (
     PropertyListSerializer,
     PropertyWriteSerializer,
 )
-from properties.services import PropertyLifecycleService
+from properties.services import PropertyAvailabilityService, PropertyLifecycleService
 from properties.services.location import ensure_property_location
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
+
+    from accounts.models import User
 
 
 class PropertyViewSet(viewsets.ModelViewSet):
@@ -159,6 +161,14 @@ class PropertyViewSet(viewsets.ModelViewSet):
             PropertyDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["post"], url_path="confirm-availability")
+    def confirm_availability(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Staff confirm availability is still current — Signal 3, adds no dates."""
+        instance = self.get_object()
+        # IsReservationsWriter guarantees an authenticated staff user here.
+        PropertyAvailabilityService.confirm(instance, actor=cast("User", request.user))
+        return self._action_response(instance)
 
     @action(detail=True, methods=["post"], url_path="import-from-zoho")
     def import_from_zoho(self, request: Request, *args: Any, **kwargs: Any) -> Response:

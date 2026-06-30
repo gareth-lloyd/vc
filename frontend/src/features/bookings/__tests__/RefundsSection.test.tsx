@@ -4,6 +4,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { useAuthStore } from "@/features/auth/store";
 import { RefundsSection } from "../components/RefundsSection";
 import type { Refund } from "../schemas";
 
@@ -60,7 +61,28 @@ beforeEach(() => {
 
 afterEach(() => {
   server.resetHandlers();
+  useAuthStore.setState({ user: null, role: null, isSuperuser: false });
 });
+
+function setCurrentUserId(id: number) {
+  useAuthStore.setState({
+    user: {
+      id,
+      email: "op@example.com",
+      first_name: "Op",
+      last_name: "Erator",
+      is_active: true,
+      is_staff: true,
+      is_superuser: false,
+      role: "accounts",
+      preferred_language: "en",
+    },
+    role: "accounts",
+    isSuperuser: false,
+    status: "authenticated",
+    pendingTfa: null,
+  });
+}
 
 function setup(canWrite = true) {
   return renderWithProviders(
@@ -173,5 +195,132 @@ describe("RefundsSection (list + create)", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("RefundsSection (lifecycle actions)", () => {
+  it("disables Approve when the current user requested the refund", async () => {
+    setCurrentUserId(9); // matches makeRefund().requested_by
+    server.use(listHandler([makeRefund({ status: "pending", requested_by: 9 })]));
+    setup();
+
+    const approve = await screen.findByRole("button", { name: /approve refund RF-000004/i });
+    expect(approve).toBeDisabled();
+  });
+
+  it("approves a pending refund through the confirm dialog", async () => {
+    setCurrentUserId(2); // a different approver
+    let approved = false;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () =>
+        HttpResponse.json([makeRefund({ status: approved ? "approved" : "pending" })]),
+      ),
+      http.post(`/api/v1/refunds/4:approve`, () => {
+        approved = true;
+        return HttpResponse.json(makeRefund({ status: "approved" }));
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /approve refund RF-000004/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Refund approved"));
+    expect(approved).toBe(true);
+  });
+
+  it("cancels a pending refund", async () => {
+    setCurrentUserId(2);
+    let cancelled = false;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () =>
+        HttpResponse.json([makeRefund({ status: cancelled ? "cancelled" : "pending" })]),
+      ),
+      http.post(`/api/v1/refunds/4:cancel`, () => {
+        cancelled = true;
+        return HttpResponse.json(makeRefund({ status: "cancelled" }));
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /cancel refund RF-000004/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel refund" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Refund cancelled"));
+    expect(cancelled).toBe(true);
+  });
+
+  it("executes an approved refund with honest 'started' copy (online stays executing)", async () => {
+    setCurrentUserId(2);
+    let executed = false;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () =>
+        HttpResponse.json([makeRefund({ status: executed ? "executing" : "approved" })]),
+      ),
+      // Online gateway execution settles to `executing`, not `succeeded`.
+      http.post(`/api/v1/refunds/4:execute`, () => {
+        executed = true;
+        return HttpResponse.json(makeRefund({ status: "executing" }));
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
+    // The confirm copy must say "start", never "refunded".
+    expect(await screen.findByText(/start executing this refund/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Start execution" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Refund execution started"));
+    // The row now shows the in-flight (not green/succeeded) state.
+    expect(await screen.findByText("Executing — awaiting settlement")).toBeInTheDocument();
+  });
+
+  it("rejects a refund, posting { reason }", async () => {
+    setCurrentUserId(2);
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () =>
+        HttpResponse.json([makeRefund({ status: body ? "rejected" : "pending" })]),
+      ),
+      http.post(`/api/v1/refunds/4:reject`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeRefund({ status: "rejected" }));
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /reject refund RF-000004/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Reason"), "Duplicate of RF-000003");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Reject refund" }));
+
+    await waitFor(() => expect(body).toEqual({ reason: "Duplicate of RF-000003" }));
+    expect(toast.success).toHaveBeenCalledWith("Refund rejected");
+  });
+
+  it("surfaces a backend 409 on execute as a toast", async () => {
+    setCurrentUserId(2);
+    server.use(
+      listHandler([makeRefund({ status: "approved" })]),
+      http.post(`/api/v1/refunds/4:execute`, () =>
+        HttpResponse.json({ detail: "Refund is not in an executable state." }, { status: 409 }),
+      ),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start execution" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  it("shows no row actions for a terminal refund", async () => {
+    server.use(listHandler([makeRefund({ status: "succeeded" })]));
+    setup();
+
+    await screen.findByText("RF-000004");
+    expect(screen.queryByRole("button", { name: /approve refund/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /execute refund/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cancel refund/i })).not.toBeInTheDocument();
   });
 });

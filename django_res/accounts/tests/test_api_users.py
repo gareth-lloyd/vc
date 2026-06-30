@@ -48,6 +48,26 @@ def test_admin_can_list_users(api_client: APIClient, admin: User, viewer: User) 
 
 
 @pytest.mark.django_db
+def test_is_staff_filter_excludes_non_staff_admin(api_client: APIClient, admin: User) -> None:
+    # The operator picker filters `is_staff=true` so a non-staff owner-portal
+    # user hand-bumped to role=admin (the Andreas case) is excluded.
+    owner = User.objects.create_user(
+        is_staff=False,
+        email="owner@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
+    )
+    api_client.force_login(admin)
+
+    response = api_client.get("/api/v1/users?role=admin&is_staff=true")
+
+    assert response.status_code == 200
+    emails = {row["email"] for row in response.json()["results"]}
+    assert admin.email in emails
+    assert owner.email not in emails
+
+
+@pytest.mark.django_db
 def test_admin_can_create_user(api_client: APIClient, admin: User) -> None:
     api_client.force_login(admin)
 

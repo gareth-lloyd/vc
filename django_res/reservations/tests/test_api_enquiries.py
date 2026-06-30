@@ -365,6 +365,35 @@ def test_create_enquiry(api_client: APIClient, staff: User, customer: Person) ->
 
 
 @pytest.mark.django_db
+def test_create_enquiry__rejects_non_staff_assignee(
+    api_client: APIClient, staff: User, customer: Person
+) -> None:
+    # validate_assigned_to runs on create too, not only PATCH.
+    owner = User.objects.create_user(
+        is_staff=False,
+        email="create-owner@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
+    )
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/enquiries",
+        {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada-create@example.com",
+            "adults": 2,
+            "assigned_to": owner.pk,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "assigned_to" in response.data["field_errors"]
+    assert not Enquiry.objects.filter(email="ada-create@example.com").exists()
+
+
+@pytest.mark.django_db
 def test_create_enquiry_persists_contact_method(
     api_client: APIClient, staff: User, customer: Person
 ) -> None:

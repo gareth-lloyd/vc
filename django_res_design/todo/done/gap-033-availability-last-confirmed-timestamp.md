@@ -1,3 +1,28 @@
+> **✅ RESOLVED (2026-07-01)** — Shipped on local `main` (unpushed) via
+> feat/gap-033 (Unit 1 `1c592b2`, Unit 2 `c0e7d68`, Unit 3 `4905df0`, Unit 4
+> `bbd4fb9`, Unit 5 `c82b6b2`, Unit 6 `fb2baaf`, Unit 7 `1c5e18b`).
+> **Superseded the single-field proposal** with a deliberate three-signal split,
+> so the sales UI never conflates "an owner changed their calendar" with "a VC
+> staffer vouched it's accurate": **(1) Updated by owner** —
+> `Property.availability_owner_updated_at`, touched from `OwnerBlockService`
+> create/release (MANUAL only); **(2) Last calendar import** — derived in-app
+> from `PropertyCalendarFeed.last_polled_at` via a scalar `Subquery`
+> annotation, shown only when a feed exists; **(3) Confirmed by VC staff** —
+> `availability_confirmed_at` + `availability_confirmed_by`, written only by the
+> new `POST /properties/{id}:confirm-availability` action (IsReservationsWriter).
+> Signal 1 is **stored** (not derived) because the import-linter spine forbids
+> `properties → reservations`; storing on `Property` + writing down-spine keeps
+> the read a plain column. Touching only on create/release means staff
+> `contest()` (which bumps the block's `updated_at`), iCal churn, and
+> quotation/booking holds are all excluded — tested both ways. The freshness
+> touches deliberately do **not** bump `Property.updated_at`. FE: three labelled
+> lines + a "Mark as up-to-date" button on the Availability tab (shown for all
+> villas), and read-only freshness badges on the multi-villa timeline; en+el.
+> **Deferred:** an actor for Signal 1 (date-only), a separate
+> `AvailabilityConfirmation` history model, a confirm button on the wide
+> timeline (badges only), and GAP-034 coordination on auto-deriving "confirmed"
+> for iCal villas.
+
 # GAP-033 — Availability "last confirmed" timestamp + manual confirm button
 
 - **Severity:** Gap (legacy-parity; sales-team trust signal)

@@ -158,7 +158,7 @@
     "phone_added": "Phone added",
     "phone_updated": "Phone updated",
     "phone_removed": "Phone removed",
-    "tags_updated": "Tags updated",
+    "tags_update_failed": "Couldn't update tags",
     "email_remove_failed": "Failed to remove email",
     "phone_remove_failed": "Failed to remove phone",
     "set_primary_failed": "Failed to set primary",

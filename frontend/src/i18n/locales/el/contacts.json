@@ -158,7 +158,7 @@
     "phone_added": "Το τηλέφωνο προστέθηκε",
     "phone_updated": "Το τηλέφωνο ενημερώθηκε",
     "phone_removed": "Το τηλέφωνο αφαιρέθηκε",
-    "tags_updated": "Οι ετικέτες ενημερώθηκαν",
+    "tags_update_failed": "Αποτυχία ενημέρωσης ετικετών",
     "email_remove_failed": "Αποτυχία αφαίρεσης email",
     "phone_remove_failed": "Αποτυχία αφαίρεσης τηλεφώνου",
     "set_primary_failed": "Αποτυχία ορισμού ως κύριο",

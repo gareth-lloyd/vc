@@ -24,6 +24,7 @@ import {
   updateContactPhone,
 } from "./api";
 import type {
+  Contact,
   ContactCreateBody,
   ContactEmailWriteInput,
   ContactFilters,
@@ -117,6 +118,32 @@ export function useUpdateContact(contactId: ContactId) {
   return useMutation({
     mutationFn: (input: Partial<ContactWriteInput>) => updateContact(contactId, input),
     onSuccess: () => invalidateContact(queryClient, contactId),
+  });
+}
+
+/**
+ * GAP-053: optimistic tag setter for the inline editor. Each toggle PATCHes the
+ * whole `tags` set and updates the contact-detail cache immediately. The
+ * `cancelQueries` in onMutate is load-bearing — it kills the in-flight refetch
+ * a prior toggle's onSettled dispatched, so a rapid second toggle can't be
+ * clobbered by a stale refetch resolving late. onError rolls back to the
+ * snapshot (the component surfaces the toast for i18n).
+ */
+export function useSetContactTags(contactId: ContactId) {
+  const queryClient = useQueryClient();
+  const key = queryKeys.contacts.detail(contactId);
+  return useMutation<Contact, Error, string[], { snapshot: Contact | undefined }>({
+    mutationFn: (tags) => updateContact(contactId, { tags }),
+    onMutate: async (tags) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const snapshot = queryClient.getQueryData<Contact>(key);
+      if (snapshot) queryClient.setQueryData<Contact>(key, { ...snapshot, tags });
+      return { snapshot };
+    },
+    onError: (_err, _tags, ctx) => {
+      if (ctx?.snapshot) queryClient.setQueryData(key, ctx.snapshot);
+    },
+    onSettled: () => invalidateContact(queryClient, contactId),
   });
 }
 

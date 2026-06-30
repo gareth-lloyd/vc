@@ -274,6 +274,32 @@ def test_approve_is_scoped_to_booking(
 
 
 @pytest.mark.django_db
+def test_claim_read_embeds_photos(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from reservations.models import DamageClaimPhoto
+
+    claim = DamageClaim.objects.create(
+        booking=booking, currency=gbp, amount=Decimal("100.00"), description="x"
+    )
+    DamageClaimPhoto.objects.create(
+        damage_claim=claim,
+        image=SimpleUploadedFile("e.jpg", b"bytes", content_type="image/jpeg"),
+        caption="cracked tile",
+    )
+    api_client.force_login(staff)
+
+    resp = api_client.get(f"/api/v1/bookings/{booking.pk}/damage-claims/{claim.pk}")
+    assert resp.status_code == 200, resp.data
+    assert len(resp.data["photos"]) == 1
+    photo = resp.data["photos"][0]
+    assert photo["caption"] == "cracked tile"
+    assert photo["image_url"].endswith(".jpg")
+
+
+@pytest.mark.django_db
 def test_non_positive_amount_is_a_400(api_client: APIClient, staff: User, booking: Booking) -> None:
     api_client.force_login(staff)
     resp = api_client.post(
@@ -406,6 +432,8 @@ def test_list_query_count_is_pinned(
             booking=booking, currency=gbp, amount=Decimal(f"{i + 1}0.00"), description=f"c{i}"
         )
     api_client.force_login(staff)
-    with assert_max_queries(6):
+    # +1 vs the pre-photos pin: a single prefetch_related("photos") query covers
+    # the nested DamageClaimPhotoSerializer for the whole page (no N+1).
+    with assert_max_queries(7):
         resp = api_client.get(f"/api/v1/bookings/{booking.pk}/damage-claims")
     assert resp.data["count"] == 3

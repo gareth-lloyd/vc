@@ -7,13 +7,32 @@ from typing import Any
 
 from rest_framework import serializers
 
-from reservations.models import DamageClaim
+from reservations.models import DamageClaim, DamageClaimPhoto
+
+
+class DamageClaimPhotoSerializer(serializers.ModelSerializer[DamageClaimPhoto]):
+    """Read representation of a damages evidence photo (wf8)."""
+
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DamageClaimPhoto
+        fields = ["id", "image_url", "caption", "created_at"]
+        read_only_fields = fields
+
+    def get_image_url(self, obj: DamageClaimPhoto) -> str | None:
+        # Storage-generated: `/media/…` on local FileSystemStorage, an absolute
+        # S3 URL on staging/prod — same convention as `PropertyImageSerializer`.
+        if not obj.image:
+            return None
+        return obj.image.url
 
 
 class DamageClaimSerializer(serializers.ModelSerializer[DamageClaim]):
     """Read representation."""
 
     currency_code = serializers.CharField(source="currency.code", read_only=True)
+    photos = DamageClaimPhotoSerializer(many=True, read_only=True)
 
     class Meta:
         model = DamageClaim

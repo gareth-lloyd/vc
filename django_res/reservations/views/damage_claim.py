@@ -32,6 +32,7 @@ class DamageClaimViewSet(viewsets.ModelViewSet):
         return (
             DamageClaim.objects.filter(booking_id=self.kwargs["booking_pk"])
             .select_related("booking", "currency")
+            .prefetch_related("photos")
             .order_by("-created_at")
         )
 

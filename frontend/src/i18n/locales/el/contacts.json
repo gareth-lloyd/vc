@@ -62,7 +62,9 @@
     "set_as_primary": "Ορισμός ως κύριο",
     "actions_menu_aria": "Ενέργειες",
     "create_new_inline": "+ Δημιουργία νέας επαφής",
-    "link_contact": "Σύνδεση επαφής"
+    "link_contact": "Σύνδεση επαφής",
+    "clear_agency": "Εκκαθάριση πρακτορείου",
+    "clear_country": "Εκκαθάριση χώρας"
   },
   "tags": {
     "vip": "VIP",
@@ -124,7 +126,8 @@
     "phone_label": "π.χ. κινητό, γραφείο",
     "picker_trigger": "Επιλέξτε μια επαφή…",
     "picker_search": "Αναζήτηση επαφών…",
-    "select_relationship_kind": "Επιλέξτε σχέση…"
+    "select_relationship_kind": "Επιλέξτε σχέση…",
+    "country": "Επιλέξτε χώρα…"
   },
   "status": {
     "any": "Οποιαδήποτε κατάσταση",

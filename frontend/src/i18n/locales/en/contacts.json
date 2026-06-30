@@ -62,7 +62,9 @@
     "set_as_primary": "Set as primary",
     "actions_menu_aria": "Actions",
     "create_new_inline": "+ Create new contact",
-    "link_contact": "Link contact"
+    "link_contact": "Link contact",
+    "clear_agency": "Clear agency",
+    "clear_country": "Clear country"
   },
   "tags": {
     "vip": "VIP",
@@ -124,7 +126,8 @@
     "phone_label": "e.g. mobile, office",
     "picker_trigger": "Select a contact…",
     "picker_search": "Search contacts…",
-    "select_relationship_kind": "Select a relationship…"
+    "select_relationship_kind": "Select a relationship…",
+    "country": "Select a country…"
   },
   "status": {
     "any": "Any status",

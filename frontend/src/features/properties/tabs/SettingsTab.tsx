@@ -40,7 +40,7 @@ import {
   useUpdatePropertyLocation,
   useUpdatePropertySettings,
 } from "../hooks";
-import { CountryPicker } from "../components/CountryPicker";
+import { CountryPicker } from "@/components/form/CountryPicker";
 import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,

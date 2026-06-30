@@ -22,6 +22,7 @@ import {
 } from "../schemas";
 import { CompanyPicker } from "@/features/companies/components/CompanyPicker";
 import { CompanyFormDialog } from "@/features/companies/components/CompanyFormDialog";
+import { CountryPicker } from "@/components/form/CountryPicker";
 import type { Company } from "@/features/companies/schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
@@ -54,6 +55,7 @@ const CREATE_DEFAULTS: ContactCreateInput = {
   address_line_2: "",
   town: "",
   post_code: "",
+  country: null,
   notes: "",
   email: "",
   phone: "",
@@ -71,6 +73,7 @@ function defaultsFromContact(c: Contact): ContactCreateInput {
     address_line_2: c.address_line_2 ?? "",
     town: c.town ?? "",
     post_code: c.post_code ?? "",
+    country: c.country ?? null,
     notes: c.notes ?? "",
     // Channels are edited through the dedicated email/phone dialogs, not here.
     email: "",
@@ -101,6 +104,8 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
     isCreate ? null : (props.contact.agency_detail ?? null),
   );
   const [createCompanyOpen, setCreateCompanyOpen] = useState(false);
+  // Country is a nullable Country FK; the picker reads its PK straight from RHF.
+  const watchedCountry = form.watch("country");
 
   const selectAgency = (company: Company) => {
     setSelectedAgency(company);
@@ -204,7 +209,13 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
                   />
                 </div>
                 {selectedAgency ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={clearAgency}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t("actions.clear_agency")}
+                    onClick={clearAgency}
+                  >
                     {t("common:actions.clear")}
                   </Button>
                 ) : null}
@@ -273,6 +284,31 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
               <div className="space-y-2">
                 <Label htmlFor="contact-post-code">{t("fields.post_code")}</Label>
                 <Input id="contact-post-code" {...form.register("post_code")} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contact-country">{t("fields.country")}</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <CountryPicker
+                    id="contact-country"
+                    value={watchedCountry}
+                    onChange={(v) => form.setValue("country", v, { shouldValidate: true })}
+                    placeholder={t("placeholders.country")}
+                  />
+                </div>
+                {watchedCountry != null ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t("actions.clear_country")}
+                    onClick={() => form.setValue("country", null, { shouldValidate: true })}
+                  >
+                    {t("common:actions.clear")}
+                  </Button>
+                ) : null}
               </div>
             </div>
 

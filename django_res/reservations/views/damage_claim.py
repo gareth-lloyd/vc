@@ -78,8 +78,12 @@ class DamageClaimViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance: Any) -> None:
         DamageClaimService.delete(instance, actor=self.request.user)
 
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        claim = DamageClaimService.approve(self.get_object(), actor=request.user)
+        return Response(DamageClaimSerializer(claim).data)
+
     @action(detail=True, methods=["post"], url_path="withdraw")
     def withdraw(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        claim = self.get_object()
-        DamageClaimService.withdraw(claim, actor=request.user)
+        claim = DamageClaimService.withdraw(self.get_object(), actor=request.user)
         return Response(DamageClaimSerializer(claim).data)

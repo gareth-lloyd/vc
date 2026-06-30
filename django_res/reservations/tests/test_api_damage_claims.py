@@ -155,6 +155,125 @@ def test_withdraw_action(api_client: APIClient, staff: User, booking: Booking) -
 
 
 @pytest.mark.django_db
+def test_approve_action(api_client: APIClient, staff: User, booking: Booking) -> None:
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims",
+        {"amount": "100.00", "description": "Stain"},
+        format="json",
+    )
+    claim_pk = create.data["id"]
+
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims/{claim_pk}:approve",
+    )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["status"] == DamageClaimStatus.APPROVED.value
+    assert DamageClaim.objects.get(pk=claim_pk).status == DamageClaimStatus.APPROVED.value
+
+
+@pytest.mark.django_db
+def test_approve_settled_claim_is_409(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    claim = DamageClaim.objects.create(
+        booking=booking,
+        currency=gbp,
+        amount=Decimal("100.00"),
+        description="x",
+        status=DamageClaimStatus.SETTLED.value,
+    )
+    api_client.force_login(staff)
+
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims/{claim.pk}:approve",
+    )
+    assert resp.status_code == 409, resp.data
+    assert resp.data["code"] == "invalid_transition"
+
+
+@pytest.mark.django_db
+def test_approve_viewer_cannot_write(
+    api_client: APIClient, viewer: User, booking: Booking, gbp: Currency
+) -> None:
+    claim = DamageClaim.objects.create(
+        booking=booking, currency=gbp, amount=Decimal("100.00"), description="x"
+    )
+    api_client.force_login(viewer)
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims/{claim.pk}:approve",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_approve_accounts_cannot_write(
+    api_client: APIClient, accounts_user: User, booking: Booking, gbp: Currency
+) -> None:
+    claim = DamageClaim.objects.create(
+        booking=booking, currency=gbp, amount=Decimal("100.00"), description="x"
+    )
+    api_client.force_login(accounts_user)
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims/{claim.pk}:approve",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_approve_is_scoped_to_booking(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    # A claim on a different booking is not reachable via this booking's URL.
+    other = Booking.objects.create(
+        quotation_line=QuotationLine.objects.create(
+            quotation=Quotation.objects.create(
+                enquiry=customer.enquiries_as_customer.create(),
+                person=customer,
+                expires_at=timezone.now() + timedelta(days=7),
+                terms_version=terms,
+            ),
+            property=property_,
+            currency=gbp,
+            date_from=date(2026, 8, 1),
+            date_to=date(2026, 8, 8),
+            adults=2,
+            total=Decimal("1400.00"),
+        ),
+        person=customer,
+        property=property_,
+        date_from=date(2026, 8, 1),
+        date_to=date(2026, 8, 8),
+        adults=2,
+        children=0,
+        currency=gbp,
+        terms_version=terms,
+        terms_accepted_at=timezone.now(),
+        payment_method=PaymentMethod.CARD.value,
+        rental_price=Decimal("1400.00"),
+        balance_due=Decimal("1400.00"),
+        status=BookingStatus.AWAITING_DEPOSIT.value,
+    )
+    other_claim = DamageClaim.objects.create(
+        booking=other, currency=gbp, amount=Decimal("50.00"), description="theirs"
+    )
+    api_client.force_login(staff)
+
+    resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/damage-claims/{other_claim.pk}:approve",
+    )
+    assert resp.status_code == 404
+    other_claim.refresh_from_db()
+    assert other_claim.status == DamageClaimStatus.OPEN.value
+
+
+@pytest.mark.django_db
 def test_non_positive_amount_is_a_400(api_client: APIClient, staff: User, booking: Booking) -> None:
     api_client.force_login(staff)
     resp = api_client.post(

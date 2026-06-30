@@ -181,7 +181,14 @@ export function RefundFormDialog({ bookingId, currencyCode, open, onOpenChange }
 
           <div className="space-y-2">
             <Label htmlFor="refund-notes">{t("refunds.form_dialog.fields.notes")}</Label>
-            <Textarea id="refund-notes" rows={2} {...form.register("reason_notes")} />
+            {/* maxLength mirrors the schema's .max(2000) so an over-long paste
+                can't silently block submit with no field-level error shown. */}
+            <Textarea
+              id="refund-notes"
+              rows={2}
+              maxLength={2000}
+              {...form.register("reason_notes")}
+            />
           </div>
 
           {topLevelError ? (

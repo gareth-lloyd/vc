@@ -475,6 +475,9 @@ function invalidateRefundDependents(queryClient: QueryClient, bookingId: Booking
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.deposit(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.balance(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
+  // A security_deposit_release refund settles against the SD row, which the
+  // SD panel reads from its own query — bust it too so the panel isn't stale.
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
 }
 
 export function useCreateRefund(bookingId: BookingId) {

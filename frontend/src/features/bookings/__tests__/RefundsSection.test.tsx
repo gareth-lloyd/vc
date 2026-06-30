@@ -298,7 +298,7 @@ describe("RefundsSection (lifecycle actions)", () => {
     expect(toast.success).toHaveBeenCalledWith("Refund rejected");
   });
 
-  it("surfaces a backend 409 on execute as a toast", async () => {
+  it("surfaces the backend 409 detail (not a generic message) on execute", async () => {
     setCurrentUserId(2);
     server.use(
       listHandler([makeRefund({ status: "approved" })]),
@@ -311,7 +311,9 @@ describe("RefundsSection (lifecycle actions)", () => {
     await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
     await userEvent.click(await screen.findByRole("button", { name: "Start execution" }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Refund is not in an executable state."),
+    );
   });
 
   it("shows no row actions for a terminal refund", async () => {

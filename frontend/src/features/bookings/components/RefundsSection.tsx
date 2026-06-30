@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { useAuthStore } from "@/features/auth/store";
+import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import type { BookingId } from "@/lib/query/keys";
@@ -57,8 +58,16 @@ export function RefundsSection({ bookingId, currency, canWrite }: Props) {
         action === "approve" ? "approved" : action === "execute" ? "executed" : "cancelled";
       toast.success(t(`refunds.toasts.${toastKey}`));
       setConfirming(null);
-    } catch {
-      toast.error(t("refunds.toasts.action_failed"));
+    } catch (error) {
+      // Surface the backend's specific reason on a 4xx (e.g. a 409
+      // "Refund is not in an executable state." when a colleague already moved
+      // it, or a separation-of-duties 403) rather than a generic message;
+      // fall back to the generic copy on 5xx/network.
+      const message =
+        error instanceof ApiError && error.isClientError()
+          ? error.detail
+          : t("refunds.toasts.action_failed");
+      toast.error(message);
     }
   };
 

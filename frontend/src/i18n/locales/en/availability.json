@@ -73,5 +73,9 @@
     "maintenance": "Maintenance",
     "manual": "Manual block",
     "quotation_open": "Quotation hold"
+  },
+  "freshness": {
+    "owner_updated": "Owner updated {{when}}",
+    "confirmed": "Confirmed {{when}}"
   }
 }

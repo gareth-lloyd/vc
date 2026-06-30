@@ -61,6 +61,21 @@ def inclusion_for(index: int) -> str:
     return _INCLUSIONS[index % len(_INCLUSIONS)]
 
 
+def seed_included_services(prop: Any, index: int) -> None:
+    """Seed a year-round 'Included services' PropertyService (GAP-037).
+
+    Replaces the legacy `RatePlan.inclusion` free-text: the quote engine now
+    derives the "Includes:" blob from the property's active services, so seeded
+    villas need a service row (null date band = always applies) to keep the
+    builder's inclusions section populated.
+    """
+    from properties.models.services import PropertyService
+
+    PropertyService.objects.create(
+        property=prop, name="Included services", copy=inclusion_for(index)
+    )
+
+
 def draw_base_nightly(rng: random.Random, currency_code: str) -> Decimal:
     """A villa's base (Mid-season) nightly price: log-normal in the legacy
     per-currency shape, clamped to the observed extremes, rounded to 10s.

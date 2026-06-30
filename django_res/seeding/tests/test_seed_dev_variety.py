@@ -20,7 +20,7 @@ from integrations.models.sync_run import SyncRun
 from payments.enums import RefundStatus
 from payments.models.refund import Refund
 from payments.models.webhook_delivery import WebhookDelivery
-from pricing.models import Currency, FxRate, RatePlan
+from pricing.models import Currency, FxRate
 from properties.enums import ImageKind, PropertyStatus
 from properties.models import (
     ChangeOverRule,
@@ -33,6 +33,7 @@ from properties.models import (
     PropertyContactAssignment,
     PropertyImage,
     PropertyNearbyPlace,
+    PropertyService,
     Room,
 )
 from properties.models.rooms import RoomBeds
@@ -109,10 +110,12 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     assert PropertyContactAssignment.objects.exists()
     assert ChangeOverRule.objects.exists()
 
-    # ---- Rate-plan inclusions: every plan carries varied "what's included"
-    # copy (the quote builder hides the inclusions section on blank text) ----
-    inclusions = set(RatePlan.objects.values_list("inclusion", flat=True))
-    assert "" not in inclusions, "every seeded rate plan should carry inclusion text"
+    # ---- Service inclusions: every villa carries a year-round PropertyService
+    # whose `copy` seeds the quote "Includes:" blob (GAP-037 — promoted out of
+    # the old free-text RatePlan.inclusion; the builder hides the section on
+    # blank text) ----
+    inclusions = set(PropertyService.objects.values_list("copy", flat=True))
+    assert "" not in inclusions, "every seeded villa should carry a service with copy"
     assert len(inclusions) >= 3, "inclusion copy should vary across villas"
 
     # ---- Notes ----

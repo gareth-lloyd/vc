@@ -104,9 +104,10 @@ def _season_segments(window_from: date, window_to: date) -> list[tuple[date, dat
 
     A window starting on a month's last day that rolls straight into a
     different season (e.g. May 31 Mid → June 1 Peak) would otherwise leave a
-    1-day `from == to` segment, which the strict `raterule_date_from_lt_date_to`
-    CHECK rejects. Such a sliver is folded into its neighbour so every segment
-    has `from < to` while coverage stays gap-free.
+    1-day `from == to` segment. Such a sliver is folded into its neighbour so
+    every seeded segment spans several days and coverage stays gap-free.
+    (Single-day rules are legal since GAP-056 relaxed the date CHECK to `<=`;
+    folding is kept for tidy multi-day seed periods, not to satisfy a constraint.)
     """
     segments: list[tuple[date, date, int]] = []
     run_start = window_from

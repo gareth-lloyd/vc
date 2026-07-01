@@ -1,11 +1,10 @@
 """Unit tests for the pure date logic in `seeding/_pricing_helpers.py`.
 
 `_season_segments` partitions a plan window into maximal same-season runs.
-The RateRule rows it ultimately feeds carry a strict
-`raterule_date_from_lt_date_to` CHECK, so a segment must never be zero-width
-(`from == to`) — otherwise seeding blows up on a month-end window start (e.g.
-the alt-currency plan dated one day before a June-1 primary lands on May 31, a
-1-day Mid sliver before the June Peak run).
+Folding zero-width slivers keeps every seeded segment multi-day (tidy periods);
+this pins that a month-end window start (e.g. the alt-currency plan dated one
+day before a June-1 primary lands on May 31, a 1-day Mid sliver before the June
+Peak run) never yields a zero-width (`from == to`) segment.
 """
 
 from __future__ import annotations

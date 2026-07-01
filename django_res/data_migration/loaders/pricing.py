@@ -581,7 +581,8 @@ class RateRuleLoader(BaseLoader):
         if date_from is None or date_to is None:
             return None
         if date_to <= date_from:
-            # Zero-length / inverted ranges violate raterule_date_from_lt_date_to.
+            # Zero-night (checkout-exclusive ToDate == FromDate) or inverted legacy
+            # spans — skip. (Universal checkout-exclusive trim is GAP-056 Unit 5.)
             return None
         party = int(row.get("PartySize") or 0)
         if party <= 0:

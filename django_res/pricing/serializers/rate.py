@@ -55,9 +55,13 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
             return model_field.get_default() if model_field.has_default() else None
 
         date_from, date_to = effective("date_from"), effective("date_to")
-        if date_from is not None and date_to is not None and date_from >= date_to:
+        # GAP-056: dates are inclusive, so a single-day rule (date_from == date_to)
+        # is valid — only an inverted span is rejected. Kept in lockstep with the
+        # relaxed `raterule_date_from_lte_date_to` CHECK so backfilled single-day
+        # fragments stay editable through the API.
+        if date_from is not None and date_to is not None and date_from > date_to:
             raise serializers.ValidationError(
-                {"date_to": "date_to must be after date_from."},
+                {"date_to": "date_to must be on or after date_from."},
             )
 
         min_party, max_party = effective("min_party"), effective("max_party")

@@ -97,6 +97,11 @@ def test_season_duplicate_copies_cards_and_rules(
     first_card = cloned.cards.first()
     assert first_card is not None
     assert first_card.rules.count() == 1
+    # GAP-056: the clone's rules must point at periods on the CLONE's plan, not
+    # the source plan's (the save() shim re-derives because the view nulls period).
+    cloned_rule = first_card.rules.get()
+    assert cloned_rule.period is not None
+    assert cloned_rule.period.plan_id == cloned.pk
 
 
 @pytest.mark.django_db

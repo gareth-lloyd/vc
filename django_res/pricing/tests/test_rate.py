@@ -8,11 +8,12 @@ from decimal import Decimal
 import pytest
 from django.db import IntegrityError, transaction
 
-from pricing.models import RateCard, RateRule
+from pricing.models import RateCard, RatePeriod, RateRule
 
 
 @pytest.mark.django_db
-def test_raterule_date_from_must_be_lt_date_to(card: RateCard) -> None:
+def test_raterule_date_from_must_be_lte_date_to(card: RateCard) -> None:
+    """An inverted span (`date_from > date_to`) is still rejected."""
     with pytest.raises(IntegrityError), transaction.atomic():
         RateRule.objects.create(
             card=card,
@@ -25,17 +26,21 @@ def test_raterule_date_from_must_be_lt_date_to(card: RateCard) -> None:
 
 
 @pytest.mark.django_db
-def test_raterule_rejects_zero_length_range(card: RateCard) -> None:
-    """A `[d, d)` rule covers zero nights — Booking/QuotationLine use `__lt`."""
-    with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 1),
-            min_party=1,
-            max_party=4,
-            nightly=Decimal("100"),
-        )
+def test_raterule_allows_single_day_range(card: RateCard) -> None:
+    """GAP-056: dates are inclusive, so `date_from == date_to` is one valid night.
+
+    (Was rejected under the old strict `<` CHECK; relaxed to `<=` so ragged
+    segmentation can persist single-day fragments — see RatePeriod.)
+    """
+    rr = RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 1),
+        min_party=1,
+        max_party=4,
+        nightly=Decimal("100"),
+    )
+    assert rr.pk is not None
 
 
 @pytest.mark.django_db
@@ -193,3 +198,47 @@ def test_raterule_overlap_allowed_across_cards(card: RateCard) -> None:
         nightly=Decimal("150"),
     )
     assert overlapping.pk is not None
+
+
+@pytest.mark.django_db
+def test_raterule_save_shim_populates_period(card: RateCard) -> None:
+    """Transitional GAP-056 shim: a card-based create derives its RatePeriod."""
+    rr = RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 30),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100"),
+    )
+    assert rr.period is not None
+    assert rr.period.plan_id == card.plan_id
+    assert (rr.period.date_from, rr.period.date_to) == (date(2026, 6, 1), date(2026, 6, 30))
+
+
+@pytest.mark.django_db
+def test_raterule_save_shim_reuses_period_for_sibling_band(card: RateCard) -> None:
+    """Two disjoint-party bands on the same dates share one period [H2]."""
+    band_a = RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 30),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100"),
+    )
+    band_b = RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 30),
+        min_party=9,
+        max_party=12,
+        nightly=Decimal("250"),
+    )
+    assert band_a.period_id == band_b.period_id
+
+
+@pytest.mark.django_db
+def test_rateperiod_exported_from_models() -> None:
+    """RatePeriod is part of the public pricing model surface."""
+    assert RatePeriod.__name__ == "RatePeriod"

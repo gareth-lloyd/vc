@@ -4,7 +4,7 @@ The four RateRule DB check constraints used to surface as 500
 ``IntegrityError`` when violated through the API. The serializer now
 pre-validates them so the client gets a 400 with ``field_errors`` instead:
 
-* ``date_from`` strictly before ``date_to``,
+* ``date_from`` on or before ``date_to`` (inclusive; single-day allowed — GAP-056),
 * ``min_party`` <= ``max_party``,
 * at least one of ``nightly`` / ``weekly`` / ``is_poa``,
 * ``is_poa`` excludes ``nightly`` / ``weekly``.
@@ -55,16 +55,26 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.django_db
-def test_create_rule_rejects_date_from_not_before_date_to(
-    api_client: APIClient, card: RateCard
-) -> None:
+def test_create_rule_rejects_inverted_date_range(api_client: APIClient, card: RateCard) -> None:
+    """An inverted span (date_from after date_to) is rejected."""
     response = api_client.post(
         f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(date_to="2026-06-01"),
+        data=_valid_payload(date_from="2026-06-08", date_to="2026-06-01"),
         format="json",
     )
     assert response.status_code == 400, response.content
     assert "date_to" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_create_single_day_rule_succeeds(api_client: APIClient, card: RateCard) -> None:
+    """GAP-056: inclusive dates — date_from == date_to is a valid one-day rule."""
+    response = api_client.post(
+        f"/api/v1/rate-cards/{card.pk}/rules",
+        data=_valid_payload(date_from="2026-06-01", date_to="2026-06-01"),
+        format="json",
+    )
+    assert response.status_code == 201, response.content
 
 
 @pytest.mark.django_db

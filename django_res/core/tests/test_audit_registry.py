@@ -44,6 +44,7 @@ EXPECTED_TRACKED_MODELS = {
     "pricing.Extra",
     "pricing.FxRate",
     "pricing.RateCard",
+    "pricing.RatePeriod",
     "pricing.RatePlan",
     "pricing.RateRule",
     "properties.GroupFinance",

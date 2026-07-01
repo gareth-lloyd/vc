@@ -78,6 +78,10 @@ class SeasonDuplicateView(APIView):
                 for rule in RateRule.objects.filter(card_id=card_pk):
                     rule.pk = None
                     rule.card = card_clone
+                    # Drop the source period so the save() shim re-derives one on
+                    # the CLONE's plan; else the clone's rules would point at the
+                    # original plan's RatePeriod (cross-plan FK). (GAP-056)
+                    rule.period = None
                     rule.save()
         return Response(
             RatePlanDetailSerializer(clone).data,
@@ -184,6 +188,9 @@ class RateCardDuplicateView(APIView):
             for rule in RateRule.objects.filter(card_id=original_pk):
                 rule.pk = None
                 rule.card = clone
+                # Re-derive the period on the clone's plan (may be a different
+                # plan when target_plan_id is set) — see SeasonDuplicateView. (GAP-056)
+                rule.period = None
                 rule.save()
         return Response(
             RateCardSerializer(clone).data,

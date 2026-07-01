@@ -10,7 +10,15 @@ class PricingConfig(AppConfig):
     def ready(self) -> None:
         from core.audit import track
         from pricing import signals  # noqa: F401
-        from pricing.models import Discount, Extra, FxRate, RateCard, RatePlan, RateRule
+        from pricing.models import (
+            Discount,
+            Extra,
+            FxRate,
+            RateCard,
+            RatePeriod,
+            RatePlan,
+            RateRule,
+        )
 
         # Rate-card editing is operator-facing: every price-bearing change
         # needs an AuditLog trail. Field lists stay tight — lifecycle, money
@@ -24,6 +32,17 @@ class PricingConfig(AppConfig):
                 "fallback_nightly",
                 "effective_from",
                 "effective_to",
+                "is_active",
+            ],
+        )
+        track(
+            RatePeriod,
+            fields=[
+                "name",
+                "date_from",
+                "date_to",
+                "min_nights",
+                "max_nights",
                 "is_active",
             ],
         )

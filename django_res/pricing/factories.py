@@ -65,10 +65,31 @@ class RateCardFactory(DjangoModelFactory):
     is_active = True
 
 
+class RatePeriodFactory(DjangoModelFactory):
+    """A disjoint date window on a plan (GAP-056).
+
+    `django_get_or_create` on `(plan, date_from, date_to)` mirrors the
+    `RateRule.save()` shim's dedup so sibling bands resolve to one period.
+    """
+
+    class Meta:
+        model = models.RatePeriod
+        django_get_or_create = ("plan", "date_from", "date_to")
+
+    plan = factory.SubFactory(RatePlanFactory)
+    date_from = _WINDOW_FROM
+    date_to = _WINDOW_TO
+    is_active = True
+
+
 class RateRuleFactory(DjangoModelFactory):
     class Meta:
         model = models.RateRule
 
+    # `period` is left unset: the transitional `RateRule.save()` shim derives it
+    # from `card.plan` + these dates (get-or-creating one period per `(plan,
+    # dates)`, so sibling bands share it). Set `period=` explicitly for native
+    # period-first tests.
     card = factory.SubFactory(RateCardFactory)
     date_from = _WINDOW_FROM
     date_to = _WINDOW_TO

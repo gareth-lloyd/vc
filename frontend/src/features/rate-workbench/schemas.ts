@@ -1,0 +1,209 @@
+import { z } from "zod";
+
+/**
+ * Write-input schemas for the Rate & Service Workbench inspectors (Unit 5).
+ *
+ * The read schemas (`extraSchema`/`Extra`, `discountSchema`/`Discount`) live in
+ * `@/features/properties/schemas` and are imported, never redefined. These are
+ * the form-facing write shapes only.
+ *
+ * The shapes below mirror the backend contract exactly (see `pricing/models`
+ * and the `Extra`/`Discount` serializers): `kind`/`calc`/`rule_kind` are
+ * constrained enums, `amount` and `currency` are required, and only the
+ * genuinely-nullable columns (an Extra's `applies_from`/`applies_to`) may be
+ * cleared to `null`. Discount `valid_from`/`valid_to` are NOT NULL, so they are
+ * required here rather than nulled on blank.
+ */
+
+// Enum values mirror `pricing/enums.py`. They are typed data values (not UI
+// copy), so components build i18n label keys from them — see the `enums.*`
+// block in `properties.json`.
+export const EXTRA_KINDS = [
+  "cleaning",
+  "pet_fee",
+  "heating",
+  "linen",
+  "extra_bed",
+  "service_fee",
+  "resort_fee",
+  "other",
+] as const;
+export const EXTRA_CALCS = [
+  "fixed_per_stay",
+  "fixed_per_night",
+  "fixed_per_person",
+  "fixed_per_person_per_night",
+  "percent_of_subtotal",
+] as const;
+export const DISCOUNT_KINDS = ["percent", "fixed"] as const;
+export const RULE_KINDS = [
+  "length_of_stay",
+  "early_bird",
+  "last_minute",
+  "repeat_guest",
+  "promo_code",
+] as const;
+
+export const extraWriteInputSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.extra_name_required" })
+      .max(128),
+    description: z.string().trim().nullable().optional(),
+    // `kind`/`calc` are required NOT NULL enum columns with no server default.
+    // The Selects only offer valid values, so a min(1) "pick one" guard is all
+    // the client needs; the backend enforces the enum.
+    kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.extra_kind_required",
+    }),
+    calc: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.extra_calc_required",
+    }),
+    amount: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.amount_required" }),
+    // Writable FK (a Currency PK); the serializer's `currency_code` is read-only.
+    currency: z
+      .number({ message: "properties:rate_workbench.inspector.errors.extra_currency_required" })
+      .int()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.extra_currency_required" }),
+    is_mandatory: z.boolean().optional(),
+    applies_from: z.string().nullable().optional(),
+    applies_to: z.string().nullable().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .refine((v) => !v.applies_from || !v.applies_to || v.applies_to >= v.applies_from, {
+    path: ["applies_to"],
+    message: "properties:rate_workbench.inspector.errors.extra_to_before_from",
+  });
+export type ExtraWriteInput = z.infer<typeof extraWriteInputSchema>;
+
+/** Wire shape: only the genuinely-nullable date columns collapse to `null`. */
+export type ExtraWritePayload = Omit<ExtraWriteInput, "applies_from" | "applies_to"> & {
+  applies_from: string | null;
+  applies_to: string | null;
+};
+
+export const discountWriteInputSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.discount_name_required" })
+      .max(128),
+    code: z.string().trim().nullable().optional(),
+    // Two distinct required enums: `rule_kind` (when the discount applies) and
+    // `kind` (how the amount is read). The engine filters candidates by
+    // rule_kind, so a missing one both 400s on create and never applies.
+    rule_kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.discount_rule_kind_required",
+    }),
+    kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.discount_kind_required",
+    }),
+    amount: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.amount_required" }),
+    min_nights: z.number().int().min(0).nullable().optional(),
+    threshold_days: z.number().int().min(0).nullable().optional(),
+    // NOT NULL on the model — required, never nulled on blank.
+    valid_from: z
+      .string()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.discount_dates_required" }),
+    valid_to: z
+      .string()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.discount_dates_required" }),
+    max_uses: z.number().int().min(0).nullable().optional(),
+    is_active: z.boolean().optional(),
+    // NOTE: `uses_count` is deliberately omitted — it is read-only on the API
+    // (DiscountSerializer.read_only_fields) and must never be written.
+  })
+  .refine((v) => !v.valid_from || !v.valid_to || v.valid_to >= v.valid_from, {
+    path: ["valid_to"],
+    message: "properties:rate_workbench.inspector.errors.discount_to_before_from",
+  });
+export type DiscountWriteInput = z.infer<typeof discountWriteInputSchema>;
+
+/** Wire shape: an empty `code` collapses to `null` (a "" collides on the UNIQUE index). */
+export type DiscountWritePayload = Omit<DiscountWriteInput, "code"> & { code: string | null };
+
+// ---------------------------------------------------------------------------
+// Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
+// flat dict of decimal STRINGS; the schemas below parse only the guest-facing
+// fields we render and `.passthrough()` the rest (owner economics — net_to_owner
+// / commission / tax — ride along on the wire but are deliberately never shown,
+// per BUG-009's GROSS-plan mispricing).
+// ---------------------------------------------------------------------------
+
+export const priceProbeRequestSchema = z.object({
+  property_id: z.number().int(),
+  date_from: z
+    .string()
+    .min(1, { message: "properties:rate_workbench.probe.errors.dates_required" }),
+  date_to: z.string().min(1, { message: "properties:rate_workbench.probe.errors.dates_required" }),
+  adults: z.number().int().min(1),
+  children: z.number().int().min(0).default(0),
+  opt_in_extras: z.array(z.number().int()).default([]),
+  discount_code: z.string().default(""),
+});
+export type PriceProbeRequest = z.infer<typeof priceProbeRequestSchema>;
+
+export const quoteLineSchema = z
+  .object({
+    date: z.string(),
+    rule_id: z.number().nullable().optional(),
+    card_id: z.number().nullable().optional(),
+    nightly: z.string(),
+    notes: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const appliedExtraSchema = z
+  .object({
+    extra_id: z.number(),
+    name: z.string(),
+    kind: z.string().nullable().optional(),
+    calc: z.string().nullable().optional(),
+    computed_amount: z.string(),
+  })
+  .passthrough();
+
+export const priceQuoteSchema = z
+  .object({
+    currency_code: z.string().nullable().optional(),
+    party: z.number().nullable().optional(),
+    date_from: z.string().optional(),
+    date_to: z.string().optional(),
+    lines: z.array(quoteLineSchema).default([]),
+    rate_subtotal: z.string().optional(),
+    extras: z.array(appliedExtraSchema).default([]),
+    extras_total: z.string().optional(),
+    discount: z.string().optional(),
+    total: z.string().optional(),
+    plan_id: z.number().nullable().optional(),
+    winning_card_id: z.number().nullable().optional(),
+    changeover_shifted_from: z.string().nullable().optional(),
+    changeover_day: z.string().nullable().optional(),
+    is_projected: z.boolean().optional(),
+    inclusion: z.string().nullable().optional(),
+    min_nights: z.number().nullable().optional(),
+    max_nights: z.number().nullable().optional(),
+    occupancy_pricing: z.boolean().optional(),
+  })
+  .passthrough()
+  // BUG-009: the engine mis-prices GROSS plans, so owner economics
+  // (net_to_owner / commission / tax) are wrong. Strip them at the parse
+  // boundary so the bad figures never exist client-side — defence that doesn't
+  // depend on every renderer remembering to whitelist guest-facing fields.
+  .transform((q) => {
+    const stripped = q as Record<string, unknown>;
+    delete stripped.net_to_owner;
+    delete stripped.commission;
+    delete stripped.tax;
+    return q;
+  });
+export type PriceQuote = z.infer<typeof priceQuoteSchema>;

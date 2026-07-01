@@ -58,7 +58,8 @@
     "media": "Media",
     "features": "Features",
     "settings": "Settings",
-    "history": "History"
+    "history": "History",
+    "rate_workbench": "Rate Workbench"
   },
   "detail": {
     "not_found_title": "Property not found",
@@ -1042,5 +1043,211 @@
   "common": {
     "inherit": "Inherit",
     "unset": "—"
+  },
+  "rate_workbench": {
+    "title": "Rate & Service Workbench",
+    "subtitle": "The whole year's rates, inclusions, extras, discounts and changeover in one view.",
+    "preview_badge": "Preview",
+    "lanes": {
+      "seasons": "Seasons",
+      "rates": "Rate cards",
+      "inclusions": "Inclusions",
+      "extras": "Extras",
+      "discounts": "Discounts",
+      "changeover": "Changeover"
+    },
+    "lane_empty": "None",
+    "year": {
+      "prev": "Previous year",
+      "next": "Next year"
+    },
+    "empty": {
+      "title": "No configuration yet",
+      "body": "This property has no seasons, inclusions, extras, discounts or changeover rules to show."
+    },
+    "empty_year": {
+      "title": "Nothing scheduled in {{year}}",
+      "body": "This property is configured, but none of it applies to the selected year. Try another year."
+    },
+    "error": {
+      "title": "Couldn't load the workbench",
+      "body": "Something went wrong loading this property's rate configuration."
+    },
+    "band": {
+      "aria": "{{label}}, {{from}} to {{to}}"
+    },
+    "detail": {
+      "dates": "Dates",
+      "price_range": "Price",
+      "poa": "POA",
+      "plan": "Season",
+      "required": "Required",
+      "mandatory": "Mandatory",
+      "optional": "Optional",
+      "amount": "Amount",
+      "code": "Code",
+      "kind": "Kind",
+      "copy": "Included"
+    },
+    "matrix": {
+      "title": "Rate matrix",
+      "season_picker": "Choose a season",
+      "card_picker": "Choose a rate card",
+      "segment": "Dates",
+      "any_party": "Any party",
+      "poa": "POA",
+      "fill_cell": "Add a price for this band",
+      "cell_menu": "Rule actions",
+      "edit_rule": "Edit rule…",
+      "delete_rule": "Delete rule",
+      "nightly_for": "Nightly rate, {{from}} to {{to}}",
+      "no_cards": "This season has no rate cards yet.",
+      "no_rules": "This rate card has no rules yet.",
+      "covered": "Another band already prices these dates — no rate can be added here.",
+      "deleted": "Rule deleted",
+      "save_failed": "Couldn't save the rate. Please try again.",
+      "delete_confirm": {
+        "title": "Delete this rule?",
+        "description": "This removes the price for this date segment and party band.",
+        "confirm": "Delete"
+      }
+    },
+    "probe": {
+      "title": "Price probe",
+      "subtitle": "Check what a guest would pay for a stay — a live quote from the pricing engine.",
+      "date_from": "Check-in",
+      "date_to": "Check-out",
+      "adults": "Adults",
+      "children": "Children",
+      "discount_code": "Discount code",
+      "opt_in_extras": "Optional extras",
+      "get_quote": "Get quote",
+      "getting": "Getting quote…",
+      "no_rate": "No rate is available for those dates and party size.",
+      "failed": "Couldn't get a quote. Please try again.",
+      "errors": {
+        "dates_required": "Choose a check-in and check-out date."
+      },
+      "result": {
+        "winning_default": "Best available rate",
+        "projected": "Projected",
+        "occupancy_priced": "Priced by party size",
+        "nights_one": "{{count}} night",
+        "nights_other": "{{count}} nights",
+        "extras": "Extras",
+        "discount": "Discount",
+        "guest_total": "Guest total",
+        "extras_heading": "Extras applied",
+        "included_heading": "Included",
+        "changeover_shifted": "Changeover shifted from {{from}}",
+        "owner_pending": "Owner net, commission and tax are pending the finance rewrite (BUG-009)."
+      }
+    },
+    "inspector": {
+      "title": "Inclusions, extras & discounts",
+      "sections": {
+        "inclusions": "Inclusions",
+        "extras": "Extras",
+        "discounts": "Discounts"
+      },
+      "add_inclusion": "Add inclusion",
+      "add_extra": "Add extra",
+      "add_discount": "Add discount",
+      "add_disabled_tooltip": "You don't have permission to edit rates.",
+      "empty_inclusions": "No inclusions yet.",
+      "empty_extras": "No extras yet.",
+      "empty_discounts": "No discounts yet.",
+      "mandatory": "Mandatory",
+      "optional": "Optional",
+      "fields": {
+        "name": "Name",
+        "code": "Code",
+        "kind": "Kind",
+        "calc": "Charged",
+        "rule_kind": "Applies to",
+        "currency": "Currency",
+        "currency_placeholder": "Select a currency",
+        "amount": "Amount",
+        "description": "Description",
+        "applies_from": "Applies from",
+        "applies_to": "Applies to",
+        "valid_from": "Valid from",
+        "valid_to": "Valid to",
+        "min_nights": "Min nights",
+        "max_uses": "Max uses",
+        "is_mandatory": "Mandatory",
+        "is_active": "Active"
+      },
+      "enums": {
+        "extra_kind": {
+          "cleaning": "Cleaning",
+          "pet_fee": "Pet fee",
+          "heating": "Heating",
+          "linen": "Linen",
+          "extra_bed": "Extra bed",
+          "service_fee": "Service fee",
+          "resort_fee": "Resort fee",
+          "other": "Other"
+        },
+        "extra_calc": {
+          "fixed_per_stay": "Per stay",
+          "fixed_per_night": "Per night",
+          "fixed_per_person": "Per person",
+          "fixed_per_person_per_night": "Per person per night",
+          "percent_of_subtotal": "Percent of subtotal"
+        },
+        "discount_kind": {
+          "percent": "Percent",
+          "fixed": "Fixed"
+        },
+        "rule_kind": {
+          "length_of_stay": "Length of stay",
+          "early_bird": "Early bird",
+          "last_minute": "Last minute",
+          "repeat_guest": "Repeat guest",
+          "promo_code": "Promo code"
+        }
+      },
+      "actions": {
+        "edit": "Edit",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      },
+      "extra_dialog": {
+        "create_title": "Add extra",
+        "edit_title": "Edit extra"
+      },
+      "discount_dialog": {
+        "create_title": "Add discount",
+        "edit_title": "Edit discount"
+      },
+      "errors": {
+        "extra_name_required": "Enter a name for this extra.",
+        "extra_to_before_from": "The end date can't be before the start date.",
+        "extra_kind_required": "Choose a kind.",
+        "extra_calc_required": "Choose how it's charged.",
+        "extra_currency_required": "Choose a currency.",
+        "discount_name_required": "Enter a name for this discount.",
+        "discount_to_before_from": "The end date can't be before the start date.",
+        "discount_kind_required": "Choose a kind.",
+        "discount_rule_kind_required": "Choose what it applies to.",
+        "discount_dates_required": "Enter both valid-from and valid-to dates.",
+        "amount_required": "Enter an amount."
+      },
+      "delete_confirm": {
+        "title": "Delete this item?",
+        "description": "This permanently removes it from the property.",
+        "confirm": "Delete"
+      },
+      "toasts": {
+        "created": "Saved",
+        "updated": "Saved",
+        "deleted": "Deleted",
+        "save_failed": "Something went wrong. Please try again.",
+        "delete_failed": "Couldn't delete. Please try again."
+      }
+    }
   }
 }

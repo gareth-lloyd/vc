@@ -23,9 +23,13 @@ beforeEach(() => {
 });
 
 describe("useHasReservationsRole", () => {
-  it("returns true for ADMIN", () => {
+  // The PermissionsView returns `User.role` verbatim, and that value is the
+  // LOWERCASE `core.enums.StaffRole` `.value` ("admin"/"reservations"/…). These
+  // feed the real lowercase wire value — an uppercase-only set would be
+  // superuser-only in production (the latent bug this hook used to have).
+  it("returns true for the lowercase 'admin' wire value", () => {
     useAuthStore.getState().setMe(makeUser(), {
-      role: "ADMIN",
+      role: "admin",
       is_superuser: false,
       permissions: [],
     });
@@ -33,7 +37,17 @@ describe("useHasReservationsRole", () => {
     expect(result.current).toBe(true);
   });
 
-  it("returns true for RESERVATIONS", () => {
+  it("returns true for the lowercase 'reservations' wire value", () => {
+    useAuthStore.getState().setMe(makeUser(), {
+      role: "reservations",
+      is_superuser: false,
+      permissions: [],
+    });
+    const { result } = renderHook(() => useHasReservationsRole());
+    expect(result.current).toBe(true);
+  });
+
+  it("is case-insensitive (tolerates an uppercase role value)", () => {
     useAuthStore.getState().setMe(makeUser(), {
       role: "RESERVATIONS",
       is_superuser: false,

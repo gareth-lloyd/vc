@@ -169,6 +169,30 @@ describe("RatePeriodFormDialog — create", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("renders an inline error for a 4xx field_errors.name (registered field, not folded)", async () => {
+    setReservationsUser();
+    server.use(
+      http.post("/api/v1/seasons/11/rate-periods", () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: { name: ["A period with this name already exists."] },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    renderWithProviders(
+      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await fillValidPeriod();
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/A period with this name already exists/i)).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("toasts and stays open on a 5xx", async () => {
     setReservationsUser();
     server.use(

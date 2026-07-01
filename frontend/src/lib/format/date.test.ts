@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  addDaysIso,
-  formatDate,
-  formatNightRange,
-  suggestRateBandEnd,
-  toDatetimeLocal,
-} from "./date";
+import { addDaysIso, formatDate, formatNightRange, toDatetimeLocal } from "./date";
 
 describe("formatDate", () => {
   it("formats an ISO string", () => {
@@ -67,41 +61,5 @@ describe("addDaysIso", () => {
   it("rolls over month and year boundaries", () => {
     expect(addDaysIso("2026-07-31", 1)).toBe("2026-08-01");
     expect(addDaysIso("2026-12-31", 1)).toBe("2027-01-01");
-  });
-});
-
-describe("suggestRateBandEnd", () => {
-  // 2026-07-04 is a Saturday.
-  it("ends the day before the next changeover for a same-weekday start", () => {
-    // Sat → 7-night min: next Sat changeover is 11 Jul, so date_to is Fri 10 Jul.
-    expect(suggestRateBandEnd("2026-07-04", "sat", 7)).toBe("2026-07-10");
-  });
-
-  it("wraps across the week boundary when the start isn't the changeover day", () => {
-    // 2026-07-08 is a Wednesday; Sat changeover ≥ 7 nights → next Sat is 18 Jul,
-    // so date_to is Fri 17 Jul (10 days out).
-    expect(suggestRateBandEnd("2026-07-08", "sat", 7)).toBe("2026-07-17");
-  });
-
-  it("respects a minimum longer than a week", () => {
-    // Sat start, 10-night min: the first Sat changeover ≥ 10 days out is 14 days
-    // (18 Jul), so date_to is Fri 17 Jul.
-    expect(suggestRateBandEnd("2026-07-04", "sat", 10)).toBe("2026-07-17");
-  });
-
-  it("defaults to a sensible minimum when minNights is missing or non-positive", () => {
-    expect(suggestRateBandEnd("2026-07-04", "sat", null)).toBe("2026-07-10");
-    expect(suggestRateBandEnd("2026-07-04", "sat", 0)).toBe("2026-07-10");
-  });
-
-  it("returns null when there is no fixed changeover day", () => {
-    expect(suggestRateBandEnd("2026-07-04", "any", 7)).toBeNull();
-    expect(suggestRateBandEnd("2026-07-04", null, 7)).toBeNull();
-    expect(suggestRateBandEnd("2026-07-04", undefined, 7)).toBeNull();
-  });
-
-  it("returns null for empty or unparseable start dates", () => {
-    expect(suggestRateBandEnd("", "sat", 7)).toBeNull();
-    expect(suggestRateBandEnd("not-a-date", "sat", 7)).toBeNull();
   });
 });

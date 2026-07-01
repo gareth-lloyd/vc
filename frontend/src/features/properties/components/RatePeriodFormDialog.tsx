@@ -122,6 +122,11 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
               placeholder={t("pricing.rate_period.dialog.fields.name_placeholder")}
               {...form.register("name")}
             />
+            {form.formState.errors.name ? (
+              <p className="text-destructive text-sm" role="alert">
+                {fieldErrorText(t, form.formState.errors.name.message)}
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

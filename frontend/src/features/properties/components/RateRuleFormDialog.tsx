@@ -45,7 +45,7 @@ interface CommonProps {
 
 interface CreateProps extends CommonProps {
   mode: "create";
-  /** Seed values for fast consecutive entry (e.g. date_from = last rule's date_to). */
+  /** Seed values for fast consecutive entry (e.g. next party band = last max_party + 1). */
   defaults?: Partial<RateRuleWriteInput>;
 }
 

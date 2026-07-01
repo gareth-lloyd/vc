@@ -384,7 +384,10 @@ export const ratePeriodSchema = z.object({
   is_active: z.boolean().optional(),
   rules: z.array(rateRuleSchema).optional().default([]),
   // Read-only: uncovered `[low, high]` party sub-ranges of `1..max_occupancy`.
-  coverage_gaps: z.array(z.array(z.number())).optional().default([]),
+  coverage_gaps: z
+    .array(z.tuple([z.number(), z.number()]))
+    .optional()
+    .default([]),
 });
 export type RatePeriod = z.infer<typeof ratePeriodSchema>;
 

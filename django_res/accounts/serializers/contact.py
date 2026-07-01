@@ -169,6 +169,20 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         deferred (see plan): `preferred_method` defaults to EMAIL, so enforcing
         it now would silently make an email mandatory for every active contact.
         """
+        # GAP-029: a contact must carry at least a name OR an agency — mirrors the
+        # FE `contactWriteInputSchema` refine. Read the effective (attrs over
+        # instance) value of all three so a PATCH that clears the names but leaves the agency
+        # untouched (agency absent from the payload) still passes. Keyed on
+        # `first_name` so `applyApiErrorToForm` renders it inline under the name
+        # field, matching the FE refine's `path: ["first_name"]`.
+        first_name = attrs.get("first_name", getattr(self.instance, "first_name", ""))
+        last_name = attrs.get("last_name", getattr(self.instance, "last_name", ""))
+        agency = attrs.get("agency", getattr(self.instance, "agency", None))
+        if not (first_name or last_name or agency):
+            raise serializers.ValidationError(
+                {"first_name": "A contact must have a name or an agency."}
+            )
+
         emails = attrs.get("emails", [])
         phones = attrs.get("phones", [])
 

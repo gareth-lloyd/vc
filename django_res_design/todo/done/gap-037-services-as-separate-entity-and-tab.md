@@ -1,5 +1,31 @@
 # GAP-037 — Services as a separate entity + tab, split from season inclusions
 
+> **✅ RESOLVED (2026-07-01)** — shipped on `feat/gap-037-services`, 6 units +
+> a seeding precursor. **Decision (of the three options): (c) a new lightweight
+> `properties.PropertyService`** — neither `Feature` (no dates, global) nor
+> `Extra` (priced, flows into totals) fit "a date range and some copy". Services
+> are **informational, never priced**; `Extra` untouched; **no fourth inclusion
+> concept**. `RatePlan.inclusion` **dropped**, `RatePlan.notes` **kept**.
+> - **Model + infra** (migration, AuditLog, factory, admin; CHECK
+>   `applies_from ≤ applies_to`) — `c000a95`.
+> - **Data migration** legacy `RatePlan.inclusion` → `PropertyService` — `708a5c9`.
+> - **Engine/projection/carryover/serializer repoint** (derive `breakdown["inclusion"]`
+>   from active overlapping services; projection maps future stays to the anchor
+>   year) — `40d6a50` (+ seeding precursor `7c910e4`).
+> - **Drop `RatePlan.inclusion` column** (+ seed repoint) — `5221a6f`.
+> - **REST API** serializer + nested list/create + flat `/services/{id}` detail — `aebef77`.
+> - **Frontend Services tab** (schemas/api/hooks, `ServicesTab` + `ServiceFormDialog`,
+>   router/tabConfig wiring, strip `SeasonFormDialog` inclusion, en+el i18n) — `5e14623`.
+>
+> **Open questions answered:** (1) purely **informational**; (2) per-service
+> date-banding **is** needed (chef-in-summer independent of rates); (3) guests see
+> the joined `copy` via the existing `QuotationLine.inclusions` seed (no new comms
+> surface — GAP-018 later); (4) **one global services list per property**, no
+> per-season overrides. Decision recorded in `10-decisions.md`; spec in
+> `02-properties.md` + `04-pricing.md`. Deferred: `Feature(INCLUDED_SERVICE)`
+> retirement (steer operators to Services, revisit); structured per-service guest
+> lines (kept free-text `QuotationLine.inclusions` seed); services→comms (GAP-018).
+
 - **Severity:** Gap (designed-but-unbuilt; model + UX decision).
 - **Source:** 2026-06-17 owner Loom (pricing walkthrough, 0:58–1:30).
 - **Files:**

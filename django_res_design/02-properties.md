@@ -221,6 +221,50 @@ Property ↔ Feature uses an explicit `PropertyFeature` through model carrying `
 
 `service_type` segments the catalogue. The legacy `Tags.razor` admin page (mounted at `/tags`) was a `VillaFeatures` CRUD view filtered by a `ServiceType` enum — there is no separate `Tags` table in the legacy schema. The new design absorbs that admin surface into `/features` with a `?service_type=` filter; there is no `Tag` model, no `PropertyTag` junction, and no `/tags` API resource. See reconciliation issue #8 in `product-design/07-api-schema-reconciliation.md`.
 
+## Services (included, date-ranged) — GAP-037
+
+### `PropertyService(AuditedModel)`
+The first-class home for "what's included" in the rate — chef, daily
+housekeeping, welcome basket. Promoted out of the legacy free-text
+`pricing.RatePlan.inclusion` (owner Loom 2026-06-17) so that inclusions vary
+**independently of the rate calendar**: a flat-rate villa with a summer-only
+chef is one `RatePlan` + one summer service band, not a duplicate season.
+
+- `property` — FK Property **CASCADE**, `related_name="services"`
+- `name` — CharField(128) (e.g. "Private chef")
+- `copy` — TextField — **guest-facing** description; seeds the quote "Includes:"
+  line (legacy `RatePlan.inclusion`)
+- `notes` — TextField(blank=True) — **internal only**, never shown to guests
+- `applies_from` — DateField(null=True, blank=True) — **absolute** date (mirrors
+  `Extra`); null = open on that end
+- `applies_to` — DateField(null=True, blank=True) — null = open; a null/null band
+  is **year-round**
+- `sort_order` — IntegerField(default=0)
+- `is_active` — bool
+- `legacy_id` — CharField(64, null, db_index) — loader back-reference
+
+`CheckConstraint propertyservice_applies_from_lte_applies_to`: `applies_from`
+null ∨ `applies_to` null ∨ `applies_from ≤ applies_to`. `Meta.ordering =
+("property", "sort_order", "id")`; index on `(property, is_active, sort_order)`.
+
+**Informational, never priced.** Cost is already baked into the rate, so unlike
+`Extra` a service never flows into a quote total. This keeps three crisp,
+non-overlapping inclusion concepts and **does not add a fourth**:
+`PropertyService` = included services (date-ranged prose), `pricing.Extra` =
+priced add-ons, `Feature(service_type=INCLUDED_SERVICE)` = amenity tags.
+`RatePlan.inclusion` is **retired**.
+
+**Engine wiring.** `PricingEngine` derives `breakdown["inclusion"]` from a
+property's active services whose absolute band overlaps the stay (reusing
+`date_ranges_overlap()`); the projection path maps a future-year stay back onto
+the anchor year so projected quotes keep their inclusions. `seed_inclusions`
+still copies the joined prose into `reservations.QuotationLine.inclusions` at
+line creation (operator-editable thereafter). See `04-pricing.md`.
+
+**API/UX.** List/create nested under `/properties/{id}/services`; retrieve/
+update/delete on the flat `/services/{id}` (both `IsReservationsWriter`). The SPA
+surfaces them on a dedicated **Services** tab beside Pricing.
+
 ## Collections (curated marketing groups)
 
 ### `Collection(AuditedModel)`

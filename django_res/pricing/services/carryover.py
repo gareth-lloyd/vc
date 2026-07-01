@@ -4,9 +4,10 @@ The demoted carryover verb. Lazy projection (`pricing.services.projection`) serv
 every next-year *quote* without writing anything; this service exists for the
 moment staff want **editable** rows for a year — an owner has returned real
 numbers, or they want to hand-tune the guide before confirming. It clones the
-anchor year forward into real `RatePlan` / `RateCard` / `RateRule` rows, reusing
-the same date-map + uplift the projection uses, so the materialised rows match the
-guide a quote would have shown.
+anchor year forward into real `RatePlan` / `RatePeriod` / `RateRule` rows (the
+`RateCard` is carried transitionally until Unit 9), reusing the same date-map +
+uplift the projection uses, so the materialised rows match the guide a quote
+would have shown.
 
 This is deliberately **not** a Celery beat task: nothing rolls the whole portfolio
 forward speculatively. It is invoked per-property, on demand, from the admin action
@@ -23,7 +24,7 @@ import structlog
 from django.db import transaction
 
 from core.exceptions import NoRateAvailable
-from pricing.models import RateCard, RatePlan, RateRule
+from pricing.models import RateCard, RatePeriod, RatePlan, RateRule
 from pricing.services.extras import date_ranges_overlap
 from pricing.services.projection import (
     DateMap,
@@ -150,10 +151,11 @@ class RateCarryoverService:
                 claimed: list[dict[str, Any]] = []
                 for rule in sorted(rules, key=lambda r: r.pk):
                     fields = projected_rule_fields(rule, year_delta, date_map, factor)
-                    # Single-night remainders (lo == hi) can't be persisted —
-                    # the model requires date_from < date_to — so they drop.
+                    # Inclusive periods (GAP-056) admit single-day segments
+                    # (lo == hi); only truly-inverted ranges (lo > hi, produced
+                    # when a claim abuts a boundary) are dropped.
                     segments = [
-                        (lo, hi) for lo, hi in _unclaimed_segments(fields, claimed) if lo < hi
+                        (lo, hi) for lo, hi in _unclaimed_segments(fields, claimed) if lo <= hi
                     ]
                     if not segments:
                         logger.info(
@@ -171,8 +173,19 @@ class RateCarryoverService:
                     for lo, hi in segments:
                         seg_fields = {**fields, "date_from": lo, "date_to": hi}
                         claimed.append(seg_fields)
+                        # Native period creation (GAP-056): create the date-axis
+                        # parent explicitly rather than leaning on the `save()`
+                        # shim (dropped in Unit 9). `get_or_create` on (plan,
+                        # dates) means sibling bands sharing a segment land on one
+                        # period [H2]. `card=` stays set while the FK is non-null.
+                        period, _ = RatePeriod.objects.get_or_create(
+                            plan=new_plan,
+                            date_from=lo,
+                            date_to=hi,
+                        )
                         RateRule.objects.create(
                             card=new_card,
+                            period=period,
                             is_approved=True,
                             is_locked=False,
                             notes=rule.notes,

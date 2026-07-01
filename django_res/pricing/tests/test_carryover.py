@@ -239,6 +239,58 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
 
 
 @pytest.mark.django_db
+def test_materialise_persists_single_day_sliver(property_: Property, gbp: Currency) -> None:
+    """A collision that trims a later rule down to a single-day remainder must
+    still persist that day — inclusive periods (GAP-056) make `date_from ==
+    date_to` a legitimate row, so materialise no longer silently drops it
+    (which would leave the projection's price for that night unmatched)."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    card = RateCard.objects.create(plan=plan, name="Default", sort_order=0)
+    # Lower pk, spans Feb 29: maps (keep_calendar, +1yr) to [27 Feb - 1 Mar] 2025
+    # (span preserved across the lost leap day), claiming 1 Mar first.
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2024, 2, 27),
+        date_to=date(2024, 2, 29),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    # Higher pk, [1 Mar - 2 Mar] 2024 → maps to the same dates 2025; 1 Mar is
+    # claimed above, leaving a single-day remainder on 2 Mar.
+    RateRule.objects.create(
+        card=card,
+        date_from=date(2024, 3, 1),
+        date_to=date(2024, 3, 2),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("150.00"),
+    )
+
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
+    )
+
+    new_rules = list(RateRule.objects.filter(card__plan=new_plan).order_by("date_from"))
+    assert [(r.date_from, r.date_to, r.nightly) for r in new_rules] == [
+        (date(2025, 2, 27), date(2025, 3, 1), Decimal("100.00")),
+        (date(2025, 3, 2), date(2025, 3, 2), Decimal("150.00")),  # single-day sliver survives
+    ]
+    # The sliver is carried on a native single-day period (date_from == date_to),
+    # not left orphaned — every carried band has a period parent.
+    sliver = new_rules[1]
+    assert sliver.period is not None
+    assert sliver.period.date_from == date(2025, 3, 2)
+    assert sliver.period.date_to == date(2025, 3, 2)
+
+
+@pytest.mark.django_db
 def test_materialise_matches_projection_night_by_night(property_: Property, gbp: Currency) -> None:
     """materialise's contract: the rows it writes price every night exactly as
     the in-memory projection would have. Collisions resolve to the lowest

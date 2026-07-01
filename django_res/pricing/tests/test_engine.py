@@ -326,6 +326,53 @@ def test_all_fallback_stay_skips_period_validation(
 
 
 @pytest.mark.django_db
+def test_quote_excludes_deactivated_cards_rules(
+    property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    """A rule under a deactivated `RateCard` must not price.
+
+    Parity guard for the transitional expand phase: the old engine filtered
+    `RateCard.objects.filter(is_active=True)`, and `load_anchor_cards_with_rules`
+    (still used by carryover) keeps honouring `card.is_active`. But the `save()`
+    shim / backfill stamp every `RatePeriod` `is_active=True` regardless of the
+    card, so the period flag can't stand in for card activeness yet — the engine
+    must keep gating rules on `card.is_active` while cards exist. (Dropped in
+    Unit 9 when `period.is_active` becomes the sole gate.)
+    """
+    # Withdrawn card + rule created FIRST, so its rule has the lower pk and would
+    # win `pick_rule_for_night`'s lowest-pk tie-break if it leaked past the gate.
+    withdrawn = RateCard.objects.create(plan=plan, name="Withdrawn", sort_order=0, is_active=False)
+    RateRule.objects.create(
+        card=withdrawn,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("50.00"),
+    )
+    live = RateCard.objects.create(plan=plan, name="Live", sort_order=1)
+    RateRule.objects.create(
+        card=live,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("200.00"),
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 14),
+        party=4,
+        currency=gbp,
+    )
+
+    # The withdrawn card's 50.00 must never appear — only the live rate prices.
+    assert all(ln.nightly == Decimal("200.00") for ln in quote.lines)
+
+
+@pytest.mark.django_db
 def test_gap_night_without_fallback_still_raises(
     property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:

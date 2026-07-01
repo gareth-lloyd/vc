@@ -154,7 +154,12 @@ class StayOptionsService:
         context (still correct, just off the fast path).
         """
         properties_by_id = {
-            p.pk: p for p in Property.objects.filter(pk__in=property_ids).select_related("capacity")
+            p.pk: p
+            for p in Property.objects.filter(pk__in=property_ids)
+            # `settings` / `group__settings` feed the engine's villa min-nights
+            # default (GAP-056) that every per-week `quote()` now resolves; fold
+            # them in so the timeline doesn't re-query settings per property.
+            .select_related("capacity", "settings", "group__settings")
         }
         return [
             cls._weekly_prices_one(

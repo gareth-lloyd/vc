@@ -29,6 +29,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from django.db.models import Q
+
 from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
 
 # A date-map shifts a single source date by `year_delta` whole years into the
@@ -142,9 +144,15 @@ def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, l
         RatePeriod.objects.filter(plan=anchor, is_active=True).order_by("date_from", "pk")
     )
     rules_by_period: dict[int, list[RateRule]] = {}
-    for rule in RateRule.objects.filter(period__in=periods, is_approved=True).order_by(
-        "period_id", "pk"
-    ):
+    approved_rules = (
+        RateRule.objects.filter(period__in=periods, is_approved=True)
+        # Same transitional card gate as the engine's real path: a deactivated
+        # card's rules never seed a projection (`card__isnull=True` keeps future
+        # native card-less bands). Dropped in Unit 9 with the card.
+        .filter(Q(card__is_active=True) | Q(card__isnull=True))
+        .order_by("period_id", "pk")
+    )
+    for rule in approved_rules:
         assert rule.period_id is not None  # filtered on period__in — never null
         rules_by_period.setdefault(rule.period_id, []).append(rule)
     return [(period, rules_by_period.get(period.pk, [])) for period in periods]

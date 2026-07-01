@@ -24,7 +24,7 @@ from django.db.migrations.state import ProjectState
 
 _BEFORE = [
     ("pricing", "0010_remove_raterule_priority"),
-    ("properties", "0021_propertyservice"),
+    ("properties", "0022_propertyservice"),
 ]
 _AFTER = [("pricing", "0011_migrate_inclusion_to_propertyservice")]
 

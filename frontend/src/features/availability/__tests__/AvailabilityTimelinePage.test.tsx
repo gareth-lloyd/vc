@@ -47,7 +47,9 @@ const bands = {
 function installTaxonomyHandlers() {
   server.use(
     http.get("/api/v1/regions", () =>
-      HttpResponse.json(drfPage([{ id: 1, country: 1, name: "Ibiza", slug: "ibiza" }])),
+      HttpResponse.json(
+        drfPage([{ id: 1, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza" }]),
+      ),
     ),
     http.get("/api/v1/collections", () =>
       HttpResponse.json(drfPage([{ id: 1, name: "Signature", slug: "signature" }])),

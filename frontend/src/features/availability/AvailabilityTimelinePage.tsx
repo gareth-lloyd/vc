@@ -200,7 +200,12 @@ export function AvailabilityTimelinePage() {
                 filters.region,
                 [
                   { value: ALL_VALUE, label: t("filters.any_region") },
-                  ...(regions.data?.results ?? []).map((r) => ({ value: r.slug, label: r.name })),
+                  // Region id, not slug: slug/name repeat across countries, so
+                  // the label carries the country ISO. filter_region takes id.
+                  ...(regions.data?.results ?? []).map((r) => ({
+                    value: String(r.id),
+                    label: r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
+                  })),
                 ],
                 t("filters.region_aria"),
               )}

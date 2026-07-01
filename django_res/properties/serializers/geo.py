@@ -29,9 +29,13 @@ class CountrySerializer(serializers.ModelSerializer[Country]):
 
 
 class RegionSerializer(serializers.ModelSerializer[Region]):
+    # Region names repeat across countries (slug/name are unique only *per
+    # country*), so filter dropdowns need the country to disambiguate.
+    country_iso2 = serializers.CharField(source="country.iso2", read_only=True)
+
     class Meta:
         model = Region
-        fields = ["id", "country", "name", "slug", "sort_order", "is_active"]
+        fields = ["id", "country", "country_iso2", "name", "slug", "sort_order", "is_active"]
         read_only_fields = ["id"]
 
 

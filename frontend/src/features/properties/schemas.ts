@@ -296,6 +296,7 @@ export interface PropertyFilters {
 export const regionSchema = z.object({
   id: z.number(),
   country: z.number().nullable().optional(),
+  country_iso2: z.string().nullable().optional(),
   name: z.string(),
   slug: z.string(),
 });

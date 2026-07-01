@@ -27,8 +27,8 @@ describe("PropertiesListPage", () => {
       http.get("/api/v1/regions", () =>
         HttpResponse.json(
           drfPage([
-            { id: 7, country: 1, name: "Ibiza", slug: "ibiza-7" },
-            { id: 9, country: 1, name: "Mallorca", slug: "mallorca-9" },
+            { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza-7" },
+            { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca-9" },
           ]),
         ),
       ),
@@ -187,7 +187,8 @@ describe("PropertiesListPage", () => {
     );
     await screen.findByText("Casa Norte");
     await userEvent.click(screen.getByRole("combobox", { name: /filter by region/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "Ibiza" }));
-    await waitFor(() => expect(seen).toContain("ibiza-7"));
+    // Label disambiguates by country; value forwarded is the region id.
+    await userEvent.click(await screen.findByRole("option", { name: "Ibiza (ES)" }));
+    await waitFor(() => expect(seen).toContain("7"));
   });
 });

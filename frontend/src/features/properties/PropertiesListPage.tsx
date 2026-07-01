@@ -64,11 +64,15 @@ export function PropertiesListPage() {
     })),
   ];
 
-  // Region value is the slug (globally unique via the loader's -{id} suffix);
-  // mirrors AvailabilityTimelinePage and filter_region accepts id or slug.
+  // Region value is the globally-unique id (slug/name are unique only per
+  // country, so both repeat across countries); the label carries the country
+  // ISO to disambiguate same-named regions. filter_region accepts id or slug.
   const regionOptions = [
     { value: ALL_VALUE, label: t("common:filters.any_region") },
-    ...(regionsQuery.data?.results ?? []).map((r) => ({ value: r.slug, label: r.name })),
+    ...(regionsQuery.data?.results ?? []).map((r) => ({
+      value: String(r.id),
+      label: r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
+    })),
   ];
 
   const statusOptions = [

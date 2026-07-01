@@ -36,6 +36,16 @@ def test_regions_honour_page_size(api_client: APIClient, many_regions: None) -> 
     assert body["count"] == len(body["results"])
 
 
+def test_regions_expose_country_iso2(api_client: APIClient, country: Country) -> None:
+    """The dropdown label disambiguates same-named regions by country, so each
+    row must carry the country ISO alongside its id."""
+    Region.objects.create(country=country, name="Ibiza", slug="ibiza")
+    resp = api_client.get("/api/v1/regions", {"page_size": "200"})
+    assert resp.status_code == 200
+    row = next(r for r in resp.json()["results"] if r["slug"] == "ibiza")
+    assert row["country_iso2"] == country.iso2
+
+
 def test_collections_honour_page_size(api_client: APIClient, many_collections: None) -> None:
     resp = api_client.get("/api/v1/collections", {"page_size": "200"})
     assert resp.status_code == 200

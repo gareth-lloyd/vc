@@ -334,6 +334,16 @@ export const damageClaimLineSchema = z.object({
 });
 export type DamageClaimLine = z.infer<typeof damageClaimLineSchema>;
 
+// A damages evidence photo (wf8). `image_url` is storage-generated — a
+// `/media/…` path in dev, an absolute S3 URL on staging/prod.
+export const damageClaimPhotoSchema = z.object({
+  id: z.number(),
+  image_url: z.string().nullable(),
+  caption: z.string().default(""),
+  created_at: z.string().nullable().optional(),
+});
+export type DamageClaimPhoto = z.infer<typeof damageClaimPhotoSchema>;
+
 export const damageClaimSchema = z.object({
   id: z.number(),
   reference: z.string(),
@@ -344,7 +354,7 @@ export const damageClaimSchema = z.object({
   currency: z.number(),
   currency_code: z.string().nullable().optional(),
   itemized_lines: z.array(damageClaimLineSchema).default([]),
-  photos: z.array(z.unknown()).default([]),
+  photos: z.array(damageClaimPhotoSchema).default([]),
   accepted_by_guest_at: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),

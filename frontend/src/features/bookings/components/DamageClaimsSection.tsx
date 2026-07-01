@@ -14,6 +14,7 @@ import { formatMoney } from "@/lib/format/money";
 import type { BookingId } from "@/lib/query/keys";
 import { useApproveDamageClaim, useBookingDamageClaims, useWithdrawDamageClaim } from "../hooks";
 import { DamageClaimFormDialog } from "./DamageClaimFormDialog";
+import { DamageClaimPhotosDialog } from "./DamageClaimPhotosDialog";
 import { damageClaimStatusLabel, type DamageClaim } from "../schemas";
 
 interface Props {
@@ -32,6 +33,7 @@ export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
   const [editing, setEditing] = useState<DamageClaim | null>(null);
   const [approving, setApproving] = useState<DamageClaim | null>(null);
   const [withdrawing, setWithdrawing] = useState<DamageClaim | null>(null);
+  const [viewingPhotos, setViewingPhotos] = useState<DamageClaim | null>(null);
 
   const rows = claims.data?.results ?? [];
 
@@ -141,48 +143,62 @@ export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
                     {/* Row actions follow the claim state machine: OPEN is fully
                         editable (edit / approve / withdraw); APPROVED can only
                         be withdrawn; SETTLED and WITHDRAWN are terminal — no
-                        actions. The server enforces the same transitions. */}
-                    {canWrite ? (
-                      <div className="flex justify-end gap-1">
-                        {claim.status === "open" ? (
-                          <>
+                        actions. The server enforces the same transitions.
+                        Photos are viewable by any staff (upload/delete gated
+                        inside the dialog), so that button sits outside canWrite. */}
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t("damage_claims.row.photos_for", {
+                          reference: claim.reference,
+                        })}
+                        onClick={() => setViewingPhotos(claim)}
+                      >
+                        {t("damage_claims.row.photos", { count: claim.photos.length })}
+                      </Button>
+                      {canWrite ? (
+                        <>
+                          {claim.status === "open" ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t("damage_claims.row.edit_for", {
+                                  reference: claim.reference,
+                                })}
+                                onClick={() => setEditing(claim)}
+                              >
+                                {t("common:actions.edit")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t("damage_claims.row.approve_for", {
+                                  reference: claim.reference,
+                                })}
+                                onClick={() => setApproving(claim)}
+                              >
+                                {t("damage_claims.row.approve")}
+                              </Button>
+                            </>
+                          ) : null}
+                          {claim.status === "open" || claim.status === "approved" ? (
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label={t("damage_claims.row.edit_for", {
+                              className="text-destructive"
+                              aria-label={t("damage_claims.row.withdraw_for", {
                                 reference: claim.reference,
                               })}
-                              onClick={() => setEditing(claim)}
+                              onClick={() => setWithdrawing(claim)}
                             >
-                              {t("common:actions.edit")}
+                              {t("damage_claims.row.withdraw")}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={t("damage_claims.row.approve_for", {
-                                reference: claim.reference,
-                              })}
-                              onClick={() => setApproving(claim)}
-                            >
-                              {t("damage_claims.row.approve")}
-                            </Button>
-                          </>
-                        ) : null}
-                        {claim.status === "open" || claim.status === "approved" ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            aria-label={t("damage_claims.row.withdraw_for", {
-                              reference: claim.reference,
-                            })}
-                            onClick={() => setWithdrawing(claim)}
-                          >
-                            {t("damage_claims.row.withdraw")}
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -210,6 +226,19 @@ export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
           open
           onOpenChange={(open) => {
             if (!open) setEditing(null);
+          }}
+        />
+      ) : null}
+
+      {viewingPhotos ? (
+        <DamageClaimPhotosDialog
+          bookingId={bookingId}
+          claimId={viewingPhotos.id}
+          claimReference={viewingPhotos.reference}
+          canWrite={canWrite}
+          open
+          onOpenChange={(open) => {
+            if (!open) setViewingPhotos(null);
           }}
         />
       ) : null}

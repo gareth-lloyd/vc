@@ -406,9 +406,24 @@
     "row": {
       "approve": "Approve",
       "withdraw": "Withdraw",
+      "photos": "Photos ({{count}})",
       "edit_for": "Edit claim {{reference}}",
       "approve_for": "Approve claim {{reference}}",
-      "withdraw_for": "Withdraw claim {{reference}}"
+      "withdraw_for": "Withdraw claim {{reference}}",
+      "photos_for": "Photos for claim {{reference}}"
+    },
+    "photos": {
+      "title": "Damage photos",
+      "description": "Evidence attached to claim {{reference}}.",
+      "empty_title": "No photos yet",
+      "empty_description": "Upload photos of the damage as evidence for the claim.",
+      "thumbnail_alt": "Damage photo",
+      "caption_label": "Photo caption",
+      "caption_placeholder": "Optional caption",
+      "upload_label": "Upload a photo",
+      "delete_for": "Delete photo {{id}}",
+      "upload_failed": "Couldn't upload the photo",
+      "delete_failed": "Couldn't delete the photo"
     },
     "confirm_approve": {
       "title": "Approve this claim?",

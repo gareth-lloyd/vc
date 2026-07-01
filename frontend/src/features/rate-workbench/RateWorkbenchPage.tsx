@@ -224,12 +224,23 @@ export function RateWorkbenchPage() {
       </section>
     ) : null;
 
+  // The property's pricing currency: seasons carry the authoritative currency
+  // (both the `currency` FK id and its `currency_code`, set together), but the
+  // property settings row often leaves the FK null (only the group resolves one).
+  // Read both from a single season so the inspector's amount adornments (code)
+  // and the extra dialog's currency default (id) stay consistent; fall back to
+  // the settings code for display.
+  const currencySeason = seasonList.find((s) => s.currency != null || s.currency_code);
+  const currencyCode = currencySeason?.currency_code ?? settings.data?.currency_code ?? null;
+  const defaultCurrencyId = currencySeason?.currency ?? null;
+
   const inspectorSection =
     !isLoading && !isError ? (
       <InspectorPanel
         propertyId={property.id}
         canWrite={canWrite}
-        currencyCode={settings.data?.currency_code ?? null}
+        currencyCode={currencyCode}
+        defaultCurrencyId={defaultCurrencyId}
       />
     ) : null;
 

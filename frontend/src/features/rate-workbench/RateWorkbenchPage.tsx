@@ -1,23 +1,34 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
   usePropertyDiscounts,
   usePropertyExtras,
   usePropertySeasons,
   usePropertyServices,
+  usePropertySettings,
 } from "@/features/properties/hooks";
 import type { PropertyDetail } from "@/features/properties/schemas";
 import { useSeasonDetailsFanOut } from "./hooks";
 import { toLanes } from "./toLanes";
 import { useYearWindow } from "./yearWindow";
 import { WorkbenchTimeline } from "./components/WorkbenchTimeline";
+import { MatrixEditor } from "./components/MatrixEditor";
 
 interface WorkbenchContext {
   property: PropertyDetail;
@@ -33,15 +44,21 @@ export function RateWorkbenchPage() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<WorkbenchContext>();
   const { year, windowStart, dayCount, from, to, goPrev, goNext } = useYearWindow();
+  const canWrite = useHasReservationsRole();
 
   const seasons = usePropertySeasons(property.id);
   const services = usePropertyServices(property.id);
   const extras = usePropertyExtras(property.id);
   const discounts = usePropertyDiscounts(property.id);
   const changeover = useChangeOverRules(property.id);
+  const settings = usePropertySettings(property.id);
 
   const seasonList = seasons.data?.results ?? [];
   const fanOut = useSeasonDetailsFanOut(seasonList.map((s) => s.id));
+
+  // Which season's rate matrix is open (below the timeline). Defaults to the
+  // first season that has cards once details load.
+  const [matrixSeasonId, setMatrixSeasonId] = useState<number | null>(null);
 
   const isLoading =
     seasons.isLoading ||
@@ -154,10 +171,61 @@ export function RateWorkbenchPage() {
     }
   }
 
+  // The rate matrix is season/card-structural, not year-scoped, so it renders
+  // below the timeline whenever any loaded season has cards — independent of the
+  // year in view.
+  const seasonsWithCards = fanOut.details.filter((d) => (d.cards?.length ?? 0) > 0);
+  const activeMatrixSeasonId =
+    matrixSeasonId != null && seasonsWithCards.some((s) => s.id === matrixSeasonId)
+      ? matrixSeasonId
+      : (seasonsWithCards[0]?.id ?? null);
+
+  const matrixSection =
+    !isLoading && !isError && activeMatrixSeasonId != null ? (
+      <section className="border-border space-y-3 border-t pt-6">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-foreground text-lg font-semibold">
+            {t("rate_workbench.matrix.title")}
+          </h2>
+          {seasonsWithCards.length > 1 ? (
+            <Select
+              value={String(activeMatrixSeasonId)}
+              onValueChange={(v) => setMatrixSeasonId(Number(v))}
+            >
+              <SelectTrigger
+                className="w-[220px]"
+                aria-label={t("rate_workbench.matrix.season_picker")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {seasonsWithCards.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
+        <MatrixEditor
+          key={activeMatrixSeasonId}
+          seasonId={activeMatrixSeasonId}
+          seasons={seasonsWithCards}
+          canWrite={canWrite}
+          changeoverDay={settings.data?.changeover_day ?? null}
+          minNightsRental={settings.data?.min_nights_rental ?? null}
+          commission={settings.data?.commission ?? null}
+          tax={settings.data?.tax ?? null}
+        />
+      </section>
+    ) : null;
+
   return (
     <div className="space-y-6 p-6">
       {header}
       {body}
+      {matrixSection}
     </div>
   );
 }

@@ -1088,6 +1088,29 @@
       "code": "Code",
       "kind": "Kind",
       "copy": "Included"
+    },
+    "matrix": {
+      "title": "Rate matrix",
+      "season_picker": "Choose a season",
+      "card_picker": "Choose a rate card",
+      "segment": "Dates",
+      "any_party": "Any party",
+      "poa": "POA",
+      "fill_cell": "Add a price for this band",
+      "cell_menu": "Rule actions",
+      "edit_rule": "Edit rule…",
+      "delete_rule": "Delete rule",
+      "nightly_for": "Nightly rate, {{from}} to {{to}}",
+      "no_cards": "This season has no rate cards yet.",
+      "no_rules": "This rate card has no rules yet.",
+      "covered": "Another band already prices these dates — no rate can be added here.",
+      "deleted": "Rule deleted",
+      "save_failed": "Couldn't save the rate. Please try again.",
+      "delete_confirm": {
+        "title": "Delete this rule?",
+        "description": "This removes the price for this date segment and party band.",
+        "confirm": "Delete"
+      }
     }
   }
 }

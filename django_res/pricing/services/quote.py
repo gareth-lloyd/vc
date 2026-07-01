@@ -10,14 +10,15 @@ from typing import Any
 class QuoteLine:
     """A single-night rate line in a quote breakdown.
 
-    `rule_id` / `card_id` are `None` for a synthetic fallback line — a night
+    `rule_id` / `period_id` are `None` for a synthetic fallback line — a night
     priced from `RatePlan.fallback_nightly` because no `RateRule` covered it
-    (see GAP-008 / the legacy `SettingNightlyPrice` path).
+    (see GAP-008 / the legacy `SettingNightlyPrice` path). GAP-056: the date-axis
+    parent is the `RatePeriod` now (was the dropped `RateCard`).
     """
 
     date: date
     rule_id: int | None
-    card_id: int | None
+    period_id: int | None
     nightly: Decimal
     notes: str = ""
 
@@ -25,7 +26,7 @@ class QuoteLine:
         return {
             "date": self.date.isoformat(),
             "rule_id": self.rule_id,
-            "card_id": self.card_id,
+            "period_id": self.period_id,
             "nightly": str(self.nightly),
             "notes": self.notes,
         }

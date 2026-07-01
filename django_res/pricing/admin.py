@@ -12,7 +12,7 @@ from pricing.models import (
     Discount,
     Extra,
     FxRate,
-    RateCard,
+    RatePeriod,
     RatePlan,
     RateRule,
     VillaPricingSummary,
@@ -81,19 +81,18 @@ class RatePlanAdmin(admin.ModelAdmin):
             )
 
 
-@admin.register(RateCard)
-class RateCardAdmin(admin.ModelAdmin):
-    list_display = ("name", "plan", "min_nights", "max_nights", "sort_order", "is_active")
+@admin.register(RatePeriod)
+class RatePeriodAdmin(admin.ModelAdmin):
+    list_display = ("plan", "name", "date_from", "date_to", "min_nights", "max_nights", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name",)
+    date_hierarchy = "date_from"
 
 
 @admin.register(RateRule)
 class RateRuleAdmin(admin.ModelAdmin):
     list_display = (
-        "card",
-        "date_from",
-        "date_to",
+        "period",
         "min_party",
         "max_party",
         "nightly",

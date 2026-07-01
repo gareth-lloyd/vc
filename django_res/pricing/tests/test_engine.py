@@ -297,7 +297,7 @@ def test_fallback_nightly_fills_gap_night(
     fallback_lines = [ln for ln in quote.lines if ln.rule_id is None]
     assert len(fallback_lines) == 1
     assert fallback_lines[0].date == date(2026, 9, 1)
-    assert fallback_lines[0].card_id is None
+    assert fallback_lines[0].period_id is None
     assert fallback_lines[0].nightly == Decimal("150.00")
     assert quote.rate_subtotal == Decimal("550.00")  # 200 + 200 + 150
 
@@ -320,7 +320,7 @@ def test_all_fallback_stay_skips_period_validation(
     )
 
     assert len(quote.lines) == 3
-    assert all(ln.rule_id is None and ln.card_id is None for ln in quote.lines)
+    assert all(ln.rule_id is None and ln.period_id is None for ln in quote.lines)
     assert quote.rate_subtotal == Decimal("297.00")
     assert quote.breakdown["winning_period_id"] is None
 

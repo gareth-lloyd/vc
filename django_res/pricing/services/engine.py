@@ -182,7 +182,7 @@ class PricingEngine:
                         QuoteLine(
                             date=night,
                             rule_id=None,
-                            card_id=None,
+                            period_id=None,
                             nightly=Decimal(plan.fallback_nightly),
                         )
                     )
@@ -201,9 +201,7 @@ class PricingEngine:
                 QuoteLine(
                     date=night,
                     rule_id=rule.pk,
-                    # `card_id` is transitional snapshot cruft (Unit 6 flips it to
-                    # `period_id`); source it from the band's still-live card FK.
-                    card_id=rule.card_id,
+                    period_id=rule.period_id,
                     nightly=nightly,
                 )
             )

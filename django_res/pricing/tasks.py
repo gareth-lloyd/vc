@@ -30,11 +30,14 @@ def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
     # Lazy-import to avoid circulars during app loading.
     from pricing.models import Currency, RatePlan  # noqa: F401
 
+    # GAP-056: the display min/max mirrors what the engine prices — approved
+    # bands on an active period of an active plan. Gated on the RatePeriod now
+    # (the RateCard.is_active gate is dropped with the card in Unit 9).
     rules = RateRule.objects.filter(
-        card__plan__property_id=property_id,
-        card__plan__currency_id=currency_id,
-        card__plan__is_active=True,
-        card__is_active=True,
+        period__plan__property_id=property_id,
+        period__plan__currency_id=currency_id,
+        period__plan__is_active=True,
+        period__is_active=True,
         is_approved=True,
     )
 

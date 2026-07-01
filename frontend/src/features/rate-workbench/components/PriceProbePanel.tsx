@@ -108,6 +108,10 @@ export function PriceProbePanel({
           <Input
             id="probe-from"
             type="date"
+            // Native date controls need room for DD/MM/YYYY + the picker icon;
+            // the shared Input's `min-w-0` otherwise lets the grid track clip the
+            // day at narrow widths. Floor the width so the full date always shows.
+            className="min-w-[9rem]"
             value={dateFrom}
             onChange={(e) => {
               clearStaleResult();
@@ -120,6 +124,7 @@ export function PriceProbePanel({
           <Input
             id="probe-to"
             type="date"
+            className="min-w-[9rem]"
             value={dateTo}
             onChange={(e) => {
               clearStaleResult();

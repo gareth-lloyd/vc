@@ -354,6 +354,142 @@ describe("SaveQuoteDialog", () => {
     expect(lines[0]).not.toHaveProperty("price_override_reason");
   });
 
+  it("posts one body per staged week with that week's own dates (GAP-043 multi-week)", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    // Two flat weeks of the SAME villa — each staged line is one week.
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({ date_from: "2026-07-04", date_to: "2026-07-11" }),
+          stagedLine({ date_from: "2026-07-11", date_to: "2026-07-18", total: "5200.00" }),
+        ]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const lines = linesOf(quotationBody!);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      property: 7,
+      date_from: "2026-07-04",
+      date_to: "2026-07-11",
+      is_manual: false,
+    });
+    expect(lines[1]).toMatchObject({
+      property: 7,
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      is_manual: false,
+    });
+  });
+
+  it("fans out weeks × checked bands: 2 banded weeks × 2 bands ⇒ 4 bodies (GAP-043)", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    const weekBands = (t1: string, t2: string) => [
+      band({ min_party: 1, max_party: 4, adults: 4, total: t1 }),
+      band({ min_party: 5, max_party: 8, adults: 8, total: t2 }),
+    ];
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({
+            total: null,
+            date_from: "2026-07-04",
+            date_to: "2026-07-11",
+            occupancy_bands: weekBands("4500.00", "6200.00"),
+          }),
+          stagedLine({
+            total: null,
+            date_from: "2026-07-11",
+            date_to: "2026-07-18",
+            occupancy_bands: weekBands("4800.00", "6600.00"),
+          }),
+        ]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const lines = linesOf(quotationBody!);
+    // weeks × bands, each body at ITS week's dates with ITS band's party.
+    expect(lines).toHaveLength(4);
+    expect(lines.map((l) => [l.date_from, l.adults])).toEqual([
+      ["2026-07-04", 4],
+      ["2026-07-04", 8],
+      ["2026-07-11", 4],
+      ["2026-07-11", 8],
+    ]);
+    lines.forEach((l) => expect(l).toMatchObject({ property: 7, is_manual: false }));
+  });
+
+  it("fans out each week's OWN checked bands for heterogeneous bracket sets (M2)", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    // Week A has 1–4 (unchecked by the operator) + 5–8; week B's seasonal card
+    // brackets differently (1–6 / 7–10, both checked — no matching party range
+    // was deselected).
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({
+            total: null,
+            date_from: "2026-07-04",
+            date_to: "2026-07-11",
+            occupancy_bands: [
+              band({ min_party: 1, max_party: 4, adults: 4, checked: false }),
+              band({ min_party: 5, max_party: 8, adults: 8, total: "6200.00" }),
+            ],
+          }),
+          stagedLine({
+            total: null,
+            date_from: "2026-07-11",
+            date_to: "2026-07-18",
+            occupancy_bands: [
+              band({ min_party: 1, max_party: 6, adults: 6, total: "3300.00" }),
+              band({ min_party: 7, max_party: 10, adults: 10, total: "4800.00" }),
+            ],
+          }),
+        ]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const lines = linesOf(quotationBody!);
+    expect(lines.map((l) => [l.date_from, l.adults])).toEqual([
+      ["2026-07-04", 8],
+      ["2026-07-11", 6],
+      ["2026-07-11", 10],
+    ]);
+  });
+
   it("still posts exactly one body for a non-banded line", async () => {
     let quotationBody: Record<string, unknown> | null = null;
     mockSaveEndpoints((body) => {

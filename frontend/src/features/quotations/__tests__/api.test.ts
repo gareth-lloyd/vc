@@ -532,6 +532,59 @@ describe("repriceStayOption", () => {
     expect(result.available).toBe(false);
     expect(result.error_code).toBe("min_nights_not_met");
   });
+
+  it("parses the reprised week's occupancy bands (GAP-044b two-axis picker)", async () => {
+    server.use(
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "3690.22",
+              currency_code: "GBP",
+              date_from: "2026-08-01",
+              date_to: "2026-08-08",
+              occupancy_bands: [
+                {
+                  min_party: 1,
+                  max_party: 8,
+                  adults: 8,
+                  total: "3690.22",
+                  currency_code: "GBP",
+                  is_poa: false,
+                },
+                {
+                  min_party: 9,
+                  max_party: 10,
+                  adults: 10,
+                  total: null,
+                  currency_code: null,
+                  is_poa: true,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await repriceStayOption({
+      property_id: 7,
+      date_from: "2026-08-01",
+      date_to: "2026-08-08",
+      adults: 8,
+      children: 0,
+    });
+
+    expect(result.occupancy_bands).toHaveLength(2);
+    expect(result.occupancy_bands?.[0]).toMatchObject({
+      min_party: 1,
+      max_party: 8,
+      total: "3690.22",
+    });
+    expect(result.occupancy_bands?.[1]).toMatchObject({ is_poa: true, total: null });
+  });
 });
 
 describe("line hold endpoints", () => {

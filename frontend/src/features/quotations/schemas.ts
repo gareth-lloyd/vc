@@ -208,6 +208,11 @@ export const stayRepriceSchema = z.object({
   inclusion: z.string().nullable().optional(),
   error_code: z.string().nullable().optional(),
   error_detail: z.string().nullable().optional(),
+  // GAP-044b two-axis picker: a reprice for an occupancy-priced villa carries
+  // the chosen week's occupancy brackets (the backend attaches them on every
+  // return path, incl. out-of-bracket/POA). Absent for a flat-rate villa or an
+  // older response; nullable + optional so those still parse.
+  occupancy_bands: z.array(occupancyBandSchema).nullable().optional(),
 });
 export type StayReprice = z.infer<typeof stayRepriceSchema>;
 

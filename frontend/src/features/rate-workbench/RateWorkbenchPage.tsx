@@ -29,6 +29,7 @@ import { toLanes } from "./toLanes";
 import { useYearWindow } from "./yearWindow";
 import { WorkbenchTimeline } from "./components/WorkbenchTimeline";
 import { MatrixEditor } from "./components/MatrixEditor";
+import { InspectorPanel } from "./components/InspectorPanel";
 
 interface WorkbenchContext {
   property: PropertyDetail;
@@ -221,11 +222,21 @@ export function RateWorkbenchPage() {
       </section>
     ) : null;
 
+  const inspectorSection =
+    !isLoading && !isError ? (
+      <InspectorPanel
+        propertyId={property.id}
+        canWrite={canWrite}
+        currencyCode={settings.data?.currency_code ?? null}
+      />
+    ) : null;
+
   return (
     <div className="space-y-6 p-6">
       {header}
       {body}
       {matrixSection}
+      {inspectorSection}
     </div>
   );
 }

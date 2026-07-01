@@ -1111,6 +1111,71 @@
         "description": "This removes the price for this date segment and party band.",
         "confirm": "Delete"
       }
+    },
+    "inspector": {
+      "title": "Inclusions, extras & discounts",
+      "sections": {
+        "inclusions": "Inclusions",
+        "extras": "Extras",
+        "discounts": "Discounts"
+      },
+      "add_inclusion": "Add inclusion",
+      "add_extra": "Add extra",
+      "add_discount": "Add discount",
+      "add_disabled_tooltip": "You don't have permission to edit rates.",
+      "empty_inclusions": "No inclusions yet.",
+      "empty_extras": "No extras yet.",
+      "empty_discounts": "No discounts yet.",
+      "mandatory": "Mandatory",
+      "optional": "Optional",
+      "fields": {
+        "name": "Name",
+        "code": "Code",
+        "kind": "Kind",
+        "amount": "Amount",
+        "description": "Description",
+        "applies_from": "Applies from",
+        "applies_to": "Applies to",
+        "valid_from": "Valid from",
+        "valid_to": "Valid to",
+        "min_nights": "Min nights",
+        "max_uses": "Max uses",
+        "is_mandatory": "Mandatory",
+        "is_active": "Active"
+      },
+      "actions": {
+        "edit": "Edit",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      },
+      "extra_dialog": {
+        "create_title": "Add extra",
+        "edit_title": "Edit extra"
+      },
+      "discount_dialog": {
+        "create_title": "Add discount",
+        "edit_title": "Edit discount"
+      },
+      "errors": {
+        "extra_name_required": "Enter a name for this extra.",
+        "extra_to_before_from": "The end date can't be before the start date.",
+        "discount_name_required": "Enter a name for this discount.",
+        "discount_to_before_from": "The end date can't be before the start date."
+      },
+      "delete_confirm": {
+        "title": "Delete this item?",
+        "description": "This permanently removes it from the property.",
+        "confirm": "Delete"
+      },
+      "toasts": {
+        "created": "Saved",
+        "updated": "Saved",
+        "deleted": "Deleted",
+        "save_failed": "Something went wrong. Please try again.",
+        "delete_failed": "Couldn't delete. Please try again."
+      }
     }
   }
 }

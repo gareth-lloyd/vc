@@ -1,10 +1,19 @@
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { queryKeys } from "@/lib/query/keys";
+import { queryKeys, type PropertyId } from "@/lib/query/keys";
 import { ApiError } from "@/lib/api/errors";
 import { fetchSeasonDetail, updateRateRule } from "@/features/properties/api";
 import type { RatePlanDetail, RateRule } from "@/features/properties/schemas";
 import i18n from "@/i18n";
+import {
+  createDiscount,
+  createExtra,
+  deleteDiscount,
+  deleteExtra,
+  updateDiscount,
+  updateExtra,
+} from "./api";
+import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
 
 /**
  * Fan out one `useSeasonDetail` query per season to assemble the whole rate
@@ -77,6 +86,85 @@ export function useOptimisticRuleNightly(seasonId: number) {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Inspector CRUD (Unit 5): Extras + Discounts. Inclusions reuse the existing
+// PropertyService hooks in `@/features/properties/hooks`. Each mutation
+// invalidates the same list query key the page's read hooks already observe,
+// so the inspector and the timeline reconcile from one cache.
+// ---------------------------------------------------------------------------
+
+export function useCreateExtra(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ExtraWritePayload) => createExtra(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.extras(propertyId) });
+    },
+  });
+}
+
+interface UpdateExtraVars {
+  extraId: number;
+  input: Partial<ExtraWritePayload> & { sort_order?: number };
+}
+
+export function useUpdateExtra(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Detail route is flat, so the extra id alone addresses the row; propertyId
+    // is carried only to invalidate the right list cache.
+    mutationFn: ({ extraId, input }: UpdateExtraVars) => updateExtra(extraId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.extras(propertyId) });
+    },
+  });
+}
+
+export function useDeleteExtra(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ extraId }: { extraId: number }) => deleteExtra(extraId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.extras(propertyId) });
+    },
+  });
+}
+
+export function useCreateDiscount(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DiscountWritePayload) => createDiscount(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.discounts(propertyId) });
+    },
+  });
+}
+
+interface UpdateDiscountVars {
+  discountId: number;
+  input: Partial<DiscountWritePayload>;
+}
+
+export function useUpdateDiscount(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ discountId, input }: UpdateDiscountVars) => updateDiscount(discountId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.discounts(propertyId) });
+    },
+  });
+}
+
+export function useDeleteDiscount(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ discountId }: { discountId: number }) => deleteDiscount(discountId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.discounts(propertyId) });
     },
   });
 }

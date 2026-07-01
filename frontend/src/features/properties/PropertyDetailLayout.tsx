@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
+import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useProperty } from "./hooks";
 import { PROPERTY_TABS } from "./tabConfig";
 
@@ -18,9 +19,16 @@ export function PropertyDetailLayout() {
   const { id } = useParams<{ id: string }>();
   const query = useProperty(id);
   const isAdmin = useHasAdminRole();
-  // The audit-log History tab is admin-only (Q-014); the route itself stays
-  // mounted so a direct URL still resolves (it shows a permission notice).
-  const tabs = PROPERTY_TABS.filter((tab) => tab.slug !== "history" || isAdmin);
+  const canWriteRates = useHasReservationsRole();
+  // The audit-log History tab is admin-only (Q-014); the Rate Workbench is a
+  // writer-only preview (reservations OR admin) while we build confidence. This
+  // only hides the nav entry — both routes stay mounted so a direct URL still
+  // resolves (the workbench is read-only in this phase, so that's acceptable).
+  const tabs = PROPERTY_TABS.filter((tab) => {
+    if (tab.slug === "history") return isAdmin;
+    if (tab.slug === "rate-workbench") return canWriteRates;
+    return true;
+  });
 
   const quickActions = useMemo<readonly QuickAction[]>(
     () => [

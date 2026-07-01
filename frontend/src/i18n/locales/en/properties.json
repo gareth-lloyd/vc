@@ -58,7 +58,8 @@
     "media": "Media",
     "features": "Features",
     "settings": "Settings",
-    "history": "History"
+    "history": "History",
+    "rate_workbench": "Rate Workbench"
   },
   "detail": {
     "not_found_title": "Property not found",
@@ -1042,5 +1043,51 @@
   "common": {
     "inherit": "Inherit",
     "unset": "—"
+  },
+  "rate_workbench": {
+    "title": "Rate & Service Workbench",
+    "subtitle": "The whole year's rates, inclusions, extras, discounts and changeover in one view.",
+    "preview_badge": "Preview",
+    "lanes": {
+      "seasons": "Seasons",
+      "rates": "Rate cards",
+      "inclusions": "Inclusions",
+      "extras": "Extras",
+      "discounts": "Discounts",
+      "changeover": "Changeover"
+    },
+    "lane_empty": "None",
+    "year": {
+      "prev": "Previous year",
+      "next": "Next year"
+    },
+    "empty": {
+      "title": "No configuration yet",
+      "body": "This property has no seasons, inclusions, extras, discounts or changeover rules to show."
+    },
+    "empty_year": {
+      "title": "Nothing scheduled in {{year}}",
+      "body": "This property is configured, but none of it applies to the selected year. Try another year."
+    },
+    "error": {
+      "title": "Couldn't load the workbench",
+      "body": "Something went wrong loading this property's rate configuration."
+    },
+    "band": {
+      "aria": "{{label}}, {{from}} to {{to}}"
+    },
+    "detail": {
+      "dates": "Dates",
+      "price_range": "Price",
+      "poa": "POA",
+      "plan": "Season",
+      "required": "Required",
+      "mandatory": "Mandatory",
+      "optional": "Optional",
+      "amount": "Amount",
+      "code": "Code",
+      "kind": "Kind",
+      "copy": "Included"
+    }
   }
 }

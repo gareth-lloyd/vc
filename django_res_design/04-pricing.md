@@ -164,8 +164,13 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > wanted. The prior rationale is retained above for context — it was about the
 > *default*, and the new default inverts it. **Engine contract is unchanged:**
 > `PricingEngine.quote()` still resolves one bracket per call; the *builder*
-> drives the fan-out (call once per covering band, or a small `:bands` endpoint).
-> Tracked in [`todo/gap-044-occupancy-band-fanout-builder.md`](todo/gap-044-occupancy-band-fanout-builder.md).
+> drives the fan-out. **Shipped (2026-07-01):** `PricingEngine.covering_bands(...)`
+> enumerates the covering brackets (party-independent, night-correct),
+> `StayOptionsService` attaches a priced `occupancy_bands` array per
+> `search-options` result (POA-flagged, party-independent), and the builder
+> renders them as default-checked lines that flat-map to one quotation line per
+> checked band at save. See
+> [`todo/done/gap-044-occupancy-band-fanout-builder.md`](todo/done/gap-044-occupancy-band-fanout-builder.md).
 
 #### Disjoint date ranges within a card
 A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.

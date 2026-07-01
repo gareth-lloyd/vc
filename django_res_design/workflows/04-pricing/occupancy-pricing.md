@@ -1,5 +1,13 @@
 # Occupancy Pricing
 
+> **Rebuild:** occupancy bands are sibling `RateRule` rows on one `RateCard`
+> (distinct `(min_party, max_party)`); the engine resolves the single covering
+> bracket per `quote()`. The quote builder fans **all** covering bands out as
+> default-checked lines (owner Loom 2026-06-17) — see
+> [`../../04-pricing.md`](../../04-pricing.md) (fan-out default) and
+> [`../../todo/done/gap-044-occupancy-band-fanout-builder.md`](../../todo/done/gap-044-occupancy-band-fanout-builder.md)
+> (shipped 2026-07-01).
+
 When a rate has `IsOccupationPrice=true`, the price varies by guest count. Each occupancy band specifies `OccupencyPriceFrom..OccupencyPriceTo` and a `OccupencyPrice` `[TYPO]` (all "Occupancy"). Bands can be non-contiguous and overlap — the engine picks the first match.
 
 ## Manage occupancy band

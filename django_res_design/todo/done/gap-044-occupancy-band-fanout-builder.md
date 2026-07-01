@@ -1,3 +1,28 @@
+> **✅ RESOLVED (2026-07-01)** — The quote builder now fans out every covering
+> occupancy band as its own default-checked, priced line the agent deselects.
+> **Engine contract unchanged:** `PricingEngine.quote()` still resolves one band
+> per call; a new read-only `PricingEngine.covering_bands(...)` enumerates the
+> distinct `(min_party, max_party)` brackets on the card the engine would price
+> for a week — party-independent, night-correct, mirroring `quote()`'s changeover
+> shift, and empty unless the covering card carries ≥2 brackets.
+> `StayOptionsService` attaches an `occupancy_bands` array to each
+> `POST /quotations:search-options` result: each band is re-priced at its
+> representative party (`max(1, min_party)`) reusing the loaded `PricingContext`
+> (no per-band rate reload), POA/no-rate bands are flagged (`total:null`) not
+> dropped, and bands are enumerated independent of the searched party so an
+> out-of-bracket search still shows them (gated only on the week being
+> date-available, not booked). The frontend renders the bands as a checkable
+> priced list (default-checked; picker suppressed — bands price the default
+> block only), carries the checked bands through the shortlist, and at save
+> flat-maps each checked non-POA band into its own non-manual quotation line
+> (`adults = max(1, min_party)`; the server re-prices the bracket). Bands are
+> **alternatives**, never summed. Shipped backend `abf6bcd` (engine) + `d220f03`
+> (service), frontend `1ca6b3b` (display) + `e28c6ea` (staging/shortlist/save).
+> Deferred (unchanged): bands × alternate changeover blocks (default block
+> only), per-band manual override / discount, projection-year bands, a POA-only
+> banded villa (operator uses a manual line). Cross-refs: `04-pricing.md`
+> (fan-out default), `10-decisions.md`.
+
 # GAP-044 — Quote builder: occupancy-band fan-out (all bands, default-checked)
 
 - **Severity:** Gap (frontend + backend) — **reverses a prior pricing decision**

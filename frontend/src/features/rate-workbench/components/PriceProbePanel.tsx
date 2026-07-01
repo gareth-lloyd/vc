@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/errors";
+import type { PriceBasis } from "@/lib/pricing/netGross";
 import type { Extra } from "@/features/properties/schemas";
 import { usePriceProbe } from "../hooks";
 import { QuoteResultCard } from "./QuoteResultCard";
@@ -15,6 +16,14 @@ interface PriceProbePanelProps {
   extras: Extra[];
   /** cardId → "Season · Card" label, to name the winning card in the result. */
   cardLabels: Record<number, string>;
+  /**
+   * planId → price basis, used to reconcile the guest total (see
+   * QuoteResultCard). Optional so callers/tests that don't wire pricing seasons
+   * still work; the panel falls back to `defaultBasis` then "gross".
+   */
+  basisByPlan?: Record<number, PriceBasis>;
+  /** Property-level default basis (`prices_entered_as_effective`) fallback. */
+  defaultBasis?: PriceBasis;
 }
 
 /**
@@ -23,7 +32,13 @@ interface PriceProbePanelProps {
  * `party` is `adults + children` (the engine's single occupancy input); owner
  * economics stay hidden (see QuoteResultCard / BUG-009).
  */
-export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePanelProps) {
+export function PriceProbePanel({
+  propertyId,
+  extras,
+  cardLabels,
+  basisByPlan,
+  defaultBasis,
+}: PriceProbePanelProps) {
   const { t } = useTranslation("properties");
   const probe = usePriceProbe();
 
@@ -190,6 +205,11 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
           quote={probe.data}
           cardLabel={
             probe.data.winning_card_id != null ? cardLabels[probe.data.winning_card_id] : null
+          }
+          basis={
+            (probe.data.plan_id != null ? basisByPlan?.[probe.data.plan_id] : undefined) ??
+            defaultBasis ??
+            "gross"
           }
         />
       ) : null}

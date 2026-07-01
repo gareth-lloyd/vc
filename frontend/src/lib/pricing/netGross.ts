@@ -36,6 +36,17 @@ import { parseMoney } from "@/lib/format/money";
 
 export type PriceBasis = "net" | "gross";
 
+const PRICE_BASES: readonly PriceBasis[] = ["net", "gross"];
+
+/**
+ * Narrow a loose basis string (e.g. the settings endpoint's free-string
+ * `prices_entered_as_effective`) to a valid {@link PriceBasis}, falling back to
+ * GROSS — the safe reconciling default for legacy data.
+ */
+export function asPriceBasis(value: string | null | undefined): PriceBasis {
+  return PRICE_BASES.includes((value ?? "") as PriceBasis) ? (value as PriceBasis) : "gross";
+}
+
 // Fields are optional/nullable to accept the API's read shape verbatim (the
 // settings endpoint's `commission` / `tax` objects) without a mapping step.
 export interface CommissionInput {

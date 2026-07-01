@@ -174,4 +174,51 @@ describe("PriceProbePanel", () => {
     await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
     expect(screen.getByRole("button", { name: "Get quote" })).toBeEnabled();
   });
+
+  // An inflated engine total (total > rate + extras − discount): 1800 + 120 = 1920
+  // shown as lines, but the engine reports 2100 (BUG-009 adds commission on top
+  // for GROSS plans). plan_id 100 selects the basis from basisByPlan.
+  const inflated = { ...breakdown, total: "2100" };
+
+  async function submit(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
+    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await user.click(screen.getByRole("button", { name: "Get quote" }));
+  }
+
+  it("reconciles the guest total to the lines for a GROSS plan", async () => {
+    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(inflated)));
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PriceProbePanel
+        propertyId={7}
+        extras={[optInExtra, mandatoryExtra]}
+        cardLabels={{ 500: "Summer 2026 · Standard" }}
+        basisByPlan={{ 100: "gross" }}
+      />,
+    );
+    await submit(user);
+    // Reconciled 1920, not the inflated 2100; no taxes/fees line.
+    expect(await screen.findByText("€1,920.00")).toBeInTheDocument();
+    expect(screen.queryByText("€2,100.00")).toBeNull();
+    expect(screen.queryByText("Taxes & fees")).toBeNull();
+  });
+
+  it("uses the engine total and surfaces taxes & fees for a NET plan", async () => {
+    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(inflated)));
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PriceProbePanel
+        propertyId={7}
+        extras={[optInExtra, mandatoryExtra]}
+        cardLabels={{ 500: "Summer 2026 · Standard" }}
+        basisByPlan={{ 100: "net" }}
+      />,
+    );
+    await submit(user);
+    // Engine total is guest-correct under NET; the 180 gap is taxes & fees.
+    expect(await screen.findByText("€2,100.00")).toBeInTheDocument();
+    expect(screen.getByText("Taxes & fees")).toBeInTheDocument();
+    expect(screen.getByText("€180.00")).toBeInTheDocument();
+  });
 });

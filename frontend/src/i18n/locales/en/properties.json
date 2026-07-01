@@ -1136,6 +1136,7 @@
         "nights_other": "{{count}} nights",
         "extras": "Extras",
         "discount": "Discount",
+        "taxes_fees": "Taxes & fees",
         "guest_total": "Guest total",
         "extras_heading": "Extras applied",
         "included_heading": "Included",

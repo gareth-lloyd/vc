@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
+import { asPriceBasis } from "@/lib/pricing/netGross";
 import { useCreateSeason, usePropertySettings, useUpdateSeason } from "../hooks";
 import {
   PROPERTY_PRICE_BASES,
@@ -47,14 +48,6 @@ interface EditProps extends CommonProps {
 type SeasonFormDialogProps = CreateProps | EditProps;
 
 type PriceBasisValue = (typeof PROPERTY_PRICE_BASES)[number];
-
-/** Narrow the settings endpoint's `prices_entered_as_effective` (a free string)
- * to a valid basis, falling back to GROSS. */
-function asPriceBasis(value: string | null | undefined): PriceBasisValue {
-  return (PROPERTY_PRICE_BASES as readonly string[]).includes(value ?? "")
-    ? (value as PriceBasisValue)
-    : "gross";
-}
 
 function createDefaults(
   currencyId: number | null,

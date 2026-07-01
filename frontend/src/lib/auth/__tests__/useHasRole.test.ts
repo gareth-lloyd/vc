@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useAuthStore } from "@/features/auth/store";
-import { useHasReservationsRole } from "../useHasRole";
+import { useHasAccountsRole, useHasReservationsRole } from "../useHasRole";
 import type { UserMe } from "@/features/auth/schemas";
 
 function makeUser(overrides: Partial<UserMe> = {}): UserMe {
@@ -79,5 +79,57 @@ describe("useHasReservationsRole", () => {
       });
     });
     expect(result.current).toBe(true);
+  });
+});
+
+describe("useHasAccountsRole", () => {
+  // The PermissionsView returns `User.role` verbatim, and that value is the
+  // LOWERCASE `core.enums.StaffRole` `.value` ("accounts"/"admin"/…). These
+  // tests feed the real lowercase wire value — the hook must match it (an
+  // uppercase-only set, as the reservations hook uses, would be superuser-only
+  // in production).
+  it("returns true for the lowercase 'accounts' wire value", () => {
+    useAuthStore.getState().setMe(makeUser(), {
+      role: "accounts",
+      is_superuser: false,
+      permissions: [],
+    });
+    const { result } = renderHook(() => useHasAccountsRole());
+    expect(result.current).toBe(true);
+  });
+
+  it("returns true for the lowercase 'admin' wire value", () => {
+    useAuthStore.getState().setMe(makeUser(), {
+      role: "admin",
+      is_superuser: false,
+      permissions: [],
+    });
+    const { result } = renderHook(() => useHasAccountsRole());
+    expect(result.current).toBe(true);
+  });
+
+  it("returns true for a superuser regardless of role", () => {
+    useAuthStore.getState().setMe(makeUser({ is_superuser: true }), {
+      role: "viewer",
+      is_superuser: true,
+      permissions: [],
+    });
+    const { result } = renderHook(() => useHasAccountsRole());
+    expect(result.current).toBe(true);
+  });
+
+  it("returns false for viewer / reservations", () => {
+    useAuthStore.getState().setMe(makeUser(), {
+      role: "reservations",
+      is_superuser: false,
+      permissions: [],
+    });
+    const { result } = renderHook(() => useHasAccountsRole());
+    expect(result.current).toBe(false);
+  });
+
+  it("returns false when unauthenticated / no role", () => {
+    const { result } = renderHook(() => useHasAccountsRole());
+    expect(result.current).toBe(false);
   });
 });

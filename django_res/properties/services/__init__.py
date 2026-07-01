@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from properties.services.availability import PropertyAvailabilityService
 from properties.services.lifecycle import PropertyLifecycleService
 from properties.services.location import (
     ensure_property_location,
@@ -9,6 +10,7 @@ from properties.services.location import (
 )
 
 __all__ = [
+    "PropertyAvailabilityService",
     "PropertyLifecycleService",
     "ensure_property_location",
     "location_defaults",

@@ -32,7 +32,10 @@ import { paginated } from "@/lib/api/pagination";
 
 function toQuery(filters: ContactFilters): QueryParams {
   return {
-    q: filters.q || undefined,
+    // The backend matches name/agency/email on `search` (DRF SearchFilter
+    // default); the `q` URL param is internal SPA state. Sending `q` to the API
+    // is silently ignored and returns every contact unfiltered.
+    search: filters.q || undefined,
     status: filters.status || undefined,
     kind: filters.kind || undefined,
     directory: filters.directory || undefined,
@@ -104,7 +107,8 @@ export async function searchContacts(
   // `kind=customer` (+ `status=active` GDPR floor) to offer linkable clients.
   const kind = opts?.kind ?? "contact";
   const data = await apiGet<unknown>("/contacts", {
-    query: { q: query, kind, ...(opts?.status ? { status: opts.status } : {}) },
+    // `search` is the DRF SearchFilter param; `q` is silently ignored.
+    query: { search: query, kind, ...(opts?.status ? { status: opts.status } : {}) },
   });
   return paginated(contactSchema).parse(data);
 }

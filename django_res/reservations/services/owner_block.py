@@ -17,6 +17,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
+from properties.services import PropertyAvailabilityService
 from reservations.enums import (
     BookingHoldReason,
     OwnerBlockKind,
@@ -111,6 +112,8 @@ class OwnerBlockService:
             kind=OwnerBlockUpdateKind.CREATED.value,
             actor=created_by,
         )
+        # GAP-033 Signal 1: an owner just changed their availability.
+        PropertyAvailabilityService.touch_owner_updated(property)
         return block
 
     @classmethod
@@ -188,6 +191,11 @@ class OwnerBlockService:
             kind=OwnerBlockUpdateKind.CANCELLED.value,
             actor=actor,
         )
+        # GAP-033 Signal 1: only releasing an *owner-sourced* (MANUAL) block is an
+        # owner availability change. iCal-driven reconciliation cancels are the
+        # feed's churn, surfaced separately as "last calendar import".
+        if block.source == OwnerBlockSource.MANUAL.value:
+            PropertyAvailabilityService.touch_owner_updated(block.property)
         return block
 
     @classmethod

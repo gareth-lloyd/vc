@@ -86,12 +86,12 @@ describe("ContactsListPage", () => {
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
   });
 
-  it("debounces search and forwards q to the API", async () => {
+  it("debounces search and forwards the term as `search` to the API", async () => {
     const seen: string[] = [];
     server.use(
       http.get("/api/v1/contacts", ({ request }) => {
         const url = new URL(request.url);
-        seen.push(url.searchParams.get("q") ?? "");
+        seen.push(url.searchParams.get("search") ?? "");
         return HttpResponse.json(fixture);
       }),
     );

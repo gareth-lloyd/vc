@@ -57,10 +57,13 @@ export function AssignDialog({ enquiryId, currentUserId, open, onOpenChange }: A
 
   // Mirror the legacy product filter — operators handling enquiries have the
   // reservations or admin role. Backend filter is `role=` exact, but our api.ts
-  // splits comma-separated values into repeated query params.
+  // splits comma-separated values into repeated query params. `is_staff: true`
+  // keeps non-staff owner-portal users out of the picker (the backend rejects
+  // them anyway, but don't offer what will 400).
   const usersQuery = useUsers({
     role: "reservations,admin",
     is_active: true,
+    is_staff: true,
     search: debouncedSearch || undefined,
   });
 

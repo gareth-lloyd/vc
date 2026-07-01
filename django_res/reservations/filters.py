@@ -74,10 +74,32 @@ class QuotationFilter(filters.FilterSet):
     enquiry = filters.NumberFilter(field_name="enquiry_id")
     created_after = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="gte")
     created_before = filters.IsoDateTimeFilter(field_name="created_at", lookup_expr="lte")
+    q = filters.CharFilter(method="filter_q")
 
     class Meta:
         model = Quotation
-        fields = ["status", "enquiry", "created_after", "created_before"]
+        fields = ["status", "enquiry", "created_after", "created_before", "q"]
+
+    def filter_q(
+        self, queryset: QuerySet[Quotation], _name: str, value: str
+    ) -> QuerySet[Quotation]:
+        if not value:
+            return queryset
+        # Mirrors BookingFilter.filter_q: customer search resolves from the
+        # unified Person (GAP-045). `person__first_name`/`last_name` are
+        # single-valued FK joins → safe in the OR. The person EMAIL lives in the
+        # multi-valued PersonEmail child, so an OR'd join would multiply rows and
+        # inflate the paginator COUNT (django_res/CLAUDE.md) — match it with a
+        # scalar Exists() subquery, which adds no JOIN.
+        person_email_match = PersonEmail.objects.filter(
+            contact_id=OuterRef("person_id"), email__icontains=value
+        )
+        return queryset.filter(
+            Q(reference__icontains=value)
+            | Q(person__first_name__icontains=value)
+            | Q(person__last_name__icontains=value)
+            | Q(Exists(person_email_match))
+        )
 
 
 class BookingFilter(filters.FilterSet):

@@ -41,6 +41,7 @@ from payments.models import Payment, SecurityDeposit
 from payments.serializers import (
     ManualPaymentCreateSerializer,
     PaymentSerializer,
+    SecurityDepositSerializer,
     TrackSerializer,
 )
 from payments.services.manual_payment import ManualPaymentService
@@ -199,6 +200,28 @@ def security_track(request: Request, booking_pk: int) -> Response:
     return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAccountsWriter])
+def security_detail(request: Request, booking_pk: int) -> Response:
+    """`/bookings/{id}/security/deposit` — the SD row itself, for the wf-8 panel.
+
+    Returns the booking's most-recent `SecurityDeposit` (incl. terminal, so the
+    panel can show a final CAPTURED/RELEASED state — unlike `_get_active_sd`,
+    which excludes terminals), or HTTP 200 + `null` body when none exists (a 404
+    would be worse here; the FE schema parses the boundary as nullable).
+    """
+    booking = get_object_or_404(Booking, pk=booking_pk)
+    sd = (
+        SecurityDeposit.objects.filter(booking=booking)
+        .select_related("currency")
+        .order_by("-created_at")
+        .first()
+    )
+    if sd is None:
+        return Response(None)
+    return Response(SecurityDepositSerializer(sd).data)
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAccountsWriter])
 def security_payments(request: Request, booking_pk: int) -> Response:
@@ -233,30 +256,12 @@ def security_track_action(request: Request, booking_pk: int, action: str) -> Res
             )
         )
         return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
-    raise UnknownAction(f"Unknown action {action!r}")
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAccountsWriter])
-def security_payment_action(
-    request: Request, booking_pk: int, payment_pk: int, action: str
-) -> Response:
-    """Per-payment SD actions: capture / hold / release / claim."""
-    booking = get_object_or_404(Booking, pk=booking_pk)
-    if action == "capture":
-        return _payment_capture(request, booking, payment_pk)
-    sd = _get_active_sd(booking)
-    if action == "hold":
-        _service_call(
-            lambda: SecurityDepositService.hold(
-                sd,
-                gateway_response=request.data.get("gateway_response", {}),
-                actor=request.user,
-            )
-        )
-    elif action == "release":
+    if action == "release":
+        sd = _get_active_sd(booking)
         _service_call(lambda: SecurityDepositService.release(sd, actor=request.user))
-    elif action == "claim":
+        return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
+    if action == "claim":
+        sd = _get_active_sd(booking)
         captured = _parse_decimal(
             request.data.get("captured_amount", sd.amount), field="captured_amount"
         )
@@ -268,9 +273,36 @@ def security_payment_action(
                 actor=request.user,
             )
         )
-    else:
-        raise UnknownAction(f"Unknown action {action!r}")
-    return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
+        return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
+    raise UnknownAction(f"Unknown action {action!r}")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAccountsWriter])
+def security_payment_action(
+    request: Request, booking_pk: int, payment_pk: int, action: str
+) -> Response:
+    """Per-payment SD actions: capture / hold.
+
+    `:release` / `:claim` resolve the active SD (not this payment) so they moved
+    to the track level (`security:release` / `security:claim`, 2B); only the two
+    genuinely payment-scoped actions remain here — `:capture` (a Payment
+    transition) and `:hold` (deferred Flywire).
+    """
+    booking = get_object_or_404(Booking, pk=booking_pk)
+    if action == "capture":
+        return _payment_capture(request, booking, payment_pk)
+    if action == "hold":
+        sd = _get_active_sd(booking)
+        _service_call(
+            lambda: SecurityDepositService.hold(
+                sd,
+                gateway_response=request.data.get("gateway_response", {}),
+                actor=request.user,
+            )
+        )
+        return _track_response(booking, PaymentPurpose.SECURITY_DEPOSIT.value)
+    raise UnknownAction(f"Unknown action {action!r}")
 
 
 def _get_active_sd(booking: Booking) -> SecurityDeposit:

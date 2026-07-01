@@ -8,6 +8,8 @@ from typing import Any
 from django.db import models
 from rest_framework import serializers
 
+from accounts.models import User
+from core.api.permissions import NON_OPERATOR_ASSIGNEE_MSG, is_assignable_operator
 from properties.models import GroupSettings, PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
@@ -299,6 +301,13 @@ class BookingWriteSerializer(serializers.ModelSerializer[Booking]):
             "site_source",
             "payment_method",
         ]
+
+    def validate_assigned_to(self, value: User | None) -> User | None:
+        # Server-side enforcement of the assignable-operator rule — the API
+        # must not trust the FE picker. Unassign (None) always allowed.
+        if value is not None and not is_assignable_operator(value):
+            raise serializers.ValidationError(NON_OPERATOR_ASSIGNEE_MSG)
+        return value
 
 
 class BookingNoteSerializer(serializers.ModelSerializer[BookingNote]):

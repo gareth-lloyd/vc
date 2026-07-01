@@ -68,6 +68,15 @@ export const propertyListItemSchema = z.object({
   // over link) is decided by `CalendarSourceIndicator`.
   has_active_ical_feed: z.boolean().optional().default(false),
   calendar_url: z.string().nullable().optional(),
+  // GAP-033 availability-freshness signals, shown as three separate labelled
+  // lines (never conflated): when an owner last changed availability (Signal 1),
+  // when the iCal feed last polled (Signal 2, only meaningful with a feed), and
+  // when VC staff last confirmed it current + who (Signal 3). All nullable —
+  // a brand-new property has none yet.
+  availability_owner_updated_at: z.string().nullable().optional(),
+  availability_confirmed_at: z.string().nullable().optional(),
+  availability_confirmed_by_name: z.string().nullable().optional(),
+  calendar_last_imported_at: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });

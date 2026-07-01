@@ -96,6 +96,25 @@ class Property(AuditedModel):
     )
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
+    # --- Availability freshness signals (GAP-033) -------------------------
+    # Three separately-labelled signals so the sales UI never blurs "an owner
+    # changed their calendar" with "a VC staffer vouched it's accurate".
+    # Signal 2 ("last calendar import") is derived from PropertyCalendarFeed,
+    # not stored here. Both timestamps are written only through
+    # PropertyAvailabilityService, which deliberately does not bump updated_at.
+    #
+    # Signal 1 — owner availability last changed (owner-block create/release).
+    availability_owner_updated_at = models.DateTimeField(null=True, blank=True)
+    # Signal 3 — a VC staffer pressed "Mark as up-to-date" (staff-only).
+    availability_confirmed_at = models.DateTimeField(null=True, blank=True)
+    availability_confirmed_by = models.ForeignKey(
+        "accounts.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
     class Meta:
         # `id` tiebreaker keeps page boundaries stable when names collide — a
         # total ordering is required for page-number pagination not to duplicate

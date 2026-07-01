@@ -37,6 +37,12 @@ export interface BandMeta {
   minPrice?: number | null;
   maxPrice?: number | null;
   hasPoa?: boolean;
+  /**
+   * Rates: global price tier (tertile of `minPrice` across the whole rates
+   * lane), driving tone intensity so stacked cards read as cheap→expensive.
+   * Absent for all-POA cards (no numeric price) → they fall back to lane tone.
+   */
+  priceTier?: "low" | "mid" | "high";
   /** Inclusions: the guest-facing service copy. */
   copy?: string | null;
   /** Extras. */
@@ -56,7 +62,6 @@ export interface WorkbenchBand {
   dateFrom: string;
   dateTo: string;
   label: string;
-  tone: LaneKey;
   sourceId: number;
   /** Greedy sub-lane index for overlapping bands within the lane. */
   sublane: number;
@@ -132,7 +137,6 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       bands: visible.map((b, i) => ({
         ...b,
         laneKey,
-        tone: laneKey,
         sublane: lanes[i],
       })),
     };
@@ -147,7 +151,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     meta: { currencyCode: season.currency_code ?? null, isActive: season.is_active ?? true },
   }));
 
-  const rateBands: RawBand[] = input.seasonDetails.flatMap((plan) =>
+  const rateBandsUntiered: RawBand[] = input.seasonDetails.flatMap((plan) =>
     (plan.cards ?? []).flatMap((card) => {
       const rules = card.rules ?? [];
       if (rules.length === 0) return [];
@@ -178,6 +182,28 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       ];
     }),
   );
+
+  // Rank ALL rate cards across the whole lane by min price into global tertiles,
+  // so overlapping cards get distinct tone intensities regardless of which plan
+  // they belong to (a per-plan ranking would flatten every single-card plan to
+  // one tier). We tier over the *distinct* prices and only when there are at
+  // least three of them: with fewer, tertiles are meaningless (a lone card would
+  // always read "high", two prices would never yield "low", and tied prices
+  // would collapse to one tier) — so those cases stay untiered and fall back to
+  // the neutral lane tone. All-POA cards have no numeric price and stay untiered.
+  const distinctPrices = [
+    ...new Set(rateBandsUntiered.map((b) => b.meta.minPrice).filter((v): v is number => v != null)),
+  ].sort((a, b) => a - b);
+  const tierFor = (price: number | null | undefined): BandMeta["priceTier"] => {
+    if (price == null || distinctPrices.length < 3) return undefined;
+    const q1 = distinctPrices[Math.floor(distinctPrices.length / 3)];
+    const q2 = distinctPrices[Math.floor((distinctPrices.length * 2) / 3)];
+    return price < q1 ? "low" : price < q2 ? "mid" : "high";
+  };
+  const rateBands: RawBand[] = rateBandsUntiered.map((b) => ({
+    ...b,
+    meta: { ...b.meta, priceTier: tierFor(b.meta.minPrice) },
+  }));
 
   const inclusionBands: RawBand[] = input.services.map((service) => ({
     id: `service-${service.id}`,

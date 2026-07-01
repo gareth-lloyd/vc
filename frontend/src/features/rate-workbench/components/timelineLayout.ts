@@ -1,4 +1,4 @@
-import type { LaneKey } from "../toLanes";
+import type { LaneKey, WorkbenchBand } from "../toLanes";
 
 /** Pixel geometry for the stacked-lane timeline. */
 export const BAND_HEIGHT = 18;
@@ -25,3 +25,30 @@ export const TONE_CLASS: Record<LaneKey, string> = {
   discounts: "bg-accent border-accent-foreground/30",
   changeover: "bg-muted border-muted-foreground/40",
 };
+
+/** Rate bands: cheap→expensive read as low→high info intensity. */
+const RATE_TIER_CLASS: Record<NonNullable<WorkbenchBand["meta"]["priceTier"]>, string> = {
+  low: "bg-info/10 border-info/40",
+  mid: "bg-info/25 border-info/60",
+  high: "bg-info/45 border-info/80",
+};
+
+/** Extras: mandatory reads stronger than optional. */
+const EXTRA_MANDATORY_CLASS = "bg-warning/45 border-warning/70";
+const EXTRA_OPTIONAL_CLASS = "bg-warning/15 border-warning/40";
+
+/**
+ * The fill+border classes for a band, coloured by *meaning* rather than lane
+ * alone: rate bands by price tier, extras by mandatory-vs-optional, everything
+ * else by the flat lane tone. Untiered rate bands (all-POA) fall back to the
+ * lane tone.
+ */
+export function bandToneClass(band: WorkbenchBand): string {
+  if (band.laneKey === "rates" && band.meta.priceTier) {
+    return RATE_TIER_CLASS[band.meta.priceTier];
+  }
+  if (band.laneKey === "extras") {
+    return band.meta.isMandatory ? EXTRA_MANDATORY_CLASS : EXTRA_OPTIONAL_CLASS;
+  }
+  return TONE_CLASS[band.laneKey];
+}

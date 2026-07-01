@@ -226,4 +226,80 @@ describe("toLanes", () => {
       meta: { code: "E", kind: "percent" },
     });
   });
+
+  it("ranks rate cards into global price tiers across all plans (not per-plan)", () => {
+    const card = (id: number, nightly: string) => ({
+      id,
+      plan: 0,
+      name: `C${id}`,
+      rules: [{ id, card: id, date_from: "2026-06-01", date_to: "2026-08-31", nightly }],
+    });
+    const lanes = toLanes({
+      ...base(),
+      seasonDetails: [
+        // Two separate single-card plans + one two-card plan: a per-plan ranking
+        // would make each single-card plan uniformly one tier. Global tertiles
+        // over [100, 200, 300] give low / mid / high regardless of grouping.
+        detail({ id: 5, name: "A", currency_code: "EUR", cards: [card(50, "100")] }),
+        detail({ id: 6, name: "B", currency_code: "EUR", cards: [card(60, "300")] }),
+        detail({ id: 7, name: "C", currency_code: "EUR", cards: [card(70, "200")] }),
+      ],
+    });
+    const tierBySource = Object.fromEntries(
+      lane(lanes, "rates").bands.map((b) => [b.sourceId, b.meta.priceTier]),
+    );
+    expect(tierBySource[50]).toBe("low");
+    expect(tierBySource[70]).toBe("mid");
+    expect(tierBySource[60]).toBe("high");
+  });
+
+  it("leaves rate cards untiered when there are fewer than three distinct prices", () => {
+    const card = (id: number, nightly: string) => ({
+      id,
+      plan: 0,
+      name: `C${id}`,
+      rules: [{ id, card: id, date_from: "2026-06-01", date_to: "2026-08-31", nightly }],
+    });
+    // A lone card, or two distinct prices, can't form meaningful tertiles — a
+    // single card must not read as the darkest "high" tone.
+    const single = toLanes({
+      ...base(),
+      seasonDetails: [detail({ id: 5, currency_code: "EUR", cards: [card(50, "100")] })],
+    });
+    expect(lane(single, "rates").bands[0].meta.priceTier).toBeUndefined();
+
+    const twoDistinct = toLanes({
+      ...base(),
+      seasonDetails: [
+        detail({ id: 5, currency_code: "EUR", cards: [card(50, "100"), card(51, "200")] }),
+      ],
+    });
+    for (const b of lane(twoDistinct, "rates").bands) {
+      expect(b.meta.priceTier).toBeUndefined();
+    }
+  });
+
+  it("leaves all-POA rate cards untiered (fall back to lane tone)", () => {
+    const lanes = toLanes({
+      ...base(),
+      seasonDetails: [
+        detail({
+          id: 5,
+          name: "A",
+          currency_code: "EUR",
+          cards: [
+            {
+              id: 50,
+              plan: 5,
+              name: "POA",
+              rules: [
+                { id: 1, card: 50, date_from: "2026-06-01", date_to: "2026-08-31", is_poa: true },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(lane(lanes, "rates").bands[0].meta.priceTier).toBeUndefined();
+  });
 });

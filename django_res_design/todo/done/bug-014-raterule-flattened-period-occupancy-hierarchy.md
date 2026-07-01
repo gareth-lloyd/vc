@@ -1,3 +1,15 @@
+> **✅ SUPERSEDED / RESOLVED (2026-07-01) by [GAP-056](done/gap-056-rate-model-restructure-property-period-band.md).**
+> This ticket proposed "Option B — reintroduce a `RatePeriod` parent." GAP-056
+> did exactly that (and went further: it **dropped `RateCard`** entirely). The
+> rate tree is now honestly two-level — `Property → RatePlan → RatePeriod →
+> RateRule` — where a `RatePeriod` owns the inclusive date window + nullable
+> min/max-nights + name/is_active, and a `RateRule` is a pure party band on a
+> non-null `period` FK (no dates). Two `btree_gist` EXCLUDEs enforce the grid
+> (periods date-disjoint per plan; bands party-disjoint per period), so ragged /
+> misaligned bands are now structurally impossible — the exact footgun this
+> ticket named. Shipped on local `main` (unpushed), ff `10da129`. See the GAP-056
+> ticket for the full unit-by-unit commit log. No separate work remains here.
+
 # BUG-014 — `RateRule` flattened legacy's period→occupancy hierarchy, permitting ragged/misaligned bands
 
 - **Severity:** 🔴 Bug (structural / correctness footgun) — the model allows rate

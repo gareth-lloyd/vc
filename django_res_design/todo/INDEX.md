@@ -31,7 +31,7 @@ follow-up.)
 | [BUG-008](done/bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ✅ resolved (2026-06-23) — `DamageClaim` shipped in `reservations/` (v1, "fuller" model: reference seq, booking/currency FKs, status, `itemized_lines`/`photos`/`accepted_by_guest_at` scaffolds, audited) + `SecurityDeposit.damage_claim` → real `FK(SET_NULL)`; `claim()` resolves PK/instance/None into a booking-matched claim, `DomainValidationError` (400) on bad/foreign ref; damages workflow (report/photos/thresholds/email/approval SM) deferred to wf 8/17 |
 | [BUG-009](bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | 🟨 spec written (04-pricing 8-9 GROSS carve-out / NET gross-up + 10-decisions deferred row + engine TODO/assembly pointers); **engine code deferred to finance rewrite**; single-source-of-truth with `prices_entered_as` **resolved** by GAP-035 (`RatePlan.price_basis` canonical) |
 | [BUG-013](bug-013-migration-drops-villaoccupencyprice.md) | Migration silently drops `VillaOccupencyPrice` — range-based occupancy rates lost on cutover | ⬜ open — `RateRuleLoader` reads only `VillaSeasonRate`/`PartySize`; needs a child loader emitting one `RateRule` per occupancy band. Feeds GAP-044 |
-| [BUG-014](bug-014-raterule-flattened-period-occupancy-hierarchy.md) | `RateRule` flattened legacy's period→occupancy hierarchy — permits ragged/misaligned bands | ⬜ open — reintroduce a `RatePeriod` parent (Option B) so bands share period dates by construction; Option A (UI-convention alignment) is the frontend-only interim |
+| [BUG-014](done/bug-014-raterule-flattened-period-occupancy-hierarchy.md) | `RateRule` flattened legacy's period→occupancy hierarchy — permits ragged/misaligned bands | ✅ superseded (2026-07-01) by **GAP-056** — Option B shipped and then some: `RateCard` dropped, `Property → RatePlan → RatePeriod → RateRule`, two `btree_gist` EXCLUDEs make ragged bands structurally impossible |
 
 ## 🟠 Footguns
 
@@ -49,6 +49,7 @@ follow-up.)
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | 🟨 views-in-urls fixed (`refunds_for_booking` moved); filter/service/router shapes still open |
+| [SMELL-019](smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md) | Rate-model naming & UI residuals after GAP-056 | ⬜ deferred debt — `RateRule`→`RateBand` rename, `/seasons`→`/plans` route, GAP-025 changeover end-date suggestion removed (reinstate on period form?); `is_active` backfill = non-issue |
 
 ## Surface gaps
 

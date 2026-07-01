@@ -1,3 +1,21 @@
+> **✅ RESOLVED (2026-07-02)** — Shipped on `feat/gap-043` (6 units,
+> `8512ee3`…`7f3b7a7`): the builder search form was **replaced** with the
+> mockup's range shape (Arrive from + Arrive to + Number of weeks + Search
+> Specific Date), translated client-side onto the unchanged `search-options`
+> contract (`flex = ceil(W/2)`, midpoint preferred arrival; 42-day window cap
+> = 2 × SEARCH_FLEX_MAX — **no backend change**). `StayOptionPicker` became a
+> multi-select checkbox group (held weeks stay non-selectable per 2026-07-01);
+> every ticked week stages its own line (`StagedLine.line_id =
+> property:date_from`) and save fans out **weeks × checked occupancy bands**.
+> Enquiries seed the window symmetrically (`date_from ± flexibility_days`).
+> **Deferred:** `flexibility_days` widening + "Flexible" enum → GAP-050 item 7 (the
+> builder window already runs to ±21 days without it). **Accepted v1 limits:**
+> flexible/no-fixed-changeover villas have no week strip → single-week line at
+> the criteria dates (GAP-025/Q-022 deferral, H1); the occupancy band-check is
+> **shared across ticked weeks** by party-range identity, not a per-week 2D
+> grid (M2). Docs: `05-reservations.md` §"Date flexibility on intake"
+> resolution note + new `10-decisions.md` row.
+
 # GAP-043 — Quote builder: multi-week date-range selection
 
 - **Severity:** Gap (frontend + backend) — quote-builder rework; **reverses a
@@ -6,7 +24,7 @@
   not correct … we do a date range … click all the weeks we want to quote") +
   the mockup at https://vc-new-res-system.netlify.app/ → **Rate Lookup**.
   Mirrors the legacy `QuoteGenerator`/`RateLookup` weeks model in
-  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md).
+  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md).
 - **Status:** Open — **replace-vs-coexist is an open question** (see Tension).
 - **Files:**
   - `frontend/src/features/quotations/QuoteCriteriaForm.tsx`,
@@ -39,7 +57,7 @@ Adopt the mockup's Rate Lookup shape:
   so a booked week isn't tickable, and freeing it routes through the explicit
   "Remove hold" action rather than by making the booked week directly selectable.
 - Keep changeover handling via the existing engine auto-shift
-  ([GAP-007](done/gap-007-changeover-autoshift-parity.md)).
+  ([GAP-007](gap-007-changeover-autoshift-parity.md)).
 
 ## Tension to resolve (do not silently overwrite)
 
@@ -68,7 +86,7 @@ Adopt the mockup's Rate Lookup shape:
 ## Dependencies
 
 - [GAP-044](gap-044-occupancy-band-fanout-builder.md) (occupancy lines render
-  inside these week boxes), [GAP-013](gap-013-quote-builder-ux-feedback-loops.md)
-  and [GAP-005](gap-005-quotation-flow-parity.md) #9 (builder shape) — coordinate
+  inside these week boxes), [GAP-013](../gap-013-quote-builder-ux-feedback-loops.md)
+  and [GAP-005](../gap-005-quotation-flow-parity.md) #9 (builder shape) — coordinate
   so the builder isn't reworked twice. Spec amendment:
   `05-reservations.md` §"Date flexibility on intake".

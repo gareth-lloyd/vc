@@ -92,7 +92,7 @@ Independent, individually shippable. Recommended order:
 
 - Sibling of **GAP-005** (flow tracker) — coordinate if that overhaul reshapes
   the builder layout.
-- **Coordinate with [GAP-043](gap-043-quote-builder-multi-week-range.md)
+- **Coordinate with [GAP-043](done/gap-043-quote-builder-multi-week-range.md)
   (multi-week range) and [GAP-044](gap-044-occupancy-band-fanout-builder.md)
   (occupancy-band fan-out)** — both reshape the results/cart surface this ticket
   polishes (owner Loom 2026-06-17). Land the structural rework before (or with)

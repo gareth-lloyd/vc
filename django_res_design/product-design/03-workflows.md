@@ -115,7 +115,7 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 > band per call; the builder fans out). Multi-week range is in tension with the
 > `flexibility_days` rework (`05-reservations.md`) — replace-vs-coexist left open.
 > See the mockup's Rate Lookup screen, and
-> [`todo/gap-043-quote-builder-multi-week-range.md`](../todo/gap-043-quote-builder-multi-week-range.md)
+> [`todo/done/gap-043-quote-builder-multi-week-range.md`](../todo/done/gap-043-quote-builder-multi-week-range.md)
 > + [`todo/gap-044-occupancy-band-fanout-builder.md`](../todo/gap-044-occupancy-band-fanout-builder.md).
 
 5. **Add to quote.** Clicking "Add" opens a small inline editor under the card: dates (pre-filled), price (pre-filled, overridable with "Override" toggle that forces a reason field), currency (per-site default, switchable), notes shown to guest (optional, e.g. "Owner offering 10% off for direct booking"), internal notes (not shown to guest). Saving adds the line to the quote draft in the cart-style summary at the bottom of the page.

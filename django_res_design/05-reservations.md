@@ -141,22 +141,30 @@ widest plausible window and narrows by conversation. This is accepted for v1 but
 should be revisited if multi-week availability search becomes a quoting
 bottleneck. It is *not* introduced speculatively here.
 
-**Owner direction (Loom 2026-06-17) — multi-week range quoting is now wanted.**
-The owner's walkthrough of the Ben/owner mockup (https://vc-new-res-system.netlify.app/)
-calls the fixed-date builder "not correct" and asks to quote a **date range** with
-**per-week selection** (tick every week to quote). This is the "rough edge" above
-graduating into a requirement, and it brings the date-range back that the rework
-deliberately removed — so it is recorded as a **tension, not yet a hard reversal**:
-the `flexibility_days` model (true requested dates, no destructive shift) still
-holds, and whether multi-week range *replaces* the ±n-day stepper or *coexists*
-with it is left open for the build. The mockup's Flex? values
-(`Specific dates` / `+/- 3 days` / `+/- 7 days` / `Flexible`) also reinstate the
-full legacy `EnquireDateTypeString` preset set (`SpecificDays` / `ThreeDays` /
-`SevenDays` / `WholeDays`) — wider than today's 0–3 cap, so `flexibility_days`
-needs widening plus an open "Flexible" mode. Tracked in
-[`todo/gap-043-quote-builder-multi-week-range.md`](todo/gap-043-quote-builder-multi-week-range.md)
-(builder) and [`todo/gap-039-enquiry-dashboard-enrichment.md`](todo/gap-039-enquiry-dashboard-enrichment.md)
-(the Flex? column).
+**Multi-week range quoting *(resolved 2026-07-02, GAP-043)*.** The owner's
+Loom (2026-06-17) walkthrough of the Ben/owner mockup
+(https://vc-new-res-system.netlify.app/) called the fixed-date builder "not
+correct" and asked to quote a **date range** with **per-week selection**. The
+replace-vs-coexist question is resolved: the builder's search form was
+**replaced** with the mockup's range shape — **Arrive from + Arrive to +
+Number of weeks + Search Specific Date** (legacy `IsSpecificDate`) — and the
+per-property week strip became **multi-select**: every ticked week stages its
+own quotation line (weeks × checked occupancy bands at save, GAP-044). This is
+purely a **builder search-surface** change, mapped client-side onto the
+unchanged `search-options` contract (`flex = ceil(window/2)`, preferred
+arrival at the window midpoint — never earlier than Arrive-from; window caps
+at 42 days = 2 × `SEARCH_FLEX_MAX`). The **intake model is untouched**:
+`flexibility_days` (true requested dates, no destructive shift) still holds
+and seeds the builder window symmetrically (`date_from ± flexibility_days`).
+The mockup's wider Flex? vocabulary (`+/- 7 days` / `Flexible`) exceeds the
+0–3 intake cap — that widening + "Flexible" mode stays **deferred to
+[`todo/gap-050-enquiry-grid-inline-edits-and-controls.md`](todo/gap-050-enquiry-grid-inline-edits-and-controls.md)
+item 7** (the builder itself doesn't need it; its window already runs to
+±21 days).
+Known v1 limits (accepted): flexible/no-fixed-changeover villas offer no week
+strip, so they stage single-line on the criteria dates (the GAP-025/Q-022
+changeover deferral), and the occupancy band-check is **shared across ticked
+weeks** by party-range identity rather than a per-week 2D grid.
 
 ### `EnquiryNote(TimestampedModel)`
 Append-able operator notes attached to an enquiry. Replaces the legacy single `VillaEnquire.Notes` and `PreferencesNote` columns, which the legacy Blazor UI rendered as overwrite-only textareas with no authorship or audit.

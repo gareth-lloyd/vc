@@ -347,7 +347,7 @@ shipped M1–M4. Spun out as focused tickets rather than reopening this tracker:
   reconciliation + quotes-to-convert metric + per-quote status in the stack
   (the stacking + `quote_count` foundation here is reused, not redone).
 - [GAP-039](gap-039-enquiry-dashboard-enrichment.md) — richer enquiry list.
-- [GAP-043](gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
+- [GAP-043](done/gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
   (the concrete shape of the deferred #9 two-pane builder rework).
 - [GAP-044](gap-044-occupancy-band-fanout-builder.md) — occupancy-band fan-out.
 

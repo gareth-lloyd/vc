@@ -2,8 +2,8 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys, type PropertyId } from "@/lib/query/keys";
 import { ApiError } from "@/lib/api/errors";
-import { fetchSeasonDetail, updateRateRule } from "@/features/properties/api";
-import type { RatePlanDetail, RateRule } from "@/features/properties/schemas";
+import { fetchSeasonDetail, updateRateBand } from "@/features/properties/api";
+import type { RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import i18n from "@/i18n";
 import {
   createDiscount,
@@ -20,7 +20,7 @@ import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
  * Fan out one `useSeasonDetail` query per season to assemble the whole rate
  * picture (periods + bands) the timeline needs — `usePropertySeasons` returns
  * only the plan envelopes. Keyed on the shared `seasonDetail` query key so the
- * cache is deduped with `PricingTab`'s `SeasonDetailPanel`, and any RateRule
+ * cache is deduped with `PricingTab`'s `SeasonDetailPanel`, and any RateBand
  * mutation invalidating that key refreshes the workbench too.
  */
 export function useSeasonDetailsFanOut(seasonIds: number[]) {
@@ -41,7 +41,7 @@ export function useSeasonDetailsFanOut(seasonIds: number[]) {
 }
 
 interface NightlyEditVars {
-  ruleId: number;
+  bandId: number;
   nightly: string;
 }
 interface NightlyEditContext {
@@ -54,14 +54,14 @@ interface NightlyEditContext {
  * PATCH the rule (clearing POA — a priced cell is not price-on-application),
  * roll back + toast on failure, and invalidate on settle so the timeline and
  * matrix reconcile from the server. Structural edits (party bands, weekly, POA,
- * new rows/columns) go through `RateRuleFormDialog`, not this path.
+ * new rows/columns) go through `RateBandFormDialog`, not this path.
  */
-export function useOptimisticRuleNightly(seasonId: number) {
+export function useOptimisticBandNightly(seasonId: number) {
   const queryClient = useQueryClient();
   const key = queryKeys.properties.seasonDetail(seasonId);
-  return useMutation<RateRule, Error, NightlyEditVars, NightlyEditContext>({
-    mutationFn: ({ ruleId, nightly }) => updateRateRule(ruleId, { nightly, is_poa: false }),
-    onMutate: async ({ ruleId, nightly }) => {
+  return useMutation<RateBand, Error, NightlyEditVars, NightlyEditContext>({
+    mutationFn: ({ bandId, nightly }) => updateRateBand(bandId, { nightly, is_poa: false }),
+    onMutate: async ({ bandId, nightly }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const snapshot = queryClient.getQueryData<RatePlanDetail>(key);
       if (snapshot) {
@@ -69,8 +69,8 @@ export function useOptimisticRuleNightly(seasonId: number) {
           ...snapshot,
           periods: snapshot.periods.map((period) => ({
             ...period,
-            rules: (period.rules ?? []).map((r) =>
-              r.id === ruleId ? { ...r, nightly, is_poa: false } : r,
+            bands: (period.bands ?? []).map((r) =>
+              r.id === bandId ? { ...r, nightly, is_poa: false } : r,
             ),
           })),
         });

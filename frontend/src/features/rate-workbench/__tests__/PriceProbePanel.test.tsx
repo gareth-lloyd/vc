@@ -29,7 +29,7 @@ const breakdown = {
   date_from: "2026-07-12",
   date_to: "2026-07-19",
   lines: [
-    { date: "2026-07-12", rule_id: 1, period_id: 500, nightly: "900", notes: null },
+    { date: "2026-07-12", band_id: 1, period_id: 500, nightly: "900", notes: null },
     { date: "2026-07-13", rule_id: 1, period_id: 500, nightly: "900", notes: null },
   ],
   rate_subtotal: "1800",

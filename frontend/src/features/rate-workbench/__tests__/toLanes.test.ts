@@ -138,7 +138,7 @@ describe("toLanes", () => {
               date_from: "2026-06-01",
               date_to: "2026-08-30",
               coverage_gaps: [],
-              rules: [
+              bands: [
                 { id: 1, period: 50, nightly: "650" },
                 { id: 2, period: 50, nightly: "900" },
                 { id: 3, period: 50, is_poa: true },
@@ -179,7 +179,7 @@ describe("toLanes", () => {
               date_from: "2026-06-01",
               date_to: "2026-08-02",
               coverage_gaps: [],
-              rules: [
+              bands: [
                 // nightly present → weekly on the same band must be ignored,
                 // else the €4,550/wk figure would blow the range out.
                 { id: 1, period: 50, nightly: "650", weekly: "4550" },
@@ -207,7 +207,7 @@ describe("toLanes", () => {
               date_from: "2026-06-01",
               date_to: "2026-06-30",
               coverage_gaps: [],
-              rules: [{ id: 1, period: 51, nightly: "650" }],
+              bands: [{ id: 1, period: 51, nightly: "650" }],
             },
           ],
         }),
@@ -230,7 +230,7 @@ describe("toLanes", () => {
               date_from: "2026-06-01",
               date_to: "2026-06-30",
               coverage_gaps: [],
-              rules: [],
+              bands: [],
             },
           ],
         }),
@@ -273,7 +273,7 @@ describe("toLanes", () => {
       date_from: "2026-06-01",
       date_to: "2026-08-31",
       coverage_gaps: [],
-      rules: [{ id, period: id, nightly }],
+      bands: [{ id, period: id, nightly }],
     });
     const lanes = toLanes({
       ...base(),
@@ -303,7 +303,7 @@ describe("toLanes", () => {
       date_from: "2026-06-01",
       date_to: "2026-08-31",
       coverage_gaps: [],
-      rules: [{ id, period: id, nightly }],
+      bands: [{ id, period: id, nightly }],
     });
     // A lone period, or two distinct prices, can't form meaningful tertiles — a
     // single period must not read as the darkest "high" tone.
@@ -340,7 +340,7 @@ describe("toLanes", () => {
               date_from: "2026-06-01",
               date_to: "2026-08-31",
               coverage_gaps: [],
-              rules: [{ id: 1, period: 50, is_poa: true }],
+              bands: [{ id: 1, period: 50, is_poa: true }],
             },
           ],
         }),

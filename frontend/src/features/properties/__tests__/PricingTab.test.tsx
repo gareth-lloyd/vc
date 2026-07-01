@@ -60,7 +60,7 @@ const seasonDetailPeriod = {
   max_nights: 30,
   is_active: true,
   coverage_gaps: [],
-  rules: [
+  bands: [
     {
       id: 200,
       period: 100,
@@ -443,7 +443,7 @@ describe("PricingTab", () => {
     installSeasonDetailHandlers();
     let ruleDeleted = false;
     server.use(
-      http.delete("/api/v1/rules/200", () => {
+      http.delete("/api/v1/bands/200", () => {
         ruleDeleted = true;
         return new HttpResponse(null, { status: 204 });
       }),

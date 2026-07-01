@@ -12,7 +12,7 @@ import {
 import { MoneyInput } from "@/components/ui/money-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { currencyAdornment } from "@/lib/format/money";
-import type { RateRule } from "@/features/properties/schemas";
+import type { RateBand } from "@/features/properties/schemas";
 import type { MatrixCell as CellModel } from "../matrixModel";
 
 interface MatrixCellProps {
@@ -20,12 +20,12 @@ interface MatrixCellProps {
   currencyCode: string | null;
   canWrite: boolean;
   /** Commit an inline nightly-price edit (optimistic). */
-  onCommitNightly: (ruleId: number, nightly: string) => void;
-  /** Open the full rule dialog (party bands, weekly, POA). */
-  onEditRule: (rule: RateRule) => void;
+  onCommitNightly: (bandId: number, nightly: string) => void;
+  /** Open the full band dialog (party bands, weekly, POA). */
+  onEditBand: (band: RateBand) => void;
   /** Open the create dialog seeded with this empty cell's segment + band. */
   onFill: (cell: CellModel) => void;
-  onDeleteRule: (rule: RateRule) => void;
+  onDeleteBand: (band: RateBand) => void;
 }
 
 /**
@@ -38,21 +38,21 @@ export function MatrixCell({
   currencyCode,
   canWrite,
   onCommitNightly,
-  onEditRule,
+  onEditBand,
   onFill,
-  onDeleteRule,
+  onDeleteBand,
 }: MatrixCellProps) {
   const { t } = useTranslation("properties");
-  const rule = cell.rule;
-  const [draft, setDraft] = useState(rule?.nightly ?? "");
+  const band = cell.band;
+  const [draft, setDraft] = useState(band?.nightly ?? "");
 
-  // Keep the input in sync when the underlying rule changes (optimistic write,
+  // Keep the input in sync when the underlying band changes (optimistic write,
   // refetch, or a different card selected reusing this cell position).
   useEffect(() => {
-    setDraft(rule?.nightly ?? "");
-  }, [rule?.nightly, rule?.id]);
+    setDraft(band?.nightly ?? "");
+  }, [band?.nightly, band?.id]);
 
-  if (!rule) {
+  if (!band) {
     const dash = (
       <span className="text-muted-foreground/40 block text-center text-xs">
         {t("common.unset")}
@@ -97,17 +97,17 @@ export function MatrixCell({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onEditRule(rule)}>
+        <DropdownMenuItem onClick={() => onEditBand(band)}>
           {t("rate_workbench.matrix.edit_rule")}
         </DropdownMenuItem>
-        <DropdownMenuItem className="text-destructive" onClick={() => onDeleteRule(rule)}>
+        <DropdownMenuItem className="text-destructive" onClick={() => onDeleteBand(band)}>
           {t("rate_workbench.matrix.delete_rule")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   ) : null;
 
-  if (rule.is_poa) {
+  if (band.is_poa) {
     return (
       <div className="flex items-center justify-between gap-1">
         <Badge variant="outline">{t("rate_workbench.matrix.poa")}</Badge>
@@ -120,11 +120,11 @@ export function MatrixCell({
     const next = draft.trim();
     // Empty or unchanged → no write (clearing a price / setting POA is a
     // structural edit that must go through the dialog, which nulls both prices).
-    if (!next || next === (rule.nightly ?? "")) {
-      setDraft(rule.nightly ?? "");
+    if (!next || next === (band.nightly ?? "")) {
+      setDraft(band.nightly ?? "");
       return;
     }
-    onCommitNightly(rule.id, next);
+    onCommitNightly(band.id, next);
   };
 
   return (
@@ -144,7 +144,7 @@ export function MatrixCell({
           if (e.key === "Enter") {
             e.currentTarget.blur();
           } else if (e.key === "Escape") {
-            setDraft(rule.nightly ?? "");
+            setDraft(band.nightly ?? "");
             e.currentTarget.blur();
           }
         }}

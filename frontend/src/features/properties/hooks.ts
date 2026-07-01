@@ -14,7 +14,7 @@ import {
   createPropertyRoom,
   createPropertyService,
   createRatePeriod,
-  createRateRule,
+  createRateBand,
   createSeason,
   deleteChangeOverRule,
   deletePropertyBlock,
@@ -25,7 +25,7 @@ import {
   deletePropertyRoom,
   deletePropertyService,
   deleteRatePeriod,
-  deleteRateRule,
+  deleteRateBand,
   deleteSeason,
   duplicateSeason,
   fetchChangeOverRules,
@@ -68,7 +68,7 @@ import {
   updatePropertyService,
   updatePropertySettings,
   updateRatePeriod,
-  updateRateRule,
+  updateRateBand,
   updateSeason,
   upsertPropertyDescription,
 } from "./api";
@@ -89,7 +89,7 @@ import type {
   PropertySettingsWriteInput,
   RatePeriodWriteInput,
   RatePlanWriteInput,
-  RateRuleWritePayload,
+  RateBandWritePayload,
 } from "./schemas";
 
 export const PROPERTIES_PAGE_SIZE = 50;
@@ -365,28 +365,28 @@ export function useDeleteRatePeriod(seasonId: SeasonId) {
   });
 }
 
-export function useCreateRateRule(seasonId: SeasonId) {
+export function useCreateRateBand(seasonId: SeasonId) {
   const invalidate = useSeasonDetailInvalidation(seasonId);
   return useMutation({
-    mutationFn: ({ periodId, input }: { periodId: number; input: RateRuleWritePayload }) =>
-      createRateRule(periodId, input),
+    mutationFn: ({ periodId, input }: { periodId: number; input: RateBandWritePayload }) =>
+      createRateBand(periodId, input),
     onSuccess: invalidate,
   });
 }
 
-export function useUpdateRateRule(seasonId: SeasonId) {
+export function useUpdateRateBand(seasonId: SeasonId) {
   const invalidate = useSeasonDetailInvalidation(seasonId);
   return useMutation({
-    mutationFn: ({ ruleId, input }: { ruleId: number; input: Partial<RateRuleWritePayload> }) =>
-      updateRateRule(ruleId, input),
+    mutationFn: ({ bandId, input }: { bandId: number; input: Partial<RateBandWritePayload> }) =>
+      updateRateBand(bandId, input),
     onSuccess: invalidate,
   });
 }
 
-export function useDeleteRateRule(seasonId: SeasonId) {
+export function useDeleteRateBand(seasonId: SeasonId) {
   const invalidate = useSeasonDetailInvalidation(seasonId);
   return useMutation({
-    mutationFn: ({ ruleId }: { ruleId: number }) => deleteRateRule(ruleId),
+    mutationFn: ({ bandId }: { bandId: number }) => deleteRateBand(bandId),
     onSuccess: invalidate,
   });
 }

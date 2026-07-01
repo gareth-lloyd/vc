@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildMatrix, bandLabel, bandKey } from "../matrixModel";
-import type { RatePeriod, RateRule } from "@/features/properties/schemas";
+import type { RatePeriod, RateBand } from "@/features/properties/schemas";
 
 // GAP-056: a band is party × price only and carries its parent `period` FK; the
 // dates live on the RatePeriod row, not the rule.
 let ruleId = 0;
-const rule = (o: Partial<RateRule>): RateRule => ({
+const rule = (o: Partial<RateBand>): RateBand => ({
   id: ++ruleId,
   period: 50,
   min_party: 2,
@@ -14,13 +14,13 @@ const rule = (o: Partial<RateRule>): RateRule => ({
 });
 
 let periodId = 0;
-const period = (dateFrom: string, dateTo: string, rules: RateRule[]): RatePeriod => ({
+const period = (dateFrom: string, dateTo: string, bands: RateBand[]): RatePeriod => ({
   id: ++periodId,
   plan: 5,
   name: "",
   date_from: dateFrom,
   date_to: dateTo,
-  rules,
+  bands,
   coverage_gaps: [],
 });
 
@@ -66,11 +66,11 @@ describe("buildMatrix", () => {
     const aug = period("2026-08-02", "2026-08-30", [c]);
     const m = buildMatrix([jun, aug]);
     // rows: [Jun, Aug]; cols: [2-4, 5-6]
-    expect(m.cells[0][0]?.rule?.id).toBe(a.id);
-    expect(m.cells[0][1]?.rule?.id).toBe(b.id);
-    expect(m.cells[1][0]?.rule?.id).toBe(c.id);
+    expect(m.cells[0][0]?.band?.id).toBe(a.id);
+    expect(m.cells[0][1]?.band?.id).toBe(b.id);
+    expect(m.cells[1][0]?.band?.id).toBe(c.id);
     // Aug × 5-6 has no rule → a fillable empty cell (rule null, coordinates kept)
-    expect(m.cells[1][1].rule).toBeNull();
+    expect(m.cells[1][1].band).toBeNull();
     expect(m.cells[1][1].fillable).toBe(true);
     expect(m.cells[1][1].periodId).toBe(aug.id);
     expect(m.cells[1][1].dateFrom).toBe("2026-08-02");
@@ -81,7 +81,7 @@ describe("buildMatrix", () => {
   it("carries the rule through so POA and price masking can be read off the cell", () => {
     const poa = rule({ is_poa: true, nightly: null, weekly: null });
     const m = buildMatrix([period("2026-06-01", "2026-06-28", [poa])]);
-    expect(m.cells[0][0].rule?.is_poa).toBe(true);
+    expect(m.cells[0][0].band?.is_poa).toBe(true);
   });
 
   it("marks an empty cell unfillable when another band in the same period covers its party range", () => {
@@ -94,11 +94,11 @@ describe("buildMatrix", () => {
     // cols: [2-4, 3-5]
     const junRow = m.cells[0];
     const blocked = junRow.find((c) => c.minParty === 3 && c.maxParty === 5)!;
-    expect(blocked.rule).toBeNull();
+    expect(blocked.band).toBeNull();
     expect(blocked.fillable).toBe(false);
     const julRow = m.cells[1];
     const blocked2 = julRow.find((c) => c.minParty === 2 && c.maxParty === 4)!;
-    expect(blocked2.rule).toBeNull();
+    expect(blocked2.band).toBeNull();
     expect(blocked2.fillable).toBe(false);
   });
 
@@ -110,7 +110,7 @@ describe("buildMatrix", () => {
     // Jun × 5-6 is empty; Jun's only band is 2-4 (disjoint party) → fillable
     const junRow = m.cells.find((row) => row[0].dateFrom === "2026-06-01")!;
     const open = junRow.find((c) => c.minParty === 5 && c.maxParty === 6)!;
-    expect(open.rule).toBeNull();
+    expect(open.band).toBeNull();
     expect(open.fillable).toBe(true);
   });
 });

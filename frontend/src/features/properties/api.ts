@@ -35,7 +35,7 @@ import {
   ratePlanDetailSchema,
   ratePlanSchema,
   ratePlansResponseSchema,
-  rateRuleSchema,
+  rateBandSchema,
   sectionToSlug,
   type AvailabilityBlockWriteInput,
   type AvailabilityCalendarResponse,
@@ -80,8 +80,8 @@ import {
   type RatePlan,
   type RatePlanDetail,
   type RatePlanWriteInput,
-  type RateRule,
-  type RateRuleWritePayload,
+  type RateBand,
+  type RateBandWritePayload,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
 import type { PropertyId, SeasonId } from "@/lib/query/keys";
@@ -329,24 +329,24 @@ export async function deleteRatePeriod(periodId: number): Promise<void> {
   await apiSend<void>("DELETE", `/periods/${periodId}`);
 }
 
-export async function createRateRule(
+export async function createRateBand(
   periodId: number,
-  body: RateRuleWritePayload,
-): Promise<RateRule> {
-  const data = await apiSend<unknown>("POST", `/periods/${periodId}/rules`, body);
-  return rateRuleSchema.parse(data);
+  body: RateBandWritePayload,
+): Promise<RateBand> {
+  const data = await apiSend<unknown>("POST", `/periods/${periodId}/bands`, body);
+  return rateBandSchema.parse(data);
 }
 
-export async function updateRateRule(
-  ruleId: number,
-  body: Partial<RateRuleWritePayload>,
-): Promise<RateRule> {
-  const data = await apiSend<unknown>("PATCH", `/rules/${ruleId}`, body);
-  return rateRuleSchema.parse(data);
+export async function updateRateBand(
+  bandId: number,
+  body: Partial<RateBandWritePayload>,
+): Promise<RateBand> {
+  const data = await apiSend<unknown>("PATCH", `/bands/${bandId}`, body);
+  return rateBandSchema.parse(data);
 }
 
-export async function deleteRateRule(ruleId: number): Promise<void> {
-  await apiSend<void>("DELETE", `/rules/${ruleId}`);
+export async function deleteRateBand(bandId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/bands/${bandId}`);
 }
 
 export async function fetchPropertyExtras(idOrSlug: PropertyId): Promise<Paginated<Extra>> {

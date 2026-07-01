@@ -28,7 +28,7 @@ const seasonDetail: RatePlanDetail = {
       date_to: "2026-06-28",
       is_active: true,
       coverage_gaps: [],
-      rules: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
+      bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
     },
     {
       id: 501,
@@ -38,7 +38,7 @@ const seasonDetail: RatePlanDetail = {
       date_to: "2026-08-31",
       is_active: true,
       coverage_gaps: [],
-      rules: [{ id: 2, period: 501, min_party: 5, max_party: 6, nightly: "900" }],
+      bands: [{ id: 2, period: 501, min_party: 5, max_party: 6, nightly: "900" }],
     },
   ],
 };
@@ -62,10 +62,10 @@ describe("MatrixEditor", () => {
     const user = userEvent.setup();
     const patched: Array<{ id: string; body: unknown }> = [];
     server.use(
-      http.patch("/api/v1/rules/:id", async ({ params, request }) => {
+      http.patch("/api/v1/bands/:id", async ({ params, request }) => {
         const body = await request.json();
         patched.push({ id: String(params.id), body });
-        return HttpResponse.json({ ...seasonDetail.periods[0].rules[0], nightly: "700" });
+        return HttpResponse.json({ ...seasonDetail.periods[0].bands[0], nightly: "700" });
       }),
     );
 
@@ -84,9 +84,9 @@ describe("MatrixEditor", () => {
     const user = userEvent.setup();
     let calls = 0;
     server.use(
-      http.patch("/api/v1/rules/:id", () => {
+      http.patch("/api/v1/bands/:id", () => {
         calls += 1;
-        return HttpResponse.json(seasonDetail.periods[0].rules[0]);
+        return HttpResponse.json(seasonDetail.periods[0].bands[0]);
       }),
     );
 
@@ -127,7 +127,7 @@ describe("MatrixEditor", () => {
           date_to: "2026-06-28",
           is_active: true,
           coverage_gaps: [],
-          rules: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
+          bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
         },
         {
           id: 501,
@@ -137,7 +137,7 @@ describe("MatrixEditor", () => {
           date_to: "2026-08-31",
           is_active: true,
           coverage_gaps: [],
-          rules: [{ id: 2, period: 501, min_party: 3, max_party: 6, nightly: "1200" }],
+          bands: [{ id: 2, period: 501, min_party: 3, max_party: 6, nightly: "1200" }],
         },
       ],
     };

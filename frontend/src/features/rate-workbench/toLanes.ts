@@ -153,12 +153,12 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
 
   const rateBandsUntiered: RawBand[] = input.seasonDetails.flatMap((plan) =>
     (plan.periods ?? []).flatMap((period) => {
-      const rules = period.rules ?? [];
-      if (rules.length === 0) return [];
+      const bands = period.bands ?? [];
+      if (bands.length === 0) return [];
       // One figure per band: a band prices either nightly or weekly (its basis),
       // never both — flat-mapping both mixes per-night and per-week amounts into
       // one nonsensical range (e.g. €650 nightly and €4,550 weekly → "€650–€4,550").
-      const prices = rules
+      const prices = bands
         .map((r) => numeric(r.nightly) ?? numeric(r.weekly))
         .filter((v): v is number => v != null);
       return [
@@ -175,7 +175,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
             currencyCode: plan.currency_code ?? null,
             minPrice: prices.length ? Math.min(...prices) : null,
             maxPrice: prices.length ? Math.max(...prices) : null,
-            hasPoa: rules.some((r) => r.is_poa),
+            hasPoa: bands.some((r) => r.is_poa),
           },
         },
       ];

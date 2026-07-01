@@ -155,6 +155,8 @@ export type PriceProbeRequest = z.infer<typeof priceProbeRequestSchema>;
 export const quoteLineSchema = z
   .object({
     date: z.string(),
+    band_id: z.number().nullable().optional(),
+    // Back-compat: pre-SMELL-019 snapshots wrote `rule_id` (now `band_id`).
     rule_id: z.number().nullable().optional(),
     period_id: z.number().nullable().optional(),
     nightly: z.string(),

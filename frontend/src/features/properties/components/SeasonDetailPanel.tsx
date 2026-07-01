@@ -18,14 +18,14 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import {
   useDeleteRatePeriod,
-  useDeleteRateRule,
+  useDeleteRateBand,
   usePropertySettings,
   useSeasonDetail,
 } from "../hooks";
 import { formatPartyGaps } from "../coverage";
 import { RatePeriodFormDialog } from "./RatePeriodFormDialog";
-import { RateRuleFormDialog } from "./RateRuleFormDialog";
-import type { RatePeriod, RateRule } from "../schemas";
+import { RateBandFormDialog } from "./RateBandFormDialog";
+import type { RatePeriod, RateBand } from "../schemas";
 
 export function ActiveBadge({ isActive }: { isActive: boolean | undefined }) {
   const { t } = useTranslation("properties");
@@ -42,16 +42,16 @@ function RatePeriodBlock({
   onEdit,
   onDelete,
   onAddRule,
-  onEditRule,
-  onDeleteRule,
+  onEditBand,
+  onDeleteBand,
 }: {
   period: RatePeriod;
   canWrite: boolean;
   onEdit: (period: RatePeriod) => void;
   onDelete: (period: RatePeriod) => void;
   onAddRule: (period: RatePeriod) => void;
-  onEditRule: (rule: RateRule) => void;
-  onDeleteRule: (rule: RateRule) => void;
+  onEditBand: (rule: RateBand) => void;
+  onDeleteBand: (rule: RateBand) => void;
 }) {
   const { t } = useTranslation("properties");
   const poa = t("pricing.rate_period.poa");
@@ -111,7 +111,7 @@ function RatePeriodBlock({
           {t("pricing.rate_period.coverage_gap_warning", { ranges: formatPartyGaps(gaps) })}
         </p>
       ) : null}
-      {period.rules.length === 0 ? (
+      {period.bands.length === 0 ? (
         <p className="text-muted-foreground text-xs italic">{t("pricing.rate_period.no_rules")}</p>
       ) : (
         <table className="w-full text-xs">
@@ -128,7 +128,7 @@ function RatePeriodBlock({
             </tr>
           </thead>
           <tbody>
-            {period.rules.map((rule) => (
+            {period.bands.map((rule) => (
               <tr key={rule.id} className="border-border border-t">
                 <td className="py-1 pr-2">
                   {rule.min_party ?? placeholder}–{rule.max_party ?? placeholder}
@@ -149,12 +149,12 @@ function RatePeriodBlock({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEditRule(rule)}>
+                        <DropdownMenuItem onClick={() => onEditBand(rule)}>
                           {t("pricing.rule.row.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
-                          onClick={() => onDeleteRule(rule)}
+                          onClick={() => onDeleteBand(rule)}
                         >
                           {t("pricing.rule.row.delete")}
                         </DropdownMenuItem>
@@ -206,14 +206,14 @@ export function SeasonDetailPanel({
   const dash = t("common.unset");
 
   const deletePeriodMutation = useDeleteRatePeriod(seasonId);
-  const deleteRuleMutation = useDeleteRateRule(seasonId);
+  const deleteRuleMutation = useDeleteRateBand(seasonId);
 
   const [addPeriodOpen, setAddPeriodOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<RatePeriod | null>(null);
   const [deletingPeriod, setDeletingPeriod] = useState<RatePeriod | null>(null);
   const [addingRulePeriod, setAddingRulePeriod] = useState<RatePeriod | null>(null);
-  const [editingRule, setEditingRule] = useState<RateRule | null>(null);
-  const [deletingRule, setDeletingRule] = useState<RateRule | null>(null);
+  const [editingBand, setEditingBand] = useState<RateBand | null>(null);
+  const [deletingBand, setDeletingBand] = useState<RateBand | null>(null);
 
   const handleDeletePeriod = async () => {
     if (!deletingPeriod) return;
@@ -227,11 +227,11 @@ export function SeasonDetailPanel({
   };
 
   const handleDeleteRule = async () => {
-    if (!deletingRule) return;
+    if (!deletingBand) return;
     try {
-      await deleteRuleMutation.mutateAsync({ ruleId: deletingRule.id });
+      await deleteRuleMutation.mutateAsync({ bandId: deletingBand.id });
       toast.success(t("pricing.rule.toasts.deleted"));
-      setDeletingRule(null);
+      setDeletingBand(null);
     } catch {
       toast.error(t("pricing.rule.toasts.delete_failed"));
     }
@@ -317,8 +317,8 @@ export function SeasonDetailPanel({
                   onEdit={setEditingPeriod}
                   onDelete={setDeletingPeriod}
                   onAddRule={setAddingRulePeriod}
-                  onEditRule={setEditingRule}
-                  onDeleteRule={setDeletingRule}
+                  onEditBand={setEditingBand}
+                  onDeleteBand={setDeletingBand}
                 />
               ))
             )}
@@ -344,7 +344,7 @@ export function SeasonDetailPanel({
         />
       ) : null}
       {addingRulePeriod ? (
-        <RateRuleFormDialog
+        <RateBandFormDialog
           seasonId={seasonId}
           periodId={addingRulePeriod.id}
           open={!!addingRulePeriod}
@@ -356,14 +356,14 @@ export function SeasonDetailPanel({
           tax={tax}
         />
       ) : null}
-      {editingRule ? (
-        <RateRuleFormDialog
+      {editingBand ? (
+        <RateBandFormDialog
           seasonId={seasonId}
-          periodId={editingRule.period}
-          open={!!editingRule}
-          onOpenChange={(o) => !o && setEditingRule(null)}
+          periodId={editingBand.period}
+          open={!!editingBand}
+          onOpenChange={(o) => !o && setEditingBand(null)}
           mode="edit"
-          rule={editingRule}
+          rule={editingBand}
           currencyCode={seasonCurrencyCode}
           priceBasis={seasonPriceBasis}
           commission={commission}
@@ -382,10 +382,10 @@ export function SeasonDetailPanel({
           busy={deletePeriodMutation.isPending}
         />
       ) : null}
-      {deletingRule ? (
+      {deletingBand ? (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setDeletingRule(null)}
+          onOpenChange={(o) => !o && setDeletingBand(null)}
           onConfirm={handleDeleteRule}
           title={t("pricing.rule.delete_confirm.title")}
           description={t("pricing.rule.delete_confirm.description")}

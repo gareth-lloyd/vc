@@ -5,11 +5,11 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { formatDate } from "@/lib/format/date";
 import type { CommissionInput, TaxInput } from "@/lib/pricing/netGross";
-import { RateRuleFormDialog } from "@/features/properties/components/RateRuleFormDialog";
-import { useDeleteRateRule } from "@/features/properties/hooks";
+import { RateBandFormDialog } from "@/features/properties/components/RateBandFormDialog";
+import { useDeleteRateBand } from "@/features/properties/hooks";
 import { formatPartyGaps } from "@/features/properties/coverage";
-import type { RatePeriod, RatePlanDetail, RateRule } from "@/features/properties/schemas";
-import { useOptimisticRuleNightly } from "../hooks";
+import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
+import { useOptimisticBandNightly } from "../hooks";
 import { bandLabel, buildMatrix, type MatrixCell as CellModel } from "../matrixModel";
 import { MatrixCell } from "./MatrixCell";
 
@@ -44,19 +44,19 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
   const matrix = useMemo(() => buildMatrix(periods), [periods]);
   const gapPeriods = periods.filter((p) => (p.coverage_gaps ?? []).length > 0);
 
-  const nightly = useOptimisticRuleNightly(seasonId);
-  const deleteRule = useDeleteRateRule(seasonId);
+  const nightly = useOptimisticBandNightly(seasonId);
+  const deleteRule = useDeleteRateBand(seasonId);
 
   const [creatingCell, setCreatingCell] = useState<CellModel | null>(null);
-  const [editingRule, setEditingRule] = useState<RateRule | null>(null);
-  const [deletingRule, setDeletingRule] = useState<RateRule | null>(null);
+  const [editingBand, setEditingBand] = useState<RateBand | null>(null);
+  const [deletingBand, setDeletingBand] = useState<RateBand | null>(null);
 
   const handleDelete = async () => {
-    if (!deletingRule) return;
+    if (!deletingBand) return;
     try {
-      await deleteRule.mutateAsync({ ruleId: deletingRule.id });
+      await deleteRule.mutateAsync({ bandId: deletingBand.id });
       toast.success(t("rate_workbench.matrix.deleted"));
-      setDeletingRule(null);
+      setDeletingBand(null);
     } catch {
       toast.error(t("rate_workbench.matrix.save_failed"));
     }
@@ -114,12 +114,12 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
                         cell={cell}
                         currencyCode={currencyCode}
                         canWrite={canWrite}
-                        onCommitNightly={(ruleId, value) =>
-                          nightly.mutate({ ruleId, nightly: value })
+                        onCommitNightly={(bandId, value) =>
+                          nightly.mutate({ bandId, nightly: value })
                         }
-                        onEditRule={setEditingRule}
+                        onEditBand={setEditingBand}
                         onFill={setCreatingCell}
-                        onDeleteRule={setDeletingRule}
+                        onDeleteBand={setDeletingBand}
                       />
                     </td>
                   ))}
@@ -131,7 +131,7 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
       )}
 
       {creatingCell ? (
-        <RateRuleFormDialog
+        <RateBandFormDialog
           seasonId={seasonId}
           periodId={creatingCell.periodId}
           open={!!creatingCell}
@@ -147,24 +147,24 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
           tax={tax}
         />
       ) : null}
-      {editingRule ? (
-        <RateRuleFormDialog
+      {editingBand ? (
+        <RateBandFormDialog
           seasonId={seasonId}
-          periodId={editingRule.period}
-          open={!!editingRule}
-          onOpenChange={(o) => !o && setEditingRule(null)}
+          periodId={editingBand.period}
+          open={!!editingBand}
+          onOpenChange={(o) => !o && setEditingBand(null)}
           mode="edit"
-          rule={editingRule}
+          rule={editingBand}
           currencyCode={currencyCode}
           priceBasis={priceBasis}
           commission={commission}
           tax={tax}
         />
       ) : null}
-      {deletingRule ? (
+      {deletingBand ? (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setDeletingRule(null)}
+          onOpenChange={(o) => !o && setDeletingBand(null)}
           onConfirm={handleDelete}
           title={t("rate_workbench.matrix.delete_confirm.title")}
           description={t("rate_workbench.matrix.delete_confirm.description")}

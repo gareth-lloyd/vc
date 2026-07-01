@@ -40,7 +40,7 @@ const period: RatePeriod = {
   min_nights: 7,
   max_nights: 30,
   is_active: true,
-  rules: [],
+  bands: [],
   coverage_gaps: [],
 };
 

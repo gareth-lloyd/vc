@@ -47,7 +47,7 @@ const seasonDetail = {
       date_to: "2026-06-28",
       is_active: true,
       coverage_gaps: [],
-      rules: [{ id: 1, period: 500, min_party: 1, max_party: 8, nightly: "650" }],
+      bands: [{ id: 1, period: 500, min_party: 1, max_party: 8, nightly: "650" }],
     },
     {
       id: 501,
@@ -57,7 +57,7 @@ const seasonDetail = {
       date_to: "2026-08-31",
       is_active: true,
       coverage_gaps: [],
-      rules: [{ id: 2, period: 501, min_party: 1, max_party: 8, nightly: "900" }],
+      bands: [{ id: 2, period: 501, min_party: 1, max_party: 8, nightly: "900" }],
     },
   ],
 };

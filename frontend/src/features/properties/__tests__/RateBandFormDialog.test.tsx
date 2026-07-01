@@ -5,8 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
-import { RateRuleFormDialog } from "../components/RateRuleFormDialog";
-import type { RateRule } from "../schemas";
+import { RateBandFormDialog } from "../components/RateBandFormDialog";
+import type { RateBand } from "../schemas";
 
 function setReservationsUser() {
   useAuthStore.getState().setMe(
@@ -26,7 +26,7 @@ function setReservationsUser() {
 }
 
 // GAP-056: a band is party × price only — dates live on the parent period.
-const rule: RateRule = {
+const rule: RateBand = {
   id: 9,
   period: 5,
   min_party: 1,
@@ -49,19 +49,19 @@ async function fillValidRule() {
   await userEvent.type(screen.getByLabelText(/Nightly price/i), "150.00");
 }
 
-describe("RateRuleFormDialog — create", () => {
-  it("posts to /periods/:id/rules normalising empty prices to null", async () => {
+describe("RateBandFormDialog — create", () => {
+  it("posts to /periods/:id/bands normalising empty prices to null", async () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/periods/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return ruleResponse(postBody);
       }),
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -81,14 +81,14 @@ describe("RateRuleFormDialog — create", () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/periods/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return ruleResponse(postBody);
       }),
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByLabelText(/price on application/i));
@@ -105,13 +105,13 @@ describe("RateRuleFormDialog — create", () => {
     setReservationsUser();
     let requested = false;
     server.use(
-      http.post("/api/v1/periods/5/rules", () => {
+      http.post("/api/v1/periods/5/bands", () => {
         requested = true;
         return ruleResponse({});
       }),
     );
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     // min_party defaults to 1; set it above max_party (which defaults to 1).
     await userEvent.clear(screen.getByLabelText(/Minimum party/i));
@@ -126,7 +126,7 @@ describe("RateRuleFormDialog — create", () => {
   it("requires a price or POA", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.clear(screen.getByLabelText(/Nightly price/i));
@@ -144,7 +144,7 @@ describe("RateRuleFormDialog — create", () => {
     setReservationsUser();
     const bodies: Record<string, unknown>[] = [];
     server.use(
-      http.post("/api/v1/periods/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         bodies.push(body);
         return ruleResponse(body, 100 + bodies.length);
@@ -152,7 +152,7 @@ describe("RateRuleFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /save & add another/i }));
@@ -178,19 +178,19 @@ describe("RateRuleFormDialog — create", () => {
   });
 });
 
-describe("RateRuleFormDialog — edit", () => {
+describe("RateBandFormDialog — edit", () => {
   it("prefills from the rule and PATCHes edited fields", async () => {
     setReservationsUser();
     let patchBody: Record<string, unknown> | null = null;
     server.use(
-      http.patch("/api/v1/rules/9", async ({ request }) => {
+      http.patch("/api/v1/bands/9", async ({ request }) => {
         patchBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ...rule, ...patchBody });
       }),
     );
 
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -212,13 +212,13 @@ describe("RateRuleFormDialog — edit", () => {
   });
 });
 
-describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
+describe("RateBandFormDialog — currency adornment (GAP-026)", () => {
   afterEach(() => useAuthStore.getState().clear());
 
   it("shows the rate plan currency symbol beside both price inputs", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -234,7 +234,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
   it("renders no symbol when the season has no currency", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     expect(screen.queryByText("€")).not.toBeInTheDocument();
     expect(screen.queryByText("£")).not.toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
   it("hides the symbol once POA masks the price inputs", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -258,7 +258,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
   });
 });
 
-describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
+describe("RateBandFormDialog — net↔gross derivation (GAP-035)", () => {
   afterEach(() => useAuthStore.getState().clear());
 
   const pct20 = { calculation_type: "percent", amount: "20.00" };
@@ -267,7 +267,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
   it("shows the derived owner net for a GROSS plan", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -289,7 +289,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
   it("shows the derived guest price for a NET plan (÷(1−pct), not ×(1+pct))", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -311,7 +311,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
   it("shows no hint when the basis is unknown", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open
@@ -328,7 +328,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
   it("hides the hint once POA masks the price inputs", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog
+      <RateBandFormDialog
         seasonId={11}
         periodId={5}
         open

@@ -1,4 +1,4 @@
-import type { RatePeriod, RateRule } from "@/features/properties/schemas";
+import type { RatePeriod, RateBand } from "@/features/properties/schemas";
 
 /**
  * The segment-first matrix for a plan: rate periods as rows (each owns one
@@ -6,7 +6,7 @@ import type { RatePeriod, RateRule } from "@/features/properties/schemas";
  * intersection.
  *
  * GAP-056 made the grid honest: a `RatePeriod` owns the dates, and its
- * `RateRule` children are pure party bands that inherit them. So rows are the
+ * `RateBand` children are pure party bands that inherit them. So rows are the
  * plan's periods and columns are the union of `(min_party, max_party)` pairs
  * across every period's bands; each cell resolves to the band in that period
  * matching the column, or an empty coordinate.
@@ -32,7 +32,7 @@ export interface MatrixSegment {
 
 export interface MatrixCell {
   /** The band at this (period × column) intersection, or null when unfilled. */
-  rule: RateRule | null;
+  band: RateBand | null;
   /** Empty cells only: false when another band in this period already covers this party range. */
   fillable: boolean;
   /** The period this cell belongs to — the create target for a fill. */
@@ -60,7 +60,7 @@ export function bandLabel(b: MatrixBand): string | null {
 }
 
 /** Party-range overlap, treating null bounds as open (−∞ / +∞) — matches the backend constraint. */
-function partiesOverlap(b: MatrixBand, r: RateRule): boolean {
+function partiesOverlap(b: MatrixBand, r: RateBand): boolean {
   const bMin = b.minParty ?? -Infinity;
   const bMax = b.maxParty ?? Infinity;
   const rMin = r.min_party ?? -Infinity;
@@ -80,7 +80,7 @@ export function buildMatrix(periods: RatePeriod[]): MatrixModel {
 
   const bands: MatrixBand[] = dedupe(
     periods.flatMap((p) =>
-      (p.rules ?? []).map((r) => ({
+      (p.bands ?? []).map((r) => ({
         minParty: r.min_party ?? null,
         maxParty: r.max_party ?? null,
       })),
@@ -88,13 +88,13 @@ export function buildMatrix(periods: RatePeriod[]): MatrixModel {
     bandKey,
   ).sort((a, b) => (a.minParty ?? 0) - (b.minParty ?? 0) || (a.maxParty ?? 0) - (b.maxParty ?? 0));
 
-  const rulesByPeriod = new Map<number, RateRule[]>();
-  const ruleAt = new Map<string, RateRule>();
+  const bandsByPeriod = new Map<number, RateBand[]>();
+  const bandAt = new Map<string, RateBand>();
   for (const p of periods) {
-    const rules = p.rules ?? [];
-    rulesByPeriod.set(p.id, rules);
-    for (const r of rules) {
-      ruleAt.set(
+    const periodBands = p.bands ?? [];
+    bandsByPeriod.set(p.id, periodBands);
+    for (const r of periodBands) {
+      bandAt.set(
         `${p.id}#${bandKey({ minParty: r.min_party ?? null, maxParty: r.max_party ?? null })}`,
         r,
       );
@@ -103,14 +103,14 @@ export function buildMatrix(periods: RatePeriod[]): MatrixModel {
 
   const cells: MatrixCell[][] = segments.map((s) =>
     bands.map((b) => {
-      const rule = ruleAt.get(`${s.periodId}#${bandKey(b)}`) ?? null;
+      const band = bandAt.get(`${s.periodId}#${bandKey(b)}`) ?? null;
       // Empty cell is fillable unless another band in THIS period covers the
       // party range (same period ⇒ same dates, so only party matters).
-      const fillable = rule
+      const fillable = band
         ? false
-        : !(rulesByPeriod.get(s.periodId) ?? []).some((r) => partiesOverlap(b, r));
+        : !(bandsByPeriod.get(s.periodId) ?? []).some((r) => partiesOverlap(b, r));
       return {
-        rule,
+        band,
         fillable,
         periodId: s.periodId,
         dateFrom: s.dateFrom,

@@ -358,7 +358,7 @@ export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
 
 export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
-export const rateRuleSchema = z.object({
+export const rateBandSchema = z.object({
   id: z.number(),
   period: z.number(),
   min_party: z.number().nullable().optional(),
@@ -370,7 +370,7 @@ export const rateRuleSchema = z.object({
   is_approved: z.boolean().optional(),
   notes: z.string().nullable().optional(),
 });
-export type RateRule = z.infer<typeof rateRuleSchema>;
+export type RateBand = z.infer<typeof rateBandSchema>;
 
 export const ratePeriodSchema = z.object({
   id: z.number(),
@@ -382,7 +382,7 @@ export const ratePeriodSchema = z.object({
   min_nights: z.number().nullable().optional(),
   max_nights: z.number().nullable().optional(),
   is_active: z.boolean().optional(),
-  rules: z.array(rateRuleSchema).optional().default([]),
+  bands: z.array(rateBandSchema).optional().default([]),
   // Read-only: uncovered `[low, high]` party sub-ranges of `1..max_occupancy`.
   coverage_gaps: z
     .array(z.tuple([z.number(), z.number()]))
@@ -394,7 +394,7 @@ export type RatePeriod = z.infer<typeof ratePeriodSchema>;
 export const ratePeriodWriteInputSchema = z
   .object({
     // GAP-056: the period owns the dates (inclusive) + optional name + nullable
-    // min/max-nights overrides; its bands (RateRule) inherit its dates.
+    // min/max-nights overrides; its bands (RateBand) inherit its dates.
     name: z.string().trim().max(128).optional(),
     date_from: z.string().min(1, { message: "properties:errors.rate_period_date_from_required" }),
     date_to: z.string().min(1, { message: "properties:errors.rate_period_date_to_required" }),
@@ -425,7 +425,7 @@ export type RatePeriodWriteInput = z.infer<typeof ratePeriodWriteInputSchema>;
 
 const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
 
-export const rateRuleWriteInputSchema = z
+export const rateBandWriteInputSchema = z
   .object({
     // GAP-056: a band is party x price only — its dates come from the period.
     min_party: z
@@ -467,10 +467,10 @@ export const rateRuleWriteInputSchema = z
       });
     }
   });
-export type RateRuleWriteInput = z.infer<typeof rateRuleWriteInputSchema>;
+export type RateBandWriteInput = z.infer<typeof rateBandWriteInputSchema>;
 
 /** Wire shape: empty/POA-masked money fields are sent as explicit nulls. */
-export type RateRuleWritePayload = Omit<RateRuleWriteInput, "nightly" | "weekly"> & {
+export type RateBandWritePayload = Omit<RateBandWriteInput, "nightly" | "weekly"> & {
   nightly: string | null;
   weekly: string | null;
 };

@@ -164,7 +164,7 @@ describe("QuoteResultsList", () => {
         available: false,
         total: null,
         error_code: "no_rate_available",
-        error_detail: "RateRule 7 is POA for these dates.",
+        error_detail: "RateBand 7 is POA for these dates.",
       }),
     ]);
 
@@ -176,7 +176,7 @@ describe("QuoteResultsList", () => {
     const badge = screen.getByText(/incomplete pricing/i);
     expect(badge).toHaveAttribute("tabindex", "0");
     badge.focus();
-    expect(await screen.findAllByText(/rateRule 7 is POA/i)).not.toHaveLength(0);
+    expect(await screen.findAllByText(/rateBand 7 is POA/i)).not.toHaveLength(0);
   });
 
   it("invokes onAdd with the no-rate option and shows added state once staged", async () => {

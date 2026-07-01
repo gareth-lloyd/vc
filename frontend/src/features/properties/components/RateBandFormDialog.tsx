@@ -15,12 +15,12 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { currencyAdornment, formatMoney } from "@/lib/format/money";
 import { deriveNetGross, type CommissionInput, type TaxInput } from "@/lib/pricing/netGross";
-import { useCreateRateRule, useUpdateRateRule } from "../hooks";
+import { useCreateRateBand, useUpdateRateBand } from "../hooks";
 import {
-  rateRuleWriteInputSchema,
-  type RateRule,
-  type RateRuleWriteInput,
-  type RateRuleWritePayload,
+  rateBandWriteInputSchema,
+  type RateBand,
+  type RateBandWriteInput,
+  type RateBandWritePayload,
 } from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
@@ -46,17 +46,17 @@ interface CommonProps {
 interface CreateProps extends CommonProps {
   mode: "create";
   /** Seed values for fast consecutive entry (e.g. next party band = last max_party + 1). */
-  defaults?: Partial<RateRuleWriteInput>;
+  defaults?: Partial<RateBandWriteInput>;
 }
 
 interface EditProps extends CommonProps {
   mode: "edit";
-  rule: RateRule;
+  rule: RateBand;
 }
 
-type RateRuleFormDialogProps = CreateProps | EditProps;
+type RateBandFormDialogProps = CreateProps | EditProps;
 
-function createDefaults(seed?: Partial<RateRuleWriteInput>): RateRuleWriteInput {
+function createDefaults(seed?: Partial<RateBandWriteInput>): RateBandWriteInput {
   return {
     min_party: 1,
     max_party: 1,
@@ -68,7 +68,7 @@ function createDefaults(seed?: Partial<RateRuleWriteInput>): RateRuleWriteInput 
   };
 }
 
-function defaultsFromRule(rule: RateRule): RateRuleWriteInput {
+function defaultsFromRule(rule: RateBand): RateBandWriteInput {
   return {
     min_party: rule.min_party ?? 1,
     max_party: rule.max_party ?? 1,
@@ -80,7 +80,7 @@ function defaultsFromRule(rule: RateRule): RateRuleWriteInput {
 }
 
 /** Empty or POA-masked prices go to the API as explicit nulls. */
-function toPayload(values: RateRuleWriteInput): RateRuleWritePayload {
+function toPayload(values: RateBandWriteInput): RateBandWritePayload {
   return {
     ...values,
     nightly: values.is_poa || !values.nightly ? null : values.nightly,
@@ -120,21 +120,21 @@ function DerivedCounterpartHint({
   );
 }
 
-export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
+export function RateBandFormDialog(props: RateBandFormDialogProps) {
   const { seasonId, periodId, open, onOpenChange, currencyCode, priceBasis, commission, tax } =
     props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const priceAdornment = currencyAdornment(currencyCode);
 
-  const form = useForm<RateRuleWriteInput>({
-    resolver: zodResolver(rateRuleWriteInputSchema),
+  const form = useForm<RateBandWriteInput>({
+    resolver: zodResolver(rateBandWriteInputSchema),
     defaultValues: isCreate ? createDefaults(props.defaults) : defaultsFromRule(props.rule),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const createMutation = useCreateRateRule(seasonId);
-  const updateMutation = useUpdateRateRule(seasonId);
+  const createMutation = useCreateRateBand(seasonId);
+  const updateMutation = useUpdateRateBand(seasonId);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
@@ -145,14 +145,14 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.rule.id]);
 
-  const submit = async (values: RateRuleWriteInput, andAddAnother: boolean) => {
+  const submit = async (values: RateBandWriteInput, andAddAnother: boolean) => {
     setTopLevelError(null);
     try {
       if (isCreate) {
         await createMutation.mutateAsync({ periodId, input: toPayload(values) });
         toast.success(t("pricing.rule.toasts.created"));
       } else {
-        await updateMutation.mutateAsync({ ruleId: props.rule.id, input: toPayload(values) });
+        await updateMutation.mutateAsync({ bandId: props.rule.id, input: toPayload(values) });
         toast.success(t("pricing.rule.toasts.updated"));
       }
       if (andAddAnother) {

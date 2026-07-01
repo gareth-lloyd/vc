@@ -11,7 +11,7 @@ import {
   propertyRoomWriteInputSchema,
   propertySettingsWriteInputSchema,
   ratePeriodWriteInputSchema,
-  rateRuleWriteInputSchema,
+  rateBandWriteInputSchema,
 } from "../schemas";
 
 describe("propertyListItemSchema — GAP-034 calendar source", () => {
@@ -278,7 +278,7 @@ describe("ratePeriodWriteInputSchema", () => {
   });
 });
 
-describe("rateRuleWriteInputSchema", () => {
+describe("rateBandWriteInputSchema", () => {
   // GAP-056: a band is party × price only — dates live on the parent period.
   const valid = {
     min_party: 1,
@@ -289,45 +289,45 @@ describe("rateRuleWriteInputSchema", () => {
   };
 
   it("accepts a priced rule", () => {
-    expect(rateRuleWriteInputSchema.parse(valid).nightly).toBe("150.00");
+    expect(rateBandWriteInputSchema.parse(valid).nightly).toBe("150.00");
   });
 
   it("requires min_party <= max_party", () => {
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, min_party: 9 })).toThrow();
-    expect(rateRuleWriteInputSchema.parse({ ...valid, min_party: 8 }).min_party).toBe(8);
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, min_party: 9 })).toThrow();
+    expect(rateBandWriteInputSchema.parse({ ...valid, min_party: 8 }).min_party).toBe(8);
   });
 
   it("requires a price unless POA", () => {
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: "", weekly: "" })).toThrow();
     expect(
-      rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "", is_poa: true }).is_poa,
+      rateBandWriteInputSchema.parse({ ...valid, nightly: "", weekly: "", is_poa: true }).is_poa,
     ).toBe(true);
-    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "", weekly: "900" }).weekly).toBe(
+    expect(rateBandWriteInputSchema.parse({ ...valid, nightly: "", weekly: "900" }).weekly).toBe(
       "900",
     );
   });
 
   it("accepts a POA rule with lingering price text (payload nulls it at submit)", () => {
-    expect(rateRuleWriteInputSchema.parse({ ...valid, is_poa: true }).is_poa).toBe(true);
+    expect(rateBandWriteInputSchema.parse({ ...valid, is_poa: true }).is_poa).toBe(true);
     // Even malformed leftovers in the disabled inputs must not block a POA save.
     expect(
-      rateRuleWriteInputSchema.parse({ ...valid, is_poa: true, nightly: "12.345" }).is_poa,
+      rateBandWriteInputSchema.parse({ ...valid, is_poa: true, nightly: "12.345" }).is_poa,
     ).toBe(true);
   });
 
   it("treats whitespace-only prices as empty", () => {
-    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "900" }).nightly).toBe(
+    expect(rateBandWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "900" }).nightly).toBe(
       "",
     );
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: " ", weekly: "" })).toThrow();
   });
 
   it("validates money strings", () => {
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "12,50" })).toThrow();
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "12.345" })).toThrow();
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, nightly: "-5" })).toThrow();
-    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "1250" }).nightly).toBe("1250");
-    expect(rateRuleWriteInputSchema.parse({ ...valid, nightly: "12.5" }).nightly).toBe("12.5");
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: "12,50" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: "12.345" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: "-5" })).toThrow();
+    expect(rateBandWriteInputSchema.parse({ ...valid, nightly: "1250" }).nightly).toBe("1250");
+    expect(rateBandWriteInputSchema.parse({ ...valid, nightly: "12.5" }).nightly).toBe("12.5");
   });
 });
 

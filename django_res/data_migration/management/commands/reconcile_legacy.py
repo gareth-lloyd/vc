@@ -189,14 +189,27 @@ _CHECKS: list[_Check] = [
         expected_gap=67,
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra <> 1",
+        # BUG-013: RateRule now has two legacy sources — parent VillaSeasonRate
+        # rows (→ simple / base-weekly fallback rules) AND child
+        # VillaOccupencyPrice bands on occupancy-flagged parents (→ one band
+        # rule each). Count both so the legacy side mirrors the loader's source
+        # universe; children on non-occupancy parents are ignored by the loader
+        # (`IsOccupationPrice` gate), so they're excluded here too.
+        "SELECT "
+        "(SELECT COUNT(*) FROM VillaSeasonRate "
+        " WHERE DeletedAt IS NULL AND IsExTra <> 1) "
+        "+ (SELECT COUNT(*) FROM VillaOccupencyPrice o "
+        " JOIN VillaSeasonRate r ON r.ID = o.VillaSeasonRateId "
+        " WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.IsOccupationPrice = 1)",
         RateRule,
         "RateRule",
-        # 3462 = the pre-resolver gap (priceless rows — unusable in legacy
-        # too — plus rows on the 67 unloaded seasons), + 265 rows dropped by
-        # load-time overlap resolution (fully covered by a winning row; 389
-        # total drops, but 124 sit on unloaded seasons and were already in
-        # the 3462). See CUTOVER.md "Rate rule overlap resolution".
+        # PLACEHOLDER — recalibrate at the first post-BUG-013 cutover dry-run
+        # against the live dump (no LEGACY_DATABASE_URL here to derive it). The
+        # true gap now nets three moving parts against the two-part legacy count
+        # above: MINUS synthetic base-weekly gap-fallback rules that have no
+        # legacy row, PLUS dropped priceless / invalid-band / overlap-covered
+        # rows and rows on the 67 unloaded seasons. The old 3462+265 breakdown
+        # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
         expected_gap=3727,
     ),
     _Check(

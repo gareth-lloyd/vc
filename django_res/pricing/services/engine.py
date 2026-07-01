@@ -5,6 +5,7 @@ Public surface: `PricingEngine.quote(...)` — compute a `Quote` for a stay.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -40,6 +41,33 @@ from pricing.services.rates import (
     rule_nightly,
 )
 from properties.services.changeover import ChangeoverService
+
+
+@dataclass(frozen=True)
+class OccupancyBand:
+    """A distinct party bracket on the card the engine would price for a week.
+
+    The quote-builder fan-out (GAP-044) enumerates these *independent of the
+    searched party* so every occupancy band renders as its own default-checked
+    line. It carries only the bracket bounds — pricing each band is a separate
+    `quote(party=…)` call, which is the single source of price truth.
+    """
+
+    min_party: int
+    max_party: int
+
+
+def _rules_cover_all_nights(rules: list[RateRule], week_nights: list[date]) -> bool:
+    """True iff every night is covered by at least one of `rules`.
+
+    Rule dates are inclusive (`date_from <= night <= date_to`, matching
+    `pick_rule_for_night`); `week_nights` is the half-open `[from, to)` night
+    list. This is the night-correct coverage predicate the band enumerator
+    shares for both the card-level and bracket-level checks.
+    """
+    return all(
+        any(rule.date_from <= night <= rule.date_to for rule in rules) for night in week_nights
+    )
 
 
 class PricingEngine:
@@ -344,6 +372,94 @@ class PricingEngine:
             return cls._load_real_context(property, currency, date_from, date_to)
         except NoRateAvailable:
             return None
+
+    @classmethod
+    def covering_bands(
+        cls,
+        *,
+        property: Any,
+        date_from: date,
+        date_to: date,
+        currency: Currency | None = None,
+        context: PricingContext | None = None,
+    ) -> list[OccupancyBand]:
+        """Distinct party brackets on the card the engine would price for the
+        week ``[date_from, date_to)``, enumerated **independent of party**.
+
+        This drives the quote-builder occupancy fan-out (GAP-044): the builder
+        renders one default-checked line per band, so it needs every covering
+        bracket, not just the one matching the searched party. Read-only; the
+        `quote()` contract is untouched.
+
+        Loads its own `PricingContext` when none is supplied — a
+        flexible-changeover villa reaches the search layer with `context=None`
+        yet may still be occupancy-priced, so a bare `context.rules_by_card`
+        read would crash (fixes B1). Returns bands sorted by `min_party`; empty
+        when no real plan covers the week (projection is out of scope — a
+        guide-rate year has no banded default) or the covering card carries a
+        single bracket (the caller owns the ≥2 fan-out threshold).
+
+        Occupancy bands are modelled as sibling rules on ONE card (distinct
+        `(min_party, max_party)` brackets); cards are date-overlay precedence,
+        not party-splitting. So a single covering card holds every band — we
+        never reconcile brackets across cards. The night-set is taken **after**
+        the same changeover forward-shift `quote()` applies, so the bands here
+        match the nights each band's own `quote()` would price.
+        """
+        if date_to <= date_from:
+            return []
+        if context is None:
+            context = cls.load_context(
+                property, date_from=date_from, date_to=date_to, currency=currency
+            )
+        if context is None:
+            return []
+
+        # Mirror quote()'s changeover auto-shift (GAP-007) so the enumerated
+        # night-set matches what a per-band quote() would actually price; a
+        # non-conforming arrival nudges forward to the next valid changeover
+        # day. `align_forward` is idempotent on already-conforming dates, so
+        # this is safe even when the caller passes pre-aligned block dates.
+        changeover_day = ChangeoverService.effective_day(property, date_from)
+        property_weekday = ChangeoverService.weekday_for(changeover_day)
+        allowed_weekdays = {property_weekday} if property_weekday is not None else set()
+        date_from, date_to, _shifted_from = ChangeoverService.align_forward(
+            allowed_weekdays, date_from, date_to
+        )
+
+        week_nights = nights(date_from, date_to)
+        if not week_nights:
+            return []
+
+        # The card the engine would price for the week, ignoring party: the
+        # first card in precedence order (`sort_order`, `pk` — the order
+        # `context.cards` already holds) whose rules cover every night. Mirrors
+        # `pick_rule_for_night`'s card walk with the party test dropped.
+        covering_card = next(
+            (
+                card
+                for card in context.cards
+                if _rules_cover_all_nights(context.rules_by_card.get(card.pk, []), week_nights)
+            ),
+            None,
+        )
+        if covering_card is None:
+            return []
+
+        # Its distinct (min_party, max_party) brackets whose *own* rules cover
+        # every night — night-correct, so a bracket that lapses mid-week is
+        # dropped rather than shown as a bookable band.
+        card_rules = context.rules_by_card.get(covering_card.pk, [])
+        brackets = {(rule.min_party, rule.max_party) for rule in card_rules}
+        covering = [
+            OccupancyBand(min_party=lo, max_party=hi)
+            for (lo, hi) in brackets
+            if _rules_cover_all_nights(
+                [r for r in card_rules if (r.min_party, r.max_party) == (lo, hi)],
+                week_nights,
+            )
+        ]
+        return sorted(covering, key=lambda band: (band.min_party, band.max_party))
 
     @staticmethod
     def stay_length_bounds(context: PricingContext) -> tuple[int, int | None]:

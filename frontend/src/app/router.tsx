@@ -227,10 +227,13 @@ export const router = createBrowserRouter([
                         ],
                       },
                       {
+                        // GAP-048: the operator-side directory is the Suppliers
+                        // list (kind=CONTACT minus agent-capacity). Relabelled in
+                        // the nav; the route + shared /contacts/:id detail stay.
                         path: "/contacts",
                         lazy: async () => {
-                          const m = await import("@/features/contacts/ContactsListPage");
-                          return { Component: m.ContactsListPage };
+                          const m = await import("@/features/contacts/SuppliersListPage");
+                          return { Component: m.SuppliersListPage };
                         },
                       },
                       {

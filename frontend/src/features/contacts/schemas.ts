@@ -59,9 +59,11 @@ export const contactWriteInputSchema = z
     preferred_method: z.string().trim().max(40).optional(),
     address_line_1: z.string().trim().max(255).optional(),
     address_line_2: z.string().trim().max(255).optional(),
-    // GAP-042: town/post_code are editable; country edit is deferred (read-only).
     town: z.string().trim().max(128).optional(),
     post_code: z.string().trim().max(32).optional(),
+    // GAP-052: country is now operator-editable (a Country FK PK, or null to
+    // clear). Resolved server-side to `country_name` on read.
+    country: z.number().nullable().optional(),
     notes: z.string().trim().max(2000).optional(),
     // GAP-040 F1: a fixed taxonomy (see PERSON_TAGS). PATCH replaces the whole
     // set; the backend canonicalises (sort + dedupe) and rejects unknown values.
@@ -91,6 +93,7 @@ export const contactCreateInputSchema = z
     address_line_2: z.string().trim().max(255).optional(),
     town: z.string().trim().max(128).optional(),
     post_code: z.string().trim().max(32).optional(),
+    country: z.number().nullable().optional(),
     notes: z.string().trim().max(2000).optional(),
     email: z
       .string()
@@ -135,8 +138,8 @@ export const contactSchema = z.object({
   preferred_method: z.string().nullable().optional(),
   address_line_1: z.string().nullable().optional(),
   address_line_2: z.string().nullable().optional(),
-  // GAP-042: town/post_code/country round-trip; country is read-only (display
-  // name resolved server-side as country_name).
+  // GAP-052: town/post_code/country all round-trip; `country` is the writable
+  // Country FK PK, `country_name` its server-resolved display name (read-only).
   town: z.string().nullable().optional(),
   post_code: z.string().nullable().optional(),
   country: z.number().nullable().optional(),
@@ -149,6 +152,10 @@ export const contactSchema = z.object({
   // `?? 0` / `?? false`.
   booking_count: z.number().optional(),
   is_repeat_customer: z.boolean().optional(),
+  // GAP-052: derived type(s) the person holds (customer / agent / property
+  // roles). Left `.optional()` like `tags`/`booking_count` so existing fixtures
+  // stay assignable; consumers read `contact.contact_types ?? []`.
+  contact_types: z.array(z.string()).optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left
@@ -190,6 +197,9 @@ export const contactListItemSchema = z.object({
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   tags: z.array(z.string()).optional(),
+  // GAP-048: the Suppliers directory surfaces the property role(s) as a column.
+  // Left `.optional()` (no `.default`) like `tags`; consumers read `?? []`.
+  contact_types: z.array(z.string()).optional(),
 });
 export type ContactListItem = z.infer<typeof contactListItemSchema>;
 
@@ -199,6 +209,9 @@ export interface ContactFilters {
   q?: string;
   status?: string;
   kind?: string;
+  // GAP-048: `directory=suppliers` scopes to operator-side contacts (the
+  // Suppliers nav surface pins this); omitted for the unscoped directory.
+  directory?: string;
   ordering?: string;
   page?: number;
 }
@@ -207,6 +220,7 @@ export const contactListFiltersSchema = z.object({
   q: z.string().optional(),
   status: z.string().optional(),
   kind: z.string().optional(),
+  directory: z.string().optional(),
   ordering: z.string().optional(),
   page: z.number().optional(),
 });

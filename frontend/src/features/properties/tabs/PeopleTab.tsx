@@ -312,7 +312,10 @@ function AssignmentRow({
   canWrite: boolean;
 }) {
   const { t } = useTranslation("properties");
-  const contact = useContact(assignment.contact);
+  // An org-assignee row (management_company) has a null contact and carries the
+  // org name in `organisation_detail` — skip the Person fetch for it.
+  const isOrgRow = assignment.contact === null;
+  const contact = useContact(assignment.contact ?? undefined);
   const [editOpen, setEditOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -342,17 +345,22 @@ function AssignmentRow({
     <li className="px-4 py-3 text-sm">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-col">
-          {contact.isLoading ? (
+          {isOrgRow ? (
+            <span className="text-foreground truncate font-medium">
+              {assignment.organisation_detail?.name ??
+                t("people.fallback.org_with_id", { id: assignment.organisation })}
+            </span>
+          ) : contact.isLoading ? (
             <Skeleton className="h-4 w-32" />
           ) : (
             <span className="text-foreground truncate font-medium">
-              {displayName(contact.data, assignment.contact, (id) =>
+              {displayName(contact.data, assignment.contact ?? 0, (id) =>
                 t("people.fallback.contact_with_id", { id }),
               )}
             </span>
           )}
           <span className="text-muted-foreground text-xs">
-            {primaryEmail(contact.data) ?? dash}
+            {isOrgRow ? t("people.row.organisation") : (primaryEmail(contact.data) ?? dash)}
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs">
@@ -374,9 +382,13 @@ function AssignmentRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setEditOpen(true)}>
-                  {t("people.row.edit_assignment")}
-                </DropdownMenuItem>
+                {/* Org-assignee editing is deferred; the edit dialog is
+                    Person-only, so only offer it for contact rows. */}
+                {!isOrgRow ? (
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                    {t("people.row.edit_assignment")}
+                  </DropdownMenuItem>
+                ) : null}
                 {contact.data ? (
                   <DropdownMenuItem onClick={() => setEditContactOpen(true)}>
                     {t("people.row.edit_contact")}

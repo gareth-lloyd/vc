@@ -38,6 +38,7 @@ function toQuery(filters: ContactFilters): QueryParams {
     search: filters.q || undefined,
     status: filters.status || undefined,
     kind: filters.kind || undefined,
+    directory: filters.directory || undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
   };

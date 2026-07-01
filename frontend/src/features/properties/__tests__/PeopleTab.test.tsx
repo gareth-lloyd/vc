@@ -110,6 +110,37 @@ describe("PeopleTab", () => {
     expect(screen.getByText("cleaner")).toBeInTheDocument();
   });
 
+  it("renders an organisation-assignee row by org name without a contact fetch", async () => {
+    installBaseHandlers();
+    server.use(
+      http.get("/api/v1/properties/5/contacts", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 3,
+              property: 5,
+              contact: null,
+              organisation: 7,
+              organisation_detail: { id: 7, name: "Acme Management Co" },
+              role: "management_company",
+              start_date: "2024-01-01",
+              end_date: null,
+              is_primary: false,
+            },
+          ]),
+        ),
+      ),
+      // No /api/v1/contacts/* handler: an org row must NOT fetch a Person.
+      // MSW is configured with onUnhandledRequest: "error", so a stray fetch
+      // would fail this test.
+    );
+
+    setup();
+
+    expect(await screen.findByText("Acme Management Co")).toBeInTheDocument();
+    expect(screen.getByText("Organisation")).toBeInTheDocument();
+  });
+
   it("splits active and ended assignments", async () => {
     installBaseHandlers();
     server.use(
@@ -335,6 +366,38 @@ describe("PeopleTab", () => {
     await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
     expect(pickerTrigger()).toHaveTextContent(/select a contact/i);
+    useAuthStore.getState().clear();
+  });
+
+  it("offers the reconciled ContactRole set in the role dropdown (GAP-048)", async () => {
+    useAuthStore.getState().setMe(
+      {
+        id: 1,
+        email: "a@test.com",
+        first_name: "A",
+        last_name: "T",
+        is_active: true,
+        is_staff: true,
+        is_superuser: false,
+        preferred_language: "en",
+        role: "RESERVATIONS",
+      },
+      { role: "RESERVATIONS", is_superuser: false, permissions: [] },
+    );
+    installBaseHandlers();
+    server.use(http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))));
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    // The role <Select> is the combobox labelled "Role" (the contact picker is a
+    // separate combobox with a dialog popup).
+    await userEvent.click(screen.getByRole("combobox", { name: /role/i }));
+
+    // L2-1 reconciled the enum: villa_admin + management_company are now offered,
+    // and MANAGER reads "Villa Manager" (was "Manager").
+    expect(await screen.findByRole("option", { name: "Villa Admin" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Management Company" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Villa Manager" })).toBeInTheDocument();
     useAuthStore.getState().clear();
   });
 

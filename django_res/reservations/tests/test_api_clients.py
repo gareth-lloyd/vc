@@ -1,10 +1,12 @@
 """API tests for the Clients (renter) directory list.
 
-`GAP-047`: `GET /api/v1/clients` is a query-pinned list over `accounts.Person`
-filtered to `kind=CUSTOMER`, annotated with a booking-channel `is_agent` flag
-(any of the customer's enquiries / quotes / bookings names a travel agent).
-Hosted from `reservations/urls.py` — `accounts` is the bottom of the import
-spine and cannot serialise reservations rows (precedent: `contact_reads.py`).
+`GAP-047` + `GAP-053`: `GET /api/v1/clients` is a query-pinned list over
+`accounts.Person`. Membership is customers PLUS agent-capacity people (belong to
+an agency, or deal through an agent — agents fold into Clients, no separate
+page). Annotated with the agent-capacity `is_agent` flag, the `is_repeat_customer`
+(>=1 booking) flag, and quoted/booked region rollups. Hosted from
+`reservations/urls.py` — `accounts` is the bottom of the import spine and cannot
+serialise reservations rows (precedent: `contact_reads.py`).
 """
 
 from __future__ import annotations
@@ -157,6 +159,88 @@ def test_row_shape_exposes_primary_channels(api_client: APIClient, staff: User) 
     assert row["primary_email"] == "ada@example.com"
     assert row["primary_phone"] == "+44 7700 900111"
     assert row["is_agent"] is False
+    # GAP-053: chip active-state fields.
+    assert row["tags"] == []
+    assert row["is_repeat_customer"] is False
+
+
+@pytest.mark.django_db
+def test_agency_contact_appears_in_clients(api_client: APIClient, staff: User) -> None:
+    # GAP-053: agents fold into Clients (no separate Agents page). A CONTACT who
+    # belongs to an agency is agent-capacity and must be reachable here, alongside
+    # customers — even with no deals of their own.
+    from accounts.factories import OrganisationFactory
+
+    agent_person = cast(Person, PersonFactory(agency=OrganisationFactory()))
+    plain_contact = cast(Person, PersonFactory())  # no agency, no deals
+    api_client.force_login(staff)
+
+    ids = {r["id"] for r in api_client.get("/api/v1/clients").json()["results"]}
+
+    assert agent_person.pk in ids
+    assert plain_contact.pk not in ids
+
+
+@pytest.mark.django_db
+def test_agency_contact_is_agent_capacity(api_client: APIClient, staff: User) -> None:
+    # The agency contact reads as is_agent and partitions into capacity=agent.
+    from accounts.factories import OrganisationFactory
+
+    agent_person = cast(Person, PersonFactory(agency=OrganisationFactory()))
+    api_client.force_login(staff)
+
+    row = next(
+        r for r in api_client.get("/api/v1/clients").json()["results"] if r["id"] == agent_person.pk
+    )
+    assert row["is_agent"] is True
+
+    agent_ids = {
+        r["id"] for r in api_client.get("/api/v1/clients?capacity=agent").json()["results"]
+    }
+    direct_ids = {
+        r["id"] for r in api_client.get("/api/v1/clients?capacity=direct").json()["results"]
+    }
+    assert agent_person.pk in agent_ids
+    assert agent_person.pk not in direct_ids
+
+
+@pytest.mark.django_db
+def test_repeat_filter_selects_only_booked_clients(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    terms: TermsVersion,
+) -> None:
+    # GAP-053: the Repeat chip filters on the derived >=1-booking flag.
+    booked = _customer()
+    _booking(person=booked, property_=property_, gbp=gbp, terms=terms)
+    never = _customer()
+    api_client.force_login(staff)
+
+    repeat_ids = {r["id"] for r in api_client.get("/api/v1/clients?repeat=true").json()["results"]}
+
+    assert booked.pk in repeat_ids
+    assert never.pk not in repeat_ids
+    # The booked client is flagged on its row too.
+    results = api_client.get("/api/v1/clients").json()["results"]
+    row = next(r for r in results if r["id"] == booked.pk)
+    assert row["is_repeat_customer"] is True
+
+
+@pytest.mark.django_db
+def test_tags_filter_overlap(api_client: APIClient, staff: User) -> None:
+    # GAP-053: VIP / Trade chips filter via the ?tags= overlap (mirrors /contacts).
+    vip = _customer(tags=["vip"])
+    trade = _customer(tags=["trade"])
+    api_client.force_login(staff)
+
+    vip_ids = {r["id"] for r in api_client.get("/api/v1/clients?tags=vip").json()["results"]}
+
+    assert vip.pk in vip_ids
+    assert trade.pk not in vip_ids
+    row = next(r for r in api_client.get("/api/v1/clients").json()["results"] if r["id"] == vip.pk)
+    assert row["tags"] == ["vip"]
 
 
 @pytest.mark.django_db

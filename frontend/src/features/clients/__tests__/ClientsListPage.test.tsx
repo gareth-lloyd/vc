@@ -162,6 +162,76 @@ describe("ClientsListPage", () => {
     await waitFor(() => expect(seen).toContain("inactive"));
   });
 
+  it("toggles the VIP chip and forwards tags to the API", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/clients", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("tags") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderList();
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: /vip/i }));
+    await waitFor(() => expect(seen).toContain("vip"));
+  });
+
+  it("composes the VIP and Trade chips into a comma list", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/clients", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("tags") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderList();
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: /vip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /trade/i }));
+    await waitFor(() => expect(seen).toContain("vip,trade"));
+  });
+
+  it("toggles the Repeat chip and forwards repeat=true", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/clients", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("repeat") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderList();
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: /repeat/i }));
+    await waitFor(() => expect(seen).toContain("true"));
+  });
+
+  it("reflects the active chips from the URL", async () => {
+    server.use(http.get("/api/v1/clients", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/clients" element={<ClientsListPage />} />
+      </Routes>,
+      { route: "/clients?tags=vip&repeat=true" },
+    );
+    await screen.findByText("Ada Lovelace");
+    expect(screen.getByRole("button", { name: /vip/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /trade/i })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /repeat/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hydrates a multi-tag URL back into both pressed chips", async () => {
+    server.use(http.get("/api/v1/clients", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/clients" element={<ClientsListPage />} />
+      </Routes>,
+      { route: "/clients?tags=vip,trade" },
+    );
+    await screen.findByText("Ada Lovelace");
+    expect(screen.getByRole("button", { name: /vip/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /trade/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("navigates to the contact detail page on row click", async () => {
     server.use(http.get("/api/v1/clients", () => HttpResponse.json(fixture)));
     renderList(<Route path="/contacts/:id" element={<div>Contact detail</div>} />);

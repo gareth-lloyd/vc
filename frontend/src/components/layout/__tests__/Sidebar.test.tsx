@@ -30,7 +30,7 @@ describe("Sidebar", () => {
       "Dashboard",
       "Properties",
       "Availability",
-      "Contacts",
+      "Suppliers",
       "Clients",
       "Companies",
       "Bookings",
@@ -40,5 +40,13 @@ describe("Sidebar", () => {
     ]);
     expect(screen.getByRole("heading", { name: "Experiments" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Library" })).not.toBeInTheDocument();
+  });
+
+  it("labels the operator-side directory 'Suppliers' but keeps it routed at /contacts (GAP-048)", () => {
+    renderWithProviders(<Sidebar />, { route: "/dashboard" });
+    // The list is relabelled (GAP-048 rename) but the route — and the shared
+    // /contacts/:id detail it links to — is unchanged.
+    expect(screen.getByRole("link", { name: "Suppliers" })).toHaveAttribute("href", "/contacts");
+    expect(screen.queryByRole("link", { name: "Contacts" })).not.toBeInTheDocument();
   });
 });

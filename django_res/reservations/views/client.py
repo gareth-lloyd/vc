@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.db.models import OuterRef, QuerySet, Subquery
+from django.db.models import Exists, OuterRef, Q, QuerySet, Subquery
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters
 from rest_framework import generics
@@ -23,7 +23,7 @@ from accounts.enums import PersonKind
 from accounts.models import Person
 from core.api import IsStaff
 from reservations.enums import QUOTED_STATUSES, UNREALISED_BOOKING_STATUSES
-from reservations.filters import ClientFilterSet, client_is_agent_expression
+from reservations.filters import ClientFilterSet, client_agent_capacity_expression
 from reservations.models import Booking, QuotationLine
 from reservations.serializers import ClientListSerializer
 
@@ -60,10 +60,11 @@ class ClientListView(generics.ListAPIView[Person]):
     ordering = ["last_name", "first_name"]
 
     def get_queryset(self) -> QuerySet[Person]:
-        # `is_agent` (booking channel) is annotated for serialization; the
-        # `capacity` filter keys on the same expression (`client_is_agent_expression`).
-        # `quoted_/booked_region_slugs` are correlated ArrayAgg subqueries (no
-        # JOIN, so they don't multiply rows or the paginator COUNT).
+        # `is_agent` (agent-capacity) is annotated for serialization and is the
+        # same expression the membership filter and `capacity` filter key on
+        # (`client_agent_capacity_expression`). `is_repeat_customer` is the
+        # Repeat-chip flag. `quoted_/booked_region_slugs` are correlated ArrayAgg
+        # subqueries (no JOIN, so they don't multiply rows or the paginator COUNT).
         quoted = _region_slugs_subquery(
             QuotationLine.objects.filter(
                 quotation__person=OuterRef("pk"),
@@ -80,10 +81,27 @@ class ClientListView(generics.ListAPIView[Person]):
             "person",
         )
         return (
-            Person.objects.filter(kind=PersonKind.CUSTOMER)
+            # GAP-053: agents fold into Clients — membership is customers PLUS
+            # agent-capacity people (belong to an agency, or deal via an agent),
+            # not `kind=CUSTOMER` alone. Perf note: the OR can't be served by the
+            # `kind` index alone, so non-customer rows evaluate the capacity EXISTS
+            # battery. Acceptable while customers dominate the Person table (they
+            # short-circuit on the indexed `kind=CUSTOMER` arm); if the directory
+            # slows, denormalise an agent flag / add a partial index (deferred).
+            Person.objects.filter(
+                Q(kind=PersonKind.CUSTOMER) | Q(client_agent_capacity_expression())
+            )
             .prefetch_related("emails", "phones")
             .annotate(
-                is_agent=client_is_agent_expression(),
+                is_agent=client_agent_capacity_expression(),
+                # GAP-053: the "Repeat" chip's flag — >= 1 booking of ANY status,
+                # via a scalar EXISTS (no JOIN → no COUNT inflation). Counts all
+                # statuses to match ContactSerializer.is_repeat_customer (GAP-042),
+                # so a person reads identically in /contacts and /clients. This is
+                # a different axis from booked_region_slugs, which counts only
+                # *realised* stays — a cancelled-only client is repeat=true here
+                # with empty booked regions, by design.
+                is_repeat_customer=Exists(Booking.objects.filter(person=OuterRef("pk"))),
                 quoted_region_slugs=quoted,
                 booked_region_slugs=booked,
             )

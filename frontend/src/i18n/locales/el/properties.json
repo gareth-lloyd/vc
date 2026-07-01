@@ -515,10 +515,12 @@
       "add_phone": "+ Προσθήκη τηλεφώνου",
       "menu_label": "Ενέργειες",
       "edit": "Επεξεργασία",
-      "set_as_primary": "Ορισμός ως κύριο"
+      "set_as_primary": "Ορισμός ως κύριο",
+      "organisation": "Οργανισμός"
     },
     "fallback": {
       "contact_with_id": "Επαφή #{{id}}",
+      "org_with_id": "Οργανισμός #{{id}}",
       "no_email": "—",
       "role_unset": "—"
     },
@@ -550,8 +552,10 @@
       "role_required": "Επιλέξτε έναν ρόλο",
       "roles": {
         "owner": "Ιδιοκτήτης",
-        "manager": "Διαχειριστής",
+        "manager": "Διευθυντής βίλας",
         "agent": "Πράκτορας",
+        "villa_admin": "Διαχειριστής βίλας",
+        "management_company": "Εταιρεία διαχείρισης",
         "housekeeper": "Καθαρίστρια",
         "owners_rep": "Εκπρόσωπος ιδιοκτήτη"
       },

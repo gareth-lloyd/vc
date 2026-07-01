@@ -218,6 +218,42 @@ collision-safe (case/whitespace variants converge on one row; an already-linked
 Person is skipped). So both paths — a fresh rebuild via the loaders above and an
 in-place `migrate` of an existing DB — populate `Person.agency`.
 
+## 4f. Property-contact role taxonomy reconciled (GAP-048)
+
+`PropertyContactAssignmentLoader` now maps the legacy `VillaRoles` ids **1:1** to
+`accounts.ContactRole` (`_role_for` / `_ROLE_MAP` in
+`data_migration/loaders/reservations.py`):
+
+| Legacy id | Legacy name        | ContactRole          |
+|-----------|--------------------|----------------------|
+| 1         | Owner              | `owner`              |
+| 2         | Agent              | `agent`              |
+| 3         | Villa Admin        | `villa_admin`        |
+| 4         | Villa Manager      | `manager`            |
+| 5         | Management Company | `management_company` |
+
+This **corrects** the earlier map, which collapsed id 3 → `manager` and id 5 →
+`owners_rep`. Because cutover has **not** run, this is a forward-only fix — the
+next full `loadlegacy` emits the right roles, so no back-migration is needed.
+`villa_admin` and `management_company` are new `ContactRole` members
+(`accounts/enums.py`); the choices change is a state-only `AlterField`
+(`properties/0021_reconcile_contact_role_choices`, reversible). `housekeeper` and
+`owners_rep` remain valid roles with **no legacy source** (kept per
+`django_res_design/10-decisions.md`) — they are only ever set in the new system,
+never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
+`owner`.
+
+> ⚠️ **Verify before cutover — role source completeness.** The loader sources
+> `RoleId` only from the LEFT-JOINed `VillaContactRoleMapping`. The schema doc
+> (`07-api-schema-reconciliation.md`) notes `VillaRoles` is *also* FK'd from the
+> base `VillaContactMapping`. If any mapping carries its own `RoleId` with **no**
+> child role-mapping row, it currently imports as `owner` (the NULL fallback),
+> silently dropping the real role. **Count** `VillaContactMapping` rows with a
+> non-null `RoleId` but no `VillaContactRoleMapping` child against the dump; if
+> non-zero, source the role via `COALESCE(r.RoleId, m.RoleId)` in the loader's
+> `legacy_query`. This is a pre-existing loader gap surfaced (not introduced) by
+> the GAP-048 remap.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash

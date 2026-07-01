@@ -515,10 +515,12 @@
       "add_phone": "+ Add phone",
       "menu_label": "Actions",
       "edit": "Edit",
-      "set_as_primary": "Set as primary"
+      "set_as_primary": "Set as primary",
+      "organisation": "Organisation"
     },
     "fallback": {
       "contact_with_id": "Contact #{{id}}",
+      "org_with_id": "Organisation #{{id}}",
       "no_email": "—",
       "role_unset": "—"
     },
@@ -550,8 +552,10 @@
       "role_required": "Choose a role",
       "roles": {
         "owner": "Owner",
-        "manager": "Manager",
+        "manager": "Villa Manager",
         "agent": "Agent",
+        "villa_admin": "Villa Admin",
+        "management_company": "Management Company",
         "housekeeper": "Housekeeper",
         "owners_rep": "Owner's representative"
       },

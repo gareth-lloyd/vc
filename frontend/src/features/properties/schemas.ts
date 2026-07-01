@@ -11,6 +11,8 @@ export const PROPERTY_CONTACT_ROLES = [
   "owner",
   "manager",
   "agent",
+  "villa_admin",
+  "management_company",
   "housekeeper",
   "owners_rep",
 ] as const;
@@ -533,7 +535,12 @@ export const discountsResponseSchema = paginated(discountSchema);
 export const propertyContactAssignmentSchema = z.object({
   id: z.number(),
   property: z.number(),
-  contact: z.number(),
+  // An assignment points at exactly one of a Person (`contact`) or an
+  // Organisation (`organisation`) — the `management_company` role uses the org
+  // leg, so `contact` is null on those rows (GAP-048).
+  contact: z.number().nullable(),
+  organisation: z.number().nullable().optional(),
+  organisation_detail: z.object({ id: z.number(), name: z.string() }).nullable().optional(),
   role: z.string().nullable().optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),

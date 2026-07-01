@@ -7,7 +7,7 @@ from typing import Any
 from django.db import transaction
 from rest_framework import serializers
 
-from accounts.enums import PersonStatus, PersonTag
+from accounts.enums import PersonKind, PersonStatus, PersonTag
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
 from accounts.serializers.organisation import OrganisationSummarySerializer
 
@@ -62,11 +62,13 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         child=serializers.ChoiceField(choices=PersonTag.choices),
         required=False,
     )
-    # GAP-042: country is display-only on the 360 profile for now — surface the
-    # FK pk (read-only) plus its name; editing country (a picker) is deferred.
-    country: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
-        read_only=True, allow_null=True
-    )
+    # GAP-052: country is operator-editable via a picker (overturns the GAP-042
+    # display-only interim). No explicit declaration — ModelSerializer
+    # auto-generates a writable, `allow_null`, `required=False` PK field from the
+    # nullable `country` model FK, resolving `properties.Country` through the
+    # model meta at bind time (runtime, app-registry ready). That keeps `accounts`
+    # off an import of `properties` (import-spine floor) without resolving the FK
+    # eagerly at module-import time. `country_name` carries the derived label.
     country_name = serializers.SerializerMethodField()
     # GAP-042: derived booking summary for the "Repeat" badge. Reads the
     # `booking_count` annotation applied by ContactViewSet when present (one
@@ -74,6 +76,10 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     # serializer off an un-annotated instance (merge/anonymize responses).
     booking_count = serializers.SerializerMethodField()
     is_repeat_customer = serializers.SerializerMethodField()
+    # GAP-052: every capacity this person holds, surfaced as type badges on the
+    # detail (a person can be customer + owner + agent at once — show all hats).
+    # Derived, never stored; distinct from `tags` (the client-only flag set).
+    contact_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
@@ -98,6 +104,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "tags",
             "booking_count",
             "is_repeat_customer",
+            "contact_types",
             "anonymized_at",
             "user",
             "emails",
@@ -127,6 +134,28 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         # GAP-042 (confirmed): a returning client is one with >= 1 booking,
         # property-agnostic. Distinct from the owner API's property-scoped flag.
         return self.get_booking_count(obj) >= 1
+
+    def get_contact_types(self, obj: Person) -> list[str]:
+        # GAP-052: union of every capacity, sorted for a stable response. Mixes
+        # two synthetic labels ("customer", "agent") with raw `ContactRole`
+        # values from `active_roles`; the set dedups any overlap.
+        # - `customer`: classified as one, or has booked.
+        # - `agent`: belongs to an agency (GAP-046) AND/OR holds an `agent`
+        #   property role — both collapse to the single "agent" badge. NB the
+        #   synthetic "agent" label is deliberately the same string as
+        #   `ContactRole.AGENT`; a synthetic label must never collide with a
+        #   *different* role value. A pure deal-channel agent (used as `.agent`
+        #   on a deal, no agency, no agent-role) is not surfaced here —
+        #   accounts-only derivation, full fidelity deferred; still in Clients.
+        # - property roles (owner/manager/…): from the `active_roles` annotation
+        #   (ACTIVE assignments only), coalesced to [] for un-annotated callers.
+        types: set[str] = set()
+        if obj.kind == PersonKind.CUSTOMER.value or self.get_booking_count(obj) > 0:
+            types.add("customer")
+        if obj.agency_id is not None:
+            types.add("agent")
+        types.update(getattr(obj, "active_roles", None) or [])
+        return sorted(types)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Enforce contactability: an ACTIVE contact must be reachable by at

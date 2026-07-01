@@ -16,10 +16,13 @@ class OrganisationMergeSerializer(serializers.Serializer[None]):
 class OrganisationSerializer(serializers.ModelSerializer[Organisation]):
     """Full Organisation representation for the `/organisations` CRUD API.
 
-    `country` is deliberately not exposed: `accounts` is the bottom of the
-    import spine, so the serializer can't import `properties.Country`, and the
-    sibling `ContactSerializer` likewise omits its `country` FK. `legacy_id` /
-    `dedup_key` are internal migration/dedup keys, never client-facing.
+    `country` is deliberately not exposed (no org-side picker need yet). Note
+    `accounts` is the bottom of the import spine and can't import
+    `properties.Country` directly — but a writable FK is still reachable without
+    the import: `ContactSerializer` lets `ModelSerializer` auto-generate its
+    editable `country` field from the model meta (GAP-052). Add the same here if
+    an org country picker is ever wanted. `legacy_id` / `dedup_key` are internal
+    migration/dedup keys, never client-facing.
     """
 
     class Meta:

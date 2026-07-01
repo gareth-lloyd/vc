@@ -207,6 +207,16 @@ describe("propertyContactAssignmentWriteInputSchema", () => {
     }
   });
 
+  it("includes the legacy-reconciled roles villa_admin + management_company (GAP-048)", () => {
+    // L2-1 added these to the backend ContactRole enum (reconciling legacy
+    // VillaRoles 3 & 5); the FE picker must offer them too.
+    expect(PROPERTY_CONTACT_ROLES).toContain("villa_admin");
+    expect(PROPERTY_CONTACT_ROLES).toContain("management_company");
+    for (const role of ["villa_admin", "management_company"] as const) {
+      expect(propertyContactAssignmentWriteInputSchema.parse({ contact: 1, role }).role).toBe(role);
+    }
+  });
+
   it("requires role and rejects values outside the enum", () => {
     expect(() => propertyContactAssignmentWriteInputSchema.parse({ contact: 1 })).toThrow();
     expect(() =>

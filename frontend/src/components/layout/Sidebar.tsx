@@ -93,10 +93,12 @@ export function Sidebar() {
       prefetch: () => import("@/features/availability/AvailabilityTimelinePage"),
     },
     {
+      // GAP-048: the operator-side directory is relabelled "Suppliers"; the
+      // route (and the shared /contacts/:id detail it links to) is unchanged.
       to: "/contacts",
-      label: t("nav.contacts"),
+      label: t("nav.suppliers"),
       icon: Users,
-      prefetch: () => import("@/features/contacts/ContactsListPage"),
+      prefetch: () => import("@/features/contacts/SuppliersListPage"),
     },
     {
       to: "/clients",

@@ -423,10 +423,11 @@ def test_patch_contact_round_trips_town_and_postcode(
 
 
 @pytest.mark.django_db
-def test_patch_contact_cannot_change_country(
+def test_patch_contact_can_change_country(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:
-    # GAP-042: country is display-only for now (write deferred — needs a picker).
+    # GAP-052: country is now operator-editable via a picker (overturns the
+    # GAP-042 display-only interim).
     from properties.models import Country
 
     country, _ = Country.objects.get_or_create(
@@ -441,8 +442,179 @@ def test_patch_contact_cannot_change_country(
     )
 
     assert response.status_code == 200
+    assert response.json()["country"] == country.pk
+    assert response.json()["country_name"] == "Testlandia"
+    contact.refresh_from_db()
+    assert contact.country_id == country.pk
+
+
+@pytest.mark.django_db
+def test_patch_contact_can_clear_country(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # GAP-052: country is nullable — clearing it is a valid edit.
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QZ", defaults={"iso3": "QZZ", "name": "Testovia"}
+    )
+    contact.country = country
+    contact.save(update_fields=["country"])
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"country": None},
+        format="json",
+    )
+
+    assert response.status_code == 200
     contact.refresh_from_db()
     assert contact.country_id is None
+
+
+@pytest.mark.django_db
+def test_patch_country_is_audited(api_client: APIClient, staff: User, contact: Person) -> None:
+    # GAP-052: editing country leaves an AuditLog trail (the FK pk, not the
+    # unserializable Country instance — tracked as `country_id`).
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+    from properties.models import Country
+
+    country, _ = Country.objects.get_or_create(
+        iso2="QW", defaults={"iso3": "QWW", "name": "Testburg"}
+    )
+    api_client.force_login(staff)
+    api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"country": country.pk},
+        format="json",
+    )
+
+    ct = ContentType.objects.get_for_model(Person)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(contact.pk))
+    assert any(r.field_diffs.get("country_id") == [None, country.pk] for r in rows)
+
+
+@pytest.mark.django_db
+def test_contact_types_surfaces_customer_and_property_role(
+    api_client: APIClient, staff: User
+) -> None:
+    # GAP-052: a person can wear several hats — surface every one. A CUSTOMER
+    # who is also a property OWNER shows both, sorted.
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Dual", last_name="Hat", kind=PersonKind.CUSTOMER.value
+    )
+    PropertyContactAssignmentFactory(contact=person, role=ContactRole.OWNER)
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["customer", "owner"]
+
+
+@pytest.mark.django_db
+def test_contact_types_includes_agent_for_agency_member(api_client: APIClient, staff: User) -> None:
+    # GAP-052/046: belonging to an agency makes a contact an Agent.
+    agency = cast(Organisation, OrganisationFactory())
+    person = Person.objects.create(
+        first_name="Aggie", last_name="Agent", kind=PersonKind.CONTACT.value, agency=agency
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["agent"]
+
+
+@pytest.mark.django_db
+def test_contact_types_empty_for_plain_contact(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # A bare CONTACT with no bookings, agency, or property role has no type.
+    contact.kind = PersonKind.CONTACT.value
+    contact.save(update_fields=["kind"])
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["contact_types"] == []
+
+
+@pytest.mark.django_db
+def test_contact_types_dedupes_role_and_active_only(api_client: APIClient, staff: User) -> None:
+    # Only ACTIVE (end_date IS NULL) assignments count; an ended role drops off.
+    from datetime import date
+
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Past", last_name="Manager", kind=PersonKind.CONTACT.value
+    )
+    PropertyContactAssignmentFactory(contact=person, role=ContactRole.MANAGER)
+    PropertyContactAssignmentFactory(
+        contact=person, role=ContactRole.OWNER, end_date=date(2020, 1, 1)
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["contact_types"] == ["manager"]
+
+
+@pytest.mark.django_db
+def test_retrieve_contact_types_is_query_pinned(api_client: APIClient, staff: User) -> None:
+    # GAP-052: contact_types rides a correlated Subquery, not a per-row fetch —
+    # query count stays flat regardless of how many active assignments exist.
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Many", last_name="Roles", kind=PersonKind.CUSTOMER.value
+    )
+    for role in (ContactRole.OWNER, ContactRole.MANAGER, ContactRole.HOUSEKEEPER):
+        PropertyContactAssignmentFactory(contact=person, role=role)
+    api_client.force_login(staff)
+
+    with assert_max_queries(8):
+        api_client.get(f"/api/v1/contacts/{person.pk}")
+
+
+@pytest.mark.django_db
+def test_list_contact_types_query_count_is_flat(api_client: APIClient, staff: User) -> None:
+    # GAP-052: the active_roles subquery must NOT cross-join the booking_count
+    # Count — list query count stays flat (and the paginator COUNT accurate)
+    # whether one or many contacts each hold several roles.
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    def make(n: int) -> Person:
+        p = Person.objects.create(
+            first_name=f"C{n}", last_name="Roles", kind=PersonKind.CUSTOMER.value
+        )
+        for role in (ContactRole.OWNER, ContactRole.MANAGER):
+            PropertyContactAssignmentFactory(contact=p, role=role)
+        return p
+
+    api_client.force_login(staff)
+    make(1)
+    with assert_max_queries(8):
+        first = api_client.get("/api/v1/contacts").json()
+    for n in range(2, 6):
+        make(n)
+    with assert_max_queries(8):
+        many = api_client.get("/api/v1/contacts").json()
+
+    assert first["count"] == 1
+    assert many["count"] == 5  # COUNT not inflated by roles
+    assert sorted(many["results"][0]["contact_types"]) == ["customer", "manager", "owner"]
 
 
 @pytest.mark.django_db
@@ -871,3 +1043,96 @@ def test_search_contacts_by_agency_name(api_client: APIClient, staff: User) -> N
 
     names = {row["agency_detail"]["name"] for row in results if row["agency_detail"]}
     assert names == {"Dune Travel Co"}
+
+
+# --- GAP-048 L2-3: Suppliers directory scoping ------------------------------
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_excludes_agents_and_customers(
+    api_client: APIClient, staff: User
+) -> None:
+    """`?directory=suppliers` = operator-side `kind=CONTACT` people MINUS
+    agent-capacity (agency members and active agent-role assignees). Only the
+    `kind=CUSTOMER` classification is excluded — a kind=CONTACT person who has
+    booked a stay is still a supplier. A plain contact with no property role
+    still appears — a contact must not vanish between creation and assignment
+    (GAP-048 decision)."""
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    api_client.force_login(staff)
+
+    plain = Person.objects.create(first_name="Sup", last_name="Plain", kind=PersonKind.CONTACT)
+    housekeeper = Person.objects.create(
+        first_name="Hank", last_name="House", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(contact=housekeeper, role=ContactRole.HOUSEKEEPER)
+
+    agency = cast(Organisation, OrganisationFactory())
+    agency_member = Person.objects.create(
+        first_name="Aggie", last_name="Agent", kind=PersonKind.CONTACT, agency=agency
+    )
+    role_agent = Person.objects.create(
+        first_name="Role", last_name="Agent", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(contact=role_agent, role=ContactRole.AGENT)
+
+    customer = Person.objects.create(first_name="Cust", last_name="Omer", kind=PersonKind.CUSTOMER)
+
+    ids = {
+        row["id"]
+        for row in api_client.get("/api/v1/contacts?directory=suppliers").json()["results"]
+    }
+    assert {plain.pk, housekeeper.pk} <= ids
+    assert ids.isdisjoint({agency_member.pk, role_agent.pk, customer.pk})
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_excludes_ended_agent_role(api_client: APIClient, staff: User) -> None:
+    """Only an ACTIVE agent assignment confers agent-capacity. A contact whose
+    agent role was ended (`end_date` set) is operator-side again → a supplier."""
+    from datetime import date
+
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    api_client.force_login(staff)
+    former_agent = Person.objects.create(
+        first_name="Gone", last_name="Agent", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(
+        contact=former_agent, role=ContactRole.AGENT, end_date=date(2024, 1, 1)
+    )
+
+    ids = {
+        row["id"]
+        for row in api_client.get("/api/v1/contacts?directory=suppliers").json()["results"]
+    }
+    assert former_agent.pk in ids
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_query_count_is_flat(api_client: APIClient, staff: User) -> None:
+    """The directory exclusion is a NOT-EXISTS subquery, not a JOIN — the list
+    query count stays flat regardless of how many suppliers/roles exist."""
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    def make(n: int) -> Person:
+        p = Person.objects.create(first_name=f"S{n}", last_name="Sup", kind=PersonKind.CONTACT)
+        PropertyContactAssignmentFactory(contact=p, role=ContactRole.HOUSEKEEPER)
+        return p
+
+    api_client.force_login(staff)
+    make(1)
+    with assert_max_queries(8):
+        first = api_client.get("/api/v1/contacts?directory=suppliers").json()
+    for n in range(2, 6):
+        make(n)
+    with assert_max_queries(8):
+        many = api_client.get("/api/v1/contacts?directory=suppliers").json()
+
+    assert first["count"] == 1
+    assert many["count"] == 5  # COUNT not inflated by the exclusion subquery

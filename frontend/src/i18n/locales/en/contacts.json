@@ -12,6 +12,7 @@
   },
   "headings": {
     "list_title": "Contacts",
+    "suppliers_title": "Suppliers",
     "library": "Library",
     "create_dialog": "Create contact",
     "edit_dialog": "Edit contact",
@@ -62,7 +63,9 @@
     "set_as_primary": "Set as primary",
     "actions_menu_aria": "Actions",
     "create_new_inline": "+ Create new contact",
-    "link_contact": "Link contact"
+    "link_contact": "Link contact",
+    "clear_agency": "Clear agency",
+    "clear_country": "Clear country"
   },
   "tags": {
     "vip": "VIP",
@@ -75,6 +78,16 @@
     "past_issues": "Past issues",
     "specific_preferences": "Specific preferences",
     "time_waster": "Time waster"
+  },
+  "types": {
+    "customer": "Customer",
+    "agent": "Agent",
+    "owner": "Owner",
+    "manager": "Villa Manager",
+    "villa_admin": "Villa Admin",
+    "management_company": "Management Company",
+    "housekeeper": "Housekeeper",
+    "owners_rep": "Owner's representative"
   },
   "fields": {
     "name": "Name",
@@ -116,7 +129,8 @@
     "phone_label": "e.g. mobile, office",
     "picker_trigger": "Select a contact…",
     "picker_search": "Search contacts…",
-    "select_relationship_kind": "Select a relationship…"
+    "select_relationship_kind": "Select a relationship…",
+    "country": "Select a country…"
   },
   "status": {
     "any": "Any status",
@@ -147,7 +161,7 @@
     "phone_added": "Phone added",
     "phone_updated": "Phone updated",
     "phone_removed": "Phone removed",
-    "tags_updated": "Tags updated",
+    "tags_update_failed": "Couldn't update tags",
     "email_remove_failed": "Failed to remove email",
     "phone_remove_failed": "Failed to remove phone",
     "set_primary_failed": "Failed to set primary",
@@ -159,6 +173,8 @@
   "empty": {
     "list_title": "No contacts match these filters",
     "list_hint": "Try clearing the search or changing the status filter.",
+    "suppliers_title": "No suppliers match these filters",
+    "suppliers_hint": "Try clearing the search or changing the status filter.",
     "emails": "No emails yet",
     "phones": "No phones yet",
     "tags": "No tags yet",

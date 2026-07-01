@@ -5,6 +5,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Toolbar } from "@/components/data/Toolbar";
 import { DataTable } from "@/components/data/DataTable";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import {
@@ -15,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
+import { PERSON_TAGS } from "@/features/contacts/personTags";
 import { clientColumns } from "./columns";
 import { useClients } from "./hooks";
 import type { ClientFilters, ClientListItem } from "./schemas";
@@ -22,12 +24,36 @@ import type { ClientFilters, ClientListItem } from "./schemas";
 const ALL_VALUE = "__all__";
 const CLIENTS_PAGE_SIZE = 50;
 
+// The two customer tags surfaced as one-click chips (a deliberate subset of the
+// full PERSON_TAGS taxonomy). Defines the canonical order the `tags` overlap
+// param is written in, so click order never changes the URL or React Query key.
+// Validated against the canonical taxonomy so a token can't silently drift to
+// one the backend would ignore.
+const TAG_CHIP_VALUES: readonly string[] = ["vip", "trade"];
+if (import.meta.env.DEV) {
+  const known = new Set(PERSON_TAGS.map((tag) => tag.value));
+  const unknown = TAG_CHIP_VALUES.filter((value) => !known.has(value));
+  if (unknown.length) throw new Error(`Unknown client tag chip(s): ${unknown.join(", ")}`);
+}
+
+// Rewrite a tag set into canonical (chip-definition) order: known chip tags
+// first, any hand-URL'd extras after, so the param is stable regardless of how
+// it was assembled.
+function canonicalTags(tags: Iterable<string>): string[] {
+  const set = new Set(tags);
+  const known = TAG_CHIP_VALUES.filter((value) => set.has(value));
+  const extra = [...set].filter((value) => !TAG_CHIP_VALUES.includes(value)).sort();
+  return [...known, ...extra];
+}
+
 function paramsToFilters(params: URLSearchParams): ClientFilters {
   const page = Number(params.get("page") ?? "1");
   return {
     search: params.get("search") ?? undefined,
     status: params.get("status") ?? undefined,
     capacity: params.get("capacity") ?? undefined,
+    tags: params.get("tags") ?? undefined,
+    repeat: params.get("repeat") === "true" ? true : undefined,
     ordering: params.get("ordering") ?? undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
@@ -86,6 +112,38 @@ export function ClientsListPage() {
       { replace: true },
     );
   };
+
+  // GAP-053 quick-filter chips. VIP/Trade toggle membership in the comma-joined
+  // `tags` overlap param; Repeat toggles the boolean `repeat` flag. All compose
+  // with search/capacity/status (each just edits its own param).
+  const activeTags = (filters.tags ?? "").split(",").filter(Boolean);
+  const toggleTag = (tag: string) => {
+    const set = new Set(activeTags);
+    if (set.has(tag)) set.delete(tag);
+    else set.add(tag);
+    const next = canonicalTags(set);
+    updateParam("tags", next.length ? next.join(",") : undefined);
+  };
+  const filterChips = [
+    {
+      key: "vip",
+      label: t("chips.vip"),
+      active: activeTags.includes("vip"),
+      toggle: () => toggleTag("vip"),
+    },
+    {
+      key: "trade",
+      label: t("chips.trade"),
+      active: activeTags.includes("trade"),
+      toggle: () => toggleTag("trade"),
+    },
+    {
+      key: "repeat",
+      label: t("chips.repeat"),
+      active: Boolean(filters.repeat),
+      toggle: () => updateParam("repeat", filters.repeat ? undefined : "true"),
+    },
+  ];
 
   const goToPage = (zeroBased: number) => {
     setParams(
@@ -159,6 +217,26 @@ export function ClientsListPage() {
             </>
           }
         />
+
+        <div
+          role="group"
+          className="flex flex-wrap items-center gap-2"
+          aria-label={t("filters.quick_chips_aria")}
+        >
+          {filterChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.toggle}
+              aria-pressed={chip.active}
+              className="focus-visible:ring-ring rounded-full focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <Badge variant={chip.active ? "default" : "outline"} className="cursor-pointer">
+                {chip.label}
+              </Badge>
+            </button>
+          ))}
+        </div>
 
         {query.isError ? (
           <ErrorState

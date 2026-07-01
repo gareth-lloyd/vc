@@ -78,7 +78,10 @@ function createDefaults(initialContact?: Contact | null): PropertyContactAssignm
 
 function defaultsFromAssignment(a: PropertyContactAssignment): PropertyContactAssignmentWriteInput {
   return {
-    contact: a.contact,
+    // This dialog is Person-only and is never opened for an org-assignee row
+    // (PeopleTab gates it on a loaded contact); fall back to 0 to satisfy the
+    // contact-required write schema if it ever is.
+    contact: a.contact ?? 0,
     role: asRole(a.role),
     start_date: a.start_date ?? "",
     end_date: a.end_date ?? "",

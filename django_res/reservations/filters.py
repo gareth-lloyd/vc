@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from django.db.models import Exists, OuterRef, Q, QuerySet
 from django.db.models.expressions import Combinable
 from django_filters import rest_framework as filters
 
+from accounts.enums import PersonTag
 from accounts.models import Person, PersonEmail
 from reservations.enums import TERMINAL_BOOKING_STATUSES
 from reservations.models import Booking, Enquiry, Quotation
@@ -158,28 +159,45 @@ class BookingFilter(filters.FilterSet):
         )
 
 
-def client_is_agent_expression() -> Combinable:
-    """Boolean expression: the client (`Person`) has any deal that names a
-    travel agent — the "agent" booking channel (GAP-047).
+def client_agent_capacity_expression() -> Combinable:
+    """Boolean: the Person is *agent-capacity* — the Clients directory's "agent"
+    axis (GAP-047 + GAP-053, which folds agents into Clients rather than giving
+    them a separate page).
 
-    Scalar `EXISTS` per relation (no JOIN row-multiplication, so a paginator
-    COUNT over it stays honest), OR'd into one boolean. The single source of
-    truth shared by `ClientListView`'s `is_agent` annotation and
-    `ClientFilterSet.capacity` so the two can't drift.
+    True when the person:
+      - belongs to an agency Organisation (GAP-046), OR
+      - deals through a travel agent: any enquiry/quote/booking on which they are
+        the client (`person`) *names* an `.agent` — the booking channel.
+
+    A pure deal-`.agent` reference with no agency is intentionally NOT treated as
+    agent-capacity (post-GAP-046 an agent carries an `agency`); that full-fidelity
+    case is deferred. Scalar `EXISTS` per relation — incl. a self-correlated
+    agency check — so no JOIN multiplies rows or the paginator COUNT. Single
+    source of truth: `ClientListView`'s membership filter + `is_agent` annotation
+    and `ClientFilterSet.capacity` all key on it, so they can't drift.
     """
     agent_deal = {"person": OuterRef("pk"), "agent__isnull": False}
-    return (
+    # `cast`: django-stubs types `Combinable.__or__` as `-> Q`, and the
+    # self-correlated `Exists(Person…)` term makes mypy infer the whole OR as Q.
+    # At runtime this is a `CombinedExpression` (a Combinable) — the boolean the
+    # annotation/filter need. Cast to restore the true type.
+    return cast(
+        Combinable,
         Exists(Booking.objects.filter(**agent_deal))
         | Exists(Quotation.objects.filter(**agent_deal))
         | Exists(Enquiry.objects.filter(**agent_deal))
+        | Exists(Person.objects.filter(pk=OuterRef("pk"), agency__isnull=False)),
     )
 
 
 class ClientFilterSet(filters.FilterSet):
-    """Filter shape for `GET /clients` (GAP-047).
+    """Filter shape for `GET /clients` (GAP-047 + GAP-053).
 
-    `capacity` partitions the directory by booking channel — `agent` (the client
-    has an enquiry/quote/booking that names a travel agent) vs `direct`.
+    - `capacity` partitions by agent-capacity — `agent` (belongs to an agency or
+      deals through a travel agent) vs `direct`.
+    - `repeat` (GAP-053 chip) keys on the derived >=1-booking flag.
+    - `tags` (GAP-053 VIP/Trade chips) is the `Person.tags` overlap, mirroring
+      `ContactFilterSet`.
     """
 
     status = filters.CharFilter(field_name="status")
@@ -187,15 +205,27 @@ class ClientFilterSet(filters.FilterSet):
         method="filter_capacity",
         choices=[("direct", "Direct"), ("agent", "Agent")],
     )
+    # Keys on the `is_repeat_customer` annotation applied by ClientListView.
+    repeat = filters.BooleanFilter(field_name="is_repeat_customer")
+    tags = filters.CharFilter(method="filter_tags")
 
     class Meta:
         model = Person
-        fields = ["status", "capacity"]
+        fields = ["status", "capacity", "repeat", "tags"]
 
     def filter_capacity(
         self, queryset: QuerySet[Person], _name: str, value: str
     ) -> QuerySet[Person]:
         if value not in ("agent", "direct"):
             return queryset
-        is_agent = Q(client_is_agent_expression())
+        is_agent = Q(client_agent_capacity_expression())
         return queryset.filter(is_agent if value == "agent" else ~is_agent)
+
+    def filter_tags(self, queryset: QuerySet[Person], _name: str, value: str) -> QuerySet[Person]:
+        # Mirror ContactFilterSet.filter_tags: ANY-of overlap, unknown tokens
+        # ignored (don't 400 or silently empty the page).
+        valid = {t.value for t in PersonTag}
+        wanted = [tok for tok in (raw.strip() for raw in value.split(",")) if tok in valid]
+        if not wanted:
+            return queryset
+        return queryset.filter(tags__overlap=wanted)

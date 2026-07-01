@@ -26,12 +26,13 @@ import {
 } from "../hooks";
 import { EmailFormDialog } from "../components/EmailFormDialog";
 import { PhoneFormDialog } from "../components/PhoneFormDialog";
-import { TagsFormDialog } from "../components/TagsFormDialog";
+import { InlineTagEditor } from "../components/InlineTagEditor";
 import { TagChips } from "../components/TagChips";
 import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
 import { ContactEnquiryHistory } from "../components/ContactEnquiryHistory";
 import { ContactBookingHistory } from "../components/ContactBookingHistory";
 import { ContactAddressSection } from "../components/ContactAddressSection";
+import { isClientContact } from "../display";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -287,41 +288,24 @@ function PhonesSection({ contact, canWrite }: { contact: Contact; canWrite: bool
   );
 }
 
-function TagsSection({ contact, canWrite }: { contact: Contact; canWrite: boolean }) {
+function TagsSection({ contact }: { contact: Contact }) {
   const { t } = useTranslation("contacts");
-  const [editOpen, setEditOpen] = useState(false);
   const tags = contact.tags ?? [];
-
-  const editButton = canWrite ? (
-    <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-      {t("actions.edit_tags")}
-    </Button>
-  ) : (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span>
-          <Button size="sm" variant="outline" disabled>
-            {t("actions.edit_tags")}
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{t("common:tooltips.reservations_role_required")}</TooltipContent>
-    </Tooltip>
-  );
+  // Tags are a client-only concept (VIP/Trade/…). Clients get the inline editor;
+  // a non-client that still carries tags shows them read-only (consistent with
+  // CustomerProfilePanel) rather than hiding the data; a non-client with none
+  // is hidden entirely. The editor handles its own role-gating internally.
+  if (!isClientContact(contact)) {
+    return tags.length > 0 ? (
+      <Section title={t("headings.tags")}>
+        <TagChips tags={tags} />
+      </Section>
+    ) : null;
+  }
 
   return (
     <Section title={t("headings.tags")}>
-      <div className="flex items-center justify-end">{editButton}</div>
-      {tags.length === 0 ? <EmptyState title={t("empty.tags")} /> : <TagChips tags={tags} />}
-
-      {editOpen ? (
-        <TagsFormDialog
-          contactId={contact.id}
-          tags={tags}
-          open={editOpen}
-          onOpenChange={setEditOpen}
-        />
-      ) : null}
+      <InlineTagEditor contactId={contact.id} tags={tags} />
     </Section>
   );
 }
@@ -370,7 +354,7 @@ export function DetailsTab() {
 
       <EmailsSection contact={contact} canWrite={canWrite} />
       <PhonesSection contact={contact} canWrite={canWrite} />
-      <TagsSection contact={contact} canWrite={canWrite} />
+      <TagsSection contact={contact} />
       <LinkedContactsAccordion contactId={contact.id} />
       <ContactEnquiryHistory contactId={contact.id} />
       <ContactBookingHistory contactId={contact.id} />

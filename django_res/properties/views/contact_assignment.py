@@ -22,7 +22,7 @@ class PropertyContactAssignmentListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[PropertyContactAssignment]:
         return PropertyContactAssignment.objects.filter(
             property_id=self.kwargs["property_id"]
-        ).select_related("contact")
+        ).select_related("contact", "organisation")
 
     def perform_create(self, serializer: Any) -> None:
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
@@ -35,4 +35,6 @@ class PropertyContactAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView)
     lookup_url_kwarg = "mapping_id"
 
     def get_queryset(self) -> QuerySet[PropertyContactAssignment]:
-        return PropertyContactAssignment.objects.filter(property_id=self.kwargs["property_id"])
+        return PropertyContactAssignment.objects.filter(
+            property_id=self.kwargs["property_id"]
+        ).select_related("contact", "organisation")

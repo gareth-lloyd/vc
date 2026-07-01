@@ -1,9 +1,11 @@
 import { useTranslation } from "react-i18next";
 import type { ContactId } from "@/lib/query/keys";
 import { useContact } from "../hooks";
-import { contactDisplayName } from "../display";
+import { contactDisplayName, isClientContact } from "../display";
 import { RepeatBadge } from "./RepeatBadge";
 import { TagChips } from "./TagChips";
+import { InlineTagEditor } from "./InlineTagEditor";
+import { ContactTypeBadges } from "./ContactTypeBadges";
 import { ContactAddressSection } from "./ContactAddressSection";
 import { LinkedContactsAccordion } from "./LinkedContactsAccordion";
 import { ContactEnquiryHistory } from "./ContactEnquiryHistory";
@@ -44,11 +46,16 @@ export function CustomerProfilePanel({ personId }: CustomerProfilePanelProps) {
           <p className="text-muted-foreground text-xs">{contact.agency_detail.name}</p>
         ) : null}
       </div>
+      <ContactTypeBadges types={contact.contact_types ?? []} />
       <RepeatBadge
         bookingCount={contact.booking_count ?? 0}
         isRepeat={contact.is_repeat_customer ?? false}
       />
-      {(contact.tags ?? []).length > 0 ? <TagChips tags={contact.tags ?? []} /> : null}
+      {isClientContact(contact) ? (
+        <InlineTagEditor contactId={contact.id} tags={contact.tags ?? []} />
+      ) : (contact.tags ?? []).length > 0 ? (
+        <TagChips tags={contact.tags ?? []} />
+      ) : null}
       <ContactAddressSection contact={contact} />
       <LinkedContactsAccordion contactId={contact.id} />
       <ContactEnquiryHistory contactId={contact.id} />

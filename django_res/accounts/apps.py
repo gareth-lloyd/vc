@@ -27,6 +27,11 @@ class AccountsConfig(AppConfig):
                 "address_line_2",
                 "town",
                 "post_code",
+                # GAP-052: country is now operator-editable → audited. FK by its
+                # `_id` attname so the diff stores the pk, not a Country instance
+                # (per the PersonRelationship convention). A public FK, not PII,
+                # so it stays out of `_AUDIT_PII_FIELDS`/`anonymize()`.
+                "country_id",
                 "marketing_consent",
                 "notes",
                 "status",

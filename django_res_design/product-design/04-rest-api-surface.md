@@ -73,7 +73,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Standard problem-detail JSON shape with `code`, `detail`, `field_errors`. Implementation decides exact field names.
 
 ### Idempotency
-- `Idempotency-Key` header honored on all `POST` action endpoints and payment-creating endpoints.
+- ~~`Idempotency-Key` header honored on all `POST` action endpoints and payment-creating endpoints.~~ **Superseded (2026-07-02, FG-005)** — the header/middleware surface was never built and the backing `core.IdempotencyRecord` table is dropped; idempotency is a request-body `idempotency_key` handled by the service layer (see `django_res/CLAUDE.md` §"State-mutating services accept `idempotency_key`").
 
 ---
 

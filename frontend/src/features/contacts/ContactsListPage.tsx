@@ -18,13 +18,22 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { contactColumns } from "./columns";
+import { contactColumns, supplierColumns } from "./columns";
 import { useContacts } from "./hooks";
 import { ContactFormDialog } from "./components/ContactFormDialog";
 import type { ContactFilters, ContactListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";
 const CONTACTS_PAGE_SIZE = 50;
+
+interface ContactsListPageProps {
+  // GAP-048: `directory="suppliers"` is the Suppliers nav surface — it pins
+  // `?directory=suppliers` on the query (operator-side, kind=CONTACT minus
+  // agent-capacity), swaps the kind column for a property-role column, hides the
+  // now-redundant kind filter, and relabels the heading/empty copy. Omitted →
+  // the unscoped contacts directory.
+  directory?: "suppliers";
+}
 
 function paramsToFilters(params: URLSearchParams): ContactFilters {
   const page = Number(params.get("page") ?? "1");
@@ -37,12 +46,23 @@ function paramsToFilters(params: URLSearchParams): ContactFilters {
   };
 }
 
-export function ContactsListPage() {
+export function ContactsListPage({ directory }: ContactsListPageProps = {}) {
   const { t } = useTranslation("contacts");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const isSuppliers = directory === "suppliers";
+  const title = isSuppliers ? t("headings.suppliers_title") : t("headings.list_title");
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
-  const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filters = useMemo(
+    // On the suppliers surface the kind filter UI is hidden, so a stale
+    // `?kind=` in the URL would silently AND with the forced kind=CONTACT and
+    // empty the list with no affordance to clear it — drop it.
+    () =>
+      isSuppliers
+        ? { ...paramsToFilters(params), kind: undefined, directory: "suppliers" }
+        : paramsToFilters(params),
+    [params.toString(), isSuppliers], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [search, setSearch] = useState(filters.q ?? "");
   const [createOpen, setCreateOpen] = useState(false);
   const canWrite = useHasReservationsRole();
@@ -139,8 +159,8 @@ export function ContactsListPage() {
   return (
     <div>
       <PageHeader
-        title={t("headings.list_title")}
-        breadcrumbs={[{ label: t("headings.library") }, { label: t("headings.list_title") }]}
+        title={title}
+        breadcrumbs={[{ label: t("headings.library") }, { label: title }]}
         actions={newButton}
       />
       <div className="space-y-4 p-6">
@@ -150,21 +170,25 @@ export function ContactsListPage() {
           searchPlaceholder={t("placeholders.search")}
           filters={
             <>
-              <Select
-                value={filters.kind ?? ALL_VALUE}
-                onValueChange={(v) => updateParam("kind", v)}
-              >
-                <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_kind_aria")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {kindOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* The kind filter is redundant on the suppliers-scoped list (all
+                  rows are kind=CONTACT) — hidden there. */}
+              {!isSuppliers ? (
+                <Select
+                  value={filters.kind ?? ALL_VALUE}
+                  onValueChange={(v) => updateParam("kind", v)}
+                >
+                  <SelectTrigger className="w-[160px]" aria-label={t("filters.filter_kind_aria")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kindOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
               <Select
                 value={filters.status ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("status", v)}
@@ -192,7 +216,7 @@ export function ContactsListPage() {
           />
         ) : (
           <DataTable
-            columns={contactColumns}
+            columns={isSuppliers ? supplierColumns : contactColumns}
             data={query.data?.results}
             isLoading={query.isLoading}
             pageIndex={(filters.page ?? 1) - 1}
@@ -204,7 +228,10 @@ export function ContactsListPage() {
             onRowClick={handleRowClick}
             rowKey={(row) => row.id}
             emptyContent={
-              <EmptyState title={t("empty.list_title")} description={t("empty.list_hint")} />
+              <EmptyState
+                title={isSuppliers ? t("empty.suppliers_title") : t("empty.list_title")}
+                description={isSuppliers ? t("empty.suppliers_hint") : t("empty.list_hint")}
+              />
             }
           />
         )}

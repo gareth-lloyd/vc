@@ -11,6 +11,8 @@ export const PROPERTY_CONTACT_ROLES = [
   "owner",
   "manager",
   "agent",
+  "villa_admin",
+  "management_company",
   "housekeeper",
   "owners_rep",
 ] as const;

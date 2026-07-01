@@ -197,6 +197,9 @@ export const contactListItemSchema = z.object({
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   tags: z.array(z.string()).optional(),
+  // GAP-048: the Suppliers directory surfaces the property role(s) as a column.
+  // Left `.optional()` (no `.default`) like `tags`; consumers read `?? []`.
+  contact_types: z.array(z.string()).optional(),
 });
 export type ContactListItem = z.infer<typeof contactListItemSchema>;
 
@@ -206,6 +209,9 @@ export interface ContactFilters {
   q?: string;
   status?: string;
   kind?: string;
+  // GAP-048: `directory=suppliers` scopes to operator-side contacts (the
+  // Suppliers nav surface pins this); omitted for the unscoped directory.
+  directory?: string;
   ordering?: string;
   page?: number;
 }
@@ -214,6 +220,7 @@ export const contactListFiltersSchema = z.object({
   q: z.string().optional(),
   status: z.string().optional(),
   kind: z.string().optional(),
+  directory: z.string().optional(),
   ordering: z.string().optional(),
   page: z.number().optional(),
 });

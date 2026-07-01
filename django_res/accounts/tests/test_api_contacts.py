@@ -1043,3 +1043,96 @@ def test_search_contacts_by_agency_name(api_client: APIClient, staff: User) -> N
 
     names = {row["agency_detail"]["name"] for row in results if row["agency_detail"]}
     assert names == {"Dune Travel Co"}
+
+
+# --- GAP-048 L2-3: Suppliers directory scoping ------------------------------
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_excludes_agents_and_customers(
+    api_client: APIClient, staff: User
+) -> None:
+    """`?directory=suppliers` = operator-side `kind=CONTACT` people MINUS
+    agent-capacity (agency members and active agent-role assignees). Only the
+    `kind=CUSTOMER` classification is excluded — a kind=CONTACT person who has
+    booked a stay is still a supplier. A plain contact with no property role
+    still appears — a contact must not vanish between creation and assignment
+    (GAP-048 decision)."""
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    api_client.force_login(staff)
+
+    plain = Person.objects.create(first_name="Sup", last_name="Plain", kind=PersonKind.CONTACT)
+    housekeeper = Person.objects.create(
+        first_name="Hank", last_name="House", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(contact=housekeeper, role=ContactRole.HOUSEKEEPER)
+
+    agency = cast(Organisation, OrganisationFactory())
+    agency_member = Person.objects.create(
+        first_name="Aggie", last_name="Agent", kind=PersonKind.CONTACT, agency=agency
+    )
+    role_agent = Person.objects.create(
+        first_name="Role", last_name="Agent", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(contact=role_agent, role=ContactRole.AGENT)
+
+    customer = Person.objects.create(first_name="Cust", last_name="Omer", kind=PersonKind.CUSTOMER)
+
+    ids = {
+        row["id"]
+        for row in api_client.get("/api/v1/contacts?directory=suppliers").json()["results"]
+    }
+    assert {plain.pk, housekeeper.pk} <= ids
+    assert ids.isdisjoint({agency_member.pk, role_agent.pk, customer.pk})
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_excludes_ended_agent_role(api_client: APIClient, staff: User) -> None:
+    """Only an ACTIVE agent assignment confers agent-capacity. A contact whose
+    agent role was ended (`end_date` set) is operator-side again → a supplier."""
+    from datetime import date
+
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    api_client.force_login(staff)
+    former_agent = Person.objects.create(
+        first_name="Gone", last_name="Agent", kind=PersonKind.CONTACT
+    )
+    PropertyContactAssignmentFactory(
+        contact=former_agent, role=ContactRole.AGENT, end_date=date(2024, 1, 1)
+    )
+
+    ids = {
+        row["id"]
+        for row in api_client.get("/api/v1/contacts?directory=suppliers").json()["results"]
+    }
+    assert former_agent.pk in ids
+
+
+@pytest.mark.django_db
+def test_directory_suppliers_query_count_is_flat(api_client: APIClient, staff: User) -> None:
+    """The directory exclusion is a NOT-EXISTS subquery, not a JOIN — the list
+    query count stays flat regardless of how many suppliers/roles exist."""
+    from accounts.enums import ContactRole
+    from core.tests import assert_max_queries
+    from properties.factories import PropertyContactAssignmentFactory
+
+    def make(n: int) -> Person:
+        p = Person.objects.create(first_name=f"S{n}", last_name="Sup", kind=PersonKind.CONTACT)
+        PropertyContactAssignmentFactory(contact=p, role=ContactRole.HOUSEKEEPER)
+        return p
+
+    api_client.force_login(staff)
+    make(1)
+    with assert_max_queries(8):
+        first = api_client.get("/api/v1/contacts?directory=suppliers").json()
+    for n in range(2, 6):
+        make(n)
+    with assert_max_queries(8):
+        many = api_client.get("/api/v1/contacts?directory=suppliers").json()
+
+    assert first["count"] == 1
+    assert many["count"] == 5  # COUNT not inflated by the exclusion subquery

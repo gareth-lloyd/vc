@@ -369,6 +369,38 @@ describe("PeopleTab", () => {
     useAuthStore.getState().clear();
   });
 
+  it("offers the reconciled ContactRole set in the role dropdown (GAP-048)", async () => {
+    useAuthStore.getState().setMe(
+      {
+        id: 1,
+        email: "a@test.com",
+        first_name: "A",
+        last_name: "T",
+        is_active: true,
+        is_staff: true,
+        is_superuser: false,
+        preferred_language: "en",
+        role: "RESERVATIONS",
+      },
+      { role: "RESERVATIONS", is_superuser: false, permissions: [] },
+    );
+    installBaseHandlers();
+    server.use(http.get("/api/v1/properties/5/contacts", () => HttpResponse.json(drfPage([]))));
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    // The role <Select> is the combobox labelled "Role" (the contact picker is a
+    // separate combobox with a dialog popup).
+    await userEvent.click(screen.getByRole("combobox", { name: /role/i }));
+
+    // L2-1 reconciled the enum: villa_admin + management_company are now offered,
+    // and MANAGER reads "Villa Manager" (was "Manager").
+    expect(await screen.findByRole("option", { name: "Villa Admin" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Management Company" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Villa Manager" })).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
   it("falls back to Contact #id when no name or company is available", async () => {
     installBaseHandlers();
     server.use(

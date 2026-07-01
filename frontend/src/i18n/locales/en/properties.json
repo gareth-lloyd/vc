@@ -484,8 +484,10 @@
       "role_required": "Choose a role",
       "roles": {
         "owner": "Owner",
-        "manager": "Manager",
+        "manager": "Villa Manager",
         "agent": "Agent",
+        "villa_admin": "Villa Admin",
+        "management_company": "Management Company",
         "housekeeper": "Housekeeper",
         "owners_rep": "Owner's representative"
       },

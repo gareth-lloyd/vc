@@ -12,6 +12,7 @@
   },
   "headings": {
     "list_title": "Contacts",
+    "suppliers_title": "Suppliers",
     "library": "Library",
     "create_dialog": "Create contact",
     "edit_dialog": "Edit contact",
@@ -172,6 +173,8 @@
   "empty": {
     "list_title": "No contacts match these filters",
     "list_hint": "Try clearing the search or changing the status filter.",
+    "suppliers_title": "No suppliers match these filters",
+    "suppliers_hint": "Try clearing the search or changing the status filter.",
     "emails": "No emails yet",
     "phones": "No phones yet",
     "tags": "No tags yet",

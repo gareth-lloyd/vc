@@ -8,14 +8,19 @@ from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models, transaction
 from django.db.models import OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import CharFilter, DjangoFilterBackend, FilterSet
+from django_filters.rest_framework import (
+    CharFilter,
+    ChoiceFilter,
+    DjangoFilterBackend,
+    FilterSet,
+)
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
-from accounts.enums import PersonStatus, PersonTag
+from accounts.enums import ContactRole, PersonKind, PersonStatus, PersonTag
 from accounts.models import Person, PersonEmail, PersonPhone, PersonRelationship
 from accounts.serializers import (
     ContactEmailSerializer,
@@ -69,6 +74,11 @@ class ContactFilterSet(FilterSet):
     # (overlap). A method filter because the Meta dict shorthand can't express
     # the `__overlap` array lookup.
     tags = CharFilter(method="filter_tags")
+    # GAP-048: `?directory=suppliers` scopes the list to the operator-side
+    # population — `kind=CONTACT` minus agent-capacity (the Suppliers nav surface
+    # pins this). Role is surfaced as a column, NOT a membership gate, so a plain
+    # contact with no assignment still appears.
+    directory = ChoiceFilter(choices=[("suppliers", "suppliers")], method="filter_directory")
 
     class Meta:
         model = Person
@@ -91,6 +101,23 @@ class ContactFilterSet(FilterSet):
             # or return a silently-empty page.
             return queryset
         return queryset.filter(tags__overlap=wanted)
+
+    def filter_directory(
+        self, queryset: models.QuerySet[Person], _name: str, value: str
+    ) -> models.QuerySet[Person]:
+        if value != "suppliers":
+            return queryset
+        # Agent-capacity = belongs to an agency (GAP-046) OR holds an ACTIVE
+        # agent property-role. `.exclude()` on the multi-valued reverse relation
+        # compiles to a NOT-EXISTS subquery (no JOIN row-multiplication, so the
+        # paginator COUNT stays accurate). Traversed by string name so accounts
+        # reaches `properties.PropertyContactAssignment` without importing it
+        # (import-spine floor).
+        agent_capacity = models.Q(agency__isnull=False) | models.Q(
+            property_assignments__role=ContactRole.AGENT,
+            property_assignments__end_date__isnull=True,
+        )
+        return queryset.filter(kind=PersonKind.CONTACT).exclude(agent_capacity)
 
 
 class ContactViewSet(viewsets.ModelViewSet[Person]):

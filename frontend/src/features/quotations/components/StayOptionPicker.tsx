@@ -56,7 +56,7 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
   };
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 pt-2">
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground text-xs font-medium">{tr("label")}</span>
         {uniformNights ? (
@@ -69,7 +69,7 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
         role="radiogroup"
         aria-label={tr("label")}
         onKeyDown={handleKeyDown}
-        className="flex gap-1 overflow-x-auto pb-1"
+        className="flex gap-2 overflow-x-auto pb-1"
       >
         {options.map((option, index) => {
           const selected = index === selectedIndex;
@@ -91,7 +91,7 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(index)}
               className={cn(
-                "flex min-w-[84px] shrink-0 flex-col items-center gap-0.5 rounded-md border px-2 py-1.5 text-xs transition-colors",
+                "flex min-w-[84px] shrink-0 grow flex-col items-center gap-0.5 rounded-md border px-3 py-2 text-xs transition-colors",
                 selected
                   ? "border-primary bg-primary text-primary-foreground"
                   : option.is_available

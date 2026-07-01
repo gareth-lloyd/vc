@@ -149,16 +149,23 @@ function RailPanel({ title, children }: { title: string; children: React.ReactNo
 }
 
 // The quotes spine block: the existing quote-stack plus a disclosure that
-// expands the inline builder. Defaults open only when there are no quotes yet
-// — an enquiry that already has quotes opens compact (one click to add more).
-// A lost/converted enquiry is closed to new quotes: the builder never auto-opens
-// and the toggle is disabled (the backend rejects the POST too). Keyed on the
-// enquiry id by the caller so navigating between enquiries re-runs the
-// open-state initializer instead of carrying the previous one's value.
-function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
+// expands the inline builder. The `building` flag is owned by the layout (so the
+// rail can go full-width while building) and reset per enquiry there; this block
+// only renders the toggle + builder. A lost/converted enquiry is closed to new
+// quotes: the toggle is disabled (the backend rejects the POST too). Still keyed
+// on the enquiry id by the caller so `QuoteBuilder`'s staged lines/results don't
+// carry across enquiry navigation.
+function QuotesSection({
+  enquiry,
+  building,
+  setBuilding,
+}: {
+  enquiry: EnquiryDetail;
+  building: boolean;
+  setBuilding: (value: boolean) => void;
+}) {
   const { t } = useTranslation("enquiries");
   const isFinal = isFinalStatus(enquiry.status);
-  const [building, setBuilding] = useState(!isFinal && enquiry.quotations.length === 0);
   const hasRole = useHasReservationsRole();
 
   const toggleLabel = building
@@ -185,7 +192,7 @@ function QuotesSection({ enquiry }: { enquiry: EnquiryDetail }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setBuilding((v) => !v)}
+            onClick={() => setBuilding(!building)}
             disabled={isFinal}
             title={isFinal ? t("quotes_section.build_disabled_state") : undefined}
           >
@@ -207,6 +214,12 @@ export function EnquiryDetailLayout() {
   const { id } = useParams<{ id: string }>();
   const query = useEnquiry(id);
   const [dialog, setDialog] = useState<DialogKind>(null);
+  // `building` is lifted here (from the old QuotesSection-local state) so the
+  // rail can collapse to full-width while the builder is open. `initedFor` drives
+  // the per-enquiry reset below — these hooks read no enquiry data, so they sit
+  // safely before the loading/error guards.
+  const [building, setBuilding] = useState(false);
+  const [initedFor, setInitedFor] = useState<number | null>(null);
   const reopenMutation = useReopenEnquiry(id ?? 0);
 
   if (query.isLoading) {
@@ -234,6 +247,16 @@ export function EnquiryDetailLayout() {
 
   const enquiry = query.data;
 
+  // Re-seed the builder open-state when the enquiry changes (first mount or
+  // navigating A→B). React's sanctioned "adjust state during render" pattern —
+  // the `initedFor` guard makes it run once per id and React applies the new
+  // state before painting, so there's no `building=false` flash a `useEffect`
+  // would cause. Auto-opens only for a live enquiry with no quotes yet.
+  if (initedFor !== enquiry.id) {
+    setInitedFor(enquiry.id);
+    setBuilding(!isFinalStatus(enquiry.status) && enquiry.quotations.length === 0);
+  }
+
   const handleReopen = async () => {
     try {
       await reopenMutation.mutateAsync("");
@@ -258,6 +281,11 @@ export function EnquiryDetailLayout() {
       />
 
       <TwoColumn
+        // Collapse to full-width only while the builder is actually shown. Mirror
+        // QuotesSection's `building && !isFinal` render guard so an enquiry that
+        // flips to a final status out-of-band (e.g. refetch-on-focus) can't strand
+        // the rail hidden with a disabled toggle and no way to bring it back.
+        hideRail={building && !isFinalStatus(enquiry.status)}
         rightRail={
           <div className="space-y-4">
             <RailSummary enquiry={enquiry} onOpenDialog={setDialog} />
@@ -273,7 +301,12 @@ export function EnquiryDetailLayout() {
           </div>
         }
       >
-        <QuotesSection key={enquiry.id} enquiry={enquiry} />
+        <QuotesSection
+          key={enquiry.id}
+          enquiry={enquiry}
+          building={building}
+          setBuilding={setBuilding}
+        />
       </TwoColumn>
 
       {dialog === "assign" && (

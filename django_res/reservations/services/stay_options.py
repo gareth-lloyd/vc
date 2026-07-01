@@ -190,6 +190,14 @@ class StayOptionsService:
         )
         price_from, price_to = blocks[default_index] if blocks else (preferred_from, preferred_to)
 
+        # GAP-044 occupancy fan-out: enumerate + price every covering band for
+        # the default block, independent of the searched party (B2). Computed
+        # before the headline quote so an out-of-bracket / POA search — which
+        # fails below — still returns the bands the builder fans out.
+        occupancy_bands = cls._occupancy_bands(
+            property_obj, price_from, price_to, currency=currency, context=context
+        )
+
         try:
             quote = PricingEngine.quote(
                 property=property_obj,
@@ -215,6 +223,7 @@ class StayOptionsService:
                 "error_detail": str(exc),
                 "hero_image_url": property_obj.hero_image_url(),
                 "currency_code": resolved.code if resolved else None,
+                "occupancy_bands": occupancy_bands,
             }
 
         if blocks:
@@ -244,7 +253,106 @@ class StayOptionsService:
             "hero_image_url": property_obj.hero_image_url(),
             **quote.breakdown,
             "stay_options": stay_options,
+            "occupancy_bands": occupancy_bands,
         }
+
+    @classmethod
+    def _occupancy_bands(
+        cls,
+        property_obj: Property,
+        date_from: date,
+        date_to: date,
+        *,
+        currency: Currency | None,
+        context: PricingContext | None,
+    ) -> list[dict[str, Any]]:
+        """Every covering occupancy band for the week, each re-priced at its own
+        representative party (GAP-044 fan-out).
+
+        The quote builder renders one default-checked line per band, so it needs
+        all covering brackets — enumerated independent of the searched party
+        (B2): an out-of-bracket or POA search still shows them. Returns ``[]``
+        unless the covering card carries **≥2** brackets (a single-band villa
+        keeps its one headline line — the threshold lives here, not in the
+        party-agnostic enumerator).
+
+        One context load covers the enumeration and every per-band re-price:
+        supplied non-None on the fixed-changeover path, else loaded once here
+        (B1 — a flexible-changeover villa arrives with ``context=None`` yet may
+        be occupancy-priced). Each band prices at ``max(1, min_party)``
+        (decision 7 — guards a storable ``min_party=0``); a POA / no-rate band
+        is flagged (``total=None``) not dropped (Q-013).
+        """
+        if context is None:
+            context = PricingEngine.load_context(
+                property_obj, date_from=date_from, date_to=date_to, currency=currency
+            )
+        bands = PricingEngine.covering_bands(
+            property=property_obj,
+            date_from=date_from,
+            date_to=date_to,
+            currency=currency,
+            context=context,
+        )
+        if len(bands) < 2:
+            return []
+        # covering_bands only returns bands when a real plan covers the week, so
+        # the context it used (loaded above or supplied) is non-None here.
+        assert context is not None
+
+        priced: list[dict[str, Any]] = []
+        for band in bands:
+            party = max(1, band.min_party)
+            try:
+                quote = PricingEngine.quote(
+                    property=property_obj,
+                    date_from=date_from,
+                    date_to=date_to,
+                    party=party,
+                    currency=currency,
+                    context=context,
+                )
+            except DomainError as exc:
+                # Q-013: POA / no-rate flags the band, never drops it. POA is a
+                # NoRateAvailable whose message names it. Its display currency is
+                # the covering plan's (or the searched currency) — the very one
+                # every priceable band reports, so a POA band can never show a
+                # different currency than its siblings in the same fan-out. We
+                # take it straight off the shared `context` (guaranteed non-None
+                # here — covering_bands returned ≥2 bands, so a plan covers the
+                # week), rather than re-resolving the property's *current*
+                # currency, which a currency switch could make diverge.
+                code = getattr(exc, "code", "domain_error")
+                is_poa = code == "no_rate_available" and "POA" in str(exc)
+                band_currency = (
+                    currency.code if currency is not None else context.plan.currency.code
+                )
+                priced.append(
+                    {
+                        "min_party": band.min_party,
+                        "max_party": band.max_party,
+                        "adults": party,
+                        "total": None,
+                        "currency_code": band_currency if code == "no_rate_available" else None,
+                        "is_projected": False,
+                        "is_poa": is_poa,
+                        "error_code": code,
+                    }
+                )
+                continue
+            priced.append(
+                {
+                    "min_party": band.min_party,
+                    "max_party": band.max_party,
+                    "adults": party,
+                    "total": str(quote.total),
+                    "currency_code": quote.currency_code,
+                    "is_projected": quote.is_projected,
+                    "is_poa": False,
+                    "error_code": None,
+                }
+            )
+        return priced
 
     @classmethod
     def _plan_blocks(

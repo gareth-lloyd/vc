@@ -8,6 +8,7 @@ fixture pricing graph (Summer 2026 plan, £200/night rule covering
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
@@ -127,6 +128,17 @@ def _entry(
         "adults": adults,
         "children": children,
     }
+
+
+def _occupancy_card(card: RateCard) -> None:
+    """Seed `card` with three sibling occupancy brackets (£100/£140/£160 a
+    night) over the fixture Summer-2026 window — a fan-out villa."""
+    from pricing.models import RateRule as RateRuleModel
+
+    common = {"card": card, "date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
+    RateRuleModel.objects.create(**common, min_party=1, max_party=8, nightly=Decimal("100.00"))
+    RateRuleModel.objects.create(**common, min_party=9, max_party=12, nightly=Decimal("140.00"))
+    RateRuleModel.objects.create(**common, min_party=13, max_party=16, nightly=Decimal("160.00"))
 
 
 @pytest.mark.django_db
@@ -340,6 +352,131 @@ class TestStayOptionsSearch:
             flex_days=0,
         )
         assert result == {"property_id": 999_999, "available": False}
+
+    # -- GAP-044 occupancy fan-out --------------------------------------
+
+    def test_occupancy_property_fans_out_all_bands(
+        self, property_: Property, plan: RatePlan, card: RateCard
+    ) -> None:
+        """An occupancy-priced villa returns every covering band as its own
+        priced entry (sorted by `min_party`), each at its representative party
+        `max(1, min_party)` — the builder renders one default-checked line per."""
+        _sat_changeover(property_)
+        _occupancy_card(card)
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)],
+            flex_days=0,
+        )
+
+        assert result["available"] is True
+        assert result["occupancy_bands"] == [
+            {
+                "min_party": 1,
+                "max_party": 8,
+                "adults": 1,
+                "total": "700.00",
+                "currency_code": "GBP",
+                "is_projected": False,
+                "is_poa": False,
+                "error_code": None,
+            },
+            {
+                "min_party": 9,
+                "max_party": 12,
+                "adults": 9,
+                "total": "980.00",
+                "currency_code": "GBP",
+                "is_projected": False,
+                "is_poa": False,
+                "error_code": None,
+            },
+            {
+                "min_party": 13,
+                "max_party": 16,
+                "adults": 13,
+                "total": "1120.00",
+                "currency_code": "GBP",
+                "is_projected": False,
+                "is_poa": False,
+                "error_code": None,
+            },
+        ]
+
+    def test_single_band_property_has_no_fan_out(
+        self, property_: Property, rate_rule: RateRule
+    ) -> None:
+        """A single-bracket villa keeps its one headline line — no fan-out (the
+        >=2-band threshold lives here, not in the enumerator)."""
+        _sat_changeover(property_)
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
+            flex_days=0,
+        )
+
+        assert result["available"] is True
+        assert result["occupancy_bands"] == []
+
+    def test_bands_shown_even_when_searched_party_out_of_bracket(
+        self, property_: Property, plan: RatePlan, card: RateCard
+    ) -> None:
+        """B2: the fan-out is independent of the searched party. A party fitting
+        no bracket makes the *headline* quote unavailable, yet every covering
+        band still fans out (the builder shows the bands, not an error)."""
+        _sat_changeover(property_)
+        _occupancy_card(card)
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=20)],
+            flex_days=0,
+        )
+
+        assert result["available"] is False
+        assert result["error_code"] == "party_out_of_range"
+        assert [
+            (b["min_party"], b["max_party"], b["total"]) for b in result["occupancy_bands"]
+        ] == [(1, 8, "700.00"), (9, 12, "980.00"), (13, 16, "1120.00")]
+
+    def test_poa_band_is_flagged_not_dropped(
+        self, property_: Property, plan: RatePlan, card: RateCard
+    ) -> None:
+        """A POA / no-rate band surfaces flagged (`total=None`, `is_poa`) with a
+        resolved display currency — never silently dropped (Q-013)."""
+        from pricing.models import RateRule as RateRuleModel
+
+        _sat_changeover(property_)
+        common = {"card": card, "date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
+        RateRuleModel.objects.create(**common, min_party=1, max_party=8, nightly=Decimal("100.00"))
+        RateRuleModel.objects.create(**common, min_party=9, max_party=12, nightly=None, is_poa=True)
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)],
+            flex_days=0,
+        )
+
+        bands = result["occupancy_bands"]
+        assert [(b["min_party"], b["total"], b["is_poa"], b["error_code"]) for b in bands] == [
+            (1, "700.00", False, None),
+            (9, None, True, "no_rate_available"),
+        ]
+        # The POA band still resolves a display currency from the covering plan.
+        assert bands[1]["currency_code"] == "GBP"
+
+    def test_band_fan_out_query_budget_reuses_context(
+        self, property_: Property, plan: RatePlan, card: RateCard
+    ) -> None:
+        """M4: the three per-band re-prices reuse the one window context — no
+        rate/plan/card reload per band. Pin a ceiling so a per-band context
+        reload can't creep in unnoticed (each band's residual cost is only the
+        extras/discount/changeover lookups `quote()` always does)."""
+        _sat_changeover(property_)
+        _occupancy_card(card)
+        entry = _entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)
+        StayOptionsService.search(requests=[entry], flex_days=0)  # warm content types
+
+        with assert_max_queries(24):
+            StayOptionsService.search(requests=[entry], flex_days=0)
 
 
 @pytest.mark.django_db
@@ -577,14 +714,16 @@ class TestSearchOptionsEndpoint:
         rate_rule: RateRule,
     ) -> None:
         # Properties + availability are batched and the rate context loads
-        # once per entry, shared between the bounds clamp and the quote (12
-        # queries for one entry today). Pin so a per-option or per-block query
-        # can't creep in unnoticed.
+        # once per entry, shared between the bounds clamp and the quote. The
+        # 13th query is GAP-044's occupancy-band enumeration: `covering_bands`
+        # resolves the changeover day once even on a single-band villa (which
+        # then fans out nothing). Pin so a per-option or per-band context
+        # *reload* can't creep in unnoticed.
         _sat_changeover(property_)
         api_client.force_authenticate(staff)
         body = self._body(property_)
         api_client.post(self.URL, body, format="json")  # warm content types etc.
-        with assert_max_queries(12):
+        with assert_max_queries(13):
             response = api_client.post(self.URL, body, format="json")
         assert response.status_code == 200
 

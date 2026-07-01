@@ -1,11 +1,15 @@
 import { useAuthStore } from "@/features/auth/store";
 
-const WRITER_ROLES = new Set(["ADMIN", "RESERVATIONS"]);
+// The wire role value is LOWERCASE (`core/enums.py` → "admin"/"reservations";
+// the PermissionsView and auth store keep it verbatim), so compare
+// case-insensitively — an uppercase-only set is effectively superuser-only in
+// production (the latent bug `useHasAccountsRole` below already dodges).
+const WRITER_ROLES = new Set(["admin", "reservations"]);
 
 export function useHasReservationsRole(): boolean {
   return useAuthStore((s) => {
     if (s.isSuperuser) return true;
-    return s.role != null && WRITER_ROLES.has(s.role);
+    return s.role != null && WRITER_ROLES.has(s.role.toLowerCase());
   });
 }
 

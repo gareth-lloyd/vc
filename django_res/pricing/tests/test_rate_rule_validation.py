@@ -1,16 +1,18 @@
-"""Serializer-level validation for RateRule writes.
+"""Serializer-level validation for RatePeriod dates and RateRule bands (GAP-056).
 
-The four RateRule DB check constraints used to surface as 500
-``IntegrityError`` when violated through the API. The serializer now
-pre-validates them so the client gets a 400 with ``field_errors`` instead:
+Dates now live on the ``RatePeriod``; the band (``RateRule``) carries only the
+party range + price. The serializers pre-validate the DB constraints so the
+client gets a 400 with ``field_errors`` instead of a 500 ``IntegrityError``:
 
-* ``date_from`` on or before ``date_to`` (inclusive; single-day allowed — GAP-056),
-* ``min_party`` <= ``max_party``,
+* period ``date_from`` on or before ``date_to`` (inclusive; single-day allowed),
+* period dates disjoint from sibling periods on the plan,
+* band ``min_party`` <= ``max_party``,
 * at least one of ``nightly`` / ``weekly`` / ``is_poa``,
-* ``is_poa`` excludes ``nightly`` / ``weekly``.
+* ``is_poa`` excludes ``nightly`` / ``weekly``,
+* bands on one period cover disjoint party ranges.
 
-PATCH merges the incoming attrs with the stored instance before checking, so
-a partial update can't sneak a stored+incoming combination past a constraint.
+PATCH merges the incoming attrs with the stored instance before checking, so a
+partial update can't sneak a stored+incoming combination past a constraint.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import RateCard, RateRule
+from pricing.models import RatePeriod, RatePlan, RateRule
 
 
 @pytest.fixture
@@ -42,10 +44,8 @@ def api_client(staff: User) -> APIClient:
     return client
 
 
-def _valid_payload(**overrides: object) -> dict[str, object]:
+def _valid_band(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "date_from": "2026-06-01",
-        "date_to": "2026-06-08",
         "min_party": 1,
         "max_party": 8,
         "nightly": "150.00",
@@ -54,12 +54,15 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
+# --- Period date validation -------------------------------------------------
+
+
 @pytest.mark.django_db
-def test_create_rule_rejects_inverted_date_range(api_client: APIClient, card: RateCard) -> None:
+def test_create_period_rejects_inverted_date_range(api_client: APIClient, plan: RatePlan) -> None:
     """An inverted span (date_from after date_to) is rejected."""
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(date_from="2026-06-08", date_to="2026-06-01"),
+        f"/api/v1/seasons/{plan.pk}/rate-periods",
+        data={"date_from": "2026-06-08", "date_to": "2026-06-01"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -67,23 +70,41 @@ def test_create_rule_rejects_inverted_date_range(api_client: APIClient, card: Ra
 
 
 @pytest.mark.django_db
-def test_create_single_day_rule_succeeds(api_client: APIClient, card: RateCard) -> None:
-    """GAP-056: inclusive dates — date_from == date_to is a valid one-day rule."""
+def test_create_single_day_period_succeeds(api_client: APIClient, plan: RatePlan) -> None:
+    """GAP-056: inclusive dates — date_from == date_to is a valid one-day period."""
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(date_from="2026-06-01", date_to="2026-06-01"),
+        f"/api/v1/seasons/{plan.pk}/rate-periods",
+        data={"date_from": "2026-06-01", "date_to": "2026-06-01"},
         format="json",
     )
     assert response.status_code == 201, response.content
 
 
 @pytest.mark.django_db
-def test_create_rule_rejects_min_party_above_max_party(
-    api_client: APIClient, card: RateCard
+def test_patch_period_dates_validates_against_stored_counterpart(
+    api_client: APIClient, period: RatePeriod
+) -> None:
+    """Moving date_from past the stored date_to must be rejected."""
+    assert period.date_to.isoformat() == "2026-08-31"
+    response = api_client.patch(
+        f"/api/v1/periods/{period.pk}",
+        data={"date_from": "2026-09-15"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "date_to" in response.json()["field_errors"]
+
+
+# --- Band party / price validation ------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_band_rejects_min_party_above_max_party(
+    api_client: APIClient, period: RatePeriod
 ) -> None:
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(min_party=9, max_party=2),
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(min_party=9, max_party=2),
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -91,10 +112,10 @@ def test_create_rule_rejects_min_party_above_max_party(
 
 
 @pytest.mark.django_db
-def test_create_rule_requires_price_or_poa(api_client: APIClient, card: RateCard) -> None:
+def test_create_band_requires_price_or_poa(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(nightly=None),
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(nightly=None),
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -102,10 +123,10 @@ def test_create_rule_requires_price_or_poa(api_client: APIClient, card: RateCard
 
 
 @pytest.mark.django_db
-def test_create_rule_rejects_poa_with_price(api_client: APIClient, card: RateCard) -> None:
+def test_create_band_rejects_poa_with_price(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(is_poa=True),
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(is_poa=True),
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -113,10 +134,10 @@ def test_create_rule_rejects_poa_with_price(api_client: APIClient, card: RateCar
 
 
 @pytest.mark.django_db
-def test_create_poa_only_rule_succeeds(api_client: APIClient, card: RateCard) -> None:
+def test_create_poa_only_band_succeeds(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
-        data=_valid_payload(nightly=None, is_poa=True),
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(nightly=None, is_poa=True),
         format="json",
     )
     assert response.status_code == 201, response.content
@@ -124,7 +145,7 @@ def test_create_poa_only_rule_succeeds(api_client: APIClient, card: RateCard) ->
 
 
 @pytest.mark.django_db
-def test_patch_poa_onto_priced_rule_rejected_without_clearing_price(
+def test_patch_poa_onto_priced_band_rejected_without_clearing_price(
     api_client: APIClient, rule: RateRule
 ) -> None:
     """Partial update must merge stored attrs: stored nightly + incoming POA clash."""
@@ -138,7 +159,7 @@ def test_patch_poa_onto_priced_rule_rejected_without_clearing_price(
 
 
 @pytest.mark.django_db
-def test_patch_poa_onto_priced_rule_succeeds_when_prices_cleared(
+def test_patch_poa_onto_priced_band_succeeds_when_prices_cleared(
     api_client: APIClient, rule: RateRule
 ) -> None:
     response = api_client.patch(
@@ -153,22 +174,7 @@ def test_patch_poa_onto_priced_rule_succeeds_when_prices_cleared(
 
 
 @pytest.mark.django_db
-def test_patch_dates_validates_against_stored_counterpart(
-    api_client: APIClient, rule: RateRule
-) -> None:
-    """Moving date_from past the stored date_to must be rejected."""
-    assert rule.date_to.isoformat() == "2026-08-31"
-    response = api_client.patch(
-        f"/api/v1/rules/{rule.pk}",
-        data={"date_from": "2026-09-15"},
-        format="json",
-    )
-    assert response.status_code == 400, response.content
-    assert "date_to" in response.json()["field_errors"]
-
-
-@pytest.mark.django_db
-def test_patch_priced_rule_price_change_succeeds(api_client: APIClient, rule: RateRule) -> None:
+def test_patch_priced_band_price_change_succeeds(api_client: APIClient, rule: RateRule) -> None:
     response = api_client.patch(
         f"/api/v1/rules/{rule.pk}",
         data={"nightly": "275.00"},
@@ -180,14 +186,14 @@ def test_patch_priced_rule_price_change_succeeds(api_client: APIClient, rule: Ra
 
 
 @pytest.mark.django_db
-def test_create_rule_omitting_defaulted_min_party_still_validates_band(
-    api_client: APIClient, card: RateCard
+def test_create_band_omitting_defaulted_min_party_still_validates(
+    api_client: APIClient, period: RatePeriod
 ) -> None:
     """Omitted min_party falls back to the model default (1), so max_party=0 clashes."""
-    payload = _valid_payload(max_party=0)
+    payload = _valid_band(max_party=0)
     del payload["min_party"]
     response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
+        f"/api/v1/periods/{period.pk}/rules",
         data=payload,
         format="json",
     )
@@ -196,40 +202,45 @@ def test_create_rule_omitting_defaulted_min_party_still_validates_band(
 
 
 @pytest.mark.django_db
-def test_create_overlapping_rule_returns_400(api_client: APIClient, rule: RateRule) -> None:
-    """Sharing the stored rule's date_to (ranges are inclusive) is an overlap → 400, not 500."""
+def test_create_band_overlapping_party_returns_400(
+    api_client: APIClient, period: RatePeriod
+) -> None:
+    """Two bands sharing a party count in one period overlap → 400, not 500."""
+    # Seed an existing band 1..4 through the API so the transitional card is set.
+    seed = api_client.post(
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(min_party=1, max_party=4),
+        format="json",
+    )
+    assert seed.status_code == 201, seed.content
     response = api_client.post(
-        f"/api/v1/rate-cards/{rule.card_id}/rules",
-        data=_valid_payload(
-            date_from=rule.date_to.isoformat(),
-            date_to="2026-10-31",
-            min_party=rule.min_party,
-            max_party=rule.max_party,
-        ),
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(min_party=3, max_party=8),  # overlaps 3..4
         format="json",
     )
     assert response.status_code == 400, response.content
-    assert "date_from" in response.json()["field_errors"]
+    assert "min_party" in response.json()["field_errors"]
 
 
 @pytest.mark.django_db
-def test_create_adjacent_rule_succeeds(api_client: APIClient, rule: RateRule) -> None:
-    """date_from = stored date_to + 1 day does not overlap an inclusive range."""
-    response = api_client.post(
-        f"/api/v1/rate-cards/{rule.card_id}/rules",
-        data=_valid_payload(
-            date_from="2026-09-01",  # rule fixture ends 2026-08-31
-            date_to="2026-10-31",
-            min_party=rule.min_party,
-            max_party=rule.max_party,
-        ),
+def test_create_adjacent_party_band_succeeds(api_client: APIClient, period: RatePeriod) -> None:
+    """Disjoint party bands (1..4 then 5..8) on one period both persist."""
+    first = api_client.post(
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(min_party=1, max_party=4),
         format="json",
     )
-    assert response.status_code == 201, response.content
+    assert first.status_code == 201, first.content
+    second = api_client.post(
+        f"/api/v1/periods/{period.pk}/rules",
+        data=_valid_band(min_party=5, max_party=8),
+        format="json",
+    )
+    assert second.status_code == 201, second.content
 
 
 @pytest.mark.django_db
-def test_patch_rule_does_not_overlap_against_itself(api_client: APIClient, rule: RateRule) -> None:
+def test_patch_band_does_not_overlap_against_itself(api_client: APIClient, rule: RateRule) -> None:
     response = api_client.patch(
         f"/api/v1/rules/{rule.pk}",
         data={"nightly": "300.00"},

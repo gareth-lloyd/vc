@@ -58,8 +58,8 @@ class PricingConfig(AppConfig):
         track(
             RateRule,
             fields=[
-                "date_from",
-                "date_to",
+                # GAP-056: dates moved to RatePeriod (tracked above). A band is a
+                # partyxprice row; its date-range edits are audited on the period.
                 "min_party",
                 "max_party",
                 "nightly",

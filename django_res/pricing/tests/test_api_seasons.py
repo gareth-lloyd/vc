@@ -1,4 +1,4 @@
-"""API tests for /seasons, /rate-cards, /rules CRUD + duplicate action."""
+"""API tests for /seasons, /rate-periods, /rules CRUD + duplicate action (GAP-056)."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import Currency, RateCard, RatePlan, RateRule
-from properties.models import Property
+from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from properties.models import Property, PropertyCapacity
 
 
 @pytest.fixture
@@ -81,11 +81,11 @@ def test_create_season(
 
 
 @pytest.mark.django_db
-def test_season_duplicate_copies_cards_and_rules(
+def test_season_duplicate_copies_periods_and_rules(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
-    card: RateCard,
+    period: RatePeriod,
     rule: RateRule,
 ) -> None:
     api_client.force_login(staff)
@@ -93,45 +93,49 @@ def test_season_duplicate_copies_cards_and_rules(
     assert response.status_code == 201, response.content
     payload = response.json()
     cloned = RatePlan.objects.get(pk=payload["id"])
-    assert cloned.cards.count() == 1
-    first_card = cloned.cards.first()
-    assert first_card is not None
-    assert first_card.rules.count() == 1
-    # GAP-056: the clone's rules must point at periods on the CLONE's plan, not
-    # the source plan's (the save() shim re-derives because the view nulls period).
-    cloned_rule = first_card.rules.get()
-    assert cloned_rule.period is not None
-    assert cloned_rule.period.plan_id == cloned.pk
+    assert cloned.periods.count() == 1
+    first_period = cloned.periods.first()
+    assert first_period is not None
+    assert first_period.rules.count() == 1
+    # GAP-056: the clone's bands must hang off periods on the CLONE's plan, not
+    # the source plan's.
+    cloned_rule = first_period.rules.get()
+    assert cloned_rule.period_id == first_period.pk
+    assert first_period.plan_id == cloned.pk
 
 
 @pytest.mark.django_db
-def test_create_rate_card(api_client: APIClient, staff: User, plan: RatePlan) -> None:
+def test_create_rate_period(api_client: APIClient, staff: User, plan: RatePlan) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/seasons/{plan.pk}/rate-cards",
-        data={"name": "Long stay", "min_nights": 7, "sort_order": 1},
-        format="json",
-    )
-    assert response.status_code == 201, response.content
-    assert RateCard.objects.filter(plan=plan, name="Long stay").exists()
-
-
-@pytest.mark.django_db
-def test_create_rate_rule(api_client: APIClient, staff: User, card: RateCard) -> None:
-    api_client.force_login(staff)
-    response = api_client.post(
-        f"/api/v1/rate-cards/{card.pk}/rules",
+        f"/api/v1/seasons/{plan.pk}/rate-periods",
         data={
-            "date_from": "2026-09-01",
-            "date_to": "2026-09-30",
-            "min_party": 1,
-            "max_party": 6,
-            "nightly": "180.00",
+            "name": "Peak",
+            "date_from": "2026-07-01",
+            "date_to": "2026-08-31",
+            "min_nights": 7,
         },
         format="json",
     )
     assert response.status_code == 201, response.content
-    assert RateRule.objects.filter(card=card, nightly=Decimal("180.00")).exists()
+    assert RatePeriod.objects.filter(plan=plan, name="Peak").exists()
+
+
+@pytest.mark.django_db
+def test_create_rate_rule_under_period(
+    api_client: APIClient, staff: User, period: RatePeriod
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/periods/{period.pk}/rules",
+        data={"min_party": 1, "max_party": 6, "nightly": "180.00"},
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    created = RateRule.objects.get(period=period, nightly=Decimal("180.00"))
+    # Dates are inherited from the period; the transitional card FK is filled in.
+    assert (created.date_from, created.date_to) == (period.date_from, period.date_to)
+    assert created.card_id is not None
 
 
 @pytest.mark.django_db
@@ -139,32 +143,130 @@ def test_get_rate_rule_detail(api_client: APIClient, staff: User, rule: RateRule
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/rules/{rule.pk}")
     assert response.status_code == 200
-    assert response.json()["id"] == rule.pk
+    body = response.json()
+    assert body["id"] == rule.pk
+    assert body["period"] == rule.period_id
 
 
 @pytest.mark.django_db
-def test_delete_rate_card(api_client: APIClient, staff: User, card: RateCard) -> None:
+def test_delete_rate_period(api_client: APIClient, staff: User, period: RatePeriod) -> None:
     api_client.force_login(staff)
-    response = api_client.delete(f"/api/v1/rate-cards/{card.pk}")
+    response = api_client.delete(f"/api/v1/periods/{period.pk}")
     assert response.status_code == 204
-    assert not RateCard.objects.filter(pk=card.pk).exists()
+    assert not RatePeriod.objects.filter(pk=period.pk).exists()
 
 
 @pytest.mark.django_db
-def test_season_detail_inlines_cards_with_rules(
+def test_season_detail_inlines_periods_with_rules(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
-    card: RateCard,
+    period: RatePeriod,
     rule: RateRule,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/seasons/{plan.pk}")
     assert response.status_code == 200, response.content
     payload = response.json()
-    assert "cards" in payload
-    assert len(payload["cards"]) == 1
-    assert len(payload["cards"][0]["rules"]) == 1
+    assert "periods" in payload
+    assert len(payload["periods"]) == 1
+    assert len(payload["periods"][0]["rules"]) == 1
+    assert payload["periods"][0]["coverage_gaps"] == []
+
+
+@pytest.mark.django_db
+def test_create_period_rejects_overlapping_dates(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """Periods on one plan must be date-disjoint (Unit 9 EXCLUDE surfaced as 400)."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/seasons/{plan.pk}/rate-periods",
+        data={"date_from": "2026-08-31", "date_to": "2026-09-30"},  # shares 08-31
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "date_from" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_patch_period_dates_repoints_bands(
+    api_client: APIClient, staff: User, period: RatePeriod, card: RateCard
+) -> None:
+    """Moving a period's dates drags its bands' (still-present) date columns along."""
+    band = RateRule.objects.create(
+        period=period,
+        card=card,
+        date_from=period.date_from,
+        date_to=period.date_to,
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("200.00"),
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/periods/{period.pk}",
+        data={"date_from": "2026-06-15", "date_to": "2026-09-15"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    band.refresh_from_db()
+    assert band.date_from == date(2026, 6, 15)
+    assert band.date_to == date(2026, 9, 15)
+
+
+@pytest.mark.django_db
+def test_activate_period_with_party_gap_rejected(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    period: RatePeriod,
+    card: RateCard,
+) -> None:
+    """An active period must price every party 1..max_occupancy (POA is a band)."""
+    PropertyCapacity.objects.create(property=property_, guests=8)
+    # One band covering only 1..4 leaves 5..8 uncovered.
+    RateRule.objects.create(
+        period=period,
+        card=card,
+        date_from=period.date_from,
+        date_to=period.date_to,
+        min_party=1,
+        max_party=4,
+        nightly=Decimal("200.00"),
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/periods/{period.pk}",
+        data={"is_active": True},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "is_active" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_period_coverage_gaps_reports_uncovered_ranges(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    period: RatePeriod,
+    card: RateCard,
+) -> None:
+    PropertyCapacity.objects.create(property=property_, guests=8)
+    RateRule.objects.create(
+        period=period,
+        card=card,
+        date_from=period.date_from,
+        date_to=period.date_to,
+        min_party=1,
+        max_party=4,
+        nightly=Decimal("200.00"),
+    )
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/periods/{period.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["coverage_gaps"] == [[5, 8]]
 
 
 # Touch a couple of variables to silence "unused" complaints from the linter.
@@ -191,7 +293,8 @@ def test_carry_forward_creates_editable_plan_for_future_year(
     assert response.status_code == 201, response.content
     payload = response.json()
     assert payload["effective_from"] == "2028-01-01"
-    assert payload["id"] != rule.card.plan.pk
+    assert rule.period is not None
+    assert payload["id"] != rule.period.plan_id
     # The materialised plan is a real, queryable row distinct from the anchor.
     assert RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
 

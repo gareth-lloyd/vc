@@ -18,14 +18,13 @@ from pricing.views import (
     PropertyExtraListCreateView,
     PropertySeasonCarryForwardView,
     PropertySeasonListCreateView,
-    RateCardDetailView,
     RateCardDiscountListCreateView,
-    RateCardDuplicateView,
-    RateCardRuleListCreateView,
+    RatePeriodDetailView,
+    RatePeriodRuleListCreateView,
     RateRuleDetailView,
     SeasonDetailView,
     SeasonDuplicateView,
-    SeasonRateCardListCreateView,
+    SeasonRatePeriodListCreateView,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -61,24 +60,19 @@ _pricing_paths: list[URLPattern] = [
         name="season-duplicate",
     ),
     path(
-        "seasons/<int:season_id>/rate-cards",
-        SeasonRateCardListCreateView.as_view(),
-        name="season-rate-card-list",
+        "seasons/<int:season_id>/rate-periods",
+        SeasonRatePeriodListCreateView.as_view(),
+        name="season-rate-period-list",
     ),
     path(
-        "rate-cards/<int:pk>",
-        RateCardDetailView.as_view(),
-        name="rate-card-detail",
+        "periods/<int:pk>",
+        RatePeriodDetailView.as_view(),
+        name="rate-period-detail",
     ),
     path(
-        "rate-cards/<int:pk>:duplicate",
-        RateCardDuplicateView.as_view(),
-        name="rate-card-duplicate",
-    ),
-    path(
-        "rate-cards/<int:rate_card_id>/rules",
-        RateCardRuleListCreateView.as_view(),
-        name="rate-card-rule-list",
+        "periods/<int:period_id>/rules",
+        RatePeriodRuleListCreateView.as_view(),
+        name="rate-period-rule-list",
     ),
     path(
         "rules/<int:pk>",

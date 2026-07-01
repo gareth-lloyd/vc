@@ -23,6 +23,13 @@ const UNIFORM: StayOption[] = [
   option({ date_from: "2026-08-15", date_to: "2026-08-22" }),
 ];
 
+// Three all-available blocks — for exercising arrow wrap without held skips.
+const AVAILABLE: StayOption[] = [
+  option({ date_from: "2026-08-01", date_to: "2026-08-08", is_default: true }),
+  option({ date_from: "2026-08-08", date_to: "2026-08-15" }),
+  option({ date_from: "2026-08-15", date_to: "2026-08-22" }),
+];
+
 describe("StayOptionPicker", () => {
   it("renders one radio per option with the compact week label", () => {
     renderWithProviders(
@@ -63,7 +70,7 @@ describe("StayOptionPicker", () => {
   it("moves selection with ArrowRight/ArrowLeft, wrapping at the ends", async () => {
     const onSelect = vi.fn();
     const { rerender } = renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
+      <StayOptionPicker options={AVAILABLE} selectedIndex={0} onSelect={onSelect} />,
     );
 
     screen.getAllByRole("radio")[0].focus();
@@ -71,13 +78,25 @@ describe("StayOptionPicker", () => {
     expect(onSelect).toHaveBeenLastCalledWith(1);
 
     // ArrowLeft from the first cell wraps to the last.
-    rerender(<StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />);
+    rerender(<StayOptionPicker options={AVAILABLE} selectedIndex={0} onSelect={onSelect} />);
     screen.getAllByRole("radio")[0].focus();
     await userEvent.keyboard("{ArrowLeft}");
     expect(onSelect).toHaveBeenLastCalledWith(2);
   });
 
-  it("marks the default option Requested and the held option Held, held still clickable", async () => {
+  it("skips held cells when arrowing so selection only lands on bookable weeks", async () => {
+    // UNIFORM index 1 is held; ArrowRight from index 0 jumps past it to index 2.
+    const onSelect = vi.fn();
+    renderWithProviders(
+      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
+    );
+
+    screen.getAllByRole("radio")[0].focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(onSelect).toHaveBeenLastCalledWith(2);
+  });
+
+  it("marks the default option Requested and the held option Held, held not selectable", async () => {
     const onSelect = vi.fn();
     renderWithProviders(
       <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
@@ -86,10 +105,10 @@ describe("StayOptionPicker", () => {
     const radios = screen.getAllByRole("radio");
     expect(within(radios[0]).getByText("Requested")).toBeInTheDocument();
     expect(within(radios[1]).getByText("Held")).toBeInTheDocument();
-    // Held blocks stay selectable — the parent's Add button is the real guard.
-    expect(radios[1]).not.toBeDisabled();
+    // A booked week can't be quoted, so it isn't selectable — clicking is a no-op.
+    expect(radios[1]).toBeDisabled();
     await userEvent.click(radios[1]);
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("shows both markers when the requested block is also held", () => {

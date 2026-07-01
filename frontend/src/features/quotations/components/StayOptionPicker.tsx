@@ -26,15 +26,17 @@ const CELL_MARKER = "text-[0.625rem] font-medium tracking-wide uppercase";
  * Cells show only the compact date range; the shared "N-night stays" caption
  * carries nights when every block is the same length, else each cell keeps its
  * own nights sub-label. The `is_default` block (nearest the guest's request) is
- * always tagged Requested; held blocks (`is_available === false`) are muted but
- * stay selectable — the operator may want their price, and the parent's Add
- * button is the real guard. Visible text is abbreviated, so each cell carries a
- * full-text `aria-label`.
+ * always tagged Requested; held blocks (`is_available === false`) are shown for
+ * context but are NOT selectable — a booked week can't be quoted, so it never
+ * becomes the active choice (the cell is disabled and Arrow nav skips it). The
+ * caller (`QuoteResultLine`) preselects the first bookable block, so a held
+ * default hands off to an available alternative. Visible text is abbreviated,
+ * so each cell carries a full-text `aria-label`.
  *
  * Radiogroup semantics with a roving tabindex + Arrow key navigation (the ARIA
  * radiogroup pattern): the selected cell is the sole tab stop, and ArrowLeft/Right
- * move selection + focus with wrap-around. Props are unchanged from the old pill
- * row so `QuoteResultLine` needs no change.
+ * move selection + focus with wrap-around, skipping held cells. Props are
+ * unchanged from the old pill row so `QuoteResultLine` needs no change.
  */
 export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
   const { t } = useTranslation("quotations");
@@ -48,7 +50,13 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     event.preventDefault();
     const delta = event.key === "ArrowRight" ? 1 : -1;
-    const next = (selectedIndex + delta + options.length) % options.length;
+    // Step over held (non-selectable) cells, wrapping around; bail if the ring
+    // holds no other bookable block.
+    let next = selectedIndex;
+    do {
+      next = (next + delta + options.length) % options.length;
+    } while (next !== selectedIndex && !options[next].is_available);
+    if (next === selectedIndex || !options[next].is_available) return;
     onSelect(next);
     // Focus the target now — it already exists in the DOM (just tab-inert); the
     // re-render then makes it the tab stop. Keeps focus on the moving selection.
@@ -88,6 +96,7 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
               role="radio"
               aria-checked={selected}
               aria-label={ariaLabel}
+              disabled={!option.is_available}
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(index)}
               className={cn(
@@ -96,7 +105,7 @@ export function StayOptionPicker({ options, selectedIndex, onSelect }: Props) {
                   ? "border-primary bg-primary text-primary-foreground"
                   : option.is_available
                     ? "border-border text-muted-foreground hover:text-foreground"
-                    : "border-border text-muted-foreground/60 hover:text-foreground",
+                    : "border-border text-muted-foreground/50 cursor-not-allowed",
               )}
             >
               <span className="flex items-center gap-1 font-medium whitespace-nowrap">

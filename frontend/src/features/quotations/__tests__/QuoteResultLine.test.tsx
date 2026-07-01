@@ -275,14 +275,18 @@ describe("QuoteResultLine", () => {
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
     });
 
-    it("keeps a held block selectable but disables Add", async () => {
+    it("makes a held block non-selectable, leaving the bookable default active", async () => {
       renderLine(option({ stay_options: twoBlocks([undefined, { is_available: false }]) }));
 
-      await userEvent.click(screen.getAllByRole("radio")[1]);
+      const radios = screen.getAllByRole("radio");
+      // A booked week can't be quoted, so its chip is disabled — clicking is a no-op.
+      expect(radios[1]).toBeDisabled();
+      await userEvent.click(radios[1]);
 
-      // Held chip is selected, but the block can't be added.
-      expect(screen.getAllByRole("radio")[1]).toHaveAttribute("aria-checked", "true");
-      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+      // The bookable default stays selected and addable.
+      expect(radios[0]).toHaveAttribute("aria-checked", "true");
+      expect(radios[1]).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
 
     it("preselects the first free block when the default is held, repricing it", async () => {
@@ -582,16 +586,19 @@ describe("QuoteResultLine", () => {
       expect(await screen.findByText(/Priced as 12 Jul 2026 → 19 Jul 2026/)).toBeInTheDocument();
     });
 
-    it("disables Add when a held week is picked on a banded villa", async () => {
+    it("makes a held week non-selectable on a banded villa, keeping the default addable", async () => {
       renderLine(
         bandedTwoBlocks({ stay_options: twoBlocks([undefined, { is_available: false }]) }),
       );
 
       // Default (free) week: Add enabled with bands.
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
-      // Pick the held alternate → Add disabled (a booked week can't be added).
-      await userEvent.click(screen.getAllByRole("radio")[1]);
-      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+      // The held alternate is disabled — clicking it doesn't move the selection.
+      const radios = screen.getAllByRole("radio");
+      expect(radios[1]).toBeDisabled();
+      await userEvent.click(radios[1]);
+      expect(radios[0]).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
 
     it("hands the picked week's dates and its checked bands to onAdd", async () => {

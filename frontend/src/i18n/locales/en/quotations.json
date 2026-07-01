@@ -178,6 +178,8 @@
       "line_edit": {
         "title": "Edit line",
         "description": "Adjust the dates, party size, or pricing. The server re-prices priced lines on save.",
+        "date_from": "From",
+        "date_to": "To",
         "notes_label": "Notes",
         "discount_label": "Discount",
         "discount_hint": "Subtracted from the priced total.",
@@ -242,8 +244,8 @@
     "criteria": {
       "title": "Search options",
       "aria_label": "Search criteria",
-      "date_from": "From",
-      "date_to": "To",
+      "arrive_from": "Arrive from",
+      "arrive_to": "Arrive to",
       "adults": "Adults",
       "children": "Children",
       "country": "Country (ISO-2)",
@@ -256,13 +258,13 @@
       "q_placeholder": "e.g. Villa Sol",
       "search": "Search",
       "searching": "Searching…",
-      "flex": {
-        "label": "Flexible by",
-        "value_one": "± {{count}} day",
-        "value_other": "± {{count}} days",
-        "decrease_aria": "Decrease date flexibility",
-        "increase_aria": "Increase date flexibility",
-        "window_hint": "Search window: {{from}} → {{to}}. The requested dates stay the preferred stay."
+      "specific_date": "Search specific date",
+      "weeks": {
+        "label": "Number of weeks",
+        "value_one": "{{count}} week",
+        "value_other": "{{count}} weeks",
+        "decrease_aria": "Decrease number of weeks",
+        "increase_aria": "Increase number of weeks"
       }
     },
     "results": {

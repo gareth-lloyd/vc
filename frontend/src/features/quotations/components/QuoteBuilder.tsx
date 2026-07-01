@@ -10,6 +10,7 @@ import { QuoteShortlist } from "./QuoteShortlist";
 import { SaveQuoteDialog } from "./SaveQuoteDialog";
 import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
+import { enquiryToSearchForm } from "../searchCriteria";
 import { nightsCount } from "@/lib/nights";
 import type {
   ChosenStay,
@@ -18,6 +19,7 @@ import type {
   QuotationDetail,
   QuoteCriteriaInput,
   QuoteOption,
+  QuoteSearchForm,
   StagedBand,
   StagedLine,
 } from "../schemas";
@@ -70,19 +72,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
 
   const search = useQuoteOptionsSearch();
 
-  const initial = useMemo<Partial<QuoteCriteriaInput>>(
-    () => ({
-      date_from: enquiry.date_from ?? "",
-      date_to: enquiry.date_to ?? "",
-      adults: enquiry.adults,
-      children: enquiry.children ?? 0,
-      min_bedrooms: enquiry.min_bedrooms ?? null,
-      // The enquiry's structured flexibility seeds the search window; the
-      // dates above stay the client's true requested stay.
-      flex_days: enquiry.flexibility_days ?? 0,
-    }),
-    [enquiry],
-  );
+  // Seed the arrival-window form from the enquiry (GAP-043): its dates ±
+  // flexibility_days become the window, its stay length rounds to weeks.
+  const initial = useMemo<Partial<QuoteSearchForm>>(() => enquiryToSearchForm(enquiry), [enquiry]);
 
   const stagedPropertyIds = useMemo(
     () => new Set(staged.map((line) => line.property_id)),

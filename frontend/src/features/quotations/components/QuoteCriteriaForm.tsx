@@ -1,34 +1,33 @@
-import { useEffect, useMemo } from "react";
-import { useController, useForm, useWatch } from "react-hook-form";
+import { useEffect } from "react";
+import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { addDaysIso } from "@/lib/format/date";
-import { quoteCriteriaInputSchema, type QuoteCriteriaInput } from "../schemas";
-
-// Stepper stops: day-level near the preferred dates, then whole weeks out to
-// ±21 days (the backend's SEARCH_FLEX_MAX) — wide enough for a multi-week
-// sweep ("any week in June") without 21 individual clicks.
-const FLEX_STEPS = [0, 1, 2, 3, 7, 14, 21];
-const MIN_FLEX = FLEX_STEPS[0];
-const MAX_FLEX = FLEX_STEPS[FLEX_STEPS.length - 1];
-
-const nextFlex = (value: number): number => FLEX_STEPS.find((s) => s > value) ?? MAX_FLEX;
-const prevFlex = (value: number): number =>
-  [...FLEX_STEPS].reverse().find((s) => s < value) ?? MIN_FLEX;
+import { type QuoteCriteriaInput, type QuoteSearchForm, quoteSearchFormSchema } from "../schemas";
+import { searchFormToCriteria } from "../searchCriteria";
 
 interface Props {
-  initial: Partial<QuoteCriteriaInput>;
+  initial: Partial<QuoteSearchForm>;
   isSubmitting: boolean;
+  // Receives the translated WIRE criteria — the arrival-window form shape
+  // (GAP-043) stays internal to this component.
   onSubmit: (values: QuoteCriteriaInput) => void;
 }
 
-const DEFAULTS: QuoteCriteriaInput = {
-  date_from: "",
-  date_to: "",
+// Stepper ceiling — quotes beyond three months out of a single search are not
+// a real operator flow, and an unbounded + button invites runaway values.
+const MAX_WEEKS = 12;
+
+const DEFAULTS: QuoteSearchForm = {
+  arrive_from: "",
+  arrive_to: "",
+  weeks: 1,
+  specific_date: false,
   adults: 2,
   children: 0,
   country: "",
@@ -36,14 +35,13 @@ const DEFAULTS: QuoteCriteriaInput = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
-  flex_days: 0,
 };
 
 export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
   const { t } = useTranslation("quotations");
 
-  const form = useForm<QuoteCriteriaInput>({
-    resolver: zodResolver(quoteCriteriaInputSchema),
+  const form = useForm<QuoteSearchForm>({
+    resolver: zodResolver(quoteSearchFormSchema),
     defaultValues: { ...DEFAULTS, ...initial },
   });
 
@@ -52,92 +50,94 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
-  // ± flexibility stepper (mirrors the enquiry form's spread control). The
-  // dates stay the client's preferred stay — the backend widens the window.
-  const flexCtrl = useController({ control: form.control, name: "flex_days" });
-  const flex = flexCtrl.field.value ?? 0;
-  const watchedFrom = useWatch({ control: form.control, name: "date_from" }) ?? "";
-  const watchedTo = useWatch({ control: form.control, name: "date_to" }) ?? "";
-  const window = useMemo(
-    () => ({
-      from: watchedFrom ? addDaysIso(watchedFrom, -flex) : "",
-      to: watchedTo ? addDaysIso(watchedTo, flex) : "",
-    }),
-    [watchedFrom, watchedTo, flex],
-  );
+  // The preferred stay length in whole weeks. The engine snaps each offered
+  // block to the winning card's min/max nights, so the per-cell nights in the
+  // results stay authoritative — this is a preference, not a guarantee.
+  const weeksCtrl = useController({ control: form.control, name: "weeks" });
+  const weeks = weeksCtrl.field.value ?? 1;
+
+  // Legacy IsSpecificDate: collapses the arrival window to the exact
+  // arrive_from (the translator sends flex 0).
+  const specificCtrl = useController({ control: form.control, name: "specific_date" });
+  const specificDate = specificCtrl.field.value ?? false;
 
   return (
     <form
-      onSubmit={form.handleSubmit(onSubmit)}
+      onSubmit={form.handleSubmit((values) => onSubmit(searchFormToCriteria(values)))}
       className="space-y-4 rounded-md border p-4"
       noValidate
       aria-label={t("builder.criteria.aria_label")}
     >
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="qcf-date-from">{t("builder.criteria.date_from")}</Label>
+        <div className={specificDate ? "col-span-2 space-y-2" : "space-y-2"}>
+          <Label htmlFor="qcf-arrive-from">{t("builder.criteria.arrive_from")}</Label>
           <Input
-            id="qcf-date-from"
+            id="qcf-arrive-from"
             type="date"
-            {...form.register("date_from")}
-            aria-invalid={!!form.formState.errors.date_from}
+            {...form.register("arrive_from")}
+            aria-invalid={!!form.formState.errors.arrive_from}
           />
-          {form.formState.errors.date_from ? (
+          {form.formState.errors.arrive_from ? (
             <p className="text-destructive text-sm" role="alert">
-              {form.formState.errors.date_from.message}
+              {form.formState.errors.arrive_from.message}
             </p>
           ) : null}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="qcf-date-to">{t("builder.criteria.date_to")}</Label>
-          <Input
-            id="qcf-date-to"
-            type="date"
-            {...form.register("date_to")}
-            aria-invalid={!!form.formState.errors.date_to}
-          />
-          {form.formState.errors.date_to ? (
-            <p className="text-destructive text-sm" role="alert">
-              {form.formState.errors.date_to.message}
-            </p>
-          ) : null}
-        </div>
+        {specificDate ? null : (
+          <div className="space-y-2">
+            <Label htmlFor="qcf-arrive-to">{t("builder.criteria.arrive_to")}</Label>
+            <Input
+              id="qcf-arrive-to"
+              type="date"
+              {...form.register("arrive_to")}
+              aria-invalid={!!form.formState.errors.arrive_to}
+            />
+            {form.formState.errors.arrive_to ? (
+              <p className="text-destructive text-sm" role="alert">
+                {form.formState.errors.arrive_to.message}
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
 
-      <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">{t("builder.criteria.flex.label")}</span>
+          <span className="text-sm font-medium">{t("builder.criteria.weeks.label")}</span>
           <div className="flex items-center gap-1">
             <Button
               type="button"
               variant="outline"
               size="icon-sm"
-              aria-label={t("builder.criteria.flex.decrease_aria")}
-              disabled={flex <= MIN_FLEX}
-              onClick={() => flexCtrl.field.onChange(prevFlex(flex))}
+              aria-label={t("builder.criteria.weeks.decrease_aria")}
+              disabled={weeks <= 1}
+              onClick={() => weeksCtrl.field.onChange(Math.max(1, weeks - 1))}
             >
               <Minus className="h-3 w-3" />
             </Button>
             <span className="min-w-[4.5rem] text-center text-sm tabular-nums" aria-live="polite">
-              {t("builder.criteria.flex.value", { count: flex })}
+              {t("builder.criteria.weeks.value", { count: weeks })}
             </span>
             <Button
               type="button"
               variant="outline"
               size="icon-sm"
-              aria-label={t("builder.criteria.flex.increase_aria")}
-              disabled={flex >= MAX_FLEX}
-              onClick={() => flexCtrl.field.onChange(nextFlex(flex))}
+              aria-label={t("builder.criteria.weeks.increase_aria")}
+              disabled={weeks >= MAX_WEEKS}
+              onClick={() => weeksCtrl.field.onChange(Math.min(MAX_WEEKS, weeks + 1))}
             >
               <Plus className="h-3 w-3" />
             </Button>
           </div>
         </div>
-        {window.from && window.to && flex > 0 ? (
-          <p className="text-muted-foreground text-xs">
-            {t("builder.criteria.flex.window_hint", { from: window.from, to: window.to })}
-          </p>
-        ) : null}
+        <CheckboxLabel>
+          <Checkbox
+            checked={specificDate}
+            onCheckedChange={(v) => specificCtrl.field.onChange(v === true)}
+            aria-label={t("builder.criteria.specific_date")}
+          />
+          {t("builder.criteria.specific_date")}
+        </CheckboxLabel>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

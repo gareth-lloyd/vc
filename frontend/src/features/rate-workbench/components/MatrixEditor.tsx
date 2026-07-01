@@ -14,7 +14,7 @@ import { bandLabel, buildMatrix, type MatrixCell as CellModel } from "../matrixM
 import { MatrixCell } from "./MatrixCell";
 
 interface MatrixEditorProps {
-  seasonId: number;
+  ratePlanId: number;
   seasons: RatePlanDetail[];
   canWrite: boolean;
   commission: CommissionInput | null;
@@ -33,9 +33,15 @@ function periodLabel(period: RatePeriod): string {
  * are always seeded on the grid's period/band axes, so raggedness is never
  * introduced here.
  */
-export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: MatrixEditorProps) {
+export function MatrixEditor({
+  ratePlanId,
+  seasons,
+  canWrite,
+  commission,
+  tax,
+}: MatrixEditorProps) {
   const { t } = useTranslation("properties");
-  const season = seasons.find((s) => s.id === seasonId) ?? null;
+  const season = seasons.find((s) => s.id === ratePlanId) ?? null;
   const periods = useMemo(() => season?.periods ?? [], [season]);
 
   const currencyCode = season?.currency_code ?? null;
@@ -44,8 +50,8 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
   const matrix = useMemo(() => buildMatrix(periods), [periods]);
   const gapPeriods = periods.filter((p) => (p.coverage_gaps ?? []).length > 0);
 
-  const nightly = useOptimisticBandNightly(seasonId);
-  const deleteRule = useDeleteRateBand(seasonId);
+  const nightly = useOptimisticBandNightly(ratePlanId);
+  const deleteRule = useDeleteRateBand(ratePlanId);
 
   const [creatingCell, setCreatingCell] = useState<CellModel | null>(null);
   const [editingBand, setEditingBand] = useState<RateBand | null>(null);
@@ -132,7 +138,7 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
 
       {creatingCell ? (
         <RateBandFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           periodId={creatingCell.periodId}
           open={!!creatingCell}
           onOpenChange={(o) => !o && setCreatingCell(null)}
@@ -149,7 +155,7 @@ export function MatrixEditor({ seasonId, seasons, canWrite, commission, tax }: M
       ) : null}
       {editingBand ? (
         <RateBandFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           periodId={editingBand.period}
           open={!!editingBand}
           onOpenChange={(o) => !o && setEditingBand(null)}

@@ -77,7 +77,7 @@ const seasonDetailPeriod = {
 // test vary the detail response across refetches (e.g. after a delete).
 function installSeasonDetailHandlers(periods?: () => unknown[] | undefined) {
   server.use(
-    http.get("/api/v1/properties/5/seasons", () =>
+    http.get("/api/v1/properties/5/rate-plans", () =>
       HttpResponse.json(
         drfPage([
           {
@@ -95,7 +95,7 @@ function installSeasonDetailHandlers(periods?: () => unknown[] | undefined) {
     ),
     http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
     http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
-    http.get("/api/v1/seasons/11", () =>
+    http.get("/api/v1/rate-plans/11", () =>
       HttpResponse.json({
         id: 11,
         property: 5,
@@ -127,7 +127,7 @@ describe("PricingTab", () => {
   it("renders seasons, extras and discounts", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () =>
+      http.get("/api/v1/properties/5/rate-plans", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -191,7 +191,7 @@ describe("PricingTab", () => {
   it("drills into a season to show rate periods and bands, then navigates back", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () =>
+      http.get("/api/v1/properties/5/rate-plans", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -209,7 +209,7 @@ describe("PricingTab", () => {
       ),
       http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/seasons/11", () =>
+      http.get("/api/v1/rate-plans/11", () =>
         HttpResponse.json({
           id: 11,
           property: 5,
@@ -240,7 +240,7 @@ describe("PricingTab", () => {
   it("renders empty states when there are no seasons, extras, or discounts", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/rate-plans", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
@@ -255,7 +255,7 @@ describe("PricingTab", () => {
   it("disables Add season when the user lacks the RESERVATIONS role", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/5/rate-plans", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/5/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/5/discounts", () => HttpResponse.json(drfPage([]))),
     );
@@ -268,7 +268,7 @@ describe("PricingTab", () => {
     setReservationsUser();
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () =>
+      http.get("/api/v1/properties/5/rate-plans", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -289,7 +289,7 @@ describe("PricingTab", () => {
     );
     let deleteCalled = false;
     server.use(
-      http.delete("/api/v1/seasons/11", () => {
+      http.delete("/api/v1/rate-plans/11", () => {
         deleteCalled = true;
         return new HttpResponse(null, { status: 204 });
       }),
@@ -309,7 +309,7 @@ describe("PricingTab", () => {
     setReservationsUser();
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () =>
+      http.get("/api/v1/properties/5/rate-plans", () =>
         HttpResponse.json(
           drfPage([
             {
@@ -330,7 +330,7 @@ describe("PricingTab", () => {
     );
     let duplicateCalled = false;
     server.use(
-      http.post("/api/v1/seasons/11:duplicate", () => {
+      http.post("/api/v1/rate-plans/11:duplicate", () => {
         duplicateCalled = true;
         return HttpResponse.json(
           {
@@ -464,7 +464,7 @@ describe("PricingTab", () => {
   it("renders an error state for a failing section while other sections still render", async () => {
     installBaseHandlers();
     server.use(
-      http.get("/api/v1/properties/5/seasons", () => HttpResponse.json({}, { status: 500 })),
+      http.get("/api/v1/properties/5/rate-plans", () => HttpResponse.json({}, { status: 500 })),
       http.get("/api/v1/properties/5/extras", () =>
         HttpResponse.json(
           drfPage([

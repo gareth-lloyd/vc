@@ -20,7 +20,7 @@ import {
   useDeleteRatePeriod,
   useDeleteRateBand,
   usePropertySettings,
-  useSeasonDetail,
+  useRatePlanDetail,
 } from "../hooks";
 import { formatPartyGaps } from "../coverage";
 import { RatePeriodFormDialog } from "./RatePeriodFormDialog";
@@ -176,19 +176,19 @@ function RatePeriodBlock({
   );
 }
 
-export function SeasonDetailPanel({
+export function RatePlanDetailPanel({
   propertyId,
-  seasonId,
+  ratePlanId,
   onBack,
   canWrite,
 }: {
   propertyId: number;
-  seasonId: number;
+  ratePlanId: number;
   onBack: () => void;
   canWrite: boolean;
 }) {
   const { t } = useTranslation("properties");
-  const detail = useSeasonDetail(seasonId);
+  const detail = useRatePlanDetail(ratePlanId);
   const settings = usePropertySettings(propertyId);
   // GAP-026: the property's effective currency, used to flag (softly, never
   // blocking) a season whose currency diverges from it.
@@ -205,8 +205,8 @@ export function SeasonDetailPanel({
   const tax = settings.data?.tax ?? null;
   const dash = t("common.unset");
 
-  const deletePeriodMutation = useDeleteRatePeriod(seasonId);
-  const deleteRuleMutation = useDeleteRateBand(seasonId);
+  const deletePeriodMutation = useDeleteRatePeriod(ratePlanId);
+  const deleteRuleMutation = useDeleteRateBand(ratePlanId);
 
   const [addPeriodOpen, setAddPeriodOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<RatePeriod | null>(null);
@@ -328,7 +328,7 @@ export function SeasonDetailPanel({
 
       {addPeriodOpen ? (
         <RatePeriodFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           open={addPeriodOpen}
           onOpenChange={setAddPeriodOpen}
           mode="create"
@@ -336,7 +336,7 @@ export function SeasonDetailPanel({
       ) : null}
       {editingPeriod ? (
         <RatePeriodFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           open={!!editingPeriod}
           onOpenChange={(o) => !o && setEditingPeriod(null)}
           mode="edit"
@@ -345,7 +345,7 @@ export function SeasonDetailPanel({
       ) : null}
       {addingRulePeriod ? (
         <RateBandFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           periodId={addingRulePeriod.id}
           open={!!addingRulePeriod}
           onOpenChange={(o) => !o && setAddingRulePeriod(null)}
@@ -358,7 +358,7 @@ export function SeasonDetailPanel({
       ) : null}
       {editingBand ? (
         <RateBandFormDialog
-          seasonId={seasonId}
+          ratePlanId={ratePlanId}
           periodId={editingBand.period}
           open={!!editingBand}
           onOpenChange={(o) => !o && setEditingBand(null)}

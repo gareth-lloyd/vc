@@ -19,7 +19,7 @@ function base(): ToLanesInput {
     windowFrom: win.from,
     windowTo: win.to,
     seasons: [],
-    seasonDetails: [],
+    ratePlanDetails: [],
     services: [],
     extras: [],
     discounts: [],
@@ -124,7 +124,7 @@ describe("toLanes", () => {
   it("derives a rate band from a period, ranging price across its bands (GAP-056)", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({
           id: 5,
           name: "Summer",
@@ -167,7 +167,7 @@ describe("toLanes", () => {
   it("takes one price per band (its own basis), never mixing nightly with weekly", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({
           id: 5,
           currency_code: "EUR",
@@ -196,7 +196,7 @@ describe("toLanes", () => {
   it("falls back to the plan name when the period is unnamed", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({
           id: 5,
           name: "Summer",
@@ -219,7 +219,7 @@ describe("toLanes", () => {
   it("skips periods with no rules", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({
           id: 5,
           periods: [
@@ -277,7 +277,7 @@ describe("toLanes", () => {
     });
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         // Two separate single-period plans + one two-period plan: a per-plan
         // ranking would make each single-period plan uniformly one tier. Global
         // tertiles over [100, 200, 300] give low / mid / high regardless of
@@ -309,13 +309,13 @@ describe("toLanes", () => {
     // single period must not read as the darkest "high" tone.
     const single = toLanes({
       ...base(),
-      seasonDetails: [detail({ id: 5, currency_code: "EUR", periods: [period(50, "100")] })],
+      ratePlanDetails: [detail({ id: 5, currency_code: "EUR", periods: [period(50, "100")] })],
     });
     expect(lane(single, "rates").bands[0].meta.priceTier).toBeUndefined();
 
     const twoDistinct = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({ id: 5, currency_code: "EUR", periods: [period(50, "100"), period(51, "200")] }),
       ],
     });
@@ -327,7 +327,7 @@ describe("toLanes", () => {
   it("leaves all-POA rate periods untiered (fall back to lane tone)", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [
+      ratePlanDetails: [
         detail({
           id: 5,
           name: "A",

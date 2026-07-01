@@ -21,12 +21,12 @@ import {
   useChangeOverRules,
   usePropertyDiscounts,
   usePropertyExtras,
-  usePropertySeasons,
+  usePropertyRatePlans,
   usePropertyServices,
   usePropertySettings,
 } from "@/features/properties/hooks";
 import type { PropertyDetail } from "@/features/properties/schemas";
-import { useSeasonDetailsFanOut } from "./hooks";
+import { useRatePlanDetailsFanOut } from "./hooks";
 import { toLanes } from "./toLanes";
 import { useYearWindow } from "./yearWindow";
 import { WorkbenchTimeline } from "./components/WorkbenchTimeline";
@@ -50,7 +50,7 @@ export function RateWorkbenchPage() {
   const { year, windowStart, dayCount, from, to, goPrev, goNext } = useYearWindow();
   const canWrite = useHasReservationsRole();
 
-  const seasons = usePropertySeasons(property.id);
+  const seasons = usePropertyRatePlans(property.id);
   const services = usePropertyServices(property.id);
   const extras = usePropertyExtras(property.id);
   const discounts = usePropertyDiscounts(property.id);
@@ -58,11 +58,11 @@ export function RateWorkbenchPage() {
   const settings = usePropertySettings(property.id);
 
   const seasonList = seasons.data?.results ?? [];
-  const fanOut = useSeasonDetailsFanOut(seasonList.map((s) => s.id));
+  const fanOut = useRatePlanDetailsFanOut(seasonList.map((s) => s.id));
 
   // Which season's rate matrix is open (below the timeline). Defaults to the
   // first season that has periods once details load.
-  const [matrixSeasonId, setMatrixSeasonId] = useState<number | null>(null);
+  const [matrixRatePlanId, setMatrixRatePlanId] = useState<number | null>(null);
 
   const isLoading =
     seasons.isLoading ||
@@ -140,7 +140,7 @@ export function RateWorkbenchPage() {
       windowFrom: from,
       windowTo: to,
       seasons: seasonList,
-      seasonDetails: fanOut.details,
+      ratePlanDetails: fanOut.details,
       services: serviceList,
       extras: extraList,
       discounts: discountList,
@@ -179,13 +179,13 @@ export function RateWorkbenchPage() {
   // below the timeline whenever any loaded season has periods — independent of
   // the year in view.
   const seasonsWithPeriods = fanOut.details.filter((d) => (d.periods?.length ?? 0) > 0);
-  const activeMatrixSeasonId =
-    matrixSeasonId != null && seasonsWithPeriods.some((s) => s.id === matrixSeasonId)
-      ? matrixSeasonId
+  const activeMatrixRatePlanId =
+    matrixRatePlanId != null && seasonsWithPeriods.some((s) => s.id === matrixRatePlanId)
+      ? matrixRatePlanId
       : (seasonsWithPeriods[0]?.id ?? null);
 
   const matrixSection =
-    !isLoading && !isError && activeMatrixSeasonId != null ? (
+    !isLoading && !isError && activeMatrixRatePlanId != null ? (
       <section className="border-border space-y-3 border-t pt-6">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-foreground text-lg font-semibold">
@@ -193,8 +193,8 @@ export function RateWorkbenchPage() {
           </h2>
           {seasonsWithPeriods.length > 1 ? (
             <Select
-              value={String(activeMatrixSeasonId)}
-              onValueChange={(v) => setMatrixSeasonId(Number(v))}
+              value={String(activeMatrixRatePlanId)}
+              onValueChange={(v) => setMatrixRatePlanId(Number(v))}
             >
               <SelectTrigger
                 className="w-[220px]"
@@ -213,8 +213,8 @@ export function RateWorkbenchPage() {
           ) : null}
         </div>
         <MatrixEditor
-          key={activeMatrixSeasonId}
-          seasonId={activeMatrixSeasonId}
+          key={activeMatrixRatePlanId}
+          ratePlanId={activeMatrixRatePlanId}
           seasons={seasonsWithPeriods}
           canWrite={canWrite}
           commission={settings.data?.commission ?? null}

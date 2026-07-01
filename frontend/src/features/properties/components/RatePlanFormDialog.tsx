@@ -19,7 +19,7 @@ import {
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { asPriceBasis } from "@/lib/pricing/netGross";
-import { useCreateSeason, usePropertySettings, useUpdateSeason } from "../hooks";
+import { useCreateRatePlan, usePropertySettings, useUpdateRatePlan } from "../hooks";
 import {
   PROPERTY_PRICE_BASES,
   ratePlanWriteInputSchema,
@@ -45,7 +45,7 @@ interface EditProps extends CommonProps {
   season: RatePlan;
 }
 
-type SeasonFormDialogProps = CreateProps | EditProps;
+type RatePlanFormDialogProps = CreateProps | EditProps;
 
 type PriceBasisValue = (typeof PROPERTY_PRICE_BASES)[number];
 
@@ -79,7 +79,7 @@ function defaultsFromSeason(season: RatePlan): RatePlanWriteInput {
   };
 }
 
-export function SeasonFormDialog(props: SeasonFormDialogProps) {
+export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
   const { propertyId, open, onOpenChange } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
@@ -96,8 +96,8 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const createMutation = useCreateSeason(propertyId);
-  const updateMutation = useUpdateSeason(propertyId);
+  const createMutation = useCreateRatePlan(propertyId);
+  const updateMutation = useUpdateRatePlan(propertyId);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
@@ -126,7 +126,7 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
         await createMutation.mutateAsync(body);
         toast.success(t("pricing.seasons.toasts.created"));
       } else {
-        await updateMutation.mutateAsync({ seasonId: props.season.id, input: body });
+        await updateMutation.mutateAsync({ ratePlanId: props.season.id, input: body });
         toast.success(t("pricing.seasons.toasts.updated"));
       }
       onOpenChange(false);

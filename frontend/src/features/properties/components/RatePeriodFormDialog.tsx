@@ -16,7 +16,7 @@ import { ratePeriodWriteInputSchema, type RatePeriod, type RatePeriodWriteInput 
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
-  seasonId: number;
+  ratePlanId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -55,7 +55,7 @@ function defaultsFromPeriod(period: RatePeriod): RatePeriodWriteInput {
 }
 
 export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
-  const { seasonId, open, onOpenChange } = props;
+  const { ratePlanId, open, onOpenChange } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
@@ -65,8 +65,8 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const createMutation = useCreateRatePeriod(seasonId);
-  const updateMutation = useUpdateRatePeriod(seasonId);
+  const createMutation = useCreateRatePeriod(ratePlanId);
+  const updateMutation = useUpdateRatePeriod(ratePlanId);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {

@@ -25,7 +25,7 @@ import {
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
-  seasonId: number;
+  ratePlanId: number;
   /** The parent period this band belongs to (GAP-056 — dates live on it). */
   periodId: number;
   open: boolean;
@@ -121,7 +121,7 @@ function DerivedCounterpartHint({
 }
 
 export function RateBandFormDialog(props: RateBandFormDialogProps) {
-  const { seasonId, periodId, open, onOpenChange, currencyCode, priceBasis, commission, tax } =
+  const { ratePlanId, periodId, open, onOpenChange, currencyCode, priceBasis, commission, tax } =
     props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
@@ -133,8 +133,8 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const createMutation = useCreateRateBand(seasonId);
-  const updateMutation = useUpdateRateBand(seasonId);
+  const createMutation = useCreateRateBand(ratePlanId);
+  const updateMutation = useUpdateRateBand(ratePlanId);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {

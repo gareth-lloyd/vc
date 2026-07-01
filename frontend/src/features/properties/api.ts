@@ -84,7 +84,7 @@ import {
   type RateBandWritePayload,
 } from "./schemas";
 import type { Paginated } from "@/types/api";
-import type { PropertyId, SeasonId } from "@/lib/query/keys";
+import type { PropertyId, RatePlanId } from "@/lib/query/keys";
 
 function toQuery(filters: PropertyFilters): QueryParams {
   return {
@@ -274,46 +274,46 @@ export async function deletePropertyService(serviceId: number): Promise<void> {
   await apiSend<void>("DELETE", `/services/${serviceId}`);
 }
 
-export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Paginated<RatePlan>> {
-  const data = await apiGet<unknown>(`/properties/${idOrSlug}/seasons`);
+export async function fetchPropertyRatePlans(idOrSlug: PropertyId): Promise<Paginated<RatePlan>> {
+  const data = await apiGet<unknown>(`/properties/${idOrSlug}/rate-plans`);
   return ratePlansResponseSchema.parse(data);
 }
 
-export async function fetchSeasonDetail(seasonId: SeasonId): Promise<RatePlanDetail> {
-  const data = await apiGet<unknown>(`/seasons/${seasonId}`);
+export async function fetchRatePlanDetail(ratePlanId: RatePlanId): Promise<RatePlanDetail> {
+  const data = await apiGet<unknown>(`/rate-plans/${ratePlanId}`);
   return ratePlanDetailSchema.parse(data);
 }
 
-export async function createSeason(
+export async function createRatePlan(
   propertyId: PropertyId,
   body: RatePlanWriteInput,
 ): Promise<RatePlan> {
-  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/seasons`, body);
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/rate-plans`, body);
   return ratePlanSchema.parse(data);
 }
 
-export async function updateSeason(
-  seasonId: SeasonId,
+export async function updateRatePlan(
+  ratePlanId: RatePlanId,
   body: Partial<RatePlanWriteInput>,
 ): Promise<RatePlan> {
-  const data = await apiSend<unknown>("PATCH", `/seasons/${seasonId}`, body);
+  const data = await apiSend<unknown>("PATCH", `/rate-plans/${ratePlanId}`, body);
   return ratePlanSchema.parse(data);
 }
 
-export async function deleteSeason(seasonId: SeasonId): Promise<void> {
-  await apiSend<void>("DELETE", `/seasons/${seasonId}`);
+export async function deleteRatePlan(ratePlanId: RatePlanId): Promise<void> {
+  await apiSend<void>("DELETE", `/rate-plans/${ratePlanId}`);
 }
 
-export async function duplicateSeason(seasonId: SeasonId): Promise<RatePlan> {
-  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}:duplicate`);
+export async function duplicateRatePlan(ratePlanId: RatePlanId): Promise<RatePlan> {
+  const data = await apiSend<unknown>("POST", `/rate-plans/${ratePlanId}:duplicate`);
   return ratePlanSchema.parse(data);
 }
 
 export async function createRatePeriod(
-  seasonId: SeasonId,
+  ratePlanId: RatePlanId,
   body: RatePeriodWriteInput,
 ): Promise<RatePeriod> {
-  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}/rate-periods`, body);
+  const data = await apiSend<unknown>("POST", `/rate-plans/${ratePlanId}/rate-periods`, body);
   return ratePeriodSchema.parse(data);
 }
 

@@ -61,7 +61,13 @@ describe("RateBandFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -88,7 +94,13 @@ describe("RateBandFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByLabelText(/price on application/i));
@@ -111,7 +123,13 @@ describe("RateBandFormDialog — create", () => {
       }),
     );
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     // min_party defaults to 1; set it above max_party (which defaults to 1).
     await userEvent.clear(screen.getByLabelText(/Minimum party/i));
@@ -126,7 +144,13 @@ describe("RateBandFormDialog — create", () => {
   it("requires a price or POA", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     await fillValidRule();
     await userEvent.clear(screen.getByLabelText(/Nightly price/i));
@@ -152,7 +176,13 @@ describe("RateBandFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /save & add another/i }));
@@ -191,7 +221,7 @@ describe("RateBandFormDialog — edit", () => {
 
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -219,7 +249,7 @@ describe("RateBandFormDialog — currency adornment (GAP-026)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -234,7 +264,13 @@ describe("RateBandFormDialog — currency adornment (GAP-026)", () => {
   it("renders no symbol when the season has no currency", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateBandFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
     );
     expect(screen.queryByText("€")).not.toBeInTheDocument();
     expect(screen.queryByText("£")).not.toBeInTheDocument();
@@ -244,7 +280,7 @@ describe("RateBandFormDialog — currency adornment (GAP-026)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -268,7 +304,7 @@ describe("RateBandFormDialog — net↔gross derivation (GAP-035)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -290,7 +326,7 @@ describe("RateBandFormDialog — net↔gross derivation (GAP-035)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -312,7 +348,7 @@ describe("RateBandFormDialog — net↔gross derivation (GAP-035)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}
@@ -329,7 +365,7 @@ describe("RateBandFormDialog — net↔gross derivation (GAP-035)", () => {
     setReservationsUser();
     renderWithProviders(
       <RateBandFormDialog
-        seasonId={11}
+        ratePlanId={11}
         periodId={5}
         open
         onOpenChange={() => {}}

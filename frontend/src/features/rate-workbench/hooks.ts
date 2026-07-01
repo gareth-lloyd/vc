@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys, type PropertyId } from "@/lib/query/keys";
 import { ApiError } from "@/lib/api/errors";
-import { fetchSeasonDetail, updateRateBand } from "@/features/properties/api";
+import { fetchRatePlanDetail, updateRateBand } from "@/features/properties/api";
 import type { RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import i18n from "@/i18n";
 import {
@@ -17,17 +17,17 @@ import {
 import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
 
 /**
- * Fan out one `useSeasonDetail` query per season to assemble the whole rate
- * picture (periods + bands) the timeline needs — `usePropertySeasons` returns
- * only the plan envelopes. Keyed on the shared `seasonDetail` query key so the
- * cache is deduped with `PricingTab`'s `SeasonDetailPanel`, and any RateBand
+ * Fan out one `useRatePlanDetail` query per season to assemble the whole rate
+ * picture (periods + bands) the timeline needs — `usePropertyRatePlans` returns
+ * only the plan envelopes. Keyed on the shared `ratePlanDetail` query key so the
+ * cache is deduped with `PricingTab`'s `RatePlanDetailPanel`, and any RateBand
  * mutation invalidating that key refreshes the workbench too.
  */
-export function useSeasonDetailsFanOut(seasonIds: number[]) {
+export function useRatePlanDetailsFanOut(seasonIds: number[]) {
   return useQueries({
     queries: seasonIds.map((id) => ({
-      queryKey: queryKeys.properties.seasonDetail(id),
-      queryFn: () => fetchSeasonDetail(id),
+      queryKey: queryKeys.properties.ratePlanDetail(id),
+      queryFn: () => fetchRatePlanDetail(id),
     })),
     combine: (results) => ({
       details: results.map((r) => r.data).filter((d): d is RatePlanDetail => d != null),
@@ -50,15 +50,15 @@ interface NightlyEditContext {
 
 /**
  * Optimistic inline nightly-price edit for a matrix cell. Mirrors
- * `useToggleBookingNotePin`: patch the shared `seasonDetail` cache immediately,
+ * `useToggleBookingNotePin`: patch the shared `ratePlanDetail` cache immediately,
  * PATCH the rule (clearing POA — a priced cell is not price-on-application),
  * roll back + toast on failure, and invalidate on settle so the timeline and
  * matrix reconcile from the server. Structural edits (party bands, weekly, POA,
  * new rows/columns) go through `RateBandFormDialog`, not this path.
  */
-export function useOptimisticBandNightly(seasonId: number) {
+export function useOptimisticBandNightly(ratePlanId: number) {
   const queryClient = useQueryClient();
-  const key = queryKeys.properties.seasonDetail(seasonId);
+  const key = queryKeys.properties.ratePlanDetail(ratePlanId);
   return useMutation<RateBand, Error, NightlyEditVars, NightlyEditContext>({
     mutationFn: ({ bandId, nightly }) => updateRateBand(bandId, { nightly, is_poa: false }),
     onMutate: async ({ bandId, nightly }) => {

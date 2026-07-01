@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
-import { SeasonDetailPanel } from "../components/SeasonDetailPanel";
+import { RatePlanDetailPanel } from "../components/RatePlanDetailPanel";
 
 function installSeason(currencyCode: string | null) {
   server.use(
-    http.get("/api/v1/seasons/11", () =>
+    http.get("/api/v1/rate-plans/11", () =>
       HttpResponse.json({
         id: 11,
         property: 5,
@@ -41,11 +41,11 @@ function installSettings(currencyCode: string | null) {
 
 function renderPanel() {
   return renderWithProviders(
-    <SeasonDetailPanel propertyId={5} seasonId={11} onBack={() => {}} canWrite={false} />,
+    <RatePlanDetailPanel propertyId={5} ratePlanId={11} onBack={() => {}} canWrite={false} />,
   );
 }
 
-describe("SeasonDetailPanel — currency mismatch warning (GAP-026)", () => {
+describe("RatePlanDetailPanel — currency mismatch warning (GAP-026)", () => {
   it("warns (non-blocking) when the season currency differs from the property's", async () => {
     installSeason("EUR");
     installSettings("GBP");

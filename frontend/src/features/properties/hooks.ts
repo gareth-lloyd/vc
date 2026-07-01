@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { queryKeys, type PropertyId, type SeasonId } from "@/lib/query/keys";
+import { queryKeys, type PropertyId, type RatePlanId } from "@/lib/query/keys";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
   activateProperty,
@@ -15,7 +15,7 @@ import {
   createPropertyService,
   createRatePeriod,
   createRateBand,
-  createSeason,
+  createRatePlan,
   deleteChangeOverRule,
   deletePropertyBlock,
   deletePropertyContact,
@@ -26,8 +26,8 @@ import {
   deletePropertyService,
   deleteRatePeriod,
   deleteRateBand,
-  deleteSeason,
-  duplicateSeason,
+  deleteRatePlan,
+  duplicateRatePlan,
   fetchChangeOverRules,
   fetchNearbyPlaceTypes,
   fetchProperties,
@@ -48,9 +48,9 @@ import {
   fetchPropertyNearbyPlaces,
   fetchPropertyRooms,
   fetchPropertyServices,
-  fetchPropertySeasons,
+  fetchPropertyRatePlans,
   fetchPropertySettings,
-  fetchSeasonDetail,
+  fetchRatePlanDetail,
   reorderPropertyImages,
   reorderPropertyRooms,
   restoreProperty,
@@ -69,7 +69,7 @@ import {
   updatePropertySettings,
   updateRatePeriod,
   updateRateBand,
-  updateSeason,
+  updateRatePlan,
   upsertPropertyDescription,
 } from "./api";
 import type {
@@ -275,81 +275,83 @@ export function useDeletePropertyService(propertyId: PropertyId) {
   });
 }
 
-export function usePropertySeasons(idOrSlug: PropertyId | undefined) {
-  return useQuery(enabledQuery(idOrSlug, queryKeys.properties.seasons, fetchPropertySeasons));
+export function usePropertyRatePlans(idOrSlug: PropertyId | undefined) {
+  return useQuery(enabledQuery(idOrSlug, queryKeys.properties.ratePlans, fetchPropertyRatePlans));
 }
 
-export function useSeasonDetail(seasonId: SeasonId | undefined) {
-  return useQuery(enabledQuery(seasonId, queryKeys.properties.seasonDetail, fetchSeasonDetail));
+export function useRatePlanDetail(ratePlanId: RatePlanId | undefined) {
+  return useQuery(
+    enabledQuery(ratePlanId, queryKeys.properties.ratePlanDetail, fetchRatePlanDetail),
+  );
 }
 
-export function useCreateSeason(propertyId: PropertyId) {
+export function useCreateRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RatePlanWriteInput) => createSeason(propertyId, input),
+    mutationFn: (input: RatePlanWriteInput) => createRatePlan(propertyId, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
     },
   });
 }
 
 interface UpdateSeasonVars {
-  seasonId: SeasonId;
+  ratePlanId: RatePlanId;
   input: Partial<RatePlanWriteInput>;
 }
 
-export function useUpdateSeason(propertyId: PropertyId) {
+export function useUpdateRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ seasonId, input }: UpdateSeasonVars) => updateSeason(seasonId, input),
+    mutationFn: ({ ratePlanId, input }: UpdateSeasonVars) => updateRatePlan(ratePlanId, input),
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.properties.seasonDetail(vars.seasonId),
+        queryKey: queryKeys.properties.ratePlanDetail(vars.ratePlanId),
       });
     },
   });
 }
 
-export function useDeleteSeason(propertyId: PropertyId) {
+export function useDeleteRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => deleteSeason(seasonId),
+    mutationFn: ({ ratePlanId }: { ratePlanId: RatePlanId }) => deleteRatePlan(ratePlanId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
     },
   });
 }
 
-export function useDuplicateSeason(propertyId: PropertyId) {
+export function useDuplicateRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ seasonId }: { seasonId: SeasonId }) => duplicateSeason(seasonId),
+    mutationFn: ({ ratePlanId }: { ratePlanId: RatePlanId }) => duplicateRatePlan(ratePlanId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.seasons(propertyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
     },
   });
 }
 
-function useSeasonDetailInvalidation(seasonId: SeasonId) {
+function useRatePlanDetailInvalidation(ratePlanId: RatePlanId) {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({
-      queryKey: queryKeys.properties.seasonDetail(seasonId),
+      queryKey: queryKeys.properties.ratePlanDetail(ratePlanId),
     });
   };
 }
 
-export function useCreateRatePeriod(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useCreateRatePeriod(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
-    mutationFn: (input: RatePeriodWriteInput) => createRatePeriod(seasonId, input),
+    mutationFn: (input: RatePeriodWriteInput) => createRatePeriod(ratePlanId, input),
     onSuccess: invalidate,
   });
 }
 
-export function useUpdateRatePeriod(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useUpdateRatePeriod(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
     mutationFn: ({ periodId, input }: { periodId: number; input: Partial<RatePeriodWriteInput> }) =>
       updateRatePeriod(periodId, input),
@@ -357,16 +359,16 @@ export function useUpdateRatePeriod(seasonId: SeasonId) {
   });
 }
 
-export function useDeleteRatePeriod(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useDeleteRatePeriod(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
     mutationFn: ({ periodId }: { periodId: number }) => deleteRatePeriod(periodId),
     onSuccess: invalidate,
   });
 }
 
-export function useCreateRateBand(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useCreateRateBand(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
     mutationFn: ({ periodId, input }: { periodId: number; input: RateBandWritePayload }) =>
       createRateBand(periodId, input),
@@ -374,8 +376,8 @@ export function useCreateRateBand(seasonId: SeasonId) {
   });
 }
 
-export function useUpdateRateBand(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useUpdateRateBand(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
     mutationFn: ({ bandId, input }: { bandId: number; input: Partial<RateBandWritePayload> }) =>
       updateRateBand(bandId, input),
@@ -383,8 +385,8 @@ export function useUpdateRateBand(seasonId: SeasonId) {
   });
 }
 
-export function useDeleteRateBand(seasonId: SeasonId) {
-  const invalidate = useSeasonDetailInvalidation(seasonId);
+export function useDeleteRateBand(ratePlanId: RatePlanId) {
+  const invalidate = useRatePlanDetailInvalidation(ratePlanId);
   return useMutation({
     mutationFn: ({ bandId }: { bandId: number }) => deleteRateBand(bandId),
     onSuccess: invalidate,

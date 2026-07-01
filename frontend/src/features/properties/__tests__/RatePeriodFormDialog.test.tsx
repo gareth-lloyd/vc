@@ -56,18 +56,18 @@ async function fillValidPeriod() {
 }
 
 describe("RatePeriodFormDialog — create", () => {
-  it("posts to /seasons/:id/rate-periods with the entered dates + name", async () => {
+  it("posts to /rate-plans/:id/rate-periods with the entered dates + name", async () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", async ({ request }) => {
+      http.post("/api/v1/rate-plans/11/rate-periods", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ id: 1, plan: 11, ...postBody }, { status: 201 });
       }),
     );
 
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await userEvent.type(screen.getByLabelText(/Name/i), "Peak summer");
     await fillValidPeriod();
@@ -86,14 +86,14 @@ describe("RatePeriodFormDialog — create", () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", async ({ request }) => {
+      http.post("/api/v1/rate-plans/11/rate-periods", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ id: 1, plan: 11, ...postBody }, { status: 201 });
       }),
     );
 
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidPeriod();
     await userEvent.type(screen.getByLabelText(/Minimum nights/i), "7");
@@ -108,13 +108,13 @@ describe("RatePeriodFormDialog — create", () => {
     setReservationsUser();
     let requested = false;
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", () => {
+      http.post("/api/v1/rate-plans/11/rate-periods", () => {
         requested = true;
         return HttpResponse.json({ id: 1, plan: 11 }, { status: 201 });
       }),
     );
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await userEvent.type(screen.getByLabelText(/^From$/i), "2026-06-30");
     await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-01");
@@ -128,13 +128,13 @@ describe("RatePeriodFormDialog — create", () => {
     setReservationsUser();
     let requested = false;
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", () => {
+      http.post("/api/v1/rate-plans/11/rate-periods", () => {
         requested = true;
         return HttpResponse.json({ id: 1, plan: 11 }, { status: 201 });
       }),
     );
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidPeriod();
     await userEvent.type(screen.getByLabelText(/Minimum nights/i), "7");
@@ -148,7 +148,7 @@ describe("RatePeriodFormDialog — create", () => {
   it("maps a 4xx field error to an inline message", async () => {
     setReservationsUser();
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", () =>
+      http.post("/api/v1/rate-plans/11/rate-periods", () =>
         HttpResponse.json(
           {
             code: "validation_error",
@@ -160,7 +160,7 @@ describe("RatePeriodFormDialog — create", () => {
       ),
     );
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidPeriod();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -172,7 +172,7 @@ describe("RatePeriodFormDialog — create", () => {
   it("renders an inline error for a 4xx field_errors.name (registered field, not folded)", async () => {
     setReservationsUser();
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", () =>
+      http.post("/api/v1/rate-plans/11/rate-periods", () =>
         HttpResponse.json(
           {
             code: "validation_error",
@@ -184,7 +184,7 @@ describe("RatePeriodFormDialog — create", () => {
       ),
     );
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidPeriod();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -196,12 +196,12 @@ describe("RatePeriodFormDialog — create", () => {
   it("toasts and stays open on a 5xx", async () => {
     setReservationsUser();
     server.use(
-      http.post("/api/v1/seasons/11/rate-periods", () =>
+      http.post("/api/v1/rate-plans/11/rate-periods", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
     renderWithProviders(
-      <RatePeriodFormDialog seasonId={11} open onOpenChange={() => {}} mode="create" />,
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidPeriod();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -225,7 +225,7 @@ describe("RatePeriodFormDialog — edit", () => {
 
     renderWithProviders(
       <RatePeriodFormDialog
-        seasonId={11}
+        ratePlanId={11}
         open
         onOpenChange={() => {}}
         mode="edit"

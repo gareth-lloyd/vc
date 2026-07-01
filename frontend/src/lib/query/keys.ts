@@ -1,6 +1,6 @@
 export type PropertyId = string | number;
 export type BookingId = string | number;
-export type SeasonId = string | number;
+export type RatePlanId = string | number;
 export type ContactId = string | number;
 export type CompanyId = string | number;
 export type EnquiryId = string | number;
@@ -45,8 +45,9 @@ export const queryKeys = {
     services: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "services"] as const,
     changeover: (idOrSlug: PropertyId) =>
       ["properties", "detail", k(idOrSlug), "changeover"] as const,
-    seasons: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "seasons"] as const,
-    seasonDetail: (seasonId: SeasonId) => ["properties", "seasons", "detail", k(seasonId)] as const,
+    ratePlans: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "seasons"] as const,
+    ratePlanDetail: (ratePlanId: RatePlanId) =>
+      ["properties", "seasons", "detail", k(ratePlanId)] as const,
     extras: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "extras"] as const,
     discounts: (idOrSlug: PropertyId) =>
       ["properties", "detail", k(idOrSlug), "discounts"] as const,

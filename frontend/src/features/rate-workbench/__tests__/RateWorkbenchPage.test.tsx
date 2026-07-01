@@ -36,7 +36,7 @@ const season = {
   is_active: true,
 };
 
-const seasonDetail = {
+const ratePlanDetail = {
   ...season,
   periods: [
     {
@@ -89,8 +89,8 @@ const changeover = {
 function installHandlers() {
   server.use(
     http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
-    http.get("/api/v1/properties/7/seasons", () => HttpResponse.json(drfPage([season]))),
-    http.get("/api/v1/seasons/100", () => HttpResponse.json(seasonDetail)),
+    http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([season]))),
+    http.get("/api/v1/rate-plans/100", () => HttpResponse.json(ratePlanDetail)),
     http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([service]))),
     http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([extra]))),
     http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([discount]))),
@@ -169,7 +169,7 @@ describe("RateWorkbenchPage", () => {
     setUser("reservations");
     server.use(
       http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/7/seasons", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
@@ -186,8 +186,8 @@ describe("RateWorkbenchPage", () => {
     const pastSeason = { ...season, effective_from: "2025-06-01", effective_to: "2025-08-31" };
     server.use(
       http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/7/seasons", () => HttpResponse.json(drfPage([pastSeason]))),
-      http.get("/api/v1/seasons/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
+      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([pastSeason]))),
+      http.get("/api/v1/rate-plans/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
       http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),

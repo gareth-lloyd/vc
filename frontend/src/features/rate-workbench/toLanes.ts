@@ -92,7 +92,7 @@ export interface ToLanesInput {
   windowTo: string;
   seasons: RatePlan[];
   /** Season details (periods + bands) drive the rates lane; loading/absent → no rate bands. */
-  seasonDetails: RatePlanDetail[];
+  ratePlanDetails: RatePlanDetail[];
   services: PropertyService[];
   extras: Extra[];
   discounts: Discount[];
@@ -151,7 +151,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     meta: { currencyCode: season.currency_code ?? null, isActive: season.is_active ?? true },
   }));
 
-  const rateBandsUntiered: RawBand[] = input.seasonDetails.flatMap((plan) =>
+  const rateBandsUntiered: RawBand[] = input.ratePlanDetails.flatMap((plan) =>
     (plan.periods ?? []).flatMap((period) => {
       const bands = period.bands ?? [];
       if (bands.length === 0) return [];

@@ -19,14 +19,14 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
-import { SeasonFormDialog } from "../components/SeasonFormDialog";
-import { ActiveBadge, SeasonDetailPanel } from "../components/SeasonDetailPanel";
+import { RatePlanFormDialog } from "../components/RatePlanFormDialog";
+import { ActiveBadge, RatePlanDetailPanel } from "../components/RatePlanDetailPanel";
 import {
-  useDeleteSeason,
-  useDuplicateSeason,
+  useDeleteRatePlan,
+  useDuplicateRatePlan,
   usePropertyDiscounts,
   usePropertyExtras,
-  usePropertySeasons,
+  usePropertyRatePlans,
 } from "../hooks";
 import type { Discount, Extra, PropertyDetail, RatePlan } from "../schemas";
 
@@ -43,7 +43,7 @@ function SeasonsList({
   onDelete,
 }: {
   seasons: RatePlan[];
-  onSelect: (seasonId: number) => void;
+  onSelect: (ratePlanId: number) => void;
   canWrite: boolean;
   onEdit: (season: RatePlan) => void;
   onDuplicate: (season: RatePlan) => void;
@@ -173,13 +173,13 @@ function DiscountsTable({ discounts }: { discounts: Discount[] }) {
 export function PricingTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<PricingContext>();
-  const seasons = usePropertySeasons(property.id);
+  const seasons = usePropertyRatePlans(property.id);
   const extras = usePropertyExtras(property.id);
   const discounts = usePropertyDiscounts(property.id);
   const canWrite = useHasReservationsRole();
-  const deleteSeasonMutation = useDeleteSeason(property.id);
-  const duplicateSeasonMutation = useDuplicateSeason(property.id);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
+  const deleteSeasonMutation = useDeleteRatePlan(property.id);
+  const duplicateSeasonMutation = useDuplicateRatePlan(property.id);
+  const [selectedRatePlanId, setSelectedRatePlanId] = useState<number | null>(null);
   const [addSeasonOpen, setAddSeasonOpen] = useState(false);
   const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
   const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
@@ -188,7 +188,7 @@ export function PricingTab() {
   const handleDeleteSeason = async () => {
     if (!deletingSeason) return;
     try {
-      await deleteSeasonMutation.mutateAsync({ seasonId: deletingSeason.id });
+      await deleteSeasonMutation.mutateAsync({ ratePlanId: deletingSeason.id });
       toast.success(t("pricing.seasons.toasts.deleted"));
       setDeletingSeason(null);
     } catch {
@@ -199,7 +199,7 @@ export function PricingTab() {
   const handleDuplicateSeason = async () => {
     if (!duplicatingSeason) return;
     try {
-      await duplicateSeasonMutation.mutateAsync({ seasonId: duplicatingSeason.id });
+      await duplicateSeasonMutation.mutateAsync({ ratePlanId: duplicatingSeason.id });
       toast.success(t("pricing.seasons.toasts.duplicated"));
       setDuplicatingSeason(null);
     } catch {
@@ -228,7 +228,7 @@ export function PricingTab() {
     <div className="space-y-8 p-6">
       <Section
         title={t("pricing.sections.seasons")}
-        actions={selectedSeasonId == null ? addSeasonButton : null}
+        actions={selectedRatePlanId == null ? addSeasonButton : null}
       >
         {seasons.isLoading ? (
           <Skeleton className="h-20 w-full" />
@@ -238,17 +238,17 @@ export function PricingTab() {
             description={t("pricing.seasons.error_body")}
             onRetry={() => seasons.refetch()}
           />
-        ) : selectedSeasonId != null ? (
-          <SeasonDetailPanel
+        ) : selectedRatePlanId != null ? (
+          <RatePlanDetailPanel
             propertyId={property.id}
-            seasonId={selectedSeasonId}
-            onBack={() => setSelectedSeasonId(null)}
+            ratePlanId={selectedRatePlanId}
+            onBack={() => setSelectedRatePlanId(null)}
             canWrite={canWrite}
           />
         ) : (
           <SeasonsList
             seasons={seasons.data?.results ?? []}
-            onSelect={setSelectedSeasonId}
+            onSelect={setSelectedRatePlanId}
             canWrite={canWrite}
             onEdit={setEditingSeason}
             onDuplicate={setDuplicatingSeason}
@@ -286,7 +286,7 @@ export function PricingTab() {
       </Section>
 
       {addSeasonOpen ? (
-        <SeasonFormDialog
+        <RatePlanFormDialog
           propertyId={property.id}
           open={addSeasonOpen}
           onOpenChange={setAddSeasonOpen}
@@ -294,7 +294,7 @@ export function PricingTab() {
         />
       ) : null}
       {editingSeason ? (
-        <SeasonFormDialog
+        <RatePlanFormDialog
           propertyId={property.id}
           open={!!editingSeason}
           onOpenChange={(o) => !o && setEditingSeason(null)}

@@ -6,7 +6,7 @@ import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { useAuthStore } from "@/features/auth/store";
-import { SeasonFormDialog } from "../components/SeasonFormDialog";
+import { RatePlanFormDialog } from "../components/RatePlanFormDialog";
 import type { RatePlan } from "../schemas";
 
 function setReservationsUser() {
@@ -56,13 +56,13 @@ function installBaseHandlers(propertyCurrency: number | null = 42) {
   );
 }
 
-describe("SeasonFormDialog — create", () => {
-  it("posts to /properties/:id/seasons with the selected currency id", async () => {
+describe("RatePlanFormDialog — create", () => {
+  it("posts to /properties/:id/rate-plans with the selected currency id", async () => {
     setReservationsUser();
     installBaseHandlers(42);
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/properties/7/seasons", async ({ request }) => {
+      http.post("/api/v1/properties/7/rate-plans", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
           {
@@ -81,7 +81,7 @@ describe("SeasonFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
+      <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
 
     const nameInput = await screen.findByLabelText(/^Name$/i);
@@ -105,7 +105,7 @@ describe("SeasonFormDialog — create", () => {
     setReservationsUser();
     installBaseHandlers(43); // GBP
     renderWithProviders(
-      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
+      <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
     const trigger = await screen.findByLabelText(/^Currency$/i);
     await waitFor(() => expect(within(trigger).getByText(/GBP/)).toBeInTheDocument());
@@ -122,14 +122,14 @@ describe("SeasonFormDialog — create", () => {
     );
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/properties/7/seasons", async ({ request }) => {
+      http.post("/api/v1/properties/7/rate-plans", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ id: 99, property: 7, ...postBody }, { status: 201 });
       }),
     );
 
     renderWithProviders(
-      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
+      <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
     // The basis select reflects the property default before any edit.
     const basisTrigger = await screen.findByLabelText(/Price basis/i);
@@ -148,7 +148,7 @@ describe("SeasonFormDialog — create", () => {
     setReservationsUser();
     installBaseHandlers(42);
     server.use(
-      http.post("/api/v1/properties/7/seasons", () =>
+      http.post("/api/v1/properties/7/rate-plans", () =>
         HttpResponse.json(
           {
             code: "validation_error",
@@ -160,7 +160,7 @@ describe("SeasonFormDialog — create", () => {
       ),
     );
     renderWithProviders(
-      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
+      <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
     await userEvent.type(await screen.findByLabelText(/^Name$/i), "Summer 2027");
     await userEvent.type(screen.getByLabelText(/Effective from/i), "2027-06-01");
@@ -170,7 +170,7 @@ describe("SeasonFormDialog — create", () => {
   });
 });
 
-describe("SeasonFormDialog — edit", () => {
+describe("RatePlanFormDialog — edit", () => {
   it("PATCHes the season with edited fields", async () => {
     setReservationsUser();
     installBaseHandlers(42);
@@ -187,14 +187,20 @@ describe("SeasonFormDialog — edit", () => {
     };
     let patchBody: Record<string, unknown> | null = null;
     server.use(
-      http.patch("/api/v1/seasons/11", async ({ request }) => {
+      http.patch("/api/v1/rate-plans/11", async ({ request }) => {
         patchBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ...season, name: patchBody.name });
       }),
     );
 
     renderWithProviders(
-      <SeasonFormDialog propertyId={7} open onOpenChange={() => {}} mode="edit" season={season} />,
+      <RatePlanFormDialog
+        propertyId={7}
+        open
+        onOpenChange={() => {}}
+        mode="edit"
+        season={season}
+      />,
     );
 
     const nameInput = (await screen.findByLabelText(/^Name$/i)) as HTMLInputElement;

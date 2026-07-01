@@ -10,7 +10,7 @@ import { MatrixEditor } from "../components/MatrixEditor";
 // GAP-056: rows are the plan's periods (each owns a date range), columns the
 // union of party bands. Period 500 prices 2–4; period 501 prices 5–6 — so each
 // row leaves the other band's column empty (and fillable).
-const seasonDetail: RatePlanDetail = {
+const ratePlanDetail: RatePlanDetail = {
   id: 100,
   property: 7,
   name: "Summer 2026",
@@ -46,8 +46,8 @@ const seasonDetail: RatePlanDetail = {
 function renderEditor(canWrite = true) {
   return renderWithProviders(
     <MatrixEditor
-      seasonId={100}
-      seasons={[seasonDetail]}
+      ratePlanId={100}
+      seasons={[ratePlanDetail]}
       canWrite={canWrite}
       commission={null}
       tax={null}
@@ -65,7 +65,7 @@ describe("MatrixEditor", () => {
       http.patch("/api/v1/bands/:id", async ({ params, request }) => {
         const body = await request.json();
         patched.push({ id: String(params.id), body });
-        return HttpResponse.json({ ...seasonDetail.periods[0].bands[0], nightly: "700" });
+        return HttpResponse.json({ ...ratePlanDetail.periods[0].bands[0], nightly: "700" });
       }),
     );
 
@@ -86,7 +86,7 @@ describe("MatrixEditor", () => {
     server.use(
       http.patch("/api/v1/bands/:id", () => {
         calls += 1;
-        return HttpResponse.json(seasonDetail.periods[0].bands[0]);
+        return HttpResponse.json(ratePlanDetail.periods[0].bands[0]);
       }),
     );
 
@@ -117,7 +117,7 @@ describe("MatrixEditor", () => {
     // intersection overlaps an existing band in that row's period on the party
     // axis, so filling any would 4xx — the grid must not invite it.
     const overlapping: RatePlanDetail = {
-      ...seasonDetail,
+      ...ratePlanDetail,
       periods: [
         {
           id: 500,
@@ -142,7 +142,13 @@ describe("MatrixEditor", () => {
       ],
     };
     renderWithProviders(
-      <MatrixEditor seasonId={100} seasons={[overlapping]} canWrite commission={null} tax={null} />,
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[overlapping]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
     );
     // Priced cell present; no "+" anywhere (every empty cell is covered).
     expect(await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i)).toBeEnabled();

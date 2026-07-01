@@ -249,6 +249,21 @@ export interface QuoteSearchResult {
   totalMatched: number;
 }
 
+// One occupancy bracket carried onto a staged line (GAP-044). Fanned out from
+// the result's `OccupancyBand` at Add time. `checked` is a shortlist-level
+// toggle so the operator can trim bands before save; ≥1 non-POA band must stay
+// checked for the line to be valid. `adults` is the representative party the
+// backend priced (= max(1, min_party)) and what the expanded saved line posts.
+export interface StagedBand {
+  min_party: number;
+  max_party: number;
+  adults: number;
+  total: string | number | null;
+  currency: string | null;
+  is_poa: boolean;
+  checked: boolean;
+}
+
 // One row in the operator-staged "lines so far" panel. Pre-save shape.
 // `is_selected` is intentionally absent — the backend sets it during the
 // `accept()` transition (convert-to-booking), not at create time.
@@ -290,6 +305,12 @@ export interface StagedLine {
   // un-ticked — the shortlist disables the checkbox.
   manual_only: boolean;
   notes: string;
+  // GAP-044 occupancy fan-out: the occupancy brackets a banded villa was
+  // priced into. Bands are ALTERNATIVES, not additive — a banded line carries
+  // NO single `total` (it stays null) and contributes nothing to the shortlist
+  // subtotal. At save each checked, non-POA band expands to its OWN quotation
+  // line (the server re-prices into the bracket); POA bands are display-only.
+  occupancy_bands?: StagedBand[];
 }
 
 // Line write — what `POST/PATCH /quotations/{id}/lines` accepts.

@@ -20,7 +20,7 @@ import { toDecimalString } from "@/lib/format/money";
 import { queryKeys } from "@/lib/query/keys";
 import { useCreateContact } from "@/features/contacts/hooks";
 import { useCreateQuotation, useCurrentTermsVersion } from "../hooks";
-import { isStagedLineValid } from "../lineTotals";
+import { checkedSaveableBands, isStagedLineValid } from "../lineTotals";
 import type { QuotationDetail, QuotationLineWriteInput, StagedLine } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 
@@ -41,14 +41,43 @@ function defaultExpiresAt(): string {
   return d.toISOString();
 }
 
-// One staged shortlist line → the wire shape nested under the create body's
-// `lines`. `total`/`price_override_reason` ride only on the manual path
-// (decimal fields can't take an empty string); the server prices non-manual
-// lines and nets the discount. A manual line never carries a discount: the
-// field is disabled in the shortlist and the server skips re-pricing manual lines,
-// so a stale discount would be stored yet never applied — send "0". Money is
-// normalised to canonical 2-dp decimals ("1,000" → "1000.00").
-function toLineWriteBody(line: StagedLine): QuotationLineWriteInput {
+// One staged shortlist line → the wire shape(s) nested under the create body's
+// `lines`. A normal line yields exactly one body; a banded line (GAP-044) fans
+// out to one body PER checked, non-POA band — bands are ALTERNATIVES, so each
+// becomes its own quotation line and the server re-prices it into its bracket.
+//
+// `total`/`price_override_reason` ride only on the manual path (decimal fields
+// can't take an empty string); the server prices non-manual lines and nets the
+// discount. A manual line never carries a discount: the field is disabled in the
+// shortlist and the server skips re-pricing manual lines, so a stale discount
+// would be stored yet never applied — send "0". Money is normalised to canonical
+// 2-dp decimals ("1,000" → "1000.00").
+function toLineWriteBodies(line: StagedLine): QuotationLineWriteInput[] {
+  // Banded line: each checked, non-POA band expands to its own priced (non-
+  // manual) line with the band's representative party. POA bands are display-
+  // only and never expand. The server prices each bracket, so no total/reason.
+  if (line.occupancy_bands != null) {
+    return checkedSaveableBands(line).map((band) => {
+      const body: QuotationLineWriteInput = {
+        property: line.property_id,
+        date_from: line.date_from,
+        date_to: line.date_to,
+        adults: band.adults,
+        children: 0,
+        discount: "0",
+        inclusions: line.inclusions,
+        is_manual: false,
+        notes: line.notes,
+      };
+      // Per-band currency (a banded list can mix £/€/$). Omit when absent so the
+      // backend resolves its canonical per-property default.
+      if (band.currency) {
+        body.currency = band.currency;
+      }
+      return body;
+    });
+  }
+
   const body: QuotationLineWriteInput = {
     property: line.property_id,
     // The operator's requested dates, NOT the pre-shifted priced ones — the
@@ -72,7 +101,7 @@ function toLineWriteBody(line: StagedLine): QuotationLineWriteInput {
     body.total = toDecimalString(line.total) ?? "";
     body.price_override_reason = line.price_override_reason;
   }
-  return body;
+  return [body];
 }
 
 export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }: Props) {
@@ -170,7 +199,7 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
         is_unbranded: false,
         expires_at: expiresAt,
         terms_version: terms.id,
-        lines: lines.map(toLineWriteBody),
+        lines: lines.flatMap(toLineWriteBodies),
       });
 
       // The enquiry detail carries the inline quote-stack, so a freshly-created

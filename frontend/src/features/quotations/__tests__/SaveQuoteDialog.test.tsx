@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format/date";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { SaveQuoteDialog } from "../components/SaveQuoteDialog";
-import type { StagedLine } from "../schemas";
+import type { StagedBand, StagedLine } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 
 // Customer already linked so the save path skips contact creation.
@@ -59,6 +59,19 @@ function mockSaveEndpoints(captureQuotationBody: (body: Record<string, unknown>)
 
 function linesOf(body: Record<string, unknown>): Record<string, unknown>[] {
   return body.lines as Record<string, unknown>[];
+}
+
+function band(overrides: Partial<StagedBand> = {}): StagedBand {
+  return {
+    min_party: 1,
+    max_party: 4,
+    adults: 4,
+    total: "4500.00",
+    currency: "USD",
+    is_poa: false,
+    checked: true,
+    ...overrides,
+  };
 }
 
 afterEach(() => server.resetHandlers());
@@ -291,6 +304,74 @@ describe("SaveQuoteDialog", () => {
     // The pre-save gate fires before the POST.
     expect(await screen.findByText(/missing its total or reason/i)).toBeInTheDocument();
     expect(quotationBody).toBeNull();
+  });
+
+  it("expands a banded line to one POSTed body per checked non-POA band", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    // Two checked non-POA bands + one POA band + one unchecked band → only the
+    // two checked non-POA bands expand into saved lines.
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[
+          stagedLine({
+            total: null,
+            occupancy_bands: [
+              band({ min_party: 1, max_party: 4, adults: 4, total: "4500.00" }),
+              band({ min_party: 5, max_party: 8, adults: 8, total: "6200.00" }),
+              band({ min_party: 9, max_party: 12, adults: 12, total: null, is_poa: true }),
+              band({ min_party: 13, max_party: 16, adults: 16, checked: false }),
+            ],
+          }),
+        ]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    const lines = linesOf(quotationBody!);
+    // Exactly two lines: the POA band and the unchecked band are excluded.
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      property: 7,
+      adults: 4,
+      children: 0,
+      is_manual: false,
+      currency: "USD",
+    });
+    expect(lines[1]).toMatchObject({ property: 7, adults: 8, children: 0, is_manual: false });
+    // Bands are server-priced — no total / override reason on the wire.
+    expect(lines[0]).not.toHaveProperty("total");
+    expect(lines[0]).not.toHaveProperty("price_override_reason");
+  });
+
+  it("still posts exactly one body for a non-banded line", async () => {
+    let quotationBody: Record<string, unknown> | null = null;
+    mockSaveEndpoints((body) => {
+      quotationBody = body;
+    });
+
+    renderWithProviders(
+      <SaveQuoteDialog
+        open
+        onOpenChange={() => undefined}
+        enquiry={enquiry}
+        lines={[stagedLine()]}
+        onSaved={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(quotationBody).not.toBeNull());
+    expect(linesOf(quotationBody!)).toHaveLength(1);
   });
 
   it("surfaces nested per-line server errors in the banner, not just 'Validation failed'", async () => {

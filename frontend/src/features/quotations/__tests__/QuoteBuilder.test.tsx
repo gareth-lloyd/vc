@@ -583,6 +583,46 @@ describe("QuoteBuilder", () => {
     });
   });
 
+  it("stages a banded option carrying its occupancy bands (no single total, not manual)", async () => {
+    // GAP-044: a result with ≥2 occupancy brackets stages as a banded line —
+    // the shortlist renders the band rows rather than one headline total.
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              currency_code: "USD",
+              occupancy_bands: [
+                { min_party: 1, max_party: 4, adults: 4, total: "4500.00", currency_code: "USD" },
+                { min_party: 5, max_party: 8, adults: 8, total: "6200.00", currency_code: "USD" },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
+
+    // The shortlist renders both band prices (result card + shortlist row) and
+    // never a summed villa total.
+    expect(screen.getAllByText("$4,500.00").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$6,200.00").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("$10,700.00")).not.toBeInTheDocument();
+
+    // The staged line's manual toggle is disabled — bands are priced per bracket.
+    await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
+    expect(screen.getByRole("checkbox", { name: /override the price manually/i })).toBeDisabled();
+  });
+
   it("runs save then opens the send-preview dialog for Send to guest", async () => {
     server.use(
       ...mockSaveFlow(),

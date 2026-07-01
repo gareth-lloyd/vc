@@ -8,13 +8,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { QuoteResultLine } from "./QuoteResultLine";
-import type { ChosenStay, HiddenCapacityProperty, QuoteOption } from "../schemas";
+import type { ChosenStay, HiddenCapacityProperty, OccupancyBand, QuoteOption } from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
   stagedPropertyIds: Set<number>;
-  onAdd: (option: QuoteOption, stay?: ChosenStay) => void;
+  // GAP-044: a banded result also hands over the checked occupancy bands; the
+  // third arg threads through to the builder, which stages them onto the line.
+  onAdd: (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => void;
   // Party the search ran with — block reprices keep the same party.
   adults: number;
   children: number;

@@ -14,7 +14,8 @@
     "override_reason_required": "A reason is required when overriding the price",
     "manual_total_required": "A manual line needs a total greater than zero",
     "discount_invalid": "Enter a valid discount amount",
-    "line_total_missing": "This option has no price — set a manual total or remove it"
+    "line_total_missing": "This option has no price — set a manual total or remove it",
+    "bands_none_checked": "Select at least one band"
   },
   "notes": {
     "changeover_shifted": "Arrival moved from {{from}} to the property's changeover day"
@@ -353,6 +354,8 @@
         "manual": "Override the price manually",
         "manual_hint": "Replace the engine price with a fixed total. A reason is required.",
         "manual_locked_hint": "The rate card has no price for these dates, so the total must be entered manually.",
+        "manual_banded_hint": "Occupancy bands are priced per bracket, so a manual override doesn't apply.",
+        "band_include": "Include the {{min}}–{{max}} guests band",
         "total": "Manual total",
         "reason": "Reason for price override",
         "reason_placeholder": "e.g. Agreed rate with returning guest",

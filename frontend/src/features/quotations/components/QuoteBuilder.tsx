@@ -14,9 +14,11 @@ import { nightsCount } from "@/lib/nights";
 import type {
   ChosenStay,
   HiddenCapacityProperty,
+  OccupancyBand,
   QuotationDetail,
   QuoteCriteriaInput,
   QuoteOption,
+  StagedBand,
   StagedLine,
 } from "../schemas";
 
@@ -134,8 +136,23 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     }
   };
 
-  const handleAdd = (option: QuoteOption, stay?: ChosenStay) => {
+  const handleAdd = (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => {
     if (!lastCriteria) return;
+    // GAP-044: a banded result hands over the CHECKED occupancy brackets. They
+    // stage onto the line as alternatives — no single total (bands never sum),
+    // never manual; each expands to its own saved line at save time.
+    const bands: StagedBand[] | undefined =
+      selectedBands && selectedBands.length > 0
+        ? selectedBands.map((b) => ({
+            min_party: b.min_party,
+            max_party: b.max_party,
+            adults: b.adults,
+            total: b.total ?? null,
+            currency: b.currency_code ?? null,
+            is_poa: b.is_poa ?? false,
+            checked: true,
+          }))
+        : undefined;
     // The chosen stay's dates become the line's requested dates when the stay
     // is a real alternative: an explicitly picked non-default block, or a
     // default block the search rounded to a different length than requested.
@@ -165,18 +182,25 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         // The currency the engine priced this option in — carried per line
-        // (GAP-014) so the shortlist and save path stay per-currency.
-        currency: stay ? stay.currency : (option.currency ?? null),
-        total: stay ? stay.total : (option.total ?? null),
+        // (GAP-014) so the shortlist and save path stay per-currency. A banded
+        // line takes its currency from the first band and has NO single total.
+        currency: bands
+          ? (bands[0].currency ?? null)
+          : stay
+            ? stay.currency
+            : (option.currency ?? null),
+        total: bands ? null : stay ? stay.total : (option.total ?? null),
         discount: "0",
         // Seed from the winning plan's inclusion text (legacy parity —
         // ResService.cs:1241). Display-only convenience pre-save: the backend
         // seeds authoritatively at line creation; still editable in the shortlist.
         inclusions: stay?.inclusion ?? option.inclusion ?? "",
         price_override_reason: "",
-        is_manual: manualOnly,
-        manual_only: manualOnly,
+        // A banded line is never manual — each band is priced by the server.
+        is_manual: bands ? false : manualOnly,
+        manual_only: bands ? false : manualOnly,
         notes: "",
+        ...(bands ? { occupancy_bands: bands } : {}),
       };
       return [...prev, next];
     });

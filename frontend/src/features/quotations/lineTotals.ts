@@ -1,5 +1,12 @@
 import { isNonNegativeMoney, isPositiveMoney, parseMoney } from "@/lib/format/money";
-import type { StagedLine } from "./schemas";
+import type { StagedBand, StagedLine } from "./schemas";
+
+// The bands on a banded line that will actually become saved quotation lines:
+// checked, non-POA and with a real total. POA / unchecked / no-total bands are
+// display-only and never expand into a saved line (GAP-044).
+export function checkedSaveableBands(line: StagedLine): StagedBand[] {
+  return line.occupancy_bands?.filter((b) => b.checked && !b.is_poa && b.total != null) ?? [];
+}
 
 // The net total a staged line contributes to the shortlist. Replicates the server's
 // `QuotationService.price_line`: a manual line uses the operator-typed total; a
@@ -10,6 +17,9 @@ import type { StagedLine } from "./schemas";
 // blank/non-numeric manual total — so callers render "—" and exclude the line
 // from the subtotal rather than poisoning it with NaN.
 export function lineEffectiveTotal(line: StagedLine): number | null {
+  // A banded villa is a list of alternatives, not one price — it contributes no
+  // single figure to the subtotal; the shortlist renders the band rows instead.
+  if (line.occupancy_bands != null) return null;
   if (line.is_manual) {
     const total = parseMoney(line.total);
     return Number.isFinite(total) ? total : null;
@@ -39,6 +49,15 @@ export interface StagedLineErrors {
 
 export function stagedLineErrors(line: StagedLine): StagedLineErrors {
   const errors: StagedLineErrors = {};
+  // A banded line has no single total, no discount and no manual path — the only
+  // way it's invalid is if the operator un-checked every non-POA band, which
+  // would expand to zero saved lines.
+  if (line.occupancy_bands != null) {
+    if (checkedSaveableBands(line).length === 0) {
+      errors.total = "quotations:schema_errors.bands_none_checked";
+    }
+    return errors;
+  }
   if (line.discount.trim() !== "" && !isNonNegativeMoney(line.discount)) {
     errors.discount = "quotations:schema_errors.discount_invalid";
   }

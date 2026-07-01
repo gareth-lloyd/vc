@@ -65,7 +65,11 @@ class PropertySeasonListCreateView(generics.ListCreateAPIView):
 class SeasonDetailView(generics.RetrieveUpdateDestroyAPIView):
     """`GET / PATCH / DELETE /seasons/{id}` — flat alias."""
 
-    queryset = RatePlan.objects.select_related("currency").prefetch_related("periods__rules")
+    # `periods__plan__property__capacity` feeds RatePeriodSerializer.coverage_gaps
+    # (`_max_occupancy`) without an N+1 per period on the nested detail read.
+    queryset = RatePlan.objects.select_related("currency").prefetch_related(
+        "periods__rules", "periods__plan__property__capacity"
+    )
     permission_classes = [IsReservationsWriter]
 
     def get_serializer_class(self) -> type[Any]:
@@ -171,7 +175,12 @@ class SeasonRatePeriodListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsReservationsWriter]
 
     def get_queryset(self) -> QuerySet[RatePeriod]:
-        return RatePeriod.objects.filter(plan_id=self.kwargs["season_id"]).prefetch_related("rules")
+        # `plan__property__capacity` feeds coverage_gaps (`_max_occupancy`).
+        return (
+            RatePeriod.objects.filter(plan_id=self.kwargs["season_id"])
+            .select_related("plan__property__capacity")
+            .prefetch_related("rules")
+        )
 
     def perform_create(self, serializer: Any) -> None:
         plan = get_object_or_404(RatePlan, pk=self.kwargs["season_id"])
@@ -181,7 +190,9 @@ class SeasonRatePeriodListCreateView(generics.ListCreateAPIView):
 class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     """`GET / PATCH / DELETE /periods/{id}` — flat alias."""
 
-    queryset = RatePeriod.objects.all().prefetch_related("rules")
+    queryset = RatePeriod.objects.select_related("plan__property__capacity").prefetch_related(
+        "rules"
+    )
     serializer_class = RatePeriodSerializer
     permission_classes = [IsReservationsWriter]
 
@@ -197,9 +208,10 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
         """
         instance = serializer.instance
         old_dates = (instance.date_from, instance.date_to)
-        period = serializer.save()
-        if (period.date_from, period.date_to) != old_dates:
-            period.rules.update(date_from=period.date_from, date_to=period.date_to)
+        with transaction.atomic():
+            period = serializer.save()
+            if (period.date_from, period.date_to) != old_dates:
+                period.rules.update(date_from=period.date_from, date_to=period.date_to)
 
 
 class RatePeriodRuleListCreateView(generics.ListCreateAPIView):

@@ -11,7 +11,9 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.models import RateCard, RateRule, VillaPricingSummary
+from pricing.models import Currency, RateCard, RatePlan, RateRule, VillaPricingSummary
+from pricing.tasks import rebuild_summary
+from properties.models import Property
 
 pytestmark = pytest.mark.django_db
 
@@ -46,3 +48,34 @@ def test_raterule_save_defers_rebuild_to_commit(rule: RateRule) -> None:
     assert not VillaPricingSummary.objects.filter(
         property_id=plan.property_id, currency_id=plan.currency_id
     ).exists()
+
+
+def test_rebuild_summary_excludes_deactivated_cards_rules(
+    property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    """A band under a deactivated RateCard must not seed the display summary —
+    the engine excludes it from pricing (transitional card gate), so the summary
+    would otherwise advertise a rate no quote will use (GAP-056 U6 review)."""
+    withdrawn = RateCard.objects.create(plan=plan, name="Withdrawn", is_active=False)
+    RateRule.objects.create(
+        card=withdrawn,
+        date_from="2026-07-01",
+        date_to="2026-07-31",
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("50.00"),
+    )
+    live = RateCard.objects.create(plan=plan, name="Live")
+    RateRule.objects.create(
+        card=live,
+        date_from="2026-07-01",
+        date_to="2026-07-31",
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("200.00"),
+    )
+
+    summary = rebuild_summary(property_id=plan.property_id, currency_id=plan.currency_id)
+    # Only the live card's 200.00 prices — the withdrawn 50.00 is excluded.
+    assert summary.min_nightly == Decimal("200.00")
+    assert summary.max_nightly == Decimal("200.00")

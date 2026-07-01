@@ -240,14 +240,15 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
 
         if effective("is_active") and self.instance is not None and plan is not None:
             bands = list(self.instance.rules.all())
-            gaps = _coverage_gaps(bands, _max_occupancy(plan))
+            cap = _max_occupancy(plan)
+            gaps = _coverage_gaps(bands, cap)
             if bands and gaps:
                 raise serializers.ValidationError(
                     {
                         "is_active": (
-                            "An active period must price every party size "
-                            f"1..{_max_occupancy(plan)}. Uncovered ranges: "
-                            f"{gaps}. Add a band (POA counts) to close the gap."
+                            f"An active period must price every party size 1..{cap}. "
+                            f"Uncovered ranges: {gaps}. Add a band (POA counts) to "
+                            "close the gap."
                         ),
                     },
                 )

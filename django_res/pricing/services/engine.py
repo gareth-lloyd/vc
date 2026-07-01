@@ -30,7 +30,7 @@ from pricing.models import (
 from pricing.services.currency import pick_preferred_plan, resolve_property_currency
 from pricing.services.discounts import apply_discount
 from pricing.services.extras import calc_extra, date_ranges_overlap
-from pricing.services.projection import PricingContext, RateProjectionService
+from pricing.services.projection import PricingContext, RateProjectionService, keep_calendar_date
 from pricing.services.quote import AppliedExtra, Quote, QuoteLine
 from pricing.services.rates import (
     NoCoverage,
@@ -40,6 +40,7 @@ from pricing.services.rates import (
     pick_rule_for_night,
     rule_nightly,
 )
+from properties.models.services import PropertyService
 from properties.services.changeover import ChangeoverService
 
 
@@ -314,9 +315,11 @@ class PricingEngine:
             "projection": context.projection,
             # Plan/card metadata the quote builder renders on each result line.
             # All in memory already — adding them costs no extra queries.
-            # `inclusion` also seeds staged-line inclusions at creation (legacy
-            # ResService.cs:1241 seeded them from the season).
-            "inclusion": plan.inclusion,
+            # `inclusion` is derived from the property's date-banded
+            # PropertyService rows (GAP-037) and still seeds staged-line
+            # inclusions at creation (legacy ResService.cs:1241 seeded them from
+            # the season).
+            "inclusion": cls._derive_inclusions(property, date_from, date_to, context),
             "changeover_day": changeover_day if property_weekday is not None else None,
             "min_nights": winning_card.min_nights if winning_card is not None else None,
             "max_nights": winning_card.max_nights if winning_card is not None else None,
@@ -621,6 +624,36 @@ class PricingEngine:
             return resolver(as_of=as_of)
         except TypeError:
             return resolver()
+
+    @classmethod
+    def _derive_inclusions(
+        cls,
+        property: Any,
+        date_from: date,
+        date_to: date,
+        context: PricingContext,
+    ) -> str:
+        """The guest-facing "what's included" blob for this stay (GAP-037).
+
+        Joins the `copy` of the property's active services whose absolute date
+        band overlaps the (changeover-shifted) stay. For a projected quote the
+        bands live in the anchor's source year, so the stay is mapped back by the
+        whole-year delta first — a future-year July quote still finds the summer
+        chef it was carried from.
+        """
+        q_from, q_to = date_from, date_to
+        if context.is_projected and context.projection is not None:
+            year_delta = context.projection["target_year"] - context.projection["source_year"]
+            q_from = keep_calendar_date(date_from, -year_delta)
+            q_to = keep_calendar_date(date_to, -year_delta)
+        services = PropertyService.objects.filter(property=property, is_active=True).order_by(
+            "sort_order", "id"
+        )
+        return "\n".join(
+            svc.copy
+            for svc in services
+            if date_ranges_overlap(q_from, q_to, svc.applies_from, svc.applies_to)
+        )
 
     @staticmethod
     def _compute_commission(

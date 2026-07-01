@@ -469,13 +469,16 @@ class TestStayOptionsSearch:
         """M4: the three per-band re-prices reuse the one window context — no
         rate/plan/card reload per band. Pin a ceiling so a per-band context
         reload can't creep in unnoticed (each band's residual cost is only the
-        extras/discount/changeover lookups `quote()` always does)."""
+        extras/discount/changeover/service lookups `quote()` always does — the
+        service lookup for the "Includes:" line is GAP-037; the headline + 3 band
+        quotes each pay it). Headroom stays under a per-band context reload (~+3
+        queries/band), which is what this guards against."""
         _sat_changeover(property_)
         _occupancy_card(card)
         entry = _entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)
         StayOptionsService.search(requests=[entry], flex_days=0)  # warm content types
 
-        with assert_max_queries(24):
+        with assert_max_queries(28):
             StayOptionsService.search(requests=[entry], flex_days=0)
 
 
@@ -598,12 +601,12 @@ class TestWeeklyPrices:
     ) -> None:
         # The expensive plan/card/rule context loads ONCE per property and
         # every week's quote reuses it (the AC's "no N-times-weeks per-villa engine
-        # calls"). The residual per-week cost is the extras/discount/changeover
-        # lookups quote() always does — a PricingContext only caches the rate
-        # graph. Pin a ceiling well under the ~30 a per-week context *reload*
+        # calls"). The residual per-week cost is the extras/discount/changeover/
+        # service lookups quote() always does — a PricingContext only caches the
+        # rate graph. Pin a ceiling well under the ~30 a per-week context *reload*
         # would cost over this 4-week window, so a regression there can't hide.
         _sat_changeover(property_)
-        with assert_max_queries(20):
+        with assert_max_queries(24):
             StayOptionsService.weekly_prices(
                 property_ids=[property_.pk],
                 window_from=date(2026, 7, 4),
@@ -713,17 +716,17 @@ class TestSearchOptionsEndpoint:
         property_: Property,
         rate_rule: RateRule,
     ) -> None:
-        # Properties + availability are batched and the rate context loads
-        # once per entry, shared between the bounds clamp and the quote. The
-        # 13th query is GAP-044's occupancy-band enumeration: `covering_bands`
-        # resolves the changeover day once even on a single-band villa (which
-        # then fans out nothing). Pin so a per-option or per-band context
-        # *reload* can't creep in unnoticed.
+        # once per entry, shared between the bounds clamp and the quote. Two
+        # single-query enrichments ride on top of the base clamp+quote: the
+        # GAP-037 PropertyService lookup for the "Includes:" line, and GAP-044's
+        # occupancy-band enumeration (`covering_bands` resolves the changeover
+        # day once even on a single-band villa that then fans out nothing). Pin
+        # so a per-option or per-band context *reload* can't creep in unnoticed.
         _sat_changeover(property_)
         api_client.force_authenticate(staff)
         body = self._body(property_)
         api_client.post(self.URL, body, format="json")  # warm content types etc.
-        with assert_max_queries(13):
+        with assert_max_queries(14):
             response = api_client.post(self.URL, body, format="json")
         assert response.status_code == 200
 

@@ -52,6 +52,7 @@
     "rooms": "Rooms",
     "nearby": "Nearby",
     "pricing": "Pricing",
+    "services": "Services",
     "availability": "Availability",
     "people": "People",
     "media": "Media",
@@ -292,8 +293,7 @@
           "effective_from": "Effective from",
           "effective_to": "Effective to",
           "is_active": "Active",
-          "notes": "Internal notes",
-          "inclusion": "Inclusion"
+          "notes": "Internal notes"
         },
         "actions": {
           "cancel": "Cancel",
@@ -430,6 +430,63 @@
         "title": "Remove rule?",
         "description": "This rate rule will be permanently removed.",
         "confirm": "Remove"
+      }
+    }
+  },
+  "services": {
+    "title": "Services",
+    "add_button": "Add service",
+    "add_button_disabled_tooltip": "You need the Reservations role to add services.",
+    "empty": {
+      "title": "No services yet",
+      "description": "Add included services like a chef or housekeeping, each with its own date range and guest-facing copy."
+    },
+    "errors": {
+      "load_failed": "Couldn't load services."
+    },
+    "row": {
+      "menu_label": "Actions",
+      "edit": "Edit",
+      "delete": "Delete",
+      "move_up": "Move up",
+      "move_down": "Move down",
+      "inactive": "Inactive",
+      "year_round": "Year-round",
+      "open_end": "—",
+      "band": "{{from}} – {{to}}"
+    },
+    "toasts": {
+      "created": "Service added",
+      "updated": "Service updated",
+      "deleted": "Service removed",
+      "reordered": "Services reordered",
+      "create_failed": "Couldn't add service",
+      "update_failed": "Couldn't update service",
+      "delete_failed": "Couldn't remove service",
+      "reorder_failed": "Couldn't reorder services"
+    },
+    "delete_confirm": {
+      "title": "Remove service?",
+      "description": "This service will be permanently removed.",
+      "confirm": "Remove"
+    },
+    "dialog": {
+      "create_title": "Add service",
+      "edit_title": "Edit service",
+      "fields": {
+        "name": "Name",
+        "name_placeholder": "Private chef",
+        "copy": "Guest-facing copy",
+        "copy_placeholder": "Described to guests as…",
+        "notes": "Internal notes",
+        "applies_from": "Applies from",
+        "applies_to": "Applies to",
+        "is_active": "Active"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
       }
     }
   },
@@ -977,7 +1034,10 @@
     "rule_max_party_lt_min": "Maximum party can't be below minimum party",
     "rule_price_invalid": "Enter a price like 1250 or 1250.00",
     "rule_price_required": "Set a nightly or weekly price, or mark the rule POA",
-    "image_file_required": "Choose an image file"
+    "image_file_required": "Choose an image file",
+    "service_name_required": "Name is required",
+    "service_copy_required": "Guest-facing copy is required",
+    "service_to_before_from": "End date can't be before the start date"
   },
   "common": {
     "inherit": "Inherit",

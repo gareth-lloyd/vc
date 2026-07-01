@@ -19,6 +19,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.images import PropertyImage
         from properties.models.property import Property
         from properties.models.rooms import Room
+        from properties.models.services import PropertyService
 
         audit.track(
             PropertyCalendarFeed,
@@ -144,4 +145,19 @@ class PropertiesConfig(AppConfig):
         audit.track(
             PropertyFeature,
             fields=("property_id", "feature_id", "sort_order"),
+        )
+        # Included services carry guest-facing `copy` and an absolute date band;
+        # staff edits (and hard deletes via the Destroy view) need a trail.
+        # Track structural fields — the free-text `copy`/`notes` blobs are
+        # deliberately excluded as chatty (the FG-017 identity-field pattern).
+        audit.track(
+            PropertyService,
+            fields=(
+                "property_id",
+                "name",
+                "applies_from",
+                "applies_to",
+                "sort_order",
+                "is_active",
+            ),
         )

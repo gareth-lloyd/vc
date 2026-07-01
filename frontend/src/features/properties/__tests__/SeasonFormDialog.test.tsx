@@ -184,7 +184,6 @@ describe("SeasonFormDialog — edit", () => {
       effective_to: "2026-09-30",
       is_active: true,
       notes: "",
-      inclusion: "",
     };
     let patchBody: Record<string, unknown> | null = null;
     server.use(

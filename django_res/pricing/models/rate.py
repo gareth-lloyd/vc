@@ -41,7 +41,6 @@ class RatePlan(AuditedModel):
     effective_to = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
-    inclusion = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:

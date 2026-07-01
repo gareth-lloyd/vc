@@ -12,7 +12,7 @@ from accounts.models import User
 from core.enums import StaffRole
 from pricing.enums import DiscountKind, RuleKind
 from pricing.models import Currency, Discount, RateRule
-from properties.models import Property
+from properties.models import Property, PropertyService
 
 
 @pytest.fixture
@@ -102,9 +102,7 @@ def test_pricing_quote_bulk_surfaces_plan_card_metadata(
 ) -> None:
     """Priced bulk entries carry the breakdown's plan/card metadata so the
     quote builder can render information-dense result lines."""
-    plan = rule.card.plan
-    plan.inclusion = "Daily maid service"
-    plan.save(update_fields=["inclusion"])
+    PropertyService.objects.create(property=property_, name="Maid", copy="Daily maid service")
 
     api_client.force_login(staff)
     response = api_client.post(

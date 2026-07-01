@@ -21,6 +21,7 @@ from properties.models import (
     PropertyImage,
     PropertyLocation,
     PropertyNearbyPlace,
+    PropertyService,
     PropertySettings,
     Region,
     Room,
@@ -48,6 +49,7 @@ admin.site.register(Collection)
 admin.site.register(CollectionMembership)
 admin.site.register(PropertyContactAssignment)
 admin.site.register(ChangeOverRule)
+admin.site.register(PropertyService)
 
 
 @admin.register(PropertyCalendarFeed)

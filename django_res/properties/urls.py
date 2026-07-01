@@ -34,6 +34,8 @@ from properties.views import (
     PropertyPriceDisplayView,
     PropertyRoomListCreateView,
     PropertyRoomReorderView,
+    PropertyServiceDetailView,
+    PropertyServiceListCreateView,
     PropertySettingsView,
     PropertyViewSet,
     RegionViewSet,
@@ -155,6 +157,16 @@ _property_subresources: list[URLPattern] = [
         "change-over-rules/<int:pk>",
         ChangeOverRuleDetailView.as_view(),
         name="changeover-detail",
+    ),
+    path(
+        "properties/<int:property_id>/services",
+        PropertyServiceListCreateView.as_view(),
+        name="property-service-list",
+    ),
+    path(
+        "services/<int:pk>",
+        PropertyServiceDetailView.as_view(),
+        name="service-detail",
     ),
     path(
         "properties/<int:property_id>/contacts",

@@ -27,7 +27,7 @@ from seeding._pricing_helpers import (
     assign_commission,
     build_seasonal_cards,
     draw_base_nightly,
-    inclusion_for,
+    seed_included_services,
 )
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
@@ -41,7 +41,8 @@ def _run(ctx: SeedContext) -> int:
         return 0
     prop = PropertyFactory(slug=ICAL_DEMO_SLUG, name=ICAL_DEMO_NAME)
     currency = ctx.default_currency
-    plan = RatePlanFactory(property=prop, currency=currency, inclusion=inclusion_for(0))
+    plan = RatePlanFactory(property=prop, currency=currency)
+    seed_included_services(prop, 0)
     # Match the active profile's pricing shape so the demo villa conforms to the
     # same invariants the portfolio plans satisfy — otherwise the seasonal cards
     # leak into the `happy` profile, which is meant to keep the legacy

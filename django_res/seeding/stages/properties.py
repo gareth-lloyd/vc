@@ -39,8 +39,8 @@ from seeding._pricing_helpers import (
     assign_commission,
     build_seasonal_cards,
     draw_base_nightly,
-    inclusion_for,
     party_brackets,
+    seed_included_services,
 )
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
@@ -169,9 +169,8 @@ def _run(ctx: SeedContext) -> int:
         if dirty_settings:
             prop.settings.save(update_fields=dirty_settings)
         min_nights = ctx.knobs.constrained_min_nights if constrained else 1
-        plan = RatePlanFactory(
-            property=prop, currency=currency, inclusion=inclusion_for(i), **plan_kwargs
-        )
+        plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
+        seed_included_services(prop, i)
         if ctx.knobs.realistic_pricing:
             brackets = _FLAT_BRACKETS
             if ctx.rng.random() < ctx.knobs.pct_occupancy_bands:
@@ -200,7 +199,6 @@ def _run(ctx: SeedContext) -> int:
                 alt_plan = RatePlanFactory(
                     property=prop,
                     currency=alt,
-                    inclusion=inclusion_for(i),
                     effective_from=plan.effective_from - timedelta(days=1),
                     effective_to=plan.effective_to,
                 )

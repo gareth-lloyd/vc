@@ -99,6 +99,75 @@ def test_row_skipped_when_nothing_resolves(loaded_property: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_transform_drops_inclusion_keeps_notes(loaded_property: Property) -> None:
+    """GAP-037: the loader no longer writes inclusion onto RatePlan (it moves to
+    PropertyService); operator `notes` stays on the plan."""
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    kwargs = RatePlanLoader().transform(
+        _row(CurrencyId=3, Notes="Owner-negotiated.", Inclusion="Private chef included.")
+    )
+    assert kwargs is not None
+    assert "inclusion" not in kwargs
+    assert kwargs["notes"] == "Owner-negotiated."
+
+
+@pytest.mark.django_db
+def test_process_row_emits_property_service_from_inclusion(loaded_property: Property) -> None:
+    """GAP-037: a season with an Inclusion blurb materialises one date-banded
+    PropertyService keyed `<season>:svc`, idempotent across re-runs."""
+    from data_migration.base import LoadReport
+    from properties.models import PropertyService
+
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    row = _row(
+        ID=1,
+        CurrencyId=3,
+        Inclusion="Private chef included.",
+        DateFrom=date(2025, 6, 1),
+        DateTo=date(2025, 8, 31),
+    )
+    loader = RatePlanLoader()
+    loader._process_row(row, LoadReport(loader="rate_plan"))
+    loader._process_row(row, LoadReport(loader="rate_plan"))  # re-run: still one
+
+    svc = PropertyService.objects.get(legacy_id="1:svc")
+    assert svc.property == loaded_property
+    assert svc.copy == "Private chef included."
+    assert svc.applies_from == date(2025, 6, 1)
+    assert svc.applies_to == date(2025, 8, 31)
+    assert svc.is_active is True
+
+
+@pytest.mark.django_db
+def test_process_row_no_service_when_plan_unresolved(loaded_property: Property) -> None:
+    """An Inclusion on a season whose plan never materialises (villa doesn't
+    resolve → transform returns None) must not leave an orphan PropertyService."""
+    from data_migration.base import LoadReport
+    from properties.models import PropertyService
+
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    loader = RatePlanLoader()
+    loader._process_row(
+        _row(ID=3, VillaId=999999, CurrencyId=3, Inclusion="Chef included."),
+        LoadReport(loader="rate_plan"),
+    )
+
+    assert not PropertyService.objects.filter(legacy_id="3:svc").exists()
+
+
+@pytest.mark.django_db
+def test_process_row_no_service_when_inclusion_blank(loaded_property: Property) -> None:
+    from data_migration.base import LoadReport
+    from properties.models import PropertyService
+
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    loader = RatePlanLoader()
+    loader._process_row(_row(ID=2, CurrencyId=3, Inclusion=None), LoadReport(loader="rate_plan"))
+
+    assert not PropertyService.objects.filter(legacy_id="2:svc").exists()
+
+
+@pytest.mark.django_db
 def test_fallback_ignores_previously_loaded_plans(loaded_property: Property) -> None:
     """Re-run convergence: the fallback must not read the RatePlan table this
     loader populates. A run-1 mis-stamp (EUR) would otherwise re-resolve from

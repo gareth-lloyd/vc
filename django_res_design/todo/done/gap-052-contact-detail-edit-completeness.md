@@ -1,3 +1,15 @@
+> **✅ RESOLVED (2026-07-01)** — Shipped on local `main` (unpushed) as Landing 1
+> of the contacts-directory cluster. **Editable + audited country** (`6fd4771` —
+> `Person.country` writable via ModelSerializer auto-gen + added to the audit
+> `track()` set; FE `CountryPicker` in the contact form with Clear, `020713b`).
+> **Contact-type badges** (`8cac257` — `contact_types` SerializerMethodField from
+> kind / booking_count / agency / a correlated `ArrayAgg` of active
+> property-assignment roles, no COUNT inflation; FE token badges `58e51a2`).
+> Address/town/post-code/notes were already writable+tracked. Deferred: rich-text
+> notes; full-fidelity deal-channel agent in `contact_types` (accounts-only
+> derivation — a pure deal-channel agent with no agency/agent-role isn't badged,
+> still appears in Clients).
+
 # GAP-052 — Contact detail: editable address, editable notes, contact-type badges
 
 - **Severity:** Gap (frontend-led + small serializer surface) — follow-up to

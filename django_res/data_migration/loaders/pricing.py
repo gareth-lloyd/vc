@@ -46,6 +46,7 @@ from pricing.models.rate import RateCard, RatePlan, RateRule
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
 from properties.models.property import Property
+from properties.models.services import PropertyService
 
 logger = structlog.get_logger(__name__)
 
@@ -331,7 +332,8 @@ class RatePlanLoader(BaseLoader):
             "effective_to": effective_to,
             "is_active": True,
             "notes": (row.get("Notes") or "").strip(),
-            "inclusion": (row.get("Inclusion") or "").strip(),
+            # GAP-037: `Inclusion` no longer lands on RatePlan — it materialises a
+            # PropertyService in `_process_row` (keyed `<season>:svc`).
         }
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
@@ -352,6 +354,21 @@ class RatePlanLoader(BaseLoader):
                 "is_active": True,
             },
         )
+        # GAP-037: a season's free-text Inclusion becomes one date-banded
+        # PropertyService on the villa, sharing the plan's effective dates.
+        inclusion = (row.get("Inclusion") or "").strip()
+        if inclusion:
+            PropertyService.objects.update_or_create(
+                legacy_id=f"{legacy_id}:svc",
+                defaults={
+                    "property": plan.property,
+                    "name": "Included services",
+                    "copy": inclusion,
+                    "applies_from": plan.effective_from,
+                    "applies_to": plan.effective_to,
+                    "is_active": plan.is_active,
+                },
+            )
 
 
 class RateRuleLoader(BaseLoader):

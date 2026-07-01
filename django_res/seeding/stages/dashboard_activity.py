@@ -52,7 +52,7 @@ from seeding._pricing_helpers import (
     assign_commission,
     build_seasonal_cards,
     draw_base_nightly,
-    inclusion_for,
+    seed_included_services,
 )
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
@@ -157,8 +157,8 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
     plan = RatePlanFactory(
         property=prop,
         currency=ctx.default_currency,
-        inclusion=inclusion_for(len(ctx.properties)),
     )
+    seed_included_services(prop, len(ctx.properties))
     if ctx.knobs.realistic_pricing:
         # Same price shape + commission as the rest of the portfolio (flat
         # brackets, no occupancy bands — these villas host short stays).

@@ -36,6 +36,7 @@ EXPECTED_TRACKED_MODELS = {
     "properties.PropertyFeature",
     "properties.PropertyImage",
     "properties.PropertyNearbyPlace",
+    "properties.PropertyService",
     "properties.Room",
     "payments.Refund",
     "payments.SecurityDeposit",

@@ -42,6 +42,7 @@ export const queryKeys = {
     features: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "features"] as const,
     rooms: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "rooms"] as const,
     nearby: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "nearby"] as const,
+    services: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "services"] as const,
     changeover: (idOrSlug: PropertyId) =>
       ["properties", "detail", k(idOrSlug), "changeover"] as const,
     seasons: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug), "seasons"] as const,

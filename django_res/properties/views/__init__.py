@@ -50,6 +50,10 @@ from properties.views.room import (
     PropertyRoomReorderView,
     RoomDetailView,
 )
+from properties.views.service import (
+    PropertyServiceDetailView,
+    PropertyServiceListCreateView,
+)
 from properties.views.settings import (
     GroupSettingsView,
     PropertySettingsView,
@@ -85,6 +89,8 @@ __all__ = [
     "PropertyPriceDisplayView",
     "PropertyRoomListCreateView",
     "PropertyRoomReorderView",
+    "PropertyServiceDetailView",
+    "PropertyServiceListCreateView",
     "PropertySettingsView",
     "PropertyViewSet",
     "RegionViewSet",

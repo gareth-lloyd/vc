@@ -56,20 +56,20 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
   const { t } = useTranslation("quotations");
   const [inclusionsExpanded, setInclusionsExpanded] = useState(false);
 
-  // GAP-044 occupancy fan-out: when the covering rate card has ≥2 brackets the
-  // result carries a band per bracket, each rendered as its own default-checked
-  // line. A banded result suppresses the stay-option picker (plan H3/#9) — the
-  // bands are priced for the default block only.
-  const bands = useMemo(() => option.occupancy_bands ?? [], [option.occupancy_bands]);
-  const isBanded = bands.length > 0;
-  const [checkedBands, setCheckedBands] = useState<Set<number>>(
-    () => new Set(bands.map((_, i) => i)),
-  );
-  const toggleBand = (index: number) =>
-    setCheckedBands((prev) => {
+  // GAP-044b two-axis picker: an occupancy-priced villa shows the *selected*
+  // week's brackets (see `resolvedBands` below). The operator trims bands by
+  // identity (party range), not array index, so a check survives a week flip
+  // even if the bracket set reorders/resizes across seasonal cards. Track the
+  // DESELECTED keys so a not-yet-seen bracket (a new week's) defaults to checked.
+  const bandKey = (b: OccupancyBand) => `${b.min_party}-${b.max_party}`;
+  const [deselectedBands, setDeselectedBands] = useState<Set<string>>(() => new Set());
+  const isBandChecked = (b: OccupancyBand) => !deselectedBands.has(bandKey(b));
+  const toggleBand = (b: OccupancyBand) =>
+    setDeselectedBands((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      const k = bandKey(b);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
       return next;
     });
 
@@ -81,11 +81,10 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
   );
   // Default block preselected when it's free; otherwise the first free block
   // (the whole point of the alternatives); otherwise fall back to the default.
-  // A banded result always pins the default block — its bands are priced for
-  // that block only (the picker is suppressed), so there is no alternate to
-  // preselect or reprice (bands × alternate blocks is deferred).
+  // A banded villa now behaves identically (GAP-044b): its bands resolve per
+  // week, so a held default preselects — and reprices — a free alternate.
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (isBanded || !hasPicker || stayOptions[defaultIndex]?.is_available) return defaultIndex;
+    if (!hasPicker || stayOptions[defaultIndex]?.is_available) return defaultIndex;
     const firstAvailable = stayOptions.findIndex((o) => o.is_available);
     return firstAvailable === -1 ? defaultIndex : firstAvailable;
   });
@@ -149,12 +148,40 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
     };
   }, [selected, isDefaultSelected, reprices, option]);
 
+  // GAP-044b: the SELECTED week's occupancy bands — read straight from the
+  // default option or that week's cached reprice, decoupled from the reprice's
+  // `available`. An out-of-bracket party (B2) reprices to available:false yet
+  // still carries the full band array; gating bands on `resolved` (which
+  // collapses !available to an error) would wrongly hide a saveable selection.
+  const repriceEntry = !isDefaultSelected && selected ? reprices[selected.date_from] : undefined;
+  const repriceObj: StayReprice | null =
+    repriceEntry && repriceEntry !== "pending" && repriceEntry !== "error" ? repriceEntry : null;
+  const resolvedBands = useMemo<OccupancyBand[]>(() => {
+    if (isDefaultSelected) return option.occupancy_bands ?? [];
+    return repriceObj?.occupancy_bands ?? [];
+  }, [isDefaultSelected, option.occupancy_bands, repriceObj]);
+  const isBandedView = resolvedBands.length > 0;
+  const checkedSaveableBands = resolvedBands.filter(
+    (b) => isBandChecked(b) && !b.is_poa && b.total != null,
+  );
+
+  // The dates the selected week actually priced at — kept independent of the
+  // flat `resolved` path so a banded/out-of-bracket week still surfaces a shift.
+  const selectedPricedFrom = isDefaultSelected
+    ? (option.date_from ?? selected?.date_from ?? "")
+    : (repriceObj?.date_from ?? selected?.date_from ?? "");
+  const selectedPricedTo = isDefaultSelected
+    ? (option.date_to ?? selected?.date_to ?? "")
+    : (repriceObj?.date_to ?? selected?.date_to ?? "");
+
   // The engine can still nudge a repriced arrival (changeover rule boundary
   // inside the window) — never silently show different dates than clicked.
+  // Dates are known for the default block, or once an alternate has repriced.
+  const datesKnown = isDefaultSelected || repriceObj != null;
   const shifted =
     selected != null &&
-    resolved.state === "ready" &&
-    (resolved.pricedFrom !== selected.date_from || resolved.pricedTo !== selected.date_to);
+    datesKnown &&
+    (selectedPricedFrom !== selected.date_from || selectedPricedTo !== selected.date_to);
 
   const metaParts: string[] = [];
   if (option.internal_name && option.internal_name !== option.property_name) {
@@ -189,33 +216,39 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
       : inclusions;
 
   const heldSelected = selected != null && !selected.is_available;
-  // A banded result is priced by its bands (default block), so the stay-block
-  // held/reprice state must not gate Add — only staging and "at least one band
-  // checked" do. A non-banded result keeps the block-availability + reprice gate.
-  const addDisabled = isBanded
-    ? staged || checkedBands.size === 0
-    : staged || heldSelected || resolved.state !== "ready";
+  // A booked (held) week can never be added, banded or not. Beyond that: a
+  // banded week needs ≥1 saveable (non-POA, priced) checked band; a flat week
+  // needs its price resolved (which also covers "still repricing"). `isBandedView`
+  // follows the SELECTED week, so a villa banded in one season and flat in
+  // another gates on whichever shape the chosen week resolved to.
+  const addDisabled =
+    staged ||
+    heldSelected ||
+    (isBandedView ? checkedSaveableBands.length === 0 : resolved.state !== "ready");
 
   const handleAdd = () => {
+    // Carry the SELECTED week's stay whenever its dates are known: a flat week
+    // needs a resolved price; a banded week rides on its bands, so a repriced
+    // (or default) week is enough even out-of-bracket. A legacy option with no
+    // stay_options hands over no stay (the builder falls back to the criteria).
+    const priceReady = resolved.state === "ready";
     const stay: ChosenStay | undefined =
-      selected && resolved.state === "ready"
+      selected && (isBandedView ? datesKnown : priceReady)
         ? {
             date_from: selected.date_from,
             date_to: selected.date_to,
             is_default: isDefaultSelected,
-            priced_date_from: resolved.pricedFrom || selected.date_from,
-            priced_date_to: resolved.pricedTo || selected.date_to,
-            total: resolved.total,
-            currency: resolved.currency,
-            inclusion: resolved.inclusion,
+            priced_date_from: selectedPricedFrom || selected.date_from,
+            priced_date_to: selectedPricedTo || selected.date_to,
+            // A banded line takes its total/currency from the bands, never a
+            // single figure (bands are alternatives) — leave them null.
+            total: isBandedView ? null : priceReady ? resolved.total : null,
+            currency: isBandedView ? null : priceReady ? resolved.currency : null,
+            inclusion: priceReady ? resolved.inclusion : (option.inclusion ?? null),
           }
         : undefined;
-    if (isBanded) {
-      onAdd(
-        option,
-        stay,
-        bands.filter((_, i) => checkedBands.has(i)),
-      );
+    if (isBandedView) {
+      onAdd(option, stay, resolvedBands.filter(isBandChecked));
     } else {
       onAdd(option, stay);
     }
@@ -279,25 +312,25 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
               ) : null}
             </p>
           ) : null}
-          {hasPicker && !isBanded ? (
+          {hasPicker ? (
             <StayOptionPicker
               options={stayOptions}
               selectedIndex={selectedIndex}
               onSelect={setSelectedIndex}
             />
           ) : null}
-          {isBanded ? (
+          {isBandedView ? (
             <div className="space-y-1">
               <p className="text-foreground/80 text-xs font-medium">
                 {t("builder.results.bands.heading")}
               </p>
-              {bands.map((b, i) => (
+              {resolvedBands.map((b, i) => (
                 <CheckboxLabel
                   key={`${b.min_party}-${b.max_party}-${i}`}
                   className="justify-between"
                 >
                   <span className="flex items-center gap-2">
-                    <Checkbox checked={checkedBands.has(i)} onCheckedChange={() => toggleBand(i)} />
+                    <Checkbox checked={isBandChecked(b)} onCheckedChange={() => toggleBand(b)} />
                     <span className="text-muted-foreground text-xs">
                       {t("builder.results.bands.party_range", {
                         min: b.min_party,
@@ -329,17 +362,17 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
               </span>
             </p>
           )}
-          {!isBanded && shifted ? (
+          {shifted ? (
             <p className="text-warning text-xs">
               {t("builder.results.stay_options.shifted", {
-                from: formatDate(resolved.state === "ready" ? resolved.pricedFrom : null),
-                to: formatDate(resolved.state === "ready" ? resolved.pricedTo : null),
+                from: formatDate(selectedPricedFrom || null),
+                to: formatDate(selectedPricedTo || null),
               })}
             </p>
           ) : null}
         </div>
       </div>
-      {heldSelected && !isBanded ? (
+      {heldSelected ? (
         <Tooltip>
           {/* span wrapper: a disabled button can't anchor a tooltip. */}
           <TooltipTrigger asChild>

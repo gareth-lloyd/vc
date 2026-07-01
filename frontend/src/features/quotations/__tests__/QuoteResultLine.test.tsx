@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, delay } from "msw";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
@@ -300,18 +300,20 @@ describe("QuoteResultLine", () => {
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
 
-    it("omits the stay-option picker for a banded result", () => {
-      // Plan H3/#9: bands are priced for the default block only, so the
-      // alternate-block picker is suppressed even when blocks exist.
+    it("shows the stay-option picker AND the default week's bands (GAP-044b two-axis)", () => {
+      // Both axes on one card now: the week chips and the default week's bands.
       renderLine(
         option({
-          occupancy_bands: [band(), band({ min_party: 5, max_party: 8 })],
+          total: null,
+          occupancy_bands: [band(), band({ min_party: 5, max_party: 8, total: "4500.00" })],
           stay_options: twoBlocks(),
         }),
       );
 
-      expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
-      expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("radio")).toHaveLength(2);
+      expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+      expect(screen.getByText("$3,000.00")).toBeInTheDocument();
+      expect(screen.getByText("$4,500.00")).toBeInTheDocument();
     });
 
     it("flags a reprice whose engine dates differ from the clicked chip", async () => {
@@ -388,13 +390,23 @@ describe("QuoteResultLine", () => {
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
     });
 
-    it("keeps Add enabled for a banded result whose default block is booked", () => {
-      // A banded result is priced by its bands (default block only), so the
-      // stay-block held/reprice machinery must not gate Add: a booked default
-      // block (with a free alternate) neither disables Add nor fires a reprice —
-      // no reprice mock is registered, so a stray reprice would surface.
+    it("reprices the free alternate on mount when a banded villa's default block is booked", async () => {
+      // GAP-044b (H1): with the picker now shown for banded villas, a booked
+      // default preselects the first free alternate and reprices it on mount —
+      // the same behaviour flat-rate villas already have. Its bands arrive from
+      // the reprice, and Add enables once they do.
+      mockReprice({
+        available: true,
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3100.00" }),
+          band({ min_party: 5, max_party: 8, total: "4600.00" }),
+        ],
+      });
       renderLine(
         option({
+          total: null,
           occupancy_bands: [
             band({ min_party: 1, max_party: 4 }),
             band({ min_party: 5, max_party: 8 }),
@@ -403,9 +415,10 @@ describe("QuoteResultLine", () => {
         }),
       );
 
+      expect(screen.getAllByRole("radio")[1]).toHaveAttribute("aria-checked", "true");
+      await waitFor(() => expect(screen.getByText("$3,100.00")).toBeInTheDocument());
+      expect(screen.getByText("$4,600.00")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
-      // No block picker and no "held" hint — the banded card ignores blocks.
-      expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     });
 
     it("passes only the checked bands to onAdd", async () => {
@@ -427,6 +440,191 @@ describe("QuoteResultLine", () => {
       const call = onAdd.mock.calls[0];
       expect(call[2]).toHaveLength(1);
       expect(call[2][0]).toMatchObject({ min_party: 5, max_party: 8 });
+    });
+
+    it("forwards a checked POA band to onAdd (filtered only at save) while Add stays enabled", async () => {
+      // The Add gate counts saveable (non-POA, priced) bands, but the payload
+      // forwards ALL checked bands — a checked POA band rides along so the
+      // shortlist can show it flagged; it's dropped at save (SaveQuoteDialog),
+      // not here. This pins that gate-vs-payload seam.
+      const onAdd = vi.fn();
+      renderLine(
+        option({
+          total: null,
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4, total: "3000.00" }),
+            band({ min_party: 5, max_party: 8, total: null, currency_code: null, is_poa: true }),
+          ],
+        }),
+        { onAdd },
+      );
+
+      // A priced band stays checked, so Add is enabled despite the POA band.
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+      await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+      const call = onAdd.mock.calls[0];
+      expect(call[2]).toHaveLength(2);
+      expect(call[2].map((b: OccupancyBand) => b.is_poa)).toEqual([false, true]);
+    });
+  });
+
+  describe("two-axis picker (week × bands)", () => {
+    // A banded villa with two changeover blocks. The default week's bands are
+    // priced up front; picking the alternate reprices to that week's bands.
+    function bandedTwoBlocks(overrides: Partial<QuoteOption> = {}): QuoteOption {
+      return option({
+        total: null,
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3000.00" }),
+          band({ min_party: 5, max_party: 8, total: "4500.00" }),
+        ],
+        stay_options: twoBlocks(),
+        ...overrides,
+      });
+    }
+
+    it("reprices a picked week and shows that week's bands, preserving a deselection", async () => {
+      mockReprice({
+        available: true,
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3200.00" }),
+          band({ min_party: 5, max_party: 8, total: "4700.00" }),
+        ],
+      });
+      renderLine(bandedTwoBlocks());
+
+      // Deselect the 1–4 band on the default week...
+      await userEvent.click(screen.getAllByRole("checkbox")[0]);
+      expect(screen.getAllByRole("checkbox")[0]).toHaveAttribute("aria-checked", "false");
+
+      // ...flip to the alternate week: its band prices load...
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
+      expect(screen.getByText("$4,700.00")).toBeInTheDocument();
+
+      // ...and the 1–4 deselection carried across the flip (by party-range identity).
+      expect(screen.getAllByRole("checkbox")[0]).toHaveAttribute("aria-checked", "false");
+      expect(screen.getAllByRole("checkbox")[1]).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("still renders bands and enables Add for an out-of-bracket week (available:false)", async () => {
+      // B2/H2: an out-of-bracket party reprices to available:false yet carries
+      // the full band array — the bands stay saveable, Add stays enabled, and
+      // no reprice error surfaces.
+      mockReprice({
+        available: false,
+        error_code: "party_out_of_range",
+        error_detail: "20 guests exceeds all brackets",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3200.00" }),
+          band({ min_party: 5, max_party: 8, total: "4700.00" }),
+        ],
+      });
+      renderLine(bandedTwoBlocks());
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+    });
+
+    it("renders a single total when the picked week is flat (no bands)", async () => {
+      // A villa banded on the default week can be flat on another (seasonal
+      // card boundary): the price area follows the selected week's shape.
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+      });
+      renderLine(bandedTwoBlocks());
+
+      expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    });
+
+    it("shows a repricing placeholder and disables Add while a picked week loads", async () => {
+      server.use(
+        http.post("/api/v1/quotations:search-options", async () => {
+          await delay("infinite");
+          return HttpResponse.json({ quotes: [] });
+        }),
+      );
+      renderLine(bandedTwoBlocks());
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      expect(await screen.findByText(/repricing…/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("flags a changeover shift on a picked banded week", async () => {
+      mockReprice({
+        available: true,
+        date_from: "2026-07-12",
+        date_to: "2026-07-19",
+        changeover_shifted_from: "2026-07-11",
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3200.00" }),
+          band({ min_party: 5, max_party: 8, total: "4700.00" }),
+        ],
+      });
+      renderLine(bandedTwoBlocks());
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      expect(await screen.findByText(/Priced as 12 Jul 2026 → 19 Jul 2026/)).toBeInTheDocument();
+    });
+
+    it("disables Add when a held week is picked on a banded villa", async () => {
+      renderLine(
+        bandedTwoBlocks({ stay_options: twoBlocks([undefined, { is_available: false }]) }),
+      );
+
+      // Default (free) week: Add enabled with bands.
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+      // Pick the held alternate → Add disabled (a booked week can't be added).
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("hands the picked week's dates and its checked bands to onAdd", async () => {
+      mockReprice({
+        available: true,
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        occupancy_bands: [
+          band({ min_party: 1, max_party: 4, total: "3200.00" }),
+          band({ min_party: 5, max_party: 8, total: "4700.00" }),
+        ],
+      });
+      const onAdd = vi.fn();
+      renderLine(bandedTwoBlocks(), { onAdd });
+
+      await userEvent.click(screen.getAllByRole("radio")[1]);
+      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
+      // Trim the 1–4 band, then add the alternate week.
+      await userEvent.click(screen.getAllByRole("checkbox")[0]);
+      await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+      const call = onAdd.mock.calls[0];
+      // Stay carries the picked week's dates (not the default), no single total.
+      expect(call[1]).toMatchObject({
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        is_default: false,
+        total: null,
+        currency: null,
+      });
+      // Only the still-checked 5–8 band rides along, at the picked week's price.
+      expect(call[2]).toHaveLength(1);
+      expect(call[2][0]).toMatchObject({ min_party: 5, max_party: 8, total: "4700.00" });
     });
   });
 });

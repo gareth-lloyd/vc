@@ -294,6 +294,41 @@ export interface ChosenStay {
   inclusion: string | null;
 }
 
+// One add-unit handed from a result card to the builder (GAP-043): a chosen
+// week (absent for legacy results without stay_options — the builder then
+// stages the criteria dates) plus, for a banded villa, that week's checked
+// occupancy bands.
+export interface StayAdd {
+  stay?: ChosenStay;
+  bands?: OccupancyBand[];
+}
+
+// Which dates a chosen stay stages and posts (GAP-007): a real alternative —
+// an explicitly picked non-default block, or a default block the search
+// rounded to a different length than requested — carries its own dates. A
+// default block with the SAME night count is the preferred stay (possibly
+// changeover-shifted): the criteria dates are kept so the backend stays the
+// single source of the shift and records it. Shared by the builder (staging)
+// and the result card (per-week staged markers) so the two can't disagree on
+// a week's line identity.
+export function stagedStayDates(
+  criteria: { date_from: string; date_to: string },
+  stay?: { date_from: string; date_to: string; is_default: boolean },
+): { date_from: string; date_to: string } {
+  // Empty criteria (defensive — a card rendered before any search recorded)
+  // fall through to the stay's own dates rather than NaN-poisoning the
+  // night-count comparison below.
+  const useStayDates =
+    stay != null &&
+    (!criteria.date_from ||
+      !stay.is_default ||
+      nightsCount(stay.date_from, stay.date_to) !==
+        nightsCount(criteria.date_from, criteria.date_to));
+  return useStayDates
+    ? { date_from: stay.date_from, date_to: stay.date_to }
+    : { date_from: criteria.date_from, date_to: criteria.date_to };
+}
+
 // A property that matched the operator's name search but is excluded from the
 // priced options because its capacity isn't set (no row, or guests === 0).
 // Surfaced as a hint so the operator learns why a known property is missing,

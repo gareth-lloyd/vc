@@ -9,23 +9,26 @@ import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { QuoteResultLine } from "./QuoteResultLine";
 import {
-  type ChosenStay,
   type HiddenCapacityProperty,
-  type OccupancyBand,
   type QuoteOption,
+  type StayAdd,
   stagedLineProperty,
 } from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
-  // Staged line_ids (`${property_id}:${date_from}`, GAP-043). This list keys
-  // per-property affordances off a prefix match — one card per villa, staged
-  // when ANY of its weeks is staged.
+  // Staged line_ids (GAP-043). Full result cards mark individual weeks off
+  // these; the compact manual/unavailable rows decode them per property (one
+  // row per villa, staged when ANY of its weeks is).
   stagedKeys: Set<string>;
-  // GAP-044: a banded result also hands over the checked occupancy bands; the
-  // third arg threads through to the builder, which stages them onto the line.
-  onAdd: (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => void;
+  // The dates the current results were searched with — full cards need them
+  // to map week cells onto staged-line identities. Null only before the first
+  // search, when there are no results to render.
+  criteriaDates: { date_from: string; date_to: string } | null;
+  // GAP-043: one add-unit per checked week (each with its GAP-044 bands);
+  // absent for the compact manual-quotable rows (criteria-dates line).
+  onAdd: (option: QuoteOption, adds?: StayAdd[]) => void;
   // Party the search ran with — block reprices keep the same party.
   adults: number;
   children: number;
@@ -90,6 +93,7 @@ export function QuoteResultsList({
   options,
   isLoading,
   stagedKeys,
+  criteriaDates,
   onAdd,
   adults,
   children,
@@ -166,7 +170,8 @@ export function QuoteResultsList({
         <QuoteResultLine
           key={`${option.property_id}:${searchKey}`}
           option={option}
-          staged={isPropertyStaged(option.property_id)}
+          stagedKeys={stagedKeys}
+          criteriaDates={criteriaDates ?? { date_from: "", date_to: "" }}
           adults={adults}
           children={children}
           onAdd={onAdd}

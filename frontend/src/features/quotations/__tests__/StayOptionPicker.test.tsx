@@ -30,90 +30,111 @@ const AVAILABLE: StayOption[] = [
   option({ date_from: "2026-08-15", date_to: "2026-08-22" }),
 ];
 
-describe("StayOptionPicker", () => {
-  it("renders one radio per option with the compact week label", () => {
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={vi.fn()} />,
-    );
+function renderPicker(
+  options: StayOption[],
+  {
+    checked = new Set<number>([0]),
+    onToggle = vi.fn(),
+    staged = new Set<number>(),
+  }: {
+    checked?: Set<number>;
+    onToggle?: ReturnType<typeof vi.fn>;
+    staged?: Set<number>;
+  } = {},
+) {
+  return renderWithProviders(
+    <StayOptionPicker
+      options={options}
+      checkedIndices={checked}
+      onToggle={onToggle}
+      stagedIndices={staged}
+    />,
+  );
+}
 
-    const radios = screen.getAllByRole("radio");
-    expect(radios).toHaveLength(3);
+describe("StayOptionPicker", () => {
+  it("renders one checkbox cell per option with the compact week label", () => {
+    renderPicker(UNIFORM);
+
+    const cells = screen.getAllByRole("checkbox");
+    expect(cells).toHaveLength(3);
     expect(screen.getByText("1–8 Aug")).toBeInTheDocument();
     expect(screen.getByText("8–15 Aug")).toBeInTheDocument();
     expect(screen.getByText("15–22 Aug")).toBeInTheDocument();
   });
 
-  it("calls onSelect with the clicked index", async () => {
-    const onSelect = vi.fn();
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
-    );
+  it("toggles a cell on click and reflects multiple checked cells", async () => {
+    const onToggle = vi.fn();
+    renderPicker(AVAILABLE, { checked: new Set([0, 2]), onToggle });
 
-    await userEvent.click(screen.getAllByRole("radio")[2]);
-    expect(onSelect).toHaveBeenCalledWith(2);
+    const cells = screen.getAllByRole("checkbox");
+    expect(cells[0]).toHaveAttribute("aria-checked", "true");
+    expect(cells[1]).toHaveAttribute("aria-checked", "false");
+    expect(cells[2]).toHaveAttribute("aria-checked", "true");
+
+    // Clicking any available cell toggles it — checked cells un-check.
+    await userEvent.click(cells[1]);
+    expect(onToggle).toHaveBeenLastCalledWith(1);
+    await userEvent.click(cells[0]);
+    expect(onToggle).toHaveBeenLastCalledWith(0);
   });
 
-  it("drives aria-checked and a roving tabindex from selectedIndex", () => {
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={1} onSelect={vi.fn()} />,
-    );
+  it("toggles the focused cell with Space", async () => {
+    const onToggle = vi.fn();
+    renderPicker(AVAILABLE, { checked: new Set([0]), onToggle });
 
-    const radios = screen.getAllByRole("radio");
-    expect(radios[1]).toHaveAttribute("aria-checked", "true");
-    expect(radios[0]).toHaveAttribute("aria-checked", "false");
-    // Only the selected cell is tab-reachable; the rest are arrow-reachable.
-    expect(radios[1]).toHaveAttribute("tabindex", "0");
-    expect(radios[0]).toHaveAttribute("tabindex", "-1");
-    expect(radios[2]).toHaveAttribute("tabindex", "-1");
+    screen.getAllByRole("checkbox")[0].focus();
+    await userEvent.keyboard(" ");
+    expect(onToggle).toHaveBeenLastCalledWith(0);
   });
 
-  it("moves selection with ArrowRight/ArrowLeft, wrapping at the ends", async () => {
-    const onSelect = vi.fn();
-    const { rerender } = renderWithProviders(
-      <StayOptionPicker options={AVAILABLE} selectedIndex={0} onSelect={onSelect} />,
-    );
+  it("moves focus (not checks) with ArrowRight/ArrowLeft, wrapping and skipping held cells", async () => {
+    const onToggle = vi.fn();
+    renderPicker(UNIFORM, { checked: new Set([0]), onToggle });
 
-    screen.getAllByRole("radio")[0].focus();
+    const cells = screen.getAllByRole("checkbox");
+    cells[0].focus();
+    // Index 1 is held → ArrowRight lands on index 2.
     await userEvent.keyboard("{ArrowRight}");
-    expect(onSelect).toHaveBeenLastCalledWith(1);
-
-    // ArrowLeft from the first cell wraps to the last.
-    rerender(<StayOptionPicker options={AVAILABLE} selectedIndex={0} onSelect={onSelect} />);
-    screen.getAllByRole("radio")[0].focus();
-    await userEvent.keyboard("{ArrowLeft}");
-    expect(onSelect).toHaveBeenLastCalledWith(2);
-  });
-
-  it("skips held cells when arrowing so selection only lands on bookable weeks", async () => {
-    // UNIFORM index 1 is held; ArrowRight from index 0 jumps past it to index 2.
-    const onSelect = vi.fn();
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
-    );
-
-    screen.getAllByRole("radio")[0].focus();
+    expect(cells[2]).toHaveFocus();
+    // ArrowRight from the last available wraps back to the first.
     await userEvent.keyboard("{ArrowRight}");
-    expect(onSelect).toHaveBeenLastCalledWith(2);
+    expect(cells[0]).toHaveFocus();
+    // Arrows never toggle.
+    expect(onToggle).not.toHaveBeenCalled();
   });
 
-  it("marks the default option Requested and the held option Held, held not selectable", async () => {
-    const onSelect = vi.fn();
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={onSelect} />,
-    );
+  it("keeps a roving tabindex: exactly one available cell is tab-reachable", () => {
+    renderPicker(UNIFORM, { checked: new Set([0]) });
 
-    const radios = screen.getAllByRole("radio");
-    expect(within(radios[0]).getByText("Requested")).toBeInTheDocument();
-    expect(within(radios[1]).getByText("Held")).toBeInTheDocument();
-    // A booked week can't be quoted, so it isn't selectable — clicking is a no-op.
-    expect(radios[1]).toBeDisabled();
-    await userEvent.click(radios[1]);
-    expect(onSelect).not.toHaveBeenCalled();
+    const cells = screen.getAllByRole("checkbox");
+    expect(cells[0]).toHaveAttribute("tabindex", "0");
+    expect(cells[1]).toHaveAttribute("tabindex", "-1");
+    expect(cells[2]).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("marks the default option Requested and the held option Held, held not toggleable", async () => {
+    const onToggle = vi.fn();
+    renderPicker(UNIFORM, { checked: new Set([0]), onToggle });
+
+    const cells = screen.getAllByRole("checkbox");
+    expect(within(cells[0]).getByText("Requested")).toBeInTheDocument();
+    expect(within(cells[1]).getByText("Held")).toBeInTheDocument();
+    // A booked week can't be quoted, so it can't be checked — clicking is a no-op.
+    expect(cells[1]).toBeDisabled();
+    await userEvent.click(cells[1]);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("marks an already-staged week Added", () => {
+    renderPicker(AVAILABLE, { checked: new Set([0]), staged: new Set([1]) });
+
+    const cells = screen.getAllByRole("checkbox");
+    expect(within(cells[1]).getByText("Added")).toBeInTheDocument();
+    expect(within(cells[0]).queryByText("Added")).not.toBeInTheDocument();
   });
 
   it("shows both markers when the requested block is also held", () => {
-    // The block nearest the guest's request can itself be held/booked — both
-    // signals are meaningful, so the cell carries Requested and Held together.
     const requestedHeld: StayOption[] = [
       option({
         date_from: "2026-08-01",
@@ -123,32 +144,26 @@ describe("StayOptionPicker", () => {
       }),
       option({ date_from: "2026-08-08", date_to: "2026-08-15" }),
     ];
-    renderWithProviders(
-      <StayOptionPicker options={requestedHeld} selectedIndex={0} onSelect={vi.fn()} />,
-    );
+    renderPicker(requestedHeld, { checked: new Set([1]) });
 
-    const first = screen.getAllByRole("radio")[0];
+    const first = screen.getAllByRole("checkbox")[0];
     expect(within(first).getByText("Requested")).toBeInTheDocument();
     expect(within(first).getByText("Held")).toBeInTheDocument();
   });
 
   it("exposes a full-text aria-label per cell despite the abbreviated visible label", () => {
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={vi.fn()} />,
-    );
+    renderPicker(UNIFORM);
 
     expect(
-      screen.getByRole("radio", { name: "1 Aug 2026 → 8 Aug 2026 · 7 nights · Available" }),
+      screen.getByRole("checkbox", { name: "1 Aug 2026 → 8 Aug 2026 · 7 nights · Available" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "8 Aug 2026 → 15 Aug 2026 · 7 nights · Held" }),
+      screen.getByRole("checkbox", { name: "8 Aug 2026 → 15 Aug 2026 · 7 nights · Held" }),
     ).toBeInTheDocument();
   });
 
   it("shows one nights caption when all blocks share a length, no per-cell nights", () => {
-    renderWithProviders(
-      <StayOptionPicker options={UNIFORM} selectedIndex={0} onSelect={vi.fn()} />,
-    );
+    renderPicker(UNIFORM);
 
     expect(screen.getByText("7-night stays")).toBeInTheDocument();
     // The per-cell "7 nights" sub-label is dropped when uniform (aria-label keeps it).
@@ -160,7 +175,7 @@ describe("StayOptionPicker", () => {
       option({ date_from: "2026-08-01", date_to: "2026-08-08", nights: 7, is_default: true }),
       option({ date_from: "2026-08-08", date_to: "2026-08-13", nights: 5 }),
     ];
-    renderWithProviders(<StayOptionPicker options={mixed} selectedIndex={0} onSelect={vi.fn()} />);
+    renderPicker(mixed);
 
     expect(screen.queryByText("7-night stays")).not.toBeInTheDocument();
     expect(screen.getByText("7 nights")).toBeInTheDocument();

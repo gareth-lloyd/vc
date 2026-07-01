@@ -272,6 +272,8 @@
       "total": "Total",
       "thumbnail_alt": "{{name}} thumbnail",
       "add": "Add to quote",
+      "add_count_one": "Add {{count}} week",
+      "add_count_other": "Add {{count}} weeks",
       "added": "Added",
       "idle": {
         "title": "Run a search to see priced options",
@@ -334,6 +336,7 @@
         "held_hint": "These dates are held or booked — pick another block.",
         "shifted": "Priced as {{from}} → {{to}}",
         "requested": "Requested",
+        "staged": "Added",
         "caption_nights": "{{nights}}-night stays",
         "option_aria": "{{range}} · {{nights}} · {{status}}"
       }

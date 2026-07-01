@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatMoney } from "@/lib/format/money";
@@ -8,7 +10,7 @@ import { formatDate } from "@/lib/format/date";
 import { useRepriceStayOption } from "../hooks";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { StayOptionPicker } from "./StayOptionPicker";
-import type { ChosenStay, QuoteOption, StayReprice } from "../schemas";
+import type { ChosenStay, OccupancyBand, QuoteOption, StayReprice } from "../schemas";
 
 // Day codes the backend's PrefilledChangeOverDay can emit ("any" serialises
 // as null). A closed set so we never build an i18n key from arbitrary input.
@@ -24,7 +26,10 @@ interface Props {
   // Party for block reprices — the criteria the search ran with.
   adults: number;
   children: number;
-  onAdd: (option: QuoteOption, stay?: ChosenStay) => void;
+  // GAP-044: a banded result also hands the checked occupancy bands to the
+  // builder (consumed by a later unit); the third arg stays optional so
+  // non-banded callers are unaffected.
+  onAdd: (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => void;
 }
 
 // What the currently selected stay block resolves to: the option's own price
@@ -51,6 +56,23 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
   const { t } = useTranslation("quotations");
   const [inclusionsExpanded, setInclusionsExpanded] = useState(false);
 
+  // GAP-044 occupancy fan-out: when the covering rate card has ≥2 brackets the
+  // result carries a band per bracket, each rendered as its own default-checked
+  // line. A banded result suppresses the stay-option picker (plan H3/#9) — the
+  // bands are priced for the default block only.
+  const bands = useMemo(() => option.occupancy_bands ?? [], [option.occupancy_bands]);
+  const isBanded = bands.length > 0;
+  const [checkedBands, setCheckedBands] = useState<Set<number>>(
+    () => new Set(bands.map((_, i) => i)),
+  );
+  const toggleBand = (index: number) =>
+    setCheckedBands((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
   const stayOptions = useMemo(() => option.stay_options ?? [], [option.stay_options]);
   const hasPicker = stayOptions.length > 1;
   const defaultIndex = Math.max(
@@ -59,8 +81,11 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
   );
   // Default block preselected when it's free; otherwise the first free block
   // (the whole point of the alternatives); otherwise fall back to the default.
+  // A banded result always pins the default block — its bands are priced for
+  // that block only (the picker is suppressed), so there is no alternate to
+  // preselect or reprice (bands × alternate blocks is deferred).
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (!hasPicker || stayOptions[defaultIndex]?.is_available) return defaultIndex;
+    if (isBanded || !hasPicker || stayOptions[defaultIndex]?.is_available) return defaultIndex;
     const firstAvailable = stayOptions.findIndex((o) => o.is_available);
     return firstAvailable === -1 ? defaultIndex : firstAvailable;
   });
@@ -164,7 +189,12 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
       : inclusions;
 
   const heldSelected = selected != null && !selected.is_available;
-  const addDisabled = staged || heldSelected || resolved.state !== "ready";
+  // A banded result is priced by its bands (default block), so the stay-block
+  // held/reprice state must not gate Add — only staging and "at least one band
+  // checked" do. A non-banded result keeps the block-availability + reprice gate.
+  const addDisabled = isBanded
+    ? staged || checkedBands.size === 0
+    : staged || heldSelected || resolved.state !== "ready";
 
   const handleAdd = () => {
     const stay: ChosenStay | undefined =
@@ -180,7 +210,15 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
             inclusion: resolved.inclusion,
           }
         : undefined;
-    onAdd(option, stay);
+    if (isBanded) {
+      onAdd(
+        option,
+        stay,
+        bands.filter((_, i) => checkedBands.has(i)),
+      );
+    } else {
+      onAdd(option, stay);
+    }
   };
 
   const addButton = (
@@ -241,14 +279,42 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
               ) : null}
             </p>
           ) : null}
-          {hasPicker ? (
+          {hasPicker && !isBanded ? (
             <StayOptionPicker
               options={stayOptions}
               selectedIndex={selectedIndex}
               onSelect={setSelectedIndex}
             />
           ) : null}
-          {resolved.state === "error" ? (
+          {isBanded ? (
+            <div className="space-y-1">
+              <p className="text-foreground/80 text-xs font-medium">
+                {t("builder.results.bands.heading")}
+              </p>
+              {bands.map((b, i) => (
+                <CheckboxLabel
+                  key={`${b.min_party}-${b.max_party}-${i}`}
+                  className="justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Checkbox checked={checkedBands.has(i)} onCheckedChange={() => toggleBand(i)} />
+                    <span className="text-muted-foreground text-xs">
+                      {t("builder.results.bands.party_range", {
+                        min: b.min_party,
+                        max: b.max_party,
+                      })}
+                    </span>
+                  </span>
+                  <span className="text-foreground text-xs font-medium">
+                    {b.is_poa || b.total == null
+                      ? t("builder.results.bands.poa")
+                      : // Per-band currency — a banded list can mix £/€/$.
+                        formatMoney(b.total, b.currency_code)}
+                  </span>
+                </CheckboxLabel>
+              ))}
+            </div>
+          ) : resolved.state === "error" ? (
             <p className="text-destructive text-xs" role="alert">
               {resolved.detail ?? t("builder.results.stay_options.reprice_failed")}
             </p>
@@ -263,7 +329,7 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
               </span>
             </p>
           )}
-          {shifted ? (
+          {!isBanded && shifted ? (
             <p className="text-warning text-xs">
               {t("builder.results.stay_options.shifted", {
                 from: formatDate(resolved.state === "ready" ? resolved.pricedFrom : null),
@@ -273,7 +339,7 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
           ) : null}
         </div>
       </div>
-      {heldSelected ? (
+      {heldSelected && !isBanded ? (
         <Tooltip>
           {/* span wrapper: a disabled button can't anchor a tooltip. */}
           <TooltipTrigger asChild>

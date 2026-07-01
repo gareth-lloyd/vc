@@ -224,6 +224,92 @@ describe("QuoteResultsList", () => {
     expect(screen.getByRole("button", { name: /added/i })).toBeDisabled();
   });
 
+  it("routes a banded but unavailable option (B2) to a full card with its bands", () => {
+    // GAP-044 B2: party-out-of-range yet still carries populated bands — it
+    // must render the full card (so the bands show), not the compact
+    // unavailable row.
+    renderList([
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        error_code: "party_out_of_range",
+        occupancy_bands: [
+          {
+            min_party: 1,
+            max_party: 4,
+            adults: 4,
+            total: "3000.00",
+            currency_code: "USD",
+            is_projected: false,
+            is_poa: false,
+            error_code: null,
+          },
+          {
+            min_party: 5,
+            max_party: 8,
+            adults: 8,
+            total: "4500.00",
+            currency_code: "USD",
+            is_projected: false,
+            is_poa: false,
+            error_code: null,
+          },
+        ],
+      }),
+    ]);
+
+    // Visible without expanding a collapsed section, with its band rows.
+    expect(screen.getByText("Villa Azul")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /unavailable/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/1–4 guests/)).toBeInTheDocument();
+    expect(screen.getByText(/5–8 guests/)).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  });
+
+  it("keeps a booked banded week in the compact unavailable list, not a fan-out card", () => {
+    // GAP-044 decision 3: bands are gated on the week being date-available. A
+    // booked week (dates_unavailable) carries bands from the backend but must
+    // not render an addable fan-out — it collapses like any other booked villa.
+    renderList([
+      option(),
+      option({
+        property_id: 2,
+        property_name: "Villa Azul",
+        available: false,
+        total: null,
+        error_code: "dates_unavailable",
+        occupancy_bands: [
+          {
+            min_party: 1,
+            max_party: 4,
+            adults: 4,
+            total: "3000.00",
+            currency_code: "USD",
+            is_projected: false,
+            is_poa: false,
+            error_code: null,
+          },
+          {
+            min_party: 5,
+            max_party: 8,
+            adults: 8,
+            total: "4500.00",
+            currency_code: "USD",
+            is_projected: false,
+            is_poa: false,
+            error_code: null,
+          },
+        ],
+      }),
+    ]);
+    // Collapsed behind the unavailable toggle — no visible band rows / checkboxes.
+    expect(screen.queryByText("Villa Azul")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1 villa unavailable/i })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
   it("keeps other error codes collapsed and unselectable", () => {
     renderList([
       option(),

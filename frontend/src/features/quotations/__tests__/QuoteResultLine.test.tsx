@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { server } from "@/test/msw/server";
 import { QuoteResultLine } from "../components/QuoteResultLine";
-import type { QuoteOption, StayOption } from "../schemas";
+import type { OccupancyBand, QuoteOption, StayOption } from "../schemas";
 
 afterEach(() => server.resetHandlers());
 
@@ -42,6 +42,20 @@ function twoBlocks(overrides: [Partial<StayOption>?, Partial<StayOption>?] = [])
       ...overrides[1],
     },
   ];
+}
+
+function band(overrides: Partial<OccupancyBand> = {}): OccupancyBand {
+  return {
+    min_party: 1,
+    max_party: 4,
+    adults: 4,
+    total: "3000.00",
+    currency_code: "USD",
+    is_projected: false,
+    is_poa: false,
+    error_code: null,
+    ...overrides,
+  };
 }
 
 function mockReprice(quote: Record<string, unknown>) {
@@ -286,6 +300,20 @@ describe("QuoteResultLine", () => {
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
 
+    it("omits the stay-option picker for a banded result", () => {
+      // Plan H3/#9: bands are priced for the default block only, so the
+      // alternate-block picker is suppressed even when blocks exist.
+      renderLine(
+        option({
+          occupancy_bands: [band(), band({ min_party: 5, max_party: 8 })],
+          stay_options: twoBlocks(),
+        }),
+      );
+
+      expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+      expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    });
+
     it("flags a reprice whose engine dates differ from the clicked chip", async () => {
       mockReprice({
         available: true,
@@ -300,6 +328,105 @@ describe("QuoteResultLine", () => {
       await userEvent.click(screen.getAllByRole("radio")[1]);
 
       expect(await screen.findByText(/Priced as 12 Jul 2026 → 19 Jul 2026/)).toBeInTheDocument();
+    });
+  });
+
+  describe("occupancy fan-out", () => {
+    it("renders each occupancy band as a default-checked, priced row", () => {
+      renderLine(
+        option({
+          total: null,
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4, total: "3000.00" }),
+            band({ min_party: 5, max_party: 8, total: "4500.00" }),
+            band({ min_party: 9, max_party: 12, total: "6000.00" }),
+          ],
+        }),
+      );
+
+      const boxes = screen.getAllByRole("checkbox");
+      expect(boxes).toHaveLength(3);
+      boxes.forEach((b) => expect(b).toHaveAttribute("aria-checked", "true"));
+
+      expect(screen.getByText(/1–4 guests/)).toBeInTheDocument();
+      expect(screen.getByText(/5–8 guests/)).toBeInTheDocument();
+      expect(screen.getByText(/9–12 guests/)).toBeInTheDocument();
+      expect(screen.getByText("$3,000.00")).toBeInTheDocument();
+      expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+      expect(screen.getByText("$6,000.00")).toBeInTheDocument();
+    });
+
+    it("shows the on-application label for a POA band without crashing", () => {
+      renderLine(
+        option({
+          total: null,
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4, total: "3000.00" }),
+            band({ min_party: 5, max_party: 8, total: null, currency_code: null, is_poa: true }),
+          ],
+        }),
+      );
+
+      expect(screen.getByText(/on application/i)).toBeInTheDocument();
+    });
+
+    it("disables Add when every band is unchecked", async () => {
+      renderLine(
+        option({
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4 }),
+            band({ min_party: 5, max_party: 8 }),
+          ],
+        }),
+      );
+
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+      const boxes = screen.getAllByRole("checkbox");
+      await userEvent.click(boxes[0]);
+      await userEvent.click(boxes[1]);
+      boxes.forEach((b) => expect(b).toHaveAttribute("aria-checked", "false"));
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeDisabled();
+    });
+
+    it("keeps Add enabled for a banded result whose default block is booked", () => {
+      // A banded result is priced by its bands (default block only), so the
+      // stay-block held/reprice machinery must not gate Add: a booked default
+      // block (with a free alternate) neither disables Add nor fires a reprice —
+      // no reprice mock is registered, so a stray reprice would surface.
+      renderLine(
+        option({
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4 }),
+            band({ min_party: 5, max_party: 8 }),
+          ],
+          stay_options: twoBlocks([{ is_available: false }, undefined]),
+        }),
+      );
+
+      expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+      // No block picker and no "held" hint — the banded card ignores blocks.
+      expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    });
+
+    it("passes only the checked bands to onAdd", async () => {
+      const onAdd = vi.fn();
+      renderLine(
+        option({
+          occupancy_bands: [
+            band({ min_party: 1, max_party: 4 }),
+            band({ min_party: 5, max_party: 8 }),
+          ],
+        }),
+        { onAdd },
+      );
+
+      // Uncheck the first band, then add.
+      await userEvent.click(screen.getAllByRole("checkbox")[0]);
+      await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+      const call = onAdd.mock.calls[0];
+      expect(call[2]).toHaveLength(1);
+      expect(call[2][0]).toMatchObject({ min_party: 5, max_party: 8 });
     });
   });
 });

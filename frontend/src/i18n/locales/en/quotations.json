@@ -312,6 +312,11 @@
       },
       "load_more": "Load more",
       "loading_more": "Loading…",
+      "bands": {
+        "heading": "Occupancy pricing",
+        "party_range": "{{min}}–{{max}} guests",
+        "poa": "On application"
+      },
       "stay_options": {
         "label": "Stay options",
         "nights_one": "{{count}} night",

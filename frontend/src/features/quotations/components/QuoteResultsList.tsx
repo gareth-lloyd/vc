@@ -122,19 +122,31 @@ export function QuoteResultsList({
     );
   }
 
+  // GAP-044 B2: a result can be !available for a PRICING reason (e.g.
+  // party_out_of_range) yet still carry occupancy bands — those render the full
+  // card so the bands show. A booked week (`dates_unavailable`) is not
+  // date-available, so its bands are suppressed and it stays in the compact
+  // unavailable list like any other booked villa (plan decision 3: bands are
+  // gated on the week being date-available, not booked).
+  const showsBands = (o: QuoteOption) =>
+    (o.occupancy_bands?.length ?? 0) > 0 && o.error_code !== "dates_unavailable";
   const available = options.filter((o) => o.available);
+  // Full result cards: truly available results plus date-available banded ones.
+  const fullCard = options.filter((o) => o.available || showsBands(o));
   // Q-013: villas the engine can't price (missing rate rules or POA) stay
   // quotable with an operator-typed price, per legacy NO RATE behaviour —
   // flagged in the main list, never hidden.
   const manualQuotable = options.filter(
-    (o) => !o.available && o.error_code === "no_rate_available",
+    (o) => !o.available && !showsBands(o) && o.error_code === "no_rate_available",
   );
-  const unavailable = options.filter((o) => !o.available && o.error_code !== "no_rate_available");
+  const unavailable = options.filter(
+    (o) => !o.available && !showsBands(o) && o.error_code !== "no_rate_available",
+  );
 
   return (
     <div className="space-y-3">
       <CapacityHint properties={hiddenForCapacity} />
-      {available.map((option) => (
+      {fullCard.map((option) => (
         <QuoteResultLine
           key={`${option.property_id}:${searchKey}`}
           option={option}

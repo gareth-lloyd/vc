@@ -107,6 +107,16 @@ interface SearchOptionsResponse {
       is_default: boolean;
       is_available: boolean;
     }>;
+    occupancy_bands?: Array<{
+      min_party: number;
+      max_party: number;
+      adults: number;
+      total?: string | null;
+      currency_code?: string | null;
+      is_projected?: boolean;
+      is_poa?: boolean;
+      error_code?: string | null;
+    }>;
     lines?: unknown;
     [key: string]: unknown;
   }>;
@@ -292,6 +302,7 @@ export async function searchQuoteOptions(
       max_nights: q.max_nights ?? null,
       is_projected: q.is_projected ?? null,
       stay_options: q.stay_options ?? null,
+      occupancy_bands: q.occupancy_bands ?? null,
       breakdown: q,
     });
   });

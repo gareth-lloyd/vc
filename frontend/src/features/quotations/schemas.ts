@@ -127,6 +127,26 @@ export const stayOptionSchema = z.object({
 });
 export type StayOption = z.infer<typeof stayOptionSchema>;
 
+// One occupancy bracket the builder renders as its own default-checked line
+// (GAP-044 occupancy fan-out). Only emitted when the covering rate card has
+// ≥2 brackets. `total` is null for a POA/no-rate band (`is_poa` or
+// `error_code`) — the band still shows, flagged, never dropped. `adults` is
+// the representative party the backend priced (= max(1, min_party)) and is
+// what a saved line posts.
+export const occupancyBandSchema = z.object({
+  min_party: z.number(),
+  max_party: z.number(),
+  adults: z.number(),
+  // Value fields mirror the sibling quoteOption fields: nullable + optional so a
+  // single band that omits a key can't reject the whole search response.
+  total: z.union([z.string(), z.number()]).nullable().optional(),
+  currency_code: z.string().nullable().optional(),
+  is_projected: z.boolean().nullable().optional(),
+  is_poa: z.boolean().nullable().optional(),
+  error_code: z.string().nullable().optional(),
+});
+export type OccupancyBand = z.infer<typeof occupancyBandSchema>;
+
 // One priced result row returned from the builder search. The server
 // pricing breakdown is opaque — we surface only the headline total +
 // any error code, the rest stays in the snapshot for line save.
@@ -165,6 +185,10 @@ export const quoteOptionSchema = z.object({
   max_nights: z.number().nullable().optional(),
   is_projected: z.boolean().nullable().optional(),
   stay_options: z.array(stayOptionSchema).nullable().optional(),
+  // GAP-044 occupancy fan-out: the occupancy brackets to render as separate
+  // default-checked lines. Empty/absent for a single-band villa; nullable +
+  // optional so older responses still parse.
+  occupancy_bands: z.array(occupancyBandSchema).nullable().optional(),
   breakdown: z.unknown().optional(),
 });
 export type QuoteOption = z.infer<typeof quoteOptionSchema>;

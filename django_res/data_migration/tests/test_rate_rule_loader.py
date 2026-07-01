@@ -165,6 +165,38 @@ def test_transform_party_intervals_all_emptied_by_capacity(loaded_card: RateCard
     assert RateRuleLoader().transform(_row(PartySize=None, _party_intervals=[(9, None)])) is None
 
 
+@pytest.mark.django_db
+def test_transform_occupancy_band_uses_range_and_price(loaded_card: RateCard) -> None:
+    """An occupancy band row carries its (from, to) party range and its own
+    weekly/nightly price straight through to the RateRule kwargs."""
+    kwargs = RateRuleLoader().transform(
+        _row(_occ_band=(2, 4), WeeklyPrice=Decimal("500"), NightlyPrice=Decimal("71.43")),
+    )
+    assert kwargs is not None
+    assert (kwargs["min_party"], kwargs["max_party"]) == (2, 4)
+    assert kwargs["weekly"] == Decimal("500")
+    assert kwargs["nightly"] == Decimal("71.43")
+
+
+@pytest.mark.django_db
+def test_transform_occupancy_band_open_top_clamps_to_capacity(loaded_card: RateCard) -> None:
+    """An open-topped band (from, None) — the above-max gap fallback — clamps to
+    the property capacity."""
+    kwargs = RateRuleLoader().transform(_row(_occ_band=(6, None), WeeklyPrice=Decimal("700")))
+    assert kwargs is not None
+    assert (kwargs["min_party"], kwargs["max_party"]) == (6, 8)
+
+
+@pytest.mark.django_db
+def test_transform_party_intervals_override_occ_band(loaded_card: RateCard) -> None:
+    """A resolver party-clip (`_party_intervals`) wins over the raw band range."""
+    kwargs = RateRuleLoader().transform(
+        _row(_occ_band=(2, 8), _party_intervals=[(5, 8)], WeeklyPrice=Decimal("500")),
+    )
+    assert kwargs is not None
+    assert (kwargs["min_party"], kwargs["max_party"]) == (5, 8)
+
+
 def test_apply_since_is_a_noop() -> None:
     """Overlap resolution needs the whole season's row set — no `--since` delta."""
     loader = RateRuleLoader(since="2025-01-01T00:00:00")
@@ -266,6 +298,99 @@ def test_load_rows_purge_removes_vanished_season_rules(loaded_card: RateCard) ->
     # Season 42 disappears from the dump entirely — full reload purges its rules.
     loader._load_rows([], LoadReport(loader="rate_rule"))
     assert RateRule.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_load_rows_expands_occupancy_bands_with_gap_fallback(loaded_card: RateCard) -> None:
+    """A banded parent (bands 2-4/5-6, cap 8, base weekly) + a simple rate ->
+    band rules (`occ-*`) + base-weekly fallback rules on the uncovered party
+    gaps (1 and 7-8) + the simple rule, all disjoint under the EXCLUDE
+    constraint."""
+    rows = [
+        _row(
+            ID=1,
+            FromDate=date(2025, 6, 1),
+            ToDate=date(2025, 6, 14),
+            IsOccupationPrice=True,
+            OccId=101,
+            OccupencyFrom=2,
+            OccupencyTo=4,
+            OccupencyPrice=Decimal("500"),
+        ),
+        _row(
+            ID=1,
+            FromDate=date(2025, 6, 1),
+            ToDate=date(2025, 6, 14),
+            IsOccupationPrice=True,
+            OccId=102,
+            OccupencyFrom=5,
+            OccupencyTo=6,
+            OccupencyPrice=Decimal("700"),
+        ),
+        _row(
+            ID=2, FromDate=date(2025, 6, 20), ToDate=date(2025, 6, 27), WeeklyPrice=Decimal("900")
+        ),
+    ]
+    loader = RateRuleLoader()
+    report = LoadReport(loader="rate_rule")
+    loader._load_rows(rows, report)
+
+    assert report.errors == []
+    rules = {r.legacy_id: r for r in RateRule.objects.all()}
+    assert set(rules) == {"occ-101", "occ-102", "occ-fb-1-0", "occ-fb-1-1", "2"}
+    assert (rules["occ-101"].min_party, rules["occ-101"].max_party) == (2, 4)
+    assert rules["occ-101"].weekly == Decimal("500")
+    assert (rules["occ-102"].min_party, rules["occ-102"].max_party) == (5, 6)
+    # Below-min gap (guest 1) and above-max gap (7-8, capacity-clamped) get the
+    # parent's base weekly price — full legacy parity.
+    assert (rules["occ-fb-1-0"].min_party, rules["occ-fb-1-0"].max_party) == (1, 1)
+    assert rules["occ-fb-1-0"].weekly == Decimal("1000")
+    assert (rules["occ-fb-1-1"].min_party, rules["occ-fb-1-1"].max_party) == (7, 8)
+    assert rules["occ-fb-1-1"].weekly == Decimal("1000")
+
+    # Full-replace idempotency: a second run reproduces the identical row set.
+    second = LoadReport(loader="rate_rule")
+    loader._load_rows(rows, second)
+    assert second.errors == []
+    assert RateRule.objects.count() == 5
+
+
+@pytest.mark.django_db
+def test_load_rows_null_bound_band_does_not_abort_load(loaded_card: RateCard) -> None:
+    """A null-bound occupancy child would `None <= int` crash in the resolver
+    if coerced; `_prepare_occupancy_rows` drops it so the whole load survives
+    and the parent fallback covers its party range."""
+    rows = [
+        _row(
+            ID=1,
+            FromDate=date(2025, 6, 1),
+            ToDate=date(2025, 6, 14),
+            IsOccupationPrice=True,
+            OccId=101,
+            OccupencyFrom=2,
+            OccupencyTo=4,
+            OccupencyPrice=Decimal("500"),
+        ),
+        _row(
+            ID=1,
+            FromDate=date(2025, 6, 1),
+            ToDate=date(2025, 6, 14),
+            IsOccupationPrice=True,
+            OccId=102,
+            OccupencyFrom=None,
+            OccupencyTo=None,
+            OccupencyPrice=Decimal("700"),
+        ),
+    ]
+    loader = RateRuleLoader()
+    report = LoadReport(loader="rate_rule")
+    loader._load_rows(rows, report)
+
+    assert report.errors == []
+    rules = {r.legacy_id: r for r in RateRule.objects.all()}
+    assert set(rules) == {"occ-101", "occ-fb-1-0", "occ-fb-1-1"}
+    # Dropped band (5,6)'s range is folded into the above gap fallback (5-8).
+    assert (rules["occ-fb-1-1"].min_party, rules["occ-fb-1-1"].max_party) == (5, 8)
 
 
 @pytest.mark.django_db

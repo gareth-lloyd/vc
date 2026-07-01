@@ -274,7 +274,7 @@ is where the dry-run calibration happens), not just here.
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
 | `VillaFinance`            | 1236         | 413 contact-default rows mirror onto `GroupFinance` (no 1:1 mapping); 676 parent-child override rows have no schema equivalent. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeasonRate`         | 3727         | 3462 pre-resolver gap (rows with no price — unusable in legacy too — plus rows on the 67 unloaded seasons) + 265 rows newly dropped by overlap resolution (see below; 389 total drops, but 124 sit on unloaded seasons and were already counted). |
+| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3727 *(placeholder)* | **BUG-013**: RateRule now loads from two legacy sources, so the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents (see [Occupancy-band pricing](#occupancy-band-pricing-bug-013)). `3727` is a **placeholder to recalibrate at the first post-BUG-013 dry-run** — it can only be derived against the live dump. The true gap nets synthetic base-weekly gap-fallback rules (no legacy row) against dropped priceless/invalid-band/overlap-covered rows and rows on the 67 unloaded seasons; the old 3462 + 265 breakdown no longer holds as-is. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
@@ -326,6 +326,58 @@ Consequences:
   `data_migration.rate_rule_overlaps_resolved` with `trimmed` / `dropped` /
   `party_clipped` / `purged` counters (24-Apr-2025 dump, first run:
   2281 / 389 / 0 / 0).
+
+### Occupancy-band pricing (BUG-013)
+
+Legacy priced a `VillaSeasonRate` two ways. A simple rate carried one
+`PartySize` + price. An **occupancy** rate (`IsOccupationPrice = 1`) was a
+parent whose child **`VillaOccupencyPrice`** rows carried
+`(OccupencyFrom, OccupencyTo, OccupencyPrice)` party bands (e.g. 2–4 → €500/wk,
+5–6 → €700/wk); legacy quoted the band matching `From ≤ guests ≤ To`, and fell
+back to the parent's `WeeklyPrice / 7` when no band matched. The original
+migration read `VillaSeasonRate` alone and **silently dropped every band**.
+
+`RateRuleLoader` now recovers them (no separate loader — all of a card's rules
+must be made jointly overlap-free under the one EXCLUDE constraint):
+
+- The `legacy_query` **LEFT JOINs `VillaOccupencyPrice`** onto its parent (every
+  parent column `r.`-qualified — both tables have an `Id`/`ID` PK). The child
+  table has no `DeletedAt`, so the join is on `VillaSeasonRateId` alone.
+- `_prepare_occupancy_rows` expands each `IsOccupationPrice` parent with ≥1
+  **valid** band into: one **band rule** per band (party range +
+  `OccupencyPrice` as the weekly rate) **plus** one **base-weekly fallback
+  rule** per party gap the bands leave uncovered (below the lowest band, between
+  bands, above the highest — clamped to capacity). So a guest count matching no
+  band still gets the legacy base-weekly quote (full parity).
+- **`IsOccupationPrice` gates expansion.** A rate not flagged occupancy keeps
+  its flat price even if stray `VillaOccupencyPrice` rows exist — legacy never
+  reads them. A flagged parent with no children is a plain base-weekly rate.
+- **Invalid bands are dropped, not coerced:** null/≤0 bounds, `From > To`, or a
+  null/0 price. Such a band priced nobody in legacy, so its party range falls to
+  the base-weekly fallback (a null bound would also crash the resolver).
+- **`legacy_id` namespacing:** band rules are keyed `occ-{OccId}` and fallbacks
+  `occ-fb-{parent}-{k}` (via a `_process_row` override), because
+  `VillaOccupencyPrice.Id` and `VillaSeasonRate.ID` are independent sequences
+  that would otherwise clobber on upsert. The full-replace purge
+  (`legacy_id IS NOT NULL`) covers both, so idempotency holds.
+- Band nightly rates are **not stored** — the engine's `rule_nightly` derives
+  `weekly / 7` (HALF_EVEN) identically at quote time.
+
+**Cutover verification items:**
+
+1. **Recalibrate the RateRule `expected_gap`** (see the reconcile table above) —
+   the count now spans parents + occupancy children and can only be derived
+   against the live dump.
+2. **Band-vs-simple precedence edge.** If a season has both an occupancy-banded
+   parent and a *separate* simple `VillaSeasonRate` with overlapping dates and
+   party ranges, `resolve_rate_rule_overlaps` orders them by
+   `(approved, id, disc)` — where a band's `id` is its `OccId` and a simple
+   row's is its `VillaSeasonRate.ID`, two unrelated sequences. Which wins (and
+   thus whether the recovered band survives or is clipped/dropped) is
+   deterministic but arbitrary. Legacy's own per-night `TOP 1` was unordered
+   here too, so there is no single parity answer — but if a spot-check shows
+   real bands being lost this way, give band rows explicit precedence (an
+   `is_occ` sort key ahead of `id`).
 
 ## 6. (Optional) Delta load for late writes
 

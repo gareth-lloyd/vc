@@ -302,10 +302,19 @@ overlaps at load time via `resolve_rate_rule_overlaps`:
   behaviour.
 - **Clip-only** — a losing row is clipped to its largest uncovered remainder
   (a winner punched into its middle discards the smaller side) or dropped
-  when fully covered. One legacy row maps to at most one rule; legacy IDs are
-  never suffixed or split.
+  when fully covered.
 - Rows with identical date spans clip the **party bracket** instead; the
   property's capacity resolves unbounded remainders at transform time.
+
+After overlap resolution the loader hangs the surviving rules off a disjoint
+**`RatePeriod`** date axis (GAP-056): it resets the just-loaded rules and rebuilds
+via the shared `backfill_plan_periods` segmentation. A rule whose span a
+party-disjoint sibling's date boundary bisects is **fragmented** — the original
+keeps its `legacy_id` on its first segment, extra fragments get a `#seg{n}`
+suffix — so `RatePeriod`s are disjoint per plan even where the resolver left two
+party-disjoint rules sharing dates. So one legacy row now maps to **one or more**
+rules (was: at most one). This is the invariant Unit 9's periods-disjoint EXCLUDE
+enforces at the schema level.
 
 Consequences:
 

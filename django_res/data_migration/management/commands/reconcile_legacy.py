@@ -205,11 +205,14 @@ _CHECKS: list[_Check] = [
         "RateRule",
         # PLACEHOLDER — recalibrate at the first post-BUG-013 cutover dry-run
         # against the live dump (no LEGACY_DATABASE_URL here to derive it). The
-        # true gap now nets three moving parts against the two-part legacy count
+        # true gap now nets four moving parts against the two-part legacy count
         # above: MINUS synthetic base-weekly gap-fallback rules that have no
-        # legacy row, PLUS dropped priceless / invalid-band / overlap-covered
-        # rows and rows on the 67 unloaded seasons. The old 3462+265 breakdown
-        # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
+        # legacy row, MINUS the GAP-056 ragged-rule fragments the period
+        # segmentation clones (a party-disjoint rule bisected by a sibling's date
+        # boundary becomes >1 RateRule), PLUS dropped priceless / invalid-band /
+        # overlap-covered rows and rows on the 67 unloaded seasons. The old
+        # 3462+265 breakdown (see CUTOVER.md "Rate rule overlap resolution") no
+        # longer holds as-is.
         expected_gap=3727,
     ),
     _Check(

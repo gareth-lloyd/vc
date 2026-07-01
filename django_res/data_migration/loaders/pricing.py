@@ -48,9 +48,10 @@ from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
-from pricing.models.rate import RateCard, RatePlan, RateRule
+from pricing.models.rate import RateCard, RatePeriod, RatePlan, RateRule
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
+from pricing.services.period_backfill import backfill_plan_periods
 from properties.models.property import Property
 from properties.models.services import PropertyService
 
@@ -553,12 +554,28 @@ class RateRuleLoader(BaseLoader):
         with transaction.atomic():
             purged, _ = RateRule.objects.filter(legacy_id__isnull=False).delete()
             super()._load_rows(resolution.rows, report)
+            # GAP-056: hang the loaded bands off a disjoint `RatePeriod` date axis.
+            # `super()._load_rows` writes rules via the transitional `save()` shim,
+            # which stamps each with a naive per-exact-date period — and two
+            # party-disjoint rules sharing dates get *overlapping* periods, which
+            # Unit 9's periods-disjoint EXCLUDE forbids. Reset the just-loaded rules
+            # and rebuild through the shared segmentation backfill (fragmenting
+            # ragged rules across segment boundaries) so periods are disjoint per
+            # plan. Deleting rule-less periods first clears both the shim's naive
+            # rows and any stale periods orphaned by the rule purge above — keeping
+            # full-reload idempotent. (Carryover/UI periods always carry rules, so
+            # the rule-less sweep never touches them.)
+            RateRule.objects.filter(legacy_id__isnull=False).update(period=None)
+            RatePeriod.objects.filter(rules__isnull=True).delete()
+            backfill = backfill_plan_periods(RatePeriod, RateRule)
         logger.info(
             "data_migration.rate_rule_overlaps_resolved",
             trimmed=resolution.trimmed,
             dropped=resolution.dropped,
             party_clipped=resolution.party_clipped,
             purged=purged,
+            periods_created=backfill.periods_created,
+            rule_fragments=backfill.fragments_created,
         )
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
@@ -581,8 +598,12 @@ class RateRuleLoader(BaseLoader):
         if date_from is None or date_to is None:
             return None
         if date_to <= date_from:
-            # Zero-night (checkout-exclusive ToDate == FromDate) or inverted legacy
-            # spans — skip. (Universal checkout-exclusive trim is GAP-056 Unit 5.)
+            # Junk filter: FromDate == ToDate (zero-span) or an inverted legacy
+            # span. Legacy `VillaSeasonRate.ToDate` is *inclusive* — the rate
+            # lookup is `priceDate >= FromDate && priceDate <= ToDate`
+            # (`ResService.cs:1205`), so a night on ToDate is priced and the dates
+            # carry through unshifted; the only trimming is `resolve_rate_rule_overlaps`
+            # breaking shared-boundary overlaps between contiguous bands.
             return None
         party = int(row.get("PartySize") or 0)
         if party <= 0:

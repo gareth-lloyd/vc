@@ -8,7 +8,7 @@ import pytest
 from data_migration.base import LoadReport
 from data_migration.loaders.pricing import RateRuleLoader
 from pricing.models.currency import Currency
-from pricing.models.rate import RateCard, RatePlan, RateRule
+from pricing.models.rate import RateCard, RatePeriod, RatePlan, RateRule
 from properties.models.capacity import PropertyCapacity
 from properties.models.geo import Country, Region
 from properties.models.property import Property, PropertyCategory, PropertyGroup
@@ -391,6 +391,63 @@ def test_load_rows_null_bound_band_does_not_abort_load(loaded_card: RateCard) ->
     assert set(rules) == {"occ-101", "occ-fb-1-0", "occ-fb-1-1"}
     # Dropped band (5,6)'s range is folded into the above gap fallback (5-8).
     assert (rules["occ-fb-1-1"].min_party, rules["occ-fb-1-1"].max_party) == (5, 8)
+
+
+@pytest.mark.django_db
+def test_load_rows_creates_disjoint_periods_for_overlapping_party_rows(
+    loaded_card: RateCard,
+) -> None:
+    """Two party-disjoint but date-overlapping legacy rows both survive the
+    resolver (no party conflict), so the `save()` shim would stamp them with
+    overlapping per-exact-date periods ([Jun1-Jun20] and [Jun1-Jun10]). The
+    loader must instead segment the plan onto a disjoint date axis (fragmenting
+    the wider rule) — the invariant Unit 9's periods-disjoint EXCLUDE enforces."""
+    rows = [
+        _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 20), PartySize=2),
+        _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10), PartySize=5),
+    ]
+    loader = RateRuleLoader()
+    loader._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    periods = list(
+        RatePeriod.objects.filter(plan=loaded_card.plan).order_by("date_from", "date_to")
+    )
+    spans = [(p.date_from, p.date_to) for p in periods]
+    # Disjoint: no two periods overlap (inclusive dates).
+    for i in range(len(spans)):
+        for j in range(i + 1, len(spans)):
+            assert not (spans[i][0] <= spans[j][1] and spans[j][0] <= spans[i][1]), spans
+    # Every loaded rule hangs off a period (none left orphaned).
+    rules = RateRule.objects.filter(card__plan=loaded_card.plan)
+    assert rules.exists()
+    assert all(r.period_id is not None for r in rules)
+    # The wider rule was fragmented across the segment boundary at Jun 10/11.
+    assert spans == [(date(2025, 6, 1), date(2025, 6, 10)), (date(2025, 6, 11), date(2025, 6, 20))]
+
+
+@pytest.mark.django_db
+def test_load_rows_periods_stable_and_disjoint_across_reruns(loaded_card: RateCard) -> None:
+    """Full-reload idempotency for the period axis: a second load of the same
+    rows reproduces the identical disjoint period set with no stale-period
+    accumulation (the reset + rule-less sweep must not leave orphans behind)."""
+
+    def rows() -> list[dict[str, object]]:
+        return [
+            _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 20), PartySize=2),
+            _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10), PartySize=5),
+        ]
+
+    loader = RateRuleLoader()
+    loader._load_rows(rows(), LoadReport(loader="rate_rule"))
+    first_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to"))
+    first_period_count = RatePeriod.objects.count()
+
+    loader._load_rows(rows(), LoadReport(loader="rate_rule"))
+    second_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to"))
+
+    assert second_spans == first_spans  # stable — no drift
+    assert RatePeriod.objects.count() == first_period_count  # no stale accumulation
+    assert all(r.period_id is not None for r in RateRule.objects.all())
 
 
 @pytest.mark.django_db

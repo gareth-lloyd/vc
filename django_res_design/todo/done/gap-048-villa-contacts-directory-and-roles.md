@@ -1,3 +1,22 @@
+> **✅ RESOLVED (2026-07-01)** — Shipped on local `main` (unpushed) as Landing 2
+> of the contacts-directory cluster. **Role taxonomy reconciled** to the verified
+> legacy `VillaRoles` map (1=Owner 2=Agent 3=Villa Admin 4=Villa Manager
+> 5=Management Company): added `VILLA_ADMIN`+`MANAGEMENT_COMPANY` to `ContactRole`,
+> fixed the loader `_ROLE_MAP`, `properties/0021` AlterField (`70ad76b`;
+> housekeeper/owners_rep kept per 10-decisions; CUTOVER §4f flags a pre-existing
+> role-source gap to verify before cutover). **Organisation assignee** on
+> `PropertyContactAssignment` — nullable contact + `organisation` FK with 3 DB
+> constraints (XOR, partial org-unique, org→management_company-only), an
+> `Organisation.merge` dedupe honouring the partial constraint, serializer
+> XOR/role validation, defensive read-sites (`d2fcc45`). **Suppliers directory**
+> — `?directory=suppliers` scoping (`kind=CONTACT` minus agent-capacity via a
+> NOT-EXISTS exclude), FE `SuppliersListPage` wrapper, `/contacts` route +
+> Sidebar relabel **"Suppliers"** (bare word, owner-chosen re Q-007), role
+> column, FE `PROPERTY_CONTACT_ROLES` enum catch-up + Villa Manager labels
+> (`2680240`). Deferred (explicit follow-ups): property-side UI to **create/edit**
+> org assignments (read-rendering only shipped); suppliers merge-UI; the
+> Suppliers/concierge-Suppliers vocabulary reconciliation (Q-007).
+
 # GAP-048 — Suppliers directory (rename from Contacts) + role taxonomy + type surfacing
 
 - **Severity:** Gap (frontend rename/scoping + data-model role enum) — after

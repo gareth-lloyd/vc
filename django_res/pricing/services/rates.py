@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from core.exceptions import NoRateAvailable
-from pricing.models import RateCard, RateRule
+from pricing.models import RatePeriod, RateRule
 
 
 def nights(date_from: date, date_to: date) -> list[date]:
@@ -31,15 +31,15 @@ def rule_nightly(rule: RateRule) -> Decimal:
 
 @dataclass(frozen=True)
 class Picked:
-    """A rule was found that covers both the night and the party."""
+    """A band (rule) was found that covers both the night and the party."""
 
-    card: RateCard
+    period: RatePeriod
     rule: RateRule
 
 
 @dataclass(frozen=True)
 class OutOfRange:
-    """Rules cover the night but no rule's party bracket includes `party`.
+    """Bands cover the night but no band's party bracket includes `party`.
 
     Caller should raise `PartyOutOfRange` — see `09-departures.md` bug #2.
     """
@@ -47,7 +47,7 @@ class OutOfRange:
 
 @dataclass(frozen=True)
 class NoCoverage:
-    """No rule on any of the supplied cards covers the night at all.
+    """No period covers the night, or a covering period carries no band.
 
     Caller should raise `NoRateAvailable`.
     """
@@ -57,46 +57,51 @@ PickResult = Picked | OutOfRange | NoCoverage
 
 
 def pick_rule_for_night(
-    cards: list[RateCard],
-    rules_by_card: dict[int, list[RateRule]],
+    periods: list[RatePeriod],
+    rules_by_period: dict[int, list[RateRule]],
     night: date,
     party: int,
 ) -> PickResult:
-    """Pick the rule covering `night` and `party` by card order.
+    """Pick the band covering `night` and `party`, with its owning period.
 
-    Cards are walked in the caller-supplied order — both the engine and the
-    projection load them `("sort_order", "pk")` — and the first card with a
-    rule covering both the night and the party wins; later cards never
-    override it, however narrow their rules. Within a card the DB forbids
-    overlapping rules outright (`raterule_no_overlap`), but in-memory
-    projected rules can collide after Feb-29 date mapping; the lowest pk
-    wins deterministically.
+    Periods are the disjoint date axis (GAP-056): the target model guarantees at
+    most one active period covers any night, so for real data this simply finds
+    the covering period's matching band. The **lowest-pk matching band across all
+    covering periods wins** — the deterministic tie-break for the two transitional
+    cases where periods can still overlap: expand-phase data carrying leftover
+    card-precedence overlaps (pre Unit-9 EXCLUDE), and in-memory projected periods
+    that collide after Feb-29 date mapping. Lowest-pk mirrors the carry-forward
+    materialiser's trim (which lets the lower-pk band claim the shared night
+    first), so a projected quote and its materialised twin price identically.
 
-    Returns a tagged result so the caller can distinguish "no rule at all"
-    (`NoCoverage`) from "rules cover the night but the party is outside
-    every bracket" (`OutOfRange`). The night-coverage flag spans *all*
-    cards: a first-card rule whose party bracket excludes the request must
-    neither shadow a matching rule on a later card nor erase the
-    OutOfRange signal.
+    Returns a tagged result so the caller can distinguish "no band at all"
+    (`NoCoverage`) from "a period covers the night but the party is outside
+    every band" (`OutOfRange`). The coverage flag spans *all* covering periods:
+    a band whose bracket excludes the request must neither shadow a matching
+    band on another covering period nor erase the OutOfRange signal.
     """
-    any_rule_covered = False
+    any_band_covered = False
+    best_rule: RateRule | None = None
+    best_period: RatePeriod | None = None
 
-    for card in cards:
-        best: RateRule | None = None
-        for rule in rules_by_card.get(card.pk, []):
-            if not (rule.date_from <= night <= rule.date_to):
-                continue
-            # The night is covered by *some* rule — even if the party
-            # bracket excludes it. Remember this so we can distinguish
-            # "out of range" from "no coverage" without a second pass.
-            any_rule_covered = True
+    for period in periods:
+        if not (period.date_from <= night <= period.date_to):
+            continue
+        for rule in rules_by_period.get(period.pk, []):
+            # The night is covered by *some* band (bands inherit the period's
+            # dates) — even if the party bracket excludes it. Remember this so
+            # we distinguish "out of range" from "no coverage" without a
+            # second pass.
+            any_band_covered = True
             if not (rule.min_party <= party <= rule.max_party):
                 continue
-            if best is None or int(rule.pk) < int(best.pk):
-                best = rule
-        if best is not None:
-            return Picked(card=card, rule=best)
+            if best_rule is None or int(rule.pk) < int(best_rule.pk):
+                best_rule = rule
+                best_period = period
 
-    if any_rule_covered:
+    if best_rule is not None:
+        assert best_period is not None  # set in lockstep with best_rule
+        return Picked(period=best_period, rule=best_rule)
+    if any_band_covered:
         return OutOfRange()
     return NoCoverage()

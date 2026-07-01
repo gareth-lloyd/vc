@@ -7,12 +7,19 @@ from decimal import Decimal
 
 import pytest
 
-from core.exceptions import NoRateAvailable, PartyOutOfRange
+from core.exceptions import MinNightsNotMet, NoRateAvailable, PartyOutOfRange
 from core.tests import assert_max_queries
 from pricing.enums import ExtraCalc, ExtraKind
-from pricing.models import Currency, Extra, RateCard, RatePlan, RateRule
+from pricing.models import Currency, Extra, RateCard, RatePeriod, RatePlan, RateRule
 from pricing.services import OccupancyBand, PricingContext, PricingEngine
 from properties.models import Property, PropertyService
+
+
+def _period_of(rule: RateRule) -> RatePeriod:
+    """The band's shim-derived period (never None once the rule is saved)."""
+    period = rule.period
+    assert period is not None
+    return period
 
 
 @pytest.mark.django_db
@@ -131,91 +138,11 @@ def test_quote_opt_in_extra_only_when_requested(
     assert quote_with_pet.extras[0].computed_amount == Decimal("50.00")
 
 
-@pytest.mark.django_db
-def test_quote_first_card_by_sort_order_wins(
-    property_: Property, gbp: Currency, plan: RatePlan
-) -> None:
-    """Card sort_order is the only cross-card precedence; swapping it flips
-    the winner (proving it's the order, not rule specificity, deciding)."""
-    base_card = RateCard.objects.create(plan=plan, name="Base", sort_order=0)
-    overlay_card = RateCard.objects.create(plan=plan, name="Overlay", sort_order=1)
-
-    RateRule.objects.create(
-        card=base_card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100.00"),
-    )
-    RateRule.objects.create(
-        card=overlay_card,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 17),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("250.00"),
-    )
-
-    quote = PricingEngine.quote(
-        property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 14),  # 4 nights, covered by both cards
-        party=4,
-        currency=gbp,
-    )
-    assert all(ln.nightly == Decimal("100.00") for ln in quote.lines)
-    assert quote.rate_subtotal == Decimal("400.00")
-
-    base_card.sort_order, overlay_card.sort_order = 1, 0
-    base_card.save()
-    overlay_card.save()
-
-    flipped = PricingEngine.quote(
-        property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 14),
-        party=4,
-        currency=gbp,
-    )
-    assert all(ln.nightly == Decimal("250.00") for ln in flipped.lines)
-
-
-@pytest.mark.django_db
-def test_quote_card_order_beats_narrower_range(
-    property_: Property, gbp: Currency, plan: RatePlan
-) -> None:
-    """Deliberate behavioural change: there is no specificity tie-break. A
-    narrower rule on a later card never overrides the first covering card."""
-    base_card = RateCard.objects.create(plan=plan, name="Base", sort_order=0)
-    overlay_card = RateCard.objects.create(plan=plan, name="Overlay", sort_order=1)
-
-    RateRule.objects.create(
-        card=base_card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100.00"),
-    )
-    # Narrower (1 week) on the later card — must NOT win on its nights.
-    RateRule.objects.create(
-        card=overlay_card,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 16),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("180.00"),
-    )
-
-    quote = PricingEngine.quote(
-        property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 14),
-        party=4,
-        currency=gbp,
-    )
-    assert all(ln.nightly == Decimal("100.00") for ln in quote.lines)
+# GAP-056: cross-card precedence is GONE. Periods are the disjoint date axis —
+# at most one active period covers any night (Unit 9 EXCLUDE), so there is no
+# "first card wins" / "later card overrides" mechanism left to test. The former
+# `test_quote_first_card_by_sort_order_wins` and
+# `test_quote_card_order_beats_narrower_range` were removed with the card layer.
 
 
 @pytest.mark.django_db
@@ -376,20 +303,18 @@ def test_fallback_nightly_fills_gap_night(
 
 
 @pytest.mark.django_db
-def test_all_fallback_stay_skips_card_validation(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+def test_all_fallback_stay_skips_period_validation(
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A stay with no covering rules quotes entirely on fallback; the card's
-    min_nights is not validated because no card was selected."""
+    """A stay with no covering bands quotes entirely on fallback; no period is
+    selected, so the strictest-wins min/max-nights guard is skipped (GAP-056)."""
     plan.fallback_nightly = Decimal("99.00")
     plan.save(update_fields=["fallback_nightly"])
-    card.min_nights = 5  # would raise MinNightsNotMet if validated
-    card.save(update_fields=["min_nights"])
 
     quote = PricingEngine.quote(
         property=property_,
         date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 13),  # 3 nights, all uncovered
+        date_to=date(2026, 6, 13),  # 3 nights, all uncovered (no bands at all)
         party=4,
         currency=gbp,
     )
@@ -397,7 +322,7 @@ def test_all_fallback_stay_skips_card_validation(
     assert len(quote.lines) == 3
     assert all(ln.rule_id is None and ln.card_id is None for ln in quote.lines)
     assert quote.rate_subtotal == Decimal("297.00")
-    assert quote.breakdown["winning_card_id"] is None
+    assert quote.breakdown["winning_period_id"] is None
 
 
 @pytest.mark.django_db
@@ -436,16 +361,17 @@ def test_fallback_does_not_mask_party_out_of_range(
 
 @pytest.mark.django_db
 def test_all_fallback_stay_ignores_other_propertys_card_less_discount(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """An all-fallback stay must not pick up a *different* property's
     card-less discount.
 
-    With no covering rule there is no winning card, so `_apply_discounts`
-    runs with `card=None`. The property scope must still hold: a card-less
+    With no covering band there is no winning period, so `_apply_discounts`
+    runs with `card_id=None`. The property scope must still hold: a card-less
     discount belonging to another property must never apply here. (Regression
-    guard — `Q(card=card)` collapses to `Q(card__isnull=True)` when `card`
-    is `None`, which would otherwise match every property's card-less rule.)
+    guard — `Q(card_id=card_id)` collapses to `Q(card__isnull=True)` when
+    `card_id` is `None`, which would otherwise match every property's card-less
+    rule.)
     """
     from pricing.enums import DiscountKind, RuleKind
     from pricing.models import Discount
@@ -891,12 +817,15 @@ def test_breakdown_changeover_day_null_when_unconstrained(
 
 
 @pytest.mark.django_db
-def test_breakdown_min_max_nights_from_winning_card(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+def test_breakdown_min_max_nights_from_winning_period(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    card.min_nights = 5
-    card.max_nights = 14
-    card.save(update_fields=["min_nights", "max_nights"])
+    """min/max-nights now live on the period (GAP-056); the breakdown reports
+    the winning period's own overrides."""
+    period = _period_of(rule)
+    period.min_nights = 5
+    period.max_nights = 14
+    period.save(update_fields=["min_nights", "max_nights"])
 
     quote = PricingEngine.quote(
         property=property_,
@@ -912,21 +841,21 @@ def test_breakdown_min_max_nights_from_winning_card(
 
 @pytest.mark.django_db
 def test_breakdown_min_max_nights_null_on_all_fallback_stay(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """No winning card (all-fallback stay) → no card constraints to report."""
+    """No winning period (all-fallback stay) → no constraints to report."""
     plan.fallback_nightly = Decimal("99.00")
     plan.save(update_fields=["fallback_nightly"])
 
     quote = PricingEngine.quote(
         property=property_,
         date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 13),  # all uncovered by the (absent) rules
+        date_to=date(2026, 6, 13),  # all uncovered by the (absent) bands
         party=4,
         currency=gbp,
     )
 
-    assert quote.breakdown["winning_card_id"] is None
+    assert quote.breakdown["winning_period_id"] is None
     assert quote.breakdown["min_nights"] is None
     assert quote.breakdown["max_nights"] is None
     assert quote.breakdown["occupancy_pricing"] is False
@@ -1012,12 +941,13 @@ def _june_context(property_: Property) -> PricingContext | None:
 
 
 @pytest.mark.django_db
-def test_stay_length_bounds_single_card(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+def test_stay_length_bounds_single_period(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    card.min_nights = 5
-    card.max_nights = 14
-    card.save(update_fields=["min_nights", "max_nights"])
+    period = _period_of(rule)
+    period.min_nights = 5
+    period.max_nights = 14
+    period.save(update_fields=["min_nights", "max_nights"])
 
     context = _june_context(property_)
     assert context is not None
@@ -1026,20 +956,90 @@ def test_stay_length_bounds_single_card(
 
 
 @pytest.mark.django_db
-def test_stay_length_bounds_aggregates_across_cards(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+def test_stay_length_bounds_aggregates_across_periods(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    """A stay is valid if ANY card accepts it, so the bounds are the loosest
-    across the plan's active cards — and an uncapped card uncaps the lot."""
-    card.min_nights = 7
-    card.max_nights = 14
-    card.save(update_fields=["min_nights", "max_nights"])
-    RateCard.objects.create(plan=plan, name="Long stay", sort_order=1, min_nights=3)
+    """A stay is valid if ANY period accepts it, so the search-layer bounds are
+    the LOOSEST across the plan's active periods — an uncapped period uncaps the
+    lot (GAP-056 decision 4; this is the permissive pre-filter, not the guard)."""
+    peak = _period_of(rule)  # covers June (2026-06-01..08-31)
+    peak.min_nights = 7
+    peak.max_nights = 14
+    peak.save(update_fields=["min_nights", "max_nights"])
+
+    # A second, off-peak period on the same plan with a shorter min and no cap.
+    off_peak = _period_of(
+        RateRule.objects.create(
+            card=rule.card,
+            date_from=date(2026, 9, 1),
+            date_to=date(2026, 9, 30),
+            min_party=1,
+            max_party=8,
+            nightly=Decimal("120.00"),
+        )
+    )
+    off_peak.min_nights = 3
+    off_peak.save(update_fields=["min_nights"])
 
     context = _june_context(property_)
     assert context is not None
 
     assert PricingEngine.stay_length_bounds(context) == (3, None)
+
+
+@pytest.mark.django_db
+def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+) -> None:
+    """The headline seasonal min-stay feature (GAP-056 decision 4): a villa with
+    a 7-night peak period and a 3-night off-peak period.
+
+    * `stay_length_bounds` is LOOSEST-wins → (3, None), so the search enumerates
+      the valid short off-peak blocks (clipping them to 7 would kill the feature).
+    * `quote()` is STRICTEST-wins per touched period → a 4-night peak stay is
+      rejected, while a 4-night off-peak stay prices fine.
+    """
+    peak = _period_of(rule)  # 2026-06-01..08-31
+    peak.min_nights = 7
+    peak.save(update_fields=["min_nights"])
+
+    off_peak = _period_of(
+        RateRule.objects.create(
+            card=rule.card,
+            date_from=date(2026, 10, 1),
+            date_to=date(2026, 10, 31),
+            min_party=1,
+            max_party=8,
+            nightly=Decimal("120.00"),
+        )
+    )
+    off_peak.min_nights = 3
+    off_peak.save(update_fields=["min_nights"])
+
+    context = _june_context(property_)
+    assert context is not None
+    # Loosest-wins search pre-filter.
+    assert PricingEngine.stay_length_bounds(context) == (3, None)
+
+    # Strictest-wins loud guard: 4 nights in the 7-night peak period is rejected.
+    with pytest.raises(MinNightsNotMet):
+        PricingEngine.quote(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 14),  # 4 nights, all in peak
+            party=4,
+            currency=gbp,
+        )
+
+    # The same length in the 3-night off-peak period prices fine.
+    off_peak_quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 10, 5),
+        date_to=date(2026, 10, 9),  # 4 nights, all in off-peak
+        party=4,
+        currency=gbp,
+    )
+    assert len(off_peak_quote.lines) == 4
 
 
 @pytest.mark.django_db
@@ -1175,33 +1175,10 @@ def test_covering_bands_single_bracket_returns_one(
     assert bands == [OccupancyBand(min_party=1, max_party=8)]
 
 
-@pytest.mark.django_db
-def test_covering_bands_respects_card_precedence(
-    property_: Property, gbp: Currency, plan: RatePlan
-) -> None:
-    """When two cards both cover the week, the first by precedence
-    (`sort_order`, `pk`) wins — bands are never merged across cards."""
-    first = RateCard.objects.create(plan=plan, name="Primary", sort_order=0)
-    RateRule.objects.create(
-        card=first,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("150.00"),
-    )
-    second = RateCard.objects.create(plan=plan, name="Secondary", sort_order=1)
-    _three_band_card(second)
-
-    bands = PricingEngine.covering_bands(
-        property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 17),
-        currency=gbp,
-    )
-
-    # Only the precedence-winning card's single bracket — not the 2nd card's three.
-    assert bands == [OccupancyBand(min_party=1, max_party=8)]
+# GAP-056: `test_covering_bands_respects_card_precedence` removed — cross-card
+# precedence is gone. Bands are pooled across the plan's (disjoint) periods and a
+# bracket is offered iff its own bands cover every night; there is no
+# "first card wins" merge rule left to assert.
 
 
 @pytest.mark.django_db
@@ -1353,25 +1330,26 @@ def test_covering_bands_includes_bracket_whose_rule_ends_on_last_night(
 
 
 @pytest.mark.django_db
-def test_covering_bands_skips_higher_precedence_card_that_misses_a_night(
+def test_covering_bands_pools_bracket_rules_across_periods(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A higher-precedence card that does not cover every night is skipped for a
-    lower-precedence card that does — the covering-card walk mirrors
-    `pick_rule_for_night`, which only prices a card once it spans the night."""
-    # Precedence winner, but its lone rule lapses mid-week (misses nights 13..16).
-    first = RateCard.objects.create(plan=plan, name="Primary", sort_order=0)
+    """A bracket is offered iff ITS OWN bands — pooled across every period the
+    week spans — cover all nights (GAP-056). Here the 1-8 bracket has one band
+    that lapses mid-week and one that spans it: pooled, the bracket still covers
+    the week and is offered alongside the full-span 9-12 / 13-16 brackets."""
+    # A 1-8 band that lapses mid-week (misses nights 13..16) on its own period.
+    lapsing = RateCard.objects.create(plan=plan, name="Short", sort_order=0)
     RateRule.objects.create(
-        card=first,
+        card=lapsing,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 12),
         min_party=1,
         max_party=8,
         nightly=Decimal("150.00"),
     )
-    # Lower precedence, but fully covers the week with three brackets.
-    second = RateCard.objects.create(plan=plan, name="Secondary", sort_order=1)
-    _three_band_card(second)
+    # A full-week three-bracket card (its own period) — its 1-8 band spans the gap.
+    full = RateCard.objects.create(plan=plan, name="Full", sort_order=1)
+    _three_band_card(full)
 
     bands = PricingEngine.covering_bands(
         property=property_,
@@ -1380,7 +1358,6 @@ def test_covering_bands_skips_higher_precedence_card_that_misses_a_night(
         currency=gbp,
     )
 
-    # The second card's three bands — the first card never covers the full week.
     assert bands == [
         OccupancyBand(min_party=1, max_party=8),
         OccupancyBand(min_party=9, max_party=12),

@@ -11,12 +11,12 @@ This module owns three things:
   `keep_calendar_date`) that move a source-year date into the target year;
 * `RateProjectionService`, which finds the anchor plan and builds an in-memory
   `PricingContext` the engine can price exactly like a real one;
-* `PricingContext`, the (plan, cards, rules_by_card) triple the engine consumes
-  whether it came from the database (real) or from a projection (synthesized).
+* `PricingContext`, the (plan, periods, rules_by_period) triple the engine
+  consumes whether it came from the database (real) or a projection (synthesized).
 
-The synthesized plan / cards / rules are **unsaved** model instances whose `pk`
+The synthesized plan / periods / rules are **unsaved** model instances whose `pk`
 is set to the source row's pk. That gives the quote breakdown free traceability
-(`QuoteLine.rule_id` / `winning_card_id` point at the real anchor rows) without
+(`QuoteLine.rule_id` / `winning_period_id` point at the real anchor rows) without
 ever touching the database. See `04-pricing.md` "Projected pricing for future
 years".
 """
@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pricing.models import Currency, RateCard, RatePlan, RateRule
+from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
 
 # A date-map shifts a single source date by `year_delta` whole years into the
 # target year. It is applied independently to each rule endpoint, so it must be a
@@ -87,16 +87,22 @@ def map_range(
 
 @dataclass
 class PricingContext:
-    """The (plan, cards, rules_by_card) triple the engine prices.
+    """The (plan, periods, rules_by_period) triple the engine prices.
 
+    `periods` is the disjoint date axis (GAP-056); `rules_by_period` maps each
+    period pk to its bands (party-price rules that inherit the period's dates).
     `is_projected` is True when the triple was synthesized from an anchor year by
     `RateProjectionService.project`; `projection` then carries the snapshotable
     provenance (source plan / years / uplift / date-map) the quote surfaces.
     """
 
     plan: RatePlan
-    cards: list[RateCard]
-    rules_by_card: dict[int, list[RateRule]]
+    # The property the plan prices — carried so consumers (`stay_length_bounds`,
+    # the villa min-nights default) reuse the caller's already-loaded instance
+    # instead of re-fetching `plan.property` (whose settings cache is cold).
+    property: Any
+    periods: list[RatePeriod]
+    rules_by_period: dict[int, list[RateRule]]
     is_projected: bool = False
     projection: dict[str, Any] | None = field(default=None)
 
@@ -122,6 +128,26 @@ def load_anchor_cards_with_rules(anchor: RatePlan) -> list[tuple[RateCard, list[
     for rule in RateRule.objects.filter(card__in=cards, is_approved=True).order_by("card_id", "pk"):
         rules_by_card.setdefault(rule.card_id, []).append(rule)
     return [(card, rules_by_card.get(card.pk, [])) for card in cards]
+
+
+def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, list[RateRule]]]:
+    """Active periods of `anchor`, each paired with its approved bands (GAP-056).
+
+    The period-native counterpart of `load_anchor_cards_with_rules`: one query
+    for the periods, one for all their bands (batched via `period__in`). These
+    are exactly the `is_active` / `is_approved` filters the engine's real path
+    uses, so projection prices precisely the set a real quote would.
+    """
+    periods = list(
+        RatePeriod.objects.filter(plan=anchor, is_active=True).order_by("date_from", "pk")
+    )
+    rules_by_period: dict[int, list[RateRule]] = {}
+    for rule in RateRule.objects.filter(period__in=periods, is_approved=True).order_by(
+        "period_id", "pk"
+    ):
+        assert rule.period_id is not None  # filtered on period__in — never null
+        rules_by_period.setdefault(rule.period_id, []).append(rule)
+    return [(period, rules_by_period.get(period.pk, [])) for period in periods]
 
 
 def projected_rule_fields(
@@ -199,8 +225,8 @@ class RateProjectionService:
         if anchor is None:
             return None
 
-        cards_with_rules = load_anchor_cards_with_rules(anchor)
-        if not cards_with_rules:
+        periods_with_rules = load_anchor_periods_with_rules(anchor)
+        if not periods_with_rules:
             return None
 
         target_year = date_from.year
@@ -224,27 +250,38 @@ class RateProjectionService:
             is_active=anchor.is_active,
         )
 
-        proj_cards: list[RateCard] = []
-        rules_by_card: dict[int, list[RateRule]] = {}
-        for card, rules in cards_with_rules:
-            proj_cards.append(
-                RateCard(
-                    id=card.pk,
+        proj_periods: list[RatePeriod] = []
+        rules_by_period: dict[int, list[RateRule]] = {}
+        for period, rules in periods_with_rules:
+            new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
+            proj_periods.append(
+                RatePeriod(
+                    id=period.pk,
                     plan_id=anchor.pk,
-                    name=card.name,
-                    description=card.description,
-                    min_nights=card.min_nights,
-                    max_nights=card.max_nights,
-                    sort_order=card.sort_order,
-                    is_active=card.is_active,
+                    name=period.name,
+                    date_from=new_from,
+                    date_to=new_to,
+                    min_nights=period.min_nights,
+                    max_nights=period.max_nights,
+                    is_active=period.is_active,
                 )
             )
-            rules_by_card[card.pk] = [
+            # Bands inherit the period's (shifted) dates; only party/price shift
+            # per band. `card_id` is carried transitionally so the quote snapshot
+            # keeps its `card_id` until Unit 6 flips it to `period_id`.
+            rules_by_period[period.pk] = [
                 RateRule(
                     id=rule.pk,
-                    card_id=card.pk,
+                    period_id=period.pk,
+                    card_id=rule.card_id,
                     is_approved=True,
-                    **projected_rule_fields(rule, year_delta, date_map, factor),
+                    date_from=new_from,
+                    date_to=new_to,
+                    min_party=rule.min_party,
+                    max_party=rule.max_party,
+                    nightly=apply_uplift(rule.nightly, factor),
+                    weekly=apply_uplift(rule.weekly, factor),
+                    is_poa=rule.is_poa,
                 )
                 for rule in rules
             ]
@@ -258,8 +295,9 @@ class RateProjectionService:
         }
         return PricingContext(
             plan=proj_plan,
-            cards=proj_cards,
-            rules_by_card=rules_by_card,
+            property=property,
+            periods=proj_periods,
+            rules_by_period=rules_by_period,
             is_projected=True,
             projection=projection,
         )

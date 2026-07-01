@@ -7,13 +7,21 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.models import Currency, RateCard, RatePlan, RateRule
+from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
     shift_to_changeover_weekday,
 )
 from properties.models import Property
+
+
+def _period_of(rule: RateRule) -> RatePeriod:
+    """The band's shim-derived period (never None once the rule is saved)."""
+    period = rule.period
+    assert period is not None
+    return period
+
 
 # --- date-map functions -----------------------------------------------------
 
@@ -137,7 +145,7 @@ def test_project_builds_shifted_in_memory_context(
     # traceability) but were never saved — only one plan exists in the DB.
     assert ctx.plan.pk == anchor_plan.card.plan.pk
     assert RatePlan.objects.count() == 1
-    [rule] = ctx.rules_by_card[anchor_plan.card.pk]
+    [rule] = ctx.rules_by_period[_period_of(anchor_plan).pk]
     assert rule.pk == anchor_plan.pk
     assert rule.date_from == date(2028, 6, 1)
     assert rule.date_to == date(2028, 8, 31)
@@ -162,7 +170,7 @@ def test_project_applies_uplift(property_: Property, gbp: Currency, anchor_plan:
     )
     assert ctx is not None
     assert ctx.projection is not None
-    [rule] = ctx.rules_by_card[anchor_plan.card.pk]
+    [rule] = ctx.rules_by_period[_period_of(anchor_plan).pk]
     assert rule.nightly == Decimal("210.00")
     assert ctx.projection["uplift_pct"] == "5.00"
 
@@ -179,7 +187,7 @@ def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: 
         currency=gbp,
     )
     assert ctx is not None
-    [rule] = ctx.rules_by_card[poa.card.pk]
+    [rule] = ctx.rules_by_period[_period_of(poa).pk]
     assert rule.is_poa is True
     assert rule.nightly is None
 
@@ -204,7 +212,7 @@ def test_project_skips_unapproved_rules(
     )
     assert ctx is not None
     # Only the approved source rule seeds the projection.
-    assert len(ctx.rules_by_card[anchor_plan.card.pk]) == 1
+    assert len(ctx.rules_by_period[_period_of(anchor_plan).pk]) == 1
 
 
 @pytest.mark.django_db

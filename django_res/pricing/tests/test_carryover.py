@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from core.exceptions import NoRateAvailable
-from pricing.models import Currency, RateCard, RatePlan, RateRule
+from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
 from pricing.services.carryover import RateCarryoverService
 from pricing.services.projection import (
     RateProjectionService,
@@ -281,14 +281,14 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
     new_plan = RateCarryoverService.materialise(
         property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
     )
-    mat_cards = list(
-        RateCard.objects.filter(plan=new_plan, is_active=True).order_by("sort_order", "pk")
+    mat_periods = list(
+        RatePeriod.objects.filter(plan=new_plan, is_active=True).order_by("date_from", "pk")
     )
-    mat_rules = {c.pk: list(c.rules.all()) for c in mat_cards}
+    mat_rules = {p.pk: list(p.rules.all()) for p in mat_periods}
 
     for night in nights(date(2025, 2, 25), date(2025, 3, 8)):
-        projected = pick_rule_for_night(ctx.cards, ctx.rules_by_card, night, party=4)
-        materialised = pick_rule_for_night(mat_cards, mat_rules, night, party=4)
+        projected = pick_rule_for_night(ctx.periods, ctx.rules_by_period, night, party=4)
+        materialised = pick_rule_for_night(mat_periods, mat_rules, night, party=4)
         assert type(projected) is type(materialised), night
         if isinstance(projected, Picked):
             assert isinstance(materialised, Picked)

@@ -105,7 +105,13 @@ class StayOptionsService:
         """
         property_ids = [entry["property_id"] for entry in requests]
         properties_by_id = {
-            p.pk: p for p in Property.objects.filter(pk__in=property_ids).prefetch_related("images")
+            p.pk: p
+            for p in Property.objects.filter(pk__in=property_ids)
+            # `settings` / `group__settings` feed the engine's villa min-nights
+            # default (GAP-056); fold them into this fetch so the per-property
+            # resolution costs no extra query.
+            .select_related("settings", "group__settings")
+            .prefetch_related("images")
         }
         occupied = cls._occupied_intervals(requests, flex_days)
         return [

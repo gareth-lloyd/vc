@@ -19,9 +19,10 @@ const fixture = {
 };
 
 describe("PropertiesListPage", () => {
-  // The page calls useRegions() unconditionally, so every test fires GET /regions.
-  // Stub it here (MSW runs onUnhandledRequest:"error"); the global afterEach
-  // resetHandlers re-arms this before each test.
+  // The page calls useRegions() and useCountries() unconditionally, so every
+  // test fires GET /regions + GET /countries. Stub them here (MSW runs
+  // onUnhandledRequest:"error"); the global afterEach resetHandlers re-arms
+  // this before each test.
   beforeEach(() => {
     server.use(
       http.get("/api/v1/regions", () =>
@@ -29,6 +30,14 @@ describe("PropertiesListPage", () => {
           drfPage([
             { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza-7" },
             { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca-9" },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/countries", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 1, iso2: "ES", name: "Spain", is_active: true },
+            { id: 3, iso2: "HR", name: "Croatia", is_active: true },
           ]),
         ),
       ),
@@ -168,6 +177,45 @@ describe("PropertiesListPage", () => {
     );
     await screen.findByText("Casa Norte");
     expect(screen.getByRole("combobox", { name: /filter by region/i })).toBeInTheDocument();
+  });
+
+  it("populates the country filter from the API and forwards the iso2", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url.searchParams.get("country") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by country/i }));
+    // Croatia is not in the old hardcoded 5-country list — it must appear the
+    // moment the API offers it (labels come from the API name field).
+    await userEvent.click(await screen.findByRole("option", { name: "Croatia" }));
+    await waitFor(() => expect(seen).toContain("HR"));
+  });
+
+  it("renders a lowercase bookmarked country as the selected option", async () => {
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?country=es" },
+    );
+    await screen.findByText("Casa Norte");
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /filter by country/i })).toHaveTextContent(
+        "Spain",
+      ),
+    );
   });
 
   it("forwards region to the API", async () => {

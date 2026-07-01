@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { geoLookupHandlers } from "@/test/msw/handlers";
 import { drfPage } from "@/test/drf";
 import { createTestQueryClient, renderWithProviders } from "@/test/render";
 import { queryKeys } from "@/lib/query/keys";
@@ -105,6 +106,9 @@ function mockSearch() {
 
 beforeEach(() => {
   useAuthStore.setState({ role: "RESERVATIONS", isSuperuser: false, status: "authenticated" });
+  // The criteria form's country/region dropdowns fetch the geo lookups on
+  // mount; none of these tests care about the option lists.
+  server.use(...geoLookupHandlers);
 });
 afterEach(() => {
   useAuthStore.getState().clear();

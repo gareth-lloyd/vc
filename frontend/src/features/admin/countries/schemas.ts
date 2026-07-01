@@ -33,4 +33,7 @@ export interface CountryFilters {
   // Override the default page size — e.g. to load the full list into a
   // `<Select>` in one request. Capped server-side.
   pageSize?: number;
+  // Only countries that actually hold properties (quote-builder criteria
+  // dropdown); server-side opt-in narrowing, false behaves like absent.
+  hasProperties?: boolean;
 }

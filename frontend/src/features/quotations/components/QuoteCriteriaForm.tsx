@@ -6,8 +6,22 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useCountries } from "@/features/admin/countries/hooks";
+import { useRegions } from "@/features/availability/hooks";
+import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
 import { addDaysIso } from "@/lib/format/date";
 import { quoteCriteriaInputSchema, type QuoteCriteriaInput } from "../schemas";
+
+// Sentinel for the "Any" rows — Radix SelectItem forbids an empty-string
+// value, so the form's "" (filter off) maps to/from this constant.
+const ALL_VALUE = "__all__";
 
 // Stepper stops: day-level near the preferred dates, then whole weeks out to
 // ±21 days (the backend's SEARCH_FLEX_MAX) — wide enough for a multi-week
@@ -51,6 +65,44 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
     form.reset({ ...DEFAULTS, ...initial });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
+
+  // Country/region are dropdowns over the in-use geo lists — only values
+  // that can actually match a property are offered (has_properties=true).
+  const countriesQuery = useCountries({
+    hasProperties: true,
+    ordering: "name",
+    pageSize: TAXONOMY_PAGE_SIZE,
+  });
+  const regionsQuery = useRegions({ hasProperties: true });
+  const countryCtrl = useController({ control: form.control, name: "country" });
+  const regionCtrl = useController({ control: form.control, name: "region" });
+  const selectedCountry = countryCtrl.field.value;
+
+  const allRegions = useMemo(() => regionsQuery.data?.results ?? [], [regionsQuery.data]);
+  // Dependent select: a chosen country narrows the region options (matched
+  // client-side on country_iso2 — the in-use list is small). Without a
+  // country, labels carry the ISO to disambiguate same-named regions.
+  const regionOptions = useMemo(() => {
+    const rows = selectedCountry
+      ? allRegions.filter((r) => r.country_iso2 === selectedCountry)
+      : allRegions;
+    return rows.map((r) => ({
+      value: String(r.id),
+      label: !selectedCountry && r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
+    }));
+  }, [allRegions, selectedCountry]);
+
+  const handleCountryChange = (value: string) => {
+    const iso2 = value === ALL_VALUE ? "" : value;
+    countryCtrl.field.onChange(iso2);
+    // A region from another country — or one we can't verify against the
+    // loaded list — can no longer match; clear it rather than submit a
+    // hidden filter the narrowed options no longer display.
+    const region = allRegions.find((r) => String(r.id) === regionCtrl.field.value);
+    if (iso2 && regionCtrl.field.value && (!region || region.country_iso2 !== iso2)) {
+      regionCtrl.field.onChange("");
+    }
+  };
 
   // ± flexibility stepper (mirrors the enquiry form's spread control). The
   // dates stay the client's preferred stay — the backend widens the window.
@@ -170,19 +222,38 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label htmlFor="qcf-country">{t("builder.criteria.country")}</Label>
-          <Input
-            id="qcf-country"
-            placeholder={t("builder.criteria.country_placeholder")}
-            {...form.register("country")}
-          />
+          <Select value={selectedCountry || ALL_VALUE} onValueChange={handleCountryChange}>
+            <SelectTrigger id="qcf-country" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>{t("common:filters.any_country")}</SelectItem>
+              {(countriesQuery.data?.results ?? []).map((c) => (
+                <SelectItem key={c.iso2} value={c.iso2}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="qcf-region">{t("builder.criteria.region")}</Label>
-          <Input
-            id="qcf-region"
-            placeholder={t("builder.criteria.region_placeholder")}
-            {...form.register("region")}
-          />
+          <Select
+            value={regionCtrl.field.value || ALL_VALUE}
+            onValueChange={(v) => regionCtrl.field.onChange(v === ALL_VALUE ? "" : v)}
+          >
+            <SelectTrigger id="qcf-region" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>{t("common:filters.any_region")}</SelectItem>
+              {regionOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

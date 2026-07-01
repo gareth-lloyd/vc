@@ -158,7 +158,6 @@ class PricingEngine:
         lines: list[QuoteLine] = []
         chosen_periods: dict[int, RatePeriod] = {}
         winning_period: RatePeriod | None = None
-        winning_card_id: int | None = None
         for night in stay_nights:
             # Distinguish "no band for this night at all" from "bands exist
             # for this night but none match the party size". The legacy
@@ -210,7 +209,6 @@ class PricingEngine:
             chosen_periods[period.pk] = period
             if winning_period is None:  # first real (non-fallback) night
                 winning_period = period
-                winning_card_id = rule.card_id
 
         # The winning period is the one priced for the first real (non-fallback)
         # night. An all-fallback stay has no period to validate — mirror legacy,
@@ -270,7 +268,6 @@ class PricingEngine:
 
         discount_total = cls._apply_discounts(
             property=property,
-            card_id=winning_card_id,
             subtotal=rate_subtotal + extras_total,
             party=party,
             date_from=date_from,
@@ -641,7 +638,6 @@ class PricingEngine:
     def _apply_discounts(
         *,
         property: Any,
-        card_id: int | None,
         subtotal: Decimal,
         party: int,
         date_from: date,
@@ -650,22 +646,14 @@ class PricingEngine:
         as_of: date,
         discount_code: str | None,
     ) -> Decimal:
-        # Property-scoped card-less discounts always apply; this card's own
-        # discounts apply only when a card actually won. On an all-fallback
-        # stay `card_id is None` — guard the `Q(card_id=…)` disjunct, which would
-        # otherwise collapse to `Q(card__isnull=True)` and leak every other
-        # property's card-less discount into this quote. (Card-scoping is dropped
-        # wholesale in Unit 7; this stays property+card transitionally.)
-        scope = Q(card__isnull=True, property=property)
-        if card_id is not None:
-            scope |= Q(card_id=card_id)
+        # GAP-056 Unit 7: discounts are property-scoped (the card scope is gone).
         qs = (
             Discount.objects.filter(
+                property=property,
                 is_active=True,
                 valid_from__lte=date_from,
                 valid_to__gte=date_from,
             )
-            .filter(scope)
             # REPEAT_GUEST is recognised but unimplemented in v1 (no repeat-guest
             # detection exists yet — see GAP-009). Exclude it here so it can never
             # silently mis-apply; keep the enum member to avoid migration/API churn.

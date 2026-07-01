@@ -18,7 +18,6 @@ from pricing.views import (
     PropertyExtraListCreateView,
     PropertySeasonCarryForwardView,
     PropertySeasonListCreateView,
-    RateCardDiscountListCreateView,
     RatePeriodDetailView,
     RatePeriodRuleListCreateView,
     RateRuleDetailView,
@@ -100,11 +99,6 @@ _pricing_paths: list[URLPattern] = [
         "properties/<int:property_id>/discounts",
         PropertyDiscountListCreateView.as_view(),
         name="property-discount-list",
-    ),
-    path(
-        "rate-cards/<int:rate_card_id>/discounts",
-        RateCardDiscountListCreateView.as_view(),
-        name="rate-card-discount-list",
     ),
     path(
         "discounts:lookup-code",

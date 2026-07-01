@@ -1,4 +1,4 @@
-"""Discount rules — promo codes and rate-card-level auto-applied discounts."""
+"""Discount rules — promo codes and property-level auto-applied discounts."""
 
 from __future__ import annotations
 
@@ -9,15 +9,8 @@ from pricing.enums import DiscountKind, RuleKind
 
 
 class Discount(AuditedModel):
-    """A discount rule attached to a rate card and/or property."""
+    """A discount rule attached to a property (GAP-056: the card scope is gone)."""
 
-    card = models.ForeignKey(
-        "pricing.RateCard",
-        on_delete=models.CASCADE,
-        related_name="discounts",
-        null=True,
-        blank=True,
-    )
     property = models.ForeignKey(
         "properties.Property",
         on_delete=models.CASCADE,
@@ -38,15 +31,8 @@ class Discount(AuditedModel):
 
     class Meta:
         ordering = ["property", "name"]
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(card__isnull=False) | models.Q(property__isnull=False),
-                name="discount_card_or_property_required",
-            ),
-        ]
         indexes = [
             models.Index(fields=["property", "is_active"]),
-            models.Index(fields=["card", "is_active"]),
             models.Index(fields=["code"]),
         ]
 

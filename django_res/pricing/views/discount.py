@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from core.api import IsReservationsWriter, IsStaff
 from pricing.enums import RuleKind
 from pricing.filters import DiscountFilter
-from pricing.models import Discount, RateCard
+from pricing.models import Discount
 from pricing.serializers import (
     DiscountLookupCodeSerializer,
     DiscountSerializer,
@@ -44,21 +44,6 @@ class PropertyDiscountListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer: Any) -> None:
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
         serializer.save(property=property_obj)
-
-
-class RateCardDiscountListCreateView(generics.ListCreateAPIView):
-    """`GET / POST /rate-cards/{id}/discounts` — sets `card` from path."""
-
-    serializer_class = DiscountSerializer
-    permission_classes = [IsReservationsWriter]
-
-    def get_queryset(self) -> QuerySet[Discount]:
-        return Discount.objects.filter(card_id=self.kwargs["rate_card_id"])
-
-    def perform_create(self, serializer: Any) -> None:
-        card = get_object_or_404(RateCard, pk=self.kwargs["rate_card_id"])
-        # Card belongs to a property via plan; carry that through automatically.
-        serializer.save(card=card, property=card.plan.property)
 
 
 class DiscountLookupCodeView(APIView):

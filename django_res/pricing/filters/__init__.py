@@ -12,7 +12,6 @@ from pricing.models import Discount
 
 class DiscountFilter(filters.FilterSet):
     property = filters.NumberFilter(field_name="property_id")
-    card = filters.NumberFilter(field_name="card_id")
     rule_kind = filters.CharFilter(field_name="rule_kind")
     code = filters.CharFilter(field_name="code", lookup_expr="iexact")
     is_active = filters.BooleanFilter(field_name="is_active")
@@ -20,7 +19,7 @@ class DiscountFilter(filters.FilterSet):
 
     class Meta:
         model = Discount
-        fields = ["property", "card", "rule_kind", "code", "is_active", "valid_on"]
+        fields = ["property", "rule_kind", "code", "is_active", "valid_on"]
 
     def filter_valid_on(self, qs: QuerySet[Discount], name: str, value: str) -> QuerySet[Discount]:
         try:

@@ -407,18 +407,14 @@ def test_fallback_does_not_mask_party_out_of_range(
 
 
 @pytest.mark.django_db
-def test_all_fallback_stay_ignores_other_propertys_card_less_discount(
+def test_all_fallback_stay_ignores_other_propertys_discount(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """An all-fallback stay must not pick up a *different* property's
-    card-less discount.
+    """An all-fallback stay must not pick up a *different* property's discount.
 
-    With no covering band there is no winning period, so `_apply_discounts`
-    runs with `card_id=None`. The property scope must still hold: a card-less
-    discount belonging to another property must never apply here. (Regression
-    guard — `Q(card_id=card_id)` collapses to `Q(card__isnull=True)` when
-    `card_id` is `None`, which would otherwise match every property's card-less
-    rule.)
+    Discounts are property-scoped (GAP-056 Unit 7 dropped the card scope), so a
+    discount belonging to another property must never apply here — even on an
+    all-fallback stay where no band/period won.
     """
     from pricing.enums import DiscountKind, RuleKind
     from pricing.models import Discount

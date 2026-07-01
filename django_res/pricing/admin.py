@@ -112,7 +112,7 @@ class ExtraAdmin(admin.ModelAdmin):
 
 @admin.register(Discount)
 class DiscountAdmin(admin.ModelAdmin):
-    list_display = ("name", "property", "card", "rule_kind", "kind", "amount", "is_active")
+    list_display = ("name", "property", "rule_kind", "kind", "amount", "is_active")
     list_filter = ("rule_kind", "kind", "is_active")
     search_fields = ("name", "code")
 

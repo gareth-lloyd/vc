@@ -7,7 +7,6 @@ from pricing.views.discount import (
     DiscountLookupCodeView,
     DiscountViewSet,
     PropertyDiscountListCreateView,
-    RateCardDiscountListCreateView,
 )
 from pricing.views.extra import (
     ExtraDetailView,
@@ -42,7 +41,6 @@ __all__ = [
     "PropertyExtraListCreateView",
     "PropertySeasonCarryForwardView",
     "PropertySeasonListCreateView",
-    "RateCardDiscountListCreateView",
     "RatePeriodDetailView",
     "RatePeriodRuleListCreateView",
     "RateRuleDetailView",

@@ -12,7 +12,6 @@ class DiscountSerializer(serializers.ModelSerializer[Discount]):
         model = Discount
         fields = [
             "id",
-            "card",
             "property",
             "name",
             "code",

@@ -13,6 +13,15 @@
 
 - **Severity:** 🔴 Bug (wrong money out) — **fix deferred to the finance rewrite;
   corrected spec lands now.**
+- **FE workaround live (2026-07-01):** the Rate & Service Workbench price probe
+  no longer renders the mis-priced engine `total` as the guest figure. For GROSS
+  plans it shows `rate_subtotal + extras − discount`; for NET plans the engine
+  `total` plus a reconciling "Taxes & fees" line. Basis from the winning plan's
+  `price_basis` → `PropertySettings.prices_entered_as` → `"gross"`. See
+  `frontend/src/features/rate-workbench/components/QuoteResultCard.tsx` +
+  `PriceProbePanel.tsx`. **When the engine branch lands, revisit this** — once
+  the engine returns a correct GROSS `total`, the FE must stop recomputing from
+  lines or it will double-correct.
 - **Source:** 2026-06-02 pricing audit; legacy `RatesModel.Calculate()`
   (`RatesModel.cs:114-254`). User chose "spec + todo only" (2026-06-02).
 - **Files:**

@@ -428,16 +428,38 @@ class SecurityDepositService:
                     settled_at=timezone.now(),
                     meta={"security_deposit_id": sd.pk, "kind": "CAPTURE"},
                 )
-                return sd.transition_to_captured(
+                sd = sd.transition_to_captured(
                     captured_amount=captured_amount,
                     damage_claim=damage_claim,
                     actor=actor,
                 )
-            return sd.transition_to_partially_refunded(
-                captured_amount=captured_amount,
-                damage_claim=damage_claim,
-                actor=actor,
-            )
+            else:
+                sd = sd.transition_to_partially_refunded(
+                    captured_amount=captured_amount,
+                    damage_claim=damage_claim,
+                    actor=actor,
+                )
+            # The capture *is* the settlement: move the now-linked claim to
+            # SETTLED (wf8). Only OPEN/APPROVED claims settle — so an already
+            # SETTLED claim is a no-op rather than an InvalidTransition, and a
+            # WITHDRAWN claim is never silently revived. `refresh_locked` takes
+            # the claim's row lock *before* the status check so a concurrent
+            # operator withdraw can't commit between this guard and settle()'s
+            # own locked re-guard — otherwise that race would raise
+            # InvalidTransition and roll the whole capture (a money move) back.
+            # The down-edge into reservations is sanctioned by the layers
+            # contract; import locally to match `_resolve_damage_claim`.
+            if damage_claim is not None:
+                from reservations.enums import DamageClaimStatus
+                from reservations.services.damage_claims import DamageClaimService
+
+                refresh_locked(damage_claim)
+                if damage_claim.status in {
+                    DamageClaimStatus.OPEN.value,
+                    DamageClaimStatus.APPROVED.value,
+                }:
+                    DamageClaimService.settle(damage_claim, actor=actor)
+            return sd
 
     @staticmethod
     def _resolve_damage_claim(sd: SecurityDeposit, damage_claim: Any) -> DamageClaim | None:

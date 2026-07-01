@@ -4,10 +4,10 @@ The claim is the *why* behind a `SecurityDeposit` capture / partial refund:
 `payments.SecurityDeposit.damage_claim` points here (SET_NULL) so a capture is
 always justified by a referenceable record (BUG-008). The model carries the
 spec's full shape (`product-design/01-domain-model.md`: description, amount,
-itemized lines, photos, guest acceptance) but the surrounding workflow — the
-operator report sub-form, photo uploads, threshold permissions, the damages
-email, and the enforced approval state machine — lands with workflow 8/17.
-`itemized_lines` / `photos` are JSON scaffolds until that upload pipeline ships.
+itemized lines, photos, guest acceptance). Damages evidence photos live in the
+related `DamageClaimPhoto` table (wf8); `itemized_lines` stays a JSON scaffold
+until the itemisation UI ships. The remaining workflow bits — threshold
+permissions, the damages email, guest acceptance — land later.
 """
 
 from __future__ import annotations
@@ -45,10 +45,10 @@ class DamageClaim(AuditedModel):
         choices=DamageClaimStatus.choices,
         default=DamageClaimStatus.OPEN.value,
     )
-    # Scaffolds for the workflow-8 damages report; the upload/itemisation UI
-    # that populates them ships with that feature.
+    # Scaffold for the workflow-8 damages report; the itemisation UI that
+    # populates it ships with that feature. Photos are a real relation —
+    # `DamageClaimPhoto` below — not a JSON blob.
     itemized_lines = models.JSONField(default=list, blank=True)
-    photos = models.JSONField(default=list, blank=True)
     accepted_by_guest_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -65,3 +65,27 @@ class DamageClaim(AuditedModel):
 
     def __str__(self) -> str:
         return self.reference
+
+
+class DamageClaimPhoto(AuditedModel):
+    """A photo evidencing a damages claim (wf8).
+
+    Mirrors `properties.PropertyImage`: a real table with an `ImageField`
+    stored via the default storage (filesystem in dev/test, the S3 bucket in
+    prod/staging). The image backs a money capture, so create/delete is
+    audited (`reservations/apps.py`).
+    """
+
+    damage_claim = models.ForeignKey(
+        "reservations.DamageClaim",
+        on_delete=models.CASCADE,
+        related_name="photos",
+    )
+    image = models.ImageField(upload_to="damage_claims/%Y/%m/")
+    caption = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["damage_claim_id", "id"]
+
+    def __str__(self) -> str:
+        return f"Photo #{self.pk} for damage claim #{self.damage_claim_id}"

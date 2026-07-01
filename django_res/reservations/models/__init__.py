@@ -11,7 +11,7 @@ from reservations.models.booking import (
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.concierge import BookingConciergeItem
-from reservations.models.damage_claim import DamageClaim
+from reservations.models.damage_claim import DamageClaim, DamageClaimPhoto
 from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.models.owner_block import OwnerBlock
 from reservations.models.owner_block_update import OwnerBlockUpdate
@@ -31,6 +31,7 @@ __all__ = [
     "BookingNote",
     "BookingServiceCoverage",
     "DamageClaim",
+    "DamageClaimPhoto",
     "Enquiry",
     "EnquiryEvent",
     "EnquiryNote",

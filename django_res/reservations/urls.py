@@ -26,6 +26,8 @@ from reservations.views import (
     ClientListView,
     ConciergeOverviewViewSet,
     ContactCustomerReadViewSet,
+    DamageClaimPhotoDetailView,
+    DamageClaimPhotoListCreateView,
     DamageClaimViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
@@ -326,8 +328,13 @@ _charge_routes: list[URLPattern | URLResolver] = [
 # Damage-claim nested routes
 # ----------------------------------------------------------------------
 _damage_claim_routes: list[URLPattern | URLResolver] = [
-    # `:withdraw` precedes the `/<pk>` route (DRF's `[^/.]+` pk regex would
-    # otherwise swallow `1:withdraw` as the pk).
+    # `:approve` / `:withdraw` precede the `/<pk>` route (DRF's `[^/.]+` pk
+    # regex would otherwise swallow `1:approve` as the pk).
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>:approve",
+        DamageClaimViewSet.as_view({"post": "approve"}),
+        name="booking-damage-claim-approve",
+    ),
     path(
         "bookings/<int:booking_pk>/damage-claims/<int:pk>:withdraw",
         DamageClaimViewSet.as_view({"post": "withdraw"}),
@@ -348,6 +355,18 @@ _damage_claim_routes: list[URLPattern | URLResolver] = [
             }
         ),
         name="booking-damage-claim-detail",
+    ),
+    # Photos nested under a claim (slash-separated, so the `<int:pk>` detail
+    # route above can't swallow them). Double-scoped by booking + claim.
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos",
+        DamageClaimPhotoListCreateView.as_view(),
+        name="booking-damage-claim-photos",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos/<int:photo_id>",
+        DamageClaimPhotoDetailView.as_view(),
+        name="booking-damage-claim-photo-detail",
     ),
 ]
 

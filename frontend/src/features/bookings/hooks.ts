@@ -19,6 +19,7 @@ import {
   createChargeItem,
   createRefund,
   captureSecurityDepositForDamages,
+  approveDamageClaim,
   createConciergeItem,
   createDamageClaim,
   executeRefund,
@@ -27,6 +28,8 @@ import {
   deleteChargeItem,
   deleteConciergeItem,
   deleteDamageClaim,
+  deleteDamageClaimPhoto,
+  uploadDamageClaimPhoto,
   fetchBalanceTrack,
   fetchBooking,
   fetchBookingActivity,
@@ -405,6 +408,14 @@ export function useUpdateDamageClaim(bookingId: BookingId) {
   });
 }
 
+export function useApproveDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => approveDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
 export function useWithdrawDamageClaim(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -417,6 +428,24 @@ export function useDeleteDamageClaim(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ claimId }: { claimId: number }) => deleteDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useUploadDamageClaimPhoto(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, image, caption }: { claimId: number; image: File; caption?: string }) =>
+      uploadDamageClaimPhoto(bookingId, claimId, { image, caption }),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useDeleteDamageClaimPhoto(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, photoId }: { claimId: number; photoId: number }) =>
+      deleteDamageClaimPhoto(bookingId, claimId, photoId),
     onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
   });
 }

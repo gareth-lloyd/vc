@@ -8,11 +8,13 @@ import { StatusBadge } from "@/components/data/StatusBadge";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import type { BookingId } from "@/lib/query/keys";
-import { useBookingDamageClaims, useWithdrawDamageClaim } from "../hooks";
+import { useApproveDamageClaim, useBookingDamageClaims, useWithdrawDamageClaim } from "../hooks";
 import { DamageClaimFormDialog } from "./DamageClaimFormDialog";
+import { DamageClaimPhotosDialog } from "./DamageClaimPhotosDialog";
 import { damageClaimStatusLabel, type DamageClaim } from "../schemas";
 
 interface Props {
@@ -24,13 +26,33 @@ interface Props {
 export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
   const { t } = useTranslation("bookings");
   const claims = useBookingDamageClaims(bookingId);
+  const approveMutation = useApproveDamageClaim(bookingId);
   const withdrawMutation = useWithdrawDamageClaim(bookingId);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<DamageClaim | null>(null);
+  const [approving, setApproving] = useState<DamageClaim | null>(null);
   const [withdrawing, setWithdrawing] = useState<DamageClaim | null>(null);
+  const [viewingPhotos, setViewingPhotos] = useState<DamageClaim | null>(null);
 
   const rows = claims.data?.results ?? [];
+
+  const handleApprove = async () => {
+    if (!approving) return;
+    try {
+      await approveMutation.mutateAsync({ claimId: approving.id });
+      toast.success(t("damage_claims.toasts.approved"));
+      setApproving(null);
+    } catch (err) {
+      // Surface the state-machine's own 409 message (e.g. "Cannot move a
+      // settled claim to approved.") verbatim; fall back to a generic toast.
+      const message =
+        err instanceof ApiError && err.isClientError() && err.detail
+          ? err.detail
+          : t("damage_claims.toasts.approve_failed");
+      toast.error(message);
+    }
+  };
 
   const handleWithdraw = async () => {
     if (!withdrawing) return;
@@ -118,31 +140,65 @@ export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
                     {formatMoney(claim.amount, claim.currency_code ?? currency)}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {canWrite && claim.status !== "withdrawn" ? (
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={t("damage_claims.row.edit_for", {
-                            reference: claim.reference,
-                          })}
-                          onClick={() => setEditing(claim)}
-                        >
-                          {t("common:actions.edit")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive"
-                          aria-label={t("damage_claims.row.withdraw_for", {
-                            reference: claim.reference,
-                          })}
-                          onClick={() => setWithdrawing(claim)}
-                        >
-                          {t("damage_claims.row.withdraw")}
-                        </Button>
-                      </div>
-                    ) : null}
+                    {/* Row actions follow the claim state machine: OPEN is fully
+                        editable (edit / approve / withdraw); APPROVED can only
+                        be withdrawn; SETTLED and WITHDRAWN are terminal — no
+                        actions. The server enforces the same transitions.
+                        Photos are viewable by any staff (upload/delete gated
+                        inside the dialog), so that button sits outside canWrite. */}
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t("damage_claims.row.photos_for", {
+                          reference: claim.reference,
+                        })}
+                        onClick={() => setViewingPhotos(claim)}
+                      >
+                        {t("damage_claims.row.photos", { count: claim.photos.length })}
+                      </Button>
+                      {canWrite ? (
+                        <>
+                          {claim.status === "open" ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t("damage_claims.row.edit_for", {
+                                  reference: claim.reference,
+                                })}
+                                onClick={() => setEditing(claim)}
+                              >
+                                {t("common:actions.edit")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t("damage_claims.row.approve_for", {
+                                  reference: claim.reference,
+                                })}
+                                onClick={() => setApproving(claim)}
+                              >
+                                {t("damage_claims.row.approve")}
+                              </Button>
+                            </>
+                          ) : null}
+                          {claim.status === "open" || claim.status === "approved" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              aria-label={t("damage_claims.row.withdraw_for", {
+                                reference: claim.reference,
+                              })}
+                              onClick={() => setWithdrawing(claim)}
+                            >
+                              {t("damage_claims.row.withdraw")}
+                            </Button>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -171,6 +227,35 @@ export function DamageClaimsSection({ bookingId, currency, canWrite }: Props) {
           onOpenChange={(open) => {
             if (!open) setEditing(null);
           }}
+        />
+      ) : null}
+
+      {viewingPhotos ? (
+        <DamageClaimPhotosDialog
+          bookingId={bookingId}
+          claimId={viewingPhotos.id}
+          claimReference={viewingPhotos.reference}
+          canWrite={canWrite}
+          open
+          onOpenChange={(open) => {
+            if (!open) setViewingPhotos(null);
+          }}
+        />
+      ) : null}
+
+      {approving ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setApproving(null);
+          }}
+          onConfirm={handleApprove}
+          busy={approveMutation.isPending}
+          title={t("damage_claims.confirm_approve.title")}
+          description={t("damage_claims.confirm_approve.description", {
+            reference: approving.reference,
+          })}
+          confirmLabel={t("damage_claims.confirm_approve.confirm_label")}
         />
       ) : null}
 

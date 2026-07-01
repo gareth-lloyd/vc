@@ -9,6 +9,7 @@ import {
   bookingConciergeItemSchema,
   bookingConciergeItemsResponseSchema,
   bookingDetailSchema,
+  damageClaimPhotoSchema,
   damageClaimSchema,
   damageClaimsResponseSchema,
   bookingEmailSchema,
@@ -34,6 +35,7 @@ import {
   type ChargeItemWriteInput,
   type ConciergeItemWriteInput,
   type DamageClaim,
+  type DamageClaimPhoto,
   type DamageClaimWriteInput,
   type DeclineBookingInput,
   type MarkPaidInput,
@@ -319,6 +321,17 @@ export async function updateDamageClaim(
   return damageClaimSchema.parse(data);
 }
 
+export async function approveDamageClaim(
+  bookingId: BookingId,
+  claimId: number,
+): Promise<DamageClaim> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/damage-claims/${claimId}:approve`,
+  );
+  return damageClaimSchema.parse(data);
+}
+
 export async function withdrawDamageClaim(
   bookingId: BookingId,
   claimId: number,
@@ -332,6 +345,33 @@ export async function withdrawDamageClaim(
 
 export async function deleteDamageClaim(bookingId: BookingId, claimId: number): Promise<void> {
   await apiSend<void>("DELETE", `/bookings/${bookingId}/damage-claims/${claimId}`);
+}
+
+export async function uploadDamageClaimPhoto(
+  bookingId: BookingId,
+  claimId: number,
+  input: { image: File; caption?: string },
+): Promise<DamageClaimPhoto> {
+  const form = new FormData();
+  form.append("image", input.image);
+  if (input.caption) form.append("caption", input.caption);
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/damage-claims/${claimId}/photos`,
+    form,
+  );
+  return damageClaimPhotoSchema.parse(data);
+}
+
+export async function deleteDamageClaimPhoto(
+  bookingId: BookingId,
+  claimId: number,
+  photoId: number,
+): Promise<void> {
+  await apiSend<void>(
+    "DELETE",
+    `/bookings/${bookingId}/damage-claims/${claimId}/photos/${photoId}`,
+  );
 }
 
 // ----------------------------------------------------------------------

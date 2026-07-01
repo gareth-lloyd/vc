@@ -22,7 +22,10 @@ const extra = {
   id: 11,
   property: 7,
   name: "Airport transfer",
+  kind: "other",
+  calc: "fixed_per_stay",
   amount: "120",
+  currency: 1,
   currency_code: "EUR",
   is_mandatory: false,
 };
@@ -31,8 +34,19 @@ const discount = {
   property: 7,
   name: "Early bird",
   code: "EARLY",
+  rule_kind: "early_bird",
   kind: "percent",
   amount: "10",
+  valid_from: "2026-01-01",
+  valid_to: "2026-03-01",
+};
+const eurCurrency = {
+  id: 1,
+  code: "EUR",
+  name: "Euro",
+  symbol: "€",
+  decimal_places: 2,
+  is_active: true,
 };
 
 function installReads() {
@@ -40,6 +54,12 @@ function installReads() {
     http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([service]))),
     http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([extra]))),
     http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([discount]))),
+    // The extra dialog seeds its currency default from settings and lists
+    // currencies via CurrencyPicker.
+    http.get("/api/v1/properties/7/settings", () =>
+      HttpResponse.json({ property: 7, currency: 1, currency_code: "EUR" }),
+    ),
+    http.get("/api/v1/currencies", () => HttpResponse.json(drfPage([eurCurrency]))),
   );
 }
 
@@ -60,13 +80,13 @@ describe("InspectorPanel", () => {
     expect(screen.getByText("Early bird")).toBeInTheDocument();
   });
 
-  it("creates an extra via POST and refreshes the list", async () => {
+  it("creates an extra via POST with the full backend contract", async () => {
     installReads();
     let created = false;
-    const posted: unknown[] = [];
+    const posted: Array<Record<string, unknown>> = [];
     server.use(
       http.post("/api/v1/properties/7/extras", async ({ request }) => {
-        posted.push(await request.json());
+        posted.push((await request.json()) as Record<string, unknown>);
         created = true;
         return HttpResponse.json({ id: 12, property: 7, name: "Cleaning", amount: "50" });
       }),
@@ -83,11 +103,58 @@ describe("InspectorPanel", () => {
     await user.click(await screen.findByRole("button", { name: "Add extra" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText("Name"), "Cleaning");
+    await user.type(within(dialog).getByLabelText("Amount"), "50");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toMatchObject({ name: "Cleaning" });
+    // The required NOT-NULL fields the API demands must all be present: kind and
+    // calc (enum defaults), the currency FK (seeded from settings) and amount.
+    expect(posted[0]).toMatchObject({
+      name: "Cleaning",
+      kind: "other",
+      calc: "fixed_per_stay",
+      currency: 1,
+      amount: "50",
+    });
+    // Read-only currency_code is never written; dates absent → explicit null.
+    expect(posted[0].currency_code).toBeUndefined();
+    expect(posted[0].applies_from).toBeNull();
     expect(await screen.findByText("Cleaning")).toBeInTheDocument();
+  });
+
+  it("creates a discount via POST with rule_kind, kind, amount, dates and null code", async () => {
+    installReads();
+    const posted: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("/api/v1/properties/7/discounts", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ id: 22, property: 7, name: "Long stay", amount: "15" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Add discount" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Name"), "Long stay");
+    await user.type(within(dialog).getByLabelText("Amount"), "15");
+    await user.type(within(dialog).getByLabelText("Valid from"), "2026-06-01");
+    await user.type(within(dialog).getByLabelText("Valid to"), "2026-09-30");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({
+      name: "Long stay",
+      rule_kind: "promo_code",
+      kind: "percent",
+      amount: "15",
+      valid_from: "2026-06-01",
+      valid_to: "2026-09-30",
+    });
+    // An empty promo code is sent as null (a "" would collide on the UNIQUE index).
+    expect(posted[0].code).toBeNull();
+    // uses_count is read-only and must never be written.
+    expect(posted[0].uses_count).toBeUndefined();
   });
 
   it("edits a discount via PATCH to the flat detail route", async () => {

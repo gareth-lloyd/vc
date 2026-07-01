@@ -1163,6 +1163,10 @@
         "name": "Name",
         "code": "Code",
         "kind": "Kind",
+        "calc": "Charged",
+        "rule_kind": "Applies to",
+        "currency": "Currency",
+        "currency_placeholder": "Select a currency",
         "amount": "Amount",
         "description": "Description",
         "applies_from": "Applies from",
@@ -1173,6 +1177,36 @@
         "max_uses": "Max uses",
         "is_mandatory": "Mandatory",
         "is_active": "Active"
+      },
+      "enums": {
+        "extra_kind": {
+          "cleaning": "Cleaning",
+          "pet_fee": "Pet fee",
+          "heating": "Heating",
+          "linen": "Linen",
+          "extra_bed": "Extra bed",
+          "service_fee": "Service fee",
+          "resort_fee": "Resort fee",
+          "other": "Other"
+        },
+        "extra_calc": {
+          "fixed_per_stay": "Per stay",
+          "fixed_per_night": "Per night",
+          "fixed_per_person": "Per person",
+          "fixed_per_person_per_night": "Per person per night",
+          "percent_of_subtotal": "Percent of subtotal"
+        },
+        "discount_kind": {
+          "percent": "Percent",
+          "fixed": "Fixed"
+        },
+        "rule_kind": {
+          "length_of_stay": "Length of stay",
+          "early_bird": "Early bird",
+          "last_minute": "Last minute",
+          "repeat_guest": "Repeat guest",
+          "promo_code": "Promo code"
+        }
       },
       "actions": {
         "edit": "Edit",
@@ -1192,8 +1226,15 @@
       "errors": {
         "extra_name_required": "Enter a name for this extra.",
         "extra_to_before_from": "The end date can't be before the start date.",
+        "extra_kind_required": "Choose a kind.",
+        "extra_calc_required": "Choose how it's charged.",
+        "extra_currency_required": "Choose a currency.",
         "discount_name_required": "Enter a name for this discount.",
-        "discount_to_before_from": "The end date can't be before the start date."
+        "discount_to_before_from": "The end date can't be before the start date.",
+        "discount_kind_required": "Choose a kind.",
+        "discount_rule_kind_required": "Choose what it applies to.",
+        "discount_dates_required": "Enter both valid-from and valid-to dates.",
+        "amount_required": "Enter an amount."
       },
       "delete_confirm": {
         "title": "Delete this item?",

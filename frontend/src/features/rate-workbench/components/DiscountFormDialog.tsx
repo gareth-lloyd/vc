@@ -16,10 +16,13 @@ import { currencyAdornment } from "@/lib/format/money";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { useCreateDiscount, useUpdateDiscount } from "../hooks";
 import {
+  DISCOUNT_KINDS,
+  RULE_KINDS,
   discountWriteInputSchema,
   type DiscountWriteInput,
   type DiscountWritePayload,
 } from "../schemas";
+import { EnumSelect } from "./EnumSelect";
 import type { Discount } from "@/features/properties/schemas";
 
 interface CommonProps {
@@ -41,10 +44,13 @@ interface EditProps extends CommonProps {
 
 type DiscountFormDialogProps = CreateProps | EditProps;
 
+// Sensible enum defaults so a new discount is savable without forcing a pick for
+// every field (mirrors the season dialog defaulting price_basis).
 const CREATE_DEFAULTS: DiscountWriteInput = {
   name: "",
   code: "",
-  kind: "",
+  rule_kind: "promo_code",
+  kind: "percent",
   amount: "",
   min_nights: null,
   threshold_days: null,
@@ -58,7 +64,8 @@ function defaultsFromDiscount(discount: Discount): DiscountWriteInput {
   return {
     name: discount.name,
     code: discount.code ?? "",
-    kind: discount.kind ?? discount.rule_kind ?? "",
+    rule_kind: discount.rule_kind ?? "promo_code",
+    kind: discount.kind ?? "percent",
     amount: discount.amount ?? "",
     min_nights: discount.min_nights ?? null,
     threshold_days: discount.threshold_days ?? null,
@@ -70,13 +77,12 @@ function defaultsFromDiscount(discount: Discount): DiscountWriteInput {
 }
 
 function toPayload(values: DiscountWriteInput): DiscountWritePayload {
-  // An empty amount/date is "unset" — send explicit `null`, never the empty
-  // string the API rejects, and never `undefined` (which a PATCH omits).
+  // `amount`/dates are required (schema-guaranteed). An empty `code` collapses
+  // to `null`, never "" — the model's UNIQUE index treats "" as a real value
+  // that a second code-less discount would collide on, but allows many NULLs.
   return {
     ...values,
-    amount: values.amount ? values.amount : null,
-    valid_from: values.valid_from || null,
-    valid_to: values.valid_to || null,
+    code: values.code ? values.code : null,
   };
 }
 
@@ -129,6 +135,8 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
     }
   };
 
+  const ruleKind = form.watch("rule_kind");
+  const kind = form.watch("kind");
   const isActive = form.watch("is_active") ?? true;
 
   return (
@@ -154,12 +162,36 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="discount-code">{t("rate_workbench.inspector.fields.code")}</Label>
-              <Input id="discount-code" {...form.register("code")} />
+              <Label htmlFor="discount-rule-kind">
+                {t("rate_workbench.inspector.fields.rule_kind")}
+              </Label>
+              <EnumSelect
+                id="discount-rule-kind"
+                value={ruleKind}
+                onChange={(v) => form.setValue("rule_kind", v, { shouldValidate: true })}
+                options={RULE_KINDS}
+                labelFor={(v) => t(`rate_workbench.inspector.enums.rule_kind.${v}`)}
+              />
+              {form.formState.errors.rule_kind ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.rule_kind.message)}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="discount-kind">{t("rate_workbench.inspector.fields.kind")}</Label>
-              <Input id="discount-kind" {...form.register("kind")} />
+              <EnumSelect
+                id="discount-kind"
+                value={kind}
+                onChange={(v) => form.setValue("kind", v, { shouldValidate: true })}
+                options={DISCOUNT_KINDS}
+                labelFor={(v) => t(`rate_workbench.inspector.enums.discount_kind.${v}`)}
+              />
+              {form.formState.errors.kind ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.kind.message)}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -172,6 +204,15 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 adornment={amountAdornment}
                 {...form.register("amount")}
               />
+              {form.formState.errors.amount ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.amount.message)}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="discount-code">{t("rate_workbench.inspector.fields.code")}</Label>
+              <Input id="discount-code" {...form.register("code")} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="discount-min-nights">
@@ -184,25 +225,19 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 {...form.register("min_nights", { setValueAs: asNumberOrNull })}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="discount-max-uses">
-                {t("rate_workbench.inspector.fields.max_uses")}
-              </Label>
-              <Input
-                id="discount-max-uses"
-                type="number"
-                min={0}
-                {...form.register("max_uses", { setValueAs: asNumberOrNull })}
-              />
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label htmlFor="discount-valid-from">
                 {t("rate_workbench.inspector.fields.valid_from")}
               </Label>
               <Input id="discount-valid-from" type="date" {...form.register("valid_from")} />
+              {form.formState.errors.valid_from ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.valid_from.message)}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="discount-valid-to">
@@ -214,6 +249,17 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                   {fieldErrorText(t, form.formState.errors.valid_to.message)}
                 </p>
               ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="discount-max-uses">
+                {t("rate_workbench.inspector.fields.max_uses")}
+              </Label>
+              <Input
+                id="discount-max-uses"
+                type="number"
+                min={0}
+                {...form.register("max_uses", { setValueAs: asNumberOrNull })}
+              />
             </div>
           </div>
 

@@ -110,7 +110,7 @@ export function useCreateExtra(propertyId: PropertyId) {
 
 interface UpdateExtraVars {
   extraId: number;
-  input: Partial<ExtraWritePayload> & { sort_order?: number };
+  input: Partial<ExtraWritePayload>;
 }
 
 export function useUpdateExtra(propertyId: PropertyId) {

@@ -359,7 +359,12 @@ function DiscountsSection({
 
   const metaFor = (d: Discount): string | null => {
     const kind = d.kind ?? d.rule_kind ?? null;
-    const parts = [d.code, kind, d.amount, dateRange(d.valid_from, d.valid_to)].filter(Boolean);
+    const parts = [
+      d.code,
+      kind,
+      d.amount != null ? formatMoney(d.amount, currencyCode) : null,
+      dateRange(d.valid_from, d.valid_to),
+    ].filter(Boolean);
     return parts.length ? parts.join(" · ") : null;
   };
 

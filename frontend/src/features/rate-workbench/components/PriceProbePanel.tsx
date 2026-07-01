@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,18 +36,30 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
   const [discountCode, setDiscountCode] = useState("");
   const [optIn, setOptIn] = useState<Set<number>>(new Set());
 
-  const optInExtras = extras.filter((e) => !e.is_mandatory && e.is_active !== false);
+  const optInExtras = useMemo(
+    () => extras.filter((e) => !e.is_mandatory && e.is_active !== false),
+    [extras],
+  );
   const adultsNum = Math.floor(Number(adults));
   const childrenNum = Math.floor(Number(children));
   const canSubmit = !!dateFrom && !!dateTo && adultsNum >= 1 && !probe.isPending;
 
-  const toggleExtra = (id: number, on: boolean) =>
+  // A quote is only meaningful for the inputs it was computed from — clear a
+  // shown result the moment any input changes so a stale figure never lingers
+  // beside edited inputs.
+  const clearStaleResult = () => {
+    if (probe.isSuccess || probe.isError) probe.reset();
+  };
+
+  const toggleExtra = (id: number, on: boolean) => {
+    clearStaleResult();
     setOptIn((prev) => {
       const next = new Set(prev);
       if (on) next.add(id);
       else next.delete(id);
       return next;
     });
+  };
 
   const handleSubmit = () => {
     probe.mutate({
@@ -82,7 +94,10 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
             id="probe-from"
             type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => {
+              clearStaleResult();
+              setDateFrom(e.target.value);
+            }}
           />
         </div>
         <div className="space-y-1">
@@ -91,7 +106,10 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
             id="probe-to"
             type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => {
+              clearStaleResult();
+              setDateTo(e.target.value);
+            }}
           />
         </div>
         <div className="space-y-1">
@@ -101,7 +119,10 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
             type="number"
             min={1}
             value={adults}
-            onChange={(e) => setAdults(e.target.value)}
+            onChange={(e) => {
+              clearStaleResult();
+              setAdults(e.target.value);
+            }}
           />
         </div>
         <div className="space-y-1">
@@ -111,7 +132,10 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
             type="number"
             min={0}
             value={children}
-            onChange={(e) => setChildren(e.target.value)}
+            onChange={(e) => {
+              clearStaleResult();
+              setChildren(e.target.value);
+            }}
           />
         </div>
       </div>
@@ -121,7 +145,10 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
         <Input
           id="probe-code"
           value={discountCode}
-          onChange={(e) => setDiscountCode(e.target.value)}
+          onChange={(e) => {
+            clearStaleResult();
+            setDiscountCode(e.target.value);
+          }}
           className="sm:max-w-xs"
         />
       </div>
@@ -158,7 +185,7 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
         </p>
       ) : null}
 
-      {probe.isSuccess && !probe.isPending ? (
+      {probe.isSuccess ? (
         <QuoteResultCard
           quote={probe.data}
           cardLabel={

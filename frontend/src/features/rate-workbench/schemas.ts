@@ -7,12 +7,43 @@ import { z } from "zod";
  * `@/features/properties/schemas` and are imported, never redefined. These are
  * the form-facing write shapes only.
  *
- * `amount` is a plain form string (empty until typed); date fields are
- * `nullable().optional()` so an emptied input can be PATCHed as an explicit
- * `null` (clearing a band) rather than omitted — the same trap documented on
- * `propertyServiceWriteInputSchema`. The wire payloads below turn an empty
- * `amount`/date into that `null`.
+ * The shapes below mirror the backend contract exactly (see `pricing/models`
+ * and the `Extra`/`Discount` serializers): `kind`/`calc`/`rule_kind` are
+ * constrained enums, `amount` and `currency` are required, and only the
+ * genuinely-nullable columns (an Extra's `applies_from`/`applies_to`) may be
+ * cleared to `null`. Discount `valid_from`/`valid_to` are NOT NULL, so they are
+ * required here rather than nulled on blank.
  */
+
+// Enum values mirror `pricing/enums.py`. They are typed data values (not UI
+// copy), so components build i18n label keys from them — see the `enums.*`
+// block in `properties.json`.
+export const EXTRA_KINDS = [
+  "cleaning",
+  "pet_fee",
+  "heating",
+  "linen",
+  "extra_bed",
+  "service_fee",
+  "resort_fee",
+  "other",
+] as const;
+export const EXTRA_CALCS = [
+  "fixed_per_stay",
+  "fixed_per_night",
+  "fixed_per_person",
+  "fixed_per_person_per_night",
+  "percent_of_subtotal",
+] as const;
+export const DISCOUNT_KINDS = ["percent", "fixed"] as const;
+export const RULE_KINDS = [
+  "length_of_stay",
+  "early_bird",
+  "last_minute",
+  "repeat_guest",
+  "promo_code",
+] as const;
+
 export const extraWriteInputSchema = z
   .object({
     name: z
@@ -21,9 +52,24 @@ export const extraWriteInputSchema = z
       .min(1, { message: "properties:rate_workbench.inspector.errors.extra_name_required" })
       .max(128),
     description: z.string().trim().nullable().optional(),
-    kind: z.string().trim().nullable().optional(),
-    amount: z.string().trim().optional(),
-    currency_code: z.string().nullable().optional(),
+    // `kind`/`calc` are required NOT NULL enum columns with no server default.
+    // The Selects only offer valid values, so a min(1) "pick one" guard is all
+    // the client needs; the backend enforces the enum.
+    kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.extra_kind_required",
+    }),
+    calc: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.extra_calc_required",
+    }),
+    amount: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.amount_required" }),
+    // Writable FK (a Currency PK); the serializer's `currency_code` is read-only.
+    currency: z
+      .number({ message: "properties:rate_workbench.inspector.errors.extra_currency_required" })
+      .int()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.extra_currency_required" }),
     is_mandatory: z.boolean().optional(),
     applies_from: z.string().nullable().optional(),
     applies_to: z.string().nullable().optional(),
@@ -35,8 +81,11 @@ export const extraWriteInputSchema = z
   });
 export type ExtraWriteInput = z.infer<typeof extraWriteInputSchema>;
 
-/** Wire shape: an empty `amount`/date is sent as an explicit `null`. */
-export type ExtraWritePayload = Omit<ExtraWriteInput, "amount"> & { amount: string | null };
+/** Wire shape: only the genuinely-nullable date columns collapse to `null`. */
+export type ExtraWritePayload = Omit<ExtraWriteInput, "applies_from" | "applies_to"> & {
+  applies_from: string | null;
+  applies_to: string | null;
+};
 
 export const discountWriteInputSchema = z
   .object({
@@ -46,12 +95,28 @@ export const discountWriteInputSchema = z
       .min(1, { message: "properties:rate_workbench.inspector.errors.discount_name_required" })
       .max(128),
     code: z.string().trim().nullable().optional(),
-    kind: z.string().trim().nullable().optional(),
-    amount: z.string().trim().optional(),
+    // Two distinct required enums: `rule_kind` (when the discount applies) and
+    // `kind` (how the amount is read). The engine filters candidates by
+    // rule_kind, so a missing one both 400s on create and never applies.
+    rule_kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.discount_rule_kind_required",
+    }),
+    kind: z.string().min(1, {
+      message: "properties:rate_workbench.inspector.errors.discount_kind_required",
+    }),
+    amount: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.amount_required" }),
     min_nights: z.number().int().min(0).nullable().optional(),
     threshold_days: z.number().int().min(0).nullable().optional(),
-    valid_from: z.string().nullable().optional(),
-    valid_to: z.string().nullable().optional(),
+    // NOT NULL on the model — required, never nulled on blank.
+    valid_from: z
+      .string()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.discount_dates_required" }),
+    valid_to: z
+      .string()
+      .min(1, { message: "properties:rate_workbench.inspector.errors.discount_dates_required" }),
     max_uses: z.number().int().min(0).nullable().optional(),
     is_active: z.boolean().optional(),
     // NOTE: `uses_count` is deliberately omitted — it is read-only on the API
@@ -63,8 +128,8 @@ export const discountWriteInputSchema = z
   });
 export type DiscountWriteInput = z.infer<typeof discountWriteInputSchema>;
 
-/** Wire shape: an empty `amount`/date is sent as an explicit `null`. */
-export type DiscountWritePayload = Omit<DiscountWriteInput, "amount"> & { amount: string | null };
+/** Wire shape: an empty `code` collapses to `null` (a "" collides on the UNIQUE index). */
+export type DiscountWritePayload = Omit<DiscountWriteInput, "code"> & { code: string | null };
 
 // ---------------------------------------------------------------------------
 // Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
@@ -129,5 +194,16 @@ export const priceQuoteSchema = z
     max_nights: z.number().nullable().optional(),
     occupancy_pricing: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough()
+  // BUG-009: the engine mis-prices GROSS plans, so owner economics
+  // (net_to_owner / commission / tax) are wrong. Strip them at the parse
+  // boundary so the bad figures never exist client-side — defence that doesn't
+  // depend on every renderer remembering to whitelist guest-facing fields.
+  .transform((q) => {
+    const stripped = q as Record<string, unknown>;
+    delete stripped.net_to_owner;
+    delete stripped.commission;
+    delete stripped.tax;
+    return q;
+  });
 export type PriceQuote = z.infer<typeof priceQuoteSchema>;

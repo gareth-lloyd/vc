@@ -1163,6 +1163,10 @@
         "name": "Όνομα",
         "code": "Κωδικός",
         "kind": "Τύπος",
+        "calc": "Χρέωση",
+        "rule_kind": "Εφαρμόζεται σε",
+        "currency": "Νόμισμα",
+        "currency_placeholder": "Επιλέξτε νόμισμα",
         "amount": "Ποσό",
         "description": "Περιγραφή",
         "applies_from": "Ισχύει από",
@@ -1173,6 +1177,36 @@
         "max_uses": "Μέγ. χρήσεις",
         "is_mandatory": "Υποχρεωτικό",
         "is_active": "Ενεργό"
+      },
+      "enums": {
+        "extra_kind": {
+          "cleaning": "Καθαρισμός",
+          "pet_fee": "Χρέωση κατοικιδίου",
+          "heating": "Θέρμανση",
+          "linen": "Λευκά είδη",
+          "extra_bed": "Επιπλέον κρεβάτι",
+          "service_fee": "Χρέωση υπηρεσίας",
+          "resort_fee": "Χρέωση θερέτρου",
+          "other": "Άλλο"
+        },
+        "extra_calc": {
+          "fixed_per_stay": "Ανά διαμονή",
+          "fixed_per_night": "Ανά διανυκτέρευση",
+          "fixed_per_person": "Ανά άτομο",
+          "fixed_per_person_per_night": "Ανά άτομο ανά διανυκτέρευση",
+          "percent_of_subtotal": "Ποσοστό επί του υποσυνόλου"
+        },
+        "discount_kind": {
+          "percent": "Ποσοστό",
+          "fixed": "Σταθερό"
+        },
+        "rule_kind": {
+          "length_of_stay": "Διάρκεια διαμονής",
+          "early_bird": "Έγκαιρη κράτηση",
+          "last_minute": "Τελευταία στιγμή",
+          "repeat_guest": "Επαναλαμβανόμενος επισκέπτης",
+          "promo_code": "Κωδικός προσφοράς"
+        }
       },
       "actions": {
         "edit": "Επεξεργασία",
@@ -1192,8 +1226,15 @@
       "errors": {
         "extra_name_required": "Εισαγάγετε όνομα για αυτό το έξτρα.",
         "extra_to_before_from": "Η ημερομηνία λήξης δεν μπορεί να είναι πριν την έναρξη.",
+        "extra_kind_required": "Επιλέξτε τύπο.",
+        "extra_calc_required": "Επιλέξτε τρόπο χρέωσης.",
+        "extra_currency_required": "Επιλέξτε νόμισμα.",
         "discount_name_required": "Εισαγάγετε όνομα για αυτή την έκπτωση.",
-        "discount_to_before_from": "Η ημερομηνία λήξης δεν μπορεί να είναι πριν την έναρξη."
+        "discount_to_before_from": "Η ημερομηνία λήξης δεν μπορεί να είναι πριν την έναρξη.",
+        "discount_kind_required": "Επιλέξτε τύπο.",
+        "discount_rule_kind_required": "Επιλέξτε πού εφαρμόζεται.",
+        "discount_dates_required": "Εισαγάγετε ημερομηνίες έγκυρο-από και έγκυρο-έως.",
+        "amount_required": "Εισαγάγετε ποσό."
       },
       "delete_confirm": {
         "title": "Διαγραφή αυτού του στοιχείου;",

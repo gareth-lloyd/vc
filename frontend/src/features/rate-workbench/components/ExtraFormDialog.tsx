@@ -15,8 +15,17 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { currencyAdornment } from "@/lib/format/money";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
+import { CurrencyPicker } from "@/features/properties/components/CurrencyPicker";
+import { usePropertySettings } from "@/features/properties/hooks";
 import { useCreateExtra, useUpdateExtra } from "../hooks";
-import { extraWriteInputSchema, type ExtraWriteInput, type ExtraWritePayload } from "../schemas";
+import {
+  EXTRA_CALCS,
+  EXTRA_KINDS,
+  extraWriteInputSchema,
+  type ExtraWriteInput,
+  type ExtraWritePayload,
+} from "../schemas";
+import { EnumSelect } from "./EnumSelect";
 import type { Extra } from "@/features/properties/schemas";
 
 interface CommonProps {
@@ -38,23 +47,32 @@ interface EditProps extends CommonProps {
 
 type ExtraFormDialogProps = CreateProps | EditProps;
 
-const CREATE_DEFAULTS: ExtraWriteInput = {
-  name: "",
-  description: "",
-  kind: "",
-  amount: "",
-  is_mandatory: false,
-  applies_from: "",
-  applies_to: "",
-  is_active: true,
-};
+// Sensible enum defaults so a new extra is savable without forcing a pick for
+// every field (mirrors the season dialog defaulting price_basis). `currency`
+// (0 → invalid) is re-seeded from the property's settings once they load.
+function createDefaults(currencyId: number | null): ExtraWriteInput {
+  return {
+    name: "",
+    description: "",
+    kind: "other",
+    calc: "fixed_per_stay",
+    amount: "",
+    currency: currencyId ?? 0,
+    is_mandatory: false,
+    applies_from: "",
+    applies_to: "",
+    is_active: true,
+  };
+}
 
 function defaultsFromExtra(extra: Extra): ExtraWriteInput {
   return {
     name: extra.name,
     description: extra.description ?? "",
-    kind: extra.kind ?? "",
+    kind: extra.kind ?? "other",
+    calc: extra.calc ?? "fixed_per_stay",
     amount: extra.amount ?? "",
+    currency: extra.currency ?? 0,
     is_mandatory: extra.is_mandatory ?? false,
     applies_from: extra.applies_from ?? "",
     applies_to: extra.applies_to ?? "",
@@ -63,12 +81,10 @@ function defaultsFromExtra(extra: Extra): ExtraWriteInput {
 }
 
 function toPayload(values: ExtraWriteInput): ExtraWritePayload {
-  // An empty amount/date is "unset" — send explicit `null`, never the empty
-  // string the API rejects, and never `undefined` (which a PATCH omits, leaving
-  // the old value in place).
+  // Only the genuinely-nullable date columns collapse to `null`; `amount` and
+  // `currency` are required (the schema guarantees they're set).
   return {
     ...values,
-    amount: values.amount ? values.amount : null,
     applies_from: values.applies_from || null,
     applies_to: values.applies_to || null,
   };
@@ -80,9 +96,12 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
   const isCreate = props.mode === "create";
   const amountAdornment = currencyAdornment(currencyCode);
 
+  const settings = usePropertySettings(propertyId);
+  const defaultCurrency = settings.data?.currency ?? null;
+
   const form = useForm<ExtraWriteInput>({
     resolver: zodResolver(extraWriteInputSchema),
-    defaultValues: isCreate ? CREATE_DEFAULTS : defaultsFromExtra(props.entity),
+    defaultValues: isCreate ? createDefaults(defaultCurrency) : defaultsFromExtra(props.entity),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -91,12 +110,21 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
-    if (open) {
-      form.reset(isCreate ? CREATE_DEFAULTS : defaultsFromExtra(props.entity));
-      setTopLevelError(null);
-    }
+    if (!open) return;
+    form.reset(isCreate ? createDefaults(defaultCurrency) : defaultsFromExtra(props.entity));
+    setTopLevelError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.entity.id]);
+
+  // The currency default can arrive after the dialog opens (settings load).
+  // Fill it in without clobbering the operator's other edits, and only while
+  // the field is still unset (0) so a late default never overrides a manual pick.
+  useEffect(() => {
+    if (open && isCreate && defaultCurrency != null && form.getValues("currency") === 0) {
+      form.setValue("currency", defaultCurrency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultCurrency]);
 
   const handleSubmit = async (values: ExtraWriteInput) => {
     setTopLevelError(null);
@@ -120,6 +148,9 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
     }
   };
 
+  const kind = form.watch("kind");
+  const calc = form.watch("calc");
+  const currency = form.watch("currency");
   const isMandatory = form.watch("is_mandatory") ?? false;
   const isActive = form.watch("is_active") ?? true;
 
@@ -147,8 +178,37 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="extra-kind">{t("rate_workbench.inspector.fields.kind")}</Label>
-              <Input id="extra-kind" {...form.register("kind")} />
+              <EnumSelect
+                id="extra-kind"
+                value={kind}
+                onChange={(v) => form.setValue("kind", v, { shouldValidate: true })}
+                options={EXTRA_KINDS}
+                labelFor={(v) => t(`rate_workbench.inspector.enums.extra_kind.${v}`)}
+              />
+              {form.formState.errors.kind ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.kind.message)}
+                </p>
+              ) : null}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="extra-calc">{t("rate_workbench.inspector.fields.calc")}</Label>
+              <EnumSelect
+                id="extra-calc"
+                value={calc}
+                onChange={(v) => form.setValue("calc", v, { shouldValidate: true })}
+                options={EXTRA_CALCS}
+                labelFor={(v) => t(`rate_workbench.inspector.enums.extra_calc.${v}`)}
+              />
+              {form.formState.errors.calc ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.calc.message)}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="extra-amount">{t("rate_workbench.inspector.fields.amount")}</Label>
               <MoneyInput
@@ -157,6 +217,27 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
                 adornment={amountAdornment}
                 {...form.register("amount")}
               />
+              {form.formState.errors.amount ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.amount.message)}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="extra-currency">
+                {t("rate_workbench.inspector.fields.currency")}
+              </Label>
+              <CurrencyPicker
+                id="extra-currency"
+                value={currency || null}
+                onChange={(v) => form.setValue("currency", v, { shouldValidate: true })}
+                placeholder={t("rate_workbench.inspector.fields.currency_placeholder")}
+              />
+              {form.formState.errors.currency ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.currency.message)}
+                </p>
+              ) : null}
             </div>
           </div>
 

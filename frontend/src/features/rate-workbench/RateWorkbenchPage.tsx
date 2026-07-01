@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -232,13 +232,18 @@ export function RateWorkbenchPage() {
       />
     ) : null;
 
-  // cardId → "Season · Card", so the probe can name the winning card.
-  const cardLabels: Record<number, string> = {};
-  for (const detail of fanOut.details) {
-    for (const card of detail.cards ?? []) {
-      cardLabels[card.id] = `${detail.name} · ${card.name}`;
+  // cardId → "Season · Card", so the probe can name the winning card. Memoised
+  // so unrelated re-renders (year paging, matrix/inspector edits) don't rebuild
+  // the map or hand the probe a fresh object reference each time.
+  const cardLabels = useMemo(() => {
+    const labels: Record<number, string> = {};
+    for (const detail of fanOut.details) {
+      for (const card of detail.cards ?? []) {
+        labels[card.id] = `${detail.name} · ${card.name}`;
+      }
     }
-  }
+    return labels;
+  }, [fanOut.details]);
   const probeSection =
     !isLoading && !isError ? (
       <PriceProbePanel

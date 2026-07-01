@@ -148,6 +148,23 @@ describe("PriceProbePanel", () => {
     expect(await screen.findByText("Guest total")).toBeInTheDocument();
   });
 
+  it("clears a shown quote when an input changes (no stale result)", async () => {
+    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(breakdown)));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
+    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await user.click(screen.getByRole("button", { name: "Get quote" }));
+    expect(await screen.findByText("Guest total")).toBeInTheDocument();
+
+    // Editing the party count invalidates the shown quote.
+    const adults = screen.getByLabelText("Adults");
+    await user.clear(adults);
+    await user.type(adults, "6");
+    expect(screen.queryByText("Guest total")).toBeNull();
+  });
+
   it("keeps Get quote disabled until both dates are chosen", async () => {
     const user = userEvent.setup();
     renderPanel();

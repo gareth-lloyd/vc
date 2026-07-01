@@ -23,7 +23,7 @@ export async function createExtra(propertyId: PropertyId, body: ExtraWritePayloa
 
 export async function updateExtra(
   extraId: number,
-  body: Partial<ExtraWritePayload> & { sort_order?: number },
+  body: Partial<ExtraWritePayload>,
 ): Promise<Extra> {
   const data = await apiSend<unknown>("PATCH", `/extras/${extraId}`, body);
   return extraSchema.parse(data);

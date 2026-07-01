@@ -86,21 +86,34 @@ describe("discountWriteInputSchema", () => {
   });
 });
 
-describe("priceQuoteSchema — BUG-009 owner-economics strip", () => {
-  it("strips net_to_owner / commission / tax at the parse boundary", () => {
+describe("priceQuoteSchema — owner economics pass through (BUG-009 fixed)", () => {
+  it("keeps net_to_owner / commission / tax / price_basis at the parse boundary", () => {
     const parsed = priceQuoteSchema.parse({
       currency_code: "EUR",
       total: "1920",
       net_to_owner: "1220",
       commission: "700",
       tax: "0",
+      price_basis: "gross",
       some_future_field: 42,
+    }) as Record<string, unknown>;
+    // The engine's figures are basis-aware and trustworthy now — the old
+    // parse-boundary strip is gone.
+    expect(parsed.net_to_owner).toBe("1220");
+    expect(parsed.commission).toBe("700");
+    expect(parsed.tax).toBe("0");
+    expect(parsed.price_basis).toBe("gross");
+    expect(parsed.total).toBe("1920");
+    expect(parsed.some_future_field).toBe(42);
+  });
+
+  it("tolerates legacy responses without the owner fields", () => {
+    const parsed = priceQuoteSchema.parse({
+      currency_code: "EUR",
+      total: "1920",
     }) as Record<string, unknown>;
     expect(parsed.net_to_owner).toBeUndefined();
     expect(parsed.commission).toBeUndefined();
     expect(parsed.tax).toBeUndefined();
-    // Guest-facing fields and unknown forward-compat fields still survive.
-    expect(parsed.total).toBe("1920");
-    expect(parsed.some_future_field).toBe(42);
   });
 });

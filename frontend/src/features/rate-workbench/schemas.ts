@@ -133,10 +133,10 @@ export type DiscountWritePayload = Omit<DiscountWriteInput, "code"> & { code: st
 
 // ---------------------------------------------------------------------------
 // Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
-// flat dict of decimal STRINGS; the schemas below parse only the guest-facing
-// fields we render and `.passthrough()` the rest (owner economics — net_to_owner
-// / commission / tax — ride along on the wire but are deliberately never shown,
-// per BUG-009's GROSS-plan mispricing).
+// flat dict of decimal STRINGS; the schemas below parse the fields we render —
+// including owner economics (net_to_owner / commission / tax), trustworthy
+// since the engine became `price_basis`-aware (BUG-009) — and `.passthrough()`
+// the rest.
 // ---------------------------------------------------------------------------
 
 export const priceProbeRequestSchema = z.object({
@@ -195,17 +195,13 @@ export const priceQuoteSchema = z
     min_nights: z.number().nullable().optional(),
     max_nights: z.number().nullable().optional(),
     occupancy_pricing: z.boolean().optional(),
+    // Owner economics — basis-aware since BUG-009 landed. Optional/nullable so
+    // older persisted shapes without them still parse (renderers hide the
+    // owner section when absent).
+    net_to_owner: z.string().nullable().optional(),
+    commission: z.string().nullable().optional(),
+    tax: z.string().nullable().optional(),
+    price_basis: z.string().nullable().optional(),
   })
-  .passthrough()
-  // BUG-009: the engine mis-prices GROSS plans, so owner economics
-  // (net_to_owner / commission / tax) are wrong. Strip them at the parse
-  // boundary so the bad figures never exist client-side — defence that doesn't
-  // depend on every renderer remembering to whitelist guest-facing fields.
-  .transform((q) => {
-    const stripped = q as Record<string, unknown>;
-    delete stripped.net_to_owner;
-    delete stripped.commission;
-    delete stripped.tax;
-    return q;
-  });
+  .passthrough();
 export type PriceQuote = z.infer<typeof priceQuoteSchema>;

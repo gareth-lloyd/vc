@@ -68,7 +68,7 @@ describe("PriceProbePanel", () => {
     expect(screen.queryByLabelText("Cleaning fee")).toBeNull();
   });
 
-  it("posts the exact quote body and renders the guest total without owner economics", async () => {
+  it("posts the exact quote body and renders the guest total plus owner economics", async () => {
     let posted: Record<string, unknown> | null = null;
     server.use(
       http.post("/api/v1/pricing:quote", async ({ request }) => {
@@ -104,9 +104,10 @@ describe("PriceProbePanel", () => {
     // Guest total shown; the winning period is named from periodLabels.
     expect(await screen.findByText("Summer 2026 · Peak")).toBeInTheDocument();
     expect(screen.getByText("Guest total")).toBeInTheDocument();
-    // Owner economics (net_to_owner "1220", commission "700") are never rendered.
-    expect(screen.queryByText(/1[,.]?220/)).toBeNull();
-    expect(screen.queryByText(/^€?700/)).toBeNull();
+    // Owner economics render from the engine's carve-out figures (BUG-009 fixed).
+    expect(screen.getByText("Owner economics")).toBeInTheDocument();
+    expect(screen.getByText("€1,220.00")).toBeInTheDocument();
+    expect(screen.getByText("€700.00")).toBeInTheDocument();
     // Inclusions surfaced from the newline-joined string.
     expect(screen.getByText("Welcome hamper")).toBeInTheDocument();
   });
@@ -175,10 +176,16 @@ describe("PriceProbePanel", () => {
     expect(screen.getByRole("button", { name: "Get quote" })).toBeEnabled();
   });
 
-  // An inflated engine total (total > rate + extras − discount): 1800 + 120 = 1920
-  // shown as lines, but the engine reports 2100 (BUG-009 adds commission on top
-  // for GROSS plans). plan_id 100 selects the basis from basisByPlan.
-  const inflated = { ...breakdown, total: "2100" };
+  // A NET-plan response: the grossed-up `total` (1920 net + 150 commission +
+  // 30 tax = 2100) exceeds the line sum, and the gap is a real guest charge.
+  const netShaped = {
+    ...breakdown,
+    total: "2100",
+    commission: "150",
+    tax: "30",
+    net_to_owner: "1920",
+    price_basis: "net",
+  };
 
   async function submit(user: ReturnType<typeof userEvent.setup>) {
     await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
@@ -186,37 +193,13 @@ describe("PriceProbePanel", () => {
     await user.click(screen.getByRole("button", { name: "Get quote" }));
   }
 
-  it("reconciles the guest total to the lines for a GROSS plan", async () => {
-    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(inflated)));
+  it("trusts the engine total for a NET plan and surfaces taxes & fees", async () => {
+    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(netShaped)));
     const user = userEvent.setup();
-    renderWithProviders(
-      <PriceProbePanel
-        propertyId={7}
-        extras={[optInExtra, mandatoryExtra]}
-        periodLabels={{ 500: "Summer 2026 · Standard" }}
-        basisByPlan={{ 100: "gross" }}
-      />,
-    );
+    renderPanel();
     await submit(user);
-    // Reconciled 1920, not the inflated 2100; no taxes/fees line.
-    expect(await screen.findByText("€1,920.00")).toBeInTheDocument();
-    expect(screen.queryByText("€2,100.00")).toBeNull();
-    expect(screen.queryByText("Taxes & fees")).toBeNull();
-  });
-
-  it("uses the engine total and surfaces taxes & fees for a NET plan", async () => {
-    server.use(http.post("/api/v1/pricing:quote", () => HttpResponse.json(inflated)));
-    const user = userEvent.setup();
-    renderWithProviders(
-      <PriceProbePanel
-        propertyId={7}
-        extras={[optInExtra, mandatoryExtra]}
-        periodLabels={{ 500: "Summer 2026 · Standard" }}
-        basisByPlan={{ 100: "net" }}
-      />,
-    );
-    await submit(user);
-    // Engine total is guest-correct under NET; the 180 gap is taxes & fees.
+    // The grossed-up engine total is the guest figure — never recomputed
+    // from the lines (the pre-fix workaround would have shown 1,920.00).
     expect(await screen.findByText("€2,100.00")).toBeInTheDocument();
     expect(screen.getByText("Taxes & fees")).toBeInTheDocument();
     expect(screen.getByText("€180.00")).toBeInTheDocument();

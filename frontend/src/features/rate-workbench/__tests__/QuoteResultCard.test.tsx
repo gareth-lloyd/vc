@@ -4,10 +4,9 @@ import { renderWithProviders } from "@/test/render";
 import type { PriceQuote } from "../schemas";
 import { QuoteResultCard } from "../components/QuoteResultCard";
 
-// A GROSS-plan quote from the live probe: the engine inflates `total` by adding
-// commission on top (BUG-009), so its own lines (3045 + 150) sum to 3195 while
-// `total` reads 3690.22. Owner economics are already stripped at the schema
-// boundary, so they never appear on the object we build here.
+// A GROSS-plan quote from the basis-aware engine (BUG-009 fixed): `total`
+// equals the line sum (commission+tax are carved OUT of the rate) and the
+// owner economics ride along for the owner-side section.
 const grossQuote: PriceQuote = {
   currency_code: "GBP",
   party: 2,
@@ -19,68 +18,89 @@ const grossQuote: PriceQuote = {
   extras: [],
   extras_total: "150",
   discount: "0",
-  total: "3690.22",
+  total: "3195.00",
+  commission: "430.50",
+  tax: "319.50",
+  net_to_owner: "2445.00",
+  price_basis: "gross",
   plan_id: 35,
   winning_period_id: null,
   is_projected: false,
   occupancy_pricing: false,
 };
 
+// A NET-plan quote: `total` is the grossed-up guest figure; the gap over the
+// line sum is the commission+tax the guest pays on top of the owner net.
+const netQuote: PriceQuote = {
+  ...grossQuote,
+  total: "3690.22",
+  commission: "300.00",
+  tax: "195.22",
+  net_to_owner: "3195.00",
+  price_basis: "net",
+};
+
 describe("QuoteResultCard", () => {
-  it("gross: guest total reconciles with the shown lines (rate + extras − discount)", () => {
-    renderWithProviders(<QuoteResultCard quote={grossQuote} basis="gross" />);
-    // 3045 + 150 − 0 = 3195, NOT the engine's inflated 3690.22.
+  it("gross: headlines the engine total (equal to the line sum), no taxes & fees line", () => {
+    renderWithProviders(<QuoteResultCard quote={grossQuote} />);
     expect(screen.getByText("Guest total")).toBeInTheDocument();
     expect(screen.getByText("£3,195.00")).toBeInTheDocument();
-    expect(screen.queryByText("£3,690.22")).toBeNull();
-    // No reconciling taxes/fees line under gross.
+    // Commission+tax are inside the gross rate — no additive guest line.
     expect(screen.queryByText("Taxes & fees")).toBeNull();
   });
 
-  it("defaults to gross when no basis is supplied", () => {
+  it("gross: renders the owner economics section from the engine figures", () => {
     renderWithProviders(<QuoteResultCard quote={grossQuote} />);
-    expect(screen.getByText("£3,195.00")).toBeInTheDocument();
-    expect(screen.queryByText("£3,690.22")).toBeNull();
+    expect(screen.getByText("Owner economics")).toBeInTheDocument();
+    expect(screen.getByText("Net to owner")).toBeInTheDocument();
+    expect(screen.getByText("£2,445.00")).toBeInTheDocument();
+    expect(screen.getByText("Commission")).toBeInTheDocument();
+    expect(screen.getByText("£430.50")).toBeInTheDocument();
+    expect(screen.getByText("Tax")).toBeInTheDocument();
+    expect(screen.getByText("£319.50")).toBeInTheDocument();
+    // The old BUG-009 pending note is gone.
+    expect(screen.queryByText(/pending the finance rewrite/)).toBeNull();
   });
 
-  it("net: guest total is the engine total plus a reconciling taxes & fees line", () => {
-    renderWithProviders(<QuoteResultCard quote={grossQuote} basis="net" />);
-    // Under NET the engine total is the guest-facing figure.
+  it("net: headlines the engine total and reconciles the gap as taxes & fees", () => {
+    renderWithProviders(<QuoteResultCard quote={netQuote} />);
     expect(screen.getByText("£3,690.22")).toBeInTheDocument();
-    // …and the gap over the lines surfaces as taxes & fees (3690.22 − 3195).
+    // The gap over the lines (300.00 + 195.22) is a real guest-facing charge.
     expect(screen.getByText("Taxes & fees")).toBeInTheDocument();
     expect(screen.getByText("£495.22")).toBeInTheDocument();
-  });
-
-  it("net: no taxes & fees line when the engine total already equals the line sum", () => {
-    const reconciled: PriceQuote = { ...grossQuote, total: "3195" };
-    renderWithProviders(<QuoteResultCard quote={reconciled} basis="net" />);
+    // The same money, owner-side: the net the owner keeps.
+    expect(screen.getByText("Net to owner")).toBeInTheDocument();
     expect(screen.getByText("£3,195.00")).toBeInTheDocument();
-    expect(screen.queryByText("Taxes & fees")).toBeNull();
   });
 
-  it("net: falls back to the line sum when the engine omits total (no £0.00 headline)", () => {
+  it("falls back to the line sum when the engine omits total (no £0.00 headline)", () => {
     const noTotal: PriceQuote = { ...grossQuote };
     delete (noTotal as { total?: string }).total;
-    renderWithProviders(<QuoteResultCard quote={noTotal} basis="net" />);
-    // Must reconcile to the lines, never headline £0.00.
+    renderWithProviders(<QuoteResultCard quote={noTotal} />);
     expect(screen.getByText("£3,195.00")).toBeInTheDocument();
     expect(screen.queryByText("£0.00")).toBeNull();
     expect(screen.queryByText("Taxes & fees")).toBeNull();
   });
 
-  it("net: falls back to the line sum when total is below the lines (breakdown still ties out)", () => {
-    // An anomalous total under the line sum would otherwise show lines that
-    // exceed the headline; fall back to the reconciled line sum instead.
-    const belowLines: PriceQuote = { ...grossQuote, total: "3000" };
-    renderWithProviders(<QuoteResultCard quote={belowLines} basis="net" />);
-    expect(screen.getByText("£3,195.00")).toBeInTheDocument();
-    expect(screen.queryByText("£3,000.00")).toBeNull();
-    expect(screen.queryByText("Taxes & fees")).toBeNull();
+  it("legacy shape without price_basis: the total-over-lines gap is the taxes & fees fallback", () => {
+    const legacy: PriceQuote = { ...netQuote };
+    delete (legacy as { price_basis?: string }).price_basis;
+    delete (legacy as { commission?: string }).commission;
+    delete (legacy as { tax?: string }).tax;
+    delete (legacy as { net_to_owner?: string }).net_to_owner;
+    renderWithProviders(<QuoteResultCard quote={legacy} />);
+    expect(screen.getByText("£3,690.22")).toBeInTheDocument();
+    expect(screen.getByText("Taxes & fees")).toBeInTheDocument();
+    expect(screen.getByText("£495.22")).toBeInTheDocument();
   });
 
-  it("never renders owner economics; the pending note stands in", () => {
-    renderWithProviders(<QuoteResultCard quote={grossQuote} basis="gross" />);
-    expect(screen.getByText(/Owner net, commission and tax are pending/)).toBeInTheDocument();
+  it("hides owner economics when the response carries no owner fields (legacy shape)", () => {
+    const legacy: PriceQuote = { ...grossQuote };
+    delete (legacy as { commission?: string }).commission;
+    delete (legacy as { tax?: string }).tax;
+    delete (legacy as { net_to_owner?: string }).net_to_owner;
+    renderWithProviders(<QuoteResultCard quote={legacy} />);
+    expect(screen.getByText("£3,195.00")).toBeInTheDocument();
+    expect(screen.queryByText("Owner economics")).toBeNull();
   });
 });

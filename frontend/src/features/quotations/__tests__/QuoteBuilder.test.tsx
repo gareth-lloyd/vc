@@ -623,6 +623,113 @@ describe("QuoteBuilder", () => {
     expect(screen.getByRole("checkbox", { name: /override the price manually/i })).toBeDisabled();
   });
 
+  it("stages and saves a banded villa on a PICKED alternate week at that week's dates and bands (GAP-044b)", async () => {
+    // GAP-044b two-axis picker end-to-end: a banded villa also offers a week
+    // picker; picking an alternate week reprices to THAT week's bands, and the
+    // saved lines carry the picked week's dates (not the criteria/default).
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        const body = (await request.json()) as { flex_days: number };
+        if (body.flex_days === 0) {
+          // Reprice of the picked alternate week → that week's own bands.
+          return HttpResponse.json({
+            quotes: [
+              {
+                property_id: 7,
+                available: true,
+                currency_code: "USD",
+                date_from: "2026-07-11",
+                date_to: "2026-07-18",
+                occupancy_bands: [
+                  { min_party: 1, max_party: 4, adults: 4, total: "4800.00", currency_code: "USD" },
+                  { min_party: 5, max_party: 8, adults: 8, total: "6600.00", currency_code: "USD" },
+                ],
+              },
+            ],
+          });
+        }
+        // The default-week search: banded villa with two changeover blocks.
+        return HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              occupancy_bands: [
+                { min_party: 1, max_party: 4, adults: 4, total: "4500.00", currency_code: "USD" },
+                { min_party: 5, max_party: 8, adults: 8, total: "6200.00", currency_code: "USD" },
+              ],
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+
+    // Default week shows its bands; flip to the alternate → its bands reprice.
+    expect(screen.getAllByText("$4,500.00").length).toBeGreaterThan(0);
+    await userEvent.click(screen.getAllByRole("radio")[1]);
+    await screen.findByText("$4,800.00");
+
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
+
+    // Shortlist carries the PICKED week's dates and that week's band prices —
+    // never a summed total (bands are alternatives), week fixed at Add.
+    expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
+    expect(screen.getAllByText("$4,800.00").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$6,600.00").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("$11,400.00")).not.toBeInTheDocument();
+
+    // Save → one non-manual line per band at the PICKED week's dates + party.
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines).toHaveLength(2);
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      adults: 4,
+      is_manual: false,
+    });
+    expect(saveBody!.lines[1]).toMatchObject({
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+      adults: 8,
+      is_manual: false,
+    });
+  });
+
   it("runs save then opens the send-preview dialog for Send to guest", async () => {
     server.use(
       ...mockSaveFlow(),

@@ -18,14 +18,14 @@ from pricing.views.quote import (
     PricingQuoteView,
 )
 from pricing.views.rate import (
-    PropertySeasonCarryForwardView,
-    PropertySeasonListCreateView,
+    PropertyRatePlanCarryForwardView,
+    PropertyRatePlanListCreateView,
     RateBandDetailView,
     RatePeriodBandListCreateView,
     RatePeriodDetailView,
-    SeasonDetailView,
-    SeasonDuplicateView,
-    SeasonRatePeriodListCreateView,
+    RatePlanDetailView,
+    RatePlanDuplicateView,
+    RatePlanRatePeriodListCreateView,
 )
 
 __all__ = [
@@ -39,12 +39,12 @@ __all__ = [
     "PricingQuoteView",
     "PropertyDiscountListCreateView",
     "PropertyExtraListCreateView",
-    "PropertySeasonCarryForwardView",
-    "PropertySeasonListCreateView",
+    "PropertyRatePlanCarryForwardView",
+    "PropertyRatePlanListCreateView",
     "RateBandDetailView",
     "RatePeriodBandListCreateView",
     "RatePeriodDetailView",
-    "SeasonDetailView",
-    "SeasonDuplicateView",
-    "SeasonRatePeriodListCreateView",
+    "RatePlanDetailView",
+    "RatePlanDuplicateView",
+    "RatePlanRatePeriodListCreateView",
 ]

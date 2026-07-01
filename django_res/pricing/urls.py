@@ -16,14 +16,14 @@ from pricing.views import (
     PricingQuoteView,
     PropertyDiscountListCreateView,
     PropertyExtraListCreateView,
-    PropertySeasonCarryForwardView,
-    PropertySeasonListCreateView,
+    PropertyRatePlanCarryForwardView,
+    PropertyRatePlanListCreateView,
     RateBandDetailView,
     RatePeriodBandListCreateView,
     RatePeriodDetailView,
-    SeasonDetailView,
-    SeasonDuplicateView,
-    SeasonRatePeriodListCreateView,
+    RatePlanDetailView,
+    RatePlanDuplicateView,
+    RatePlanRatePeriodListCreateView,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -37,31 +37,31 @@ _pricing_paths: list[URLPattern] = [
         CurrencyFxRatesView.as_view(),
         name="currency-fx-rates",
     ),
-    # Seasons / rate cards / rate rules
+    # Rate plans / rate periods / rate bands
     path(
-        "properties/<int:property_id>/seasons",
-        PropertySeasonListCreateView.as_view(),
-        name="property-season-list",
+        "properties/<int:property_id>/rate-plans",
+        PropertyRatePlanListCreateView.as_view(),
+        name="property-rate-plan-list",
     ),
     path(
-        "properties/<int:property_id>/seasons:carry-forward",
-        PropertySeasonCarryForwardView.as_view(),
-        name="property-season-carry-forward",
+        "properties/<int:property_id>/rate-plans:carry-forward",
+        PropertyRatePlanCarryForwardView.as_view(),
+        name="property-rate-plan-carry-forward",
     ),
     path(
-        "seasons/<int:pk>",
-        SeasonDetailView.as_view(),
-        name="season-detail",
+        "rate-plans/<int:pk>",
+        RatePlanDetailView.as_view(),
+        name="rate-plan-detail",
     ),
     path(
-        "seasons/<int:pk>:duplicate",
-        SeasonDuplicateView.as_view(),
-        name="season-duplicate",
+        "rate-plans/<int:pk>:duplicate",
+        RatePlanDuplicateView.as_view(),
+        name="rate-plan-duplicate",
     ),
     path(
-        "seasons/<int:season_id>/rate-periods",
-        SeasonRatePeriodListCreateView.as_view(),
-        name="season-rate-period-list",
+        "rate-plans/<int:plan_id>/rate-periods",
+        RatePlanRatePeriodListCreateView.as_view(),
+        name="rate-plan-rate-period-list",
     ),
     path(
         "periods/<int:pk>",

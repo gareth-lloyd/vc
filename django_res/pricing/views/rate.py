@@ -1,4 +1,4 @@
-"""Views for Seasons (RatePlan), Rate Periods, and Rate Rules (GAP-056)."""
+"""Views for Rate Plans, Rate Periods, and Rate Bands (GAP-056)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
-class PropertySeasonListCreateView(generics.ListCreateAPIView):
-    """`GET / POST /properties/{id}/seasons`."""
+class PropertyRatePlanListCreateView(generics.ListCreateAPIView):
+    """`GET / POST /properties/{id}/rate-plans`."""
 
     permission_classes = [IsReservationsWriter]
 
@@ -46,8 +46,8 @@ class PropertySeasonListCreateView(generics.ListCreateAPIView):
         serializer.save(property=property_obj)
 
 
-class SeasonDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """`GET / PATCH / DELETE /seasons/{id}` — flat alias."""
+class RatePlanDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """`GET / PATCH / DELETE /rate-plans/{id}` — flat alias."""
 
     # `periods__plan__property__capacity` feeds RatePeriodSerializer.coverage_gaps
     # (`_max_occupancy`) without an N+1 per period on the nested detail read.
@@ -62,7 +62,7 @@ class SeasonDetailView(generics.RetrieveUpdateDestroyAPIView):
         return RatePlanSerializer
 
 
-class SeasonDuplicateView(APIView):
+class RatePlanDuplicateView(APIView):
     permission_classes = [IsReservationsWriter]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -92,8 +92,8 @@ class SeasonDuplicateView(APIView):
         )
 
 
-class PropertySeasonCarryForwardView(APIView):
-    """`POST /properties/{id}/seasons:carry-forward` — promote a projection.
+class PropertyRatePlanCarryForwardView(APIView):
+    """`POST /properties/{id}/rate-plans:carry-forward` — promote a projection.
 
     Materialises editable rate rows for a future year from the most recent prior
     year (the demoted carryover verb). Lazy projection already quotes that year
@@ -150,8 +150,8 @@ class PropertySeasonCarryForwardView(APIView):
         )
 
 
-class SeasonRatePeriodListCreateView(generics.ListCreateAPIView):
-    """`GET / POST /seasons/{id}/rate-periods`."""
+class RatePlanRatePeriodListCreateView(generics.ListCreateAPIView):
+    """`GET / POST /rate-plans/{id}/rate-periods`."""
 
     serializer_class = RatePeriodSerializer
     permission_classes = [IsReservationsWriter]
@@ -159,13 +159,13 @@ class SeasonRatePeriodListCreateView(generics.ListCreateAPIView):
     def get_queryset(self) -> QuerySet[RatePeriod]:
         # `plan__property__capacity` feeds coverage_gaps (`_max_occupancy`).
         return (
-            RatePeriod.objects.filter(plan_id=self.kwargs["season_id"])
+            RatePeriod.objects.filter(plan_id=self.kwargs["plan_id"])
             .select_related("plan__property__capacity")
             .prefetch_related("bands")
         )
 
     def perform_create(self, serializer: Any) -> None:
-        plan = get_object_or_404(RatePlan, pk=self.kwargs["season_id"])
+        plan = get_object_or_404(RatePlan, pk=self.kwargs["plan_id"])
         serializer.save(plan=plan)
 
 

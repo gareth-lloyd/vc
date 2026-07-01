@@ -1,4 +1,4 @@
-"""Serializers for `RatePlan` (Season), `RatePeriod`, and `RateBand`.
+"""Serializers for `RatePlan` (per-currency rate sheet), `RatePeriod`, and `RateBand`.
 
 GAP-056: the honest grid is `RatePlan → RatePeriod (dates) → RateBand (party
 band)`. `RateBand` carries no `date_from/date_to` — those live on its parent
@@ -183,10 +183,10 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
         if self.instance is not None:
             return self.instance.plan
         view = self.context.get("view")
-        season_id = getattr(view, "kwargs", {}).get("season_id")
-        if season_id is None:
+        plan_id = getattr(view, "kwargs", {}).get("plan_id")
+        if plan_id is None:
             return None
-        return RatePlan.objects.filter(pk=season_id).first()
+        return RatePlan.objects.filter(pk=plan_id).first()
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Inclusive dates, period date-disjointness, and activation coverage.

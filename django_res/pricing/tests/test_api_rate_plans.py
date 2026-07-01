@@ -1,4 +1,4 @@
-"""API tests for /seasons, /rate-periods, /bands CRUD + duplicate action (GAP-056)."""
+"""API tests for /rate-plans, /rate-periods, /bands CRUD + duplicate action (GAP-056)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from properties.models import Property, PropertyCapacity
 def staff(db: None) -> User:
     return User.objects.create_user(
         is_staff=True,
-        email="seasons@example.com",
+        email="rate_plans@example.com",
         password="x",
         role=StaffRole.RESERVATIONS,
     )
@@ -30,14 +30,14 @@ def api_client() -> APIClient:
 
 
 @pytest.mark.django_db
-def test_list_seasons_for_property(
+def test_list_rate_plans_for_property(
     api_client: APIClient,
     staff: User,
     property_: Property,
     plan: RatePlan,
 ) -> None:
     api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/properties/{property_.pk}/seasons")
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/rate-plans")
     assert response.status_code == 200
     payload = response.json()
     assert payload["count"] >= 1
@@ -47,13 +47,13 @@ def test_list_seasons_for_property(
 
 
 @pytest.mark.django_db
-def test_season_detail_exposes_currency_code(
+def test_rate_plan_detail_exposes_currency_code(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
 ) -> None:
     api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/seasons/{plan.pk}")
+    response = api_client.get(f"/api/v1/rate-plans/{plan.pk}")
     assert response.status_code == 200, response.content
     payload = response.json()
     assert payload["currency"] == plan.currency_id
@@ -61,12 +61,12 @@ def test_season_detail_exposes_currency_code(
 
 
 @pytest.mark.django_db
-def test_create_season(
+def test_create_rate_plan(
     api_client: APIClient, staff: User, property_: Property, gbp: Currency
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/properties/{property_.pk}/seasons",
+        f"/api/v1/properties/{property_.pk}/rate-plans",
         data={
             "name": "Winter 2027",
             "currency": gbp.pk,
@@ -81,7 +81,7 @@ def test_create_season(
 
 
 @pytest.mark.django_db
-def test_season_duplicate_copies_periods_and_rules(
+def test_rate_plan_duplicate_copies_periods_and_rules(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
@@ -89,7 +89,7 @@ def test_season_duplicate_copies_periods_and_rules(
     rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
-    response = api_client.post(f"/api/v1/seasons/{plan.pk}:duplicate")
+    response = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
     assert response.status_code == 201, response.content
     payload = response.json()
     cloned = RatePlan.objects.get(pk=payload["id"])
@@ -108,7 +108,7 @@ def test_season_duplicate_copies_periods_and_rules(
 def test_create_rate_period(api_client: APIClient, staff: User, plan: RatePlan) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/seasons/{plan.pk}/rate-periods",
+        f"/api/v1/rate-plans/{plan.pk}/rate-periods",
         data={
             "name": "Peak",
             "date_from": "2026-07-01",
@@ -157,7 +157,7 @@ def test_delete_rate_period(api_client: APIClient, staff: User, period: RatePeri
 
 
 @pytest.mark.django_db
-def test_season_detail_inlines_periods_with_rules(
+def test_rate_plan_detail_inlines_periods_with_rules(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
@@ -165,7 +165,7 @@ def test_season_detail_inlines_periods_with_rules(
     rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/seasons/{plan.pk}")
+    response = api_client.get(f"/api/v1/rate-plans/{plan.pk}")
     assert response.status_code == 200, response.content
     payload = response.json()
     assert "periods" in payload
@@ -181,7 +181,7 @@ def test_create_period_rejects_overlapping_dates(
     """Periods on one plan must be date-disjoint (Unit 9 EXCLUDE surfaced as 400)."""
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/seasons/{plan.pk}/rate-periods",
+        f"/api/v1/rate-plans/{plan.pk}/rate-periods",
         data={"date_from": "2026-08-31", "date_to": "2026-09-30"},  # shares 08-31
         format="json",
     )
@@ -276,7 +276,7 @@ def test_carry_forward_creates_editable_plan_for_future_year(
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        f"/api/v1/properties/{property_.pk}/rate-plans:carry-forward",
         {"currency": gbp.code, "target_year": 2028},
         format="json",
     )
@@ -298,7 +298,7 @@ def test_carry_forward_without_anchor_returns_409(
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        f"/api/v1/properties/{property_.pk}/rate-plans:carry-forward",
         {"currency": gbp.code, "target_year": 2028},
         format="json",
     )
@@ -314,7 +314,7 @@ def test_carry_forward_requires_currency_and_year(
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+        f"/api/v1/properties/{property_.pk}/rate-plans:carry-forward",
         {"target_year": 2028},
         format="json",
     )
@@ -333,7 +333,7 @@ def test_carry_forward_rejects_out_of_range_year(
     api_client.force_login(staff)
     for bad_year in (0, 99999, -5):
         response = api_client.post(
-            f"/api/v1/properties/{property_.pk}/seasons:carry-forward",
+            f"/api/v1/properties/{property_.pk}/rate-plans:carry-forward",
             {"currency": gbp.code, "target_year": bad_year},
             format="json",
         )

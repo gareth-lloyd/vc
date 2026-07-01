@@ -1,3 +1,56 @@
+> **✅ RESOLVED (2026-07-01)** — Shipped on local `main` (unpushed) via
+> `feat/gap-056` in 9 units + a `main` merge. The rate tree is now honestly
+> two-level: `Property → RatePlan → RatePeriod → RateRule`, `RateCard` **dropped**.
+> A `RatePeriod` owns an **inclusive** date window (`date_from <= date_to`,
+> single-day allowed) + nullable `min_nights`/`max_nights` + `name`/`is_active`;
+> a `RateRule` is a party band (`min_party`/`max_party`, `nightly`/`weekly`,
+> `is_poa`, `is_approved`) hanging off a non-null `period` FK — no dates, no card.
+> Two Postgres `btree_gist` EXCLUDEs enforce the honest grid: periods
+> date-disjoint per plan (`rateperiod_no_overlap`), bands party-disjoint per
+> period (`raterule_bands_no_overlap`). Built expand→migrate→contract so every
+> commit stayed green.
+>
+> **Commits:** U1 segmentation util `f39b84f`; U2 RatePeriod level + repoint
+> (expand) `72e89b1`; U3 engine period-native + relocate min/max-nights `098e287`
+> (+review `6e5975d`); U4 carryover native periods `54900cc`; U5 loader disjoint
+> period axis `b0b302a`; U6 API/serializers/signals/tasks/audit `27f11f5`
+> `6ce7495` `dbe3aba` (+review `e8875de`); U7 Discount property-only `5914f4e`;
+> U8 period-native frontend `d3b14fb` (+review `5d66044`); U9 contract — drop
+> RateCard, add EXCLUDEs `26076f5`.
+>
+> **Corrections to the ticket body (as-built differs — see plan
+> `~/.claude/plans/cryptic-greeting-thacker.md`):**
+> 1. **`PropertySettings.max_nights_rental` was NOT added.** Max is period-only
+>    (`RatePeriod.max_nights = NULL` ⇒ "no max"); a villa-wide max default (and
+>    the matching `GroupSettings` field + `_INHERITABLE_FIELDS` entry) was judged
+>    not worth it (KISS; legacy has no max concept). The min default **does**
+>    reuse the existing `PropertySettings.min_nights_rental`. Body rows that say
+>    "add `max_nights_rental` (new)" are superseded.
+> 2. **Multi-period min-nights is NOT uniformly "strictest wins".** It splits by
+>    caller: the per-stay `quote()` guard is **strictest-wins**
+>    (`min = max(touched mins)`) — the loud guard; the stay-agnostic
+>    `stay_length_bounds` search pre-filter is **loosest-wins**
+>    (`min = min(all mins)`, no max unless every period caps) so a villa with a
+>    7-night peak + 3-night off-peak still offers the 3-night off-peak stays.
+> 3. **`period_backfill.py` did NOT already exist** ("reused from BUG-014" was
+>    wrong — only `segmentation.py` predated this). It was built in U2 as the
+>    migration-0013 backfill (historical-model glue).
+> 4. **Party-gap base band** (every active period covers `1..max_occupancy`, POA
+>    an explicit band) — ticket was right; implemented as a `RatePeriodSerializer`
+>    activation-gated coverage check + read-only `coverage_gaps` (U6) with the
+>    matrix-editor warning (U8).
+>
+> **Deferred (out of scope):** villa-level `max_nights`; `/seasons`→`/plans`
+> route rename (cosmetic debt accepted); BUG-009 owner-economics / finance
+> rewrite; sibling BUG-002/BUG-003. **Known/accepted:** the U2 backfill stamps
+> `RatePeriod.is_active=True` regardless of the dropped card's `is_active` — zero
+> prod impact (cards vestigial, none inactive per the dump parse). **Tests:**
+> 2286 backend passed (2 pre-existing unrelated `accounts` migration-isolation
+> errors) + 1477 frontend green; mypy/ruff/format/tsc/eslint/prettier clean;
+> `0013→0015` migrate clean on a fresh DB.
+
+---
+
 # GAP-056 — Restructure the rate model: drop `RateCard`; `Property → RatePlan → RatePeriod → RateRule` (per-period min/max nights; first-class occupancy)
 
 - **Severity:** 🟢 Gap / architectural restructure — the current four-level rate

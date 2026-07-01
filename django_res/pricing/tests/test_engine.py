@@ -1090,6 +1090,82 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
 
 
 @pytest.mark.django_db
+def test_breakdown_reports_strict_bounds_across_straddled_periods(
+    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+) -> None:
+    """A stay straddling periods with different min/max-nights reports the
+    STRICTEST bounds (what the guard enforces), not just the winning period's."""
+    a = _period_of(
+        RateRule.objects.create(
+            card=card,
+            date_from=date(2026, 6, 1),
+            date_to=date(2026, 6, 30),
+            min_party=1,
+            max_party=8,
+            nightly=Decimal("100.00"),
+        )
+    )
+    a.min_nights, a.max_nights = 2, None
+    a.save(update_fields=["min_nights", "max_nights"])
+    b = _period_of(
+        RateRule.objects.create(
+            card=card,
+            date_from=date(2026, 7, 1),
+            date_to=date(2026, 7, 31),
+            min_party=1,
+            max_party=8,
+            nightly=Decimal("100.00"),
+        )
+    )
+    b.min_nights, b.max_nights = 4, 10
+    b.save(update_fields=["min_nights", "max_nights"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 28),
+        date_to=date(2026, 7, 3),  # 5 nights, straddles A (min 2) and B (min 4, max 10)
+        party=4,
+        currency=gbp,
+    )
+    # strict min = max(2, 4) = 4 (A alone, the winning period, would say 2);
+    # strict max = min(None, 10) = 10.
+    assert quote.breakdown["min_nights"] == 4
+    assert quote.breakdown["max_nights"] == 10
+
+
+@pytest.mark.django_db
+def test_covering_bands_gates_on_period_dates_not_band_dates(
+    property_: Property, gbp: Currency, card: RateCard
+) -> None:
+    """`covering_bands` mirrors `pick_rule_for_night` by gating on the PERIOD's
+    dates. Even if a band's transitional date columns drift narrower than its
+    period, the bracket still counts as covering the period's whole span."""
+    rule = RateRule.objects.create(
+        card=card,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    period = _period_of(rule)
+    # Simulate pre-repoint drift: shrink the band's own date columns while the
+    # period keeps the full span. Bulk update dodges the save() shim.
+    RateRule.objects.filter(pk=rule.pk).update(
+        date_from=date(2026, 6, 10), date_to=date(2026, 6, 12)
+    )
+    assert period.date_from == date(2026, 6, 1)
+
+    bands = PricingEngine.covering_bands(
+        property=property_,
+        date_from=date(2026, 6, 15),  # inside the period, outside the drifted band dates
+        date_to=date(2026, 6, 22),
+        currency=gbp,
+    )
+    assert [(b.min_party, b.max_party) for b in bands] == [(1, 8)]
+
+
+@pytest.mark.django_db
 def test_load_context_none_without_covering_plan(property_: Property, gbp: Currency) -> None:
     """No real plan (the projection path) → None: callers skip the clamp and
     the engine remains the loud guard at pricing time."""

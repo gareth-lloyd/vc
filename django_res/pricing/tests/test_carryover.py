@@ -345,3 +345,23 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         if isinstance(projected, Picked):
             assert isinstance(materialised, Picked)
             assert rule_nightly(projected.rule) == rule_nightly(materialised.rule), night
+
+
+@pytest.mark.django_db
+def test_materialise_carries_anchor_period_min_max_nights(
+    property_: Property, gbp: Currency, anchor_rule: RateRule
+) -> None:
+    """The materialised period inherits the anchor period's nullable min/max-nights
+    (GAP-056 — parity with projection, which copies them). NULL would silently
+    drop a seasonal min-stay when a promoted year is later edited."""
+    anchor_period = anchor_rule.period
+    assert anchor_period is not None
+    anchor_period.min_nights, anchor_period.max_nights = 5, 14
+    anchor_period.save(update_fields=["min_nights", "max_nights"])
+
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
+    )
+    carried = RatePeriod.objects.get(plan=new_plan, date_from=date(2028, 6, 1))
+    assert carried.min_nights == 5
+    assert carried.max_nights == 14

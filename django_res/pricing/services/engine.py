@@ -59,16 +59,18 @@ class OccupancyBand:
     max_party: int
 
 
-def _rules_cover_all_nights(rules: list[RateRule], week_nights: list[date]) -> bool:
-    """True iff every night is covered by at least one of `rules`.
+def _periods_cover_all_nights(periods: list[RatePeriod], week_nights: list[date]) -> bool:
+    """True iff every night falls in at least one of `periods`.
 
-    Rule dates are inclusive (`date_from <= night <= date_to`, matching
-    `pick_rule_for_night`); `week_nights` is the half-open `[from, to)` night
-    list. This is the night-correct coverage predicate the band enumerator
-    shares for both the card-level and bracket-level checks.
+    Gates on the **period** date-axis (`date_from <= night <= date_to`,
+    inclusive) — the exact predicate `pick_rule_for_night` uses — so the band
+    enumerator agrees with the real quote about which nights a bracket covers,
+    even if a band's own (transitional, pre-Unit-9) date columns ever drift from
+    its period's. `week_nights` is the half-open `[from, to)` night list.
     """
     return all(
-        any(rule.date_from <= night <= rule.date_to for rule in rules) for night in week_nights
+        any(period.date_from <= night <= period.date_to for period in periods)
+        for night in week_nights
     )
 
 
@@ -215,11 +217,17 @@ class PricingEngine:
         # which had no card concept on the fallback path, and skip the check.
         # The min/max-nights guard is strictest-wins across *every* period the
         # chosen stay touches (GAP-056 decision 4): the loud guard.
+        stay_min_nights: int | None = None
+        stay_max_nights: int | None = None
         if winning_period is not None:
+            touched_periods = list(chosen_periods.values())
             cls._validate_periods_against_stay(
-                list(chosen_periods.values()),
+                touched_periods,
                 nights=len(stay_nights),
                 villa_min_nights_default=villa_min_nights_default,
+            )
+            stay_min_nights, stay_max_nights = cls._strict_stay_bounds(
+                touched_periods, villa_min_nights_default
             )
 
         rate_subtotal = sum((ln.nightly for ln in lines), Decimal("0")).quantize(Decimal("0.01"))
@@ -331,14 +339,12 @@ class PricingEngine:
             # the season).
             "inclusion": cls._derive_inclusions(property, date_from, date_to, context),
             "changeover_day": changeover_day if property_weekday is not None else None,
-            # The winning period's effective bounds (its own override, else the
-            # villa default for min); mirrors the legacy winning-card semantics.
-            "min_nights": (
-                cls._effective_min_nights(winning_period, villa_min_nights_default)
-                if winning_period is not None
-                else None
-            ),
-            "max_nights": winning_period.max_nights if winning_period is not None else None,
+            # Report the STRICTEST bounds across every period the stay touches —
+            # the same figures `_validate_periods_against_stay` enforces (GAP-056).
+            # Reporting only the winning period's bounds would understate the
+            # guard for a stay straddling periods with different min/max-nights.
+            "min_nights": stay_min_nights,
+            "max_nights": stay_max_nights,
             # >1 distinct party band on the winning period means the price moves
             # with the party size — surfaced as a badge on the result line.
             "occupancy_pricing": (
@@ -453,14 +459,23 @@ class PricingEngine:
         # Every band across every period of the plan; the disjoint period axis
         # means each night resolves to one period, so pooling bands by bracket
         # and checking night-coverage is the party-independent counterpart of
-        # `pick_rule_for_night`. A bracket whose bands lapse mid-week is dropped.
+        # `pick_rule_for_night`. A bracket covers the week iff the *periods* that
+        # carry it — gated on the period date-axis, exactly like the real quote —
+        # span every night; a bracket that lapses mid-week is dropped.
         all_rules = [rule for rules in context.rules_by_period.values() for rule in rules]
         brackets = {(rule.min_party, rule.max_party) for rule in all_rules}
         covering = [
             OccupancyBand(min_party=lo, max_party=hi)
             for (lo, hi) in brackets
-            if _rules_cover_all_nights(
-                [r for r in all_rules if (r.min_party, r.max_party) == (lo, hi)],
+            if _periods_cover_all_nights(
+                [
+                    period
+                    for period in context.periods
+                    if any(
+                        (r.min_party, r.max_party) == (lo, hi)
+                        for r in context.rules_by_period.get(period.pk, [])
+                    )
+                ],
                 week_nights,
             )
         ]
@@ -588,6 +603,23 @@ class PricingEngine:
         return value if value is not None else 1
 
     @classmethod
+    def _strict_stay_bounds(
+        cls, periods: list[RatePeriod], villa_min_nights_default: int
+    ) -> tuple[int, int | None]:
+        """**Strictest-wins** (min, max) across the periods a stay touches.
+
+        min = the largest effective min; max = the smallest non-null max (None
+        when no period caps). Shared by the loud guard and the breakdown so the
+        reported bounds match what is actually enforced (GAP-056 decision 4).
+        """
+        strict_min = max(
+            cls._effective_min_nights(period, villa_min_nights_default) for period in periods
+        )
+        capped = [period.max_nights for period in periods if period.max_nights is not None]
+        strict_max = min(capped) if capped else None
+        return strict_min, strict_max
+
+    @classmethod
     def _validate_periods_against_stay(
         cls,
         periods: list[RatePeriod],
@@ -596,17 +628,10 @@ class PricingEngine:
         villa_min_nights_default: int,
     ) -> None:
         """The loud min/max-nights guard: **strictest-wins** across every period
-        the chosen stay touches (GAP-056 decision 4).
-
-        min = the largest effective min across the touched periods; max = the
-        smallest non-null max (None when no period caps). A stay that violates
-        either raises `MinNightsNotMet`.
+        the chosen stay touches (GAP-056 decision 4). A stay that violates either
+        bound raises `MinNightsNotMet`.
         """
-        strict_min = max(
-            cls._effective_min_nights(period, villa_min_nights_default) for period in periods
-        )
-        capped = [period.max_nights for period in periods if period.max_nights is not None]
-        strict_max = min(capped) if capped else None
+        strict_min, strict_max = cls._strict_stay_bounds(periods, villa_min_nights_default)
         if nights < strict_min:
             raise MinNightsNotMet(f"stay requires min_nights={strict_min}, got {nights}")
         if strict_max is not None and nights > strict_max:

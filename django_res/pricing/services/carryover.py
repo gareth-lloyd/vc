@@ -115,6 +115,17 @@ class RateCarryoverService:
         year_delta = target_year - anchor.effective_from.year
         factor = Decimal("1") + uplift
 
+        # GAP-056: carry each anchor period's nullable min/max-nights onto the
+        # materialised period, so a promoted year enforces the same seasonal
+        # min-stay a *projected* quote would (projection copies these in
+        # `project`; this keeps materialise/projection at parity). Keyed by the
+        # anchor-year (date_from, date_to): a band's dates equal its period's,
+        # so a source rule locates its period's bounds even after date-mapping.
+        anchor_period_bounds = {
+            (p.date_from, p.date_to): (p.min_nights, p.max_nights)
+            for p in RatePeriod.objects.filter(plan=anchor, is_active=True)
+        }
+
         with transaction.atomic():
             new_plan = RatePlan.objects.create(
                 property=property,
@@ -178,10 +189,14 @@ class RateCarryoverService:
                         # shim (dropped in Unit 9). `get_or_create` on (plan,
                         # dates) means sibling bands sharing a segment land on one
                         # period [H2]. `card=` stays set while the FK is non-null.
+                        src_min, src_max = anchor_period_bounds.get(
+                            (rule.date_from, rule.date_to), (None, None)
+                        )
                         period, _ = RatePeriod.objects.get_or_create(
                             plan=new_plan,
                             date_from=lo,
                             date_to=hi,
+                            defaults={"min_nights": src_min, "max_nights": src_max},
                         )
                         RateRule.objects.create(
                             card=new_card,

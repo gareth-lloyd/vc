@@ -332,6 +332,8 @@ export function RatePlanDetailPanel({
           open={addPeriodOpen}
           onOpenChange={setAddPeriodOpen}
           mode="create"
+          changeoverDay={settings.data?.changeover_day ?? null}
+          minNightsRental={settings.data?.min_nights_rental ?? null}
         />
       ) : null}
       {editingPeriod ? (

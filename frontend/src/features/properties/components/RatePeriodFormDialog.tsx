@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
+import { suggestRatePeriodEnd } from "@/lib/format/date";
 import { useCreateRatePeriod, useUpdateRatePeriod } from "../hooks";
 import { ratePeriodWriteInputSchema, type RatePeriod, type RatePeriodWriteInput } from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
@@ -19,6 +20,11 @@ interface CommonProps {
   ratePlanId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Property changeover settings (GAP-025, reinstated by SMELL-019 at the
+   * period grain) for the end-date suggestion. Both optional — no fixed
+   * changeover means no suggestion. */
+  changeoverDay?: string | null;
+  minNightsRental?: number | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -55,7 +61,7 @@ function defaultsFromPeriod(period: RatePeriod): RatePeriodWriteInput {
 }
 
 export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
-  const { ratePlanId, open, onOpenChange } = props;
+  const { ratePlanId, open, onOpenChange, changeoverDay, minNightsRental } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
@@ -76,6 +82,24 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.period.id]);
+
+  // GAP-025 (reinstated by SMELL-019 at the period grain): when the property
+  // changes over on a fixed weekday, suggest the period's end date as soon as
+  // `date_from` is known — but never clobber a value the user typed (only fill
+  // while `date_to` is empty or still holds our own last suggestion). Edit mode
+  // keeps the stored value untouched.
+  const dateFrom = form.watch("date_from");
+  const lastSuggestionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCreate || !dateFrom) return;
+    const currentTo = form.getValues("date_to");
+    if (currentTo && currentTo !== lastSuggestionRef.current) return;
+    const suggested = suggestRatePeriodEnd(dateFrom, changeoverDay, minNightsRental);
+    if (!suggested || suggested === currentTo) return;
+    lastSuggestionRef.current = suggested;
+    form.setValue("date_to", suggested, { shouldDirty: false, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, isCreate, changeoverDay, minNightsRental]);
 
   const handleSubmit = async (values: RatePeriodWriteInput) => {
     setTopLevelError(null);

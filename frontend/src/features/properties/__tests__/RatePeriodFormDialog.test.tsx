@@ -245,3 +245,83 @@ describe("RatePeriodFormDialog — edit", () => {
     expect(toast.success).toHaveBeenCalled();
   });
 });
+
+describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SMELL-019)", () => {
+  it("suggests date_to from a fixed changeover day once date_from is entered", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+
+    // 2026-07-04 is a Saturday; sat changeover, 7-night min → Fri 10 Jul.
+    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
+    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
+    await waitFor(() => expect(dateTo.value).toBe("2026-07-10"));
+  });
+
+  it("never clobbers a date_to the user has already typed", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+
+    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
+    await userEvent.type(dateTo, "2026-09-19");
+    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
+
+    // The manually typed value survives even though a suggestion would apply.
+    expect(dateTo.value).toBe("2026-09-19");
+  });
+
+  it("makes no suggestion when the changeover day is 'any'", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        changeoverDay="any"
+        minNightsRental={7}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
+    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(dateTo.value).toBe("");
+  });
+
+  it("leaves the stored date_to untouched in edit mode", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="edit"
+        period={period}
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+
+    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(dateTo.value).toBe("2026-06-30");
+  });
+});

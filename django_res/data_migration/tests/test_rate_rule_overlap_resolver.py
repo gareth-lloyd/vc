@@ -318,6 +318,51 @@ def test_input_order_does_not_change_output() -> None:
     assert resolve_rate_rule_overlaps(shuffled) == baseline
 
 
+def test_occupancy_bands_disjoint_both_survive() -> None:
+    """Sibling occupancy bands share the parent daterange but are disjoint in
+    party (by construction), so neither trims nor clips the other."""
+    res = resolve_rate_rule_overlaps(
+        [
+            _row(101, date(2025, 6, 1), date(2025, 6, 10), _occ_band=(2, 4)),
+            _row(102, date(2025, 6, 1), date(2025, 6, 10), _occ_band=(5, 6)),
+        ]
+    )
+    assert [r["ID"] for r in res.rows] == [101, 102]
+    assert (res.trimmed, res.dropped, res.party_clipped) == (0, 0, 0)
+    # The explicit band range is carried through to transform.
+    assert res.rows[0]["_occ_band"] == (2, 4)
+    assert res.rows[1]["_occ_band"] == (5, 6)
+
+
+def test_occupancy_band_clipped_by_overlapping_period() -> None:
+    """A band still resolves against a date-overlapping rule on the same card:
+    the lower-ID simple rule wins, the band keeps the uncovered remainder."""
+    res = resolve_rate_rule_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 20), PartySize=None),
+            _row(101, date(2025, 6, 10), date(2025, 6, 30), _occ_band=(2, 4)),
+        ]
+    )
+    band = next(r for r in res.rows if r["ID"] == 101)
+    assert (band["FromDate"], band["ToDate"]) == (date(2025, 6, 21), date(2025, 6, 30))
+    assert (1, date(2025, 6, 1), date(2025, 6, 20)) in _spans(res.rows)
+
+
+def test_occupancy_id_collision_is_order_independent() -> None:
+    """A band's OccId can numerically equal a simple row's ID; the conflict is
+    then broken by the unique `_legacy_id` discriminator, not input order."""
+
+    def fixture() -> list[dict[str, Any]]:
+        return [
+            _row(42, date(2025, 6, 1), date(2025, 6, 10), _occ_band=(3, 5), _legacy_id="occ-42"),
+            _row(42, date(2025, 6, 1), date(2025, 6, 10), PartySize=None, _legacy_id="42"),
+        ]
+
+    first = resolve_rate_rule_overlaps(fixture())
+    second = resolve_rate_rule_overlaps(list(reversed(fixture())))
+    assert first == second
+
+
 def test_resolved_output_is_a_fixed_point_for_date_overlaps() -> None:
     first = resolve_rate_rule_overlaps(
         [

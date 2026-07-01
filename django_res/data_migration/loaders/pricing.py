@@ -117,6 +117,7 @@ class _WorkRow:
     date_to: date
     party_intervals: list[_Interval]
     approved: bool
+    disc: str
     party_clipped: bool = False
 
 
@@ -198,8 +199,13 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
             continue
         if not _has_price(row):
             continue
-        party = int(row.get("PartySize") or 0)
-        intervals: list[_Interval] = [(party, party)] if party > 0 else [(1, None)]
+        band = row.get("_occ_band")
+        if band is not None:
+            # Occupancy-band / gap-fallback rows carry an explicit party range.
+            intervals: list[_Interval] = [band]
+        else:
+            party = int(row.get("PartySize") or 0)
+            intervals = [(party, party)] if party > 0 else [(1, None)]
         groups[row.get("SeasonId")].append(
             _WorkRow(
                 id=int(row["ID"]),
@@ -209,6 +215,10 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
                 date_to=date_to,
                 party_intervals=intervals,
                 approved=bool(row.get("IsApprove")),
+                # Unique tiebreak: a band's OccId can numerically collide with a
+                # simple row's ID within a season, which would make the conflict
+                # sort input-order-dependent. `_legacy_id` is unique per row.
+                disc=str(row.get("_legacy_id") or row["ID"]),
             )
         )
 
@@ -230,7 +240,7 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
                 survivors.append(item)
 
         kept: list[_WorkRow] = []
-        for item in sorted(survivors, key=lambda it: (not it.approved, it.id)):
+        for item in sorted(survivors, key=lambda it: (not it.approved, it.id, it.disc)):
             alive = True
             for winner in kept:
                 if not _party_overlap(item, winner):
@@ -261,7 +271,7 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
         kept_all.extend(kept)
 
     out_rows: list[dict[str, Any]] = []
-    for item in sorted(kept_all, key=lambda it: it.id):
+    for item in sorted(kept_all, key=lambda it: (it.id, it.disc)):
         out = dict(item.row)
         out["FromDate"] = item.date_from
         out["ToDate"] = item.date_to
@@ -444,9 +454,14 @@ class RateRuleLoader(BaseLoader):
         else:
             min_party, max_party = party, party
         intervals = row.get("_party_intervals")
+        if intervals is None and row.get("_occ_band") is not None:
+            # Occupancy band / gap-fallback row: its explicit (from, to) range
+            # is the party bracket, unless the resolver already clipped it.
+            intervals = [row["_occ_band"]]
         if intervals:
-            # The resolver clipped this row's party bracket; pick the first
-            # interval that survives the property's real capacity.
+            # The resolver clipped this row's party bracket (or it's an explicit
+            # occupancy range); pick the first interval that survives the
+            # property's real capacity.
             cap = max(card.plan.property.capacity.guests or 1, 1)
             for low, high in intervals:
                 effective_high = cap if high is None else high

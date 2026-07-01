@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-01): **99 done** (94 resolved + 5 dropped), **33 open**
+Scoreboard (2026-07-01): **100 done** (95 resolved + 5 dropped), **32 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -68,7 +68,7 @@ follow-up.)
 | [GAP-026](done/gap-026-currency-display-money-fields.md) | Show property currency beside money fields | ✅ FE adornment + soft mismatch warning; PropertySettings exposes read-only group-resolved `currency_code`; multi-currency intentional (2026-06-18) |
 | [GAP-027](done/gap-027-inline-contact-creation-primary-convention.md) | Inline contact creation from the property + per-role primary convention | ✅ resolved (2026-06-18) — picker auto-select via `initialContact` + per-role-primary convention documented |
 | [GAP-028](gap-028-admin-integrations-surface.md) | Admin `/system/integrations`: `OAuthCredential` CRUD + `SyncRun`/`SyncIssue` lists | ⬜ |
-| [GAP-029](gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ▶️ **unblocked (2026-06-23)** — GAP-045/046 landed (`Person`+`Organisation` shipped). **Live bug still open:** `person.py:28-29` names lack `blank=True`, so company-only contact still 400s; now actionable (add `blank=True` + migration + name-OR-org validator + tests) |
+| [GAP-029](done/gap-029-contact-required-name-fields-divergence.md) | Contact `first_name`/`last_name` FE/BE required-field divergence | ✅ resolved (2026-07-01) — `Person.first_name`/`last_name` → `blank=True` (migration `0015`, state-only) + a name-OR-agency floor at the top of `ContactSerializer.validate()` reading the effective (attrs-over-instance) value so a PATCH clearing names but keeping the agency still passes; app-level gate (mirrors channel-contactability), not a DB CHECK; error keyed on `first_name`. FE was already loosened (schema + en/el i18n + tests). Decision recorded in `10-decisions.md`. `2a7fee7`/`15edeb3` |
 | [GAP-030](done/gap-030-weekly-pricing-in-availability-timeline.md) | Weekly pricing in the sales availability timeline (price-by-week, changeover visible) | ✅ resolved (2026-06-18) — `StayOptionsService.weekly_prices()` + `GET /availability/weekly-prices` price each changeover week (context reused, no per-week reload), Q-013/POA/projected flags, never 500; FE price strip aligned under the bands with changeover weekday, guide/POA markers, separate non-blocking query; en+el; pytest+vitest. Fixed-changeover only; variable/sub-week deferred (GAP-025/Q-022) |
 | [GAP-031](done/gap-031-availability-timeline-month-context-header.md) | Month context above the availability timeline date range | ✅ resolved (2026-06-18) — `monthSpanLabel` helper renders spanning month(s)+year above the date range (single/cross-month/cross-year), date-fns locale text + i18n dash join (en+el), vitest all three cases; FE-only |
 | [GAP-032](done/gap-032-click-drag-availability-block-creation.md) | Click-and-drag availability block creation | ✅ resolved (2026-06-18) — press-drag-release on the villa month grid opens the create dialog pre-filled; `resolveDragRange` helper truncates before occupied days (half-open), pointer-delegation keeps dropdowns/links working, role-gated; vitest range-mapping + grid-drag; FE-only |

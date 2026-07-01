@@ -53,7 +53,7 @@ def remove_backfilled_services(apps: Any, schema_editor: Any) -> None:
 class Migration(migrations.Migration):
     dependencies = [
         ("pricing", "0010_remove_raterule_priority"),
-        ("properties", "0022_propertyservice"),
+        ("properties", "0024_propertyservice"),
     ]
 
     operations = [

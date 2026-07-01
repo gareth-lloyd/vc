@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("properties", "0021_property_availability_confirmed_at_and_more"),
+        ("properties", "0023_merge_20260701_0012"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

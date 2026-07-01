@@ -93,13 +93,6 @@
     "sign_out": "Sign out",
     "language": "Language"
   },
-  "countries": {
-    "ES": "Spain",
-    "FR": "France",
-    "IT": "Italy",
-    "PT": "Portugal",
-    "GR": "Greece"
-  },
   "calendar_source": {
     "ical_badge": "iCal",
     "ical_tooltip": "Availability is auto-synced from the owner's iCal feed",

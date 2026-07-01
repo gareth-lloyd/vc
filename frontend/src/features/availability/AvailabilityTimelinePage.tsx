@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
+import { useCountries } from "@/features/admin/countries/hooks";
+import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
 import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
 import {
   useCollections,
@@ -33,8 +35,6 @@ import { TimelineGrid } from "./components/TimelineGrid";
 
 const ALL_VALUE = "__all__";
 
-const COUNTRY_VALUES = ["es", "fr", "it", "pt", "gr"] as const;
-const COUNTRY_ISO = { es: "ES", fr: "FR", it: "IT", pt: "PT", gr: "GR" } as const;
 const STATUS_VALUES = ["active", "draft", "archived"] as const;
 const BEDROOM_VALUES = [2, 3, 4, 5, 6] as const;
 
@@ -71,6 +71,13 @@ export function AvailabilityTimelinePage() {
   const weeklyPricesQuery = useWeeklyPrices(propertyIds, window.from, window.to);
   const regions = useRegions();
   const collections = useCollections();
+  // In-use countries only, labelled by the API name field (the old hardcoded
+  // 5-country list silently missed any newly-stocked country).
+  const countries = useCountries({
+    hasProperties: true,
+    ordering: "name",
+    pageSize: TAXONOMY_PAGE_SIZE,
+  });
 
   const count = propertiesQuery.data?.count ?? 0;
   const page = filters.page ?? 1;
@@ -185,12 +192,16 @@ export function AvailabilityTimelinePage() {
             <>
               {filterSelect(
                 "country",
-                filters.country,
+                // Option values are uppercase iso2; old lowercase bookmarks
+                // must still display their selection.
+                filters.country?.toUpperCase(),
                 [
                   { value: ALL_VALUE, label: t("common:filters.any_country") },
-                  ...COUNTRY_VALUES.map((v) => ({
-                    value: v,
-                    label: t(`common:countries.${COUNTRY_ISO[v]}`),
+                  // Uppercase to match the Select-value mapping above —
+                  // Country.iso2 has no server-side case normalisation.
+                  ...(countries.data?.results ?? []).map((c) => ({
+                    value: c.iso2.toUpperCase(),
+                    label: c.name,
                   })),
                 ],
                 t("filters.country_aria"),

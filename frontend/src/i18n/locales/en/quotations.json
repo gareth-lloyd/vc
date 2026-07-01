@@ -248,10 +248,8 @@
       "arrive_to": "Arrive to",
       "adults": "Adults",
       "children": "Children",
-      "country": "Country (ISO-2)",
-      "country_placeholder": "e.g. ES",
+      "country": "Country",
       "region": "Region",
-      "region_placeholder": "slug or id",
       "min_bedrooms": "Min bedrooms",
       "max_bedrooms": "Max bedrooms",
       "q": "Name search",
@@ -281,7 +279,7 @@
       },
       "empty": {
         "title": "No villas match these criteria",
-        "description": "Widen the date range, drop a filter, or check region/country."
+        "description": "Widen the date range or drop a filter."
       },
       "incomplete_pricing": "Incomplete pricing — manual quote",
       "incomplete_pricing_aria": "{{name}} — incomplete pricing, add manually to type the price",

@@ -23,7 +23,7 @@ from comms.enums import EmailLogStatus, SmtpScope
 from comms.models import EmailLog, EmailTemplate, SmtpProfile
 from core.enums import StaffRole
 from core.tests import assert_max_queries
-from pricing.models import Currency, RateRule
+from pricing.models import Currency, RateBand
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import Booking, Quotation, QuotationLine, TermsVersion
@@ -85,7 +85,7 @@ def booking(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> Booking:
     # Mirror production: every customer-linked row carries the unified Person, the
     # sole source of the recipient address/greeting (GAP-045 3d-3).

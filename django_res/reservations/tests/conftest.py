@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from django.utils import timezone
 
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from reservations.models import Enquiry, Quotation, QuotationLine, TermsVersion
 
 if TYPE_CHECKING:
@@ -75,8 +75,8 @@ def period(plan: RatePlan) -> RatePeriod:
 
 
 @pytest.fixture
-def rate_rule(period: RatePeriod) -> RateRule:
-    return RateRule.objects.create(
+def rate_rule(period: RatePeriod) -> RateBand:
+    return RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,

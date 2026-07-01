@@ -20,7 +20,7 @@ import pytest
 from django.core.management import call_command
 
 from core.exceptions import PartyOutOfRange
-from pricing.models import Discount, RatePlan, RateRule
+from pricing.models import Discount, RateBand, RatePlan
 from pricing.services.engine import PricingEngine
 from properties.models import Property
 from seeding._pricing_helpers import _PRICE_SHAPE, draw_base_nightly
@@ -83,11 +83,11 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     _seed("mixed", properties=20, bookings=30, seed=42)
     today = utc_today()
 
-    plans = list(RatePlan.objects.select_related("currency").prefetch_related("periods__rules"))
+    plans = list(RatePlan.objects.select_related("currency").prefetch_related("periods__bands"))
     assert plans
 
     # ---- Price levels: varied with a long tail, iterator values gone ----
-    nightly_values = {r.nightly for r in RateRule.objects.all() if r.nightly is not None}
+    nightly_values = {r.nightly for r in RateBand.objects.all() if r.nightly is not None}
     assert len(nightly_values) >= 15, "expected a varied price distribution"
     assert not (_LEGACY_NIGHTLY & nightly_values), "factory iterator prices must be replaced"
     assert max(nightly_values) >= 5 * min(nightly_values), "expected a long-tailed spread"
@@ -100,12 +100,12 @@ def test_seed_dev_mixed_prices_realistically() -> None:
         periods = list(plan.periods.all())
         assert periods, plan
         assert {p.name for p in periods} <= {"Low", "Mid", "Peak"}, plan
-        assert all(p.rules.exists() for p in periods), plan
+        assert all(p.bands.exists() for p in periods), plan
         assert plan.effective_to is not None
         day = plan.effective_from
         while day <= plan.effective_to:
             covering = [p for p in periods if p.date_from <= day <= p.date_to]
-            assert any(r.min_party <= 3 <= r.max_party for p in covering for r in p.rules.all()), (
+            assert any(r.min_party <= 3 <= r.max_party for p in covering for r in p.bands.all()), (
                 f"plan {plan.pk} has no party-3 rule covering {day}"
             )
             day += timedelta(days=14)
@@ -114,7 +114,7 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     banded_props = []
     for plan in plans:
         for period in plan.periods.all():
-            brackets = {(r.min_party, r.max_party) for r in period.rules.all()}
+            brackets = {(r.min_party, r.max_party) for r in period.bands.all()}
             if len(brackets) > 1:
                 banded_props.append(plan.property)
                 ordered = sorted(brackets)
@@ -175,10 +175,10 @@ def test_seed_dev_happy_keeps_legacy_pricing_shape() -> None:
     """The happy profile keeps the legacy shape: one period / one 1-30 rule per
     plan, iterator prices, a discount on every villa, no blanket commission."""
     _seed("happy", properties=4, bookings=6, seed=42)
-    for plan in RatePlan.objects.prefetch_related("periods__rules"):
+    for plan in RatePlan.objects.prefetch_related("periods__bands"):
         periods = list(plan.periods.all())
         assert len(periods) == 1, plan
-        rules = list(periods[0].rules.all())
+        rules = list(periods[0].bands.all())
         assert len(rules) == 1, plan
         assert rules[0].nightly in _LEGACY_NIGHTLY
         assert (rules[0].min_party, rules[0].max_party) == (1, 30)

@@ -31,7 +31,7 @@ from reservations.services.stay_options import (
 
 if TYPE_CHECKING:
     from accounts.models import Person
-    from pricing.models import Currency, RatePlan, RateRule
+    from pricing.models import Currency, RateBand, RatePlan
     from properties.models import Property
     from reservations.models import TermsVersion
 
@@ -133,17 +133,17 @@ def _entry(
 def _occupancy_period(plan: RatePlan) -> None:
     """Seed `plan` with a period carrying three sibling occupancy brackets
     (£100/£140/£160 a night) over the fixture Summer-2026 window — a fan-out villa."""
+    from pricing.models import RateBand as RateBandModel
     from pricing.models import RatePeriod
-    from pricing.models import RateRule as RateRuleModel
 
     period = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
     )
-    RateRuleModel.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100.00"))
-    RateRuleModel.objects.create(
+    RateBandModel.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100.00"))
+    RateBandModel.objects.create(
         period=period, min_party=9, max_party=12, nightly=Decimal("140.00")
     )
-    RateRuleModel.objects.create(
+    RateBandModel.objects.create(
         period=period, min_party=13, max_party=16, nightly=Decimal("160.00")
     )
 
@@ -151,7 +151,7 @@ def _occupancy_period(plan: RatePlan) -> None:
 @pytest.mark.django_db
 class TestStayOptionsSearch:
     def test_unconstrained_property_prices_preferred_dates_single_option(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         [result] = StayOptionsService.search(
             requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
@@ -171,7 +171,7 @@ class TestStayOptionsSearch:
         ]
 
     def test_fixed_changeover_offers_each_fitting_block(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # Sun 5 Jul → Wed 15 Jul (10 nights) ± 3 days at a Sat-changeover
         # villa: the window Thu 2 Jul → Sat 18 Jul admits 7-night Sat blocks
@@ -194,7 +194,7 @@ class TestStayOptionsSearch:
         ]
 
     def test_plan_boundary_inside_window_still_offers_blocks(
-        self, property_: Property, plan: RatePlan, rate_rule: RateRule
+        self, property_: Property, plan: RatePlan, rate_rule: RateBand
     ) -> None:
         # The plan covers the preferred dates but ends inside the widened
         # window, so no single context covers the window: the bounds clamp is
@@ -218,7 +218,7 @@ class TestStayOptionsSearch:
         ]
 
     def test_flex_zero_on_aligned_request_yields_single_block(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         _sat_changeover(property_)
         [result] = StayOptionsService.search(
@@ -232,7 +232,7 @@ class TestStayOptionsSearch:
     def test_multi_week_window_offers_one_block_per_week(
         self,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
         customer: Person,
         gbp: Currency,
         terms: TermsVersion,
@@ -271,7 +271,7 @@ class TestStayOptionsSearch:
         assert all(o["nights"] == 7 for o in result["stay_options"])
 
     def test_no_fitting_block_falls_back_to_preferred_dates(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # 5 nights with flex 0: no 7-night multiple fits the window, so the
         # engine prices the preferred dates exactly as today.
@@ -289,7 +289,7 @@ class TestStayOptionsSearch:
     def test_availability_flags_use_half_open_overlap(
         self,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
         customer: Person,
         gbp: Currency,
         terms: TermsVersion,
@@ -315,7 +315,7 @@ class TestStayOptionsSearch:
         ]
 
     def test_live_hold_flags_block_unavailable(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         _sat_changeover(property_)
         BookingHold.objects.create(
@@ -411,7 +411,7 @@ class TestStayOptionsSearch:
         ]
 
     def test_single_band_property_has_no_fan_out(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         """A single-bracket villa keeps its one headline line — no fan-out (the
         >=2-band threshold lives here, not in the enumerator)."""
@@ -448,17 +448,17 @@ class TestStayOptionsSearch:
     def test_poa_band_is_flagged_not_dropped(self, property_: Property, plan: RatePlan) -> None:
         """A POA / no-rate band surfaces flagged (`total=None`, `is_poa`) with a
         resolved display currency — never silently dropped (Q-013)."""
+        from pricing.models import RateBand as RateBandModel
         from pricing.models import RatePeriod
-        from pricing.models import RateRule as RateRuleModel
 
         _sat_changeover(property_)
         period = RatePeriod.objects.create(
             plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
         )
-        RateRuleModel.objects.create(
+        RateBandModel.objects.create(
             period=period, min_party=1, max_party=8, nightly=Decimal("100.00")
         )
-        RateRuleModel.objects.create(
+        RateBandModel.objects.create(
             period=period, min_party=9, max_party=12, nightly=None, is_poa=True
         )
 
@@ -499,7 +499,7 @@ class TestWeeklyPrices:
     """`StayOptionsService.weekly_prices` — GAP-030 timeline price strip."""
 
     def test_fixed_changeover_prices_each_week(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # Sat 4 Jul → Sat 1 Aug: Saturday arrivals 4/11/18/25 Jul each fit a
         # full 7-night block in the window, priced at £200 x 7.
@@ -523,7 +523,7 @@ class TestWeeklyPrices:
         assert all(w["error_code"] is None for w in result["weeks"])
 
     def test_flexible_changeover_returns_no_weeks(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # No ChangeOverRule → 'any' changeover: deferred (GAP-025 / Q-022).
         [result] = StayOptionsService.weekly_prices(
@@ -552,14 +552,14 @@ class TestWeeklyPrices:
             assert week["currency_code"] is None
 
     def test_poa_week_is_flagged(self, property_: Property, plan: RatePlan) -> None:
+        from pricing.models import RateBand as RateBandModel
         from pricing.models import RatePeriod
-        from pricing.models import RateRule as RateRuleModel
 
         _sat_changeover(property_)
         period = RatePeriod.objects.create(
             plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
         )
-        RateRuleModel.objects.create(
+        RateBandModel.objects.create(
             period=period,
             min_party=1,
             max_party=8,
@@ -580,7 +580,7 @@ class TestWeeklyPrices:
             assert week["currency_code"] == "GBP"
 
     def test_future_year_prices_are_flagged_as_projected_guides(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # 2027 has no plan; prices project from the 2026 rates and read as
         # guides (is_projected), never firm quotes.
@@ -611,7 +611,7 @@ class TestWeeklyPrices:
         assert result == {"property_id": 999_999, "changeover_day": None, "weeks": []}
 
     def test_query_count_does_not_reload_context_per_week(
-        self, property_: Property, rate_rule: RateRule
+        self, property_: Property, rate_rule: RateBand
     ) -> None:
         # The expensive plan/card/rule context loads ONCE per property and
         # every week's quote reuses it (the AC's "no N-times-weeks per-villa engine
@@ -677,7 +677,7 @@ class TestSearchOptionsEndpoint:
         api_client: APIClient,
         staff: User,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
     ) -> None:
         _sat_changeover(property_)
         api_client.force_authenticate(staff)
@@ -696,7 +696,7 @@ class TestSearchOptionsEndpoint:
         api_client: APIClient,
         staff: User,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
     ) -> None:
         # The widest window (±21 days) round-trips: seven Saturday blocks.
         _sat_changeover(property_)
@@ -728,7 +728,7 @@ class TestSearchOptionsEndpoint:
         api_client: APIClient,
         staff: User,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
     ) -> None:
         # once per entry, shared between the bounds clamp and the quote. Two
         # single-query enrichments ride on top of the base clamp+quote: the
@@ -767,7 +767,7 @@ class TestWeeklyPricesEndpoint:
         api_client: APIClient,
         staff: User,
         property_: Property,
-        rate_rule: RateRule,
+        rate_rule: RateBand,
     ) -> None:
         _sat_changeover(property_)
         api_client.force_authenticate(staff)

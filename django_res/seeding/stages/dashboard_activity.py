@@ -36,7 +36,7 @@ from django.utils import timezone
 
 from core.exceptions import HoldUnavailable
 from payments.enums import PaymentPurpose
-from pricing.factories import RatePeriodFactory, RatePlanFactory, RateRuleFactory
+from pricing.factories import RateBandFactory, RatePeriodFactory, RatePlanFactory
 from properties.factories import PropertyFactory, RegionFactory, villa_manifest
 from properties.models import Country, Property
 from reservations.factories import EnquiryFactory
@@ -166,7 +166,7 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
         assign_commission(ctx.rng, prop)
     else:
         period = RatePeriodFactory(plan=plan, min_nights=1)
-        RateRuleFactory(period=period)
+        RateBandFactory(period=period)
     ctx.properties.append(prop)
     return prop
 

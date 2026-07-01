@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import random
 
-from pricing.factories import RatePeriodFactory, RatePlanFactory, RateRuleFactory
+from pricing.factories import RateBandFactory, RatePeriodFactory, RatePlanFactory
 from properties.factories import PropertyFactory
 from properties.models import Property
 from seeding._pricing_helpers import (
@@ -60,7 +60,7 @@ def _run(ctx: SeedContext) -> int:
         # Legacy single 1-30 period, matching the happy portfolio (no commission
         # override — the villa keeps the factory's null-finance default).
         period = RatePeriodFactory(plan=plan, min_nights=1)
-        RateRuleFactory(period=period)
+        RateBandFactory(period=period)
     return 1
 
 

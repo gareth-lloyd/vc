@@ -10,7 +10,7 @@ import pytest
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition, NoRateAvailable, OverlappingBooking
-from pricing.models import Currency, RateRule
+from pricing.models import Currency, RateBand
 from properties.models import Property
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
@@ -243,7 +243,7 @@ def test_cancel_from_terminal_raises(booking: Booking) -> None:
 
 
 @pytest.mark.django_db
-def test_modify_dates_rerun_pricing_and_writes_event(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_dates_rerun_pricing_and_writes_event(booking: Booking, rate_rule: RateBand) -> None:
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
     booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
     booking.refresh_from_db()
@@ -266,7 +266,7 @@ def test_modify_dates_rerun_pricing_and_writes_event(booking: Booking, rate_rule
 
 @pytest.mark.django_db
 def test_modify_dates_into_unrated_future_year_rejects_projection(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     """A booking is a contract: modifying into a year with no confirmed rates must
     raise NoRateAvailable, not silently re-price onto a projected guide rate."""
@@ -281,7 +281,7 @@ def test_modify_dates_into_unrated_future_year_rejects_projection(
 
 
 @pytest.mark.django_db
-def test_modify_dates_from_terminal_raises(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_dates_from_terminal_raises(booking: Booking, rate_rule: RateBand) -> None:
     _set_status(booking, BookingStatus.CHECKED_OUT.value)
     with pytest.raises(InvalidTransition):
         booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
@@ -289,7 +289,7 @@ def test_modify_dates_from_terminal_raises(booking: Booking, rate_rule: RateRule
 
 @pytest.mark.django_db
 def test_modify_guests_rerun_pricing_and_writes_event(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
     booking.modify_guests(adults=4, children=1)
@@ -303,7 +303,7 @@ def test_modify_guests_rerun_pricing_and_writes_event(
 
 
 @pytest.mark.django_db
-def test_modify_guests_from_checked_in_raises(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_guests_from_checked_in_raises(booking: Booking, rate_rule: RateBand) -> None:
     _set_status(booking, BookingStatus.CHECKED_IN.value)
     with pytest.raises(InvalidTransition):
         booking.modify_guests(adults=4, children=0)
@@ -338,7 +338,7 @@ def _schedule_row(booking: Booking, purpose: str) -> Any:
 
 
 @pytest.mark.django_db
-def test_modify_dates_resizes_pending_schedule(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_dates_resizes_pending_schedule(booking: Booking, rate_rule: RateBand) -> None:
     """A pricier range grows the total; the PENDING deposit/balance rows resize
     to match — no explicit resync call, the modify fires the signal itself."""
     from payments.enums import PaymentPurpose
@@ -357,7 +357,7 @@ def test_modify_dates_resizes_pending_schedule(booking: Booking, rate_rule: Rate
 
 @pytest.mark.django_db
 def test_modify_dates_settled_deposit_only_balance_resizes(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     """A SUCCEEDED deposit is history — only the PENDING balance absorbs the
     increase from a pricier range."""
@@ -377,7 +377,7 @@ def test_modify_dates_settled_deposit_only_balance_resizes(
 
 @pytest.mark.django_db
 def test_modify_dates_writes_residual_event_when_all_settled(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     """Nothing PENDING to resize: the uncollectable increase lands on the
     Timeline as a residual event rather than silently vanishing."""
@@ -396,7 +396,7 @@ def test_modify_dates_writes_residual_event_when_all_settled(
 
 
 @pytest.mark.django_db
-def test_modify_guests_fires_booking_total_changed(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_guests_fires_booking_total_changed(booking: Booking, rate_rule: RateBand) -> None:
     """modify_guests re-prices and so must trigger the resync chain, exactly
     like modify_dates — flat-rate fixtures leave the total unchanged, so assert
     the wiring (the signal) directly."""
@@ -419,7 +419,7 @@ def test_modify_guests_fires_booking_total_changed(booking: Booking, rate_rule: 
 
 
 @pytest.mark.django_db
-def test_modify_dates_resizes_security_deposit(booking: Booking, rate_rule: RateRule) -> None:
+def test_modify_dates_resizes_security_deposit(booking: Booking, rate_rule: RateBand) -> None:
     """The same `booking_total_changed` the schedule resync rides also resizes a
     still-pre-charge SD — so a modify onto a pricier range grows the SD too,
     proving GAP-019's resize composes with the GAP-015 modify path."""
@@ -771,7 +771,7 @@ def test_modify_dates_into_overlap_raises_overlapping_booking(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """modify_dates onto another booking's range must surface as OverlappingBooking,
     not raw IntegrityError, and must leave the in-memory booking unchanged."""
@@ -807,7 +807,7 @@ def test_modify_dates_into_overlap_raises_overlapping_booking(
 
 @pytest.mark.django_db
 def test_modify_dates_reloads_committed_state_before_repricing(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     """`modify_dates` must re-read the row under a lock before re-pricing.
 
@@ -843,7 +843,7 @@ def test_modify_dates_reloads_committed_state_before_repricing(
 
 @pytest.mark.django_db
 def test_modify_guests_reloads_committed_state_before_repricing(
-    booking: Booking, rate_rule: RateRule
+    booking: Booking, rate_rule: RateBand
 ) -> None:
     """`modify_guests` takes the same lock + reload (FG-006)."""
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)

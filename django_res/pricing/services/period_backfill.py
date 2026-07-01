@@ -1,6 +1,6 @@
-"""Backfill `RatePeriod` rows from existing flat `RateRule`s (GAP-056 Unit 2).
+"""Backfill `RatePeriod` rows from existing flat `RateBand`s (GAP-056 Unit 2).
 
-The rebuild flattened dates onto `RateRule`; GAP-056 lifts them onto a
+The rebuild flattened dates onto `RateBand`; GAP-056 lifts them onto a
 `RatePeriod` date-axis level. This helper reconstructs that level for rows that
 predate it: it groups every plan's rules, segments them with the pure
 `segment_card_rules` utility, creates one `RatePeriod` per distinct segment, and

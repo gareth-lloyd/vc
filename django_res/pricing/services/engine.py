@@ -24,9 +24,9 @@ from pricing.models import (
     Currency,
     Discount,
     Extra,
+    RateBand,
     RatePeriod,
     RatePlan,
-    RateRule,
 )
 from pricing.services.currency import pick_preferred_plan, resolve_property_currency
 from pricing.services.discounts import apply_discount
@@ -38,7 +38,7 @@ from pricing.services.rates import (
     OutOfRange,
     Picked,
     nights,
-    pick_rule_for_night,
+    pick_band_for_night,
     rule_nightly,
 )
 from properties.models.services import PropertyService
@@ -63,7 +63,7 @@ def _periods_cover_all_nights(periods: list[RatePeriod], week_nights: list[date]
     """True iff every night falls in at least one of `periods`.
 
     Gates on the **period** date-axis (`date_from <= night <= date_to`,
-    inclusive) — the exact predicate `pick_rule_for_night` uses — so the band
+    inclusive) — the exact predicate `pick_band_for_night` uses — so the band
     enumerator agrees with the real quote about which nights a bracket covers,
     even if a band's own (transitional, pre-Unit-9) date columns ever drift from
     its period's. `week_nights` is the half-open `[from, to)` night list.
@@ -134,7 +134,7 @@ class PricingEngine:
             )
         plan = context.plan
         periods = context.periods
-        rules_by_period = context.rules_by_period
+        bands_by_period = context.bands_by_period
         if currency is None:
             # Price in the rate card's own currency (legacy parity, GAP-014).
             currency = plan.currency
@@ -164,12 +164,12 @@ class PricingEngine:
             # stored-proc defaulted to the highest bracket when party fell
             # outside every band; the rebuild raises `PartyOutOfRange`
             # instead (see `09-departures.md` bug #2). The tagged result
-            # carries the disambiguation out of `pick_rule_for_night`'s
+            # carries the disambiguation out of `pick_band_for_night`'s
             # single pass, so the engine doesn't have to re-walk the grid.
-            pick = pick_rule_for_night(periods, rules_by_period, night, party)
+            pick = pick_band_for_night(periods, bands_by_period, night, party)
             if isinstance(pick, OutOfRange):
                 raise PartyOutOfRange(
-                    f"party={party} matches no RateRule bracket on plan {plan.pk} for {night}"
+                    f"party={party} matches no RateBand bracket on plan {plan.pk} for {night}"
                 )
             if isinstance(pick, NoCoverage):
                 # Legacy quietly priced an uncovered night at the villa's
@@ -182,26 +182,26 @@ class PricingEngine:
                     lines.append(
                         QuoteLine(
                             date=night,
-                            rule_id=None,
+                            band_id=None,
                             period_id=None,
                             nightly=Decimal(plan.fallback_nightly),
                         )
                     )
                     continue
                 raise NoRateAvailable(
-                    f"No approved RateRule on plan {plan.pk} for {night} party={party}"
+                    f"No approved RateBand on plan {plan.pk} for {night} party={party}"
                 )
             assert isinstance(pick, Picked)  # narrowing for mypy
             period, rule = pick.period, pick.rule
             if rule.is_poa:
                 raise NoRateAvailable(
-                    f"RateRule {rule.pk} is POA — cannot generate automatic quote"
+                    f"RateBand {rule.pk} is POA — cannot generate automatic quote"
                 )
             nightly = rule_nightly(rule)
             lines.append(
                 QuoteLine(
                     date=night,
-                    rule_id=rule.pk,
+                    band_id=rule.pk,
                     period_id=rule.period_id,
                     nightly=nightly,
                 )
@@ -347,7 +347,7 @@ class PricingEngine:
             "occupancy_pricing": (
                 winning_period is not None
                 and len(
-                    {(r.min_party, r.max_party) for r in rules_by_period.get(winning_period.pk, [])}
+                    {(r.min_party, r.max_party) for r in bands_by_period.get(winning_period.pk, [])}
                 )
                 > 1
             ),
@@ -415,7 +415,7 @@ class PricingEngine:
 
         Loads its own `PricingContext` when none is supplied — a
         flexible-changeover villa reaches the search layer with `context=None`
-        yet may still be occupancy-priced, so a bare `context.rules_by_period`
+        yet may still be occupancy-priced, so a bare `context.bands_by_period`
         read would crash (fixes B1). Returns bands sorted by `min_party`; empty
         when no real plan covers the week (projection is out of scope — a
         guide-rate year has no banded default) or only a single bracket covers
@@ -456,10 +456,10 @@ class PricingEngine:
         # Every band across every period of the plan; the disjoint period axis
         # means each night resolves to one period, so pooling bands by bracket
         # and checking night-coverage is the party-independent counterpart of
-        # `pick_rule_for_night`. A bracket covers the week iff the *periods* that
+        # `pick_band_for_night`. A bracket covers the week iff the *periods* that
         # carry it — gated on the period date-axis, exactly like the real quote —
         # span every night; a bracket that lapses mid-week is dropped.
-        all_rules = [rule for rules in context.rules_by_period.values() for rule in rules]
+        all_rules = [rule for rules in context.bands_by_period.values() for rule in rules]
         brackets = {(rule.min_party, rule.max_party) for rule in all_rules}
         covering = [
             OccupancyBand(min_party=lo, max_party=hi)
@@ -470,7 +470,7 @@ class PricingEngine:
                     for period in context.periods
                     if any(
                         (r.min_party, r.max_party) == (lo, hi)
-                        for r in context.rules_by_period.get(period.pk, [])
+                        for r in context.bands_by_period.get(period.pk, [])
                     )
                 ],
                 week_nights,
@@ -559,13 +559,13 @@ class PricingEngine:
         # Period activeness (filtered above) is now the sole gate — the old
         # RateCard is gone, so `RatePeriod.is_active` fully governs whether a
         # band prices.
-        rules_by_period: dict[int, list[RateRule]] = {}
-        approved_rules = RateRule.objects.filter(period__in=periods, is_approved=True)
+        bands_by_period: dict[int, list[RateBand]] = {}
+        approved_rules = RateBand.objects.filter(period__in=periods, is_approved=True)
         for rule in approved_rules:
             assert rule.period_id is not None  # filtered on period__in — never null
-            rules_by_period.setdefault(rule.period_id, []).append(rule)
+            bands_by_period.setdefault(rule.period_id, []).append(rule)
         return PricingContext(
-            plan=plan, property=property, periods=periods, rules_by_period=rules_by_period
+            plan=plan, property=property, periods=periods, bands_by_period=bands_by_period
         )
 
     @staticmethod

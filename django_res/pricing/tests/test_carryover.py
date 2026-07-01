@@ -8,19 +8,19 @@ from decimal import Decimal
 import pytest
 
 from core.exceptions import NoRateAvailable
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.carryover import RateCarryoverService
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
     shift_to_changeover_weekday,
 )
-from pricing.services.rates import Picked, nights, pick_rule_for_night, rule_nightly
+from pricing.services.rates import Picked, nights, pick_band_for_night, rule_nightly
 from properties.models import Property
 
 
 @pytest.fixture
-def anchor_rule(property_: Property, gbp: Currency) -> RateRule:
+def anchor_rule(property_: Property, gbp: Currency) -> RateBand:
     """A 2026 plan/period/rule to carry forward."""
     plan = RatePlan.objects.create(
         property=property_,
@@ -38,7 +38,7 @@ def anchor_rule(property_: Property, gbp: Currency) -> RateRule:
         date_to=date(2026, 8, 31),
         min_nights=7,
     )
-    return RateRule.objects.create(
+    return RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,
@@ -48,7 +48,7 @@ def anchor_rule(property_: Property, gbp: Currency) -> RateRule:
 
 @pytest.mark.django_db
 def test_materialise_writes_real_rows_for_target_year(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     new_plan = RateCarryoverService.materialise(
         property_,
@@ -67,7 +67,7 @@ def test_materialise_writes_real_rows_for_target_year(
     assert period.min_nights == 7
     assert period.date_from == date(2028, 6, 1)
     assert period.date_to == date(2028, 8, 31)
-    rule = period.rules.get()
+    rule = period.bands.get()
     assert rule.nightly == Decimal("200.00")
     # A distinct, editable row — not the anchor.
     assert rule.pk != anchor_rule.pk
@@ -76,7 +76,7 @@ def test_materialise_writes_real_rows_for_target_year(
 
 @pytest.mark.django_db
 def test_materialise_is_idempotent(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     first = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
     second = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
@@ -84,12 +84,12 @@ def test_materialise_is_idempotent(
     assert first.pk == second.pk
     # Anchor (2026) + one materialised (2028) — never duplicated.
     assert RatePlan.objects.filter(property=property_, currency=gbp).count() == 2
-    assert RateRule.objects.filter(period__plan=first).count() == 1
+    assert RateBand.objects.filter(period__plan=first).count() == 1
 
 
 @pytest.mark.django_db
 def test_materialise_records_provenance(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     new_plan = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
     assert f"plan #{anchor_rule.period.plan.pk}" in new_plan.notes
@@ -98,7 +98,7 @@ def test_materialise_records_provenance(
 
 @pytest.mark.django_db
 def test_materialise_applies_uplift(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     new_plan = RateCarryoverService.materialise(
         property_,
@@ -106,13 +106,13 @@ def test_materialise_applies_uplift(
         currency=gbp,
         uplift=Decimal("0.10"),
     )
-    rule = RateRule.objects.get(period__plan=new_plan)
+    rule = RateBand.objects.get(period__plan=new_plan)
     assert rule.nightly == Decimal("220.00")
 
 
 @pytest.mark.django_db
 def test_materialise_skips_inactive_periods_and_unapproved_rules(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     """The carried set matches the guide a quote would show — no dormant rows."""
     anchor_plan = anchor_rule.period.plan
@@ -124,7 +124,7 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
         date_to=date(2026, 9, 30),
         is_active=False,
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=inactive,
         min_party=1,
         max_party=8,
@@ -134,7 +134,7 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
     unapproved_period = RatePeriod.objects.create(
         plan=anchor_plan, date_from=date(2026, 10, 1), date_to=date(2026, 10, 31)
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=unapproved_period,
         min_party=1,
         max_party=8,
@@ -149,7 +149,7 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
     # Only the active period's approved rule is carried forward.
     assert new_plan.periods.count() == 1
     assert new_plan.periods.get().min_nights == 7  # the carried anchor period
-    assert RateRule.objects.filter(period__plan=new_plan).count() == 1
+    assert RateBand.objects.filter(period__plan=new_plan).count() == 1
 
 
 @pytest.mark.django_db
@@ -171,7 +171,7 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
         effective_from=date(2024, 1, 1),
         effective_to=date(2024, 12, 31),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
             date_from=date(2024, 2, 25),
@@ -181,7 +181,7 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
         max_party=8,
         nightly=Decimal("100.00"),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
         ),
@@ -195,7 +195,7 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
     )
 
     new_rules = list(
-        RateRule.objects.filter(period__plan=new_plan).order_by("period__date_from"),
+        RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"),
     )
     assert [(r.period.date_from, r.period.date_to) for r in new_rules] == [
         (date(2025, 2, 25), date(2025, 3, 1)),  # span preserved across the lost Feb 29
@@ -217,7 +217,7 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         effective_from=date(2024, 1, 1),
         effective_to=date(2024, 12, 31),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
             date_from=date(2024, 2, 26),  # Mon → maps +3 to Mon 1 Mar 2027
@@ -227,7 +227,7 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         max_party=8,
         nightly=Decimal("100.00"),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
             date_from=date(2024, 3, 1),  # Fri → maps -3 to Fri 26 Feb 2027
@@ -242,7 +242,7 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         property_, target_year=2027, currency=gbp, date_map=shift_to_changeover_weekday
     )
 
-    new_rules = list(RateRule.objects.filter(period__plan=new_plan).order_by("period__date_from"))
+    new_rules = list(RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"))
     # Rule A claims [1 Mar - 4 Mar]; rule B ([26 Feb - 7 Mar] mapped) keeps
     # both remainders around it.
     assert [(r.period.date_from, r.period.date_to, r.nightly) for r in new_rules] == [
@@ -267,7 +267,7 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
     )
     # Lower pk, spans Feb 29: maps (keep_calendar, +1yr) to [27 Feb - 1 Mar] 2025
     # (span preserved across the lost leap day), claiming 1 Mar first.
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan, date_from=date(2024, 2, 27), date_to=date(2024, 2, 29)
         ),
@@ -277,7 +277,7 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
     )
     # Higher pk, [1 Mar - 2 Mar] 2024 → maps to the same dates 2025; 1 Mar is
     # claimed above, leaving a single-day remainder on 2 Mar.
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 2)
         ),
@@ -290,7 +290,7 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
         property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
     )
 
-    new_rules = list(RateRule.objects.filter(period__plan=new_plan).order_by("period__date_from"))
+    new_rules = list(RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"))
     assert [(r.period.date_from, r.period.date_to, r.nightly) for r in new_rules] == [
         (date(2025, 2, 27), date(2025, 3, 1), Decimal("100.00")),
         (date(2025, 3, 2), date(2025, 3, 2), Decimal("150.00")),  # single-day sliver survives
@@ -316,7 +316,7 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         effective_to=date(2024, 12, 31),
     )
     # Lower pk, *later* dates — entered first.
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
         ),
@@ -325,7 +325,7 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         nightly=Decimal("150.00"),
     )
     # Higher pk, earlier dates; spans Feb 29 so its mapped range collides on 1 Mar.
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan, date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
         ),
@@ -348,11 +348,11 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
     mat_periods = list(
         RatePeriod.objects.filter(plan=new_plan, is_active=True).order_by("date_from", "pk")
     )
-    mat_rules = {p.pk: list(p.rules.all()) for p in mat_periods}
+    mat_rules = {p.pk: list(p.bands.all()) for p in mat_periods}
 
     for night in nights(date(2025, 2, 25), date(2025, 3, 8)):
-        projected = pick_rule_for_night(ctx.periods, ctx.rules_by_period, night, party=4)
-        materialised = pick_rule_for_night(mat_periods, mat_rules, night, party=4)
+        projected = pick_band_for_night(ctx.periods, ctx.bands_by_period, night, party=4)
+        materialised = pick_band_for_night(mat_periods, mat_rules, night, party=4)
         assert type(projected) is type(materialised), night
         if isinstance(projected, Picked):
             assert isinstance(materialised, Picked)
@@ -361,7 +361,7 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
 
 @pytest.mark.django_db
 def test_materialise_carries_anchor_period_min_max_nights(
-    property_: Property, gbp: Currency, anchor_rule: RateRule
+    property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
     """The materialised period inherits the anchor period's nullable min/max-nights
     (GAP-056 — parity with projection, which copies them). NULL would silently

@@ -1,6 +1,6 @@
-"""RatePlan, RatePeriod, RateRule — the rate model (GAP-056 contract).
+"""RatePlan, RatePeriod, RateBand — the rate model (GAP-056 contract).
 
-`Property → RatePlan → RatePeriod (date axis, disjoint per plan) → RateRule
+`Property → RatePlan → RatePeriod (date axis, disjoint per plan) → RateBand
 (party band, disjoint per period)`. Every `(night, party)` resolves to exactly
 one cell. The old `RateCard` precedence level is gone (no prod villa used it).
 """
@@ -38,7 +38,7 @@ class RatePlan(AuditedModel):
         null=True,
         blank=True,
         help_text=(
-            "Opt-in nightly rate used when no RateRule covers a night. "
+            "Opt-in nightly rate used when no RateBand covers a night. "
             "NULL = no fallback (uncovered nights raise NoRateAvailable)."
         ),
     )
@@ -62,9 +62,9 @@ class RatePlan(AuditedModel):
 class RatePeriod(AuditedModel):
     """A disjoint date window on a plan; owns the dates its bands inherit (GAP-056).
 
-    Replaces the flattened ``RateRule.date_from/date_to`` with an honest
+    Replaces the flattened ``RateBand.date_from/date_to`` with an honest
     date-axis level: periods on one plan are disjoint (EXCLUDE), and each period
-    holds a party-band set (its ``RateRule`` children). Dates are **inclusive**
+    holds a party-band set (its ``RateBand`` children). Dates are **inclusive**
     (``date_from == date_to`` is a legitimate single-day period). ``min_nights``/
     ``max_nights`` are nullable per-period overrides of the villa default; ``name``
     is an optional operator label with no grouping semantics.
@@ -99,13 +99,13 @@ class RatePeriod(AuditedModel):
         return f"{self.plan_id} [{self.date_from}..{self.date_to}]"
 
 
-class RateRule(AuditedModel):
+class RateBand(AuditedModel):
     """The fundamental price row: a party-size band on a period (inherits its dates)."""
 
     period = models.ForeignKey(
         RatePeriod,
         on_delete=models.CASCADE,
-        related_name="rules",
+        related_name="bands",
     )
     min_party = models.PositiveSmallIntegerField(default=1)
     max_party = models.PositiveSmallIntegerField()
@@ -122,7 +122,7 @@ class RateRule(AuditedModel):
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(min_party__lte=models.F("max_party")),
-                name="raterule_min_party_lte_max_party",
+                name="rateband_min_party_lte_max_party",
             ),
             models.CheckConstraint(
                 condition=(
@@ -130,14 +130,14 @@ class RateRule(AuditedModel):
                     | models.Q(weekly__isnull=False)
                     | models.Q(is_poa=True)
                 ),
-                name="raterule_has_price_or_poa",
+                name="rateband_has_price_or_poa",
             ),
             models.CheckConstraint(
                 condition=(
                     models.Q(is_poa=False)
                     | (models.Q(nightly__isnull=True) & models.Q(weekly__isnull=True))
                 ),
-                name="raterule_poa_excludes_price",
+                name="rateband_poa_excludes_price",
             ),
         ]
         indexes = [

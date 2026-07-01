@@ -45,7 +45,7 @@ from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
-from pricing.models.rate import RatePlan, RateRule
+from pricing.models.rate import RateBand, RatePlan
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.features import (
     Collection,
@@ -189,7 +189,7 @@ _CHECKS: list[_Check] = [
         expected_gap=67,
     ),
     _Check(
-        # BUG-013: RateRule now has two legacy sources — parent VillaSeasonRate
+        # BUG-013: RateBand now has two legacy sources — parent VillaSeasonRate
         # rows (→ simple / base-weekly fallback rules) AND child
         # VillaOccupencyPrice bands on occupancy-flagged parents (→ one band
         # rule each). Count both so the legacy side mirrors the loader's source
@@ -201,19 +201,19 @@ _CHECKS: list[_Check] = [
         "+ (SELECT COUNT(*) FROM VillaOccupencyPrice o "
         " JOIN VillaSeasonRate r ON r.ID = o.VillaSeasonRateId "
         " WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.IsOccupationPrice = 1)",
-        RateRule,
-        "RateRule",
+        RateBand,
+        "RateBand",
         # PLACEHOLDER — recalibrate at the first post-BUG-013 cutover dry-run
         # against the live dump (no LEGACY_DATABASE_URL here to derive it). The
         # true gap now nets four moving parts against the two-part legacy count
         # above: MINUS synthetic base-weekly gap-fallback rules that have no
         # legacy row, MINUS the GAP-056 ragged-rule fragments the period
         # segmentation clones (a party-disjoint rule bisected by a sibling's date
-        # boundary becomes >1 RateRule), PLUS dropped priceless / invalid-band /
+        # boundary becomes >1 RateBand), PLUS dropped priceless / invalid-band /
         # overlap-covered rows and rows on the 67 unloaded seasons. The
         # fragment-inflation mechanism is unchanged, but there is no longer a
         # transitional `save()` shim or `backfill_plan_periods` pass: the
-        # `RateRuleLoader._load_rows` builds each plan's disjoint `RatePeriod`
+        # `RateBandLoader._load_rows` builds each plan's disjoint `RatePeriod`
         # date axis directly via `segment_card_rules`. The old 3462+265 breakdown
         # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
         expected_gap=3727,

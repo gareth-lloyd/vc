@@ -18,9 +18,9 @@ from pricing.views import (
     PropertyExtraListCreateView,
     PropertySeasonCarryForwardView,
     PropertySeasonListCreateView,
+    RateBandDetailView,
+    RatePeriodBandListCreateView,
     RatePeriodDetailView,
-    RatePeriodRuleListCreateView,
-    RateRuleDetailView,
     SeasonDetailView,
     SeasonDuplicateView,
     SeasonRatePeriodListCreateView,
@@ -69,14 +69,14 @@ _pricing_paths: list[URLPattern] = [
         name="rate-period-detail",
     ),
     path(
-        "periods/<int:period_id>/rules",
-        RatePeriodRuleListCreateView.as_view(),
-        name="rate-period-rule-list",
+        "periods/<int:period_id>/bands",
+        RatePeriodBandListCreateView.as_view(),
+        name="rate-period-band-list",
     ),
     path(
-        "rules/<int:pk>",
-        RateRuleDetailView.as_view(),
-        name="rate-rule-detail",
+        "bands/<int:pk>",
+        RateBandDetailView.as_view(),
+        name="rate-band-detail",
     ),
     # Extras
     path(

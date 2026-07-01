@@ -20,7 +20,7 @@ def test_currency_factory_get_or_create_is_idempotent() -> None:
 
 
 def test_rate_rule_chain_covers_today() -> None:
-    rule = cast(models.RateRule, factories.RateRuleFactory())
+    rule = cast(models.RateBand, factories.RateBandFactory())
     assert rule.period.date_from <= date.today() <= rule.period.date_to
     assert rule.is_approved
     assert rule.nightly is not None

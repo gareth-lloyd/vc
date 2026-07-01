@@ -1,4 +1,4 @@
-"""Pure tests for `resolve_rate_rule_overlaps` — dict fixtures, no DB.
+"""Pure tests for `resolve_rate_band_overlaps` — dict fixtures, no DB.
 
 Legacy had no precedence concept (unordered TOP 1), so the resolver turns
 overlapping VillaSeasonRate rows into a disjoint set at load time:
@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from data_migration.loaders.pricing import resolve_rate_rule_overlaps
+from data_migration.loaders.pricing import resolve_rate_band_overlaps
 
 
 def _row(id: int, frm: date | None, to: date | None, **overrides: Any) -> dict[str, Any]:
@@ -44,7 +44,7 @@ def _spans(rows: list[dict[str, Any]]) -> list[tuple[int, date, date]]:
 
 
 def test_boundary_trim_checkout_convention() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8)),
             _row(2, date(2025, 6, 8), date(2025, 6, 15)),
@@ -59,7 +59,7 @@ def test_boundary_trim_checkout_convention() -> None:
 
 
 def test_touching_disjoint_party_brackets_not_trimmed() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8), PartySize=2),
             _row(2, date(2025, 6, 8), date(2025, 6, 15), PartySize=4),
@@ -74,7 +74,7 @@ def test_touching_disjoint_party_brackets_not_trimmed() -> None:
 
 def test_boundary_trim_chain() -> None:
     """A→B→C contiguous chain: A and B trim, C keeps its end."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8)),
             _row(2, date(2025, 6, 8), date(2025, 6, 15)),
@@ -90,7 +90,7 @@ def test_boundary_trim_chain() -> None:
 
 
 def test_boundary_trim_to_empty_drops_row() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 2)),
             _row(2, date(2025, 6, 2), date(2025, 6, 9)),
@@ -101,7 +101,7 @@ def test_boundary_trim_to_empty_drops_row() -> None:
 
 
 def test_fully_covered_row_dropped() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 30)),
             _row(2, date(2025, 6, 10), date(2025, 6, 20)),
@@ -112,7 +112,7 @@ def test_fully_covered_row_dropped() -> None:
 
 
 def test_partial_overlap_clips_later_id() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10)),
             _row(2, date(2025, 6, 5), date(2025, 6, 20)),
@@ -128,7 +128,7 @@ def test_partial_overlap_clips_later_id() -> None:
 
 def test_mid_punch_keeps_larger_side() -> None:
     """A winner strictly inside a loser: clip-only keeps the loser's larger side."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 10), date(2025, 6, 12)),
             _row(2, date(2025, 6, 1), date(2025, 6, 30)),
@@ -143,7 +143,7 @@ def test_mid_punch_keeps_larger_side() -> None:
 
 def test_approved_later_row_beats_unapproved_earlier_row() -> None:
     """Approved rows claim space first even against a lower legacy ID."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), IsApprove=False),
             _row(2, date(2025, 6, 5), date(2025, 6, 20), IsApprove=True),
@@ -156,7 +156,7 @@ def test_approved_later_row_beats_unapproved_earlier_row() -> None:
 
 
 def test_unapproved_rows_resolve_earliest_id_wins() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), IsApprove=False),
             _row(2, date(2025, 6, 5), date(2025, 6, 20), IsApprove=False),
@@ -170,7 +170,7 @@ def test_unapproved_rows_resolve_earliest_id_wins() -> None:
 
 def test_nested_party_null_winner_drops_specific_loser() -> None:
     """A NULL-party winner ([1, capacity]) fully covers a specific bracket."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=4),
@@ -182,7 +182,7 @@ def test_nested_party_null_winner_drops_specific_loser() -> None:
 
 def test_nested_party_specific_winner_clips_null_loser() -> None:
     """A [q..q] winner punches the NULL row: upper interval first, lower as fallback."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=4),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
@@ -196,7 +196,7 @@ def test_nested_party_specific_winner_clips_null_loser() -> None:
 def test_second_party_clip_preserves_uncovered_brackets() -> None:
     """Successive party clips subtract from the full remaining interval set —
     a bracket no winner covers must survive, not vanish on the second clip."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=2),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
@@ -212,7 +212,7 @@ def test_party_clip_remainders_conflict_checked_on_identical_dates() -> None:
     """A clipped row's *whole* interval set claims space: a later row landing
     inside any remainder interval is resolved, so no interval `transform` can
     pick ever overlaps another loaded rule."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
@@ -228,7 +228,7 @@ def test_party_clip_remainders_conflict_checked_on_identical_dates() -> None:
 def test_party_clip_remainders_conflict_checked_on_date_overlap() -> None:
     """Date conflicts also test against every remainder interval, not just the
     preferred one — row 3's (2, 2) sits inside row 2's fallback (1, 4)."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=5),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=None),
@@ -243,7 +243,7 @@ def test_party_clip_remainders_conflict_checked_on_date_overlap() -> None:
 
 
 def test_identical_rows_drop_duplicate() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), PartySize=4),
             _row(2, date(2025, 6, 1), date(2025, 6, 10), PartySize=4),
@@ -254,7 +254,7 @@ def test_identical_rows_drop_duplicate() -> None:
 
 
 def test_priceless_row_excluded_and_cannot_trim() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8)),
             _row(
@@ -274,7 +274,7 @@ def test_priceless_row_excluded_and_cannot_trim() -> None:
 
 
 def test_junk_dates_excluded_without_counting() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8)),
             _row(2, None, date(2025, 6, 15)),
@@ -287,7 +287,7 @@ def test_junk_dates_excluded_without_counting() -> None:
 
 
 def test_seasons_resolve_independently() -> None:
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 10), SeasonId=42),
             _row(2, date(2025, 6, 5), date(2025, 6, 20), SeasonId=43),
@@ -312,16 +312,16 @@ def _mixed_fixture() -> list[dict[str, Any]]:
 
 
 def test_input_order_does_not_change_output() -> None:
-    baseline = resolve_rate_rule_overlaps(_mixed_fixture())
+    baseline = resolve_rate_band_overlaps(_mixed_fixture())
     shuffled = _mixed_fixture()
     random.Random(42).shuffle(shuffled)
-    assert resolve_rate_rule_overlaps(shuffled) == baseline
+    assert resolve_rate_band_overlaps(shuffled) == baseline
 
 
 def test_occupancy_bands_disjoint_both_survive() -> None:
     """Sibling occupancy bands share the parent daterange but are disjoint in
     party (by construction), so neither trims nor clips the other."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(101, date(2025, 6, 1), date(2025, 6, 10), _occ_band=(2, 4)),
             _row(102, date(2025, 6, 1), date(2025, 6, 10), _occ_band=(5, 6)),
@@ -337,7 +337,7 @@ def test_occupancy_bands_disjoint_both_survive() -> None:
 def test_occupancy_band_clipped_by_overlapping_period() -> None:
     """A band still resolves against a date-overlapping rule on the same card:
     the lower-ID simple rule wins, the band keeps the uncovered remainder."""
-    res = resolve_rate_rule_overlaps(
+    res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 20), PartySize=None),
             _row(101, date(2025, 6, 10), date(2025, 6, 30), _occ_band=(2, 4)),
@@ -358,19 +358,19 @@ def test_occupancy_id_collision_is_order_independent() -> None:
             _row(42, date(2025, 6, 1), date(2025, 6, 10), PartySize=None, _legacy_id="42"),
         ]
 
-    first = resolve_rate_rule_overlaps(fixture())
-    second = resolve_rate_rule_overlaps(list(reversed(fixture())))
+    first = resolve_rate_band_overlaps(fixture())
+    second = resolve_rate_band_overlaps(list(reversed(fixture())))
     assert first == second
 
 
 def test_resolved_output_is_a_fixed_point_for_date_overlaps() -> None:
-    first = resolve_rate_rule_overlaps(
+    first = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 8)),
             _row(2, date(2025, 6, 8), date(2025, 6, 15)),
             _row(3, date(2025, 6, 10), date(2025, 6, 20)),
         ]
     )
-    second = resolve_rate_rule_overlaps(first.rows)
+    second = resolve_rate_band_overlaps(first.rows)
     assert second.rows == first.rows
     assert (second.trimmed, second.dropped, second.party_clipped) == (0, 0, 0)

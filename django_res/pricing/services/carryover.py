@@ -4,7 +4,7 @@ The demoted carryover verb. Lazy projection (`pricing.services.projection`) serv
 every next-year *quote* without writing anything; this service exists for the
 moment staff want **editable** rows for a year — an owner has returned real
 numbers, or they want to hand-tune the guide before confirming. It clones the
-anchor year forward into real `RatePlan` / `RatePeriod` / `RateRule` rows,
+anchor year forward into real `RatePlan` / `RatePeriod` / `RateBand` rows,
 reusing the same date-map + uplift the projection uses, so the materialised rows
 match the guide a quote would have shown.
 
@@ -24,7 +24,7 @@ import structlog
 from django.db import transaction
 
 from core.exceptions import NoRateAvailable
-from pricing.models import RatePeriod, RatePlan, RateRule
+from pricing.models import RateBand, RatePeriod, RatePlan
 from pricing.services.extras import date_ranges_overlap
 from pricing.services.projection import (
     DateMap,
@@ -72,7 +72,7 @@ def _unclaimed_segments(band: _Band, claimed: list[_Band]) -> list[tuple[date, d
     day; the weekday map can shift neighbours in opposite directions by up to
     3 days each), and the periods-disjoint EXCLUDE would turn that into an
     `IntegrityError`. Bands claim space in ascending source-pk order — the same
-    precedence `pick_rule_for_night` gives colliding in-memory projected bands —
+    precedence `pick_band_for_night` gives colliding in-memory projected bands —
     so the materialised rows price every night exactly as the projection would.
     A remainder can sit on either side of a claim (or both, splitting the band
     into two rows).
@@ -140,7 +140,7 @@ class RateCarryoverService:
 
         # Flatten the anchor into projected bands: each period's dates mapped
         # forward, each band's prices uplifted. `source_pk` preserves the
-        # precedence `pick_rule_for_night` gives colliding projected bands
+        # precedence `pick_band_for_night` gives colliding projected bands
         # (lowest pk wins), and each band carries its source period's min/max
         # nights so the materialised period can too (parity with `project`,
         # which copies them). Only active periods / approved bands — the exact
@@ -216,7 +216,7 @@ class RateCarryoverService:
                     max_nights=bands[0].max_nights,
                 )
                 for band in bands:
-                    RateRule.objects.create(
+                    RateBand.objects.create(
                         period=new_period,
                         min_party=band.min_party,
                         max_party=band.max_party,

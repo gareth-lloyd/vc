@@ -24,7 +24,7 @@ from reservations.services.quotations import QuotationService
 
 if TYPE_CHECKING:
     from accounts.models import Person
-    from pricing.models import Currency, RateRule
+    from pricing.models import Currency, RateBand
     from properties.models import Property
     from reservations.models import TermsVersion
 
@@ -35,7 +35,7 @@ def test_create_from_enquiry_happy_path(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,  # ensures PricingEngine has something to quote on
+    rate_rule: RateBand,  # ensures PricingEngine has something to quote on
 ) -> None:
     enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
     expires = timezone.now() + timedelta(days=7)
@@ -76,7 +76,7 @@ def test_create_from_enquiry_does_not_reprice_manual_line(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """A manual enquiry line keeps its supplied total — the engine must not
     clobber it, mirroring the API `_reprice` guard."""
@@ -114,7 +114,7 @@ def test_create_from_enquiry_requires_person(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """An enquiry with no captured customer cannot be quoted (GAP-045 D5-2)."""
     enquiry = Enquiry.objects.create(email="anonymous@example.com")
@@ -143,7 +143,7 @@ def test_create_from_enquiry_rejects_final_enquiry(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """A lost/converted enquiry is closed to new quotes — the service rejects
     it with a 400-mapping DomainValidationError and writes nothing."""
@@ -189,7 +189,7 @@ def test_create_from_enquiry_records_send_path_smtp(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """Bug #6: `QuotationService.create_from_enquiry` was calling
     `enquiry.quote_sent(quotation, actor=actor)` with no `meta`, so the
@@ -245,7 +245,7 @@ def test_create_from_enquiry_shifts_off_changeover_arrival(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """An off-changeover arrival is never rejected: the engine nudges it
     forward to the property's changeover day and the shifted dates are
@@ -540,7 +540,7 @@ def test_create_direct_auto_creates_agent_portal_enquiry(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """Agent-direct quote with no enquiry mints exactly one AGENT_PORTAL enquiry."""
     customer.preferred_method = PersonPreferredMethod.EMAIL.value
@@ -583,7 +583,7 @@ def test_create_from_enquiry_seeds_line_inclusions_from_plan(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> None:
     """Service-path lines are seeded from the winning plan's inclusion text
     too — parity with the API `add_line` path (legacy ResService.cs:1241)."""

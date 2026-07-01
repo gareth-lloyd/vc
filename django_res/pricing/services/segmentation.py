@@ -1,8 +1,8 @@
-"""Date-axis segmentation — group a card's flat RateRules into disjoint periods.
+"""Date-axis segmentation — group a card's flat RateBands into disjoint periods.
 
 BUG-014: legacy modelled rates as a two-level hierarchy (a date *period* owning
 its *occupancy bands*), so every band in a period shares that period's dates by
-construction. The rebuild flattened both levels into one ``RateRule`` carrying
+construction. The rebuild flattened both levels into one ``RateBand`` carrying
 its own ``date_from/date_to`` alongside ``min_party/max_party``, which permits
 *ragged* bands — different date spans per party band on one card, a shape legacy
 could never express.

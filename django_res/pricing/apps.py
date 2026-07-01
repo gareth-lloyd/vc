@@ -14,9 +14,9 @@ class PricingConfig(AppConfig):
             Discount,
             Extra,
             FxRate,
+            RateBand,
             RatePeriod,
             RatePlan,
-            RateRule,
         )
 
         # Rate-card editing is operator-facing: every price-bearing change
@@ -46,7 +46,7 @@ class PricingConfig(AppConfig):
             ],
         )
         track(
-            RateRule,
+            RateBand,
             fields=[
                 # GAP-056: dates live on RatePeriod (tracked above). A band is a
                 # partyxprice row; its date-range edits are audited on the period.

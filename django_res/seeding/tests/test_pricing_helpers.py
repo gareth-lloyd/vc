@@ -30,7 +30,7 @@ def _assert_gapfree_and_positive(
 
 def test_month_end_start_does_not_emit_zero_width_segment() -> None:
     # May 31 (Mid) rolls into June 1 (Peak): the naive split leaves a 1-day
-    # May 31..May 31 segment, which violates the strict RateRule date check.
+    # May 31..May 31 segment, which violates the strict RateBand date check.
     window_from, window_to = date(2026, 5, 31), date(2027, 7, 5)
     segments = _season_segments(window_from, window_to)
     _assert_gapfree_and_positive(segments, window_from, window_to)

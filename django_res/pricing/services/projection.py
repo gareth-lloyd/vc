@@ -11,12 +11,12 @@ This module owns three things:
   `keep_calendar_date`) that move a source-year date into the target year;
 * `RateProjectionService`, which finds the anchor plan and builds an in-memory
   `PricingContext` the engine can price exactly like a real one;
-* `PricingContext`, the (plan, periods, rules_by_period) triple the engine
+* `PricingContext`, the (plan, periods, bands_by_period) triple the engine
   consumes whether it came from the database (real) or a projection (synthesized).
 
 The synthesized plan / periods / rules are **unsaved** model instances whose `pk`
 is set to the source row's pk. That gives the quote breakdown free traceability
-(`QuoteLine.rule_id` / `winning_period_id` point at the real anchor rows) without
+(`QuoteLine.band_id` / `winning_period_id` point at the real anchor rows) without
 ever touching the database. See `04-pricing.md` "Projected pricing for future
 years".
 """
@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 
 # A date-map shifts a single source date by `year_delta` whole years into the
 # target year. It is applied independently to each rule endpoint, so it must be a
@@ -87,9 +87,9 @@ def map_range(
 
 @dataclass
 class PricingContext:
-    """The (plan, periods, rules_by_period) triple the engine prices.
+    """The (plan, periods, bands_by_period) triple the engine prices.
 
-    `periods` is the disjoint date axis (GAP-056); `rules_by_period` maps each
+    `periods` is the disjoint date axis (GAP-056); `bands_by_period` maps each
     period pk to its bands (party-price rules that inherit the period's dates).
     `is_projected` is True when the triple was synthesized from an anchor year by
     `RateProjectionService.project`; `projection` then carries the snapshotable
@@ -102,7 +102,7 @@ class PricingContext:
     # instead of re-fetching `plan.property` (whose settings cache is cold).
     property: Any
     periods: list[RatePeriod]
-    rules_by_period: dict[int, list[RateRule]]
+    bands_by_period: dict[int, list[RateBand]]
     is_projected: bool = False
     projection: dict[str, Any] | None = field(default=None)
 
@@ -114,7 +114,7 @@ def apply_uplift(value: Decimal | None, factor: Decimal) -> Decimal | None:
     return (Decimal(value) * factor).quantize(Decimal("0.01"))
 
 
-def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, list[RateRule]]]:
+def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, list[RateBand]]]:
     """Active periods of `anchor`, each paired with its approved bands (GAP-056).
 
     One query for the periods, one for all their bands (batched via
@@ -125,13 +125,13 @@ def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, l
     periods = list(
         RatePeriod.objects.filter(plan=anchor, is_active=True).order_by("date_from", "pk")
     )
-    rules_by_period: dict[int, list[RateRule]] = {}
-    approved_rules = RateRule.objects.filter(period__in=periods, is_approved=True).order_by(
+    bands_by_period: dict[int, list[RateBand]] = {}
+    approved_rules = RateBand.objects.filter(period__in=periods, is_approved=True).order_by(
         "period_id", "pk"
     )
     for rule in approved_rules:
-        rules_by_period.setdefault(rule.period_id, []).append(rule)
-    return [(period, rules_by_period.get(period.pk, [])) for period in periods]
+        bands_by_period.setdefault(rule.period_id, []).append(rule)
+    return [(period, bands_by_period.get(period.pk, [])) for period in periods]
 
 
 class RateProjectionService:
@@ -213,7 +213,7 @@ class RateProjectionService:
         )
 
         proj_periods: list[RatePeriod] = []
-        rules_by_period: dict[int, list[RateRule]] = {}
+        bands_by_period: dict[int, list[RateBand]] = {}
         for period, rules in periods_with_rules:
             new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
             proj_periods.append(
@@ -230,8 +230,8 @@ class RateProjectionService:
             )
             # Bands inherit the period's (shifted) dates; only party/price shift
             # per band.
-            rules_by_period[period.pk] = [
-                RateRule(
+            bands_by_period[period.pk] = [
+                RateBand(
                     id=rule.pk,
                     period_id=period.pk,
                     is_approved=True,
@@ -255,7 +255,7 @@ class RateProjectionService:
             plan=proj_plan,
             property=property,
             periods=proj_periods,
-            rules_by_period=rules_by_period,
+            bands_by_period=bands_by_period,
             is_projected=True,
             projection=projection,
         )

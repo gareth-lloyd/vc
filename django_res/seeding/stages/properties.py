@@ -1,4 +1,4 @@
-"""Seed the property graph: Property + RatePlan/RatePeriod/RateRule + Discount +
+"""Seed the property graph: Property + RatePlan/RatePeriod/RateBand + Discount +
 Extra, optionally rotated across multiple currencies and groups.
 
 Currency / group rotation is opt-in via the v2 dials:
@@ -21,9 +21,9 @@ from typing import Any, cast
 from pricing.factories import (
     DiscountFactory,
     ExtraFactory,
+    RateBandFactory,
     RatePeriodFactory,
     RatePlanFactory,
-    RateRuleFactory,
 )
 from properties.enums import PrefilledChangeOverDay
 from properties.factories import (
@@ -210,7 +210,7 @@ def _run(ctx: SeedContext) -> int:
                 )
         else:
             period = RatePeriodFactory(plan=plan, min_nights=min_nights, **period_kwargs)
-            RateRuleFactory(period=period)
+            RateBandFactory(period=period)
         # Legacy discounts are effectively dead — gate behind the knob. The
         # >= 1.0 short-circuit keeps happy off the rng (byte-for-byte output).
         if ctx.knobs.pct_discount >= 1.0 or ctx.rng.random() < ctx.knobs.pct_discount:

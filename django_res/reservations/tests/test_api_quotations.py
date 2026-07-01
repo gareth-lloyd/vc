@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Person, User
 from core.enums import StaffRole
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from properties.enums import PrefilledChangeOverDay
 from properties.models import Property, PropertyService
 from properties.models.settings import PropertySettings
@@ -551,7 +551,7 @@ def _priced_plan_in(
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,

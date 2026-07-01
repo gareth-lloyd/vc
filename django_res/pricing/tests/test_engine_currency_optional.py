@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from core.exceptions import NoRateAvailable
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.engine import PricingEngine
 from properties.models.settings import PropertySettings
 
@@ -46,7 +46,7 @@ def _priced_plan(
         date_from=date(year, 1, 1),
         date_to=date(year, 12, 31),
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,

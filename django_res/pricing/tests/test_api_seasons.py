@@ -1,4 +1,4 @@
-"""API tests for /seasons, /rate-periods, /rules CRUD + duplicate action (GAP-056)."""
+"""API tests for /seasons, /rate-periods, /bands CRUD + duplicate action (GAP-056)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from properties.models import Property, PropertyCapacity
 
 
@@ -86,7 +86,7 @@ def test_season_duplicate_copies_periods_and_rules(
     staff: User,
     plan: RatePlan,
     period: RatePeriod,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(f"/api/v1/seasons/{plan.pk}:duplicate")
@@ -96,10 +96,10 @@ def test_season_duplicate_copies_periods_and_rules(
     assert cloned.periods.count() == 1
     first_period = cloned.periods.first()
     assert first_period is not None
-    assert first_period.rules.count() == 1
+    assert first_period.bands.count() == 1
     # GAP-056: the clone's bands must hang off periods on the CLONE's plan, not
     # the source plan's.
-    cloned_rule = first_period.rules.get()
+    cloned_rule = first_period.bands.get()
     assert cloned_rule.period_id == first_period.pk
     assert first_period.plan_id == cloned.pk
 
@@ -127,21 +127,21 @@ def test_create_rate_rule_under_period(
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data={"min_party": 1, "max_party": 6, "nightly": "180.00"},
         format="json",
     )
     assert response.status_code == 201, response.content
-    created = RateRule.objects.get(period=period, nightly=Decimal("180.00"))
+    created = RateBand.objects.get(period=period, nightly=Decimal("180.00"))
     # The band hangs off the period and inherits its dates (GAP-056 — no own
     # date columns).
     assert created.period_id == period.pk
 
 
 @pytest.mark.django_db
-def test_get_rate_rule_detail(api_client: APIClient, staff: User, rule: RateRule) -> None:
+def test_get_rate_rule_detail(api_client: APIClient, staff: User, rule: RateBand) -> None:
     api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/rules/{rule.pk}")
+    response = api_client.get(f"/api/v1/bands/{rule.pk}")
     assert response.status_code == 200
     body = response.json()
     assert body["id"] == rule.pk
@@ -162,7 +162,7 @@ def test_season_detail_inlines_periods_with_rules(
     staff: User,
     plan: RatePlan,
     period: RatePeriod,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/seasons/{plan.pk}")
@@ -170,7 +170,7 @@ def test_season_detail_inlines_periods_with_rules(
     payload = response.json()
     assert "periods" in payload
     assert len(payload["periods"]) == 1
-    assert len(payload["periods"][0]["rules"]) == 1
+    assert len(payload["periods"][0]["bands"]) == 1
     assert payload["periods"][0]["coverage_gaps"] == []
 
 
@@ -193,7 +193,7 @@ def test_create_period_rejects_overlapping_dates(
 def test_patch_period_dates(api_client: APIClient, staff: User, period: RatePeriod) -> None:
     """Moving a period's dates moves the effective dates of its bands, which
     inherit them (GAP-056 — bands have no own date columns)."""
-    band = RateRule.objects.create(
+    band = RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,
@@ -223,7 +223,7 @@ def test_activate_period_with_party_gap_rejected(
     """An active period must price every party 1..max_occupancy (POA is a band)."""
     PropertyCapacity.objects.create(property=property_, guests=8)
     # One band covering only 1..4 leaves 5..8 uncovered.
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=4,
@@ -247,7 +247,7 @@ def test_period_coverage_gaps_reports_uncovered_ranges(
     period: RatePeriod,
 ) -> None:
     PropertyCapacity.objects.create(property=property_, guests=8)
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=4,
@@ -272,7 +272,7 @@ def test_carry_forward_creates_editable_plan_for_future_year(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
@@ -310,7 +310,7 @@ def test_carry_forward_requires_currency_and_year(
     api_client: APIClient,
     staff: User,
     property_: Property,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
@@ -327,7 +327,7 @@ def test_carry_forward_rejects_out_of_range_year(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """Out-of-range years return 400, not an uncaught ValueError (500)."""
     api_client.force_login(staff)

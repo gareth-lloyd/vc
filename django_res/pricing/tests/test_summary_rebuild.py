@@ -1,4 +1,4 @@
-"""The RateRule/RatePlan → VillaPricingSummary rebuild is async.
+"""The RateBand/RatePlan → VillaPricingSummary rebuild is async.
 
 Edits enqueue a Celery rebuild on commit instead of recomputing inline in
 the request transaction — a bulk rule edit or CSV re-import must not pay
@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule, VillaPricingSummary
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan, VillaPricingSummary
 from pricing.tasks import rebuild_summary
 from properties.models import Property
 
@@ -20,11 +20,11 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def rule(plan: RatePlan) -> RateRule:
+def rule(plan: RatePlan) -> RateBand:
     period = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 7, 1), date_to=date(2026, 7, 31)
     )
-    return RateRule.objects.create(
+    return RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,
@@ -34,7 +34,7 @@ def rule(plan: RatePlan) -> RateRule:
 
 
 @pytest.mark.usefixtures("run_on_commit_immediately")
-def test_raterule_save_rebuilds_summary_after_commit(rule: RateRule) -> None:
+def test_raterule_save_rebuilds_summary_after_commit(rule: RateBand) -> None:
     plan = rule.period.plan
     summary = VillaPricingSummary.objects.get(
         property_id=plan.property_id, currency_id=plan.currency_id
@@ -43,7 +43,7 @@ def test_raterule_save_rebuilds_summary_after_commit(rule: RateRule) -> None:
     assert summary.max_party == 8
 
 
-def test_raterule_save_defers_rebuild_to_commit(rule: RateRule) -> None:
+def test_raterule_save_defers_rebuild_to_commit(rule: RateBand) -> None:
     """Without the commit hooks running, no rebuild may have happened —
     pins that the recompute is on_commit + Celery, not inline."""
     plan = rule.period.plan
@@ -62,7 +62,7 @@ def test_rebuild_summary_excludes_deactivated_period_rules(
     withdrawn = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 7, 1), date_to=date(2026, 7, 31), is_active=False
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=withdrawn,
         min_party=1,
         max_party=8,
@@ -72,7 +72,7 @@ def test_rebuild_summary_excludes_deactivated_period_rules(
     live = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 8, 1), date_to=date(2026, 8, 31)
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=live,
         min_party=1,
         max_party=8,

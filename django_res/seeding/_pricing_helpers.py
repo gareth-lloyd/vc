@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pricing.factories import RatePeriodFactory, RateRuleFactory
+from pricing.factories import RateBandFactory, RatePeriodFactory
 from properties.enums import CommissionCalcType
 
 # currency code -> (median nightly, sigma, clamp lo, clamp hi). Nightly =
@@ -100,7 +100,7 @@ def _next_month(day: date) -> date:
 
 def _season_segments(window_from: date, window_to: date) -> list[tuple[date, date, int]]:
     """Maximal same-season month runs covering `[window_from, window_to]`
-    (inclusive on both ends, matching RateRule date semantics), gap-free.
+    (inclusive on both ends, matching RateBand date semantics), gap-free.
 
     A window starting on a month's last day that rolls straight into a
     different season (e.g. May 31 Mid → June 1 Peak) would otherwise leave a
@@ -176,7 +176,7 @@ def build_seasonal_periods(
             min_nights=min_nights,
         )
         for min_party, max_party, bracket_mult in brackets:
-            RateRuleFactory(
+            RateBandFactory(
                 period=period,
                 min_party=min_party,
                 max_party=max_party,

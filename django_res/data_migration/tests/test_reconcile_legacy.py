@@ -328,6 +328,6 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["CollectionMembership"] == 308
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
-    assert by_label["RateRule"] == 3727
+    assert by_label["RateBand"] == 3727
     assert by_label["Property"] == 1
     assert by_label["PropertyContactAssignment"] == 1

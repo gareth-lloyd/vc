@@ -10,7 +10,7 @@ from core.models.base import TimestampedModel
 class VillaPricingSummary(TimestampedModel):
     """Denormalised website min/max display cache.
 
-    Rebuilt by `pricing.tasks.rebuild_summary` on every RateRule/RatePlan
+    Rebuilt by `pricing.tasks.rebuild_summary` on every RateBand/RatePlan
     change. Never written by views/admin.
     """
 

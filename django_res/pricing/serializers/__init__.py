@@ -13,10 +13,10 @@ from pricing.serializers.quote import (
     PricingQuoteRequestSerializer,
 )
 from pricing.serializers.rate import (
+    RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
     RatePlanSerializer,
-    RateRuleSerializer,
 )
 
 __all__ = [
@@ -27,8 +27,8 @@ __all__ = [
     "FxRateSerializer",
     "PricingQuoteBulkRequestSerializer",
     "PricingQuoteRequestSerializer",
+    "RateBandSerializer",
     "RatePeriodSerializer",
     "RatePlanDetailSerializer",
     "RatePlanSerializer",
-    "RateRuleSerializer",
 ]

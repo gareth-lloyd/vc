@@ -1,7 +1,7 @@
-"""Serializers for `RatePlan` (Season), `RatePeriod`, and `RateRule`.
+"""Serializers for `RatePlan` (Season), `RatePeriod`, and `RateBand`.
 
-GAP-056: the honest grid is `RatePlan → RatePeriod (dates) → RateRule (party
-band)`. `RateRule` carries no `date_from/date_to` — those live on its parent
+GAP-056: the honest grid is `RatePlan → RatePeriod (dates) → RateBand (party
+band)`. `RateBand` carries no `date_from/date_to` — those live on its parent
 `RatePeriod`; the band is a partyxprice row that inherits the period's dates.
 `RateCard` is gone (dropped in Unit 9).
 """
@@ -13,7 +13,7 @@ from typing import Any
 from django.db import models
 from rest_framework import serializers
 
-from pricing.models import RatePeriod, RatePlan, RateRule
+from pricing.models import RateBand, RatePeriod, RatePlan
 from properties.models import Property
 
 
@@ -31,7 +31,7 @@ def _max_occupancy(plan: RatePlan) -> int | None:
     return int(guests)
 
 
-def _coverage_gaps(bands: list[RateRule], cap: int | None) -> list[list[int]]:
+def _coverage_gaps(bands: list[RateBand], cap: int | None) -> list[list[int]]:
     """Uncovered `[low, high]` party sub-ranges of `1..cap` across `bands`.
 
     Bands are inclusive `min_party..max_party`. Returns the party counts no band
@@ -56,13 +56,13 @@ def _coverage_gaps(bands: list[RateRule], cap: int | None) -> list[list[int]]:
     return gaps
 
 
-class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
+class RateBandSerializer(serializers.ModelSerializer[RateBand]):
     """A partyxprice band. Dates are inherited from its `period` (GAP-056)."""
 
     period: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
-        model = RateRule
+        model = RateBand
         fields = [
             "id",
             "period",
@@ -92,7 +92,7 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
                 return attrs[field]
             if self.instance is not None:
                 return getattr(self.instance, field)
-            model_field = RateRule._meta.get_field(field)
+            model_field = RateBand._meta.get_field(field)
             assert isinstance(model_field, models.Field)  # only concrete columns queried
             return model_field.get_default() if model_field.has_default() else None
 
@@ -115,7 +115,7 @@ class RateRuleSerializer(serializers.ModelSerializer[RateRule]):
 
         period = self._resolve_period()
         if period is not None and None not in (min_party, max_party):
-            overlapping = RateRule.objects.filter(
+            overlapping = RateBand.objects.filter(
                 period=period,
                 min_party__lte=max_party,
                 max_party__gte=min_party,
@@ -153,7 +153,7 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
         queryset=RatePlan.objects.all(),
         required=False,
     )
-    rules = RateRuleSerializer(many=True, read_only=True)
+    bands = RateBandSerializer(many=True, read_only=True)
     coverage_gaps = serializers.SerializerMethodField()
 
     class Meta:
@@ -167,15 +167,15 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
             "min_nights",
             "max_nights",
             "is_active",
-            "rules",
+            "bands",
             "coverage_gaps",
         ]
-        read_only_fields = ["id", "rules", "coverage_gaps"]
+        read_only_fields = ["id", "bands", "coverage_gaps"]
 
     def get_coverage_gaps(self, obj: RatePeriod) -> list[list[int]]:
         """Uncovered `1..max_occupancy` party ranges — the editor pre-warns on these."""
         cap = _max_occupancy(obj.plan)
-        return _coverage_gaps(list(obj.rules.all()), cap)
+        return _coverage_gaps(list(obj.bands.all()), cap)
 
     def _resolve_plan(self, attrs: dict[str, Any]) -> RatePlan | None:
         if attrs.get("plan") is not None:
@@ -237,7 +237,7 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
                 )
 
         if effective("is_active") and self.instance is not None and plan is not None:
-            bands = list(self.instance.rules.all())
+            bands = list(self.instance.bands.all())
             cap = _max_occupancy(plan)
             gaps = _coverage_gaps(bands, cap)
             if bands and gaps:

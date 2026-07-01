@@ -45,7 +45,7 @@ EXPECTED_TRACKED_MODELS = {
     "pricing.FxRate",
     "pricing.RatePeriod",
     "pricing.RatePlan",
-    "pricing.RateRule",
+    "pricing.RateBand",
     "properties.GroupFinance",
     "properties.PropertyCalendarFeed",
     "properties.PropertyFinance",

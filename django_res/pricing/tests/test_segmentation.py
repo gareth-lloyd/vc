@@ -1,4 +1,4 @@
-"""Unit 1 — pure date-axis segmentation of a card's flat RateRules.
+"""Unit 1 — pure date-axis segmentation of a card's flat RateBands.
 
 These tests use lightweight fake rules (no DB) so the utility stays a pure
 function: given the inclusive `[date_from, date_to]` spans of a card's rules,
@@ -16,7 +16,7 @@ from pricing.services.segmentation import segment_card_rules
 
 @dataclass(frozen=True)
 class _Rule:
-    """Minimal stand-in for a RateRule row: an inclusive span + party bracket."""
+    """Minimal stand-in for a RateBand row: an inclusive span + party bracket."""
 
     label: str
     date_from: date

@@ -1,6 +1,6 @@
-"""Serializer-level validation for RatePeriod dates and RateRule bands (GAP-056).
+"""Serializer-level validation for RatePeriod dates and RateBand bands (GAP-056).
 
-Dates now live on the ``RatePeriod``; the band (``RateRule``) carries only the
+Dates now live on the ``RatePeriod``; the band (``RateBand``) carries only the
 party range + price. The serializers pre-validate the DB constraints so the
 client gets a 400 with ``field_errors`` instead of a 500 ``IntegrityError``:
 
@@ -24,7 +24,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import RatePeriod, RatePlan, RateRule
+from pricing.models import RateBand, RatePeriod, RatePlan
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ def test_create_band_rejects_min_party_above_max_party(
     api_client: APIClient, period: RatePeriod
 ) -> None:
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(min_party=9, max_party=2),
         format="json",
     )
@@ -114,7 +114,7 @@ def test_create_band_rejects_min_party_above_max_party(
 @pytest.mark.django_db
 def test_create_band_requires_price_or_poa(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(nightly=None),
         format="json",
     )
@@ -125,7 +125,7 @@ def test_create_band_requires_price_or_poa(api_client: APIClient, period: RatePe
 @pytest.mark.django_db
 def test_create_band_rejects_poa_with_price(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(is_poa=True),
         format="json",
     )
@@ -136,7 +136,7 @@ def test_create_band_rejects_poa_with_price(api_client: APIClient, period: RateP
 @pytest.mark.django_db
 def test_create_poa_only_band_succeeds(api_client: APIClient, period: RatePeriod) -> None:
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(nightly=None, is_poa=True),
         format="json",
     )
@@ -146,11 +146,11 @@ def test_create_poa_only_band_succeeds(api_client: APIClient, period: RatePeriod
 
 @pytest.mark.django_db
 def test_patch_poa_onto_priced_band_rejected_without_clearing_price(
-    api_client: APIClient, rule: RateRule
+    api_client: APIClient, rule: RateBand
 ) -> None:
     """Partial update must merge stored attrs: stored nightly + incoming POA clash."""
     response = api_client.patch(
-        f"/api/v1/rules/{rule.pk}",
+        f"/api/v1/bands/{rule.pk}",
         data={"is_poa": True},
         format="json",
     )
@@ -160,10 +160,10 @@ def test_patch_poa_onto_priced_band_rejected_without_clearing_price(
 
 @pytest.mark.django_db
 def test_patch_poa_onto_priced_band_succeeds_when_prices_cleared(
-    api_client: APIClient, rule: RateRule
+    api_client: APIClient, rule: RateBand
 ) -> None:
     response = api_client.patch(
-        f"/api/v1/rules/{rule.pk}",
+        f"/api/v1/bands/{rule.pk}",
         data={"is_poa": True, "nightly": None, "weekly": None},
         format="json",
     )
@@ -174,9 +174,9 @@ def test_patch_poa_onto_priced_band_succeeds_when_prices_cleared(
 
 
 @pytest.mark.django_db
-def test_patch_priced_band_price_change_succeeds(api_client: APIClient, rule: RateRule) -> None:
+def test_patch_priced_band_price_change_succeeds(api_client: APIClient, rule: RateBand) -> None:
     response = api_client.patch(
-        f"/api/v1/rules/{rule.pk}",
+        f"/api/v1/bands/{rule.pk}",
         data={"nightly": "275.00"},
         format="json",
     )
@@ -193,7 +193,7 @@ def test_create_band_omitting_defaulted_min_party_still_validates(
     payload = _valid_band(max_party=0)
     del payload["min_party"]
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=payload,
         format="json",
     )
@@ -208,13 +208,13 @@ def test_create_band_overlapping_party_returns_400(
     """Two bands sharing a party count in one period overlap → 400, not 500."""
     # Seed an existing band 1..4 through the API so the transitional card is set.
     seed = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(min_party=1, max_party=4),
         format="json",
     )
     assert seed.status_code == 201, seed.content
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(min_party=3, max_party=8),  # overlaps 3..4
         format="json",
     )
@@ -226,13 +226,13 @@ def test_create_band_overlapping_party_returns_400(
 def test_create_adjacent_party_band_succeeds(api_client: APIClient, period: RatePeriod) -> None:
     """Disjoint party bands (1..4 then 5..8) on one period both persist."""
     first = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(min_party=1, max_party=4),
         format="json",
     )
     assert first.status_code == 201, first.content
     second = api_client.post(
-        f"/api/v1/periods/{period.pk}/rules",
+        f"/api/v1/periods/{period.pk}/bands",
         data=_valid_band(min_party=5, max_party=8),
         format="json",
     )
@@ -240,9 +240,9 @@ def test_create_adjacent_party_band_succeeds(api_client: APIClient, period: Rate
 
 
 @pytest.mark.django_db
-def test_patch_band_does_not_overlap_against_itself(api_client: APIClient, rule: RateRule) -> None:
+def test_patch_band_does_not_overlap_against_itself(api_client: APIClient, rule: RateBand) -> None:
     response = api_client.patch(
-        f"/api/v1/rules/{rule.pk}",
+        f"/api/v1/bands/{rule.pk}",
         data={"nightly": "300.00"},
         format="json",
     )

@@ -14,7 +14,7 @@ from typing import Any
 from celery import shared_task
 from django.utils import timezone
 
-from pricing.models import RateRule, VillaPricingSummary
+from pricing.models import RateBand, VillaPricingSummary
 
 
 @shared_task
@@ -33,7 +33,7 @@ def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
     # GAP-056: the display min/max mirrors what the engine prices — approved
     # bands on an active period of an active plan. Period activeness is the sole
     # gate now (RateCard is gone).
-    rules = RateRule.objects.filter(
+    rules = RateBand.objects.filter(
         period__plan__property_id=property_id,
         period__plan__currency_id=currency_id,
         period__plan__is_active=True,

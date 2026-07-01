@@ -1,6 +1,6 @@
 """factory-boy factories for the `pricing` app.
 
-The rate chain (RatePlan -> RatePeriod -> RateRule) defaults to a wide window
+The rate chain (RatePlan -> RatePeriod -> RateBand) defaults to a wide window
 straddling today so `PricingEngine.quote()` finds a rule for any near-future
 stay the seeder generates instead of raising `NoRateAvailable`.
 """
@@ -71,9 +71,9 @@ class RatePeriodFactory(DjangoModelFactory):
     is_active = True
 
 
-class RateRuleFactory(DjangoModelFactory):
+class RateBandFactory(DjangoModelFactory):
     class Meta:
-        model = models.RateRule
+        model = models.RateBand
 
     # A band hangs off a RatePeriod, which owns the date window. The default
     # period spans the wide window straddling today (see RatePeriodFactory), so

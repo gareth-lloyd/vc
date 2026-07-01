@@ -13,15 +13,15 @@ from typing import cast
 
 import pytest
 
-from pricing.factories import RateRuleFactory
-from pricing.models import RateRule
+from pricing.factories import RateBandFactory
+from pricing.models import RateBand
 from pricing.services import PricingEngine
 
 pytestmark = pytest.mark.django_db
 
 
 def test_quote_succeeds_when_property_has_finance() -> None:
-    rule = cast(RateRule, RateRuleFactory())  # PropertyFactory attaches a PropertyFinance row
+    rule = cast(RateBand, RateBandFactory())  # PropertyFactory attaches a PropertyFinance row
     plan = rule.period.plan
     start = date.today() + timedelta(days=30)
 

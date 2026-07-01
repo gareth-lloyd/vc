@@ -5,7 +5,7 @@ from __future__ import annotations
 from pricing.models.currency import Currency, FxRate
 from pricing.models.discount import Discount
 from pricing.models.extra import Extra
-from pricing.models.rate import RatePeriod, RatePlan, RateRule
+from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from pricing.models.summary import VillaPricingSummary
 
 __all__ = [
@@ -13,8 +13,8 @@ __all__ = [
     "Discount",
     "Extra",
     "FxRate",
+    "RateBand",
     "RatePeriod",
     "RatePlan",
-    "RateRule",
     "VillaPricingSummary",
 ]

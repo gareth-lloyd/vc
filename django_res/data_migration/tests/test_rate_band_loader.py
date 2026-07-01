@@ -6,9 +6,9 @@ from decimal import Decimal
 import pytest
 
 from data_migration.base import LoadReport
-from data_migration.loaders.pricing import RateRuleLoader, _row_to_band
+from data_migration.loaders.pricing import RateBandLoader, _row_to_band
 from pricing.models.currency import Currency
-from pricing.models.rate import RatePeriod, RatePlan, RateRule
+from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from properties.models.capacity import PropertyCapacity
 from properties.models.geo import Country, Region
 from properties.models.property import Property, PropertyCategory, PropertyGroup
@@ -78,10 +78,10 @@ def test_row_to_band_uses_capacity_when_party_size_missing(loaded_plan: RatePlan
 @pytest.mark.django_db
 def test_load_rows_skips_when_plan_missing(loaded_plan: RatePlan) -> None:
     """A row whose season has no loaded RatePlan is skipped, not loaded."""
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     report = LoadReport(loader="rate_rule")
     loader._load_rows([_row(SeasonId=999)], report)
-    assert RateRule.objects.count() == 0
+    assert RateBand.objects.count() == 0
     assert report.skipped == 1
 
 
@@ -213,7 +213,7 @@ def test_row_to_band_party_intervals_override_occ_band(loaded_plan: RatePlan) ->
 
 def test_apply_since_is_a_noop() -> None:
     """Overlap resolution needs the whole season's row set — no `--since` delta."""
-    loader = RateRuleLoader(since="2025-01-01T00:00:00")
+    loader = RateBandLoader(since="2025-01-01T00:00:00")
     assert loader._apply_since(loader.legacy_query) == loader.legacy_query
 
 
@@ -225,7 +225,7 @@ def test_load_rows_double_run_converges(loaded_plan: RatePlan) -> None:
             _row(ID=2, FromDate=date(2025, 6, 8), ToDate=date(2025, 6, 15)),
         ]
 
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     first = LoadReport(loader="rate_rule")
     loader._load_rows(rows(), first)
     assert (first.created, first.updated) == (2, 0)
@@ -237,15 +237,15 @@ def test_load_rows_double_run_converges(loaded_plan: RatePlan) -> None:
     loader._load_rows(rows(), second)
     assert (second.created, second.updated) == (2, 0)
     assert second.errors == []
-    assert RateRule.objects.count() == 2
+    assert RateBand.objects.count() == 2
     # Boundary trim applied: inclusive ranges no longer share Jun 8, so the
     # earlier rule's period ends Jun 7.
-    assert RateRule.objects.get(legacy_id="1").period.date_to == date(2025, 6, 7)
+    assert RateBand.objects.get(legacy_id="1").period.date_to == date(2025, 6, 7)
 
 
 @pytest.mark.django_db
 def test_load_rows_purge_deletes_newly_dropped_row(loaded_plan: RatePlan) -> None:
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(
         [
             _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8)),
@@ -253,7 +253,7 @@ def test_load_rows_purge_deletes_newly_dropped_row(loaded_plan: RatePlan) -> Non
         ],
         LoadReport(loader="rate_rule"),
     )
-    assert RateRule.objects.count() == 2
+    assert RateBand.objects.count() == 2
 
     # Legacy row 1 grew to fully cover row 2 → resolver drops 2; the purge
     # frees row 2's old span so row 1's expansion can't trip the EXCLUDE
@@ -267,8 +267,8 @@ def test_load_rows_purge_deletes_newly_dropped_row(loaded_plan: RatePlan) -> Non
         second,
     )
     assert second.errors == []
-    assert list(RateRule.objects.values_list("legacy_id", flat=True)) == ["1"]
-    rule = RateRule.objects.get(legacy_id="1")
+    assert list(RateBand.objects.values_list("legacy_id", flat=True)) == ["1"]
+    rule = RateBand.objects.get(legacy_id="1")
     assert (rule.period.date_from, rule.period.date_to) == (date(2025, 6, 1), date(2025, 6, 20))
 
 
@@ -277,7 +277,7 @@ def test_load_rows_span_swap_converges(loaded_plan: RatePlan) -> None:
     """Two rows exchanging spans between dumps can never converge under
     in-place upserts (each update collides with the other's old span);
     purge-then-insert makes it a non-event."""
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(
         [
             _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8)),
@@ -295,24 +295,24 @@ def test_load_rows_span_swap_converges(loaded_plan: RatePlan) -> None:
         second,
     )
     assert second.errors == []
-    rule1 = RateRule.objects.get(legacy_id="1")
-    rule2 = RateRule.objects.get(legacy_id="2")
+    rule1 = RateBand.objects.get(legacy_id="1")
+    rule2 = RateBand.objects.get(legacy_id="2")
     assert (rule1.period.date_from, rule1.period.date_to) == (date(2025, 6, 10), date(2025, 6, 15))
     assert (rule2.period.date_from, rule2.period.date_to) == (date(2025, 6, 1), date(2025, 6, 8))
 
 
 @pytest.mark.django_db
 def test_load_rows_purge_removes_vanished_season_rules(loaded_plan: RatePlan) -> None:
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(
         [_row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8))],
         LoadReport(loader="rate_rule"),
     )
-    assert RateRule.objects.count() == 1
+    assert RateBand.objects.count() == 1
 
     # Season 42 disappears from the dump entirely — full reload purges its rules.
     loader._load_rows([], LoadReport(loader="rate_rule"))
-    assert RateRule.objects.count() == 0
+    assert RateBand.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -346,12 +346,12 @@ def test_load_rows_expands_occupancy_bands_with_gap_fallback(loaded_plan: RatePl
             ID=2, FromDate=date(2025, 6, 20), ToDate=date(2025, 6, 27), WeeklyPrice=Decimal("900")
         ),
     ]
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     report = LoadReport(loader="rate_rule")
     loader._load_rows(rows, report)
 
     assert report.errors == []
-    rules = {r.legacy_id: r for r in RateRule.objects.all()}
+    rules = {r.legacy_id: r for r in RateBand.objects.all()}
     assert set(rules) == {"occ-101", "occ-102", "occ-fb-1-0", "occ-fb-1-1", "2"}
     assert (rules["occ-101"].min_party, rules["occ-101"].max_party) == (2, 4)
     assert rules["occ-101"].weekly == Decimal("500")
@@ -370,7 +370,7 @@ def test_load_rows_expands_occupancy_bands_with_gap_fallback(loaded_plan: RatePl
     second = LoadReport(loader="rate_rule")
     loader._load_rows(rows, second)
     assert second.errors == []
-    assert RateRule.objects.count() == 5
+    assert RateBand.objects.count() == 5
 
 
 @pytest.mark.django_db
@@ -400,12 +400,12 @@ def test_load_rows_null_bound_band_does_not_abort_load(loaded_plan: RatePlan) ->
             OccupencyPrice=Decimal("700"),
         ),
     ]
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     report = LoadReport(loader="rate_rule")
     loader._load_rows(rows, report)
 
     assert report.errors == []
-    rules = {r.legacy_id: r for r in RateRule.objects.all()}
+    rules = {r.legacy_id: r for r in RateBand.objects.all()}
     assert set(rules) == {"occ-101", "occ-fb-1-0", "occ-fb-1-1"}
     # Dropped band (5,6)'s range is folded into the above gap fallback (5-8).
     assert (rules["occ-fb-1-1"].min_party, rules["occ-fb-1-1"].max_party) == (5, 8)
@@ -424,7 +424,7 @@ def test_load_rows_creates_disjoint_periods_for_overlapping_party_rows(
         _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 20), PartySize=2),
         _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10), PartySize=5),
     ]
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(rows, LoadReport(loader="rate_rule"))
 
     periods = list(RatePeriod.objects.filter(plan=loaded_plan).order_by("date_from", "date_to"))
@@ -434,7 +434,7 @@ def test_load_rows_creates_disjoint_periods_for_overlapping_party_rows(
         for j in range(i + 1, len(spans)):
             assert not (spans[i][0] <= spans[j][1] and spans[j][0] <= spans[i][1]), spans
     # Every loaded rule hangs off a period (period FK is non-null by model).
-    rules = RateRule.objects.filter(period__plan=loaded_plan)
+    rules = RateBand.objects.filter(period__plan=loaded_plan)
     assert rules.exists()
     assert all(r.period_id is not None for r in rules)
     # The wider rule was fragmented across the segment boundary at Jun 10/11.
@@ -453,7 +453,7 @@ def test_load_rows_periods_stable_and_disjoint_across_reruns(loaded_plan: RatePl
             _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10), PartySize=5),
         ]
 
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(rows(), LoadReport(loader="rate_rule"))
     first_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to"))
     first_period_count = RatePeriod.objects.count()
@@ -463,7 +463,7 @@ def test_load_rows_periods_stable_and_disjoint_across_reruns(loaded_plan: RatePl
 
     assert second_spans == first_spans  # stable — no drift
     assert RatePeriod.objects.count() == first_period_count  # no stale accumulation
-    assert all(r.period_id is not None for r in RateRule.objects.all())
+    assert all(r.period_id is not None for r in RateBand.objects.all())
 
 
 @pytest.mark.django_db
@@ -475,16 +475,16 @@ def test_load_rows_purge_spares_ui_rules(loaded_plan: RatePlan) -> None:
         date_from=date(2026, 1, 1),
         date_to=date(2026, 1, 31),
     )
-    ui_rule = RateRule.objects.create(
+    ui_rule = RateBand.objects.create(
         period=ui_period,
         min_party=1,
         max_party=8,
         weekly=Decimal("900"),
     )
-    loader = RateRuleLoader()
+    loader = RateBandLoader()
     loader._load_rows(
         [_row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8))],
         LoadReport(loader="rate_rule"),
     )
-    assert RateRule.objects.filter(pk=ui_rule.pk).exists()
+    assert RateBand.objects.filter(pk=ui_rule.pk).exists()
     assert RatePeriod.objects.filter(pk=ui_period.pk).exists()

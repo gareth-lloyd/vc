@@ -14,7 +14,7 @@ from accounts.models import Person, PersonEmail, PersonPhone, User
 from accounts.services.organisations import organisation_for_company_name
 from core.enums import StaffRole
 from core.tests import assert_max_queries
-from pricing.models import Currency, RateRule
+from pricing.models import Currency, RateBand
 from properties.enums import CommissionCalcType, PriceBasis
 from properties.models import Property, PropertyFinance, PropertySettings
 from reservations.enums import BookingStatus, PaymentMethod
@@ -87,7 +87,7 @@ def booking(
     gbp: Currency,
     terms: TermsVersion,
     property_: Property,
-    rate_rule: RateRule,
+    rate_rule: RateBand,
 ) -> Booking:
     person = customer
     quotation = Quotation.objects.create(

@@ -34,7 +34,7 @@ from data_migration.loaders.preferences import (
     GuestPreferenceLoader,
     GuestPreferenceTypeLoader,
 )
-from data_migration.loaders.pricing import RatePlanLoader, RateRuleLoader
+from data_migration.loaders.pricing import RateBandLoader, RatePlanLoader
 from data_migration.loaders.properties import (
     CollectionLoader,
     CollectionMembershipLoader,
@@ -74,7 +74,7 @@ LOADERS: dict[str, type[Loader]] = {
     NearbyPlaceLoader.name: NearbyPlaceLoader,
     PropertyFeatureMappingLoader.name: PropertyFeatureMappingLoader,
     RatePlanLoader.name: RatePlanLoader,
-    RateRuleLoader.name: RateRuleLoader,
+    RateBandLoader.name: RateBandLoader,
     PropertyContactAssignmentLoader.name: PropertyContactAssignmentLoader,
     # ClientLoader (VillaClientDetails → Person, keyed `client-{id}`) MUST stay
     # ahead of preferences / finance / booking: those loaders resolve the

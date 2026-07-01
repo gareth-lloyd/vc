@@ -1,4 +1,4 @@
-"""Pricing: VillaSeason -> RatePlan; VillaSeasonRate -> RatePeriod + RateRule.
+"""Pricing: VillaSeason -> RatePlan; VillaSeasonRate -> RatePeriod + RateBand.
 
 Legacy structure:
   VillaSeason (id, name, villa_id, notes, inclusion)
@@ -10,7 +10,7 @@ Legacy structure:
 New structure (GAP-056):
   RatePlan (property, currency, effective_from, effective_to)
     └── RatePeriod (plan, date_from, date_to)  — disjoint date axis
-          └── RateRule (period, min_party, max_party, nightly, weekly, is_poa)
+          └── RateBand (period, min_party, max_party, nightly, weekly, is_poa)
 
 Strategy:
 - One RatePlan per VillaSeason. Currency comes from the season's own
@@ -21,17 +21,17 @@ Strategy:
   very table this loader populates (load-order dependent, and a wrong stamp
   would re-resolve from itself forever on idempotent re-runs).
 - effective_from/to from min/max of VillaSeasonDates rows.
-- The RatePlan owns no rate rows directly: `RateRuleLoader` builds the plan's
+- The RatePlan owns no rate rows directly: `RateBandLoader` builds the plan's
   disjoint `RatePeriod` date axis (via the shared `segment_card_rules`
   segmentation) and hangs each party band off its covering period.
-- One VillaSeasonRate -> at most one RateRule: `resolve_rate_rule_overlaps`
+- One VillaSeasonRate -> at most one RateBand: `resolve_rate_band_overlaps`
   trims/drops overlapping legacy rows before the upsert (legacy had no
   precedence concept — see "Rate rule overlap resolution" in
   data_migration/CUTOVER.md).
 - Occupancy bands (BUG-013): a VillaSeasonRate flagged `IsOccupationPrice`
   carries child VillaOccupencyPrice rows (party-range → weekly price). The
-  RateRule query LEFT JOINs them and `_prepare_occupancy_rows` expands a banded
-  parent into one RateRule per band plus base-weekly fallbacks over the party
+  RateBand query LEFT JOINs them and `_prepare_occupancy_rows` expands a banded
+  parent into one RateBand per band plus base-weekly fallbacks over the party
   gaps the bands don't cover, so a guest count matching no band still gets the
   legacy base-weekly quote.
 """
@@ -49,7 +49,7 @@ from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
-from pricing.models.rate import RatePeriod, RatePlan, RateRule
+from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
 from pricing.services.segmentation import segment_card_rules
@@ -96,7 +96,7 @@ def _has_price(row: dict[str, Any]) -> bool:
 
 @dataclass(frozen=True)
 class OverlapResolution:
-    """Outcome of `resolve_rate_rule_overlaps`: surviving rows + counters."""
+    """Outcome of `resolve_rate_band_overlaps`: surviving rows + counters."""
 
     rows: list[dict[str, Any]]
     trimmed: int
@@ -173,7 +173,7 @@ def _subtract_party(intervals: list[_Interval], winner: list[_Interval]) -> list
     return sorted(remaining, key=lambda iv: iv[0], reverse=True)
 
 
-def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
+def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
     """Resolve legacy VillaSeasonRate overlaps before loading.
 
     Legacy had no precedence concept (its per-night lookup was an unordered
@@ -298,7 +298,7 @@ class RatePlanLoader(BaseLoader):
     """VillaSeason -> RatePlan.
 
     Picks currency + dates from related VillaSeasonRate / VillaSeasonDates.
-    The plan owns no rate rows here — `RateRuleLoader` builds its `RatePeriod`
+    The plan owns no rate rows here — `RateBandLoader` builds its `RatePeriod`
     date axis and party bands. `_process_row` additionally materialises the
     season's free-text Inclusion as a `PropertyService` (GAP-037).
     """
@@ -489,7 +489,7 @@ class _Band:
 
     A lightweight value object `segment_card_rules` accepts (it reads only
     `date_from`/`date_to`/`min_party`/`max_party`); the price/identity fields
-    ride along so `_load_rows` can materialise the `RateRule` once its covering
+    ride along so `_load_rows` can materialise the `RateBand` once its covering
     `RatePeriod` is known. Not frozen — segmentation keys on `id()`, never on
     value equality.
     """
@@ -521,7 +521,7 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         # Junk filter: FromDate == ToDate (zero-span) or an inverted legacy
         # span. Legacy `VillaSeasonRate.ToDate` is *inclusive* — a night on
         # ToDate is priced and the dates carry through unshifted; the only
-        # trimming is `resolve_rate_rule_overlaps` breaking shared-boundary
+        # trimming is `resolve_rate_band_overlaps` breaking shared-boundary
         # overlaps between contiguous bands.
         return None
     cap = max(plan.property.capacity.guests or 1, 1)
@@ -573,8 +573,8 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
     )
 
 
-class RateRuleLoader(BaseLoader):
-    """VillaSeasonRate -> RatePeriod + RateRule (period-native, GAP-056).
+class RateBandLoader(BaseLoader):
+    """VillaSeasonRate -> RatePeriod + RateBand (period-native, GAP-056).
 
     Notes:
     - Skip `IsExTra=1` rows (extras, not base rates).
@@ -582,7 +582,7 @@ class RateRuleLoader(BaseLoader):
       JOINs the child table and `_prepare_occupancy_rows` expands a banded
       parent into one rule per band plus base-weekly gap fallbacks, keyed on a
       namespaced `legacy_id` (`occ-*`). See `_prepare_occupancy_rows`.
-    - `resolve_rate_rule_overlaps` runs over the expanded row set first, so the
+    - `resolve_rate_band_overlaps` runs over the expanded row set first, so the
       surviving rows are jointly (date x party)-disjoint per season; `_load_rows`
       then builds each plan's disjoint `RatePeriod` date axis with
       `segment_card_rules` and hangs the bands off their covering periods. Each
@@ -591,7 +591,7 @@ class RateRuleLoader(BaseLoader):
     """
 
     name = "rate_rule"
-    target_model = RateRule
+    target_model = RateBand
     legacy_pk_column = "ID"
     # LEFT JOIN pulls occupancy bands alongside their parent rate (BUG-013).
     # Both tables have an `Id`/`ID` PK, so every parent column is `r.`-qualified
@@ -632,7 +632,7 @@ class RateRuleLoader(BaseLoader):
         `raterule_bands_no_overlap` EXCLUDE constraints (in-place upserts could:
         a row expanding into — or swapping spans with — a sibling's old range
         would trip mid-run). `segment_card_rules` returns date-disjoint segments
-        per plan, and `resolve_rate_rule_overlaps` already made the rows
+        per plan, and `resolve_rate_band_overlaps` already made the rows
         (date x party)-disjoint per season, so the bands within any one segment
         are party-disjoint — both EXCLUDEs hold by construction. A band whose
         span a sibling's date boundary bisects appears in >1 segment (a ragged
@@ -646,12 +646,12 @@ class RateRuleLoader(BaseLoader):
         would collide with the freshly re-segmented one for the same span).
         """
         rows = _prepare_occupancy_rows(rows)
-        resolution = resolve_rate_rule_overlaps(rows)
+        resolution = resolve_rate_band_overlaps(rows)
         created = 0
         periods_created = 0
         rule_fragments = 0
         with transaction.atomic():
-            purged, _ = RateRule.objects.filter(legacy_id__isnull=False).delete()
+            purged, _ = RateBand.objects.filter(legacy_id__isnull=False).delete()
             RatePeriod.objects.filter(legacy_id__isnull=False).delete()
 
             # Group the resolved rows into bands per plan (skip rows whose season
@@ -704,7 +704,7 @@ class RateRuleLoader(BaseLoader):
                         else:
                             legacy_id = f"{band.legacy_id}#seg{seen}"
                             rule_fragments += 1
-                        RateRule.objects.create(
+                        RateBand.objects.create(
                             period=period,
                             min_party=band.min_party,
                             max_party=band.max_party,

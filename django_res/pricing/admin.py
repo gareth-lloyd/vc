@@ -12,9 +12,9 @@ from pricing.models import (
     Discount,
     Extra,
     FxRate,
+    RateBand,
     RatePeriod,
     RatePlan,
-    RateRule,
     VillaPricingSummary,
 )
 from pricing.services.carryover import RateCarryoverService
@@ -89,8 +89,8 @@ class RatePeriodAdmin(admin.ModelAdmin):
     date_hierarchy = "date_from"
 
 
-@admin.register(RateRule)
-class RateRuleAdmin(admin.ModelAdmin):
+@admin.register(RateBand)
+class RateBandAdmin(admin.ModelAdmin):
     list_display = (
         "period",
         "min_party",

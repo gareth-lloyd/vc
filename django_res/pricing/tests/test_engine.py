@@ -10,12 +10,12 @@ import pytest
 from core.exceptions import MinNightsNotMet, NoRateAvailable, PartyOutOfRange
 from core.tests import assert_max_queries
 from pricing.enums import ExtraCalc, ExtraKind
-from pricing.models import Currency, Extra, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, Extra, RateBand, RatePeriod, RatePlan
 from pricing.services import OccupancyBand, PricingContext, PricingEngine
 from properties.models import Property, PropertyService
 
 
-def _period_of(rule: RateRule) -> RatePeriod:
+def _period_of(rule: RateBand) -> RatePeriod:
     """The band's shim-derived period (never None once the rule is saved)."""
     period = rule.period
     assert period is not None
@@ -30,22 +30,22 @@ def _rule(
     min_party: int = 1,
     max_party: int = 8,
     **kwargs: object,
-) -> RateRule:
+) -> RateBand:
     """Create a band under `plan`, reusing/creating the period for its dates.
 
     Sibling bands (same dates, different party) share one period; different
     dates get their own (disjoint) period — the GAP-056 date axis. Mirrors the
-    old `RateRule.objects.create(card=…, date_from=…, date_to=…)` call shape.
+    old `RateBand.objects.create(card=…, date_from=…, date_to=…)` call shape.
     """
     period, _ = RatePeriod.objects.get_or_create(plan=plan, date_from=date_from, date_to=date_to)
-    return RateRule.objects.create(
+    return RateBand.objects.create(
         period=period, min_party=min_party, max_party=max_party, **kwargs
     )
 
 
 @pytest.mark.django_db
 def test_quote_happy_path_single_card_no_extras(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     quote = PricingEngine.quote(
         property=property_,
@@ -65,12 +65,12 @@ def test_quote_happy_path_single_card_no_extras(
     assert quote.commission == Decimal("0.00")
     assert quote.tax == Decimal("0.00")
     assert quote.total == Decimal("1400.00")
-    assert quote.breakdown["lines"][0]["rule_id"] == rule.pk
+    assert quote.breakdown["lines"][0]["band_id"] == rule.pk
 
 
 @pytest.mark.django_db
 def test_pricing_engine_writes_net_to_owner_to_snapshot(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """`PricingEngine.quote` materialises `net_to_owner` on the breakdown.
 
@@ -95,7 +95,7 @@ def test_pricing_engine_writes_net_to_owner_to_snapshot(
 
 
 @pytest.mark.django_db
-def test_quote_applies_mandatory_extra(property_: Property, gbp: Currency, rule: RateRule) -> None:
+def test_quote_applies_mandatory_extra(property_: Property, gbp: Currency, rule: RateBand) -> None:
     Extra.objects.create(
         property=property_,
         name="Cleaning",
@@ -123,7 +123,7 @@ def test_quote_applies_mandatory_extra(property_: Property, gbp: Currency, rule:
 
 @pytest.mark.django_db
 def test_quote_opt_in_extra_only_when_requested(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     pet = Extra.objects.create(
         property=property_,
@@ -214,7 +214,7 @@ def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
         party=4,
         currency=gbp,
     )
-    assert all(ln.rule_id == rule_small.pk for ln in quote_small.lines)
+    assert all(ln.band_id == rule_small.pk for ln in quote_small.lines)
     assert all(ln.nightly == Decimal("100.00") for ln in quote_small.lines)
 
     # party=10 picks the 9-12 bracket.
@@ -225,7 +225,7 @@ def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
         party=10,
         currency=gbp,
     )
-    assert all(ln.rule_id == rule_mid.pk for ln in quote_mid.lines)
+    assert all(ln.band_id == rule_mid.pk for ln in quote_mid.lines)
     assert all(ln.nightly == Decimal("250.00") for ln in quote_mid.lines)
 
     # party=20 is outside every bracket — must raise, not silently default
@@ -242,14 +242,14 @@ def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
     # Sanity: `rule_large` exists but was not selected for either successful
     # quote — guards against a "default-to-highest" implementation passing
     # the first two assertions by accident.
-    assert RateRule.objects.filter(pk=rule_large.pk).exists()
+    assert RateBand.objects.filter(pk=rule_large.pk).exists()
 
 
 @pytest.mark.django_db
 def test_quote_raises_no_rate_when_no_period_matches(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    # No RatePeriod / RateRule at all on the plan.
+    # No RatePeriod / RateBand at all on the plan.
     with pytest.raises(NoRateAvailable):
         PricingEngine.quote(
             property=property_,
@@ -285,7 +285,7 @@ def test_quote_respects_is_approved_filter(
         )
 
     # Approve it → quote now succeeds.
-    RateRule.objects.update(is_approved=True)
+    RateBand.objects.update(is_approved=True)
     quote = PricingEngine.quote(
         property=property_,
         date_from=date(2026, 6, 10),
@@ -301,7 +301,7 @@ def test_quote_respects_is_approved_filter(
 # ---------------------------------------------------------------------------
 @pytest.mark.django_db
 def test_fallback_nightly_fills_gap_night(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A night past the rule's coverage is priced at `fallback_nightly`."""
     plan.fallback_nightly = Decimal("150.00")
@@ -317,7 +317,7 @@ def test_fallback_nightly_fills_gap_night(
     )
 
     assert len(quote.lines) == 3
-    fallback_lines = [ln for ln in quote.lines if ln.rule_id is None]
+    fallback_lines = [ln for ln in quote.lines if ln.band_id is None]
     assert len(fallback_lines) == 1
     assert fallback_lines[0].date == date(2026, 9, 1)
     assert fallback_lines[0].period_id is None
@@ -343,7 +343,7 @@ def test_all_fallback_stay_skips_period_validation(
     )
 
     assert len(quote.lines) == 3
-    assert all(ln.rule_id is None and ln.period_id is None for ln in quote.lines)
+    assert all(ln.band_id is None and ln.period_id is None for ln in quote.lines)
     assert quote.rate_subtotal == Decimal("297.00")
     assert quote.breakdown["winning_period_id"] is None
 
@@ -364,7 +364,7 @@ def test_quote_excludes_deactivated_period_rules(
     withdrawn = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 6, 8), is_active=False
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=withdrawn,
         min_party=1,
         max_party=8,
@@ -393,7 +393,7 @@ def test_quote_excludes_deactivated_period_rules(
 
 @pytest.mark.django_db
 def test_gap_night_without_fallback_still_raises(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """`fallback_nightly=None` (default) preserves the hard NoRateAvailable."""
     assert plan.fallback_nightly is None
@@ -409,7 +409,7 @@ def test_gap_night_without_fallback_still_raises(
 
 @pytest.mark.django_db
 def test_fallback_does_not_mask_party_out_of_range(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A party outside every bracket raises even when a fallback is set —
     the fallback covers missing nights, never a bracket miss."""
@@ -491,7 +491,7 @@ def _changeover_rule(property_: Property, day: str) -> None:
 
 @pytest.mark.django_db
 def test_changeover_shift_via_property_rule(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A property Saturday-changeover rule nudges a Wednesday arrival to Sat,
     preserving the night count and reporting the original date."""
@@ -555,7 +555,7 @@ def test_changeover_shift_across_two_periods_covering_stay(
 
 @pytest.mark.django_db
 def test_no_shift_when_arrival_already_on_weekday(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     _changeover_rule(property_, "SAT")
 
@@ -574,7 +574,7 @@ def test_no_shift_when_arrival_already_on_weekday(
 
 @pytest.mark.django_db
 def test_no_shift_when_no_changeover_rules(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """Zero ChangeOverRule rows + no card weekday → any day, no shift."""
     quote = PricingEngine.quote(
@@ -591,7 +591,7 @@ def test_no_shift_when_no_changeover_rules(
 
 @pytest.mark.django_db
 def test_repeat_guest_discount_never_applied(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """REPEAT_GUEST is a recognised-but-unimplemented enum (GAP-009).
 
@@ -630,7 +630,7 @@ def test_repeat_guest_discount_never_applied(
 
 @pytest.mark.django_db
 def test_quote_projects_from_prior_year_when_no_plan(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """A 2028 stay with only a 2026 plan derives a guide rate from 2026."""
     quote = PricingEngine.quote(
@@ -645,7 +645,7 @@ def test_quote_projects_from_prior_year_when_no_plan(
     assert len(quote.lines) == 7
     assert all(ln.nightly == Decimal("200.00") for ln in quote.lines)
     # Lines reference the real 2026 source rule for traceability.
-    assert all(ln.rule_id == rule.pk for ln in quote.lines)
+    assert all(ln.band_id == rule.pk for ln in quote.lines)
     assert quote.breakdown["is_projected"] is True
     assert quote.breakdown["projection"]["source_year"] == 2026
     assert quote.breakdown["projection"]["target_year"] == 2028
@@ -654,7 +654,7 @@ def test_quote_projects_from_prior_year_when_no_plan(
 
 @pytest.mark.django_db
 def test_quote_prefers_real_plan_over_projection(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """A real plan covering the stay wins; projection never runs."""
     plan_2028 = RatePlan.objects.create(
@@ -688,7 +688,7 @@ def test_quote_prefers_real_plan_over_projection(
 
 @pytest.mark.django_db
 def test_quote_not_projected_for_a_normal_in_year_stay(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     quote = PricingEngine.quote(
         property=property_,
@@ -715,7 +715,7 @@ def test_quote_no_projection_without_anchor_raises(property_: Property, gbp: Cur
 
 @pytest.mark.django_db
 def test_quote_allow_projection_false_raises_even_with_anchor(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     with pytest.raises(NoRateAvailable):
         PricingEngine.quote(
@@ -737,7 +737,7 @@ def test_quote_allow_projection_false_raises_even_with_anchor(
 
 @pytest.mark.django_db
 def test_breakdown_carries_property_service_inclusion(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """The property's date-banded PropertyService copy rides on the breakdown so
     the builder can seed staged-line inclusions from it (legacy ResService.cs:1241
@@ -759,7 +759,7 @@ def test_breakdown_carries_property_service_inclusion(
 
 @pytest.mark.django_db
 def test_inclusion_reflects_service_date_band(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A summer-only chef joins a year-round housekeeping service in July but
     drops out in autumn — inclusions vary by stay date, not by rate season."""
@@ -805,7 +805,7 @@ def test_inclusion_reflects_service_date_band(
 
 @pytest.mark.django_db
 def test_inactive_service_excluded_from_inclusions(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A deactivated service drops out of the inclusion blob."""
     PropertyService.objects.create(
@@ -824,7 +824,7 @@ def test_inactive_service_excluded_from_inclusions(
 
 @pytest.mark.django_db
 def test_projected_quote_remaps_inclusions_to_anchor_year(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """F1 guard: a future-year July quote, priced by projecting the 2026 anchor,
     still surfaces the summer chef whose absolute band sits in 2026."""
@@ -854,7 +854,7 @@ def test_projected_quote_remaps_inclusions_to_anchor_year(
 
 @pytest.mark.django_db
 def test_breakdown_changeover_day_code(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     _changeover_rule(property_, "SAT")
 
@@ -871,7 +871,7 @@ def test_breakdown_changeover_day_code(
 
 @pytest.mark.django_db
 def test_breakdown_changeover_day_null_when_unconstrained(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """`any` / no constraint serialises as null, not the literal "any" code."""
     quote = PricingEngine.quote(
@@ -887,7 +887,7 @@ def test_breakdown_changeover_day_null_when_unconstrained(
 
 @pytest.mark.django_db
 def test_breakdown_min_max_nights_from_winning_period(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """min/max-nights now live on the period (GAP-056); the breakdown reports
     the winning period's own overrides."""
@@ -932,7 +932,7 @@ def test_breakdown_min_max_nights_null_on_all_fallback_stay(
 
 @pytest.mark.django_db
 def test_breakdown_occupancy_pricing_false_for_single_band(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     quote = PricingEngine.quote(
         property=property_,
@@ -947,7 +947,7 @@ def test_breakdown_occupancy_pricing_false_for_single_band(
 
 @pytest.mark.django_db
 def test_breakdown_occupancy_pricing_true_for_multiple_party_bands(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """>1 distinct (min_party, max_party) band on the winning period means the
     price depends on the party size — the builder badges these results."""
@@ -974,7 +974,7 @@ def test_breakdown_occupancy_pricing_true_for_multiple_party_bands(
 
 @pytest.mark.django_db
 def test_breakdown_occupancy_pricing_false_for_same_band_split_dates(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """Seasonal date splits with the SAME party band are not occupancy pricing
     — only distinct bands count."""
@@ -1013,7 +1013,7 @@ def _june_context(property_: Property) -> PricingContext | None:
 
 @pytest.mark.django_db
 def test_stay_length_bounds_single_period(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     period = _period_of(rule)
     period.min_nights = 5
@@ -1028,7 +1028,7 @@ def test_stay_length_bounds_single_period(
 
 @pytest.mark.django_db
 def test_stay_length_bounds_aggregates_across_periods(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A stay is valid if ANY period accepts it, so the search-layer bounds are
     the LOOSEST across the plan's active periods — an uncapped period uncaps the
@@ -1060,7 +1060,7 @@ def test_stay_length_bounds_aggregates_across_periods(
 
 @pytest.mark.django_db
 def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """The headline seasonal min-stay feature (GAP-056 decision 4): a villa with
     a 7-night peak period and a 3-night off-peak period.
@@ -1181,7 +1181,7 @@ def test_load_context_none_when_plan_has_no_active_periods(
 
 @pytest.mark.django_db
 def test_quote_reuses_a_preloaded_context_without_rate_queries(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A caller-supplied context skips the plan/period/rule loads entirely and
     prices identically to a self-loading quote."""
@@ -1295,7 +1295,7 @@ def test_covering_bands_excludes_bracket_not_covering_every_night(
 
 @pytest.mark.django_db
 def test_covering_bands_single_bracket_returns_one(
-    property_: Property, gbp: Currency, rule: RateRule
+    property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
     """A single-bracket card returns exactly one band — the ≥2 fan-out threshold
     is the caller's decision, not the enumerator's."""
@@ -1364,7 +1364,7 @@ def test_covering_bands_reuses_supplied_context_without_rate_reload(
     assert context is not None
 
     # Nuke the source rows: a helper that re-queried would now return nothing.
-    RateRule.objects.all().delete()
+    RateBand.objects.all().delete()
 
     bands = PricingEngine.covering_bands(
         property=property_,

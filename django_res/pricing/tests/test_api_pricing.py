@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from core.enums import StaffRole
 from pricing.enums import DiscountKind, RuleKind
-from pricing.models import Currency, Discount, RateRule
+from pricing.models import Currency, Discount, RateBand
 from properties.models import Property, PropertyService
 
 
@@ -36,7 +36,7 @@ def test_pricing_quote_happy_path(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
@@ -62,7 +62,7 @@ def test_pricing_quote_bulk_returns_all_requests(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
@@ -98,7 +98,7 @@ def test_pricing_quote_bulk_surfaces_plan_card_metadata(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """Priced bulk entries carry the breakdown's plan/card metadata so the
     quote builder can render information-dense result lines."""
@@ -136,7 +136,7 @@ def test_pricing_quote_without_currency_prices_in_plan_currency(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """GAP-014: currency omitted → priced in the rate plan's own currency."""
     api_client.force_login(staff)
@@ -162,12 +162,12 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """GAP-014: a currency-less bulk quote prices a GBP villa and an EUR villa
     in one batch — no `no_rate_available` from currency mismatch."""
+    from pricing.models import RateBand as RR
     from pricing.models import RatePeriod, RatePlan
-    from pricing.models import RateRule as RR
 
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
     eur_villa = Property.objects.create(
@@ -232,7 +232,7 @@ def test_pricing_quote_unknown_explicit_currency_404s(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
@@ -309,7 +309,7 @@ def test_quote_bulk_no_rate_entry_carries_image_and_currency(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """Q-013: an unpriceable property's bulk entry must carry enough for the
     manual-quote affordance — the no-rate flag, the hero image (card parity
@@ -357,7 +357,7 @@ def test_quote_bulk_other_errors_skip_currency_resolution(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """Only no-rate entries feed the manual-quote card, so only they pay the
     currency-resolution queries; other error codes carry a null currency_code
@@ -392,13 +392,13 @@ def test_quote_bulk_carries_hero_image_url(
     staff: User,
     property_: Property,
     gbp: Currency,
-    rule: RateRule,
+    rule: RateBand,
 ) -> None:
     """Each available bulk quote carries hero_image_url (str for HERO, null otherwise)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
+    from pricing.models import RateBand as RR
     from pricing.models import RatePeriod, RatePlan
-    from pricing.models import RateRule as RR
     from properties.enums import ImageKind
     from properties.models import Property, PropertyImage
 

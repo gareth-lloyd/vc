@@ -13,12 +13,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.serializers import (
+    RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
     RatePlanSerializer,
-    RateRuleSerializer,
 )
 from pricing.services.carryover import RateCarryoverService
 from properties.models import Property
@@ -52,7 +52,7 @@ class SeasonDetailView(generics.RetrieveUpdateDestroyAPIView):
     # `periods__plan__property__capacity` feeds RatePeriodSerializer.coverage_gaps
     # (`_max_occupancy`) without an N+1 per period on the nested detail read.
     queryset = RatePlan.objects.select_related("currency").prefetch_related(
-        "periods__rules", "periods__plan__property__capacity"
+        "periods__bands", "periods__plan__property__capacity"
     )
     permission_classes = [IsReservationsWriter]
 
@@ -82,7 +82,7 @@ class SeasonDuplicateView(APIView):
                 period_clone.pk = None
                 period_clone.plan = clone
                 period_clone.save()
-                for rule in RateRule.objects.filter(period_id=source_period_pk):
+                for rule in RateBand.objects.filter(period_id=source_period_pk):
                     rule.pk = None
                     rule.period = period_clone
                     rule.save()
@@ -161,7 +161,7 @@ class SeasonRatePeriodListCreateView(generics.ListCreateAPIView):
         return (
             RatePeriod.objects.filter(plan_id=self.kwargs["season_id"])
             .select_related("plan__property__capacity")
-            .prefetch_related("rules")
+            .prefetch_related("bands")
         )
 
     def perform_create(self, serializer: Any) -> None:
@@ -173,7 +173,7 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     """`GET / PATCH / DELETE /periods/{id}` — flat alias."""
 
     queryset = RatePeriod.objects.select_related("plan__property__capacity").prefetch_related(
-        "rules"
+        "bands"
     )
     serializer_class = RatePeriodSerializer
     permission_classes = [IsReservationsWriter]
@@ -182,14 +182,14 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     # `perform_update` (a plain save) suffices.
 
 
-class RatePeriodRuleListCreateView(generics.ListCreateAPIView):
-    """`GET / POST /periods/{id}/rules` — partyxprice bands under a period."""
+class RatePeriodBandListCreateView(generics.ListCreateAPIView):
+    """`GET / POST /periods/{id}/bands` — partyxprice bands under a period."""
 
-    serializer_class = RateRuleSerializer
+    serializer_class = RateBandSerializer
     permission_classes = [IsReservationsWriter]
 
-    def get_queryset(self) -> QuerySet[RateRule]:
-        return RateRule.objects.filter(period_id=self.kwargs["period_id"])
+    def get_queryset(self) -> QuerySet[RateBand]:
+        return RateBand.objects.filter(period_id=self.kwargs["period_id"])
 
     def perform_create(self, serializer: Any) -> None:
         # A band hangs off its period, which owns the date window (GAP-056).
@@ -197,9 +197,9 @@ class RatePeriodRuleListCreateView(generics.ListCreateAPIView):
         serializer.save(period=period)
 
 
-class RateRuleDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """`GET / PATCH / DELETE /rules/{id}` — flat alias (party/price only)."""
+class RateBandDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """`GET / PATCH / DELETE /bands/{id}` — flat alias (party/price only)."""
 
-    queryset = RateRule.objects.all()
-    serializer_class = RateRuleSerializer
+    queryset = RateBand.objects.all()
+    serializer_class = RateBandSerializer
     permission_classes = [IsReservationsWriter]

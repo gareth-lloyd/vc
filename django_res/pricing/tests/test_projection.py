@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
@@ -16,7 +16,7 @@ from pricing.services.projection import (
 from properties.models import Property
 
 
-def _period_of(rule: RateRule) -> RatePeriod:
+def _period_of(rule: RateBand) -> RatePeriod:
     """The band's shim-derived period (never None once the rule is saved)."""
     period = rule.period
     assert period is not None
@@ -59,7 +59,7 @@ def test_shift_to_changeover_weekday_always_preserves_weekday_with_minimal_shift
 
 
 @pytest.fixture
-def anchor_plan(property_: Property, gbp: Currency) -> RateRule:
+def anchor_plan(property_: Property, gbp: Currency) -> RateBand:
     """A 2026 plan/period/rule to act as the projection anchor."""
     plan = RatePlan.objects.create(
         property=property_,
@@ -71,7 +71,7 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateRule:
     period = RatePeriod.objects.create(
         plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
     )
-    return RateRule.objects.create(
+    return RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,
@@ -81,7 +81,7 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateRule:
 
 @pytest.mark.django_db
 def test_find_anchor_returns_most_recent_prior_plan(
-    property_: Property, gbp: Currency, anchor_plan: RateRule
+    property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
     newer = RatePlan.objects.create(
         property=property_,
@@ -96,7 +96,7 @@ def test_find_anchor_returns_most_recent_prior_plan(
 
 @pytest.mark.django_db
 def test_find_anchor_ignores_other_currency(
-    property_: Property, gbp: Currency, usd: Currency, anchor_plan: RateRule
+    property_: Property, gbp: Currency, usd: Currency, anchor_plan: RateBand
 ) -> None:
     found = RateProjectionService.find_anchor_plan(property_, usd, date(2028, 7, 4))
     assert found is None
@@ -110,7 +110,7 @@ def test_find_anchor_none_for_brand_new_villa(property_: Property, gbp: Currency
 
 @pytest.mark.django_db
 def test_find_anchor_excludes_same_year_plan(
-    property_: Property, gbp: Currency, anchor_plan: RateRule
+    property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
     # A plan whose effective_from is in the target year is not an anchor for that
     # year — it would anchor on itself.
@@ -131,7 +131,7 @@ def test_find_anchor_excludes_same_year_plan(
 
 @pytest.mark.django_db
 def test_project_builds_shifted_in_memory_context(
-    property_: Property, gbp: Currency, anchor_plan: RateRule
+    property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
     ctx = RateProjectionService.project(
         property=property_,
@@ -149,7 +149,7 @@ def test_project_builds_shifted_in_memory_context(
     [period] = ctx.periods
     assert period.date_from == date(2028, 6, 1)
     assert period.date_to == date(2028, 8, 31)
-    [rule] = ctx.rules_by_period[_period_of(anchor_plan).pk]
+    [rule] = ctx.bands_by_period[_period_of(anchor_plan).pk]
     assert rule.pk == anchor_plan.pk
     assert rule.nightly == Decimal("200.00")
     assert ctx.projection == {
@@ -162,7 +162,7 @@ def test_project_builds_shifted_in_memory_context(
 
 
 @pytest.mark.django_db
-def test_project_applies_uplift(property_: Property, gbp: Currency, anchor_plan: RateRule) -> None:
+def test_project_applies_uplift(property_: Property, gbp: Currency, anchor_plan: RateBand) -> None:
     ctx = RateProjectionService.project(
         property=property_,
         date_from=date(2028, 7, 4),
@@ -172,13 +172,13 @@ def test_project_applies_uplift(property_: Property, gbp: Currency, anchor_plan:
     )
     assert ctx is not None
     assert ctx.projection is not None
-    [rule] = ctx.rules_by_period[_period_of(anchor_plan).pk]
+    [rule] = ctx.bands_by_period[_period_of(anchor_plan).pk]
     assert rule.nightly == Decimal("210.00")
     assert ctx.projection["uplift_pct"] == "5.00"
 
 
 @pytest.mark.django_db
-def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: RateRule) -> None:
+def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: RateBand) -> None:
     poa = anchor_plan
     poa.nightly = None
     poa.is_poa = True
@@ -189,19 +189,19 @@ def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: 
         currency=gbp,
     )
     assert ctx is not None
-    [rule] = ctx.rules_by_period[_period_of(poa).pk]
+    [rule] = ctx.bands_by_period[_period_of(poa).pk]
     assert rule.is_poa is True
     assert rule.nightly is None
 
 
 @pytest.mark.django_db
 def test_project_skips_unapproved_rules(
-    property_: Property, gbp: Currency, anchor_plan: RateRule
+    property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
     extra_period = RatePeriod.objects.create(
         plan=anchor_plan.period.plan, date_from=date(2026, 9, 1), date_to=date(2026, 9, 30)
     )
-    RateRule.objects.create(
+    RateBand.objects.create(
         period=extra_period,
         min_party=1,
         max_party=8,
@@ -215,7 +215,7 @@ def test_project_skips_unapproved_rules(
     )
     assert ctx is not None
     # Only the approved source rule seeds the projection.
-    assert len(ctx.rules_by_period[_period_of(anchor_plan).pk]) == 1
+    assert len(ctx.bands_by_period[_period_of(anchor_plan).pk]) == 1
 
 
 @pytest.mark.django_db

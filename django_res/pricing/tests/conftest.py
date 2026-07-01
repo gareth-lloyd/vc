@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pricing.models import Currency, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -77,8 +77,8 @@ def period(plan: RatePlan) -> RatePeriod:
 
 
 @pytest.fixture
-def rule(period: RatePeriod) -> RateRule:
-    return RateRule.objects.create(
+def rule(period: RatePeriod) -> RateBand:
+    return RateBand.objects.create(
         period=period,
         min_party=1,
         max_party=8,

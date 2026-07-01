@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from core.exceptions import NoRateAvailable
-from pricing.models import RatePeriod, RateRule
+from pricing.models import RateBand, RatePeriod
 
 
 def nights(date_from: date, date_to: date) -> list[date]:
@@ -20,13 +20,13 @@ def nights(date_from: date, date_to: date) -> list[date]:
     return out
 
 
-def rule_nightly(rule: RateRule) -> Decimal:
+def rule_nightly(rule: RateBand) -> Decimal:
     """Return the effective nightly rate for a rule, deriving from weekly if needed."""
     if rule.nightly is not None:
         return Decimal(rule.nightly)
     if rule.weekly is not None:
         return (Decimal(rule.weekly) / Decimal(7)).quantize(Decimal("0.01"))
-    raise NoRateAvailable(f"RateRule {rule.pk} is POA and cannot be priced")
+    raise NoRateAvailable(f"RateBand {rule.pk} is POA and cannot be priced")
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class Picked:
     """A band (rule) was found that covers both the night and the party."""
 
     period: RatePeriod
-    rule: RateRule
+    rule: RateBand
 
 
 @dataclass(frozen=True)
@@ -56,9 +56,9 @@ class NoCoverage:
 PickResult = Picked | OutOfRange | NoCoverage
 
 
-def pick_rule_for_night(
+def pick_band_for_night(
     periods: list[RatePeriod],
-    rules_by_period: dict[int, list[RateRule]],
+    bands_by_period: dict[int, list[RateBand]],
     night: date,
     party: int,
 ) -> PickResult:
@@ -81,13 +81,13 @@ def pick_rule_for_night(
     band on another covering period nor erase the OutOfRange signal.
     """
     any_band_covered = False
-    best_rule: RateRule | None = None
+    best_rule: RateBand | None = None
     best_period: RatePeriod | None = None
 
     for period in periods:
         if not (period.date_from <= night <= period.date_to):
             continue
-        for rule in rules_by_period.get(period.pk, []):
+        for rule in bands_by_period.get(period.pk, []):
             # The night is covered by *some* band (bands inherit the period's
             # dates) — even if the party bracket excludes it. Remember this so
             # we distinguish "out of range" from "no coverage" without a

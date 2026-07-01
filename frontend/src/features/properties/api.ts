@@ -26,6 +26,8 @@ import {
   propertyLocationSchema,
   propertyNearbyPlaceSchema,
   propertyNearbyPlacesResponseSchema,
+  propertyServiceSchema,
+  propertyServicesResponseSchema,
   propertyRoomSchema,
   propertyRoomsResponseSchema,
   propertySettingsSchema,
@@ -67,6 +69,8 @@ import {
   type Region,
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
+  type PropertyService,
+  type PropertyServiceWriteInput,
   type PropertyRoom,
   type PropertyRoomWriteInput,
   type PropertySettings,
@@ -239,6 +243,35 @@ export async function deletePropertyNearbyPlace(
   poiId: number,
 ): Promise<void> {
   await apiSend<void>("DELETE", `/properties/${propertyId}/nearby/${poiId}`);
+}
+
+export async function fetchPropertyServices(
+  propertyId: PropertyId,
+): Promise<Paginated<PropertyService>> {
+  const data = await apiGet<unknown>(`/properties/${propertyId}/services`);
+  return propertyServicesResponseSchema.parse(data);
+}
+
+export async function createPropertyService(
+  propertyId: PropertyId,
+  body: PropertyServiceWriteInput,
+): Promise<PropertyService> {
+  const data = await apiSend<unknown>("POST", `/properties/${propertyId}/services`, body);
+  return propertyServiceSchema.parse(data);
+}
+
+// The detail endpoint is flat (`/services/{id}`), not nested under the property
+// — see properties/urls.py. Only the create/list routes are property-scoped.
+export async function updatePropertyService(
+  serviceId: number,
+  body: Partial<PropertyServiceWriteInput> & { sort_order?: number },
+): Promise<PropertyService> {
+  const data = await apiSend<unknown>("PATCH", `/services/${serviceId}`, body);
+  return propertyServiceSchema.parse(data);
+}
+
+export async function deletePropertyService(serviceId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/services/${serviceId}`);
 }
 
 export async function fetchPropertySeasons(idOrSlug: PropertyId): Promise<Paginated<RatePlan>> {

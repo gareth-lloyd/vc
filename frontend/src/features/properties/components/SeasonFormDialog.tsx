@@ -71,7 +71,6 @@ function createDefaults(
     effective_to: "",
     is_active: true,
     notes: "",
-    inclusion: "",
   };
 }
 
@@ -84,7 +83,6 @@ function defaultsFromSeason(season: RatePlan): RatePlanWriteInput {
     effective_to: season.effective_to ?? "",
     is_active: season.is_active ?? true,
     notes: season.notes ?? "",
-    inclusion: season.inclusion ?? "",
   };
 }
 
@@ -260,11 +258,6 @@ export function SeasonFormDialog(props: SeasonFormDialogProps) {
           <div className="space-y-2">
             <Label htmlFor="season-notes">{t("pricing.seasons.dialog.fields.notes")}</Label>
             <Textarea id="season-notes" rows={2} {...form.register("notes")} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="season-inclusion">{t("pricing.seasons.dialog.fields.inclusion")}</Label>
-            <Textarea id="season-inclusion" rows={2} {...form.register("inclusion")} />
           </div>
 
           <FormErrorAlert message={topLevelError} />

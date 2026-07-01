@@ -216,6 +216,45 @@ export const propertyNearbyPlaceWriteInputSchema = z.object({
 });
 export type PropertyNearbyPlaceWriteInput = z.infer<typeof propertyNearbyPlaceWriteInputSchema>;
 
+// PropertyService (GAP-037): informational, date-ranged included services that
+// replace the legacy free-text RatePlan.inclusion. `applies_from`/`applies_to`
+// are absolute ISO dates; either being null means the band is open on that end
+// (a null/null band is year-round).
+export const propertyServiceSchema = z.object({
+  id: z.number(),
+  property: z.number(),
+  name: z.string(),
+  copy: z.string(),
+  notes: z.string().nullable().optional(),
+  applies_from: z.string().nullable().optional(),
+  applies_to: z.string().nullable().optional(),
+  sort_order: z.number().int(),
+  is_active: z.boolean(),
+});
+export type PropertyService = z.infer<typeof propertyServiceSchema>;
+
+export const propertyServicesResponseSchema = paginated(propertyServiceSchema);
+
+export const propertyServiceWriteInputSchema = z
+  .object({
+    name: z.string().trim().min(1, { message: "properties:errors.service_name_required" }).max(128),
+    copy: z.string().trim().min(1, { message: "properties:errors.service_copy_required" }),
+    notes: z.string().trim().optional(),
+    // Nullable so an emptied date input can be sent as explicit `null` to CLEAR
+    // an existing band on PATCH (converting a banded service to year-round).
+    // `.optional()` alone would emit `undefined`, omit the field, and silently
+    // leave the old band in place — the same trap documented on
+    // `propertyRoomWriteInputSchema` below.
+    applies_from: z.string().nullable().optional(),
+    applies_to: z.string().nullable().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .refine((v) => !v.applies_from || !v.applies_to || v.applies_to >= v.applies_from, {
+    path: ["applies_to"],
+    message: "properties:errors.service_to_before_from",
+  });
+export type PropertyServiceWriteInput = z.infer<typeof propertyServiceWriteInputSchema>;
+
 export const propertyRoomWriteInputSchema = z.object({
   name: z.string().trim().min(1, { message: "properties:errors.room_name_required" }).max(128),
   placement: z.enum(ROOM_PLACEMENTS),
@@ -428,7 +467,6 @@ export const ratePlanSchema = z.object({
   effective_to: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
   notes: z.string().nullable().optional(),
-  inclusion: z.string().nullable().optional(),
 });
 export type RatePlan = z.infer<typeof ratePlanSchema>;
 
@@ -632,7 +670,6 @@ export const ratePlanWriteInputSchema = z
     effective_to: z.string().optional(),
     is_active: z.boolean().optional(),
     notes: z.string().trim().optional(),
-    inclusion: z.string().trim().optional(),
   })
   .refine((v) => !v.effective_to || v.effective_to >= v.effective_from, {
     path: ["effective_to"],

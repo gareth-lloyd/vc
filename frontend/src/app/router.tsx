@@ -23,6 +23,7 @@ const REAL_PROPERTY_TABS = new Set<string>([
   "nearby",
   "features",
   "pricing",
+  "services",
   "people",
   "availability",
   "media",
@@ -171,6 +172,13 @@ export const router = createBrowserRouter([
                             lazy: async () => {
                               const m = await import("@/features/properties/tabs/PricingTab");
                               return { Component: m.PricingTab };
+                            },
+                          },
+                          {
+                            path: "services",
+                            lazy: async () => {
+                              const m = await import("@/features/properties/tabs/ServicesTab");
+                              return { Component: m.ServicesTab };
                             },
                           },
                           {

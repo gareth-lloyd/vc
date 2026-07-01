@@ -11,6 +11,7 @@ import {
   createPropertyImage,
   createPropertyNearbyPlace,
   createPropertyRoom,
+  createPropertyService,
   createRateCard,
   createRateRule,
   createSeason,
@@ -21,6 +22,7 @@ import {
   deletePropertyImage,
   deletePropertyNearbyPlace,
   deletePropertyRoom,
+  deletePropertyService,
   deleteRateCard,
   deleteRateRule,
   deleteSeason,
@@ -45,6 +47,7 @@ import {
   fetchPropertyLocation,
   fetchPropertyNearbyPlaces,
   fetchPropertyRooms,
+  fetchPropertyServices,
   fetchPropertySeasons,
   fetchPropertySettings,
   fetchSeasonDetail,
@@ -62,6 +65,7 @@ import {
   updatePropertyLocation,
   updatePropertyNearbyPlace,
   updatePropertyRoom,
+  updatePropertyService,
   updatePropertySettings,
   updateRateCard,
   updateRateRule,
@@ -81,6 +85,7 @@ import type {
   PropertyLocationWriteInput,
   PropertyNearbyPlaceWriteInput,
   PropertyRoomWriteInput,
+  PropertyServiceWriteInput,
   PropertySettingsWriteInput,
   RateCardWriteInput,
   RatePlanWriteInput,
@@ -224,6 +229,48 @@ export function useDeletePropertyNearbyPlace(propertyId: PropertyId) {
     mutationFn: ({ poiId }: { poiId: number }) => deletePropertyNearbyPlace(propertyId, poiId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.nearby(propertyId) });
+    },
+  });
+}
+
+export function usePropertyServices(idOrSlug: PropertyId | undefined) {
+  return useQuery(enabledQuery(idOrSlug, queryKeys.properties.services, fetchPropertyServices));
+}
+
+export function useCreatePropertyService(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyServiceWriteInput) => createPropertyService(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.services(propertyId) });
+    },
+  });
+}
+
+interface UpdatePropertyServiceVars {
+  serviceId: number;
+  input: Partial<PropertyServiceWriteInput> & { sort_order?: number };
+}
+
+export function useUpdatePropertyService(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // The detail route is flat, so the service id alone addresses the row; the
+    // propertyId is carried only to invalidate the right list cache.
+    mutationFn: ({ serviceId, input }: UpdatePropertyServiceVars) =>
+      updatePropertyService(serviceId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.services(propertyId) });
+    },
+  });
+}
+
+export function useDeletePropertyService(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId }: { serviceId: number }) => deletePropertyService(serviceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.services(propertyId) });
     },
   });
 }

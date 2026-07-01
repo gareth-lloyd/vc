@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { asPriceBasis, type PriceBasis } from "@/lib/pricing/netGross";
 import {
   useChangeOverRules,
   usePropertyDiscounts,
@@ -222,12 +223,23 @@ export function RateWorkbenchPage() {
       </section>
     ) : null;
 
+  // The property's pricing currency: seasons carry the authoritative currency
+  // (both the `currency` FK id and its `currency_code`, set together), but the
+  // property settings row often leaves the FK null (only the group resolves one).
+  // Read both from a single season so the inspector's amount adornments (code)
+  // and the extra dialog's currency default (id) stay consistent; fall back to
+  // the settings code for display.
+  const currencySeason = seasonList.find((s) => s.currency != null || s.currency_code);
+  const currencyCode = currencySeason?.currency_code ?? settings.data?.currency_code ?? null;
+  const defaultCurrencyId = currencySeason?.currency ?? null;
+
   const inspectorSection =
     !isLoading && !isError ? (
       <InspectorPanel
         propertyId={property.id}
         canWrite={canWrite}
-        currencyCode={settings.data?.currency_code ?? null}
+        currencyCode={currencyCode}
+        defaultCurrencyId={defaultCurrencyId}
       />
     ) : null;
 
@@ -245,12 +257,24 @@ export function RateWorkbenchPage() {
     }
     return labels;
   }, [fanOut.details]);
+  // planId → price basis, so the probe can reconcile the guest total against the
+  // winning plan's basis (GROSS vs NET — see QuoteResultCard). The list season
+  // carries both `plan_id`-equivalent `id` and `price_basis`.
+  const basisByPlan = useMemo(() => {
+    const map: Record<number, PriceBasis> = {};
+    for (const season of seasons.data?.results ?? []) {
+      if (season.price_basis) map[season.id] = season.price_basis;
+    }
+    return map;
+  }, [seasons.data]);
   const probeSection =
     !isLoading && !isError ? (
       <PriceProbePanel
         propertyId={property.id}
         extras={extras.data?.results ?? []}
         periodLabels={periodLabels}
+        basisByPlan={basisByPlan}
+        defaultBasis={asPriceBasis(settings.data?.prices_entered_as_effective)}
       />
     ) : null;
 

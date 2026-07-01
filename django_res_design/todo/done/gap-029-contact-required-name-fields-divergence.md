@@ -1,5 +1,20 @@
 # GAP-029 — Contact first_name/last_name FE/BE required-field divergence
 
+> ✅ **RESOLVED (2026-07-01)** — **Problem:** `Person.first_name`/`last_name`
+> were `CharField` without `blank=True`, so DRF's `ModelSerializer` treated both
+> as required and 400'd a company/agency-only contact — diverging from the FE
+> `contactWriteInputSchema`, which already refined to "name OR agency". **Fix:**
+> added `blank=True` to both name fields (migration `accounts/0015`, state-only
+> AlterField) and a name-OR-agency floor at the top of
+> `ContactSerializer.validate()` reading the effective (attrs-over-instance)
+> value of all three fields, so a PATCH that clears names but leaves the agency
+> still passes. App-level gate (mirrors the sibling channel-contactability
+> floor), **not** a DB `CHECK` — avoids a migration over audited/anonymized/
+> legacy rows; error keyed on `first_name` to render inline under the FE name
+> field. FE unchanged (schema + en/el i18n + tests already shipped the rule).
+> Decision recorded in `10-decisions.md` (Live decisions). **Commits:** `2a7fee7`
+> (backend), `15edeb3` (decision doc). Body retained for context.
+>
 > ▶️ **UNBLOCKED (2026-06-23) — the blocker has landed.** This was deferred
 > behind GAP-045/046; both are now in `done/`: `Contact` was renamed/unified to
 > **`accounts.Person`** and **`Organisation`** shipped as a first-class entity

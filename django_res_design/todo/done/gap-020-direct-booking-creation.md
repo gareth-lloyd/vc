@@ -1,3 +1,34 @@
+> # ❌ DROPPED (2026-07-01) — sidelined; do not pick up without owner validation
+>
+> **Problem the ticket claimed:** the rebuild can only create a booking by
+> converting a quotation, and legacy's rate-lookup "book now" shortcut should be
+> reproduced as a first-class direct-booking flow.
+>
+> **Why dropped:** two independent investigations (2026-07-01) undercut the
+> premise.
+> 1. **Legacy has no standalone direct booking.** A `VillaBooking` always
+>    requires a `QuotationNo`, enforced at three layers: the "Book" button only
+>    renders when `QuotationNo > 0` (`RateLookup.razor:426`),
+>    `ResService.ModifyBooking` rejects `QuotationNo <= 0`
+>    (`ResService.cs:2202-2205`), and `VillaBooking.QuotationNo` is required
+>    (`VillaBooking.cs:10`). The "book now" path saves quotation *detail* rows
+>    but the quotation *number* is minted upstream in QuoteGenerator — legacy is
+>    quote-first, always. So this ticket builds a *new* capability, not legacy
+>    parity.
+> 2. **The owner never asked for it and has not validated the booking flow.**
+>    No owner request exists anywhere in the docs; the feature traces to a
+>    disabled "Create booking" UI placeholder and `03-workflows.md` flow 4 —
+>    itself GAP-010-tainted (reverse-engineered from a post-deletion codebase).
+>    The 2026-06-17 owner Loom covered the quote builder / rate lookup but only
+>    for *quoting*, never for taking bookings. `10-decisions.md:132` records the
+>    booking journey as explicitly **pending an owner walkthrough**.
+>
+> **Disposition:** parked. Revive only after the owner walkthrough
+> (`10-decisions.md:132`) confirms a genuine need and the GAP-010 flow taint is
+> cleared. The design body below is preserved for whoever picks that up.
+>
+> ---
+>
 > **⚠️ DEPENDENCY STALE (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — This ticket
 > treats the `kind` enum as folding in SMELL-014 "for free." It no longer does:
 > **SMELL-014 closed independently on 2026-06-18** by keeping the string-prefix

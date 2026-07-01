@@ -33,7 +33,11 @@ Adopt the mockup's Rate Lookup shape:
   **checkbox**, the week's price, and an availability badge
   (Available / Unavailable / on-hold + "Remove hold"). The agent ticks the weeks
   to include; ticked weeks build the quote ("builds down the bottom", which the
-  owner liked).
+  owner liked). **Held/booked weeks stay non-selectable** — the shipped
+  single-select `StayOptionPicker` disables a held cell and skips it in keyboard
+  nav (2026-07-01, see `10-decisions.md`); carry that into the multi-week model
+  so a booked week isn't tickable, and freeing it routes through the explicit
+  "Remove hold" action rather than by making the booked week directly selectable.
 - Keep changeover handling via the existing engine auto-shift
   ([GAP-007](done/gap-007-changeover-autoshift-parity.md)).
 

@@ -24,6 +24,8 @@ interface InspectorPanelProps {
   propertyId: number;
   canWrite: boolean;
   currencyCode: string | null;
+  /** The property's currency FK id (from a season), seeding new extras. */
+  defaultCurrencyId: number | null;
 }
 
 /**
@@ -32,7 +34,12 @@ interface InspectorPanelProps {
  * here refreshes the corresponding lane. Inclusions reuse the existing
  * `ServiceFormDialog`; extras/discounts use the workbench's own form dialogs.
  */
-export function InspectorPanel({ propertyId, canWrite, currencyCode }: InspectorPanelProps) {
+export function InspectorPanel({
+  propertyId,
+  canWrite,
+  currencyCode,
+  defaultCurrencyId,
+}: InspectorPanelProps) {
   const { t } = useTranslation("properties");
   return (
     <section className="border-border space-y-6 border-t pt-6">
@@ -40,7 +47,12 @@ export function InspectorPanel({ propertyId, canWrite, currencyCode }: Inspector
         {t("rate_workbench.inspector.title")}
       </h2>
       <InclusionsSection propertyId={propertyId} canWrite={canWrite} />
-      <ExtrasSection propertyId={propertyId} canWrite={canWrite} currencyCode={currencyCode} />
+      <ExtrasSection
+        propertyId={propertyId}
+        canWrite={canWrite}
+        currencyCode={currencyCode}
+        defaultCurrencyId={defaultCurrencyId}
+      />
       <DiscountsSection propertyId={propertyId} canWrite={canWrite} currencyCode={currencyCode} />
     </section>
   );
@@ -235,10 +247,12 @@ function ExtrasSection({
   propertyId,
   canWrite,
   currencyCode,
+  defaultCurrencyId,
 }: {
   propertyId: number;
   canWrite: boolean;
   currencyCode: string | null;
+  defaultCurrencyId: number | null;
 }) {
   const { t } = useTranslation("properties");
   const extras = usePropertyExtras(propertyId);
@@ -301,6 +315,7 @@ function ExtrasSection({
           onOpenChange={setCreating}
           mode="create"
           currencyCode={currencyCode}
+          defaultCurrencyId={defaultCurrencyId}
         />
       ) : null}
       {editing ? (
@@ -311,6 +326,7 @@ function ExtrasSection({
           mode="edit"
           entity={editing}
           currencyCode={currencyCode}
+          defaultCurrencyId={defaultCurrencyId}
         />
       ) : null}
       {deleting ? (

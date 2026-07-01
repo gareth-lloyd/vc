@@ -137,6 +137,92 @@ def test_create_contact_with_two_primary_emails_is_rejected(
 
 
 @pytest.mark.django_db
+def test_create_agency_only_contact_is_allowed(api_client: APIClient, staff: User) -> None:
+    """GAP-029: a company/agency-only contact (no personal name) must create.
+
+    Mirrors the FE `contactWriteInputSchema` "name OR agency" refine — the
+    2026-06-11 owner email confirmed company must not be required *and* names
+    must not be mandatory when an agency stands in for them.
+    """
+    agency = cast(Organisation, OrganisationFactory(name="Acme Villas Ltd"))
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {
+            "agency": agency.pk,
+            "emails": [{"email": "bookings@acme.example", "is_primary": True}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    person = Person.objects.get(agency=agency)
+    assert person.first_name == ""
+    assert person.last_name == ""
+
+
+@pytest.mark.django_db
+def test_create_contact_without_name_or_agency_is_rejected(
+    api_client: APIClient, staff: User
+) -> None:
+    """GAP-029: loosening the model must not let a nameless, agency-less contact
+    through — the serializer floor rejects it with a `first_name` field error."""
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/contacts",
+        {"emails": [{"email": "who@example.com", "is_primary": True}]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "first_name" in response.json()["field_errors"]
+    assert not Person.objects.filter(emails__email="who@example.com").exists()
+
+
+@pytest.mark.django_db
+def test_patch_clear_names_with_agency_allowed(api_client: APIClient, staff: User) -> None:
+    """GAP-029: clearing both names on an edit is fine while an agency remains —
+    the guard reads the effective (attrs over instance) agency, not just the payload."""
+    agency = cast(Organisation, OrganisationFactory(name="Bell Labs"))
+    person = Person.objects.create(first_name="Ada", last_name="Lovelace", agency=agency)
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{person.pk}",
+        {"first_name": "", "last_name": ""},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    person.refresh_from_db()
+    assert person.first_name == ""
+    assert person.last_name == ""
+    assert person.agency_id == agency.pk
+
+
+@pytest.mark.django_db
+def test_patch_clear_names_without_agency_rejected(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    """GAP-029: clearing both names on an agency-less contact is rejected —
+    a contact stripped of every identifier is not allowed."""
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"first_name": "", "last_name": ""},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "first_name" in response.json()["field_errors"]
+    contact.refresh_from_db()
+    assert contact.first_name == "Ada"
+
+
+@pytest.mark.django_db
 def test_patch_channelless_active_contact_notes_still_allowed(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:

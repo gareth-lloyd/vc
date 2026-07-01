@@ -1,10 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
-import { renderWithProviders } from "@/test/render";
+import { createTestQueryClient, renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
 import { EnquiryDetailLayout } from "../EnquiryDetailLayout";
@@ -314,6 +314,86 @@ describe("EnquiryDetailLayout", () => {
     await userEvent.click(screen.getByRole("button", { name: /go-8/i }));
     await screen.findByRole("link", { name: /QVC50/ });
     expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the rail mounted (hide, not unmount) across a builder open/close cycle", async () => {
+    asReservationsUser();
+    let activityCalls = 0;
+    server.use(
+      http.get("/api/v1/enquiries/7", () => HttpResponse.json(quotedEnquiry)),
+      http.get("/api/v1/enquiries/7/activity", () => {
+        activityCalls += 1;
+        return HttpResponse.json([
+          {
+            id: 1,
+            enquiry: 7,
+            from_status: "new",
+            to_status: "progressing",
+            kind: "contacted",
+            actor: null,
+            source: "user",
+            reason: "Reached out by email",
+            meta: {},
+            created_at: "2026-05-03T00:00:00Z",
+          },
+        ]);
+      }),
+    );
+    setup("/enquiries/7");
+    await screen.findByRole("button", { name: /assign/i });
+
+    // Expand the Activity rail panel — fetches the timeline exactly once.
+    await userEvent.click(screen.getByRole("button", { name: /^activity$/i }));
+    expect(await screen.findByText("new → progressing")).toBeInTheDocument();
+    expect(activityCalls).toBe(1);
+
+    // Open the builder: it goes full-width and the rail collapses to display:none.
+    await userEvent.click(screen.getByRole("button", { name: /build another quote/i }));
+    expect(await screen.findByRole("button", { name: /^search$/i })).toBeInTheDocument();
+
+    // Close it again.
+    await userEvent.click(screen.getByRole("button", { name: /hide builder/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /^search$/i })).not.toBeInTheDocument(),
+    );
+
+    // Hidden, not unmounted: the Activity panel stayed expanded (timeline still
+    // in the DOM) and its query was NOT re-run by a remount.
+    expect(screen.getByText("new → progressing")).toBeInTheDocument();
+    expect(activityCalls).toBe(1);
+  });
+
+  it("restores the rail if an open-builder enquiry turns final out-of-band (no lockout)", async () => {
+    asReservationsUser();
+    const queryClient = createTestQueryClient();
+    let status = "new";
+    server.use(
+      http.get("/api/v1/enquiries/7", () =>
+        HttpResponse.json({ ...baseEnquiry, status, quotations: [] }),
+      ),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+      </Routes>,
+      { route: "/enquiries/7", queryClient },
+    );
+
+    // Fresh, no quotes → builder auto-opens and the rail collapses to full-width
+    // (aside is `display:none` at every width, i.e. no `lg:block`).
+    await screen.findByRole("button", { name: /^search$/i });
+    expect(screen.getByRole("complementary")).not.toHaveClass("lg:block");
+
+    // The enquiry flips to a final status behind our back; a refetch pulls it in.
+    // Same id → the builder open-state is NOT re-seeded, so `building` stays true.
+    status = "dead";
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+
+    // The rail must return (regains `lg:block`) — it's the only place left to act
+    // on the enquiry, and the build toggle is disabled on a final enquiry.
+    await waitFor(() => expect(screen.getByRole("complementary")).toHaveClass("lg:block"));
   });
 
   it("redirects the legacy /details deep link to the unified workspace", async () => {

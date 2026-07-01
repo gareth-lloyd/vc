@@ -1,15 +1,30 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, parseMoney } from "@/lib/format/money";
+import type { PriceBasis } from "@/lib/pricing/netGross";
 import type { PriceQuote } from "../schemas";
 
 interface QuoteResultCardProps {
   quote: PriceQuote;
   /** Resolved "Season · Period" label for the winning period, when known. */
   periodLabel?: string | null;
+  /**
+   * Price basis of the winning plan, used to reconcile the guest total. GROSS
+   * plans mis-report `total` (BUG-009: commission added on top), so we recompute
+   * it from the shown lines; NET plans report a correct `total` and any gap over
+   * the lines is real taxes/fees. Defaults to "gross" — the safe reconciling
+   * path for all legacy data.
+   */
+  basis?: PriceBasis;
 }
 
 const nonZero = (value: string | undefined): boolean => !!value && Number(value) !== 0;
+
+/** parseMoney, but a missing/blank amount reads as 0 rather than NaN. */
+const money = (value: string | undefined): number => {
+  const n = parseMoney(value ?? "");
+  return Number.isNaN(n) ? 0 : n;
+};
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -26,7 +41,7 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
  * (net_to_owner / commission / tax): the engine mis-prices those for GROSS
  * plans (BUG-009), so we mark them pending rather than headline a wrong number.
  */
-export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
+export function QuoteResultCard({ quote, periodLabel, basis }: QuoteResultCardProps) {
   const { t } = useTranslation("properties");
   const currency = quote.currency_code ?? null;
   const nights = quote.lines.length;
@@ -34,6 +49,24 @@ export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // The guest total that reconciles with the lines above: rate + extras −
+  // discount. This is the correct guest figure for GROSS plans (where the
+  // engine's `total` is inflated by commission) and the components' running sum
+  // for NET plans.
+  const lineSum = money(quote.rate_subtotal) + money(quote.extras_total) - money(quote.discount);
+  // Under NET the engine's `total` is the guest-facing figure and any excess
+  // over the line sum is genuine taxes/fees, surfaced as its own line. We only
+  // trust `total` when it's actually present and not below the line sum — a
+  // missing `total` (schema-optional) or an under-the-lines total would make the
+  // breakdown fail to add up, so those fall back to the reconciled line sum
+  // (identical to the GROSS path). Under GROSS we ignore `total` entirely.
+  const totalNum = money(quote.total);
+  const hasUsableTotal = quote.total != null && !Number.isNaN(parseMoney(quote.total));
+  const isNet = basis === "net" && hasUsableTotal && totalNum >= lineSum - 0.005;
+  const taxesFees = isNet ? totalNum - lineSum : 0;
+  const showTaxesFees = taxesFees > 0.005;
+  const guestTotal = isNet ? totalNum : lineSum;
 
   return (
     <div className="border-border bg-card shadow-card space-y-4 rounded-lg border p-4">
@@ -63,11 +96,14 @@ export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
             −{formatMoney(quote.discount ?? "0", currency)}
           </Line>
         ) : null}
+        {showTaxesFees ? (
+          <Line label={t("rate_workbench.probe.result.taxes_fees")}>
+            {formatMoney(taxesFees, currency)}
+          </Line>
+        ) : null}
         <div className="border-border mt-1 border-t pt-2">
           <Line label={t("rate_workbench.probe.result.guest_total")}>
-            <span className="text-base font-semibold">
-              {formatMoney(quote.total ?? "0", currency)}
-            </span>
+            <span className="text-base font-semibold">{formatMoney(guestTotal, currency)}</span>
           </Line>
         </div>
       </dl>

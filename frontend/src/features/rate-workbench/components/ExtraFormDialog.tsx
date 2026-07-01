@@ -32,8 +32,13 @@ interface CommonProps {
   propertyId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The property's resolved currency, shown as the amount adornment. */
+  /** The property's resolved currency code, shown as the amount adornment. */
   currencyCode?: string | null;
+  /**
+   * The property's currency FK id (from a season), used to seed a new extra's
+   * required `currency` when the settings row leaves the FK null.
+   */
+  defaultCurrencyId?: number | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -91,13 +96,19 @@ function toPayload(values: ExtraWriteInput): ExtraWritePayload {
 }
 
 export function ExtraFormDialog(props: ExtraFormDialogProps) {
-  const { propertyId, open, onOpenChange, currencyCode } = props;
+  const { propertyId, open, onOpenChange, currencyCode, defaultCurrencyId } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const amountAdornment = currencyAdornment(currencyCode);
 
   const settings = usePropertySettings(propertyId);
-  const defaultCurrency = settings.data?.currency ?? null;
+  // Prefer the settings currency FK, but the seeded/legacy path leaves it null
+  // while the real pricing currency lives on the season (its `currency` FK id,
+  // passed down as `defaultCurrencyId`). Gate the fallback on settings having
+  // resolved so the authoritative FK always wins over the season default when
+  // present, regardless of which query resolves first; until then, no fill.
+  const defaultCurrency =
+    settings.data == null ? null : (settings.data.currency ?? defaultCurrencyId ?? null);
 
   const form = useForm<ExtraWriteInput>({
     resolver: zodResolver(extraWriteInputSchema),

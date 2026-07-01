@@ -30,8 +30,12 @@ class Person(AuditedModel):
     """
 
     title = models.CharField(max_length=16, blank=True)
-    first_name = models.CharField(max_length=128)
-    last_name = models.CharField(max_length=128)
+    # GAP-029: names are optional — an agency/company-only contact carries no
+    # personal name. The "at least a name OR an agency" floor is enforced in
+    # `ContactSerializer.validate()` (app-level, mirroring the channel-
+    # contactability gate), not a DB CHECK.
+    first_name = models.CharField(max_length=128, blank=True)
+    last_name = models.CharField(max_length=128, blank=True)
     # GAP-046: structured agency link — the successor to the free-text `company`
     # field, which was dropped once every read was switched to `agency`/
     # `agency_name` (migration 0012). "Is an agent" stays derived (has an agency /

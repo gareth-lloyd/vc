@@ -65,7 +65,7 @@ function installReads() {
 
 function renderPanel(canWrite = true) {
   return renderWithProviders(
-    <InspectorPanel propertyId={7} canWrite={canWrite} currencyCode="EUR" />,
+    <InspectorPanel propertyId={7} canWrite={canWrite} currencyCode="EUR" defaultCurrencyId={1} />,
   );
 }
 

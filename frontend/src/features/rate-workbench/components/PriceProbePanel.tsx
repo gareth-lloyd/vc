@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/errors";
+import type { PriceBasis } from "@/lib/pricing/netGross";
 import type { Extra } from "@/features/properties/schemas";
 import { usePriceProbe } from "../hooks";
 import { QuoteResultCard } from "./QuoteResultCard";
@@ -15,6 +16,14 @@ interface PriceProbePanelProps {
   extras: Extra[];
   /** periodId → "Season · Period" label, to name the winning period in the result. */
   periodLabels: Record<number, string>;
+  /**
+   * planId → price basis, used to reconcile the guest total (see
+   * QuoteResultCard). Optional so callers/tests that don't wire pricing seasons
+   * still work; the panel falls back to `defaultBasis` then "gross".
+   */
+  basisByPlan?: Record<number, PriceBasis>;
+  /** Property-level default basis (`prices_entered_as_effective`) fallback. */
+  defaultBasis?: PriceBasis;
 }
 
 /**
@@ -23,7 +32,13 @@ interface PriceProbePanelProps {
  * `party` is `adults + children` (the engine's single occupancy input); owner
  * economics stay hidden (see QuoteResultCard / BUG-009).
  */
-export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbePanelProps) {
+export function PriceProbePanel({
+  propertyId,
+  extras,
+  periodLabels,
+  basisByPlan,
+  defaultBasis,
+}: PriceProbePanelProps) {
   const { t } = useTranslation("properties");
   const probe = usePriceProbe();
 
@@ -93,6 +108,10 @@ export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbe
           <Input
             id="probe-from"
             type="date"
+            // Native date controls need room for DD/MM/YYYY + the picker icon;
+            // the shared Input's `min-w-0` otherwise lets the grid track clip the
+            // day at narrow widths. Floor the width so the full date always shows.
+            className="min-w-[9rem]"
             value={dateFrom}
             onChange={(e) => {
               clearStaleResult();
@@ -105,6 +124,7 @@ export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbe
           <Input
             id="probe-to"
             type="date"
+            className="min-w-[9rem]"
             value={dateTo}
             onChange={(e) => {
               clearStaleResult();
@@ -190,6 +210,11 @@ export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbe
           quote={probe.data}
           periodLabel={
             probe.data.winning_period_id != null ? periodLabels[probe.data.winning_period_id] : null
+          }
+          basis={
+            (probe.data.plan_id != null ? basisByPlan?.[probe.data.plan_id] : undefined) ??
+            defaultBasis ??
+            "gross"
           }
         />
       ) : null}

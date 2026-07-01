@@ -209,6 +209,17 @@
       "title": "Remove this block?",
       "description": "The dates will become available again.",
       "confirm": "Remove block"
+    },
+    "freshness": {
+      "owner_updated_label": "Updated by owner",
+      "calendar_imported_label": "Calendar imported",
+      "confirmed_label": "Confirmed by VC staff",
+      "confirmed_value": "{{name}} · {{when}}",
+      "not_confirmed": "Not yet confirmed",
+      "confirm_button": "Mark as up-to-date",
+      "confirm_disabled_tooltip": "You need the reservations role to confirm availability",
+      "confirm_toast": "Availability confirmed",
+      "confirm_failed": "Couldn't confirm availability"
     }
   },
   "pricing": {

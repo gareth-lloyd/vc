@@ -88,6 +88,57 @@
       "card": "Card",
       "bank_transfer": "Bank transfer",
       "other": "Other"
+    },
+    "damage_claim_status": {
+      "open": "Open",
+      "approved": "Approved",
+      "settled": "Settled",
+      "withdrawn": "Withdrawn"
+    },
+    "security_deposit_kind": {
+      "pre_auth_hold": "Card pre-authorisation",
+      "bt_refundable": "Refundable bank transfer"
+    },
+    "security_deposit_status": {
+      "awaiting_details": "Awaiting card details",
+      "pre_authed": "Pre-authorised",
+      "released": "Released",
+      "captured": "Captured",
+      "expired": "Expired",
+      "failed": "Failed",
+      "awaiting_bt": "Awaiting bank transfer",
+      "held": "Held",
+      "refunded": "Refunded",
+      "partially_refunded": "Partially refunded"
+    },
+    "refund_status": {
+      "pending": "Pending approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "executing": "Executing — awaiting settlement",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "refund_method": {
+      "online_gateway": "Online gateway",
+      "manual_bank_transfer": "Manual bank transfer",
+      "offline": "Offline"
+    },
+    "refund_reason_code": {
+      "cancellation": "Cancellation",
+      "overpayment": "Overpayment",
+      "goodwill": "Goodwill",
+      "security_deposit_release": "Security deposit release",
+      "duplicate_charge": "Duplicate charge",
+      "other": "Other"
+    },
+    "refund_purpose_track": {
+      "deposit": "Deposit",
+      "balance": "Balance",
+      "security_deposit": "Security deposit",
+      "adjustment": "Adjustment",
+      "goodwill": "Goodwill"
     }
   },
   "columns": {
@@ -338,6 +389,189 @@
       "success_message": "{{track}} waived"
     }
   },
+  "damage_claims": {
+    "title": "Damage claims",
+    "file": "File claim",
+    "role_required_tooltip": "You need the Reservations role to file a claim",
+    "load_failed_title": "Couldn't load damage claims",
+    "load_failed_body": "Try again.",
+    "empty_title": "No damage claims",
+    "empty_description": "File a claim to justify a deduction from the security deposit.",
+    "columns": {
+      "reference": "Ref",
+      "description": "Description",
+      "status": "Status",
+      "amount": "Amount"
+    },
+    "row": {
+      "approve": "Approve",
+      "withdraw": "Withdraw",
+      "photos": "Photos ({{count}})",
+      "edit_for": "Edit claim {{reference}}",
+      "approve_for": "Approve claim {{reference}}",
+      "withdraw_for": "Withdraw claim {{reference}}",
+      "photos_for": "Photos for claim {{reference}}"
+    },
+    "photos": {
+      "title": "Damage photos",
+      "description": "Evidence attached to claim {{reference}}.",
+      "empty_title": "No photos yet",
+      "empty_description": "Upload photos of the damage as evidence for the claim.",
+      "thumbnail_alt": "Damage photo",
+      "caption_label": "Photo caption",
+      "caption_placeholder": "Optional caption",
+      "upload_label": "Upload a photo",
+      "delete_for": "Delete photo {{id}}",
+      "upload_failed": "Couldn't upload the photo",
+      "delete_failed": "Couldn't delete the photo"
+    },
+    "confirm_approve": {
+      "title": "Approve this claim?",
+      "description": "Claim {{reference}} will be marked approved, signing off the damages before the deposit is captured.",
+      "confirm_label": "Approve claim"
+    },
+    "confirm_withdraw": {
+      "title": "Withdraw this claim?",
+      "description": "Claim {{reference}} will be marked withdrawn. This doesn't delete the record.",
+      "confirm_label": "Withdraw claim"
+    },
+    "toasts": {
+      "filed": "Damage claim filed",
+      "updated": "Damage claim updated",
+      "approved": "Damage claim approved",
+      "approve_failed": "Couldn't approve the claim",
+      "withdrawn": "Damage claim withdrawn",
+      "withdraw_failed": "Couldn't withdraw the claim"
+    },
+    "form_dialog": {
+      "create_title": "File damage claim",
+      "edit_title": "Edit damage claim",
+      "description": "Record the damages and the amount claimed against the security deposit.",
+      "submit_create": "File claim",
+      "fields": {
+        "description": "Description",
+        "amount": "Amount",
+        "currency": "Currency"
+      },
+      "itemized": {
+        "heading": "Itemised breakdown",
+        "add_line": "Add line",
+        "label_placeholder": "e.g. Replace sofa cushion",
+        "line_label": "Line {{n}} description",
+        "line_amount": "Line {{n}} amount",
+        "remove_line": "Remove line {{n}}",
+        "lines_total": "Lines total: {{total}}"
+      }
+    }
+  },
+  "security_deposit": {
+    "title": "Security deposit",
+    "role_required_tooltip": "You need the Accounts role to release or capture the deposit",
+    "load_failed_title": "Couldn't load the security deposit",
+    "load_failed_body": "Try again.",
+    "empty_title": "No security deposit",
+    "empty_description": "This booking has no security deposit on file.",
+    "fields": {
+      "amount": "Amount",
+      "hold_expires_at": "Hold expires",
+      "release_scheduled_for": "Release scheduled",
+      "captured_amount": "Captured amount",
+      "refunded_amount": "Refunded amount"
+    },
+    "actions": {
+      "release": "Release",
+      "capture": "Capture for damages"
+    },
+    "confirm_release": {
+      "title": "Release this deposit?",
+      "description": "The full deposit will be released back to the guest. This can't be undone.",
+      "confirm_label": "Release deposit"
+    },
+    "capture_dialog": {
+      "title": "Capture for damages",
+      "description": "Capture against the {{amount}} held deposit. Select the damage claim that justifies it.",
+      "submit": "Capture",
+      "no_open_claims": "No open damage claims to capture against. File a claim first.",
+      "fields": {
+        "claim": "Damage claim",
+        "claim_placeholder": "Select a claim",
+        "captured_amount": "Amount to capture"
+      }
+    },
+    "toasts": {
+      "released": "Security deposit released",
+      "release_failed": "Couldn't release the deposit",
+      "captured": "Captured against the deposit"
+    }
+  },
+  "refunds": {
+    "title": "Refunds",
+    "request": "Request refund",
+    "role_required_tooltip": "You need the Accounts role to request a refund",
+    "load_failed_title": "Couldn't load refunds",
+    "load_failed_body": "Try again.",
+    "empty_title": "No refunds",
+    "empty_description": "Refunds against this booking will appear here.",
+    "columns": {
+      "reference": "Reference",
+      "status": "Status",
+      "method": "Method",
+      "amount": "Amount"
+    },
+    "form_dialog": {
+      "create_title": "Request a refund",
+      "description": "Record a refund against this booking. It still needs approval before it can be executed.",
+      "submit_create": "Request refund",
+      "fields": {
+        "amount": "Amount",
+        "currency": "Currency",
+        "purpose_track": "Track",
+        "method": "Method",
+        "reason_code": "Reason",
+        "notes": "Notes (optional)"
+      }
+    },
+    "row": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "execute": "Execute",
+      "cancel": "Cancel",
+      "approve_for": "Approve refund {{reference}}",
+      "reject_for": "Reject refund {{reference}}",
+      "execute_for": "Execute refund {{reference}}",
+      "cancel_for": "Cancel refund {{reference}}",
+      "self_approve_tooltip": "You requested this refund — a different approver must approve it"
+    },
+    "confirm_approve": {
+      "title": "Approve this refund?",
+      "description": "Approving {{reference}} clears it for execution. A separate person must execute it.",
+      "confirm_label": "Approve"
+    },
+    "confirm_execute": {
+      "title": "Start executing this refund?",
+      "description": "This starts the refund of {{amount}}. Online refunds settle once the gateway confirms; manual and offline refunds settle immediately.",
+      "confirm_label": "Start execution"
+    },
+    "confirm_cancel": {
+      "title": "Cancel this refund?",
+      "description": "Cancelling {{reference}} closes it without paying anything out. This can't be undone.",
+      "confirm_label": "Cancel refund"
+    },
+    "reject_dialog": {
+      "title": "Reject this refund",
+      "description": "Give a reason for rejecting {{reference}}.",
+      "reason_label": "Reason",
+      "submit": "Reject refund"
+    },
+    "toasts": {
+      "requested": "Refund requested",
+      "approved": "Refund approved",
+      "rejected": "Refund rejected",
+      "executed": "Refund execution started",
+      "cancelled": "Refund cancelled",
+      "action_failed": "Couldn't complete that action"
+    }
+  },
   "concierge": {
     "heading": "Concierge",
     "add_service": "Add service",
@@ -433,7 +667,11 @@
     "body_required": "Body is required",
     "label_required": "Label is required",
     "signed_decimal_format": "Use a decimal like 150.00 or -150.00",
-    "amount_nonzero": "Amount must not be zero"
+    "amount_nonzero": "Amount must not be zero",
+    "description_required": "Description is required",
+    "amount_positive": "Amount must be greater than zero",
+    "line_label_required": "Line label is required",
+    "capture_exceeds_amount": "Can't capture more than the held deposit"
   },
   "finance": {
     "title": "Finance",

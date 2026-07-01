@@ -163,7 +163,7 @@ export function EnquiriesListPage() {
   // scope the AssignDialog uses. Only fetched for the list view's filter bar
   // (the Kanban has no filter UI), so the default board view skips the request.
   const operatorsQuery = useUsers(
-    { role: "reservations,admin", is_active: true },
+    { role: "reservations,admin", is_active: true, is_staff: true },
     { enabled: view === "list" },
   );
   const operators = operatorsQuery.data?.results ?? [];

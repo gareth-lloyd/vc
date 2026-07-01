@@ -6,31 +6,46 @@ import { ApiError } from "@/lib/api/errors";
 import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import type { Paginated } from "@/types/api";
 import {
+  approveRefund,
   archiveBooking,
   bookingStatusCountsQuery,
   cancelBooking,
+  cancelRefund,
   checkInBooking,
   checkOutBooking,
   confirmBooking,
   confirmConciergeItem,
   createBookingNote,
   createChargeItem,
+  createRefund,
+  captureSecurityDepositForDamages,
+  approveDamageClaim,
   createConciergeItem,
+  createDamageClaim,
+  executeRefund,
   declineBooking,
   deleteBookingNote,
   deleteChargeItem,
   deleteConciergeItem,
+  deleteDamageClaim,
+  deleteDamageClaimPhoto,
+  uploadDamageClaimPhoto,
   fetchBalanceTrack,
   fetchBooking,
   fetchBookingActivity,
   fetchBookingChargeItems,
   fetchBookingConciergeItems,
+  fetchBookingDamageClaims,
   fetchBookingEmails,
   fetchBookingNotes,
+  fetchBookingRefunds,
   fetchBookings,
   fetchDepositTrack,
+  fetchSecurityDeposit,
   fetchSecurityTrack,
   markPaid,
+  rejectRefund,
+  releaseSecurityDeposit,
   modifyBookingDates,
   modifyBookingGuests,
   requestPayment,
@@ -40,7 +55,9 @@ import {
   updateBookingNote,
   updateChargeItem,
   updateConciergeItem,
+  updateDamageClaim,
   waiveTrack,
+  withdrawDamageClaim,
   type TrackName,
 } from "./api";
 import type {
@@ -49,12 +66,15 @@ import type {
   BookingNote,
   BookingNoteWriteInput,
   CancelBookingInput,
+  CaptureForDamagesInput,
   ChargeItemWriteInput,
   ConciergeItemWriteInput,
+  DamageClaimWriteInput,
   DeclineBookingInput,
   MarkPaidInput,
   ModifyDatesInput,
   ModifyGuestsInput,
+  RefundRequestInput,
   WaiveTrackInput,
 } from "./schemas";
 
@@ -347,6 +367,186 @@ export function useDeleteChargeItem(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ itemId }: { itemId: number }) => deleteChargeItem(bookingId, itemId),
     onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Damage claims
+// ----------------------------------------------------------------------
+
+export function useBookingDamageClaims(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.damageClaims, fetchBookingDamageClaims));
+}
+
+// A damage claim never enters the booking `total` (the money moves on the SD
+// capture, not the booking balance) and isn't yet surfaced on the booking
+// detail or activity feed, so invalidate only the claim list. Widen this when
+// the workflow-8 timeline/email integration starts emitting claim events.
+function invalidateDamageClaimDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.damageClaims(bookingId) });
+}
+
+export function useCreateDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DamageClaimWriteInput) => createDamageClaim(bookingId, input),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+interface UpdateDamageClaimVars {
+  claimId: number;
+  input: Partial<DamageClaimWriteInput>;
+}
+
+export function useUpdateDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, input }: UpdateDamageClaimVars) =>
+      updateDamageClaim(bookingId, claimId, input),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useApproveDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => approveDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useWithdrawDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => withdrawDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useDeleteDamageClaim(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId }: { claimId: number }) => deleteDamageClaim(bookingId, claimId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useUploadDamageClaimPhoto(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, image, caption }: { claimId: number; image: File; caption?: string }) =>
+      uploadDamageClaimPhoto(bookingId, claimId, { image, caption }),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+export function useDeleteDamageClaimPhoto(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, photoId }: { claimId: number; photoId: number }) =>
+      deleteDamageClaimPhoto(bookingId, claimId, photoId),
+    onSuccess: () => invalidateDamageClaimDependents(queryClient, bookingId),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Security deposit (wf 8)
+// ----------------------------------------------------------------------
+
+export function useSecurityDeposit(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.securityDeposit, fetchSecurityDeposit));
+}
+
+// A release/capture moves the SD row state, the Payment-aggregate security
+// track (`paid_amount`), and — for a capture — the consumed damage claim.
+// Invalidate all three, plus the activity feed (the transition emits an event).
+function invalidateSecurityDepositDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.damageClaims(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+}
+
+export function useReleaseSecurityDeposit(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => releaseSecurityDeposit(bookingId),
+    onSuccess: () => invalidateSecurityDepositDependents(queryClient, bookingId),
+  });
+}
+
+export function useCaptureSecurityDepositForDamages(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CaptureForDamagesInput) =>
+      captureSecurityDepositForDamages(bookingId, input),
+    onSuccess: () => invalidateSecurityDepositDependents(queryClient, bookingId),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Refunds (wf 17)
+// ----------------------------------------------------------------------
+
+export function useBookingRefunds(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.refunds, fetchBookingRefunds));
+}
+
+// A refund mutation moves the refund row, and a settled (succeeded) refund moves
+// the booking finance and the relevant payment track's `paid_amount`. The cheap,
+// correct move is to bust the refund list + the booking finance surfaces and all
+// three tracks + the activity feed (each transition writes an event).
+function invalidateRefundDependents(queryClient: QueryClient, bookingId: BookingId): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.refunds(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.deposit(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.balance(bookingId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
+  // A security_deposit_release refund settles against the SD row, which the
+  // SD panel reads from its own query — bust it too so the panel isn't stale.
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
+}
+
+export function useCreateRefund(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RefundRequestInput) => createRefund(bookingId, input),
+    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+  });
+}
+
+export function useApproveRefund(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ refundId }: { refundId: number }) => approveRefund(refundId),
+    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+  });
+}
+
+export function useRejectRefund(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ refundId, reason }: { refundId: number; reason: string }) =>
+      rejectRefund(refundId, reason),
+    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+  });
+}
+
+export function useExecuteRefund(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ refundId }: { refundId: number }) => executeRefund(refundId),
+    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+  });
+}
+
+export function useCancelRefund(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ refundId }: { refundId: number }) => cancelRefund(refundId),
+    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
   });
 }
 

@@ -73,5 +73,9 @@
     "maintenance": "Συντήρηση",
     "manual": "Χειροκίνητη δέσμευση",
     "quotation_open": "Δέσμευση προσφοράς"
+  },
+  "freshness": {
+    "owner_updated": "Ενημ. ιδιοκτήτη {{when}}",
+    "confirmed": "Επιβεβ. {{when}}"
   }
 }

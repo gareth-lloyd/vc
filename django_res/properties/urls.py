@@ -85,6 +85,11 @@ _property_actions: list[URLPattern] = [
         PropertyViewSet.as_view({"post": "import_from_zoho"}),
         name="property-import-from-zoho",
     ),
+    path(
+        "properties/<str:pk>:confirm-availability",
+        PropertyViewSet.as_view({"post": "confirm_availability"}),
+        name="property-confirm-availability",
+    ),
 ]
 
 _property_subresources: list[URLPattern] = [

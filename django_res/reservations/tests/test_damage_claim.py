@@ -13,13 +13,14 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 
 from core.audit import get_spec
 from core.models import AuditLog
 from reservations.enums import DamageClaimStatus
 from reservations.factories import DamageClaimFactory, make_occupying_booking
-from reservations.models import Booking, DamageClaim
+from reservations.models import Booking, DamageClaim, DamageClaimPhoto
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -55,9 +56,10 @@ def test_reference_is_db_allocated_and_status_defaults_open(
     assert claim.reference.startswith("DC-")
     assert claim.status == DamageClaimStatus.OPEN.value
     assert str(claim) == claim.reference
-    # Scaffolds default to empty lists, not null.
+    # The itemized_lines scaffold defaults to an empty list, not null.
     assert claim.itemized_lines == []
-    assert claim.photos == []
+    # Photos are a real relation now, empty until uploaded.
+    assert list(claim.photos.all()) == []
 
 
 @pytest.mark.django_db
@@ -102,3 +104,51 @@ def test_status_change_writes_an_audit_row(booking: Booking, gbp: Currency) -> N
         DamageClaimStatus.OPEN.value,
         DamageClaimStatus.APPROVED.value,
     ]
+
+
+# --- DamageClaimPhoto (wf8) ----------------------------------------------------
+
+
+def _image() -> SimpleUploadedFile:
+    return SimpleUploadedFile("evidence.jpg", b"fake-image-bytes", content_type="image/jpeg")
+
+
+@pytest.mark.django_db
+def test_photo_str_and_ordering(booking: Booking, gbp: Currency) -> None:
+    claim = cast(DamageClaim, DamageClaimFactory(booking=booking, currency=gbp))
+    p1 = DamageClaimPhoto.objects.create(damage_claim=claim, image=_image(), caption="first")
+    p2 = DamageClaimPhoto.objects.create(damage_claim=claim, image=_image())
+
+    assert str(p1) == f"Photo #{p1.pk} for damage claim #{claim.pk}"
+    # Meta.ordering = [damage_claim_id, id]
+    assert list(claim.photos.all()) == [p1, p2]
+
+
+@pytest.mark.django_db
+def test_photo_cascade_deletes_with_claim(booking: Booking, gbp: Currency) -> None:
+    claim = cast(DamageClaim, DamageClaimFactory(booking=booking, currency=gbp))
+    photo = DamageClaimPhoto.objects.create(damage_claim=claim, image=_image())
+
+    claim.delete()
+
+    assert not DamageClaimPhoto.objects.filter(pk=photo.pk).exists()
+
+
+@pytest.mark.django_db
+def test_photo_is_audited(booking: Booking, gbp: Currency) -> None:
+    # Registered for audit (the create row rides pre_save before the pk exists,
+    # so it lands with an empty object_id — the convention; the delete row below
+    # carries the real pk).
+    assert get_spec(DamageClaimPhoto) is not None
+    claim = cast(DamageClaim, DamageClaimFactory(booking=booking, currency=gbp))
+    photo = DamageClaimPhoto.objects.create(
+        damage_claim=claim, image=_image(), caption="broken window"
+    )
+    photo_pk = photo.pk
+
+    photo.delete()
+
+    ct = ContentType.objects.get_for_model(DamageClaimPhoto)
+    delete_rows = AuditLog.objects.filter(content_type=ct, object_id=str(photo_pk))
+    assert delete_rows.exists(), "expected an AuditLog row for the photo deletion"
+    assert delete_rows.latest("created_at").field_diffs["__deleted__"] is True

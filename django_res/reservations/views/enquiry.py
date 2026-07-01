@@ -6,7 +6,7 @@ from typing import Any
 
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -14,7 +14,11 @@ from rest_framework.response import Response
 
 from accounts.models import User
 from core.api.pagination import ConfigurablePageSizePagination
-from core.api.permissions import IsReservationsWriter
+from core.api.permissions import (
+    NON_OPERATOR_ASSIGNEE_MSG,
+    IsReservationsWriter,
+    is_assignable_operator,
+)
 from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
@@ -148,6 +152,8 @@ class EnquiryViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         user: User | None = None
         if user_id is not None:
             user = get_object_or_404(User, pk=user_id)
+            if not is_assignable_operator(user):
+                raise serializers.ValidationError({"user": NON_OPERATOR_ASSIGNEE_MSG})
         enquiry.assign(user, actor=request.user)
         return Response(EnquiryDetailSerializer(enquiry).data)
 

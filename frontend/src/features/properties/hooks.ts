@@ -4,6 +4,7 @@ import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
   activateProperty,
   archiveProperty,
+  confirmPropertyAvailability,
   createChangeOverRule,
   createProperty,
   createPropertyBlock,
@@ -779,5 +780,19 @@ export function useRestoreProperty(property: { id: number; slug?: string | null 
   return useMutation({
     mutationFn: () => restoreProperty(property.id),
     onSuccess: () => invalidatePropertyDetail(queryClient, property),
+  });
+}
+
+// GAP-033: staff "Mark as up-to-date". Refresh the property detail (the
+// AvailabilityTab reads its freshness badges off the detail via useOutletContext)
+// AND the availability/timeline caches (Unit 7 surfaces the same badges there).
+export function useConfirmPropertyAvailability(property: { id: number; slug?: string | null }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => confirmPropertyAvailability(property.id),
+    onSuccess: () => {
+      invalidatePropertyDetail(queryClient, property);
+      invalidateAvailability(queryClient, property.id);
+    },
   });
 }

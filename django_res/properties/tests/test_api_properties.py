@@ -629,9 +629,10 @@ def test_list_query_count_constant_with_feeds_and_settings(
     group: PropertyGroup,
     region: Region,
 ) -> None:
-    """Surfacing the flag (a scalar `Exists`) and `calendar_url`
-    (`select_related("settings")`) must add no per-row query — the count stays
-    flat as the property set grows. Guards against an accidental N+1."""
+    """Surfacing the flags (scalar `Exists`/`Subquery`), `calendar_url`
+    (`select_related("settings")`), and the confirmed-by actor name
+    (`select_related("availability_confirmed_by")`) must add no per-row query —
+    the count stays flat as the property set grows. Guards against an N+1."""
 
     def _make(n_start: int, n: int) -> None:
         for idx in range(n_start, n_start + n):
@@ -642,6 +643,9 @@ def test_list_query_count_constant_with_feeds_and_settings(
                 category=category,
                 group=group,
                 region=region,
+                # Non-null actor FK so a forgotten select_related actually N+1s
+                # when availability_confirmed_by_name resolves the name (GAP-033).
+                availability_confirmed_by=staff,
             )
             PropertySettings.objects.create(
                 property=prop, calendar_url=f"https://owner.example.com/{idx}"

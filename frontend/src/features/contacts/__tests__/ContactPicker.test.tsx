@@ -41,7 +41,7 @@ describe("ContactPicker", () => {
     server.use(
       http.get("/api/v1/contacts", ({ request }) => {
         const url = new URL(request.url);
-        const q = url.searchParams.get("q") ?? "";
+        const q = url.searchParams.get("search") ?? "";
         if (q.includes("ali")) return HttpResponse.json(drfPage([alice]));
         return HttpResponse.json(drfPage([]));
       }),

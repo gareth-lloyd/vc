@@ -613,3 +613,10 @@ export async function restoreProperty(idOrSlug: PropertyId): Promise<PropertyDet
   const data = await apiSend<unknown>("POST", `/properties/${idOrSlug}:restore`);
   return propertyDetailSchema.parse(data);
 }
+
+// GAP-033: staff "Mark as up-to-date" — stamps the confirmed-by-VC-staff signal
+// (Signal 3) without adding any dates. Returns the updated detail payload.
+export async function confirmPropertyAvailability(idOrSlug: PropertyId): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("POST", `/properties/${idOrSlug}:confirm-availability`);
+  return propertyDetailSchema.parse(data);
+}

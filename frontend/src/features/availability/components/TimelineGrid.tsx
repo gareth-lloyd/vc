@@ -6,7 +6,7 @@ import { Repeat } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarSourceIndicator } from "@/components/data/CalendarSourceIndicator";
 import { cn } from "@/lib/cn";
-import { activeLocale } from "@/lib/format/date";
+import { activeLocale, formatRelative } from "@/lib/format/date";
 import { formatMoney, formatMoneyCompact, formatMoneyWhole } from "@/lib/format/money";
 import { propertyAvailabilityPath } from "@/lib/routes";
 import type { PropertyListItem } from "@/features/properties/schemas";
@@ -370,6 +370,24 @@ export function TimelineGrid({
                   hasActiveIcalFeed={property.has_active_ical_feed}
                   calendarUrl={property.calendar_url}
                 />
+                {/* GAP-033: read-only availability-freshness badges (the confirm
+                    action lives on the property's Availability tab, not here).
+                    Render only the signals that carry a value to keep the dense
+                    row compact. */}
+                {property.availability_owner_updated_at ? (
+                  <span className="text-muted-foreground truncate text-xs">
+                    {t("freshness.owner_updated", {
+                      when: formatRelative(property.availability_owner_updated_at),
+                    })}
+                  </span>
+                ) : null}
+                {property.availability_confirmed_at ? (
+                  <span className="text-muted-foreground truncate text-xs">
+                    {t("freshness.confirmed", {
+                      when: formatRelative(property.availability_confirmed_at),
+                    })}
+                  </span>
+                ) : null}
                 {changeoverLabel ? (
                   <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
                     <Repeat className="size-3 shrink-0" aria-label={t("price.changeover_aria")} />

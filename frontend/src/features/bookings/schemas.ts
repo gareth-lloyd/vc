@@ -316,6 +316,269 @@ export const conciergeUnitOptions = (): Array<{ value: ConciergeUnit; label: str
   conciergeUnitSchema.options.map((value) => ({ value, label: conciergeUnitLabel(value) }));
 
 // ----------------------------------------------------------------------
+// Damage claims — structured claims against a booking's security deposit.
+// ----------------------------------------------------------------------
+
+export const damageClaimStatusSchema = z.enum(["open", "approved", "settled", "withdrawn"]);
+export type DamageClaimStatus = z.infer<typeof damageClaimStatusSchema>;
+
+export function damageClaimStatusLabel(status: DamageClaimStatus): string {
+  return i18n.t(`bookings:labels.damage_claim_status.${status}`);
+}
+
+// A single itemised breakdown line. Display-only — the sum need not reconcile
+// to `amount` (the money that moves is the SD capture, not the claim total).
+export const damageClaimLineSchema = z.object({
+  label: z.string(),
+  amount: z.string(),
+});
+export type DamageClaimLine = z.infer<typeof damageClaimLineSchema>;
+
+// A damages evidence photo (wf8). `image_url` is storage-generated — a
+// `/media/…` path in dev, an absolute S3 URL on staging/prod.
+export const damageClaimPhotoSchema = z.object({
+  id: z.number(),
+  image_url: z.string().nullable(),
+  caption: z.string().default(""),
+  created_at: z.string().nullable().optional(),
+});
+export type DamageClaimPhoto = z.infer<typeof damageClaimPhotoSchema>;
+
+export const damageClaimSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  booking: z.number().optional(),
+  amount: z.string(),
+  description: z.string(),
+  status: damageClaimStatusSchema,
+  currency: z.number(),
+  currency_code: z.string().nullable().optional(),
+  itemized_lines: z.array(damageClaimLineSchema).default([]),
+  photos: z.array(damageClaimPhotoSchema).default([]),
+  accepted_by_guest_at: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type DamageClaim = z.infer<typeof damageClaimSchema>;
+
+export const damageClaimsResponseSchema = paginated(damageClaimSchema);
+
+// Itemised line as entered in the form repeater — both fields are required, so
+// a blank/partial row blocks submit with an inline error (the operator must
+// fill it in or remove it; there is no silent drop).
+export const damageClaimLineInputSchema = z.object({
+  label: z.string().trim().min(1, i18n.t("bookings:schema_errors.line_label_required")),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format")),
+});
+export type DamageClaimLineInput = z.infer<typeof damageClaimLineInputSchema>;
+
+// Currency is pinned to the booking's server-side, so it is absent here.
+export const damageClaimWriteInputSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(1, i18n.t("bookings:schema_errors.description_required"))
+    .max(2000),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+  itemized_lines: z.array(damageClaimLineInputSchema),
+});
+export type DamageClaimWriteInput = z.infer<typeof damageClaimWriteInputSchema>;
+
+// ----------------------------------------------------------------------
+// Security deposit (wf 8) — the SD workflow row itself, read from
+// `GET /bookings/{id}/security/deposit`. Distinct from the Payment-aggregate
+// `paymentTrackSchema` below: this carries the SD's own kind/status and the
+// captured/refunded amounts the operator panel branches on.
+// ----------------------------------------------------------------------
+
+export const securityDepositKindSchema = z.enum(["pre_auth_hold", "bt_refundable"]);
+export type SecurityDepositKind = z.infer<typeof securityDepositKindSchema>;
+
+export function securityDepositKindLabel(kind: SecurityDepositKind): string {
+  return i18n.t(`bookings:labels.security_deposit_kind.${kind}`);
+}
+
+// All ten SD statuses the backend `SecurityDepositStatus` TextChoices emit
+// (lowercase `.value`s).
+export const securityDepositStatusSchema = z.enum([
+  "awaiting_details",
+  "pre_authed",
+  "released",
+  "captured",
+  "expired",
+  "failed",
+  "awaiting_bt",
+  "held",
+  "refunded",
+  "partially_refunded",
+]);
+export type SecurityDepositStatus = z.infer<typeof securityDepositStatusSchema>;
+
+export function securityDepositStatusLabel(status: SecurityDepositStatus): string {
+  return i18n.t(`bookings:labels.security_deposit_status.${status}`);
+}
+
+export const securityDepositSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  kind: securityDepositKindSchema,
+  status: securityDepositStatusSchema,
+  amount: z.string(),
+  currency_code: z.string().nullable().optional(),
+  // `release_scheduled_for` is a DateField → a `YYYY-MM-DD` string; the others
+  // are datetimes. All optional/nullable so an unstarted SD parses cleanly.
+  hold_expires_at: z.string().nullable().optional(),
+  due_at: z.string().nullable().optional(),
+  release_scheduled_for: z.string().nullable().optional(),
+  captured_amount: z.string().nullable().optional(),
+  refunded_amount: z.string().nullable().optional(),
+  damage_claim: z.number().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type SecurityDeposit = z.infer<typeof securityDepositSchema>;
+
+// Body for `POST /bookings/{id}/security:claim`. `captured_amount` is FE-bound
+// to `> 0` here; the `<= sd.amount` ceiling is enforced in the dialog where the
+// SD amount is in scope. The backend tolerates 0, but the panel never sends it.
+export const captureForDamagesInputSchema = z.object({
+  damage_claim: z.number(),
+  captured_amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+});
+export type CaptureForDamagesInput = z.infer<typeof captureForDamagesInputSchema>;
+
+// ----------------------------------------------------------------------
+// Refunds (wf 17) — operator-driven refund requests against a booking,
+// driven through the approve → execute lifecycle. Read from the plain-array
+// `GET /bookings/{id}/refunds`; actions POST to `/refunds/{id}:<verb>`.
+// ----------------------------------------------------------------------
+
+export const refundStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+  "executing",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+export type RefundStatus = z.infer<typeof refundStatusSchema>;
+
+export const refundMethodSchema = z.enum(["online_gateway", "manual_bank_transfer", "offline"]);
+export type RefundMethod = z.infer<typeof refundMethodSchema>;
+
+export const refundReasonCodeSchema = z.enum([
+  "cancellation",
+  "overpayment",
+  "goodwill",
+  "security_deposit_release",
+  "duplicate_charge",
+  "other",
+]);
+export type RefundReasonCode = z.infer<typeof refundReasonCodeSchema>;
+
+export const refundPurposeTrackSchema = z.enum([
+  "deposit",
+  "balance",
+  "security_deposit",
+  "adjustment",
+  "goodwill",
+]);
+export type RefundPurposeTrack = z.infer<typeof refundPurposeTrackSchema>;
+
+export function refundStatusLabel(status: RefundStatus): string {
+  return i18n.t(`bookings:labels.refund_status.${status}`);
+}
+
+export function refundMethodLabel(method: RefundMethod): string {
+  return i18n.t(`bookings:labels.refund_method.${method}`);
+}
+
+export function refundReasonCodeLabel(code: RefundReasonCode): string {
+  return i18n.t(`bookings:labels.refund_reason_code.${code}`);
+}
+
+export function refundPurposeTrackLabel(track: RefundPurposeTrack): string {
+  return i18n.t(`bookings:labels.refund_purpose_track.${track}`);
+}
+
+export const refundReasonCodeOptions = (): Array<{ value: RefundReasonCode; label: string }> =>
+  refundReasonCodeSchema.options.map((value) => ({ value, label: refundReasonCodeLabel(value) }));
+
+export const refundMethodOptions = (): Array<{ value: RefundMethod; label: string }> =>
+  refundMethodSchema.options.map((value) => ({ value, label: refundMethodLabel(value) }));
+
+export const refundPurposeTrackOptions = (): Array<{ value: RefundPurposeTrack; label: string }> =>
+  refundPurposeTrackSchema.options.map((value) => ({
+    value,
+    label: refundPurposeTrackLabel(value),
+  }));
+
+// `currency` serializes as a PK int only — there is no denormalised
+// `currency_code`, so the UI formats refund money with the booking's currency.
+export const refundSchema = z.object({
+  id: z.number(),
+  reference: z.string(),
+  booking: z.number().optional(),
+  against_payment: z.number().nullable().optional(),
+  purpose_track: refundPurposeTrackSchema,
+  amount: z.string(),
+  currency: z.number(),
+  status: refundStatusSchema,
+  reason_code: refundReasonCodeSchema,
+  reason_notes: z.string().optional().default(""),
+  method: refundMethodSchema,
+  requested_by: z.number().nullable().optional(),
+  requested_at: z.string().nullable().optional(),
+  approved_by: z.number().nullable().optional(),
+  approved_at: z.string().nullable().optional(),
+  rejected_by: z.number().nullable().optional(),
+  rejected_at: z.string().nullable().optional(),
+  rejection_reason: z.string().optional().default(""),
+  executed_by: z.number().nullable().optional(),
+  executed_at: z.string().nullable().optional(),
+  cancelled_at: z.string().nullable().optional(),
+  settled_at: z.string().nullable().optional(),
+  failure_reason: z.string().optional().default(""),
+  meta: z.record(z.string(), z.unknown()).optional().default({}),
+  security_deposit: z.number().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+export type Refund = z.infer<typeof refundSchema>;
+
+// The booking refunds endpoint returns a bare array (not DRF-paginated),
+// ordered -created_at — mirror `paymentRecordsListSchema`.
+export const refundsListSchema = z.array(refundSchema);
+
+// Body for `POST /bookings/{id}/refunds`. `currency` is omitted — the backend
+// defaults it to the booking's. `against_payment` is deferred (v1 refunds are
+// booking-level), so it is absent here too.
+export const refundRequestInputSchema = z.object({
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_format"))
+    .refine((v) => Number(v) > 0, i18n.t("bookings:schema_errors.amount_positive")),
+  purpose_track: refundPurposeTrackSchema,
+  reason_code: refundReasonCodeSchema,
+  method: refundMethodSchema,
+  reason_notes: z.string().trim().max(2000),
+});
+export type RefundRequestInput = z.infer<typeof refundRequestInputSchema>;
+
+// ----------------------------------------------------------------------
 // Manual charge items — signed money lines outside the pricing snapshot.
 // ----------------------------------------------------------------------
 

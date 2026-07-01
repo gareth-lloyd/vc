@@ -22,6 +22,7 @@ function toQuery(filters: UserFilters): QueryParams {
   return {
     role: roles && roles.length ? roles : undefined,
     is_active: filters.is_active,
+    is_staff: filters.is_staff,
     search: filters.search || undefined,
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,

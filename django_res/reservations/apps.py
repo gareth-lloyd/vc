@@ -17,6 +17,7 @@ class ReservationsConfig(AppConfig):
             BookingHold,
             BookingServiceCoverage,
             DamageClaim,
+            DamageClaimPhoto,
             Enquiry,
             OwnerBlock,
             Quotation,
@@ -58,9 +59,8 @@ class ReservationsConfig(AppConfig):
         # carry guest PII, and DamageClaim has no `anonymize()`/`scrub_pii`
         # erasure path — so it's skipped rather than tracked plainly, mirroring
         # how Enquiry skips its free-text `inbound_message`. The `itemized_lines`
-        # / `photos` JSON scaffolds are chatty blobs, also skipped per the audit
-        # convention. What remains is the money + lifecycle that an SD capture
-        # turns on.
+        # JSON scaffold is a chatty blob, also skipped per the audit convention.
+        # What remains is the money + lifecycle that an SD capture turns on.
         track(
             DamageClaim,
             fields=[
@@ -69,6 +69,17 @@ class ReservationsConfig(AppConfig):
                 "currency_id",
                 "booking_id",
                 "accepted_by_guest_at",
+            ],
+        )
+        # DamageClaimPhoto (wf8): evidence backing a money capture. The image
+        # blob itself isn't a tracked field; the trail records that a photo was
+        # attached/removed (the FK + caption) and by whom, mirroring how
+        # PropertyImage is audited. Create/delete ride `.save()`/`.delete()`.
+        track(
+            DamageClaimPhoto,
+            fields=[
+                "damage_claim_id",
+                "caption",
             ],
         )
         # Enquiry: the lead-capture surface carrying denormalised PII before a

@@ -26,6 +26,9 @@ from reservations.views import (
     ClientListView,
     ConciergeOverviewViewSet,
     ContactCustomerReadViewSet,
+    DamageClaimPhotoDetailView,
+    DamageClaimPhotoListCreateView,
+    DamageClaimViewSet,
     EnquiryNoteViewSet,
     EnquiryViewSet,
     OwnerBlockViewSet,
@@ -322,6 +325,53 @@ _charge_routes: list[URLPattern | URLResolver] = [
 
 
 # ----------------------------------------------------------------------
+# Damage-claim nested routes
+# ----------------------------------------------------------------------
+_damage_claim_routes: list[URLPattern | URLResolver] = [
+    # `:approve` / `:withdraw` precede the `/<pk>` route (DRF's `[^/.]+` pk
+    # regex would otherwise swallow `1:approve` as the pk).
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>:approve",
+        DamageClaimViewSet.as_view({"post": "approve"}),
+        name="booking-damage-claim-approve",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>:withdraw",
+        DamageClaimViewSet.as_view({"post": "withdraw"}),
+        name="booking-damage-claim-withdraw",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims",
+        DamageClaimViewSet.as_view({"get": "list", "post": "create"}),
+        name="booking-damage-claims",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:pk>",
+        DamageClaimViewSet.as_view(
+            {
+                "get": "retrieve",
+                "patch": "partial_update",
+                "delete": "destroy",
+            }
+        ),
+        name="booking-damage-claim-detail",
+    ),
+    # Photos nested under a claim (slash-separated, so the `<int:pk>` detail
+    # route above can't swallow them). Double-scoped by booking + claim.
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos",
+        DamageClaimPhotoListCreateView.as_view(),
+        name="booking-damage-claim-photos",
+    ),
+    path(
+        "bookings/<int:booking_pk>/damage-claims/<int:claim_pk>/photos/<int:photo_id>",
+        DamageClaimPhotoDetailView.as_view(),
+        name="booking-damage-claim-photo-detail",
+    ),
+]
+
+
+# ----------------------------------------------------------------------
 # Concierge nested routes
 # ----------------------------------------------------------------------
 _concierge_routes: list[URLPattern | URLResolver] = [
@@ -515,6 +565,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     *_quotation_actions,
     *_booking_actions,
     *_charge_routes,
+    *_damage_claim_routes,
     *_concierge_routes,
     *_concierge_overview_routes,
     *_availability_routes,

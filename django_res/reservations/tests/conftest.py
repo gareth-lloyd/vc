@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from django.utils import timezone
 
-from pricing.models import Currency, RateCard, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 from reservations.models import Enquiry, Quotation, QuotationLine, TermsVersion
 
 if TYPE_CHECKING:
@@ -66,16 +66,18 @@ def plan(property_: Property, gbp: Currency) -> RatePlan:
 
 
 @pytest.fixture
-def card(plan: RatePlan) -> RateCard:
-    return RateCard.objects.create(plan=plan, name="Default", sort_order=0)
+def period(plan: RatePlan) -> RatePeriod:
+    return RatePeriod.objects.create(
+        plan=plan,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+    )
 
 
 @pytest.fixture
-def rate_rule(card: RateCard) -> RateRule:
+def rate_rule(period: RatePeriod) -> RateRule:
     return RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
+        period=period,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),

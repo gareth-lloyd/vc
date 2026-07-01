@@ -43,7 +43,6 @@ EXPECTED_TRACKED_MODELS = {
     "pricing.Discount",
     "pricing.Extra",
     "pricing.FxRate",
-    "pricing.RateCard",
     "pricing.RatePeriod",
     "pricing.RatePlan",
     "pricing.RateRule",

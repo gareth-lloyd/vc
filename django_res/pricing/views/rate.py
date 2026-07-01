@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 from pricing.serializers import (
     RatePeriodSerializer,
     RatePlanDetailSerializer,
@@ -26,22 +26,6 @@ from properties.models import Property
 if TYPE_CHECKING:
     from django.db.models import QuerySet
     from rest_framework.request import Request
-
-
-def _transitional_card_for_plan(plan: RatePlan) -> RateCard:
-    """Return a card to satisfy the still-non-null `RateRule.card` FK (GAP-056).
-
-    The API is period-native, but `RateCard` survives as a nullable-in-spirit
-    transitional column until Unit 9 drops it. Period-native band writes attach
-    to any existing card on the plan (the migrated/loaded one), or a single
-    synthesized card when the plan has none. The card-scoped `raterule_no_overlap`
-    EXCLUDE stays satisfied: periods are date-disjoint and bands are
-    party-disjoint per period, so the union on one card is (date x party)-disjoint.
-    """
-    card = RateCard.objects.filter(plan=plan).order_by("pk").first()
-    if card is None:
-        card = RateCard.objects.create(plan=plan, name=plan.name or "Rates")
-    return card
 
 
 class PropertySeasonListCreateView(generics.ListCreateAPIView):
@@ -90,9 +74,8 @@ class SeasonDuplicateView(APIView):
             clone.name = f"{original.name} (copy)"
             clone.save()
             # GAP-056: clone the period/band grid onto the new plan. Each cloned
-            # rule attaches to the clone's transitional card (its dates come from
-            # the cloned period) — never the source plan's card/period.
-            clone_card = _transitional_card_for_plan(clone)
+            # band re-parents to the cloned period (which owns the dates) — never
+            # the source plan's period.
             for period in RatePeriod.objects.filter(plan_id=original_pk):
                 source_period_pk = period.pk
                 period_clone = RatePeriod.objects.get(pk=source_period_pk)
@@ -102,7 +85,6 @@ class SeasonDuplicateView(APIView):
                 for rule in RateRule.objects.filter(period_id=source_period_pk):
                     rule.pk = None
                     rule.period = period_clone
-                    rule.card = clone_card
                     rule.save()
         return Response(
             RatePlanDetailSerializer(clone).data,
@@ -195,23 +177,9 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     serializer_class = RatePeriodSerializer
     permission_classes = [IsReservationsWriter]
-
-    def perform_update(self, serializer: Any) -> None:
-        """Repoint the period's bands when its dates move (GAP-056 transitional).
-
-        `RateRule.date_from/date_to` are still non-null columns (dropped Unit 9)
-        and the card-scoped overlap EXCLUDE reads them, so a period date-edit must
-        drag its bands' dates along or the two axes drift. Bulk `.update()` is
-        safe: `RateRule` dates are no longer audit-tracked (they're period-level
-        facts now), and the moved band set stays date-disjoint from other periods'
-        bands (the serializer already enforced period date-disjointness).
-        """
-        instance = serializer.instance
-        old_dates = (instance.date_from, instance.date_to)
-        with transaction.atomic():
-            period = serializer.save()
-            if (period.date_from, period.date_to) != old_dates:
-                period.rules.update(date_from=period.date_from, date_to=period.date_to)
+    # GAP-056: bands inherit their dates from the period (no per-rule date
+    # columns), so a period date-edit needs no band repoint — the default
+    # `perform_update` (a plain save) suffices.
 
 
 class RatePeriodRuleListCreateView(generics.ListCreateAPIView):
@@ -224,15 +192,9 @@ class RatePeriodRuleListCreateView(generics.ListCreateAPIView):
         return RateRule.objects.filter(period_id=self.kwargs["period_id"])
 
     def perform_create(self, serializer: Any) -> None:
+        # A band hangs off its period, which owns the date window (GAP-056).
         period = get_object_or_404(RatePeriod, pk=self.kwargs["period_id"])
-        # Dates are inherited from the period; the transitional card FK is filled
-        # server-side (GAP-056 — both drop out in Unit 9).
-        serializer.save(
-            period=period,
-            card=_transitional_card_for_plan(period.plan),
-            date_from=period.date_from,
-            date_to=period.date_to,
-        )
+        serializer.save(period=period)
 
 
 class RateRuleDetailView(generics.RetrieveUpdateDestroyAPIView):

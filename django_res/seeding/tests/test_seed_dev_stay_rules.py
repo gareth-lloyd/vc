@@ -16,7 +16,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 
-from pricing.models.rate import RateCard
+from pricing.models.rate import RatePeriod
 from properties.models import Property
 from reservations.models.booking import Booking
 from reservations.models.quotation import QuotationLine
@@ -47,7 +47,7 @@ def test_seed_dev_mixed_assigns_stay_rules_and_conforms_stays() -> None:
     each `transaction=True` test flushes + reseeds the whole DB):
 
     * most villas constrained (specific day + 7-night min on settings AND on
-      every rate card), but not all — the unconstrained floor holds;
+      every rate period), but not all — the unconstrained floor holds;
     * Saturday dominates, mirroring legacy prod (72% of explicit days);
     * every booking and quotation line on a constrained villa starts on that
       villa's changeover weekday and spans whole weeks — the engine never had
@@ -68,9 +68,9 @@ def test_seed_dev_mixed_assigns_stay_rules_and_conforms_stays() -> None:
 
     for prop in constrained:
         assert prop.settings.min_nights_rental == 7, prop
-        cards = list(RateCard.objects.filter(plan__property=prop))
-        assert cards, prop
-        assert all(card.min_nights == 7 for card in cards), prop
+        periods = list(RatePeriod.objects.filter(plan__property=prop))
+        assert periods, prop
+        assert all(period.min_nights == 7 for period in periods), prop
         weekday = _DAY_WEEKDAY[str(prop.settings.changeover_day)]
         stays = [(b.date_from, b.date_to) for b in Booking.objects.filter(property=prop)] + [
             (line.date_from, line.date_to) for line in QuotationLine.objects.filter(property=prop)
@@ -108,9 +108,10 @@ def test_changeover_day_plan_floor_follows_the_any_weight() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_seed_dev_happy_keeps_unconstrained_shape() -> None:
     """The happy profile keeps the legacy shape: no changeover day, no
-    minimum-stay floor on settings or cards."""
+    minimum-stay floor on settings; every period carries the unconstrained
+    min_nights of 1."""
     _seed("happy", properties=4, bookings=6, seed=42)
     for prop in Property.objects.all():
         assert prop.settings.changeover_day is None, prop
         assert prop.settings.min_nights_rental is None, prop
-    assert all(card.min_nights == 1 for card in RateCard.objects.all())
+    assert all(period.min_nights == 1 for period in RatePeriod.objects.all())

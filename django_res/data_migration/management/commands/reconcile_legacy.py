@@ -210,9 +210,12 @@ _CHECKS: list[_Check] = [
         # legacy row, MINUS the GAP-056 ragged-rule fragments the period
         # segmentation clones (a party-disjoint rule bisected by a sibling's date
         # boundary becomes >1 RateRule), PLUS dropped priceless / invalid-band /
-        # overlap-covered rows and rows on the 67 unloaded seasons. The old
-        # 3462+265 breakdown (see CUTOVER.md "Rate rule overlap resolution") no
-        # longer holds as-is.
+        # overlap-covered rows and rows on the 67 unloaded seasons. The
+        # fragment-inflation mechanism is unchanged, but there is no longer a
+        # transitional `save()` shim or `backfill_plan_periods` pass: the
+        # `RateRuleLoader._load_rows` builds each plan's disjoint `RatePeriod`
+        # date axis directly via `segment_card_rules`. The old 3462+265 breakdown
+        # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
         expected_gap=3727,
     ),
     _Check(

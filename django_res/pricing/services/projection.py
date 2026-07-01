@@ -29,9 +29,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.db.models import Q
-
-from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 
 # A date-map shifts a single source date by `year_delta` whole years into the
 # target year. It is applied independently to each rule endpoint, so it must be a
@@ -116,68 +114,24 @@ def apply_uplift(value: Decimal | None, factor: Decimal) -> Decimal | None:
     return (Decimal(value) * factor).quantize(Decimal("0.01"))
 
 
-def load_anchor_cards_with_rules(anchor: RatePlan) -> list[tuple[RateCard, list[RateRule]]]:
-    """Active cards of `anchor`, each paired with its approved rules.
-
-    One query for the cards, one for all their rules (batched via `card__in`) —
-    not a query per card. These are exactly the `is_active` / `is_approved`
-    filters the engine's real path uses, so projection and carry-forward operate
-    on precisely the set a real quote would price (no dormant inactive cards or
-    unapproved rows leaking into either path).
-    """
-    cards = list(RateCard.objects.filter(plan=anchor, is_active=True).order_by("sort_order", "pk"))
-    rules_by_card: dict[int, list[RateRule]] = {}
-    for rule in RateRule.objects.filter(card__in=cards, is_approved=True).order_by("card_id", "pk"):
-        rules_by_card.setdefault(rule.card_id, []).append(rule)
-    return [(card, rules_by_card.get(card.pk, [])) for card in cards]
-
-
 def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, list[RateRule]]]:
     """Active periods of `anchor`, each paired with its approved bands (GAP-056).
 
-    The period-native counterpart of `load_anchor_cards_with_rules`: one query
-    for the periods, one for all their bands (batched via `period__in`). These
-    are exactly the `is_active` / `is_approved` filters the engine's real path
-    uses, so projection prices precisely the set a real quote would.
+    One query for the periods, one for all their bands (batched via
+    `period__in`). These are exactly the `is_active` / `is_approved` filters the
+    engine's real path uses, so projection prices precisely the set a real quote
+    would (no dormant inactive periods or unapproved bands leaking in).
     """
     periods = list(
         RatePeriod.objects.filter(plan=anchor, is_active=True).order_by("date_from", "pk")
     )
     rules_by_period: dict[int, list[RateRule]] = {}
-    approved_rules = (
-        RateRule.objects.filter(period__in=periods, is_approved=True)
-        # Same transitional card gate as the engine's real path: a deactivated
-        # card's rules never seed a projection (`card__isnull=True` keeps future
-        # native card-less bands). Dropped in Unit 9 with the card.
-        .filter(Q(card__is_active=True) | Q(card__isnull=True))
-        .order_by("period_id", "pk")
+    approved_rules = RateRule.objects.filter(period__in=periods, is_approved=True).order_by(
+        "period_id", "pk"
     )
     for rule in approved_rules:
-        assert rule.period_id is not None  # filtered on period__in — never null
         rules_by_period.setdefault(rule.period_id, []).append(rule)
     return [(period, rules_by_period.get(period.pk, [])) for period in periods]
-
-
-def projected_rule_fields(
-    rule: RateRule, year_delta: int, date_map: DateMap, factor: Decimal
-) -> dict[str, Any]:
-    """The shifted + uplifted field values for a cloned rule.
-
-    Shared by in-memory projection and the on-demand carry-forward so the two can
-    never drift on how a rule moves into the target year. Excludes identity /
-    lifecycle fields (`card`, `is_approved`, `is_locked`, `notes`) — the caller
-    owns those.
-    """
-    new_from, new_to = map_range(rule.date_from, rule.date_to, year_delta, date_map)
-    return {
-        "date_from": new_from,
-        "date_to": new_to,
-        "min_party": rule.min_party,
-        "max_party": rule.max_party,
-        "nightly": apply_uplift(rule.nightly, factor),
-        "weekly": apply_uplift(rule.weekly, factor),
-        "is_poa": rule.is_poa,
-    }
 
 
 class RateProjectionService:
@@ -275,16 +229,12 @@ class RateProjectionService:
                 )
             )
             # Bands inherit the period's (shifted) dates; only party/price shift
-            # per band. `card_id` is carried transitionally so the quote snapshot
-            # keeps its `card_id` until Unit 6 flips it to `period_id`.
+            # per band.
             rules_by_period[period.pk] = [
                 RateRule(
                     id=rule.pk,
                     period_id=period.pk,
-                    card_id=rule.card_id,
                     is_approved=True,
-                    date_from=new_from,
-                    date_to=new_to,
                     min_party=rule.min_party,
                     max_party=rule.max_party,
                     nightly=apply_uplift(rule.nightly, factor),

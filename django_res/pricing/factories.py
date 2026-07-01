@@ -1,6 +1,6 @@
 """factory-boy factories for the `pricing` app.
 
-The rate chain (RatePlan -> RateCard -> RateRule) defaults to a wide window
+The rate chain (RatePlan -> RatePeriod -> RateRule) defaults to a wide window
 straddling today so `PricingEngine.quote()` finds a rule for any near-future
 stay the seeder generates instead of raising `NoRateAvailable`.
 """
@@ -54,22 +54,11 @@ class RatePlanFactory(DjangoModelFactory):
     is_active = True
 
 
-class RateCardFactory(DjangoModelFactory):
-    class Meta:
-        model = models.RateCard
-
-    plan = factory.SubFactory(RatePlanFactory)
-    name = "Default"
-    min_nights = 1
-    sort_order = 0
-    is_active = True
-
-
 class RatePeriodFactory(DjangoModelFactory):
     """A disjoint date window on a plan (GAP-056).
 
-    `django_get_or_create` on `(plan, date_from, date_to)` mirrors the
-    `RateRule.save()` shim's dedup so sibling bands resolve to one period.
+    `django_get_or_create` on `(plan, date_from, date_to)` means sibling bands
+    built against the same span resolve to one period.
     """
 
     class Meta:
@@ -86,13 +75,11 @@ class RateRuleFactory(DjangoModelFactory):
     class Meta:
         model = models.RateRule
 
-    # `period` is left unset: the transitional `RateRule.save()` shim derives it
-    # from `card.plan` + these dates (get-or-creating one period per `(plan,
-    # dates)`, so sibling bands share it). Set `period=` explicitly for native
-    # period-first tests.
-    card = factory.SubFactory(RateCardFactory)
-    date_from = _WINDOW_FROM
-    date_to = _WINDOW_TO
+    # A band hangs off a RatePeriod, which owns the date window. The default
+    # period spans the wide window straddling today (see RatePeriodFactory), so
+    # near-future stays price. Pass `period=` explicitly to attach sibling bands
+    # to one period; the party-disjoint EXCLUDE keeps their party ranges apart.
+    period = factory.SubFactory(RatePeriodFactory)
     min_party = 1
     max_party = 30
     nightly = factory.Iterator([Decimal("250.00"), Decimal("400.00"), Decimal("650.00")])

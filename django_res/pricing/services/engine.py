@@ -556,16 +556,11 @@ class PricingEngine:
             raise NoRateAvailable(
                 f"No active RatePeriod on plan {plan.pk} for {date_from}..{date_to}"
             )
-        # Transitional card gate: the shim/backfill stamp every period
-        # `is_active=True` regardless of the owning card, so `period.is_active`
-        # can't yet stand in for card activeness — a deactivated card's rules
-        # must still be excluded (parity with the pre-GAP-056 engine and with
-        # `load_anchor_cards_with_rules`). `card__isnull=True` keeps future
-        # native card-less bands. Dropped in Unit 9 when the card is gone.
+        # Period activeness (filtered above) is now the sole gate — the old
+        # RateCard is gone, so `RatePeriod.is_active` fully governs whether a
+        # band prices.
         rules_by_period: dict[int, list[RateRule]] = {}
-        approved_rules = RateRule.objects.filter(period__in=periods, is_approved=True).filter(
-            Q(card__is_active=True) | Q(card__isnull=True)
-        )
+        approved_rules = RateRule.objects.filter(period__in=periods, is_approved=True)
         for rule in approved_rules:
             assert rule.period_id is not None  # filtered on period__in — never null
             rules_by_period.setdefault(rule.period_id, []).append(rule)

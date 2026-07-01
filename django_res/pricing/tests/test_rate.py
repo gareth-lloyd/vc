@@ -1,244 +1,122 @@
-"""Tests for `pricing.models.rate` invariants."""
+"""Tests for `pricing.models.rate` invariants (GAP-056 period-native).
+
+Uses the factories directly rather than the shared `plan`/`period` fixtures so
+the constraint tests read as self-contained statements of each invariant.
+"""
 
 from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from django.db import IntegrityError, transaction
 
-from pricing.models import RateCard, RatePeriod, RateRule
+from pricing.factories import RatePeriodFactory, RatePlanFactory
+from pricing.models import RatePeriod, RatePlan, RateRule
+
+
+def _period(**kwargs: object) -> RatePeriod:
+    kwargs.setdefault("date_from", date(2026, 6, 1))
+    kwargs.setdefault("date_to", date(2026, 6, 30))
+    return cast(RatePeriod, RatePeriodFactory(**kwargs))
+
+
+# --- RateRule (party band) constraints ------------------------------------
 
 
 @pytest.mark.django_db
-def test_raterule_date_from_must_be_lte_date_to(card: RateCard) -> None:
-    """An inverted span (`date_from > date_to`) is still rejected."""
+def test_raterule_requires_a_period() -> None:
+    """`period` is non-null — a band with no date-axis parent is rejected."""
     with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 7, 1),
-            date_to=date(2026, 6, 1),
-            min_party=1,
-            max_party=4,
-            nightly=Decimal("100"),
-        )
+        RateRule.objects.create(min_party=1, max_party=4, nightly=Decimal("100"))
 
 
 @pytest.mark.django_db
-def test_raterule_allows_single_day_range(card: RateCard) -> None:
-    """GAP-056: dates are inclusive, so `date_from == date_to` is one valid night.
+def test_raterule_min_party_must_be_lte_max_party() -> None:
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RateRule.objects.create(period=_period(), min_party=5, max_party=2, nightly=Decimal("100"))
 
-    (Was rejected under the old strict `<` CHECK; relaxed to `<=` so ragged
-    segmentation can persist single-day fragments — see RatePeriod.)
-    """
-    rr = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 1),
-        min_party=1,
-        max_party=4,
-        nightly=Decimal("100"),
-    )
+
+@pytest.mark.django_db
+def test_raterule_requires_nightly_or_weekly_or_poa() -> None:
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RateRule.objects.create(period=_period(), min_party=1, max_party=4)
+
+
+@pytest.mark.django_db
+def test_raterule_poa_allowed_without_prices() -> None:
+    rr = RateRule.objects.create(period=_period(), min_party=1, max_party=4, is_poa=True)
     assert rr.pk is not None
 
 
 @pytest.mark.django_db
-def test_raterule_min_party_must_be_lte_max_party(card: RateCard) -> None:
-    with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 30),
-            min_party=5,
-            max_party=2,
-            nightly=Decimal("100"),
-        )
-
-
-@pytest.mark.django_db
-def test_raterule_requires_nightly_or_weekly_or_poa(card: RateCard) -> None:
-    with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 30),
-            min_party=1,
-            max_party=4,
-            # no nightly, no weekly, is_poa default False
-        )
-
-
-@pytest.mark.django_db
-def test_raterule_poa_allowed_without_prices(card: RateCard) -> None:
-    rr = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=4,
-        is_poa=True,
-    )
-    assert rr.pk is not None
-
-
-@pytest.mark.django_db
-def test_raterule_poa_cannot_coexist_with_nightly(card: RateCard) -> None:
+def test_raterule_poa_cannot_coexist_with_nightly() -> None:
     """`is_poa=True` plus a numeric price are contradictory signals."""
     with pytest.raises(IntegrityError), transaction.atomic():
         RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 30),
-            min_party=1,
-            max_party=4,
-            is_poa=True,
-            nightly=Decimal("50"),
+            period=_period(), min_party=1, max_party=4, is_poa=True, nightly=Decimal("50")
         )
 
 
 @pytest.mark.django_db
-def test_raterule_poa_cannot_coexist_with_weekly(card: RateCard) -> None:
+def test_raterule_poa_cannot_coexist_with_weekly() -> None:
     with pytest.raises(IntegrityError), transaction.atomic():
         RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 30),
-            min_party=1,
-            max_party=4,
-            is_poa=True,
-            weekly=Decimal("350"),
+            period=_period(), min_party=1, max_party=4, is_poa=True, weekly=Decimal("350")
         )
 
 
 @pytest.mark.django_db
-def test_raterule_no_overlap_same_card(card: RateCard) -> None:
-    """Within-card overlap is forbidden unconditionally (raterule_no_overlap)."""
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
+def test_raterule_bands_no_overlap_same_period() -> None:
+    """Two bands on one period with overlapping party ranges are forbidden
+    (raterule_bands_no_overlap)."""
+    period = _period()
+    RateRule.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100"))
     with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 15),
-            date_to=date(2026, 7, 15),
-            min_party=2,
-            max_party=6,
-            nightly=Decimal("200"),
-        )
+        RateRule.objects.create(period=period, min_party=2, max_party=6, nightly=Decimal("200"))
 
 
 @pytest.mark.django_db
-def test_raterule_no_overlap_is_inclusive_on_boundaries(card: RateCard) -> None:
-    """Date ranges are inclusive: a rule starting on another's end date overlaps."""
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
+def test_raterule_bands_no_overlap_is_inclusive_on_party() -> None:
+    """Party ranges are inclusive: a band starting on another's max overlaps."""
+    period = _period()
+    RateRule.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100"))
     with pytest.raises(IntegrityError), transaction.atomic():
-        RateRule.objects.create(
-            card=card,
-            date_from=date(2026, 6, 30),
-            date_to=date(2026, 7, 31),
-            min_party=1,
-            max_party=8,
-            nightly=Decimal("150"),
-        )
+        RateRule.objects.create(period=period, min_party=8, max_party=12, nightly=Decimal("150"))
 
 
 @pytest.mark.django_db
-def test_raterule_disjoint_party_bands_may_share_dates(card: RateCard) -> None:
-    """Occupancy bands: same dates, disjoint party brackets — legal siblings."""
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
+def test_raterule_disjoint_party_bands_may_share_period() -> None:
+    """Occupancy bands: one period, disjoint party brackets — legal siblings."""
+    period = _period()
+    RateRule.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100"))
     sibling = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=9,
-        max_party=12,
-        nightly=Decimal("250"),
+        period=period, min_party=9, max_party=12, nightly=Decimal("250")
     )
     assert sibling.pk is not None
 
 
 @pytest.mark.django_db
-def test_raterule_overlap_allowed_across_cards(card: RateCard) -> None:
-    """Cross-card overlap is legal — precedence is resolved by card order."""
-    other_card = RateCard.objects.create(plan=card.plan, name="Overlay", sort_order=1)
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
-    overlapping = RateRule.objects.create(
-        card=other_card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("150"),
-    )
-    assert overlapping.pk is not None
+def test_raterule_same_party_allowed_across_periods() -> None:
+    """The bands EXCLUDE is per-period: two periods may each carry a 1-8 band."""
+    plan = RatePlanFactory()
+    early = _period(plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 6, 14))
+    late = _period(plan=plan, date_from=date(2026, 6, 15), date_to=date(2026, 6, 30))
+    RateRule.objects.create(period=early, min_party=1, max_party=8, nightly=Decimal("100"))
+    other = RateRule.objects.create(period=late, min_party=1, max_party=8, nightly=Decimal("150"))
+    assert other.pk is not None
 
 
-@pytest.mark.django_db
-def test_raterule_save_shim_populates_period(card: RateCard) -> None:
-    """Transitional GAP-056 shim: a card-based create derives its RatePeriod."""
-    rr = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
-    assert rr.period is not None
-    assert rr.period.plan_id == card.plan_id
-    assert (rr.period.date_from, rr.period.date_to) == (date(2026, 6, 1), date(2026, 6, 30))
+def test_ratecard_is_gone() -> None:
+    """GAP-056 contract: the RateCard model no longer exists on the pricing app."""
+    import pricing.models as pricing_models
+
+    assert not hasattr(pricing_models, "RateCard")
 
 
-@pytest.mark.django_db
-def test_raterule_save_shim_reuses_period_for_sibling_band(card: RateCard) -> None:
-    """Two disjoint-party bands on the same dates share one period [H2]."""
-    band_a = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100"),
-    )
-    band_b = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 30),
-        min_party=9,
-        max_party=12,
-        nightly=Decimal("250"),
-    )
-    assert band_a.period_id == band_b.period_id
-
-
-@pytest.mark.django_db
 def test_rateperiod_exported_from_models() -> None:
     """RatePeriod is part of the public pricing model surface."""
     assert RatePeriod.__name__ == "RatePeriod"
+    assert RatePlan.__name__ == "RatePlan"

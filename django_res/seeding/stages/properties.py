@@ -1,4 +1,4 @@
-"""Seed the property graph: Property + RatePlan/RateCard/RateRule + Discount +
+"""Seed the property graph: Property + RatePlan/RatePeriod/RateRule + Discount +
 Extra, optionally rotated across multiple currencies and groups.
 
 Currency / group rotation is opt-in via the v2 dials:
@@ -21,7 +21,7 @@ from typing import Any, cast
 from pricing.factories import (
     DiscountFactory,
     ExtraFactory,
-    RateCardFactory,
+    RatePeriodFactory,
     RatePlanFactory,
     RateRuleFactory,
 )
@@ -37,7 +37,7 @@ from properties.services.changeover import ChangeoverService
 from seeding._pricing_helpers import (
     _FLAT_BRACKETS,
     assign_commission,
-    build_seasonal_cards,
+    build_seasonal_periods,
     draw_base_nightly,
     party_brackets,
     seed_included_services,
@@ -82,7 +82,7 @@ def _changeover_day_plan(ctx: SeedContext) -> list[str]:
 def _run(ctx: SeedContext) -> int:
     spread = ctx.knobs.booking_date_spread_days
     plan_kwargs: dict[str, Any] = {}
-    rule_kwargs: dict[str, Any] = {}
+    period_kwargs: dict[str, Any] = {}
     discount_kwargs: dict[str, Any] = {}
     if spread > 30:
         buffer = timedelta(days=spread + 60)
@@ -90,7 +90,7 @@ def _run(ctx: SeedContext) -> int:
             "effective_from": ctx.today - buffer,
             "effective_to": ctx.today + buffer,
         }
-        rule_kwargs = {
+        period_kwargs = {
             "date_from": ctx.today - buffer,
             "date_to": ctx.today + buffer,
         }
@@ -159,7 +159,7 @@ def _run(ctx: SeedContext) -> int:
         # Mirror the legacy prod shape: most villas carry a specific
         # changeover day plus a whole-week minimum stay, on both the
         # legacy-semantics settings fields and the engine-enforced
-        # RateCard.min_nights (written below at card creation).
+        # RatePeriod.min_nights (written below at period creation).
         assigned_day = day_plan[i] if day_plan else PrefilledChangeOverDay.ANY.value
         constrained = assigned_day != PrefilledChangeOverDay.ANY.value
         if constrained:
@@ -181,7 +181,7 @@ def _run(ctx: SeedContext) -> int:
                 capacity.guests = ctx.rng.randint(10, 16)
                 capacity.save(update_fields=["guests"])
                 brackets = party_brackets(capacity.guests)
-            build_seasonal_cards(
+            build_seasonal_periods(
                 plan,
                 draw_base_nightly(ctx.rng, currency.code),
                 min_nights=min_nights,
@@ -202,15 +202,15 @@ def _run(ctx: SeedContext) -> int:
                     effective_from=plan.effective_from - timedelta(days=1),
                     effective_to=plan.effective_to,
                 )
-                build_seasonal_cards(
+                build_seasonal_periods(
                     alt_plan,
                     draw_base_nightly(ctx.rng, alt.code),
                     min_nights=min_nights,
                     brackets=brackets,
                 )
         else:
-            card = RateCardFactory(plan=plan, min_nights=min_nights)
-            RateRuleFactory(card=card, **rule_kwargs)
+            period = RatePeriodFactory(plan=plan, min_nights=min_nights, **period_kwargs)
+            RateRuleFactory(period=period)
         # Legacy discounts are effectively dead — gate behind the knob. The
         # >= 1.0 short-circuit keeps happy off the rng (byte-for-byte output).
         if ctx.knobs.pct_discount >= 1.0 or ctx.rng.random() < ctx.knobs.pct_discount:

@@ -30,17 +30,11 @@ def _enqueue_rebuild(property_id: int, currency_id: int) -> None:
 @receiver(post_save, sender=RateRule)
 @receiver(post_delete, sender=RateRule)
 def _on_raterule_change(sender: type, instance: RateRule, **_: Any) -> None:
-    # GAP-056: the band's plan hangs off its RatePeriod now. The `card` fallback
-    # covers the transitional window where a legacy row hasn't been repointed yet
-    # (dropped in Unit 9 with the card). CASCADE delete fires children-first, so
-    # the parent period/card is still present when this runs.
-    period = instance.period if instance.period_id else None
-    if period is not None:
-        plan = period.plan
-    elif instance.card_id:
-        plan = instance.card.plan
-    else:
+    # GAP-056: the band's plan hangs off its RatePeriod. CASCADE delete fires
+    # children-first, so the parent period is still present when this runs.
+    if instance.period_id is None:
         return
+    plan = instance.period.plan
     _enqueue_rebuild(plan.property_id, plan.currency_id)
 
 

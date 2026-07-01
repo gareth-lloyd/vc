@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 def test_quote_succeeds_when_property_has_finance() -> None:
     rule = cast(RateRule, RateRuleFactory())  # PropertyFactory attaches a PropertyFinance row
-    plan = rule.card.plan
+    plan = rule.period.plan
     start = date.today() + timedelta(days=30)
 
     quote = PricingEngine.quote(

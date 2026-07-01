@@ -1,4 +1,4 @@
-"""Views for `Discount` (global, property-nested, card-nested) + lookup."""
+"""Views for `Discount` (global, property-nested) + lookup."""
 
 from __future__ import annotations
 

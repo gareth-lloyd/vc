@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -68,11 +68,6 @@ def plan(property_: Property, gbp: Currency) -> RatePlan:
 
 
 @pytest.fixture
-def card(plan: RatePlan) -> RateCard:
-    return RateCard.objects.create(plan=plan, name="Default", sort_order=0)
-
-
-@pytest.fixture
 def period(plan: RatePlan) -> RatePeriod:
     return RatePeriod.objects.create(
         plan=plan,
@@ -82,11 +77,9 @@ def period(plan: RatePlan) -> RatePeriod:
 
 
 @pytest.fixture
-def rule(card: RateCard) -> RateRule:
+def rule(period: RatePeriod) -> RateRule:
     return RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
+        period=period,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),

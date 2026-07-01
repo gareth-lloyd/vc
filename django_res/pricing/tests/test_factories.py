@@ -21,12 +21,12 @@ def test_currency_factory_get_or_create_is_idempotent() -> None:
 
 def test_rate_rule_chain_covers_today() -> None:
     rule = cast(models.RateRule, factories.RateRuleFactory())
-    assert rule.date_from <= date.today() <= rule.date_to
+    assert rule.period.date_from <= date.today() <= rule.period.date_to
     assert rule.is_approved
     assert rule.nightly is not None
-    # Chain is wired property -> plan -> card -> rule, one currency.
-    assert rule.card.plan.property_id is not None
-    assert rule.card.plan.currency_id is not None
+    # Chain is wired property -> plan -> period -> rule, one currency.
+    assert rule.period.plan.property_id is not None
+    assert rule.period.plan.currency_id is not None
 
 
 def test_discount_and_extra_factories() -> None:

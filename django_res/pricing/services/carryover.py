@@ -4,10 +4,9 @@ The demoted carryover verb. Lazy projection (`pricing.services.projection`) serv
 every next-year *quote* without writing anything; this service exists for the
 moment staff want **editable** rows for a year — an owner has returned real
 numbers, or they want to hand-tune the guide before confirming. It clones the
-anchor year forward into real `RatePlan` / `RatePeriod` / `RateRule` rows (the
-`RateCard` is carried transitionally until Unit 9), reusing the same date-map +
-uplift the projection uses, so the materialised rows match the guide a quote
-would have shown.
+anchor year forward into real `RatePlan` / `RatePeriod` / `RateRule` rows,
+reusing the same date-map + uplift the projection uses, so the materialised rows
+match the guide a quote would have shown.
 
 This is deliberately **not** a Celery beat task: nothing rolls the whole portfolio
 forward speculatively. It is invoked per-property, on demand, from the admin action
@@ -16,6 +15,7 @@ or the carry-forward endpoint.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -24,49 +24,72 @@ import structlog
 from django.db import transaction
 
 from core.exceptions import NoRateAvailable
-from pricing.models import RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import RatePeriod, RatePlan, RateRule
 from pricing.services.extras import date_ranges_overlap
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
+    apply_uplift,
     keep_calendar_date,
-    load_anchor_cards_with_rules,
-    projected_rule_fields,
+    load_anchor_periods_with_rules,
+    map_range,
     shift_to_changeover_weekday,
 )
+from pricing.services.segmentation import segment_card_rules
 
 logger = structlog.get_logger(__name__)
 
 
-def _unclaimed_segments(
-    fields: dict[str, Any], claimed: list[dict[str, Any]]
-) -> list[tuple[date, date]]:
-    """Date sub-ranges of a mapped rule not covered by any party-overlapping
+@dataclass
+class _Band:
+    """A projected party band with its (date-mapped) span and carried metadata.
+
+    Feeds both the collision resolver (`_unclaimed_segments`) and the date
+    segmentation (`segment_card_rules`, which reads `date_from`/`date_to`/
+    `min_party`/`max_party`). `min_nights`/`max_nights` ride along from the band's
+    source period so the materialised period can carry them.
+    """
+
+    source_pk: int
+    date_from: date
+    date_to: date
+    min_party: int
+    max_party: int
+    nightly: Decimal | None
+    weekly: Decimal | None
+    is_poa: bool
+    notes: str
+    min_nights: int | None
+    max_nights: int | None
+
+
+def _unclaimed_segments(band: _Band, claimed: list[_Band]) -> list[tuple[date, date]]:
+    """Date sub-ranges of a mapped band not covered by any party-overlapping
     already-claimed segment, in date order.
 
-    Date-mapping can land adjacent source ranges on top of each other (a
+    Date-mapping can land adjacent source periods on top of each other (a
     leap-year range spanning Feb 29 keeps its span while the calendar loses a
     day; the weekday map can shift neighbours in opposite directions by up to
-    3 days each), and `raterule_no_overlap` would turn that into an
-    `IntegrityError`. Rules claim space in ascending source-pk order — the
-    same precedence `pick_rule_for_night` gives colliding in-memory projected
-    rules — so the materialised rows price every night exactly as the
-    projection would have. A remainder can sit on either side of a claim (or
-    both, splitting the rule into two rows).
+    3 days each), and the periods-disjoint EXCLUDE would turn that into an
+    `IntegrityError`. Bands claim space in ascending source-pk order — the same
+    precedence `pick_rule_for_night` gives colliding in-memory projected bands —
+    so the materialised rows price every night exactly as the projection would.
+    A remainder can sit on either side of a claim (or both, splitting the band
+    into two rows).
     """
-    segments = [(fields["date_from"], fields["date_to"])]
+    segments = [(band.date_from, band.date_to)]
     for prev in claimed:
-        if fields["min_party"] > prev["max_party"] or fields["max_party"] < prev["min_party"]:
+        if band.min_party > prev.max_party or band.max_party < prev.min_party:
             continue
         survivors: list[tuple[date, date]] = []
         for lo, hi in segments:
-            if not date_ranges_overlap(lo, hi, prev["date_from"], prev["date_to"]):
+            if not date_ranges_overlap(lo, hi, prev.date_from, prev.date_to):
                 survivors.append((lo, hi))
                 continue
-            if lo < prev["date_from"]:
-                survivors.append((lo, prev["date_from"] - timedelta(days=1)))
-            if prev["date_to"] < hi:
-                survivors.append((prev["date_to"] + timedelta(days=1), hi))
+            if lo < prev.date_from:
+                survivors.append((lo, prev.date_from - timedelta(days=1)))
+            if prev.date_to < hi:
+                survivors.append((prev.date_to + timedelta(days=1), hi))
         segments = survivors
     return sorted(segments)
 
@@ -115,16 +138,51 @@ class RateCarryoverService:
         year_delta = target_year - anchor.effective_from.year
         factor = Decimal("1") + uplift
 
-        # GAP-056: carry each anchor period's nullable min/max-nights onto the
-        # materialised period, so a promoted year enforces the same seasonal
-        # min-stay a *projected* quote would (projection copies these in
-        # `project`; this keeps materialise/projection at parity). Keyed by the
-        # anchor-year (date_from, date_to): a band's dates equal its period's,
-        # so a source rule locates its period's bounds even after date-mapping.
-        anchor_period_bounds = {
-            (p.date_from, p.date_to): (p.min_nights, p.max_nights)
-            for p in RatePeriod.objects.filter(plan=anchor, is_active=True)
-        }
+        # Flatten the anchor into projected bands: each period's dates mapped
+        # forward, each band's prices uplifted. `source_pk` preserves the
+        # precedence `pick_rule_for_night` gives colliding projected bands
+        # (lowest pk wins), and each band carries its source period's min/max
+        # nights so the materialised period can too (parity with `project`,
+        # which copies them). Only active periods / approved bands — the exact
+        # set a real quote prices — via the shared batched loader.
+        projected: list[_Band] = []
+        for period, rules in load_anchor_periods_with_rules(anchor):
+            new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
+            for rule in rules:
+                projected.append(
+                    _Band(
+                        source_pk=rule.pk,
+                        date_from=new_from,
+                        date_to=new_to,
+                        min_party=rule.min_party,
+                        max_party=rule.max_party,
+                        nightly=apply_uplift(rule.nightly, factor),
+                        weekly=apply_uplift(rule.weekly, factor),
+                        is_poa=rule.is_poa,
+                        notes=rule.notes,
+                        min_nights=period.min_nights,
+                        max_nights=period.max_nights,
+                    )
+                )
+
+        # Resolve date-mapping collisions in source-pk order into a
+        # (date x party)-disjoint band set. Inclusive periods (GAP-056) admit
+        # single-day segments (lo == hi); only inverted ranges (lo > hi, when a
+        # claim abuts a boundary) are dropped.
+        # `disjoint` doubles as the running claim set `_unclaimed_segments` reads
+        # to trim later bands, and as the final input to `segment_card_rules`.
+        disjoint: list[_Band] = []
+        for band in sorted(projected, key=lambda b: b.source_pk):
+            segments = [(lo, hi) for lo, hi in _unclaimed_segments(band, disjoint) if lo <= hi]
+            if not segments:
+                logger.info(
+                    "pricing.carryover.rule_skipped",
+                    source_rule_id=band.source_pk,
+                    reason="date_map_collision_emptied_range",
+                )
+                continue
+            for lo, hi in segments:
+                disjoint.append(replace(band, date_from=lo, date_to=hi))
 
         with transaction.atomic():
             new_plan = RatePlan.objects.create(
@@ -144,66 +202,29 @@ class RateCarryoverService:
                 # that already persist across years — nothing to carry per-plan.
                 notes=f"Carried forward from plan #{anchor.pk} ({anchor.effective_from.year}).",
             )
-            # Same active-card / approved-rule set the projection quotes, via the
-            # shared loader (batched, no per-card query) — so the materialised rows
-            # match the guide a quote would have shown, with no dormant inactive
-            # cards or unapproved rows carried forward.
-            for card, rules in load_anchor_cards_with_rules(anchor):
-                new_card = RateCard.objects.create(
+            # Group the disjoint bands onto a shared disjoint RatePeriod date axis
+            # (ragged party-disjoint bands fan out into per-segment periods, like
+            # the loader/backfill). `disjoint` is pk-ordered, so a segment's bands
+            # are too and `bands[0]` (lowest pk) carries the winning min/max nights.
+            for seg in segment_card_rules(disjoint).segments:
+                bands: tuple[_Band, ...] = seg.rules
+                new_period = RatePeriod.objects.create(
                     plan=new_plan,
-                    name=card.name,
-                    description=card.description,
-                    min_nights=card.min_nights,
-                    max_nights=card.max_nights,
-                    sort_order=card.sort_order,
-                    is_active=card.is_active,
-                    notes=card.notes,
+                    date_from=seg.date_from,
+                    date_to=seg.date_to,
+                    min_nights=bands[0].min_nights,
+                    max_nights=bands[0].max_nights,
                 )
-                claimed: list[dict[str, Any]] = []
-                for rule in sorted(rules, key=lambda r: r.pk):
-                    fields = projected_rule_fields(rule, year_delta, date_map, factor)
-                    # Inclusive periods (GAP-056) admit single-day segments
-                    # (lo == hi); only truly-inverted ranges (lo > hi, produced
-                    # when a claim abuts a boundary) are dropped.
-                    segments = [
-                        (lo, hi) for lo, hi in _unclaimed_segments(fields, claimed) if lo <= hi
-                    ]
-                    if not segments:
-                        logger.info(
-                            "pricing.carryover.rule_skipped",
-                            source_rule_id=rule.pk,
-                            reason="date_map_collision_emptied_range",
-                        )
-                        continue
-                    if segments != [(fields["date_from"], fields["date_to"])]:
-                        logger.info(
-                            "pricing.carryover.rule_clipped",
-                            source_rule_id=rule.pk,
-                            segments=[(str(lo), str(hi)) for lo, hi in segments],
-                        )
-                    for lo, hi in segments:
-                        seg_fields = {**fields, "date_from": lo, "date_to": hi}
-                        claimed.append(seg_fields)
-                        # Native period creation (GAP-056): create the date-axis
-                        # parent explicitly rather than leaning on the `save()`
-                        # shim (dropped in Unit 9). `get_or_create` on (plan,
-                        # dates) means sibling bands sharing a segment land on one
-                        # period [H2]. `card=` stays set while the FK is non-null.
-                        src_min, src_max = anchor_period_bounds.get(
-                            (rule.date_from, rule.date_to), (None, None)
-                        )
-                        period, _ = RatePeriod.objects.get_or_create(
-                            plan=new_plan,
-                            date_from=lo,
-                            date_to=hi,
-                            defaults={"min_nights": src_min, "max_nights": src_max},
-                        )
-                        RateRule.objects.create(
-                            card=new_card,
-                            period=period,
-                            is_approved=True,
-                            is_locked=False,
-                            notes=rule.notes,
-                            **seg_fields,
-                        )
+                for band in bands:
+                    RateRule.objects.create(
+                        period=new_period,
+                        min_party=band.min_party,
+                        max_party=band.max_party,
+                        nightly=band.nightly,
+                        weekly=band.weekly,
+                        is_poa=band.is_poa,
+                        is_approved=True,
+                        is_locked=False,
+                        notes=band.notes,
+                    )
         return new_plan

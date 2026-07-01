@@ -31,7 +31,7 @@ def _seed(profile: str = "happy") -> None:
 def test_seed_creates_fixed_slug_demo_villa_with_pricing() -> None:
     # `mixed` is the profile the `demo_ical` command actually runs under, and
     # the one where the demo villa carries realistic seasonal pricing. (Under
-    # `happy` it conforms to the legacy single-card portfolio shape instead —
+    # `happy` it conforms to the legacy single-period portfolio shape instead —
     # see the pricing-shape smoke test.)
     _seed("mixed")
 
@@ -39,7 +39,7 @@ def test_seed_creates_fixed_slug_demo_villa_with_pricing() -> None:
     assert prop.name == ICAL_DEMO_NAME
     # Conforming seasonal pricing so the demo prices like a real villa.
     plan = prop.rate_plans.get()
-    assert {c.name for c in plan.cards.all()} == {"Low", "Mid", "Peak"}
+    assert {p.name for p in plan.periods.all()} == {"Low", "Mid", "Peak"}
     assert prop.finance.commission_calculation_type
 
 

@@ -31,7 +31,7 @@ from reservations.services.stay_options import (
 
 if TYPE_CHECKING:
     from accounts.models import Person
-    from pricing.models import Currency, RateCard, RatePlan, RateRule
+    from pricing.models import Currency, RatePlan, RateRule
     from properties.models import Property
     from reservations.models import TermsVersion
 
@@ -130,15 +130,22 @@ def _entry(
     }
 
 
-def _occupancy_card(card: RateCard) -> None:
-    """Seed `card` with three sibling occupancy brackets (£100/£140/£160 a
-    night) over the fixture Summer-2026 window — a fan-out villa."""
+def _occupancy_period(plan: RatePlan) -> None:
+    """Seed `plan` with a period carrying three sibling occupancy brackets
+    (£100/£140/£160 a night) over the fixture Summer-2026 window — a fan-out villa."""
+    from pricing.models import RatePeriod
     from pricing.models import RateRule as RateRuleModel
 
-    common = {"card": card, "date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
-    RateRuleModel.objects.create(**common, min_party=1, max_party=8, nightly=Decimal("100.00"))
-    RateRuleModel.objects.create(**common, min_party=9, max_party=12, nightly=Decimal("140.00"))
-    RateRuleModel.objects.create(**common, min_party=13, max_party=16, nightly=Decimal("160.00"))
+    period = RatePeriod.objects.create(
+        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+    )
+    RateRuleModel.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100.00"))
+    RateRuleModel.objects.create(
+        period=period, min_party=9, max_party=12, nightly=Decimal("140.00")
+    )
+    RateRuleModel.objects.create(
+        period=period, min_party=13, max_party=16, nightly=Decimal("160.00")
+    )
 
 
 @pytest.mark.django_db
@@ -356,13 +363,13 @@ class TestStayOptionsSearch:
     # -- GAP-044 occupancy fan-out --------------------------------------
 
     def test_occupancy_property_fans_out_all_bands(
-        self, property_: Property, plan: RatePlan, card: RateCard
+        self, property_: Property, plan: RatePlan
     ) -> None:
         """An occupancy-priced villa returns every covering band as its own
         priced entry (sorted by `min_party`), each at its representative party
         `max(1, min_party)` — the builder renders one default-checked line per."""
         _sat_changeover(property_)
-        _occupancy_card(card)
+        _occupancy_period(plan)
 
         [result] = StayOptionsService.search(
             requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)],
@@ -419,13 +426,13 @@ class TestStayOptionsSearch:
         assert result["occupancy_bands"] == []
 
     def test_bands_shown_even_when_searched_party_out_of_bracket(
-        self, property_: Property, plan: RatePlan, card: RateCard
+        self, property_: Property, plan: RatePlan
     ) -> None:
         """B2: the fan-out is independent of the searched party. A party fitting
         no bracket makes the *headline* quote unavailable, yet every covering
         band still fans out (the builder shows the bands, not an error)."""
         _sat_changeover(property_)
-        _occupancy_card(card)
+        _occupancy_period(plan)
 
         [result] = StayOptionsService.search(
             requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=20)],
@@ -438,17 +445,22 @@ class TestStayOptionsSearch:
             (b["min_party"], b["max_party"], b["total"]) for b in result["occupancy_bands"]
         ] == [(1, 8, "700.00"), (9, 12, "980.00"), (13, 16, "1120.00")]
 
-    def test_poa_band_is_flagged_not_dropped(
-        self, property_: Property, plan: RatePlan, card: RateCard
-    ) -> None:
+    def test_poa_band_is_flagged_not_dropped(self, property_: Property, plan: RatePlan) -> None:
         """A POA / no-rate band surfaces flagged (`total=None`, `is_poa`) with a
         resolved display currency — never silently dropped (Q-013)."""
+        from pricing.models import RatePeriod
         from pricing.models import RateRule as RateRuleModel
 
         _sat_changeover(property_)
-        common = {"card": card, "date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
-        RateRuleModel.objects.create(**common, min_party=1, max_party=8, nightly=Decimal("100.00"))
-        RateRuleModel.objects.create(**common, min_party=9, max_party=12, nightly=None, is_poa=True)
+        period = RatePeriod.objects.create(
+            plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+        )
+        RateRuleModel.objects.create(
+            period=period, min_party=1, max_party=8, nightly=Decimal("100.00")
+        )
+        RateRuleModel.objects.create(
+            period=period, min_party=9, max_party=12, nightly=None, is_poa=True
+        )
 
         [result] = StayOptionsService.search(
             requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)],
@@ -464,7 +476,7 @@ class TestStayOptionsSearch:
         assert bands[1]["currency_code"] == "GBP"
 
     def test_band_fan_out_query_budget_reuses_context(
-        self, property_: Property, plan: RatePlan, card: RateCard
+        self, property_: Property, plan: RatePlan
     ) -> None:
         """M4: the three per-band re-prices reuse the one window context — no
         rate/plan/card reload per band. Pin a ceiling so a per-band context
@@ -474,7 +486,7 @@ class TestStayOptionsSearch:
         quotes each pay it). Headroom stays under a per-band context reload (~+3
         queries/band), which is what this guards against."""
         _sat_changeover(property_)
-        _occupancy_card(card)
+        _occupancy_period(plan)
         entry = _entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)
         StayOptionsService.search(requests=[entry], flex_days=0)  # warm content types
 
@@ -539,14 +551,16 @@ class TestWeeklyPrices:
             assert week["is_poa"] is False
             assert week["currency_code"] is None
 
-    def test_poa_week_is_flagged(self, property_: Property, plan: RatePlan, card: RateCard) -> None:
+    def test_poa_week_is_flagged(self, property_: Property, plan: RatePlan) -> None:
+        from pricing.models import RatePeriod
         from pricing.models import RateRule as RateRuleModel
 
         _sat_changeover(property_)
+        period = RatePeriod.objects.create(
+            plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+        )
         RateRuleModel.objects.create(
-            card=card,
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 8, 31),
+            period=period,
             min_party=1,
             max_party=8,
             nightly=None,

@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 from properties.models import Property, PropertyCapacity
 
 
@@ -133,9 +133,9 @@ def test_create_rate_rule_under_period(
     )
     assert response.status_code == 201, response.content
     created = RateRule.objects.get(period=period, nightly=Decimal("180.00"))
-    # Dates are inherited from the period; the transitional card FK is filled in.
-    assert (created.date_from, created.date_to) == (period.date_from, period.date_to)
-    assert created.card_id is not None
+    # The band hangs off the period and inherits its dates (GAP-056 — no own
+    # date columns).
+    assert created.period_id == period.pk
 
 
 @pytest.mark.django_db
@@ -190,15 +190,11 @@ def test_create_period_rejects_overlapping_dates(
 
 
 @pytest.mark.django_db
-def test_patch_period_dates_repoints_bands(
-    api_client: APIClient, staff: User, period: RatePeriod, card: RateCard
-) -> None:
-    """Moving a period's dates drags its bands' (still-present) date columns along."""
+def test_patch_period_dates(api_client: APIClient, staff: User, period: RatePeriod) -> None:
+    """Moving a period's dates moves the effective dates of its bands, which
+    inherit them (GAP-056 — bands have no own date columns)."""
     band = RateRule.objects.create(
         period=period,
-        card=card,
-        date_from=period.date_from,
-        date_to=period.date_to,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),
@@ -210,9 +206,11 @@ def test_patch_period_dates_repoints_bands(
         format="json",
     )
     assert response.status_code == 200, response.content
-    band.refresh_from_db()
-    assert band.date_from == date(2026, 6, 15)
-    assert band.date_to == date(2026, 9, 15)
+    period.refresh_from_db()
+    assert period.date_from == date(2026, 6, 15)
+    assert period.date_to == date(2026, 9, 15)
+    # The band still hangs off the moved period — it inherits the new span.
+    assert band.period_id == period.pk
 
 
 @pytest.mark.django_db
@@ -221,16 +219,12 @@ def test_activate_period_with_party_gap_rejected(
     staff: User,
     property_: Property,
     period: RatePeriod,
-    card: RateCard,
 ) -> None:
     """An active period must price every party 1..max_occupancy (POA is a band)."""
     PropertyCapacity.objects.create(property=property_, guests=8)
     # One band covering only 1..4 leaves 5..8 uncovered.
     RateRule.objects.create(
         period=period,
-        card=card,
-        date_from=period.date_from,
-        date_to=period.date_to,
         min_party=1,
         max_party=4,
         nightly=Decimal("200.00"),
@@ -251,14 +245,10 @@ def test_period_coverage_gaps_reports_uncovered_ranges(
     staff: User,
     property_: Property,
     period: RatePeriod,
-    card: RateCard,
 ) -> None:
     PropertyCapacity.objects.create(property=property_, guests=8)
     RateRule.objects.create(
         period=period,
-        card=card,
-        date_from=period.date_from,
-        date_to=period.date_to,
         min_party=1,
         max_party=4,
         nightly=Decimal("200.00"),

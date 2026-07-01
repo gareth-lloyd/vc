@@ -1,11 +1,9 @@
 """Serializers for `RatePlan` (Season), `RatePeriod`, and `RateRule`.
 
 GAP-056: the honest grid is `RatePlan → RatePeriod (dates) → RateRule (party
-band)`. `RateRule` no longer carries its own `date_from/date_to` in the API —
-those live on its parent `RatePeriod`; the band is a partyxprice row that
-inherits the period's dates. `RateCard` is gone from the API surface (dropped as
-a model in Unit 9); the transitional non-null `RateRule.card` FK is populated
-server-side (see `pricing.views.rate._transitional_card_for_plan`).
+band)`. `RateRule` carries no `date_from/date_to` — those live on its parent
+`RatePeriod`; the band is a partyxprice row that inherits the period's dates.
+`RateCard` is gone (dropped in Unit 9).
 """
 
 from __future__ import annotations

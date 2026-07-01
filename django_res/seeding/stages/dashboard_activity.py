@@ -36,7 +36,7 @@ from django.utils import timezone
 
 from core.exceptions import HoldUnavailable
 from payments.enums import PaymentPurpose
-from pricing.factories import RateCardFactory, RatePlanFactory, RateRuleFactory
+from pricing.factories import RatePeriodFactory, RatePlanFactory, RateRuleFactory
 from properties.factories import PropertyFactory, RegionFactory, villa_manifest
 from properties.models import Country, Property
 from reservations.factories import EnquiryFactory
@@ -50,7 +50,7 @@ from seeding._booking_helpers import (
 )
 from seeding._pricing_helpers import (
     assign_commission,
-    build_seasonal_cards,
+    build_seasonal_periods,
     draw_base_nightly,
     seed_included_services,
 )
@@ -162,11 +162,11 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
     if ctx.knobs.realistic_pricing:
         # Same price shape + commission as the rest of the portfolio (flat
         # brackets, no occupancy bands — these villas host short stays).
-        build_seasonal_cards(plan, draw_base_nightly(ctx.rng, ctx.default_currency.code))
+        build_seasonal_periods(plan, draw_base_nightly(ctx.rng, ctx.default_currency.code))
         assign_commission(ctx.rng, prop)
     else:
-        card = RateCardFactory(plan=plan)
-        RateRuleFactory(card=card)
+        period = RatePeriodFactory(plan=plan, min_nights=1)
+        RateRuleFactory(period=period)
     ctx.properties.append(prop)
     return prop
 

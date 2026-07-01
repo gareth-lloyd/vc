@@ -28,23 +28,18 @@ def rebuild_summary_task(property_id: int, currency_id: int) -> None:
 def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
     """Recompute the per-(property, currency) min/max display row."""
     # Lazy-import to avoid circulars during app loading.
-    from django.db.models import Q
-
     from pricing.models import Currency, RatePlan  # noqa: F401
 
     # GAP-056: the display min/max mirrors what the engine prices — approved
-    # bands on an active period of an active plan. Gated on the RatePeriod now,
-    # but it keeps the engine's transitional `card.is_active` gate (see
-    # `_load_real_context`): a deactivated card's bands are stamped on an active
-    # period, so without this the summary would advertise a rate the engine
-    # won't quote. Both the card gate and this clause drop in Unit 9.
+    # bands on an active period of an active plan. Period activeness is the sole
+    # gate now (RateCard is gone).
     rules = RateRule.objects.filter(
         period__plan__property_id=property_id,
         period__plan__currency_id=currency_id,
         period__plan__is_active=True,
         period__is_active=True,
         is_approved=True,
-    ).filter(Q(card__is_active=True) | Q(card__isnull=True))
+    )
 
     nightlies = [Decimal(r.nightly) for r in rules if r.nightly is not None]
     weeklies = [Decimal(r.weekly) for r in rules if r.weekly is not None]

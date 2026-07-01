@@ -2,8 +2,8 @@
 
 Calibrated from the April-2025 legacy snapshot (7,178 live VillaSeasonRate
 rows across 304 villas): per-currency log-normal nightly price levels inside
-the observed clamps, a Low/Mid/Peak seasonal card structure (legacy villas
-average ~24 seasonal rates — three season cards is the KISS rendition),
+the observed clamps, a Low/Mid/Peak seasonal period structure (legacy villas
+average ~24 seasonal rates — three seasons is the KISS rendition),
 occupancy-band party brackets on a small fraction of villas, and
 near-universal percentage commission.
 
@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pricing.factories import RateCardFactory, RateRuleFactory
+from pricing.factories import RatePeriodFactory, RateRuleFactory
 from properties.enums import CommissionCalcType
 
 # currency code -> (median nightly, sigma, clamp lo, clamp hi). Nightly =
@@ -147,7 +147,7 @@ def _merge_thin_segments(
     return merged or segments
 
 
-def build_seasonal_cards(
+def build_seasonal_periods(
     plan: Any,
     base_nightly: Decimal,
     *,
@@ -155,25 +155,29 @@ def build_seasonal_cards(
     brackets: tuple[tuple[int, int, Decimal], ...] = _FLAT_BRACKETS,
     wide_spread: bool = False,
 ) -> None:
-    """Three Low/Mid/Peak cards on `plan`, one rule per (season segment x
-    party bracket), partitioning the whole plan window gap-free so any stay
-    the booking stages generate prices without NoRateAvailable.
+    """One Low/Mid/Peak `RatePeriod` per season segment on `plan`, each with one
+    rule per party bracket, partitioning the whole plan window gap-free so any
+    stay the booking stages generate prices without NoRateAvailable.
 
-    `min_nights` lands on every card: the engine validates it against the
-    first night's card only, so all cards must agree. `max_nights` stays null.
+    The segments are date-disjoint (satisfying the periods EXCLUDE) and the
+    brackets are party-disjoint (satisfying the bands EXCLUDE), so every
+    `(night, party)` resolves to exactly one cell. `min_nights` lands on every
+    period as a real per-period override — the engine reads it per-period.
+    `max_nights` stays null.
     """
     assert plan.effective_to is not None  # factories/stages always set it
     multipliers = _WIDE_SEASON_MULTIPLIERS if wide_spread else _SEASON_MULTIPLIERS
-    cards = [
-        RateCardFactory(plan=plan, name=name, sort_order=idx, min_nights=min_nights)
-        for idx, name in enumerate(_SEASONS)
-    ]
     for seg_from, seg_to, season in _season_segments(plan.effective_from, plan.effective_to):
+        period = RatePeriodFactory(
+            plan=plan,
+            date_from=seg_from,
+            date_to=seg_to,
+            name=_SEASONS[season],
+            min_nights=min_nights,
+        )
         for min_party, max_party, bracket_mult in brackets:
             RateRuleFactory(
-                card=cards[season],
-                date_from=seg_from,
-                date_to=seg_to,
+                period=period,
                 min_party=min_party,
                 max_party=max_party,
                 nightly=(base_nightly * multipliers[season] * bracket_mult).quantize(Decimal("1")),

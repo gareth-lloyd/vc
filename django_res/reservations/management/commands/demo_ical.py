@@ -558,7 +558,7 @@ def _delete_demo_data() -> int:
             # BookingGuest rows (the LEAD guard permits the cascade path).
             total += demo_bookings.delete()[0]
             if created_by_demo:
-                # RatePlan PROTECTs the property (and CASCADEs its RateCards).
+                # RatePlan PROTECTs the property (and CASCADEs its RatePeriods).
                 total += RatePlan.objects.filter(property=prop).delete()[0]
             # QuotationLine PROTECTs the property too. When tearing down a
             # demo-created property, delete every quotation with a line on it —

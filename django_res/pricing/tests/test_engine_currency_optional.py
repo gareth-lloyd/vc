@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from core.exceptions import NoRateAvailable
-from pricing.models import Currency, RateCard, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 from pricing.services.engine import PricingEngine
 from properties.models.settings import PropertySettings
 
@@ -41,11 +41,13 @@ def _priced_plan(
         effective_from=date(year, 1, 1),
         effective_to=date(year, 12, 31),
     )
-    card = RateCard.objects.create(plan=plan, name="Default", sort_order=0)
-    RateRule.objects.create(
-        card=card,
+    period = RatePeriod.objects.create(
+        plan=plan,
         date_from=date(year, 1, 1),
         date_to=date(year, 12, 31),
+    )
+    RateRule.objects.create(
+        period=period,
         min_party=1,
         max_party=8,
         nightly=Decimal(nightly),

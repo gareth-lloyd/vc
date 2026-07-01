@@ -52,7 +52,7 @@ day — Saturday 72%, Monday/Sunday/Friday tail — and min stay resolves to 7
 nights virtually everywhere), `changeover_day_weights` assigns most villas a
 specific day; those villas also get `constrained_min_nights` (7) written to
 **both** `PropertySettings.min_nights_rental` (legacy-semantics, not
-engine-enforced) and `RateCard.min_nights` (engine-enforced). A deterministic
+engine-enforced) and `RatePeriod.min_nights` (engine-enforced). A deterministic
 floor of `max(2, round(0.12 × n))` villas stays unconstrained so
 `dashboard_activity` always has hosts for its today-anchored short stays.
 

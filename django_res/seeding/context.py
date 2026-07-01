@@ -126,7 +126,7 @@ class ProfileKnobs:
     # "any") also get the minimum-stay floor below. Mirrors the legacy prod
     # snapshot (88% explicit, Saturday-heavy). Empty tuple disables (happy).
     changeover_day_weights: tuple[tuple[str, float], ...] = ()
-    # Minimum stay (nights) written to RateCard.min_nights (engine-enforced)
+    # Minimum stay (nights) written to RatePeriod.min_nights (engine-enforced)
     # and PropertySettings.min_nights_rental (legacy-semantics field) on
     # villas with a specific changeover day. Legacy resolves to 7 virtually
     # everywhere.

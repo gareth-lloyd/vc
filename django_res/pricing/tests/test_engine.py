@@ -10,7 +10,7 @@ import pytest
 from core.exceptions import MinNightsNotMet, NoRateAvailable, PartyOutOfRange
 from core.tests import assert_max_queries
 from pricing.enums import ExtraCalc, ExtraKind
-from pricing.models import Currency, Extra, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, Extra, RatePeriod, RatePlan, RateRule
 from pricing.services import OccupancyBand, PricingContext, PricingEngine
 from properties.models import Property, PropertyService
 
@@ -20,6 +20,27 @@ def _period_of(rule: RateRule) -> RatePeriod:
     period = rule.period
     assert period is not None
     return period
+
+
+def _rule(
+    plan: RatePlan,
+    *,
+    date_from: date,
+    date_to: date,
+    min_party: int = 1,
+    max_party: int = 8,
+    **kwargs: object,
+) -> RateRule:
+    """Create a band under `plan`, reusing/creating the period for its dates.
+
+    Sibling bands (same dates, different party) share one period; different
+    dates get their own (disjoint) period — the GAP-056 date axis. Mirrors the
+    old `RateRule.objects.create(card=…, date_from=…, date_to=…)` call shape.
+    """
+    period, _ = RatePeriod.objects.get_or_create(plan=plan, date_from=date_from, date_to=date_to)
+    return RateRule.objects.create(
+        period=period, min_party=min_party, max_party=max_party, **kwargs
+    )
 
 
 @pytest.mark.django_db
@@ -147,36 +168,38 @@ def test_quote_opt_in_extra_only_when_requested(
 
 @pytest.mark.django_db
 def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """Regression: legacy bug #2 (`09-departures.md`).
 
     Legacy stored-proc fell through to the highest occupancy bracket when no
     bracket matched the requested party size. The new engine must *match*
-    brackets, never default. Three disjoint sibling rules on one card:
+    brackets, never default. Three disjoint sibling bands on one period:
 
       * party=4  → 1-8  bracket (NOT 9-12, NOT 13-16)
       * party=10 → 9-12 bracket
       * party=20 → no bracket matches → raises `PartyOutOfRange`
     """
     common = {
-        "card": card,
         "date_from": date(2026, 6, 1),
         "date_to": date(2026, 8, 31),
     }
-    rule_small = RateRule.objects.create(
+    rule_small = _rule(
+        plan,
         **common,
         min_party=1,
         max_party=8,
         nightly=Decimal("100.00"),
     )
-    rule_mid = RateRule.objects.create(
+    rule_mid = _rule(
+        plan,
         **common,
         min_party=9,
         max_party=12,
         nightly=Decimal("250.00"),
     )
-    rule_large = RateRule.objects.create(
+    rule_large = _rule(
+        plan,
         **common,
         min_party=13,
         max_party=16,
@@ -223,10 +246,10 @@ def test_quote_occupancy_bracket_matched_not_defaulted_to_highest(
 
 
 @pytest.mark.django_db
-def test_quote_raises_no_rate_when_no_card_matches(
+def test_quote_raises_no_rate_when_no_period_matches(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    # No RateCard / RateRule at all on the plan.
+    # No RatePeriod / RateRule at all on the plan.
     with pytest.raises(NoRateAvailable):
         PricingEngine.quote(
             property=property_,
@@ -239,11 +262,11 @@ def test_quote_raises_no_rate_when_no_card_matches(
 
 @pytest.mark.django_db
 def test_quote_respects_is_approved_filter(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     # Unapproved rule must be filtered out → NoRateAvailable.
-    RateRule.objects.create(
-        card=card,
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
         min_party=1,
@@ -326,34 +349,30 @@ def test_all_fallback_stay_skips_period_validation(
 
 
 @pytest.mark.django_db
-def test_quote_excludes_deactivated_cards_rules(
+def test_quote_excludes_deactivated_period_rules(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A rule under a deactivated `RateCard` must not price.
+    """A band under a deactivated `RatePeriod` must not price.
 
-    Parity guard for the transitional expand phase: the old engine filtered
-    `RateCard.objects.filter(is_active=True)`, and `load_anchor_cards_with_rules`
-    (still used by carryover) keeps honouring `card.is_active`. But the `save()`
-    shim / backfill stamp every `RatePeriod` `is_active=True` regardless of the
-    card, so the period flag can't stand in for card activeness yet — the engine
-    must keep gating rules on `card.is_active` while cards exist. (Dropped in
-    Unit 9 when `period.is_active` becomes the sole gate.)
+    GAP-056 Unit 9: `RateCard` is gone and `RatePeriod.is_active` is the sole
+    gate — `_load_real_context` filters `is_active=True` periods, so an inactive
+    period's bands are excluded from pricing entirely.
     """
-    # Withdrawn card + rule created FIRST, so its rule has the lower pk and would
-    # win `pick_rule_for_night`'s lowest-pk tie-break if it leaked past the gate.
-    withdrawn = RateCard.objects.create(plan=plan, name="Withdrawn", sort_order=0, is_active=False)
+    # Withdrawn period + band created FIRST (lower pk). Its dates are disjoint
+    # from the live period (the periods-disjoint EXCLUDE forbids sharing a span),
+    # and being inactive it is filtered out of the context before pricing.
+    withdrawn = RatePeriod.objects.create(
+        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 6, 8), is_active=False
+    )
     RateRule.objects.create(
-        card=withdrawn,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
+        period=withdrawn,
         min_party=1,
         max_party=8,
         nightly=Decimal("50.00"),
     )
-    live = RateCard.objects.create(plan=plan, name="Live", sort_order=1)
-    RateRule.objects.create(
-        card=live,
-        date_from=date(2026, 6, 1),
+    _rule(
+        plan,
+        date_from=date(2026, 6, 9),
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
@@ -368,7 +387,7 @@ def test_quote_excludes_deactivated_cards_rules(
         currency=gbp,
     )
 
-    # The withdrawn card's 50.00 must never appear — only the live rate prices.
+    # The withdrawn period's 50.00 must never appear — only the live rate prices.
     assert all(ln.nightly == Decimal("200.00") for ln in quote.lines)
 
 
@@ -495,16 +514,24 @@ def test_changeover_shift_via_property_rule(
 
 
 @pytest.mark.django_db
-def test_changeover_shift_with_two_cards_covering_stay(
-    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
+def test_changeover_shift_across_two_periods_covering_stay(
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """Two active cards covering the stay + a property Saturday rule: the
-    Wednesday arrival shifts to Saturday and prices cleanly — no per-card
-    changeover field, no ChangeoverViolation (regression for GAP-007)."""
-    second = RateCard.objects.create(plan=plan, name="Second", sort_order=1)
-    RateRule.objects.create(
-        card=second,
+    """Two disjoint periods the shifted stay straddles + a property Saturday
+    rule: the Wednesday arrival shifts to Saturday and prices cleanly across the
+    period boundary (GAP-056 replaced card precedence with the disjoint period
+    axis; regression for GAP-007)."""
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 16),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("200.00"),
+    )
+    _rule(
+        plan,
+        date_from=date(2026, 6, 17),
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
@@ -622,7 +649,7 @@ def test_quote_projects_from_prior_year_when_no_plan(
     assert quote.breakdown["is_projected"] is True
     assert quote.breakdown["projection"]["source_year"] == 2026
     assert quote.breakdown["projection"]["target_year"] == 2028
-    assert quote.breakdown["projection"]["source_plan_id"] == rule.card.plan.pk
+    assert quote.breakdown["projection"]["source_plan_id"] == rule.period.plan.pk
 
 
 @pytest.mark.django_db
@@ -637,9 +664,8 @@ def test_quote_prefers_real_plan_over_projection(
         effective_from=date(2028, 1, 1),
         effective_to=date(2028, 12, 31),
     )
-    card_2028 = RateCard.objects.create(plan=plan_2028, name="Default", sort_order=0)
-    RateRule.objects.create(
-        card=card_2028,
+    _rule(
+        plan_2028,
         date_from=date(2028, 6, 1),
         date_to=date(2028, 8, 31),
         min_party=1,
@@ -758,9 +784,9 @@ def test_inclusion_reflects_service_date_band(
     )
     assert july.breakdown["inclusion"] == "Daily housekeeping.\nPrivate chef."
 
-    # An out-of-band stay needs its own plan; reuse the same villa in November.
-    RateRule.objects.create(
-        card=rule.card,
+    # An out-of-band stay needs its own period; reuse the same villa in November.
+    _rule(
+        rule.period.plan,
         date_from=date(2026, 11, 1),
         date_to=date(2026, 11, 30),
         min_party=1,
@@ -921,12 +947,13 @@ def test_breakdown_occupancy_pricing_false_for_single_band(
 
 @pytest.mark.django_db
 def test_breakdown_occupancy_pricing_true_for_multiple_party_bands(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    """>1 distinct (min_party, max_party) band on the winning card means the
+    """>1 distinct (min_party, max_party) band on the winning period means the
     price depends on the party size — the builder badges these results."""
-    RateRule.objects.create(
-        card=card,
+    # Shares the `rule` fixture's period (same dates) — a sibling party band.
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
         min_party=9,
@@ -947,12 +974,13 @@ def test_breakdown_occupancy_pricing_true_for_multiple_party_bands(
 
 @pytest.mark.django_db
 def test_breakdown_occupancy_pricing_false_for_same_band_split_dates(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
     """Seasonal date splits with the SAME party band are not occupancy pricing
     — only distinct bands count."""
-    RateRule.objects.create(
-        card=card,
+    # A second, disjoint period carrying the same 1-8 band.
+    _rule(
+        plan,
         date_from=date(2026, 9, 1),
         date_to=date(2026, 10, 31),
         min_party=1,
@@ -1012,8 +1040,8 @@ def test_stay_length_bounds_aggregates_across_periods(
 
     # A second, off-peak period on the same plan with a shorter min and no cap.
     off_peak = _period_of(
-        RateRule.objects.create(
-            card=rule.card,
+        _rule(
+            rule.period.plan,
             date_from=date(2026, 9, 1),
             date_to=date(2026, 9, 30),
             min_party=1,
@@ -1047,8 +1075,8 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
     peak.save(update_fields=["min_nights"])
 
     off_peak = _period_of(
-        RateRule.objects.create(
-            card=rule.card,
+        _rule(
+            rule.period.plan,
             date_from=date(2026, 10, 1),
             date_to=date(2026, 10, 31),
             min_party=1,
@@ -1087,13 +1115,13 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
 
 @pytest.mark.django_db
 def test_breakdown_reports_strict_bounds_across_straddled_periods(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """A stay straddling periods with different min/max-nights reports the
     STRICTEST bounds (what the guard enforces), not just the winning period's."""
     a = _period_of(
-        RateRule.objects.create(
-            card=card,
+        _rule(
+            plan,
             date_from=date(2026, 6, 1),
             date_to=date(2026, 6, 30),
             min_party=1,
@@ -1104,8 +1132,8 @@ def test_breakdown_reports_strict_bounds_across_straddled_periods(
     a.min_nights, a.max_nights = 2, None
     a.save(update_fields=["min_nights", "max_nights"])
     b = _period_of(
-        RateRule.objects.create(
-            card=card,
+        _rule(
+            plan,
             date_from=date(2026, 7, 1),
             date_to=date(2026, 7, 31),
             min_party=1,
@@ -1129,36 +1157,12 @@ def test_breakdown_reports_strict_bounds_across_straddled_periods(
     assert quote.breakdown["max_nights"] == 10
 
 
-@pytest.mark.django_db
-def test_covering_bands_gates_on_period_dates_not_band_dates(
-    property_: Property, gbp: Currency, card: RateCard
-) -> None:
-    """`covering_bands` mirrors `pick_rule_for_night` by gating on the PERIOD's
-    dates. Even if a band's transitional date columns drift narrower than its
-    period, the bracket still counts as covering the period's whole span."""
-    rule = RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100.00"),
-    )
-    period = _period_of(rule)
-    # Simulate pre-repoint drift: shrink the band's own date columns while the
-    # period keeps the full span. Bulk update dodges the save() shim.
-    RateRule.objects.filter(pk=rule.pk).update(
-        date_from=date(2026, 6, 10), date_to=date(2026, 6, 12)
-    )
-    assert period.date_from == date(2026, 6, 1)
-
-    bands = PricingEngine.covering_bands(
-        property=property_,
-        date_from=date(2026, 6, 15),  # inside the period, outside the drifted band dates
-        date_to=date(2026, 6, 22),
-        currency=gbp,
-    )
-    assert [(b.min_party, b.max_party) for b in bands] == [(1, 8)]
+# GAP-056 Unit 9: `test_covering_bands_gates_on_period_dates_not_band_dates` was
+# removed. It exercised transitional drift between a band's own `date_from`/
+# `date_to` columns and its period's dates; Unit 9 dropped those columns (bands
+# inherit the period's span), so the drift it guarded against can no longer
+# exist. `_periods_cover_all_nights` already gates band coverage on the period
+# date-axis, covered by the other `covering_bands` tests below.
 
 
 @pytest.mark.django_db
@@ -1169,7 +1173,7 @@ def test_load_context_none_without_covering_plan(property_: Property, gbp: Curre
 
 
 @pytest.mark.django_db
-def test_load_context_none_when_plan_has_no_active_cards(
+def test_load_context_none_when_plan_has_no_active_periods(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     assert _june_context(property_) is None
@@ -1177,9 +1181,9 @@ def test_load_context_none_when_plan_has_no_active_cards(
 
 @pytest.mark.django_db
 def test_quote_reuses_a_preloaded_context_without_rate_queries(
-    property_: Property, gbp: Currency, plan: RatePlan, card: RateCard, rule: RateRule
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateRule
 ) -> None:
-    """A caller-supplied context skips the plan/card/rule loads entirely and
+    """A caller-supplied context skips the plan/period/rule loads entirely and
     prices identically to a self-loading quote."""
     baseline = PricingEngine.quote(
         property=property_,
@@ -1214,21 +1218,21 @@ def test_quote_reuses_a_preloaded_context_without_rate_queries(
 # ---------------------------------------------------------------------------
 
 
-def _three_band_card(card: RateCard) -> None:
-    """Seed `card` with three disjoint sibling brackets over June-Aug 2026."""
-    common = {"card": card, "date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
-    RateRule.objects.create(**common, min_party=1, max_party=8, nightly=Decimal("100.00"))
-    RateRule.objects.create(**common, min_party=9, max_party=12, nightly=Decimal("250.00"))
-    RateRule.objects.create(**common, min_party=13, max_party=16, nightly=Decimal("400.00"))
+def _three_band_period(plan: RatePlan) -> None:
+    """Seed `plan` with a period carrying three sibling brackets over June-Aug 2026."""
+    common = {"date_from": date(2026, 6, 1), "date_to": date(2026, 8, 31)}
+    _rule(plan, **common, min_party=1, max_party=8, nightly=Decimal("100.00"))
+    _rule(plan, **common, min_party=9, max_party=12, nightly=Decimal("250.00"))
+    _rule(plan, **common, min_party=13, max_party=16, nightly=Decimal("400.00"))
 
 
 @pytest.mark.django_db
 def test_covering_bands_returns_all_brackets_sorted(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A 3-bracket card yields all three bands sorted by `min_party`, regardless
+    """A 3-bracket period yields all three bands sorted by `min_party`, regardless
     of the party the caller happens to hold — the builder fans them all out."""
-    _three_band_card(card)
+    _three_band_period(plan)
 
     bands = PricingEngine.covering_bands(
         property=property_,
@@ -1246,21 +1250,32 @@ def test_covering_bands_returns_all_brackets_sorted(
 
 @pytest.mark.django_db
 def test_covering_bands_excludes_bracket_not_covering_every_night(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A bracket whose rule does not span every night of the week is dropped —
-    night-correct coverage (rule dates inclusive, nights half-open)."""
-    RateRule.objects.create(
-        card=card,
+    """A bracket whose bands do not span every night of the week is dropped —
+    night-correct coverage (period dates inclusive, nights half-open). The 1-8
+    bracket spans the whole window (across two disjoint periods); the 9-12
+    bracket sits only on the first period, so it lapses mid-week."""
+    # 1-8 spans the whole window, split across two adjacent disjoint periods.
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 12),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    _rule(
+        plan,
+        date_from=date(2026, 6, 13),
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
         nightly=Decimal("100.00"),
     )
-    # 9-12 bracket only covers the first few nights of a 10th-17th stay.
-    RateRule.objects.create(
-        card=card,
+    # 9-12 only lives on the first period, covering just the early nights.
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 12),
         min_party=9,
@@ -1271,7 +1286,7 @@ def test_covering_bands_excludes_bracket_not_covering_every_night(
     bands = PricingEngine.covering_bands(
         property=property_,
         date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 17),  # nights 10..16; the 16th is outside 9-12's rule
+        date_to=date(2026, 6, 17),  # nights 10..16; the 16th is outside 9-12's period
         currency=gbp,
     )
 
@@ -1302,11 +1317,11 @@ def test_covering_bands_single_bracket_returns_one(
 
 @pytest.mark.django_db
 def test_covering_bands_loads_context_when_none(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """With `context=None` (a flexible-changeover villa) the helper loads its own
     context rather than reading a bare attribute off `None` (fixes B1)."""
-    _three_band_card(card)
+    _three_band_period(plan)
 
     bands = PricingEngine.covering_bands(
         property=property_,
@@ -1335,14 +1350,14 @@ def test_covering_bands_empty_when_no_plan_covers(property_: Property, gbp: Curr
 
 @pytest.mark.django_db
 def test_covering_bands_reuses_supplied_context_without_rate_reload(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """A supplied context is used as-is — the enumerator never re-reads the
-    rate plan/cards/rules. Proven by deleting every rule row after the context
+    rate plan/periods/rules. Proven by deleting every rule row after the context
     is loaded: the bands still resolve, so they came from the in-memory context
     (an `assert_max_queries(0)` pin is impossible because F3's changeover shift
     always queries the DB, exactly as a per-band `quote()` would)."""
-    _three_band_card(card)
+    _three_band_period(plan)
     context = PricingEngine.load_context(
         property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17), currency=gbp
     )
@@ -1364,39 +1379,18 @@ def test_covering_bands_reuses_supplied_context_without_rate_reload(
 
 @pytest.mark.django_db
 def test_covering_bands_unions_split_season_rules_for_one_bracket(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """Two rules sharing one `(min, max)` bracket over adjacent date ranges that
-    together — but neither alone — cover the week still yield that band: coverage
-    is per-bracket union, not per-rule."""
-    # Base full-range bracket so the card covers the week and there are ≥2 bands.
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("100.00"),
-    )
-    # The 9-12 bracket is split into adjacent (non-overlapping) ranges: neither
-    # half spans nights 10..16, but their union does (A covers 10-13 inclusive,
-    # B covers 14-16). The no_overlap exclusion constraint forbids sharing a day.
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 13),
-        min_party=9,
-        max_party=12,
-        nightly=Decimal("250.00"),
-    )
-    RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 14),
-        date_to=date(2026, 8, 31),
-        min_party=9,
-        max_party=12,
-        nightly=Decimal("250.00"),
-    )
+    """A bracket split across two adjacent disjoint periods that together — but
+    neither alone — cover the week still yields that band: coverage is
+    per-bracket union across periods, not per-period."""
+    # Two adjacent disjoint periods; each carries the 1-8 base bracket and half
+    # of the 9-12 bracket. Neither period alone spans the week for 9-12, but
+    # pooled across the two the bracket covers every night (A covers 10-13
+    # inclusive, B covers 14-16).
+    for df, dt in [(date(2026, 6, 1), date(2026, 6, 13)), (date(2026, 6, 14), date(2026, 8, 31))]:
+        _rule(plan, date_from=df, date_to=dt, min_party=1, max_party=8, nightly=Decimal("100.00"))
+        _rule(plan, date_from=df, date_to=dt, min_party=9, max_party=12, nightly=Decimal("250.00"))
 
     bands = PricingEngine.covering_bands(
         property=property_,
@@ -1412,22 +1406,33 @@ def test_covering_bands_unions_split_season_rules_for_one_bracket(
 
 
 @pytest.mark.django_db
-def test_covering_bands_includes_bracket_whose_rule_ends_on_last_night(
-    property_: Property, gbp: Currency, card: RateCard
+def test_covering_bands_includes_bracket_whose_period_ends_on_last_night(
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """A bracket whose rule `date_to` equals the stay's last night is INCLUDED —
-    rule dates are inclusive on both ends, so coverage must use `<=` not `<`."""
-    RateRule.objects.create(
-        card=card,
+    """A bracket whose period `date_to` equals the stay's last night is INCLUDED
+    — period dates are inclusive on both ends, so coverage must use `<=` not
+    `<`. The 1-8 base spans the whole window (split across two disjoint periods);
+    the 9-12 bracket ends exactly on the last night."""
+    # 1-8 spans the whole window, split across two adjacent disjoint periods.
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 16),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("100.00"),
+    )
+    _rule(
+        plan,
+        date_from=date(2026, 6, 17),
         date_to=date(2026, 8, 31),
         min_party=1,
         max_party=8,
         nightly=Decimal("100.00"),
     )
-    # 10th-17th stay → nights 10..16; this rule ends exactly on the 16th.
-    RateRule.objects.create(
-        card=card,
+    # 10th-17th stay → nights 10..16; the 9-12 period ends exactly on the 16th.
+    _rule(
+        plan,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 6, 16),
         min_party=9,
@@ -1453,22 +1458,15 @@ def test_covering_bands_pools_bracket_rules_across_periods(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """A bracket is offered iff ITS OWN bands — pooled across every period the
-    week spans — cover all nights (GAP-056). Here the 1-8 bracket has one band
-    that lapses mid-week and one that spans it: pooled, the bracket still covers
-    the week and is offered alongside the full-span 9-12 / 13-16 brackets."""
-    # A 1-8 band that lapses mid-week (misses nights 13..16) on its own period.
-    lapsing = RateCard.objects.create(plan=plan, name="Short", sort_order=0)
-    RateRule.objects.create(
-        card=lapsing,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 6, 12),
-        min_party=1,
-        max_party=8,
-        nightly=Decimal("150.00"),
-    )
-    # A full-week three-bracket card (its own period) — its 1-8 band spans the gap.
-    full = RateCard.objects.create(plan=plan, name="Full", sort_order=1)
-    _three_band_card(full)
+    week spans — cover all nights (GAP-056). Here the week straddles two adjacent
+    disjoint periods that each carry all three brackets, so every bracket is
+    covered by the union of the periods and offered."""
+    # Two adjacent disjoint periods the week straddles, each with all three
+    # brackets — each bracket's coverage is the union of the periods carrying it.
+    for df, dt in [(date(2026, 6, 1), date(2026, 6, 12)), (date(2026, 6, 13), date(2026, 8, 31))]:
+        _rule(plan, date_from=df, date_to=dt, min_party=1, max_party=8, nightly=Decimal("100.00"))
+        _rule(plan, date_from=df, date_to=dt, min_party=9, max_party=12, nightly=Decimal("250.00"))
+        _rule(plan, date_from=df, date_to=dt, min_party=13, max_party=16, nightly=Decimal("400.00"))
 
     bands = PricingEngine.covering_bands(
         property=property_,
@@ -1486,19 +1484,19 @@ def test_covering_bands_pools_bracket_rules_across_periods(
 
 @pytest.mark.django_db
 def test_covering_bands_aligns_non_conforming_arrival_to_changeover_day(
-    property_: Property, gbp: Currency, card: RateCard
+    property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
     """F3: the enumerator applies the same changeover forward-shift as `quote()`
     before choosing nights, so the bands match the night-set each band's own
-    `quote()` would price. Here the card's rules only span the SHIFTED week
+    `quote()` would price. Here the period's bands only span the SHIFTED week
     (Sat 13th → Sat 20th); a raw Wednesday-based night-set would fall outside
     them and yield no bands, so a non-empty result proves the shift happened."""
     _changeover_rule(property_, "SAT")
-    # Rules cover only 6/13..6/20 — the Saturday-aligned week, not the raw
-    # Wed 6/10..6/17 arrival the caller passes.
+    # Bands cover only 6/13..6/20 — the Saturday-aligned week, not the raw
+    # Wed 6/10..6/17 arrival the caller passes (sibling bands on one period).
     for min_p, max_p, rate in [(1, 8, "100.00"), (9, 12, "250.00")]:
-        RateRule.objects.create(
-            card=card,
+        _rule(
+            plan,
             date_from=date(2026, 6, 13),
             date_to=date(2026, 6, 20),
             min_party=min_p,

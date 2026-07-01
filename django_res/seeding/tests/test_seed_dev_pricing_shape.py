@@ -1,9 +1,9 @@
 """Pricing-shape contract: mixed/chaos villas must price like the legacy prod
 snapshot — per-currency log-normal price levels with a long tail (not the
-factory's flat 250/400/650 iterator), a Low/Mid/Peak seasonal card structure
+factory's flat 250/400/650 iterator), a Low/Mid/Peak seasonal period structure
 with gap-free coverage, near-universal percentage commission, rare discounts,
 and occasional occupancy bands / second-currency plans. `happy` keeps the
-legacy one-card / one-rule / universal-discount shape byte-for-byte.
+legacy one-period / one-rule / universal-discount shape byte-for-byte.
 
 These run against an isolated transactional DB (no accumulation from other
 tests), so the per-run distribution can be asserted directly.
@@ -70,7 +70,7 @@ def test_seed_dev_mixed_prices_realistically() -> None:
 
     * realistic price levels: a wide, varied distribution, not the factory
       iterator;
-    * Low/Mid/Peak seasonal cards with gap-free party-3 coverage across the
+    * Low/Mid/Peak seasonal periods with gap-free party-3 coverage across the
       full plan window (no NoRateAvailable for any stay the booking stages
       can generate);
     * occupancy bands on a few villas: contiguous brackets from 1 up to the
@@ -83,7 +83,7 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     _seed("mixed", properties=20, bookings=30, seed=42)
     today = utc_today()
 
-    plans = list(RatePlan.objects.select_related("currency").prefetch_related("cards__rules"))
+    plans = list(RatePlan.objects.select_related("currency").prefetch_related("periods__rules"))
     assert plans
 
     # ---- Price levels: varied with a long tail, iterator values gone ----
@@ -93,23 +93,28 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     assert max(nightly_values) >= 5 * min(nightly_values), "expected a long-tailed spread"
 
     # ---- Seasonal structure + gap-free coverage ----
+    # A season now spans several disjoint date segments, so a plan carries more
+    # than three periods — but each is named for its season, every period holds
+    # bands, and the whole window stays party-3 covered with no gaps.
     for plan in plans:
-        cards = list(plan.cards.all())
-        assert {c.name for c in cards} == {"Low", "Mid", "Peak"}, plan
-        rules = [r for c in cards for r in c.rules.all()]
+        periods = list(plan.periods.all())
+        assert periods, plan
+        assert {p.name for p in periods} <= {"Low", "Mid", "Peak"}, plan
+        assert all(p.rules.exists() for p in periods), plan
         assert plan.effective_to is not None
         day = plan.effective_from
         while day <= plan.effective_to:
-            assert any(
-                r.date_from <= day <= r.date_to and r.min_party <= 3 <= r.max_party for r in rules
-            ), f"plan {plan.pk} has no party-3 rule covering {day}"
+            covering = [p for p in periods if p.date_from <= day <= p.date_to]
+            assert any(r.min_party <= 3 <= r.max_party for p in covering for r in p.rules.all()), (
+                f"plan {plan.pk} has no party-3 rule covering {day}"
+            )
             day += timedelta(days=14)
 
     # ---- Occupancy bands on a few villas ----
     banded_props = []
     for plan in plans:
-        for card in plan.cards.all():
-            brackets = {(r.min_party, r.max_party) for r in card.rules.all()}
+        for period in plan.periods.all():
+            brackets = {(r.min_party, r.max_party) for r in period.rules.all()}
             if len(brackets) > 1:
                 banded_props.append(plan.property)
                 ordered = sorted(brackets)
@@ -167,13 +172,13 @@ def _aligned(prop: Property, day: date) -> date:
 
 @pytest.mark.django_db(transaction=True)
 def test_seed_dev_happy_keeps_legacy_pricing_shape() -> None:
-    """The happy profile keeps the legacy shape: one card / one 1-30 rule per
+    """The happy profile keeps the legacy shape: one period / one 1-30 rule per
     plan, iterator prices, a discount on every villa, no blanket commission."""
     _seed("happy", properties=4, bookings=6, seed=42)
-    for plan in RatePlan.objects.prefetch_related("cards__rules"):
-        cards = list(plan.cards.all())
-        assert len(cards) == 1, plan
-        rules = list(cards[0].rules.all())
+    for plan in RatePlan.objects.prefetch_related("periods__rules"):
+        periods = list(plan.periods.all())
+        assert len(periods) == 1, plan
+        rules = list(periods[0].rules.all())
         assert len(rules) == 1, plan
         assert rules[0].nightly in _LEGACY_NIGHTLY
         assert (rules[0].min_party, rules[0].max_party) == (1, 30)

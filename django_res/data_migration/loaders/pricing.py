@@ -1,4 +1,4 @@
-"""Pricing: VillaSeason -> RatePlan + RateCard; VillaSeasonRate -> RateRule.
+"""Pricing: VillaSeason -> RatePlan; VillaSeasonRate -> RatePeriod + RateRule.
 
 Legacy structure:
   VillaSeason (id, name, villa_id, notes, inclusion)
@@ -7,11 +7,10 @@ Legacy structure:
                         to_date, party_size, price_type, weekly_price,
                         nightly_price, is_poa, ...)
 
-New structure:
+New structure (GAP-056):
   RatePlan (property, currency, effective_from, effective_to)
-    └── RateCard (plan, name, ...)
-          └── RateRule (card, date_from, date_to, min_party, max_party,
-                       nightly, weekly, is_poa)
+    └── RatePeriod (plan, date_from, date_to)  — disjoint date axis
+          └── RateRule (period, min_party, max_party, nightly, weekly, is_poa)
 
 Strategy:
 - One RatePlan per VillaSeason. Currency comes from the season's own
@@ -22,7 +21,9 @@ Strategy:
   very table this loader populates (load-order dependent, and a wrong stamp
   would re-resolve from itself forever on idempotent re-runs).
 - effective_from/to from min/max of VillaSeasonDates rows.
-- One default RateCard per RatePlan (named after the season).
+- The RatePlan owns no rate rows directly: `RateRuleLoader` builds the plan's
+  disjoint `RatePeriod` date axis (via the shared `segment_card_rules`
+  segmentation) and hangs each party band off its covering period.
 - One VillaSeasonRate -> at most one RateRule: `resolve_rate_rule_overlaps`
   trims/drops overlapping legacy rows before the upsert (legacy had no
   precedence concept — see "Rate rule overlap resolution" in
@@ -48,10 +49,10 @@ from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
-from pricing.models.rate import RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models.rate import RatePeriod, RatePlan, RateRule
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
-from pricing.services.period_backfill import backfill_plan_periods
+from pricing.services.segmentation import segment_card_rules
 from properties.models.property import Property
 from properties.models.services import PropertyService
 
@@ -294,11 +295,12 @@ def resolve_rate_rule_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
 
 
 class RatePlanLoader(BaseLoader):
-    """VillaSeason -> RatePlan + default RateCard.
+    """VillaSeason -> RatePlan.
 
     Picks currency + dates from related VillaSeasonRate / VillaSeasonDates.
-    Creates exactly one RateCard per plan (the framework writes it via
-    `_process_row` after the plan upsert lands).
+    The plan owns no rate rows here — `RateRuleLoader` builds its `RatePeriod`
+    date axis and party bands. `_process_row` additionally materialises the
+    season's free-text Inclusion as a `PropertyService` (GAP-037).
     """
 
     name = "rate_plan"
@@ -361,16 +363,6 @@ class RatePlanLoader(BaseLoader):
         plan = RatePlan.objects.filter(legacy_id=str(legacy_id)).first()
         if plan is None:
             return
-        RateCard.objects.update_or_create(
-            legacy_id=str(legacy_id),
-            defaults={
-                "plan": plan,
-                "name": plan.name[:128],
-                "min_nights": 1,
-                "sort_order": 0,
-                "is_active": True,
-            },
-        )
         # GAP-037: a season's free-text Inclusion becomes one date-banded
         # PropertyService on the villa, sharing the plan's effective dates.
         inclusion = (row.get("Inclusion") or "").strip()
@@ -491,8 +483,98 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+@dataclass
+class _Band:
+    """One resolved legacy row as a party band on a date span.
+
+    A lightweight value object `segment_card_rules` accepts (it reads only
+    `date_from`/`date_to`/`min_party`/`max_party`); the price/identity fields
+    ride along so `_load_rows` can materialise the `RateRule` once its covering
+    `RatePeriod` is known. Not frozen — segmentation keys on `id()`, never on
+    value equality.
+    """
+
+    date_from: date
+    date_to: date
+    min_party: int
+    max_party: int
+    nightly: Decimal | None
+    weekly: Decimal | None
+    is_poa: bool
+    is_approved: bool
+    notes: str
+    legacy_id: str
+
+
+def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
+    """Resolve one overlap-resolved legacy row into a `_Band`, or `None` to skip.
+
+    Pure per-row band computation (capacity clamp, party-interval / occupancy
+    handling, price/POA logic) — the plan supplies the property capacity
+    (`plan.property.capacity.guests`) the upper bound falls back to. Same junk
+    filters as before: inverted/zero-span dates, priceless non-POA rows, and
+    party intervals fully emptied by the real capacity all yield `None`.
+    """
+    date_from = _as_date(row.get("FromDate"))
+    date_to = _as_date(row.get("ToDate"))
+    if date_from is None or date_to is None or date_to <= date_from:
+        # Junk filter: FromDate == ToDate (zero-span) or an inverted legacy
+        # span. Legacy `VillaSeasonRate.ToDate` is *inclusive* — a night on
+        # ToDate is priced and the dates carry through unshifted; the only
+        # trimming is `resolve_rate_rule_overlaps` breaking shared-boundary
+        # overlaps between contiguous bands.
+        return None
+    cap = max(plan.property.capacity.guests or 1, 1)
+    party = int(row.get("PartySize") or 0)
+    if party <= 0:
+        # Fall back to property capacity for the upper bound.
+        min_party, max_party = 1, cap
+    else:
+        min_party, max_party = party, party
+    intervals = row.get("_party_intervals")
+    if intervals is None and row.get("_occ_band") is not None:
+        # Occupancy band / gap-fallback row: its explicit (from, to) range is
+        # the party bracket, unless the resolver already clipped it.
+        intervals = [row["_occ_band"]]
+    if intervals:
+        # The resolver clipped this row's party bracket (or it's an explicit
+        # occupancy range); pick the first interval that survives the
+        # property's real capacity.
+        for low, high in intervals:
+            effective_high = cap if high is None else high
+            if low <= effective_high:
+                min_party, max_party = low, effective_high
+                break
+        else:
+            return None
+    nightly, weekly, price, is_poa = _row_prices(row)
+    if not (nightly or weekly or price or is_poa):
+        return None
+    # If only Price is set, treat it as nightly.
+    if nightly is None and weekly is None and price is not None:
+        nightly = price
+    if is_poa:
+        # POA wins over any numeric price: raterule_poa_excludes_price forbids
+        # both, and a hidden "on application" price must never resurface.
+        nightly = None
+        weekly = None
+    legacy_id = row.get("_legacy_id") or row.get("ID")
+    return _Band(
+        date_from=date_from,
+        date_to=date_to,
+        min_party=min_party,
+        max_party=max_party,
+        nightly=nightly,
+        weekly=weekly,
+        is_poa=is_poa,
+        is_approved=bool(row.get("IsApprove")),
+        notes=(row.get("Description") or "").strip(),
+        legacy_id=str(legacy_id),
+    )
+
+
 class RateRuleLoader(BaseLoader):
-    """VillaSeasonRate -> RateRule on the season's default RateCard.
+    """VillaSeasonRate -> RatePeriod + RateRule (period-native, GAP-056).
 
     Notes:
     - Skip `IsExTra=1` rows (extras, not base rates).
@@ -501,9 +583,10 @@ class RateRuleLoader(BaseLoader):
       parent into one rule per band plus base-weekly gap fallbacks, keyed on a
       namespaced `legacy_id` (`occ-*`). See `_prepare_occupancy_rows`.
     - `resolve_rate_rule_overlaps` runs over the expanded row set first, so the
-      inserted rules (simple + band + fallback) are jointly overlap-free per
-      card; each run is a full replace (purge legacy-loaded rules, reinsert) —
-      see `_load_rows`.
+      surviving rows are jointly (date x party)-disjoint per season; `_load_rows`
+      then builds each plan's disjoint `RatePeriod` date axis with
+      `segment_card_rules` and hangs the bands off their covering periods. Each
+      run is a full replace (purge legacy-loaded rules + periods, rebuild).
     - max_party falls back to the property's capacity when PartySize is null.
     """
 
@@ -541,115 +624,104 @@ class RateRuleLoader(BaseLoader):
         return query
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
-        """Full replace: purge every legacy-loaded rule, then insert the
-        resolver's output. Inserting into an empty legacy footprint means
-        re-runs can't collide with last run's spans under the
-        `raterule_no_overlap` EXCLUDE constraint (in-place upserts could:
-        a row expanding into — or swapping spans with — a sibling's old
-        range would trip it mid-run). UI-created rules (legacy_id NULL)
-        are never touched.
+        """Full replace: purge every legacy-loaded rule + period, then rebuild
+        the disjoint `RatePeriod` date axis natively and hang the bands off it.
+
+        Inserting into an empty legacy footprint means re-runs can't collide
+        with last run's spans under the `rateperiod_no_overlap` /
+        `raterule_bands_no_overlap` EXCLUDE constraints (in-place upserts could:
+        a row expanding into — or swapping spans with — a sibling's old range
+        would trip mid-run). `segment_card_rules` returns date-disjoint segments
+        per plan, and `resolve_rate_rule_overlaps` already made the rows
+        (date x party)-disjoint per season, so the bands within any one segment
+        are party-disjoint — both EXCLUDEs hold by construction. A band whose
+        span a sibling's date boundary bisects appears in >1 segment (a ragged
+        card): its first fragment keeps the legacy_id, later ones are namespaced
+        `#seg{n}` (mirroring the Unit 2 backfill). UI-created periods (legacy_id
+        NULL) and the bands hanging off them survive untouched; a UI band added
+        to a *legacy* period is cascade-deleted with that period (loaders run at
+        cutover, before staff editing, so that window is closed in practice).
+        A full rebuild — rather than sparing such bands — is what keeps re-runs
+        clear of the `rateperiod_no_overlap` EXCLUDE (a spared legacy period
+        would collide with the freshly re-segmented one for the same span).
         """
         rows = _prepare_occupancy_rows(rows)
         resolution = resolve_rate_rule_overlaps(rows)
+        created = 0
+        periods_created = 0
+        rule_fragments = 0
         with transaction.atomic():
             purged, _ = RateRule.objects.filter(legacy_id__isnull=False).delete()
-            super()._load_rows(resolution.rows, report)
-            # GAP-056: hang the loaded bands off a disjoint `RatePeriod` date axis.
-            # `super()._load_rows` writes rules via the transitional `save()` shim,
-            # which stamps each with a naive per-exact-date period — and two
-            # party-disjoint rules sharing dates get *overlapping* periods, which
-            # Unit 9's periods-disjoint EXCLUDE forbids. Reset the just-loaded rules
-            # and rebuild through the shared segmentation backfill (fragmenting
-            # ragged rules across segment boundaries) so periods are disjoint per
-            # plan. Deleting rule-less periods first clears both the shim's naive
-            # rows and any stale periods orphaned by the rule purge above — keeping
-            # full-reload idempotent. (Carryover/UI periods always carry rules, so
-            # the rule-less sweep never touches them.)
-            RateRule.objects.filter(legacy_id__isnull=False).update(period=None)
-            RatePeriod.objects.filter(rules__isnull=True).delete()
-            backfill = backfill_plan_periods(RatePeriod, RateRule)
+            RatePeriod.objects.filter(legacy_id__isnull=False).delete()
+
+            # Group the resolved rows into bands per plan (skip rows whose season
+            # has no loaded RatePlan, or that `_row_to_band` rejects as junk).
+            bands_by_plan: dict[int, list[_Band]] = defaultdict(list)
+            plan_by_pk: dict[int, RatePlan] = {}
+            plan_cache: dict[str, RatePlan | None] = {}
+            for row in resolution.rows:
+                season_id = str(row.get("SeasonId") or "")
+                if season_id not in plan_cache:
+                    # `select_related` folds the `plan.property.capacity` read
+                    # `_row_to_band` does (the capacity clamp) into this fetch —
+                    # otherwise the first band per plan fires two extra queries.
+                    plan_cache[season_id] = (
+                        RatePlan.objects.filter(legacy_id=season_id)
+                        .select_related("property__capacity")
+                        .first()
+                    )
+                plan = plan_cache[season_id]
+                if plan is None:
+                    report.skipped += 1
+                    continue
+                band = _row_to_band(row, plan)
+                if band is None:
+                    report.skipped += 1
+                    continue
+                bands_by_plan[plan.pk].append(band)
+                plan_by_pk[plan.pk] = plan
+
+            for plan_pk, bands in bands_by_plan.items():
+                plan = plan_by_pk[plan_pk]
+                # Per-band occurrence counter: a ragged band spans >1 segment, so
+                # namespace its clones `#seg{n}` (n = 1 for the 2nd segment) to
+                # keep legacy_ids distinct, mirroring `backfill_plan_periods`.
+                occurrences: dict[int, int] = defaultdict(int)
+                for i, seg in enumerate(segment_card_rules(bands).segments):
+                    period = RatePeriod.objects.create(
+                        plan=plan,
+                        date_from=seg.date_from,
+                        date_to=seg.date_to,
+                        legacy_id=f"{plan.legacy_id}:p{i}",
+                    )
+                    periods_created += 1
+                    for band in seg.rules:
+                        seen = occurrences[id(band)]
+                        occurrences[id(band)] += 1
+                        if seen == 0:
+                            legacy_id = band.legacy_id
+                            created += 1
+                        else:
+                            legacy_id = f"{band.legacy_id}#seg{seen}"
+                            rule_fragments += 1
+                        RateRule.objects.create(
+                            period=period,
+                            min_party=band.min_party,
+                            max_party=band.max_party,
+                            nightly=band.nightly,
+                            weekly=band.weekly,
+                            is_poa=band.is_poa,
+                            is_approved=band.is_approved,
+                            notes=band.notes,
+                            legacy_id=legacy_id,
+                        )
+        report.created += created
         logger.info(
             "data_migration.rate_rule_overlaps_resolved",
             trimmed=resolution.trimmed,
             dropped=resolution.dropped,
             party_clipped=resolution.party_clipped,
             purged=purged,
-            periods_created=backfill.periods_created,
-            rule_fragments=backfill.fragments_created,
+            periods_created=periods_created,
+            rule_fragments=rule_fragments,
         )
-
-    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
-        # Band / gap-fallback rows carry a namespaced `_legacy_id` so the
-        # VillaOccupencyPrice.Id ↔ VillaSeasonRate.ID sequences can't clobber
-        # one another on upsert. `base._process_row` keys on the "ID" column, so
-        # surface the namespaced id there via a shallow shadow-copy (the
-        # resolver, which reads the integer "ID", has already run).
-        legacy_id = row.get("_legacy_id")
-        if legacy_id is not None:
-            row = {**row, "ID": legacy_id}
-        super()._process_row(row, report)
-
-    def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        card = RateCard.objects.filter(legacy_id=str(row.get("SeasonId") or "")).first()
-        if card is None:
-            return None
-        date_from = _as_date(row.get("FromDate"))
-        date_to = _as_date(row.get("ToDate"))
-        if date_from is None or date_to is None:
-            return None
-        if date_to <= date_from:
-            # Junk filter: FromDate == ToDate (zero-span) or an inverted legacy
-            # span. Legacy `VillaSeasonRate.ToDate` is *inclusive* — the rate
-            # lookup is `priceDate >= FromDate && priceDate <= ToDate`
-            # (`ResService.cs:1205`), so a night on ToDate is priced and the dates
-            # carry through unshifted; the only trimming is `resolve_rate_rule_overlaps`
-            # breaking shared-boundary overlaps between contiguous bands.
-            return None
-        party = int(row.get("PartySize") or 0)
-        if party <= 0:
-            # Fall back to property capacity for the upper bound.
-            cap = card.plan.property.capacity.guests or 1
-            min_party, max_party = 1, max(cap, 1)
-        else:
-            min_party, max_party = party, party
-        intervals = row.get("_party_intervals")
-        if intervals is None and row.get("_occ_band") is not None:
-            # Occupancy band / gap-fallback row: its explicit (from, to) range
-            # is the party bracket, unless the resolver already clipped it.
-            intervals = [row["_occ_band"]]
-        if intervals:
-            # The resolver clipped this row's party bracket (or it's an explicit
-            # occupancy range); pick the first interval that survives the
-            # property's real capacity.
-            cap = max(card.plan.property.capacity.guests or 1, 1)
-            for low, high in intervals:
-                effective_high = cap if high is None else high
-                if low <= effective_high:
-                    min_party, max_party = low, effective_high
-                    break
-            else:
-                return None
-        nightly, weekly, price, is_poa = _row_prices(row)
-        if not (nightly or weekly or price or is_poa):
-            return None
-        # If only Price is set, treat it as nightly.
-        if nightly is None and weekly is None and price is not None:
-            nightly = price
-        if is_poa:
-            # POA wins over any numeric price: raterule_poa_excludes_price
-            # forbids both, and a hidden "on application" price must never
-            # resurface as a concrete rate.
-            nightly = None
-            weekly = None
-        return {
-            "card": card,
-            "date_from": date_from,
-            "date_to": date_to,
-            "min_party": min_party,
-            "max_party": max_party,
-            "nightly": nightly,
-            "weekly": weekly,
-            "is_poa": is_poa,
-            "is_approved": bool(row.get("IsApprove")),
-            "notes": (row.get("Description") or "").strip(),
-        }

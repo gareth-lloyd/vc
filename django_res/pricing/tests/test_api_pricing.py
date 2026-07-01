@@ -166,7 +166,7 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
 ) -> None:
     """GAP-014: a currency-less bulk quote prices a GBP villa and an EUR villa
     in one batch — no `no_rate_available` from currency mismatch."""
-    from pricing.models import RateCard, RatePlan
+    from pricing.models import RatePeriod, RatePlan
     from pricing.models import RateRule as RR
 
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
@@ -185,11 +185,13 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
         effective_from=date(2026, 1, 1),
         effective_to=date(2026, 12, 31),
     )
-    card2 = RateCard.objects.create(plan=plan2, name="Default", sort_order=0)
-    RR.objects.create(
-        card=card2,
+    period2 = RatePeriod.objects.create(
+        plan=plan2,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
+    )
+    RR.objects.create(
+        period=period2,
         min_party=1,
         max_party=8,
         nightly=Decimal("300.00"),
@@ -395,7 +397,7 @@ def test_quote_bulk_carries_hero_image_url(
     """Each available bulk quote carries hero_image_url (str for HERO, null otherwise)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
-    from pricing.models import RateCard, RatePlan
+    from pricing.models import RatePeriod, RatePlan
     from pricing.models import RateRule as RR
     from properties.enums import ImageKind
     from properties.models import Property, PropertyImage
@@ -422,11 +424,13 @@ def test_quote_bulk_carries_hero_image_url(
         effective_from=date(2026, 1, 1),
         effective_to=date(2026, 12, 31),
     )
-    card2 = RateCard.objects.create(plan=plan2, name="Default", sort_order=0)
-    RR.objects.create(
-        card=card2,
+    period2 = RatePeriod.objects.create(
+        plan=plan2,
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
+    )
+    RR.objects.create(
+        period=period2,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),

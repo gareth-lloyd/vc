@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.models import Currency, RateCard, RatePeriod, RatePlan, RateRule
+from pricing.models import Currency, RatePeriod, RatePlan, RateRule
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
@@ -60,7 +60,7 @@ def test_shift_to_changeover_weekday_always_preserves_weekday_with_minimal_shift
 
 @pytest.fixture
 def anchor_plan(property_: Property, gbp: Currency) -> RateRule:
-    """A 2026 plan/card/rule to act as the projection anchor."""
+    """A 2026 plan/period/rule to act as the projection anchor."""
     plan = RatePlan.objects.create(
         property=property_,
         name="Summer 2026",
@@ -68,11 +68,11 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateRule:
         effective_from=date(2026, 1, 1),
         effective_to=date(2026, 12, 31),
     )
-    card = RateCard.objects.create(plan=plan, name="Default", sort_order=0)
+    period = RatePeriod.objects.create(
+        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+    )
     return RateRule.objects.create(
-        card=card,
-        date_from=date(2026, 6, 1),
-        date_to=date(2026, 8, 31),
+        period=period,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),
@@ -143,15 +143,17 @@ def test_project_builds_shifted_in_memory_context(
     assert ctx.is_projected is True
     # Synthesized plan / card / rule reference the real source rows (free
     # traceability) but were never saved — only one plan exists in the DB.
-    assert ctx.plan.pk == anchor_plan.card.plan.pk
+    assert ctx.plan.pk == anchor_plan.period.plan.pk
     assert RatePlan.objects.count() == 1
+    # Bands inherit the period's (shifted) dates — the projected period carries them.
+    [period] = ctx.periods
+    assert period.date_from == date(2028, 6, 1)
+    assert period.date_to == date(2028, 8, 31)
     [rule] = ctx.rules_by_period[_period_of(anchor_plan).pk]
     assert rule.pk == anchor_plan.pk
-    assert rule.date_from == date(2028, 6, 1)
-    assert rule.date_to == date(2028, 8, 31)
     assert rule.nightly == Decimal("200.00")
     assert ctx.projection == {
-        "source_plan_id": anchor_plan.card.plan.pk,
+        "source_plan_id": anchor_plan.period.plan.pk,
         "source_year": 2026,
         "target_year": 2028,
         "uplift_pct": "0.00",
@@ -196,10 +198,11 @@ def test_project_preserves_poa(property_: Property, gbp: Currency, anchor_plan: 
 def test_project_skips_unapproved_rules(
     property_: Property, gbp: Currency, anchor_plan: RateRule
 ) -> None:
+    extra_period = RatePeriod.objects.create(
+        plan=anchor_plan.period.plan, date_from=date(2026, 9, 1), date_to=date(2026, 9, 30)
+    )
     RateRule.objects.create(
-        card=anchor_plan.card,
-        date_from=date(2026, 9, 1),
-        date_to=date(2026, 9, 30),
+        period=extra_period,
         min_party=1,
         max_party=8,
         nightly=Decimal("300.00"),

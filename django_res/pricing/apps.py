@@ -14,7 +14,6 @@ class PricingConfig(AppConfig):
             Discount,
             Extra,
             FxRate,
-            RateCard,
             RatePeriod,
             RatePlan,
             RateRule,
@@ -47,18 +46,9 @@ class PricingConfig(AppConfig):
             ],
         )
         track(
-            RateCard,
-            fields=[
-                "name",
-                "min_nights",
-                "max_nights",
-                "is_active",
-            ],
-        )
-        track(
             RateRule,
             fields=[
-                # GAP-056: dates moved to RatePeriod (tracked above). A band is a
+                # GAP-056: dates live on RatePeriod (tracked above). A band is a
                 # partyxprice row; its date-range edits are audited on the period.
                 "min_party",
                 "max_party",

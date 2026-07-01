@@ -10,8 +10,8 @@ import { QuoteShortlistLine } from "./QuoteShortlistLine";
 
 interface Props {
   lines: StagedLine[];
-  onUpdateLine: (propertyId: number, patch: Partial<StagedLine>) => void;
-  onRemove: (propertyId: number) => void;
+  onUpdateLine: (lineId: string, patch: Partial<StagedLine>) => void;
+  onRemove: (lineId: string) => void;
   onSaveDraft: () => void;
   onSendToGuest: () => void;
 }
@@ -25,24 +25,24 @@ export function QuoteShortlist({
 }: Props) {
   const { t } = useTranslation("quotations");
   const hasRole = useHasReservationsRole();
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Auto-expand a no-rate manual line exactly once, when it is first staged,
   // so the operator lands on the total/reason inputs they must fill. Track
   // seen ids in a ref — keying off `lines` alone would re-expand a line the
   // user has deliberately collapsed on every later edit.
-  const seenIds = useRef<Set<number>>(new Set());
+  const seenIds = useRef<Set<string>>(new Set());
   useEffect(() => {
-    // Prune removed lines first, so a removed-then-re-staged villa counts as
+    // Prune removed lines first, so a removed-then-re-staged week counts as
     // a fresh add and auto-expands again.
-    const current = new Set(lines.map((line) => line.property_id));
+    const current = new Set(lines.map((line) => line.line_id));
     for (const id of seenIds.current) {
       if (!current.has(id)) seenIds.current.delete(id);
     }
     for (const line of lines) {
-      if (seenIds.current.has(line.property_id)) continue;
-      seenIds.current.add(line.property_id);
-      if (line.is_manual && line.total == null) setExpandedId(line.property_id);
+      if (seenIds.current.has(line.line_id)) continue;
+      seenIds.current.add(line.line_id);
+      if (line.is_manual && line.total == null) setExpandedId(line.line_id);
     }
   }, [lines]);
 
@@ -73,14 +73,12 @@ export function QuoteShortlist({
         <div className="space-y-3">
           {lines.map((line) => (
             <QuoteShortlistLine
-              key={line.property_id}
+              key={line.line_id}
               line={line}
-              expanded={expandedId === line.property_id}
-              onToggle={() =>
-                setExpandedId((id) => (id === line.property_id ? null : line.property_id))
-              }
-              onUpdate={(patch) => onUpdateLine(line.property_id, patch)}
-              onRemove={() => onRemove(line.property_id)}
+              expanded={expandedId === line.line_id}
+              onToggle={() => setExpandedId((id) => (id === line.line_id ? null : line.line_id))}
+              onUpdate={(patch) => onUpdateLine(line.line_id, patch)}
+              onRemove={() => onRemove(line.line_id)}
             />
           ))}
         </div>

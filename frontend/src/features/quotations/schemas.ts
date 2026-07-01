@@ -332,7 +332,18 @@ export interface StagedBand {
 // One row in the operator-staged "lines so far" panel. Pre-save shape.
 // `is_selected` is intentionally absent — the backend sets it during the
 // `accept()` transition (convert-to-booking), not at create time.
+// Stable staged-line identity (GAP-043): one villa can be staged at several
+// weeks — each week is its OWN line. Sole producer of the `line_id` format;
+// `stagedLineProperty` is its only decoder.
+export const stagedLineId = (propertyId: number, dateFrom: string): string =>
+  `${propertyId}:${dateFrom}`;
+
+export const stagedLineProperty = (lineId: string): number => Number(lineId.split(":", 1)[0]);
+
 export interface StagedLine {
+  // `stagedLineId(property_id, date_from)` — everything that updates/removes/
+  // expands a line keys on this, never on property_id alone.
+  line_id: string;
   property_id: number;
   property_name: string;
   hero_image_url: string | null;

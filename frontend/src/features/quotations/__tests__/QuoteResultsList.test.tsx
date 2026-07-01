@@ -33,7 +33,7 @@ function renderList(options: QuoteOption[], opts: RenderOpts = {}) {
       options={options}
       hiddenForCapacity={opts.hiddenForCapacity ?? []}
       isLoading={false}
-      stagedPropertyIds={new Set()}
+      stagedKeys={new Set<string>()}
       onAdd={noop}
       adults={2}
       children={0}
@@ -192,7 +192,7 @@ describe("QuoteResultsList", () => {
       <QuoteResultsList
         options={[noRate]}
         isLoading={false}
-        stagedPropertyIds={new Set()}
+        stagedKeys={new Set<string>()}
         onAdd={onAdd}
         adults={2}
         children={0}
@@ -210,7 +210,7 @@ describe("QuoteResultsList", () => {
       <QuoteResultsList
         options={[noRate]}
         isLoading={false}
-        stagedPropertyIds={new Set([2])}
+        stagedKeys={new Set(["2:2026-07-01"])}
         onAdd={onAdd}
         adults={2}
         children={0}
@@ -393,7 +393,7 @@ describe("QuoteResultsList", () => {
       <QuoteResultsList
         options={[option()]}
         isLoading={false}
-        stagedPropertyIds={new Set()}
+        stagedKeys={new Set<string>()}
         onAdd={noop}
         adults={2}
         children={0}

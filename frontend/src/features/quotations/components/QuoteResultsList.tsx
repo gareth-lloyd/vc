@@ -8,12 +8,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { propertyDetailsPath } from "@/lib/routes";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { QuoteResultLine } from "./QuoteResultLine";
-import type { ChosenStay, HiddenCapacityProperty, OccupancyBand, QuoteOption } from "../schemas";
+import {
+  type ChosenStay,
+  type HiddenCapacityProperty,
+  type OccupancyBand,
+  type QuoteOption,
+  stagedLineProperty,
+} from "../schemas";
 
 interface Props {
   options: QuoteOption[] | undefined;
   isLoading: boolean;
-  stagedPropertyIds: Set<number>;
+  // Staged line_ids (`${property_id}:${date_from}`, GAP-043). This list keys
+  // per-property affordances off a prefix match — one card per villa, staged
+  // when ANY of its weeks is staged.
+  stagedKeys: Set<string>;
   // GAP-044: a banded result also hands over the checked occupancy bands; the
   // third arg threads through to the builder, which stages them onto the line.
   onAdd: (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => void;
@@ -80,7 +89,7 @@ function OptionMeta({ option }: { option: QuoteOption }) {
 export function QuoteResultsList({
   options,
   isLoading,
-  stagedPropertyIds,
+  stagedKeys,
   onAdd,
   adults,
   children,
@@ -92,6 +101,11 @@ export function QuoteResultsList({
   onLoadMore,
 }: Props) {
   const { t } = useTranslation("quotations");
+
+  // Decode the staged keys once per render: one card per villa, "staged" when
+  // ANY of its week-lines is.
+  const stagedProperties = new Set(Array.from(stagedKeys, stagedLineProperty));
+  const isPropertyStaged = (propertyId: number): boolean => stagedProperties.has(propertyId);
 
   if (isLoading) {
     return (
@@ -152,7 +166,7 @@ export function QuoteResultsList({
         <QuoteResultLine
           key={`${option.property_id}:${searchKey}`}
           option={option}
-          staged={stagedPropertyIds.has(option.property_id)}
+          staged={isPropertyStaged(option.property_id)}
           adults={adults}
           children={children}
           onAdd={onAdd}
@@ -195,11 +209,11 @@ export function QuoteResultsList({
           <Button
             type="button"
             size="sm"
-            variant={stagedPropertyIds.has(option.property_id) ? "secondary" : "outline"}
-            disabled={stagedPropertyIds.has(option.property_id)}
+            variant={isPropertyStaged(option.property_id) ? "secondary" : "outline"}
+            disabled={isPropertyStaged(option.property_id)}
             onClick={() => onAdd(option)}
           >
-            {stagedPropertyIds.has(option.property_id)
+            {isPropertyStaged(option.property_id)
               ? t("builder.results.added")
               : t("builder.results.add_manual")}
           </Button>

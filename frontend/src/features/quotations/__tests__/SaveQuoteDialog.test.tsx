@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format/date";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { SaveQuoteDialog } from "../components/SaveQuoteDialog";
-import type { StagedBand, StagedLine } from "../schemas";
+import { type StagedBand, type StagedLine, stagedLineId } from "../schemas";
 import type { EnquiryDetail } from "@/features/enquiries/schemas";
 
 // Customer already linked so the save path skips contact creation.
@@ -21,7 +21,7 @@ const enquiry = {
 } as unknown as EnquiryDetail;
 
 function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
-  return {
+  const base = {
     property_id: 7,
     property_name: "Villa Sol",
     hero_image_url: null,
@@ -41,6 +41,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     notes: "",
     ...overrides,
   };
+  return { line_id: stagedLineId(base.property_id, base.date_from), ...base };
 }
 
 // The save is ONE atomic POST: header + nested lines. Per-line assertions

@@ -50,7 +50,9 @@ export function QuoteShortlistLine({ line, expanded, onToggle, onUpdate, onRemov
     });
   };
 
-  const fieldId = (suffix: string) => `qcl-${line.property_id}-${suffix}`;
+  // Keyed on line_id: two weeks of one villa each need unique DOM ids, or
+  // every <Label htmlFor> would focus the other week's input.
+  const fieldId = (suffix: string) => `qcl-${line.line_id}-${suffix}`;
 
   return (
     <article className="border-border bg-card rounded-md border">

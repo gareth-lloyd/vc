@@ -12,16 +12,17 @@ import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
 import { enquiryToSearchForm } from "../searchCriteria";
 import { nightsCount } from "@/lib/nights";
-import type {
-  ChosenStay,
-  HiddenCapacityProperty,
-  OccupancyBand,
-  QuotationDetail,
-  QuoteCriteriaInput,
-  QuoteOption,
-  QuoteSearchForm,
-  StagedBand,
-  StagedLine,
+import {
+  type ChosenStay,
+  type HiddenCapacityProperty,
+  type OccupancyBand,
+  type QuotationDetail,
+  type QuoteCriteriaInput,
+  type QuoteOption,
+  type QuoteSearchForm,
+  type StagedBand,
+  type StagedLine,
+  stagedLineId,
 } from "../schemas";
 
 // Which commit the operator triggered — Save draft persists and completes;
@@ -76,10 +77,9 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
   // flexibility_days become the window, its stay length rounds to weeks.
   const initial = useMemo<Partial<QuoteSearchForm>>(() => enquiryToSearchForm(enquiry), [enquiry]);
 
-  const stagedPropertyIds = useMemo(
-    () => new Set(staged.map((line) => line.property_id)),
-    [staged],
-  );
+  // The staged line_ids (`${property_id}:${date_from}`) — the results side
+  // derives both per-property and (from U4) per-week staged markers from this.
+  const stagedKeys = useMemo(() => new Set(staged.map((line) => line.line_id)), [staged]);
 
   // Runs one page of the search. Page 1 replaces the results; page 2+ (Load
   // more) concatenates. No currency input (GAP-014): each villa is priced in
@@ -156,21 +156,25 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
       (!stay.is_default ||
         nightsCount(stay.date_from, stay.date_to) !==
           nightsCount(lastCriteria.date_from, lastCriteria.date_to));
+    const dateFrom = useStayDates ? stay.date_from : lastCriteria.date_from;
+    const dateTo = useStayDates ? stay.date_to : lastCriteria.date_to;
+    const lineId = stagedLineId(option.property_id, dateFrom);
     setStaged((prev) => {
-      if (prev.some((line) => line.property_id === option.property_id)) return prev;
+      if (prev.some((line) => line.line_id === lineId)) return prev;
       // Q-013: a no-rate villa stages straight onto the manual path — there is
       // no engine price, so the operator must type the total (legacy NO RATE).
       const manualOnly = option.error_code === "no_rate_available";
       const next: StagedLine = {
+        line_id: lineId,
         property_id: option.property_id,
         property_name: option.property_name,
         hero_image_url: option.hero_image_url ?? null,
-        date_from: useStayDates ? stay.date_from : lastCriteria.date_from,
-        date_to: useStayDates ? stay.date_to : lastCriteria.date_to,
+        date_from: dateFrom,
+        date_to: dateTo,
         // Display the dates the engine actually priced — possibly shifted
         // forward. The note fires when they differ from the requested dates.
-        priced_date_from: stay?.priced_date_from ?? option.date_from ?? lastCriteria.date_from,
-        priced_date_to: stay?.priced_date_to ?? option.date_to ?? lastCriteria.date_to,
+        priced_date_from: stay?.priced_date_from ?? option.date_from ?? dateFrom,
+        priced_date_to: stay?.priced_date_to ?? option.date_to ?? dateTo,
         adults: lastCriteria.adults,
         children: lastCriteria.children,
         // The currency the engine priced this option in — carried per line
@@ -198,14 +202,14 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     });
   };
 
-  const handleUpdateLine = (propertyId: number, patch: Partial<StagedLine>) => {
+  const handleUpdateLine = (lineId: string, patch: Partial<StagedLine>) => {
     setStaged((prev) =>
-      prev.map((line) => (line.property_id === propertyId ? { ...line, ...patch } : line)),
+      prev.map((line) => (line.line_id === lineId ? { ...line, ...patch } : line)),
     );
   };
 
-  const handleRemove = (propertyId: number) => {
-    setStaged((prev) => prev.filter((line) => line.property_id !== propertyId));
+  const handleRemove = (lineId: string) => {
+    setStaged((prev) => prev.filter((line) => line.line_id !== lineId));
   };
 
   const openSave = (intent: SaveIntent) => {
@@ -242,7 +246,7 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             options={results}
             hiddenForCapacity={hiddenForCapacity}
             isLoading={search.isPending && !isLoadingMore}
-            stagedPropertyIds={stagedPropertyIds}
+            stagedKeys={stagedKeys}
             onAdd={handleAdd}
             adults={lastCriteria?.adults ?? enquiry.adults}
             children={lastCriteria?.children ?? enquiry.children ?? 0}

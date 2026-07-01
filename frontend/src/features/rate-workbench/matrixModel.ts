@@ -1,23 +1,21 @@
-import type { RateCard, RateRule } from "@/features/properties/schemas";
+import type { RatePeriod, RateRule } from "@/features/properties/schemas";
 
 /**
- * The segment-first (Option A) matrix for a single rate card: date segments as
- * rows, occupancy (party-size) bands as columns, one rule per intersection.
+ * The segment-first matrix for a plan: rate periods as rows (each owns one
+ * inclusive date range), occupancy (party-size) bands as columns, one rule per
+ * intersection.
  *
- * The legacy model owned occupancy bands as children of a date period, so bands
- * shared their period's dates by construction; the flat `RateRule` lost that
- * (see BUG-013/BUG-014). We reconstruct the grid as a UI convention: rows are
- * the distinct `(date_from, date_to)` pairs, columns the union of
- * `(min_party, max_party)` pairs, and each cell resolves to the rule that
- * matches both — or an empty coordinate.
+ * GAP-056 made the grid honest: a `RatePeriod` owns the dates, and its
+ * `RateRule` children are pure party bands that inherit them. So rows are the
+ * plan's periods and columns are the union of `(min_party, max_party)` pairs
+ * across every period's bands; each cell resolves to the band in that period
+ * matching the column, or an empty coordinate.
  *
- * Because columns are the *union* of party bands across all segments, an empty
- * cell can lie under a band sourced from a different segment. Filling it would
- * create a rule overlapping an existing one — which the backend's
- * `raterule_no_overlap` constraint (date range AND party range must both
- * overlap) rejects with a 4xx. So each empty cell carries `fillable`: false when
- * a different rule already covers that (dates × party) region, so the UI can
- * offer "add a price" only where a create would actually succeed.
+ * Within one period every band shares the period's dates, so an empty cell is
+ * fillable unless another band in the *same* period already covers that party
+ * range (a create there would 4xx on the per-period bands-disjoint constraint).
+ * Columns are the union across periods, so a period legitimately has no band in
+ * some columns — those are the fillable coordinates.
  */
 
 export interface MatrixBand {
@@ -26,15 +24,19 @@ export interface MatrixBand {
 }
 
 export interface MatrixSegment {
+  periodId: number;
+  name: string;
   dateFrom: string;
   dateTo: string;
 }
 
 export interface MatrixCell {
-  /** The rule at this (segment × band) intersection, or null when unfilled. */
+  /** The band at this (period × column) intersection, or null when unfilled. */
   rule: RateRule | null;
-  /** Empty cells only: false when another rule already covers this dates×party region. */
+  /** Empty cells only: false when another band in this period already covers this party range. */
   fillable: boolean;
+  /** The period this cell belongs to — the create target for a fill. */
+  periodId: number;
   dateFrom: string;
   dateTo: string;
   minParty: number | null;
@@ -47,9 +49,6 @@ export interface MatrixModel {
   cells: MatrixCell[][];
 }
 
-export const segmentKey = (s: { dateFrom: string; dateTo: string }): string =>
-  `${s.dateFrom}|${s.dateTo}`;
-
 export const bandKey = (b: MatrixBand): string => `${b.minParty ?? "*"}|${b.maxParty ?? "*"}`;
 
 /** Numeric party-band label ("2–4", "6"), or null when unbounded (let the caller translate). */
@@ -58,11 +57,6 @@ export function bandLabel(b: MatrixBand): string | null {
   const min = b.minParty ?? b.maxParty;
   const max = b.maxParty ?? b.minParty;
   return min === max ? `${min}` : `${min}–${max}`;
-}
-
-/** Inclusive date-range overlap. */
-function datesOverlap(a: { dateFrom: string; dateTo: string }, r: RateRule): boolean {
-  return a.dateFrom <= r.date_to && r.date_from <= a.dateTo;
 }
 
 /** Party-range overlap, treating null bounds as open (−∞ / +∞) — matches the backend constraint. */
@@ -74,41 +68,51 @@ function partiesOverlap(b: MatrixBand, r: RateRule): boolean {
   return bMin <= rMax && rMin <= bMax;
 }
 
-export function buildMatrix(card: RateCard): MatrixModel {
-  const rules = card.rules ?? [];
-
-  const segments: MatrixSegment[] = dedupe(
-    rules.map((r) => ({ dateFrom: r.date_from, dateTo: r.date_to })),
-    segmentKey,
-  ).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.dateTo.localeCompare(b.dateTo));
+export function buildMatrix(periods: RatePeriod[]): MatrixModel {
+  const segments: MatrixSegment[] = periods
+    .map((p) => ({
+      periodId: p.id,
+      name: p.name ?? "",
+      dateFrom: p.date_from,
+      dateTo: p.date_to,
+    }))
+    .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.dateTo.localeCompare(b.dateTo));
 
   const bands: MatrixBand[] = dedupe(
-    rules.map((r) => ({ minParty: r.min_party ?? null, maxParty: r.max_party ?? null })),
+    periods.flatMap((p) =>
+      (p.rules ?? []).map((r) => ({
+        minParty: r.min_party ?? null,
+        maxParty: r.max_party ?? null,
+      })),
+    ),
     bandKey,
   ).sort((a, b) => (a.minParty ?? 0) - (b.minParty ?? 0) || (a.maxParty ?? 0) - (b.maxParty ?? 0));
 
+  const rulesByPeriod = new Map<number, RateRule[]>();
   const ruleAt = new Map<string, RateRule>();
-  for (const r of rules) {
-    ruleAt.set(
-      `${segmentKey({ dateFrom: r.date_from, dateTo: r.date_to })}#${bandKey({
-        minParty: r.min_party ?? null,
-        maxParty: r.max_party ?? null,
-      })}`,
-      r,
-    );
+  for (const p of periods) {
+    const rules = p.rules ?? [];
+    rulesByPeriod.set(p.id, rules);
+    for (const r of rules) {
+      ruleAt.set(
+        `${p.id}#${bandKey({ minParty: r.min_party ?? null, maxParty: r.max_party ?? null })}`,
+        r,
+      );
+    }
   }
 
   const cells: MatrixCell[][] = segments.map((s) =>
     bands.map((b) => {
-      const rule = ruleAt.get(`${segmentKey(s)}#${bandKey(b)}`) ?? null;
-      // An empty cell is fillable only if no OTHER rule already covers this
-      // dates×party region (a create there would 4xx on the overlap constraint).
+      const rule = ruleAt.get(`${s.periodId}#${bandKey(b)}`) ?? null;
+      // Empty cell is fillable unless another band in THIS period covers the
+      // party range (same period ⇒ same dates, so only party matters).
       const fillable = rule
         ? false
-        : !rules.some((r) => datesOverlap(s, r) && partiesOverlap(b, r));
+        : !(rulesByPeriod.get(s.periodId) ?? []).some((r) => partiesOverlap(b, r));
       return {
         rule,
         fillable,
+        periodId: s.periodId,
         dateFrom: s.dateFrom,
         dateTo: s.dateTo,
         minParty: b.minParty,

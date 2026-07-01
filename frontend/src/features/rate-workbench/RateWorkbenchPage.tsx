@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
@@ -59,7 +60,7 @@ export function RateWorkbenchPage() {
   const fanOut = useSeasonDetailsFanOut(seasonList.map((s) => s.id));
 
   // Which season's rate matrix is open (below the timeline). Defaults to the
-  // first season that has cards once details load.
+  // first season that has periods once details load.
   const [matrixSeasonId, setMatrixSeasonId] = useState<number | null>(null);
 
   const isLoading =
@@ -173,14 +174,14 @@ export function RateWorkbenchPage() {
     }
   }
 
-  // The rate matrix is season/card-structural, not year-scoped, so it renders
-  // below the timeline whenever any loaded season has cards — independent of the
-  // year in view.
-  const seasonsWithCards = fanOut.details.filter((d) => (d.cards?.length ?? 0) > 0);
+  // The rate matrix is season/period-structural, not year-scoped, so it renders
+  // below the timeline whenever any loaded season has periods — independent of
+  // the year in view.
+  const seasonsWithPeriods = fanOut.details.filter((d) => (d.periods?.length ?? 0) > 0);
   const activeMatrixSeasonId =
-    matrixSeasonId != null && seasonsWithCards.some((s) => s.id === matrixSeasonId)
+    matrixSeasonId != null && seasonsWithPeriods.some((s) => s.id === matrixSeasonId)
       ? matrixSeasonId
-      : (seasonsWithCards[0]?.id ?? null);
+      : (seasonsWithPeriods[0]?.id ?? null);
 
   const matrixSection =
     !isLoading && !isError && activeMatrixSeasonId != null ? (
@@ -189,7 +190,7 @@ export function RateWorkbenchPage() {
           <h2 className="text-foreground text-lg font-semibold">
             {t("rate_workbench.matrix.title")}
           </h2>
-          {seasonsWithCards.length > 1 ? (
+          {seasonsWithPeriods.length > 1 ? (
             <Select
               value={String(activeMatrixSeasonId)}
               onValueChange={(v) => setMatrixSeasonId(Number(v))}
@@ -201,7 +202,7 @@ export function RateWorkbenchPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {seasonsWithCards.map((s) => (
+                {seasonsWithPeriods.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>
                     {s.name}
                   </SelectItem>
@@ -213,10 +214,8 @@ export function RateWorkbenchPage() {
         <MatrixEditor
           key={activeMatrixSeasonId}
           seasonId={activeMatrixSeasonId}
-          seasons={seasonsWithCards}
+          seasons={seasonsWithPeriods}
           canWrite={canWrite}
-          changeoverDay={settings.data?.changeover_day ?? null}
-          minNightsRental={settings.data?.min_nights_rental ?? null}
           commission={settings.data?.commission ?? null}
           tax={settings.data?.tax ?? null}
         />
@@ -232,14 +231,16 @@ export function RateWorkbenchPage() {
       />
     ) : null;
 
-  // cardId → "Season · Card", so the probe can name the winning card. Memoised
-  // so unrelated re-renders (year paging, matrix/inspector edits) don't rebuild
-  // the map or hand the probe a fresh object reference each time.
-  const cardLabels = useMemo(() => {
+  // periodId → "Season · Period", so the probe can name the winning period.
+  // Memoised so unrelated re-renders (year paging, matrix/inspector edits) don't
+  // rebuild the map or hand the probe a fresh object reference each time.
+  const periodLabels = useMemo(() => {
     const labels: Record<number, string> = {};
     for (const detail of fanOut.details) {
-      for (const card of detail.cards ?? []) {
-        labels[card.id] = `${detail.name} · ${card.name}`;
+      for (const period of detail.periods ?? []) {
+        const label =
+          period.name || `${formatDate(period.date_from)} – ${formatDate(period.date_to)}`;
+        labels[period.id] = `${detail.name} · ${label}`;
       }
     }
     return labels;
@@ -249,7 +250,7 @@ export function RateWorkbenchPage() {
       <PriceProbePanel
         propertyId={property.id}
         extras={extras.data?.results ?? []}
-        cardLabels={cardLabels}
+        periodLabels={periodLabels}
       />
     ) : null;
 

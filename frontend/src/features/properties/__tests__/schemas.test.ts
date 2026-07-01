@@ -10,7 +10,7 @@ import {
   propertyListResponseSchema,
   propertyRoomWriteInputSchema,
   propertySettingsWriteInputSchema,
-  rateCardWriteInputSchema,
+  ratePeriodWriteInputSchema,
   rateRuleWriteInputSchema,
 } from "../schemas";
 
@@ -228,29 +228,59 @@ describe("propertyContactAssignmentWriteInputSchema", () => {
   });
 });
 
-describe("rateCardWriteInputSchema", () => {
-  const valid = { name: "Standard", min_nights: 3 };
+describe("ratePeriodWriteInputSchema", () => {
+  // GAP-056: the period owns the dates + optional name + nullable min/max-nights.
+  const valid = { date_from: "2026-06-01", date_to: "2026-06-30" };
 
-  it("accepts a minimal card", () => {
-    const result = rateCardWriteInputSchema.parse(valid);
-    expect(result.name).toBe("Standard");
+  it("accepts a minimal period (name optional)", () => {
+    const result = ratePeriodWriteInputSchema.parse(valid);
+    expect(result.date_from).toBe("2026-06-01");
+    expect(result.date_to).toBe("2026-06-30");
   });
 
-  it("requires a name", () => {
-    expect(() => rateCardWriteInputSchema.parse({ ...valid, name: "  " })).toThrow();
+  it("accepts an optional name", () => {
+    expect(ratePeriodWriteInputSchema.parse({ ...valid, name: "Peak summer" }).name).toBe(
+      "Peak summer",
+    );
+  });
+
+  it("requires both dates", () => {
+    expect(() => ratePeriodWriteInputSchema.parse({ ...valid, date_from: "" })).toThrow();
+    expect(() => ratePeriodWriteInputSchema.parse({ ...valid, date_to: "" })).toThrow();
+  });
+
+  it("treats dates as inclusive — a single-day period (date_to === date_from) is valid", () => {
+    expect(
+      ratePeriodWriteInputSchema.parse({ date_from: "2026-06-01", date_to: "2026-06-01" }).date_to,
+    ).toBe("2026-06-01");
+  });
+
+  it("rejects date_to before date_from", () => {
+    expect(() =>
+      ratePeriodWriteInputSchema.parse({ date_from: "2026-06-30", date_to: "2026-06-01" }),
+    ).toThrow();
   });
 
   it("rejects max_nights below min_nights but allows null", () => {
-    expect(() => rateCardWriteInputSchema.parse({ ...valid, max_nights: 2 })).toThrow();
-    expect(rateCardWriteInputSchema.parse({ ...valid, max_nights: null }).max_nights).toBeNull();
-    expect(rateCardWriteInputSchema.parse({ ...valid, max_nights: 3 }).max_nights).toBe(3);
+    expect(() =>
+      ratePeriodWriteInputSchema.parse({ ...valid, min_nights: 3, max_nights: 2 }),
+    ).toThrow();
+    expect(
+      ratePeriodWriteInputSchema.parse({ ...valid, min_nights: 3, max_nights: null }).max_nights,
+    ).toBeNull();
+    expect(
+      ratePeriodWriteInputSchema.parse({ ...valid, min_nights: 3, max_nights: 3 }).max_nights,
+    ).toBe(3);
+  });
+
+  it("rejects nights below 1", () => {
+    expect(() => ratePeriodWriteInputSchema.parse({ ...valid, min_nights: 0 })).toThrow();
   });
 });
 
 describe("rateRuleWriteInputSchema", () => {
+  // GAP-056: a band is party × price only — dates live on the parent period.
   const valid = {
-    date_from: "2026-06-01",
-    date_to: "2026-06-08",
     min_party: 1,
     max_party: 8,
     nightly: "150.00",
@@ -260,13 +290,6 @@ describe("rateRuleWriteInputSchema", () => {
 
   it("accepts a priced rule", () => {
     expect(rateRuleWriteInputSchema.parse(valid).nightly).toBe("150.00");
-  });
-
-  it("requires date_from strictly before date_to", () => {
-    expect(() => rateRuleWriteInputSchema.parse({ ...valid, date_to: "2026-06-01" })).toThrow();
-    expect(rateRuleWriteInputSchema.parse({ ...valid, date_to: "2026-06-02" }).date_to).toBe(
-      "2026-06-02",
-    );
   });
 
   it("requires min_party <= max_party", () => {

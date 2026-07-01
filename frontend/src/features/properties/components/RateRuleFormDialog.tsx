@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
-import { addDaysIso, suggestRateBandEnd } from "@/lib/format/date";
 import { currencyAdornment, formatMoney } from "@/lib/format/money";
 import { deriveNetGross, type CommissionInput, type TaxInput } from "@/lib/pricing/netGross";
 import { useCreateRateRule, useUpdateRateRule } from "../hooks";
@@ -27,13 +26,10 @@ import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
   seasonId: number;
-  cardId: number;
+  /** The parent period this band belongs to (GAP-056 — dates live on it). */
+  periodId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Property changeover settings (GAP-025) for the rate-band end-date
-   * suggestion. Both are optional — no fixed changeover means no suggestion. */
-  changeoverDay?: string | null;
-  minNightsRental?: number | null;
   /** The rate plan's currency code (GAP-026), shown as an adornment beside the
    * nightly/weekly inputs. Null when the season has no currency. */
   currencyCode?: string | null;
@@ -62,8 +58,6 @@ type RateRuleFormDialogProps = CreateProps | EditProps;
 
 function createDefaults(seed?: Partial<RateRuleWriteInput>): RateRuleWriteInput {
   return {
-    date_from: "",
-    date_to: "",
     min_party: 1,
     max_party: 1,
     nightly: "",
@@ -76,8 +70,6 @@ function createDefaults(seed?: Partial<RateRuleWriteInput>): RateRuleWriteInput 
 
 function defaultsFromRule(rule: RateRule): RateRuleWriteInput {
   return {
-    date_from: rule.date_from,
-    date_to: rule.date_to,
     min_party: rule.min_party ?? 1,
     max_party: rule.max_party ?? 1,
     nightly: rule.nightly ?? "",
@@ -129,18 +121,8 @@ function DerivedCounterpartHint({
 }
 
 export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
-  const {
-    seasonId,
-    cardId,
-    open,
-    onOpenChange,
-    changeoverDay,
-    minNightsRental,
-    currencyCode,
-    priceBasis,
-    commission,
-    tax,
-  } = props;
+  const { seasonId, periodId, open, onOpenChange, currencyCode, priceBasis, commission, tax } =
+    props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const priceAdornment = currencyAdornment(currencyCode);
@@ -163,43 +145,22 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.rule.id]);
 
-  // GAP-025: when the property changes over on a fixed weekday, suggest the
-  // band's end date as soon as `date_from` is known — but never clobber a value
-  // the user typed (only fill while `date_to` is empty or still holds our own
-  // last suggestion). Edit mode keeps the stored value untouched.
-  const dateFrom = form.watch("date_from");
-  const lastSuggestionRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!isCreate || !dateFrom) return;
-    const currentTo = form.getValues("date_to");
-    if (currentTo && currentTo !== lastSuggestionRef.current) return;
-    const suggested = suggestRateBandEnd(dateFrom, changeoverDay, minNightsRental);
-    if (!suggested || suggested === currentTo) return;
-    lastSuggestionRef.current = suggested;
-    form.setValue("date_to", suggested, { shouldDirty: false, shouldValidate: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, isCreate, changeoverDay, minNightsRental]);
-
   const submit = async (values: RateRuleWriteInput, andAddAnother: boolean) => {
     setTopLevelError(null);
     try {
       if (isCreate) {
-        await createMutation.mutateAsync({ cardId, input: toPayload(values) });
+        await createMutation.mutateAsync({ periodId, input: toPayload(values) });
         toast.success(t("pricing.rule.toasts.created"));
       } else {
         await updateMutation.mutateAsync({ ruleId: props.rule.id, input: toPayload(values) });
         toast.success(t("pricing.rule.toasts.updated"));
       }
       if (andAddAnother) {
-        form.reset(
-          createDefaults({
-            // Rule date ranges are inclusive — the next band starts the day after.
-            date_from: addDaysIso(values.date_to, 1),
-            min_party: values.min_party,
-            max_party: values.max_party,
-          }),
-        );
-        form.setFocus("date_from");
+        // Bands cover disjoint party ranges within a period — seed the next one
+        // just above this band's max, so building 1–2 / 3–4 / … coverage is fast.
+        const nextParty = (values.max_party ?? 0) + 1;
+        form.reset(createDefaults({ min_party: nextParty, max_party: nextParty }));
+        form.setFocus("min_party");
       } else {
         onOpenChange(false);
       }
@@ -234,30 +195,6 @@ export function RateRuleFormDialog(props: RateRuleFormDialogProps) {
           className="space-y-4"
           noValidate
         >
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="rate-rule-date-from">
-                {t("pricing.rule.dialog.fields.date_from")}
-              </Label>
-              <Input id="rate-rule-date-from" type="date" {...form.register("date_from")} />
-              {form.formState.errors.date_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.date_from.message)}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rate-rule-date-to">{t("pricing.rule.dialog.fields.date_to")}</Label>
-              <Input id="rate-rule-date-to" type="date" {...form.register("date_to")} />
-              {form.formState.errors.date_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.date_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="rate-rule-min-party">

@@ -29,8 +29,8 @@ const breakdown = {
   date_from: "2026-07-12",
   date_to: "2026-07-19",
   lines: [
-    { date: "2026-07-12", rule_id: 1, card_id: 500, nightly: "900", notes: null },
-    { date: "2026-07-13", rule_id: 1, card_id: 500, nightly: "900", notes: null },
+    { date: "2026-07-12", rule_id: 1, period_id: 500, nightly: "900", notes: null },
+    { date: "2026-07-13", rule_id: 1, period_id: 500, nightly: "900", notes: null },
   ],
   rate_subtotal: "1800",
   extras: [
@@ -43,7 +43,7 @@ const breakdown = {
   total: "1920",
   net_to_owner: "1220",
   plan_id: 100,
-  winning_card_id: 500,
+  winning_period_id: 500,
   is_projected: false,
   inclusion: "Daily maid\nWelcome hamper",
   occupancy_pricing: true,
@@ -54,7 +54,7 @@ function renderPanel() {
     <PriceProbePanel
       propertyId={7}
       extras={[optInExtra, mandatoryExtra]}
-      cardLabels={{ 500: "Summer 2026 · Standard" }}
+      periodLabels={{ 500: "Summer 2026 · Peak" }}
     />,
   );
 }
@@ -101,8 +101,8 @@ describe("PriceProbePanel", () => {
       discount_code: "",
     });
 
-    // Guest total shown; the winning card is named from cardLabels.
-    expect(await screen.findByText("Summer 2026 · Standard")).toBeInTheDocument();
+    // Guest total shown; the winning period is named from periodLabels.
+    expect(await screen.findByText("Summer 2026 · Peak")).toBeInTheDocument();
     expect(screen.getByText("Guest total")).toBeInTheDocument();
     // Owner economics (net_to_owner "1220", commission "700") are never rendered.
     expect(screen.queryByText(/1[,.]?220/)).toBeNull();

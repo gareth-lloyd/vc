@@ -33,7 +33,7 @@ export interface BandMeta {
   isActive?: boolean;
   planId?: number;
   planName?: string;
-  /** Rates: min/max across the card's rules (single price basis per rule). */
+  /** Rates: min/max across the period's bands (single price basis per band). */
   minPrice?: number | null;
   maxPrice?: number | null;
   hasPoa?: boolean;
@@ -86,7 +86,7 @@ export interface ToLanesInput {
   windowFrom: string;
   windowTo: string;
   seasons: RatePlan[];
-  /** Season details (cards + rules) drive the rates lane; loading/absent → no rate bands. */
+  /** Season details (periods + bands) drive the rates lane; loading/absent → no rate bands. */
   seasonDetails: RatePlanDetail[];
   services: PropertyService[];
   extras: Extra[];
@@ -148,12 +148,10 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   }));
 
   const rateBands: RawBand[] = input.seasonDetails.flatMap((plan) =>
-    (plan.cards ?? []).flatMap((card) => {
-      const rules = card.rules ?? [];
+    (plan.periods ?? []).flatMap((period) => {
+      const rules = period.rules ?? [];
       if (rules.length === 0) return [];
-      const froms = rules.map((r) => r.date_from).sort();
-      const tos = rules.map((r) => r.date_to).sort();
-      // One figure per rule: a rule prices either nightly or weekly (its basis),
+      // One figure per band: a band prices either nightly or weekly (its basis),
       // never both — flat-mapping both mixes per-night and per-week amounts into
       // one nonsensical range (e.g. €650 nightly and €4,550 weekly → "€650–€4,550").
       const prices = rules
@@ -161,11 +159,12 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
         .filter((v): v is number => v != null);
       return [
         {
-          id: `card-${card.id}`,
-          dateFrom: froms[0],
-          dateTo: tos[tos.length - 1],
-          label: card.name,
-          sourceId: card.id,
+          id: `period-${period.id}`,
+          // GAP-056: the period owns the dates — no need to derive them from bands.
+          dateFrom: period.date_from,
+          dateTo: period.date_to,
+          label: period.name || plan.name,
+          sourceId: period.id,
           meta: {
             planId: plan.id,
             planName: plan.name,

@@ -233,8 +233,6 @@
       "back": "← Back to seasons",
       "error_title": "Couldn't load season",
       "error_body": "Try again.",
-      "rate_cards_heading": "Rate cards",
-      "empty_rate_cards": "No rate cards",
       "fields": {
         "name": "Name",
         "currency": "Currency",
@@ -242,7 +240,9 @@
         "effective": "Effective",
         "status": "Status"
       },
-      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}."
+      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}.",
+      "rate_periods_heading": "Rate periods",
+      "empty_rate_periods": "No rate periods"
     },
     "active_badge": "Active",
     "inactive_badge": "Inactive",
@@ -303,61 +303,7 @@
         }
       }
     },
-    "rate_card": {
-      "any_length": "Any length",
-      "nights_range": "Nights {{min}}–{{max}}",
-      "nights_min_placeholder": "?",
-      "no_rules": "No rules",
-      "poa": "POA",
-      "add_button": "Add rate card",
-      "add_button_disabled_tooltip": "You need the Reservations role to edit rate cards.",
-      "row": {
-        "menu_label": "Card actions",
-        "edit": "Edit",
-        "duplicate": "Duplicate",
-        "delete": "Delete"
-      },
-      "dialog": {
-        "create_title": "Add rate card",
-        "edit_title": "Edit rate card",
-        "fields": {
-          "name": "Name",
-          "name_placeholder": "Standard",
-          "description": "Description",
-          "min_nights": "Minimum nights",
-          "max_nights": "Maximum nights",
-          "is_active": "Active",
-          "notes": "Internal notes"
-        },
-        "actions": {
-          "cancel": "Cancel",
-          "save": "Save",
-          "saving": "Saving…"
-        }
-      },
-      "toasts": {
-        "created": "Rate card added",
-        "updated": "Rate card updated",
-        "deleted": "Rate card removed",
-        "duplicated": "Rate card duplicated",
-        "create_failed": "Couldn't add rate card",
-        "update_failed": "Couldn't update rate card",
-        "delete_failed": "Couldn't remove rate card",
-        "duplicate_failed": "Couldn't duplicate rate card"
-      },
-      "delete_confirm": {
-        "title": "Remove rate card?",
-        "description": "This rate card and all of its rules will be permanently removed.",
-        "confirm": "Remove"
-      },
-      "duplicate_confirm": {
-        "title": "Duplicate rate card?",
-        "description": "A copy of this rate card — including its rules — will be created with \" (copy)\" appended to the name.",
-        "confirm": "Duplicate"
-      }
-    },
     "rules_table": {
-      "dates": "Dates",
       "party": "Party",
       "nightly": "Nightly",
       "weekly": "Weekly",
@@ -399,8 +345,6 @@
         "create_title": "Add rule",
         "edit_title": "Edit rule",
         "fields": {
-          "date_from": "From",
-          "date_to": "To",
           "min_party": "Minimum party",
           "max_party": "Maximum party",
           "nightly": "Nightly price",
@@ -430,6 +374,54 @@
       "delete_confirm": {
         "title": "Remove rule?",
         "description": "This rate rule will be permanently removed.",
+        "confirm": "Remove"
+      }
+    },
+    "rate_period": {
+      "any_length": "Any length",
+      "nights_range": "Nights {{min}}–{{max}}",
+      "nights_min_placeholder": "?",
+      "untitled": "Untitled period",
+      "no_rules": "No bands",
+      "poa": "POA",
+      "add_button": "Add rate period",
+      "add_button_disabled_tooltip": "You need the Reservations role to edit rate periods.",
+      "coverage_gap_warning": "Unpriced party sizes: {{ranges}}. Add a band (POA counts) before activating.",
+      "row": {
+        "menu_label": "Period actions",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create_title": "Add rate period",
+        "edit_title": "Edit rate period",
+        "fields": {
+          "name": "Name (optional)",
+          "name_placeholder": "Peak summer",
+          "date_from": "From",
+          "date_to": "To",
+          "min_nights": "Minimum nights",
+          "max_nights": "Maximum nights",
+          "nights_inherit_placeholder": "Villa default",
+          "is_active": "Active"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      },
+      "toasts": {
+        "created": "Rate period added",
+        "updated": "Rate period updated",
+        "deleted": "Rate period removed",
+        "create_failed": "Couldn't add rate period",
+        "update_failed": "Couldn't update rate period",
+        "delete_failed": "Couldn't remove rate period"
+      },
+      "delete_confirm": {
+        "title": "Remove rate period?",
+        "description": "This rate period and all of its bands will be permanently removed.",
         "confirm": "Remove"
       }
     }
@@ -1024,12 +1016,6 @@
     "block_from_required": "From date is required",
     "block_to_required": "To date is required",
     "block_to_before_from": "To date must be after From date",
-    "rate_card_name_required": "Name is required",
-    "rate_card_min_nights_required": "Minimum nights must be at least 1",
-    "rate_card_max_nights_lt_min": "Maximum nights can't be below minimum nights",
-    "rule_date_from_required": "Start date is required",
-    "rule_date_to_required": "End date is required",
-    "rule_date_to_not_after_from": "End date must be after the start date",
     "rule_min_party_required": "Minimum party must be at least 1",
     "rule_max_party_required": "Maximum party must be at least 1",
     "rule_max_party_lt_min": "Maximum party can't be below minimum party",
@@ -1038,7 +1024,12 @@
     "image_file_required": "Choose an image file",
     "service_name_required": "Name is required",
     "service_copy_required": "Guest-facing copy is required",
-    "service_to_before_from": "End date can't be before the start date"
+    "service_to_before_from": "End date can't be before the start date",
+    "rate_period_date_from_required": "From date is required",
+    "rate_period_date_to_required": "To date is required",
+    "rate_period_date_to_before_from": "To date must be on or after From date",
+    "rate_period_nights_min": "Nights must be at least 1",
+    "rate_period_max_nights_lt_min": "Maximum nights can't be below minimum nights"
   },
   "common": {
     "inherit": "Inherit",
@@ -1050,7 +1041,7 @@
     "preview_badge": "Preview",
     "lanes": {
       "seasons": "Seasons",
-      "rates": "Rate cards",
+      "rates": "Rate periods",
       "inclusions": "Inclusions",
       "extras": "Extras",
       "discounts": "Discounts",
@@ -1092,7 +1083,6 @@
     "matrix": {
       "title": "Rate matrix",
       "season_picker": "Choose a season",
-      "card_picker": "Choose a rate card",
       "segment": "Dates",
       "any_party": "Any party",
       "poa": "POA",
@@ -1101,16 +1091,17 @@
       "edit_rule": "Edit rule…",
       "delete_rule": "Delete rule",
       "nightly_for": "Nightly rate, {{from}} to {{to}}",
-      "no_cards": "This season has no rate cards yet.",
-      "no_rules": "This rate card has no rules yet.",
-      "covered": "Another band already prices these dates — no rate can be added here.",
+      "no_rules": "This rate period has no bands yet.",
+      "covered": "Another band already prices this party size — no rate can be added here.",
       "deleted": "Rule deleted",
       "save_failed": "Couldn't save the rate. Please try again.",
       "delete_confirm": {
         "title": "Delete this rule?",
         "description": "This removes the price for this date segment and party band.",
         "confirm": "Delete"
-      }
+      },
+      "no_periods": "This season has no rate periods yet.",
+      "coverage_gap": "{{period}}: unpriced party sizes {{ranges}}"
     },
     "probe": {
       "title": "Price probe",

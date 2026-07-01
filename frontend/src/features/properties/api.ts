@@ -31,7 +31,7 @@ import {
   propertyRoomSchema,
   propertyRoomsResponseSchema,
   propertySettingsSchema,
-  rateCardSchema,
+  ratePeriodSchema,
   ratePlanDetailSchema,
   ratePlanSchema,
   ratePlansResponseSchema,
@@ -75,8 +75,8 @@ import {
   type PropertyRoomWriteInput,
   type PropertySettings,
   type PropertySettingsWriteInput,
-  type RateCard,
-  type RateCardWriteInput,
+  type RatePeriod,
+  type RatePeriodWriteInput,
   type RatePlan,
   type RatePlanDetail,
   type RatePlanWriteInput,
@@ -309,36 +309,31 @@ export async function duplicateSeason(seasonId: SeasonId): Promise<RatePlan> {
   return ratePlanSchema.parse(data);
 }
 
-export async function createRateCard(
+export async function createRatePeriod(
   seasonId: SeasonId,
-  body: RateCardWriteInput,
-): Promise<RateCard> {
-  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}/rate-cards`, body);
-  return rateCardSchema.parse(data);
+  body: RatePeriodWriteInput,
+): Promise<RatePeriod> {
+  const data = await apiSend<unknown>("POST", `/seasons/${seasonId}/rate-periods`, body);
+  return ratePeriodSchema.parse(data);
 }
 
-export async function updateRateCard(
-  cardId: number,
-  body: Partial<RateCardWriteInput>,
-): Promise<RateCard> {
-  const data = await apiSend<unknown>("PATCH", `/rate-cards/${cardId}`, body);
-  return rateCardSchema.parse(data);
+export async function updateRatePeriod(
+  periodId: number,
+  body: Partial<RatePeriodWriteInput>,
+): Promise<RatePeriod> {
+  const data = await apiSend<unknown>("PATCH", `/periods/${periodId}`, body);
+  return ratePeriodSchema.parse(data);
 }
 
-export async function deleteRateCard(cardId: number): Promise<void> {
-  await apiSend<void>("DELETE", `/rate-cards/${cardId}`);
-}
-
-export async function duplicateRateCard(cardId: number): Promise<RateCard> {
-  const data = await apiSend<unknown>("POST", `/rate-cards/${cardId}:duplicate`);
-  return rateCardSchema.parse(data);
+export async function deleteRatePeriod(periodId: number): Promise<void> {
+  await apiSend<void>("DELETE", `/periods/${periodId}`);
 }
 
 export async function createRateRule(
-  cardId: number,
+  periodId: number,
   body: RateRuleWritePayload,
 ): Promise<RateRule> {
-  const data = await apiSend<unknown>("POST", `/rate-cards/${cardId}/rules`, body);
+  const data = await apiSend<unknown>("POST", `/periods/${periodId}/rules`, body);
   return rateRuleSchema.parse(data);
 }
 

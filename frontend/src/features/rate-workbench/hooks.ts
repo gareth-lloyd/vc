@@ -18,7 +18,7 @@ import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
 
 /**
  * Fan out one `useSeasonDetail` query per season to assemble the whole rate
- * picture (cards + rules) the timeline needs — `usePropertySeasons` returns
+ * picture (periods + bands) the timeline needs — `usePropertySeasons` returns
  * only the plan envelopes. Keyed on the shared `seasonDetail` query key so the
  * cache is deduped with `PricingTab`'s `SeasonDetailPanel`, and any RateRule
  * mutation invalidating that key refreshes the workbench too.
@@ -67,9 +67,9 @@ export function useOptimisticRuleNightly(seasonId: number) {
       if (snapshot) {
         queryClient.setQueryData<RatePlanDetail>(key, {
           ...snapshot,
-          cards: snapshot.cards.map((c) => ({
-            ...c,
-            rules: (c.rules ?? []).map((r) =>
+          periods: snapshot.periods.map((period) => ({
+            ...period,
+            rules: (period.rules ?? []).map((r) =>
               r.id === ruleId ? { ...r, nightly, is_poa: false } : r,
             ),
           })),

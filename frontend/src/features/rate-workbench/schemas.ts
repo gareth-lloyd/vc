@@ -156,7 +156,7 @@ export const quoteLineSchema = z
   .object({
     date: z.string(),
     rule_id: z.number().nullable().optional(),
-    card_id: z.number().nullable().optional(),
+    period_id: z.number().nullable().optional(),
     nightly: z.string(),
     notes: z.string().nullable().optional(),
   })
@@ -185,7 +185,7 @@ export const priceQuoteSchema = z
     discount: z.string().optional(),
     total: z.string().optional(),
     plan_id: z.number().nullable().optional(),
-    winning_card_id: z.number().nullable().optional(),
+    winning_period_id: z.number().nullable().optional(),
     changeover_shifted_from: z.string().nullable().optional(),
     changeover_day: z.string().nullable().optional(),
     is_projected: z.boolean().optional(),

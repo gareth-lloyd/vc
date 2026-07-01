@@ -38,15 +38,26 @@ const season = {
 
 const seasonDetail = {
   ...season,
-  cards: [
+  periods: [
     {
       id: 500,
       plan: 100,
       name: "Standard",
-      rules: [
-        { id: 1, card: 500, date_from: "2026-06-01", date_to: "2026-06-28", nightly: "650" },
-        { id: 2, card: 500, date_from: "2026-06-28", date_to: "2026-08-31", nightly: "900" },
-      ],
+      date_from: "2026-06-01",
+      date_to: "2026-06-28",
+      is_active: true,
+      coverage_gaps: [],
+      rules: [{ id: 1, period: 500, min_party: 1, max_party: 8, nightly: "650" }],
+    },
+    {
+      id: 501,
+      plan: 100,
+      name: "Peak",
+      date_from: "2026-06-29",
+      date_to: "2026-08-31",
+      is_active: true,
+      coverage_gaps: [],
+      rules: [{ id: 2, period: 501, min_party: 1, max_party: 8, nightly: "900" }],
     },
   ],
 };
@@ -137,7 +148,7 @@ describe("RateWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: /Airport transfer/ })).toBeInTheDocument();
     // Lane labels
     expect(screen.getByText("Seasons")).toBeInTheDocument();
-    expect(screen.getByText("Rate cards")).toBeInTheDocument();
+    expect(screen.getByText("Rate periods")).toBeInTheDocument();
     expect(screen.getByText("Changeover")).toBeInTheDocument();
   });
 
@@ -176,7 +187,7 @@ describe("RateWorkbenchPage", () => {
     server.use(
       http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
       http.get("/api/v1/properties/7/seasons", () => HttpResponse.json(drfPage([pastSeason]))),
-      http.get("/api/v1/seasons/100", () => HttpResponse.json({ ...pastSeason, cards: [] })),
+      http.get("/api/v1/seasons/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
       http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
       http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),

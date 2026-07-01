@@ -18,7 +18,7 @@ function installSeason(currencyCode: string | null) {
         effective_from: "2026-06-01",
         effective_to: "2026-09-30",
         is_active: true,
-        cards: [],
+        periods: [],
       }),
     ),
   );

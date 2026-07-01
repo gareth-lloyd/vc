@@ -42,7 +42,7 @@ const detail = (o: Partial<RatePlanDetail>): RatePlanDetail => ({
   id: 1,
   property: 7,
   name: "P",
-  cards: [],
+  periods: [],
   ...o,
 });
 
@@ -121,7 +121,7 @@ describe("toLanes", () => {
     expect(bySource[3]).toBe(0); // disjoint from A → reuses first sub-lane
   });
 
-  it("derives a rate-card band spanning its rules with a price range", () => {
+  it("derives a rate band from a period, ranging price across its bands (GAP-056)", () => {
     const lanes = toLanes({
       ...base(),
       seasonDetails: [
@@ -129,15 +129,19 @@ describe("toLanes", () => {
           id: 5,
           name: "Summer",
           currency_code: "EUR",
-          cards: [
+          periods: [
             {
               id: 50,
               plan: 5,
               name: "Standard",
+              // The period owns the dates; its bands are party × price only.
+              date_from: "2026-06-01",
+              date_to: "2026-08-30",
+              coverage_gaps: [],
               rules: [
-                { id: 1, card: 50, date_from: "2026-06-01", date_to: "2026-06-28", nightly: "650" },
-                { id: 2, card: 50, date_from: "2026-06-28", date_to: "2026-08-02", nightly: "900" },
-                { id: 3, card: 50, date_from: "2026-08-02", date_to: "2026-08-30", is_poa: true },
+                { id: 1, period: 50, nightly: "650" },
+                { id: 2, period: 50, nightly: "900" },
+                { id: 3, period: 50, is_poa: true },
               ],
             },
           ],
@@ -146,7 +150,7 @@ describe("toLanes", () => {
     });
     const band = lane(lanes, "rates").bands[0];
     expect(band).toMatchObject({
-      id: "card-50",
+      id: "period-50",
       dateFrom: "2026-06-01",
       dateTo: "2026-08-30",
       label: "Standard",
@@ -160,30 +164,26 @@ describe("toLanes", () => {
     });
   });
 
-  it("takes one price per rule (its own basis), never mixing nightly with weekly", () => {
+  it("takes one price per band (its own basis), never mixing nightly with weekly", () => {
     const lanes = toLanes({
       ...base(),
       seasonDetails: [
         detail({
           id: 5,
           currency_code: "EUR",
-          cards: [
+          periods: [
             {
               id: 50,
               plan: 5,
               name: "Standard",
+              date_from: "2026-06-01",
+              date_to: "2026-08-02",
+              coverage_gaps: [],
               rules: [
-                // nightly present → weekly on the same rule must be ignored,
+                // nightly present → weekly on the same band must be ignored,
                 // else the €4,550/wk figure would blow the range out.
-                {
-                  id: 1,
-                  card: 50,
-                  date_from: "2026-06-01",
-                  date_to: "2026-06-28",
-                  nightly: "650",
-                  weekly: "4550",
-                },
-                { id: 2, card: 50, date_from: "2026-06-28", date_to: "2026-08-02", nightly: "900" },
+                { id: 1, period: 50, nightly: "650", weekly: "4550" },
+                { id: 2, period: 50, nightly: "900" },
               ],
             },
           ],
@@ -193,10 +193,48 @@ describe("toLanes", () => {
     expect(lane(lanes, "rates").bands[0].meta).toMatchObject({ minPrice: 650, maxPrice: 900 });
   });
 
-  it("skips rate cards with no rules", () => {
+  it("falls back to the plan name when the period is unnamed", () => {
     const lanes = toLanes({
       ...base(),
-      seasonDetails: [detail({ id: 5, cards: [{ id: 50, plan: 5, name: "Empty", rules: [] }] })],
+      seasonDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          periods: [
+            {
+              id: 51,
+              plan: 5,
+              date_from: "2026-06-01",
+              date_to: "2026-06-30",
+              coverage_gaps: [],
+              rules: [{ id: 1, period: 51, nightly: "650" }],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(lane(lanes, "rates").bands[0]).toMatchObject({ id: "period-51", label: "Summer" });
+  });
+
+  it("skips periods with no rules", () => {
+    const lanes = toLanes({
+      ...base(),
+      seasonDetails: [
+        detail({
+          id: 5,
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              name: "Empty",
+              date_from: "2026-06-01",
+              date_to: "2026-06-30",
+              coverage_gaps: [],
+              rules: [],
+            },
+          ],
+        }),
+      ],
     });
     expect(lane(lanes, "rates").bands).toHaveLength(0);
   });

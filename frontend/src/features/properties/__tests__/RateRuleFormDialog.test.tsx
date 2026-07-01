@@ -25,11 +25,10 @@ function setReservationsUser() {
   );
 }
 
+// GAP-056: a band is party × price only — dates live on the parent period.
 const rule: RateRule = {
   id: 9,
-  card: 5,
-  date_from: "2026-06-01",
-  date_to: "2026-06-08",
+  period: 5,
   min_party: 1,
   max_party: 8,
   nightly: "150.00",
@@ -45,34 +44,30 @@ function ruleResponse(body: Record<string, unknown>, id = 99) {
 }
 
 async function fillValidRule() {
-  await userEvent.type(await screen.findByLabelText(/^From$/i), "2026-06-01");
-  await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-08");
   await userEvent.clear(screen.getByLabelText(/Maximum party/i));
   await userEvent.type(screen.getByLabelText(/Maximum party/i), "8");
   await userEvent.type(screen.getByLabelText(/Nightly price/i), "150.00");
 }
 
 describe("RateRuleFormDialog — create", () => {
-  it("posts to /rate-cards/:id/rules normalising empty prices to null", async () => {
+  it("posts to /periods/:id/rules normalising empty prices to null", async () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/rate-cards/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/rules", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return ruleResponse(postBody);
       }),
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(postBody).not.toBeNull());
     expect(postBody).toMatchObject({
-      date_from: "2026-06-01",
-      date_to: "2026-06-08",
       min_party: 1,
       max_party: 8,
       nightly: "150.00",
@@ -86,14 +81,14 @@ describe("RateRuleFormDialog — create", () => {
     setReservationsUser();
     let postBody: Record<string, unknown> | null = null;
     server.use(
-      http.post("/api/v1/rate-cards/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/rules", async ({ request }) => {
         postBody = (await request.json()) as Record<string, unknown>;
         return ruleResponse(postBody);
       }),
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByLabelText(/price on application/i));
@@ -106,24 +101,24 @@ describe("RateRuleFormDialog — create", () => {
     useAuthStore.getState().clear();
   });
 
-  it("rejects date_to equal to date_from and fires no request", async () => {
+  it("rejects max_party below min_party and fires no request", async () => {
     setReservationsUser();
     let requested = false;
     server.use(
-      http.post("/api/v1/rate-cards/5/rules", () => {
+      http.post("/api/v1/periods/5/rules", () => {
         requested = true;
         return ruleResponse({});
       }),
     );
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
-    await fillValidRule();
-    const toInput = screen.getByLabelText(/^To$/i);
-    await userEvent.clear(toInput);
-    await userEvent.type(toInput, "2026-06-01");
+    // min_party defaults to 1; set it above max_party (which defaults to 1).
+    await userEvent.clear(screen.getByLabelText(/Minimum party/i));
+    await userEvent.type(screen.getByLabelText(/Minimum party/i), "9");
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "150.00");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    expect(await screen.findByText(/must be after the start date/i)).toBeInTheDocument();
+    expect(await screen.findByText(/below minimum party/i)).toBeInTheDocument();
     expect(requested).toBe(false);
     useAuthStore.getState().clear();
   });
@@ -131,7 +126,7 @@ describe("RateRuleFormDialog — create", () => {
   it("requires a price or POA", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.clear(screen.getByLabelText(/Nightly price/i));
@@ -145,11 +140,11 @@ describe("RateRuleFormDialog — create", () => {
     useAuthStore.getState().clear();
   });
 
-  it("Save & add another keeps the dialog open seeded from the saved rule", async () => {
+  it("Save & add another seeds the next band just above the saved max party", async () => {
     setReservationsUser();
     const bodies: Record<string, unknown>[] = [];
     server.use(
-      http.post("/api/v1/rate-cards/5/rules", async ({ request }) => {
+      http.post("/api/v1/periods/5/rules", async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         bodies.push(body);
         return ruleResponse(body, 100 + bodies.length);
@@ -157,24 +152,26 @@ describe("RateRuleFormDialog — create", () => {
     );
 
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     await fillValidRule();
     await userEvent.click(screen.getByRole("button", { name: /save & add another/i }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
-    const fromInput = screen.getByLabelText(/^From$/i) as HTMLInputElement;
-    await waitFor(() => expect(fromInput.value).toBe("2026-06-09"));
-    expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("8");
+    // Next band seeds min_party/max_party = saved max_party + 1 (8 → 9), price cleared.
+    const minParty = screen.getByLabelText(/Minimum party/i) as HTMLInputElement;
+    await waitFor(() => expect(minParty.value).toBe("9"));
+    expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("9");
     expect((screen.getByLabelText(/Nightly price/i) as HTMLInputElement).value).toBe("");
 
-    await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-15");
+    await userEvent.clear(screen.getByLabelText(/Maximum party/i));
+    await userEvent.type(screen.getByLabelText(/Maximum party/i), "12");
     await userEvent.type(screen.getByLabelText(/Nightly price/i), "175.00");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({
-      date_from: "2026-06-09",
-      date_to: "2026-06-15",
+      min_party: 9,
+      max_party: 12,
       nightly: "175.00",
     });
     useAuthStore.getState().clear();
@@ -195,7 +192,7 @@ describe("RateRuleFormDialog — edit", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="edit"
@@ -215,73 +212,6 @@ describe("RateRuleFormDialog — edit", () => {
   });
 });
 
-describe("RateRuleFormDialog — changeover end-date suggestion (GAP-025)", () => {
-  afterEach(() => useAuthStore.getState().clear());
-
-  it("suggests date_to from a fixed changeover day once date_from is seeded", async () => {
-    setReservationsUser();
-    // 2026-07-04 is a Saturday; sat changeover, 7-night min → Fri 10 Jul.
-    renderWithProviders(
-      <RateRuleFormDialog
-        seasonId={11}
-        cardId={5}
-        open
-        onOpenChange={() => {}}
-        mode="create"
-        defaults={{ date_from: "2026-07-04" }}
-        changeoverDay="sat"
-        minNightsRental={7}
-      />,
-    );
-
-    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
-    await waitFor(() => expect(dateTo.value).toBe("2026-07-10"));
-  });
-
-  it("never clobbers a date_to the user has already typed", async () => {
-    setReservationsUser();
-    renderWithProviders(
-      <RateRuleFormDialog
-        seasonId={11}
-        cardId={5}
-        open
-        onOpenChange={() => {}}
-        mode="create"
-        changeoverDay="sat"
-        minNightsRental={7}
-      />,
-    );
-
-    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
-    await userEvent.type(dateTo, "2026-09-19");
-    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
-
-    // Manual value survives even though a suggestion would otherwise apply.
-    expect(dateTo.value).toBe("2026-09-19");
-  });
-
-  it("makes no suggestion when the changeover day is 'any'", async () => {
-    setReservationsUser();
-    renderWithProviders(
-      <RateRuleFormDialog
-        seasonId={11}
-        cardId={5}
-        open
-        onOpenChange={() => {}}
-        mode="create"
-        defaults={{ date_from: "2026-07-04" }}
-        changeoverDay="any"
-        minNightsRental={7}
-      />,
-    );
-
-    const dateTo = (await screen.findByLabelText(/^To$/i)) as HTMLInputElement;
-    // Give the effect a chance to (not) run.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(dateTo.value).toBe("");
-  });
-});
-
 describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
   afterEach(() => useAuthStore.getState().clear());
 
@@ -290,7 +220,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"
@@ -304,7 +234,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
   it("renders no symbol when the season has no currency", async () => {
     setReservationsUser();
     renderWithProviders(
-      <RateRuleFormDialog seasonId={11} cardId={5} open onOpenChange={() => {}} mode="create" />,
+      <RateRuleFormDialog seasonId={11} periodId={5} open onOpenChange={() => {}} mode="create" />,
     );
     expect(screen.queryByText("€")).not.toBeInTheDocument();
     expect(screen.queryByText("£")).not.toBeInTheDocument();
@@ -315,7 +245,7 @@ describe("RateRuleFormDialog — currency adornment (GAP-026)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"
@@ -339,7 +269,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"
@@ -361,7 +291,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"
@@ -383,7 +313,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"
@@ -400,7 +330,7 @@ describe("RateRuleFormDialog — net↔gross derivation (GAP-035)", () => {
     renderWithProviders(
       <RateRuleFormDialog
         seasonId={11}
-        cardId={5}
+        periodId={5}
         open
         onOpenChange={() => {}}
         mode="create"

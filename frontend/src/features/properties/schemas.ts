@@ -360,9 +360,7 @@ export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
 export const rateRuleSchema = z.object({
   id: z.number(),
-  card: z.number(),
-  date_from: z.string(),
-  date_to: z.string(),
+  period: z.number(),
   min_party: z.number().nullable().optional(),
   max_party: z.number().nullable().optional(),
   nightly: z.string().nullable().optional(),
@@ -374,48 +372,59 @@ export const rateRuleSchema = z.object({
 });
 export type RateRule = z.infer<typeof rateRuleSchema>;
 
-export const rateCardSchema = z.object({
+export const ratePeriodSchema = z.object({
   id: z.number(),
   plan: z.number(),
-  name: z.string(),
-  description: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  date_from: z.string(),
+  date_to: z.string(),
+  // Nullable per-period overrides of the villa default min/max-nights.
   min_nights: z.number().nullable().optional(),
   max_nights: z.number().nullable().optional(),
-  sort_order: z.number().nullable().optional(),
   is_active: z.boolean().optional(),
-  notes: z.string().nullable().optional(),
   rules: z.array(rateRuleSchema).optional().default([]),
+  // Read-only: uncovered `[low, high]` party sub-ranges of `1..max_occupancy`.
+  coverage_gaps: z.array(z.array(z.number())).optional().default([]),
 });
-export type RateCard = z.infer<typeof rateCardSchema>;
+export type RatePeriod = z.infer<typeof ratePeriodSchema>;
 
-export const rateCardWriteInputSchema = z
+export const ratePeriodWriteInputSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1, { message: "properties:errors.rate_card_name_required" })
-      .max(128),
-    description: z.string().trim().optional(),
+    // GAP-056: the period owns the dates (inclusive) + optional name + nullable
+    // min/max-nights overrides; its bands (RateRule) inherit its dates.
+    name: z.string().trim().max(128).optional(),
+    date_from: z.string().min(1, { message: "properties:errors.rate_period_date_from_required" }),
+    date_to: z.string().min(1, { message: "properties:errors.rate_period_date_to_required" }),
     min_nights: z
-      .number({ message: "properties:errors.rate_card_min_nights_required" })
+      .number()
       .int()
-      .min(1, { message: "properties:errors.rate_card_min_nights_required" }),
-    max_nights: z.number().int().min(1).nullable().optional(),
+      .min(1, { message: "properties:errors.rate_period_nights_min" })
+      .nullable()
+      .optional(),
+    max_nights: z
+      .number()
+      .int()
+      .min(1, { message: "properties:errors.rate_period_nights_min" })
+      .nullable()
+      .optional(),
     is_active: z.boolean().optional(),
-    notes: z.string().trim().optional(),
   })
-  .refine((v) => v.max_nights == null || v.max_nights >= v.min_nights, {
+  // Dates are inclusive — a single-day period (date_from === date_to) is legal.
+  .refine((v) => !v.date_from || !v.date_to || v.date_to >= v.date_from, {
+    path: ["date_to"],
+    message: "properties:errors.rate_period_date_to_before_from",
+  })
+  .refine((v) => v.max_nights == null || v.min_nights == null || v.max_nights >= v.min_nights, {
     path: ["max_nights"],
-    message: "properties:errors.rate_card_max_nights_lt_min",
+    message: "properties:errors.rate_period_max_nights_lt_min",
   });
-export type RateCardWriteInput = z.infer<typeof rateCardWriteInputSchema>;
+export type RatePeriodWriteInput = z.infer<typeof ratePeriodWriteInputSchema>;
 
 const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
 
 export const rateRuleWriteInputSchema = z
   .object({
-    date_from: z.string().min(1, { message: "properties:errors.rule_date_from_required" }),
-    date_to: z.string().min(1, { message: "properties:errors.rule_date_to_required" }),
+    // GAP-056: a band is party x price only — its dates come from the period.
     min_party: z
       .number({ message: "properties:errors.rule_min_party_required" })
       .int()
@@ -428,11 +437,6 @@ export const rateRuleWriteInputSchema = z
     weekly: z.string().trim().optional(),
     is_poa: z.boolean(),
     notes: z.string().trim().optional(),
-  })
-  // DB constraint is strict (`date_from < date_to`), unlike seasons' `>=`.
-  .refine((v) => !v.date_from || !v.date_to || v.date_to > v.date_from, {
-    path: ["date_to"],
-    message: "properties:errors.rule_date_to_not_after_from",
   })
   .refine((v) => v.max_party >= v.min_party, {
     path: ["max_party"],
@@ -483,7 +487,7 @@ export const ratePlanSchema = z.object({
 export type RatePlan = z.infer<typeof ratePlanSchema>;
 
 export const ratePlanDetailSchema = ratePlanSchema.extend({
-  cards: z.array(rateCardSchema).optional().default([]),
+  periods: z.array(ratePeriodSchema).optional().default([]),
 });
 export type RatePlanDetail = z.infer<typeof ratePlanDetailSchema>;
 
@@ -514,7 +518,6 @@ export const extrasResponseSchema = paginated(extraSchema);
 
 export const discountSchema = z.object({
   id: z.number(),
-  card: z.number().nullable().optional(),
   property: z.number().nullable().optional(),
   name: z.string(),
   code: z.string().nullable().optional(),

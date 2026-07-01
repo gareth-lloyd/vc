@@ -5,8 +5,8 @@ import type { PriceQuote } from "../schemas";
 
 interface QuoteResultCardProps {
   quote: PriceQuote;
-  /** Resolved "Season · Card" label for the winning card, when known. */
-  cardLabel?: string | null;
+  /** Resolved "Season · Period" label for the winning period, when known. */
+  periodLabel?: string | null;
 }
 
 const nonZero = (value: string | undefined): boolean => !!value && Number(value) !== 0;
@@ -26,7 +26,7 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
  * (net_to_owner / commission / tax): the engine mis-prices those for GROSS
  * plans (BUG-009), so we mark them pending rather than headline a wrong number.
  */
-export function QuoteResultCard({ quote, cardLabel }: QuoteResultCardProps) {
+export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
   const { t } = useTranslation("properties");
   const currency = quote.currency_code ?? null;
   const nights = quote.lines.length;
@@ -39,7 +39,7 @@ export function QuoteResultCard({ quote, cardLabel }: QuoteResultCardProps) {
     <div className="border-border bg-card shadow-card space-y-4 rounded-lg border p-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-foreground text-sm font-semibold">
-          {cardLabel ?? t("rate_workbench.probe.result.winning_default")}
+          {periodLabel ?? t("rate_workbench.probe.result.winning_default")}
         </span>
         {quote.is_projected ? (
           <Badge variant="outline">{t("rate_workbench.probe.result.projected")}</Badge>

@@ -48,20 +48,22 @@ function installBaseHandlers() {
   server.use(http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)));
 }
 
-const seasonDetailCard = {
+// GAP-056: a rate period owns the dates + nights; its bands (rules) are party ×
+// price only, and carry a `period` FK — never `card`/dates.
+const seasonDetailPeriod = {
   id: 100,
   plan: 11,
   name: "Standard",
-  description: "Default card",
+  date_from: "2026-06-01",
+  date_to: "2026-07-31",
   min_nights: 7,
   max_nights: 30,
   is_active: true,
+  coverage_gaps: [],
   rules: [
     {
       id: 200,
-      card: 100,
-      date_from: "2026-06-01",
-      date_to: "2026-07-31",
+      period: 100,
       min_party: 2,
       max_party: 8,
       nightly: "350.00",
@@ -71,9 +73,9 @@ const seasonDetailCard = {
   ],
 };
 
-// Seasons list + drill-down detail with one card and one rule. `cards` lets a
+// Seasons list + drill-down detail with one period and one band. `periods` lets a
 // test vary the detail response across refetches (e.g. after a delete).
-function installSeasonDetailHandlers(cards?: () => unknown[] | undefined) {
+function installSeasonDetailHandlers(periods?: () => unknown[] | undefined) {
   server.use(
     http.get("/api/v1/properties/5/seasons", () =>
       HttpResponse.json(
@@ -103,7 +105,7 @@ function installSeasonDetailHandlers(cards?: () => unknown[] | undefined) {
         effective_from: "2026-06-01",
         effective_to: "2026-09-30",
         is_active: true,
-        cards: cards?.() ?? [seasonDetailCard],
+        periods: periods?.() ?? [seasonDetailPeriod],
       }),
     ),
   );
@@ -186,7 +188,7 @@ describe("PricingTab", () => {
     expect(screen.getByText("EARLY10")).toBeInTheDocument();
   });
 
-  it("drills into a season to show rate cards and rules, then navigates back", async () => {
+  it("drills into a season to show rate periods and bands, then navigates back", async () => {
     installBaseHandlers();
     server.use(
       http.get("/api/v1/properties/5/seasons", () =>
@@ -217,30 +219,7 @@ describe("PricingTab", () => {
           effective_from: "2026-06-01",
           effective_to: "2026-09-30",
           is_active: true,
-          cards: [
-            {
-              id: 100,
-              plan: 11,
-              name: "Standard",
-              description: "Default card",
-              min_nights: 7,
-              max_nights: 30,
-              is_active: true,
-              rules: [
-                {
-                  id: 200,
-                  card: 100,
-                  date_from: "2026-06-01",
-                  date_to: "2026-07-31",
-                  min_party: 2,
-                  max_party: 8,
-                  nightly: "350.00",
-                  weekly: "2100.00",
-                  is_poa: false,
-                },
-              ],
-            },
-          ],
+          periods: [seasonDetailPeriod],
         }),
       ),
     );
@@ -250,7 +229,6 @@ describe("PricingTab", () => {
 
     await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
     expect(await screen.findByText("Standard")).toBeInTheDocument();
-    expect(screen.getByText("Default card")).toBeInTheDocument();
     expect(screen.getByText(/Nights 7–30/i)).toBeInTheDocument();
     expect(screen.getByText("350.00")).toBeInTheDocument();
 
@@ -380,7 +358,7 @@ describe("PricingTab", () => {
     useAuthStore.getState().clear();
   });
 
-  it("hides card and rule write controls without the RESERVATIONS role", async () => {
+  it("hides period and band write controls without the RESERVATIONS role", async () => {
     installBaseHandlers();
     installSeasonDetailHandlers();
 
@@ -389,13 +367,13 @@ describe("PricingTab", () => {
     await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
     await screen.findByText("Standard");
 
-    expect(screen.getByRole("button", { name: /add rate card/i })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: /card actions/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add rate period/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /period actions/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /rule actions/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add rule/i })).not.toBeInTheDocument();
   });
 
-  it("opens the card dialogs from the Add button and row menu", async () => {
+  it("opens the rate-period dialogs from the Add button and row menu", async () => {
     setReservationsUser();
     installBaseHandlers();
     installSeasonDetailHandlers();
@@ -405,18 +383,18 @@ describe("PricingTab", () => {
     await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
     await screen.findByText("Standard");
 
-    await user.click(screen.getByRole("button", { name: /add rate card/i }));
-    expect(await screen.findByRole("heading", { name: /add rate card/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /add rate period/i }));
+    expect(await screen.findByRole("heading", { name: /add rate period/i })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
-    await user.click(screen.getByRole("button", { name: /card actions/i }));
+    await user.click(screen.getByRole("button", { name: /period actions/i }));
     await user.click(await screen.findByText(/^Edit$/i));
-    expect(await screen.findByRole("heading", { name: /edit rate card/i })).toBeInTheDocument();
-    expect((screen.getByLabelText(/^Name$/i) as HTMLInputElement).value).toBe("Standard");
+    expect(await screen.findByRole("heading", { name: /edit rate period/i })).toBeInTheDocument();
+    expect((screen.getByLabelText(/Name/i) as HTMLInputElement).value).toBe("Standard");
     useAuthStore.getState().clear();
   });
 
-  it("seeds the Add rule dialog from the card's last rule", async () => {
+  it("opens the Add rule dialog for a period defaulting party to 1", async () => {
     setReservationsUser();
     installBaseHandlers();
     installSeasonDetailHandlers();
@@ -428,19 +406,20 @@ describe("PricingTab", () => {
 
     await user.click(screen.getByRole("button", { name: /add rule/i }));
     expect(await screen.findByRole("heading", { name: /add rule/i })).toBeInTheDocument();
-    expect((screen.getByLabelText(/^From$/i) as HTMLInputElement).value).toBe("2026-08-01");
-    expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("8");
+    // Bands are party × price only now (no dates); a fresh band defaults to 1–1.
+    expect((screen.getByLabelText(/Minimum party/i) as HTMLInputElement).value).toBe("1");
+    expect((screen.getByLabelText(/Maximum party/i) as HTMLInputElement).value).toBe("1");
     useAuthStore.getState().clear();
   });
 
-  it("deletes a rate card via the row menu and re-renders the season", async () => {
+  it("deletes a rate period via the row menu and re-renders the season", async () => {
     setReservationsUser();
     installBaseHandlers();
-    let cardDeleted = false;
-    installSeasonDetailHandlers(() => (cardDeleted ? [] : undefined));
+    let periodDeleted = false;
+    installSeasonDetailHandlers(() => (periodDeleted ? [] : undefined));
     server.use(
-      http.delete("/api/v1/rate-cards/100", () => {
-        cardDeleted = true;
+      http.delete("/api/v1/periods/100", () => {
+        periodDeleted = true;
         return new HttpResponse(null, { status: 204 });
       }),
     );
@@ -450,38 +429,11 @@ describe("PricingTab", () => {
     await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
     await screen.findByText("Standard");
 
-    await user.click(screen.getByRole("button", { name: /card actions/i }));
+    await user.click(screen.getByRole("button", { name: /period actions/i }));
     await user.click(await screen.findByText(/^Delete$/i));
     await user.click(await screen.findByRole("button", { name: /^Remove$/i }));
-    expect(await screen.findByText(/No rate cards/i)).toBeInTheDocument();
-    expect(cardDeleted).toBe(true);
-    useAuthStore.getState().clear();
-  });
-
-  it("duplicates a rate card via the row menu", async () => {
-    setReservationsUser();
-    installBaseHandlers();
-    installSeasonDetailHandlers();
-    let duplicateCalled = false;
-    server.use(
-      http.post("/api/v1/rate-cards/100:duplicate", () => {
-        duplicateCalled = true;
-        return HttpResponse.json(
-          { ...seasonDetailCard, id: 101, name: "Standard (copy)" },
-          { status: 201 },
-        );
-      }),
-    );
-
-    const user = userEvent.setup();
-    setup();
-    await user.click(await screen.findByRole("button", { name: /Summer 2026/i }));
-    await screen.findByText("Standard");
-
-    await user.click(screen.getByRole("button", { name: /card actions/i }));
-    await user.click(await screen.findByText(/^Duplicate$/i));
-    await user.click(await screen.findByRole("button", { name: /^Duplicate$/i }));
-    await waitFor(() => expect(duplicateCalled).toBe(true));
+    expect(await screen.findByText(/No rate periods/i)).toBeInTheDocument();
+    expect(periodDeleted).toBe(true);
     useAuthStore.getState().clear();
   });
 

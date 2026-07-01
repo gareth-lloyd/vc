@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
-import { useCreateRateCard, useUpdateRateCard } from "../hooks";
-import { rateCardWriteInputSchema, type RateCard, type RateCardWriteInput } from "../schemas";
+import { useCreateRatePeriod, useUpdateRatePeriod } from "../hooks";
+import { ratePeriodWriteInputSchema, type RatePeriod, type RatePeriodWriteInput } from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface CommonProps {
@@ -28,65 +27,65 @@ interface CreateProps extends CommonProps {
 
 interface EditProps extends CommonProps {
   mode: "edit";
-  card: RateCard;
+  period: RatePeriod;
 }
 
-type RateCardFormDialogProps = CreateProps | EditProps;
+type RatePeriodFormDialogProps = CreateProps | EditProps;
 
-function createDefaults(): RateCardWriteInput {
+function createDefaults(): RatePeriodWriteInput {
   return {
     name: "",
-    description: "",
-    min_nights: 1,
+    date_from: "",
+    date_to: "",
+    min_nights: null,
     max_nights: null,
     is_active: true,
-    notes: "",
   };
 }
 
-function defaultsFromCard(card: RateCard): RateCardWriteInput {
+function defaultsFromPeriod(period: RatePeriod): RatePeriodWriteInput {
   return {
-    name: card.name,
-    description: card.description ?? "",
-    min_nights: card.min_nights ?? 1,
-    max_nights: card.max_nights ?? null,
-    is_active: card.is_active ?? true,
-    notes: card.notes ?? "",
+    name: period.name ?? "",
+    date_from: period.date_from,
+    date_to: period.date_to,
+    min_nights: period.min_nights ?? null,
+    max_nights: period.max_nights ?? null,
+    is_active: period.is_active ?? true,
   };
 }
 
-export function RateCardFormDialog(props: RateCardFormDialogProps) {
+export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
   const { seasonId, open, onOpenChange } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
 
-  const form = useForm<RateCardWriteInput>({
-    resolver: zodResolver(rateCardWriteInputSchema),
-    defaultValues: isCreate ? createDefaults() : defaultsFromCard(props.card),
+  const form = useForm<RatePeriodWriteInput>({
+    resolver: zodResolver(ratePeriodWriteInputSchema),
+    defaultValues: isCreate ? createDefaults() : defaultsFromPeriod(props.period),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const createMutation = useCreateRateCard(seasonId);
-  const updateMutation = useUpdateRateCard(seasonId);
+  const createMutation = useCreateRatePeriod(seasonId);
+  const updateMutation = useUpdateRatePeriod(seasonId);
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? createDefaults() : defaultsFromCard(props.card));
+      form.reset(isCreate ? createDefaults() : defaultsFromPeriod(props.period));
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isCreate ? null : props.card.id]);
+  }, [open, isCreate ? null : props.period.id]);
 
-  const handleSubmit = async (values: RateCardWriteInput) => {
+  const handleSubmit = async (values: RatePeriodWriteInput) => {
     setTopLevelError(null);
     try {
       if (isCreate) {
         await createMutation.mutateAsync(values);
-        toast.success(t("pricing.rate_card.toasts.created"));
+        toast.success(t("pricing.rate_period.toasts.created"));
       } else {
-        await updateMutation.mutateAsync({ cardId: props.card.id, input: values });
-        toast.success(t("pricing.rate_card.toasts.updated"));
+        await updateMutation.mutateAsync({ periodId: props.period.id, input: values });
+        toast.success(t("pricing.rate_period.toasts.updated"));
       }
       onOpenChange(false);
     } catch (error) {
@@ -96,8 +95,8 @@ export function RateCardFormDialog(props: RateCardFormDialogProps) {
       } else {
         toast.error(
           isCreate
-            ? t("pricing.rate_card.toasts.create_failed")
-            : t("pricing.rate_card.toasts.update_failed"),
+            ? t("pricing.rate_period.toasts.create_failed")
+            : t("pricing.rate_period.toasts.update_failed"),
         );
       }
     }
@@ -111,43 +110,58 @@ export function RateCardFormDialog(props: RateCardFormDialogProps) {
         <DialogHeader>
           <DialogTitle>
             {isCreate
-              ? t("pricing.rate_card.dialog.create_title")
-              : t("pricing.rate_card.dialog.edit_title")}
+              ? t("pricing.rate_period.dialog.create_title")
+              : t("pricing.rate_period.dialog.edit_title")}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="rate-card-name">{t("pricing.rate_card.dialog.fields.name")}</Label>
+            <Label htmlFor="rate-period-name">{t("pricing.rate_period.dialog.fields.name")}</Label>
             <Input
-              id="rate-card-name"
-              placeholder={t("pricing.rate_card.dialog.fields.name_placeholder")}
+              id="rate-period-name"
+              placeholder={t("pricing.rate_period.dialog.fields.name_placeholder")}
               {...form.register("name")}
             />
-            {form.formState.errors.name ? (
-              <p className="text-destructive text-sm" role="alert">
-                {fieldErrorText(t, form.formState.errors.name.message)}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rate-card-description">
-              {t("pricing.rate_card.dialog.fields.description")}
-            </Label>
-            <Textarea id="rate-card-description" rows={2} {...form.register("description")} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="rate-card-min-nights">
-                {t("pricing.rate_card.dialog.fields.min_nights")}
+              <Label htmlFor="rate-period-date-from">
+                {t("pricing.rate_period.dialog.fields.date_from")}
+              </Label>
+              <Input id="rate-period-date-from" type="date" {...form.register("date_from")} />
+              {form.formState.errors.date_from ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.date_from.message)}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rate-period-date-to">
+                {t("pricing.rate_period.dialog.fields.date_to")}
+              </Label>
+              <Input id="rate-period-date-to" type="date" {...form.register("date_to")} />
+              {form.formState.errors.date_to ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.date_to.message)}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="rate-period-min-nights">
+                {t("pricing.rate_period.dialog.fields.min_nights")}
               </Label>
               <Input
-                id="rate-card-min-nights"
+                id="rate-period-min-nights"
                 type="number"
                 min={1}
+                placeholder={t("pricing.rate_period.dialog.fields.nights_inherit_placeholder")}
                 {...form.register("min_nights", {
-                  setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
+                  setValueAs: (v) => (v === "" || v == null ? null : Number(v)),
                 })}
               />
               {form.formState.errors.min_nights ? (
@@ -158,13 +172,14 @@ export function RateCardFormDialog(props: RateCardFormDialogProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rate-card-max-nights">
-                {t("pricing.rate_card.dialog.fields.max_nights")}
+              <Label htmlFor="rate-period-max-nights">
+                {t("pricing.rate_period.dialog.fields.max_nights")}
               </Label>
               <Input
-                id="rate-card-max-nights"
+                id="rate-period-max-nights"
                 type="number"
                 min={1}
+                placeholder={t("pricing.rate_period.dialog.fields.nights_inherit_placeholder")}
                 {...form.register("max_nights", {
                   setValueAs: (v) => (v === "" || v == null ? null : Number(v)),
                 })}
@@ -179,18 +194,13 @@ export function RateCardFormDialog(props: RateCardFormDialogProps) {
 
           <div className="flex items-center gap-2">
             <Checkbox
-              id="rate-card-is-active"
+              id="rate-period-is-active"
               checked={isActive}
               onCheckedChange={(v) => form.setValue("is_active", v === true)}
             />
-            <Label htmlFor="rate-card-is-active">
-              {t("pricing.rate_card.dialog.fields.is_active")}
+            <Label htmlFor="rate-period-is-active">
+              {t("pricing.rate_period.dialog.fields.is_active")}
             </Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rate-card-notes">{t("pricing.rate_card.dialog.fields.notes")}</Label>
-            <Textarea id="rate-card-notes" rows={2} {...form.register("notes")} />
           </div>
 
           <FormErrorAlert message={topLevelError} />
@@ -202,12 +212,12 @@ export function RateCardFormDialog(props: RateCardFormDialogProps) {
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              {t("pricing.rate_card.dialog.actions.cancel")}
+              {t("pricing.rate_period.dialog.actions.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting
-                ? t("pricing.rate_card.dialog.actions.saving")
-                : t("pricing.rate_card.dialog.actions.save")}
+                ? t("pricing.rate_period.dialog.actions.saving")
+                : t("pricing.rate_period.dialog.actions.save")}
             </Button>
           </div>
         </form>

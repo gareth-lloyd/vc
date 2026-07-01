@@ -15,17 +15,17 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { addDaysIso, formatDate } from "@/lib/format/date";
+import { formatDate } from "@/lib/format/date";
 import {
-  useDeleteRateCard,
+  useDeleteRatePeriod,
   useDeleteRateRule,
-  useDuplicateRateCard,
   usePropertySettings,
   useSeasonDetail,
 } from "../hooks";
-import { RateCardFormDialog } from "./RateCardFormDialog";
+import { formatPartyGaps } from "../coverage";
+import { RatePeriodFormDialog } from "./RatePeriodFormDialog";
 import { RateRuleFormDialog } from "./RateRuleFormDialog";
-import type { RateCard, RateRule, RateRuleWriteInput } from "../schemas";
+import type { RatePeriod, RateRule } from "../schemas";
 
 export function ActiveBadge({ isActive }: { isActive: boolean | undefined }) {
   const { t } = useTranslation("properties");
@@ -36,63 +36,49 @@ export function ActiveBadge({ isActive }: { isActive: boolean | undefined }) {
   );
 }
 
-/** Seed the next rule from the card's latest date band for fast consecutive entry. */
-function nextRuleDefaults(card: RateCard): Partial<RateRuleWriteInput> | undefined {
-  const last = card.rules.reduce<RateRule | null>(
-    (latest, rule) => (latest === null || rule.date_to > latest.date_to ? rule : latest),
-    null,
-  );
-  if (!last) return undefined;
-  return {
-    // Rule date ranges are inclusive — the next band starts the day after.
-    date_from: addDaysIso(last.date_to, 1),
-    min_party: last.min_party ?? 1,
-    max_party: last.max_party ?? 1,
-  };
-}
-
-function RateCardBlock({
-  card,
+function RatePeriodBlock({
+  period,
   canWrite,
   onEdit,
-  onDuplicate,
   onDelete,
   onAddRule,
   onEditRule,
   onDeleteRule,
 }: {
-  card: RateCard;
+  period: RatePeriod;
   canWrite: boolean;
-  onEdit: (card: RateCard) => void;
-  onDuplicate: (card: RateCard) => void;
-  onDelete: (card: RateCard) => void;
-  onAddRule: (card: RateCard) => void;
+  onEdit: (period: RatePeriod) => void;
+  onDelete: (period: RatePeriod) => void;
+  onAddRule: (period: RatePeriod) => void;
   onEditRule: (rule: RateRule) => void;
   onDeleteRule: (rule: RateRule) => void;
 }) {
   const { t } = useTranslation("properties");
-  const poa = t("pricing.rate_card.poa");
+  const poa = t("pricing.rate_period.poa");
   const dash = t("common.unset");
-  const placeholder = t("pricing.rate_card.nights_min_placeholder");
+  const placeholder = t("pricing.rate_period.nights_min_placeholder");
+  const gaps = period.coverage_gaps ?? [];
   return (
     <div className="border-border bg-card space-y-3 rounded-lg border p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h4 className="text-foreground text-sm font-semibold">{card.name}</h4>
-          {card.description ? (
-            <p className="text-muted-foreground text-xs">{card.description}</p>
-          ) : null}
+          <h4 className="text-foreground text-sm font-semibold">
+            {period.name || t("pricing.rate_period.untitled")}
+          </h4>
+          <p className="text-muted-foreground text-xs">
+            {formatDate(period.date_from)} – {formatDate(period.date_to)}
+          </p>
           <p className="text-muted-foreground mt-1 text-xs">
-            {card.min_nights != null || card.max_nights != null
-              ? t("pricing.rate_card.nights_range", {
-                  min: card.min_nights ?? placeholder,
-                  max: card.max_nights ?? placeholder,
+            {period.min_nights != null || period.max_nights != null
+              ? t("pricing.rate_period.nights_range", {
+                  min: period.min_nights ?? placeholder,
+                  max: period.max_nights ?? placeholder,
                 })
-              : t("pricing.rate_card.any_length")}
+              : t("pricing.rate_period.any_length")}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ActiveBadge isActive={card.is_active} />
+          <ActiveBadge isActive={period.is_active} />
           {canWrite ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -100,33 +86,37 @@ function RateCardBlock({
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2"
-                  aria-label={t("pricing.rate_card.row.menu_label")}
+                  aria-label={t("pricing.rate_period.row.menu_label")}
                 >
                   ···
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(card)}>
-                  {t("pricing.rate_card.row.edit")}
+                <DropdownMenuItem onClick={() => onEdit(period)}>
+                  {t("pricing.rate_period.row.edit")}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDuplicate(card)}>
-                  {t("pricing.rate_card.row.duplicate")}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive" onClick={() => onDelete(card)}>
-                  {t("pricing.rate_card.row.delete")}
+                <DropdownMenuItem className="text-destructive" onClick={() => onDelete(period)}>
+                  {t("pricing.rate_period.row.delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
         </div>
       </div>
-      {card.rules.length === 0 ? (
-        <p className="text-muted-foreground text-xs italic">{t("pricing.rate_card.no_rules")}</p>
+      {gaps.length > 0 ? (
+        <p
+          role="status"
+          className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-xs"
+        >
+          {t("pricing.rate_period.coverage_gap_warning", { ranges: formatPartyGaps(gaps) })}
+        </p>
+      ) : null}
+      {period.rules.length === 0 ? (
+        <p className="text-muted-foreground text-xs italic">{t("pricing.rate_period.no_rules")}</p>
       ) : (
         <table className="w-full text-xs">
           <thead className="text-muted-foreground text-left">
             <tr>
-              <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.dates")}</th>
               <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.party")}</th>
               <th className="py-1 pr-2 font-medium">{t("pricing.rules_table.nightly")}</th>
               <th className="py-1 font-medium">{t("pricing.rules_table.weekly")}</th>
@@ -138,11 +128,8 @@ function RateCardBlock({
             </tr>
           </thead>
           <tbody>
-            {card.rules.map((rule) => (
+            {period.rules.map((rule) => (
               <tr key={rule.id} className="border-border border-t">
-                <td className="py-1 pr-2">
-                  {formatDate(rule.date_from)} – {formatDate(rule.date_to)}
-                </td>
                 <td className="py-1 pr-2">
                   {rule.min_party ?? placeholder}–{rule.max_party ?? placeholder}
                 </td>
@@ -181,7 +168,7 @@ function RateCardBlock({
         </table>
       )}
       {canWrite ? (
-        <Button variant="ghost" size="sm" onClick={() => onAddRule(card)}>
+        <Button variant="ghost" size="sm" onClick={() => onAddRule(period)}>
           {t("pricing.rule.add_button")}
         </Button>
       ) : null}
@@ -202,11 +189,7 @@ export function SeasonDetailPanel({
 }) {
   const { t } = useTranslation("properties");
   const detail = useSeasonDetail(seasonId);
-  // Drives the GAP-025 rate-band end-date suggestion; absent settings just
-  // mean no suggestion fires.
   const settings = usePropertySettings(propertyId);
-  const changeoverDay = settings.data?.changeover_day ?? null;
-  const minNightsRental = settings.data?.min_nights_rental ?? null;
   // GAP-026: the property's effective currency, used to flag (softly, never
   // blocking) a season whose currency diverges from it.
   const propertyCurrencyCode = settings.data?.currency_code ?? null;
@@ -222,37 +205,24 @@ export function SeasonDetailPanel({
   const tax = settings.data?.tax ?? null;
   const dash = t("common.unset");
 
-  const deleteCardMutation = useDeleteRateCard(seasonId);
-  const duplicateCardMutation = useDuplicateRateCard(seasonId);
+  const deletePeriodMutation = useDeleteRatePeriod(seasonId);
   const deleteRuleMutation = useDeleteRateRule(seasonId);
 
-  const [addCardOpen, setAddCardOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<RateCard | null>(null);
-  const [duplicatingCard, setDuplicatingCard] = useState<RateCard | null>(null);
-  const [deletingCard, setDeletingCard] = useState<RateCard | null>(null);
-  const [addingRuleCard, setAddingRuleCard] = useState<RateCard | null>(null);
+  const [addPeriodOpen, setAddPeriodOpen] = useState(false);
+  const [editingPeriod, setEditingPeriod] = useState<RatePeriod | null>(null);
+  const [deletingPeriod, setDeletingPeriod] = useState<RatePeriod | null>(null);
+  const [addingRulePeriod, setAddingRulePeriod] = useState<RatePeriod | null>(null);
   const [editingRule, setEditingRule] = useState<RateRule | null>(null);
   const [deletingRule, setDeletingRule] = useState<RateRule | null>(null);
 
-  const handleDeleteCard = async () => {
-    if (!deletingCard) return;
+  const handleDeletePeriod = async () => {
+    if (!deletingPeriod) return;
     try {
-      await deleteCardMutation.mutateAsync({ cardId: deletingCard.id });
-      toast.success(t("pricing.rate_card.toasts.deleted"));
-      setDeletingCard(null);
+      await deletePeriodMutation.mutateAsync({ periodId: deletingPeriod.id });
+      toast.success(t("pricing.rate_period.toasts.deleted"));
+      setDeletingPeriod(null);
     } catch {
-      toast.error(t("pricing.rate_card.toasts.delete_failed"));
-    }
-  };
-
-  const handleDuplicateCard = async () => {
-    if (!duplicatingCard) return;
-    try {
-      await duplicateCardMutation.mutateAsync({ cardId: duplicatingCard.id });
-      toast.success(t("pricing.rate_card.toasts.duplicated"));
-      setDuplicatingCard(null);
-    } catch {
-      toast.error(t("pricing.rate_card.toasts.duplicate_failed"));
+      toast.error(t("pricing.rate_period.toasts.delete_failed"));
     }
   };
 
@@ -267,20 +237,20 @@ export function SeasonDetailPanel({
     }
   };
 
-  const addCardButton = canWrite ? (
-    <Button size="sm" onClick={() => setAddCardOpen(true)}>
-      {t("pricing.rate_card.add_button")}
+  const addPeriodButton = canWrite ? (
+    <Button size="sm" onClick={() => setAddPeriodOpen(true)}>
+      {t("pricing.rate_period.add_button")}
     </Button>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
           <Button size="sm" disabled>
-            {t("pricing.rate_card.add_button")}
+            {t("pricing.rate_period.add_button")}
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>{t("pricing.rate_card.add_button_disabled_tooltip")}</TooltipContent>
+      <TooltipContent>{t("pricing.rate_period.add_button_disabled_tooltip")}</TooltipContent>
     </Tooltip>
   );
 
@@ -332,22 +302,21 @@ export function SeasonDetailPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-foreground text-sm font-semibold">
-                {t("pricing.season_detail.rate_cards_heading")}
+                {t("pricing.season_detail.rate_periods_heading")}
               </h3>
-              {addCardButton}
+              {addPeriodButton}
             </div>
-            {detail.data.cards.length === 0 ? (
-              <EmptyState title={t("pricing.season_detail.empty_rate_cards")} />
+            {detail.data.periods.length === 0 ? (
+              <EmptyState title={t("pricing.season_detail.empty_rate_periods")} />
             ) : (
-              detail.data.cards.map((card) => (
-                <RateCardBlock
-                  key={card.id}
-                  card={card}
+              detail.data.periods.map((period) => (
+                <RatePeriodBlock
+                  key={period.id}
+                  period={period}
                   canWrite={canWrite}
-                  onEdit={setEditingCard}
-                  onDuplicate={setDuplicatingCard}
-                  onDelete={setDeletingCard}
-                  onAddRule={setAddingRuleCard}
+                  onEdit={setEditingPeriod}
+                  onDelete={setDeletingPeriod}
+                  onAddRule={setAddingRulePeriod}
                   onEditRule={setEditingRule}
                   onDeleteRule={setDeletingRule}
                 />
@@ -357,33 +326,30 @@ export function SeasonDetailPanel({
         </>
       )}
 
-      {addCardOpen ? (
-        <RateCardFormDialog
+      {addPeriodOpen ? (
+        <RatePeriodFormDialog
           seasonId={seasonId}
-          open={addCardOpen}
-          onOpenChange={setAddCardOpen}
+          open={addPeriodOpen}
+          onOpenChange={setAddPeriodOpen}
           mode="create"
         />
       ) : null}
-      {editingCard ? (
-        <RateCardFormDialog
+      {editingPeriod ? (
+        <RatePeriodFormDialog
           seasonId={seasonId}
-          open={!!editingCard}
-          onOpenChange={(o) => !o && setEditingCard(null)}
+          open={!!editingPeriod}
+          onOpenChange={(o) => !o && setEditingPeriod(null)}
           mode="edit"
-          card={editingCard}
+          period={editingPeriod}
         />
       ) : null}
-      {addingRuleCard ? (
+      {addingRulePeriod ? (
         <RateRuleFormDialog
           seasonId={seasonId}
-          cardId={addingRuleCard.id}
-          open={!!addingRuleCard}
-          onOpenChange={(o) => !o && setAddingRuleCard(null)}
+          periodId={addingRulePeriod.id}
+          open={!!addingRulePeriod}
+          onOpenChange={(o) => !o && setAddingRulePeriod(null)}
           mode="create"
-          defaults={nextRuleDefaults(addingRuleCard)}
-          changeoverDay={changeoverDay}
-          minNightsRental={minNightsRental}
           currencyCode={seasonCurrencyCode}
           priceBasis={seasonPriceBasis}
           commission={commission}
@@ -393,7 +359,7 @@ export function SeasonDetailPanel({
       {editingRule ? (
         <RateRuleFormDialog
           seasonId={seasonId}
-          cardId={editingRule.card}
+          periodId={editingRule.period}
           open={!!editingRule}
           onOpenChange={(o) => !o && setEditingRule(null)}
           mode="edit"
@@ -404,27 +370,16 @@ export function SeasonDetailPanel({
           tax={tax}
         />
       ) : null}
-      {deletingCard ? (
+      {deletingPeriod ? (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setDeletingCard(null)}
-          onConfirm={handleDeleteCard}
-          title={t("pricing.rate_card.delete_confirm.title")}
-          description={t("pricing.rate_card.delete_confirm.description")}
-          confirmLabel={t("pricing.rate_card.delete_confirm.confirm")}
+          onOpenChange={(o) => !o && setDeletingPeriod(null)}
+          onConfirm={handleDeletePeriod}
+          title={t("pricing.rate_period.delete_confirm.title")}
+          description={t("pricing.rate_period.delete_confirm.description")}
+          confirmLabel={t("pricing.rate_period.delete_confirm.confirm")}
           destructive
-          busy={deleteCardMutation.isPending}
-        />
-      ) : null}
-      {duplicatingCard ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setDuplicatingCard(null)}
-          onConfirm={handleDuplicateCard}
-          title={t("pricing.rate_card.duplicate_confirm.title")}
-          description={t("pricing.rate_card.duplicate_confirm.description")}
-          confirmLabel={t("pricing.rate_card.duplicate_confirm.confirm")}
-          busy={duplicateCardMutation.isPending}
+          busy={deletePeriodMutation.isPending}
         />
       ) : null}
       {deletingRule ? (

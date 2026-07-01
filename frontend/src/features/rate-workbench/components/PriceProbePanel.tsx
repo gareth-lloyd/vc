@@ -13,8 +13,8 @@ interface PriceProbePanelProps {
   propertyId: number;
   /** Opt-in (non-mandatory) extras the guest can toggle into the quote. */
   extras: Extra[];
-  /** cardId → "Season · Card" label, to name the winning card in the result. */
-  cardLabels: Record<number, string>;
+  /** periodId → "Season · Period" label, to name the winning period in the result. */
+  periodLabels: Record<number, string>;
 }
 
 /**
@@ -23,7 +23,7 @@ interface PriceProbePanelProps {
  * `party` is `adults + children` (the engine's single occupancy input); owner
  * economics stay hidden (see QuoteResultCard / BUG-009).
  */
-export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePanelProps) {
+export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbePanelProps) {
   const { t } = useTranslation("properties");
   const probe = usePriceProbe();
 
@@ -188,8 +188,8 @@ export function PriceProbePanel({ propertyId, extras, cardLabels }: PriceProbePa
       {probe.isSuccess ? (
         <QuoteResultCard
           quote={probe.data}
-          cardLabel={
-            probe.data.winning_card_id != null ? cardLabels[probe.data.winning_card_id] : null
+          periodLabel={
+            probe.data.winning_period_id != null ? periodLabels[probe.data.winning_period_id] : null
           }
         />
       ) : null}

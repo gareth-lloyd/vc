@@ -338,6 +338,45 @@ def test_patch_booking__updates_non_state_fields(
 
 
 @pytest.mark.django_db
+def test_patch_booking__rejects_non_staff_assignee(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    # The API must not trust the FE picker — a non-staff owner-portal user
+    # (even role=admin) can't be set as the booking salesperson.
+    owner = User.objects.create_user(
+        is_staff=False,
+        email="book-owner@example.com",
+        password="x",
+        role=StaffRole.ADMIN,
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/bookings/{booking.pk}",
+        {"assigned_to": owner.pk},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "assigned_to" in response.data["field_errors"]
+    booking.refresh_from_db()
+    assert booking.assigned_to_id is None
+
+
+@pytest.mark.django_db
+def test_patch_booking__allows_operator_assignee(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/bookings/{booking.pk}",
+        {"assigned_to": staff.pk},
+        format="json",
+    )
+    assert response.status_code == 200
+    booking.refresh_from_db()
+    assert booking.assigned_to_id == staff.pk
+
+
+@pytest.mark.django_db
 def test_cancel_booking(api_client: APIClient, staff: User, booking: Booking) -> None:
     api_client.force_login(staff)
     response = api_client.post(

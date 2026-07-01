@@ -176,3 +176,31 @@ describe("TimelineGrid calendar-source indicator (GAP-034)", () => {
     expect(screen.queryByRole("link", { name: "Online calendar" })).not.toBeInTheDocument();
   });
 });
+
+describe("TimelineGrid availability-freshness badges (GAP-033)", () => {
+  const grid = (extra: Partial<PropertyListItem>) =>
+    renderWithProviders(
+      <TimelineGrid
+        days={days}
+        windowStart={windowStart}
+        properties={[villa(1, "Casa Uno", extra)]}
+        holds={[]}
+        bookings={[]}
+      />,
+    );
+
+  it("renders the owner-updated and confirmed freshness badges when present", () => {
+    grid({
+      availability_owner_updated_at: "2026-06-01T00:00:00Z",
+      availability_confirmed_at: "2026-06-05T00:00:00Z",
+    });
+    expect(screen.getByText(/Owner updated/)).toBeInTheDocument();
+    expect(screen.getByText(/Confirmed/)).toBeInTheDocument();
+  });
+
+  it("renders no freshness badge for a villa that has neither signal", () => {
+    grid({});
+    expect(screen.queryByText(/Owner updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confirmed/)).not.toBeInTheDocument();
+  });
+});

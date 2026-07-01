@@ -31,6 +31,29 @@ class _CalendarSourceMixin(serializers.Serializer[Property]):
 
     has_active_ical_feed = serializers.SerializerMethodField()
     calendar_url = serializers.SerializerMethodField()
+    # GAP-033 availability-freshness signals. The two plain timestamps
+    # (availability_owner_updated_at / availability_confirmed_at) are mapped
+    # straight from the model via each Meta.fields list. The two below need
+    # derivation:
+    #   - confirmed_by_name resolves the staff actor FK to a display name.
+    #   - calendar_last_imported_at (Signal 2) reads the viewset's scalar
+    #     `Subquery` annotation, falling back to None off the annotated path.
+    availability_confirmed_by_name = serializers.SerializerMethodField()
+    calendar_last_imported_at = serializers.SerializerMethodField()
+
+    def get_availability_confirmed_by_name(self, obj: Property) -> str | None:
+        # `select_related("availability_confirmed_by")` on the viewset keeps this
+        # free; the FK is nullable, so an unconfirmed property returns None.
+        user = obj.availability_confirmed_by
+        if user is None:
+            return None
+        return user.get_full_name() or user.email
+
+    def get_calendar_last_imported_at(self, obj: Property) -> Any:
+        # Latest active-feed `last_polled_at`, annotated as a scalar `Subquery`
+        # on the list/detail queryset (no per-row query). Fresh, non-annotated
+        # instances (create/duplicate) lack the attribute → None.
+        return getattr(obj, "calendar_last_imported_at", None)
 
     def get_has_active_ical_feed(self, obj: Property) -> bool:
         # The list viewset annotates this via a scalar `Exists` (no per-row
@@ -80,6 +103,10 @@ class PropertyListSerializer(_CalendarSourceMixin, serializers.ModelSerializer[P
             "available_for_range",
             "has_active_ical_feed",
             "calendar_url",
+            "availability_owner_updated_at",
+            "availability_confirmed_at",
+            "availability_confirmed_by_name",
+            "calendar_last_imported_at",
             "created_at",
             "updated_at",
         ]
@@ -136,6 +163,10 @@ class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer
             "hero_image_url",
             "has_active_ical_feed",
             "calendar_url",
+            "availability_owner_updated_at",
+            "availability_confirmed_at",
+            "availability_confirmed_by_name",
+            "calendar_last_imported_at",
             "legacy_id",
             "created_at",
             "updated_at",

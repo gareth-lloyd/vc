@@ -10,6 +10,9 @@
   },
   "schema_errors": {
     "at_least_one_adult": "At least one adult",
+    "at_least_one_week": "At least one week",
+    "arrive_to_before_arrive_from": "Must be on or after the first arrival date",
+    "arrive_window_too_wide": "Arrival window can span at most 42 days",
     "date_to_after_date_from": "Must be after the start date",
     "override_reason_required": "A reason is required when overriding the price",
     "manual_total_required": "A manual line needs a total greater than zero",

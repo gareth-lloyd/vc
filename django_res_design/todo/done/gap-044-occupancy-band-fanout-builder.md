@@ -19,7 +19,8 @@
 > **alternatives**, never summed. Shipped backend `abf6bcd` (engine) + `d220f03`
 > (service), frontend `1ca6b3b` (display) + `e28c6ea` (staging/shortlist/save).
 > Deferred (unchanged): bands × alternate changeover blocks (default block
-> only), per-band manual override / discount, projection-year bands, a POA-only
+> only — **now resolved by GAP-044b / `gap-055-occupancy-band-week-picker.md`**),
+> per-band manual override / discount, projection-year bands, a POA-only
 > banded villa (operator uses a manual line). Cross-refs: `04-pricing.md`
 > (fan-out default), `10-decisions.md`.
 

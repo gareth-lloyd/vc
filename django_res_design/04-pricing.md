@@ -174,6 +174,23 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > renders them as default-checked lines that flat-map to one quotation line per
 > checked band at save. See
 > [`todo/done/gap-044-occupancy-band-fanout-builder.md`](todo/done/gap-044-occupancy-band-fanout-builder.md).
+>
+> **Two-axis follow-up (GAP-044b, shipped 2026-07-01).** GAP-044 priced the
+> bands for the **default changeover block only** and *suppressed the week
+> picker* for banded villas (so an occupancy villa showed "many prices, one
+> week" while a flat villa showed "one price, many weeks"). That limitation is
+> lifted: a banded villa now shows the **week picker *and* the selected week's
+> bands** on one card. The two axes combine — pick a week, its bands fan out as
+> checkable alternatives, each saves as its own line **at the chosen week's
+> dates**. **No new pricing cost:** the per-week reprice already hits the same
+> `search-options` endpoint (`flex_days:0`), which already attaches
+> `occupancy_bands` for the priced block on every return path — the picked
+> week's bands come back "for free". Search still eagerly prices only the
+> *default* week's bands; an alternate week costs one lazy reprice (identical to
+> how flat-rate alternate weeks already work). Bands remain **alternatives**
+> (never summed) and the engine's single-band `quote()` contract is unchanged.
+> See
+> [`todo/done/gap-055-occupancy-band-week-picker.md`](todo/done/gap-055-occupancy-band-week-picker.md).
 
 #### Disjoint date ranges within a card
 A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.

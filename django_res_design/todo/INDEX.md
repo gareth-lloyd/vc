@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-01): **97 done** (93 resolved + 4 dropped), **32 open**
+Scoreboard (2026-07-01): **98 done** (94 resolved + 4 dropped), **32 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -93,6 +93,7 @@ follow-up.)
 | [GAP-052](done/gap-052-contact-detail-edit-completeness.md) | Contact detail: editable address + editable/finished notes + contact-type badges | ✅ resolved (2026-07-01) — editable+audited `Person.country` + FE CountryPicker (`6fd4771`/`020713b`); `contact_types` badges from kind/booking/agency/active-roles (`8cac257`/`58e51a2`); address/notes already writable. Rich-text notes + full-fidelity deal-channel agent deferred |
 | [GAP-053](done/gap-053-clients-tag-filters-and-inline-tag-editor.md) | Clients directory: VIP/Trade/Repeat chip filters + inline (no-dialog) client-only tag editor | ✅ resolved (2026-07-01) — widened `/clients` to agent-capacity + `?repeat=`/`?tags=` (`c0efa66`); VIP/Trade/Repeat one-click chips (`4faa233`); inline Popover tag editor (optimistic, audited, replaced TagsFormDialog, `5c1888e`) |
 | [GAP-054](gap-054-damage-claims-workflow-remainder.md) | Damage-claims workflow remainder: capture thresholds + Senior Op role, guest damages email + acceptance, capture-guard tightening, photo polish | ⬜ continues BUG-008; wf8 state-machine + photo upload already shipped (merge `c20dc9e`), these are the deferred permission/guest-facing pieces (`03-workflows.md:429/440/447`) |
+| [GAP-055](done/gap-055-occupancy-band-week-picker.md) | Quote builder: two-dimensional picker (week choice × occupancy bands) [GAP-044b] | ✅ resolved (2026-07-01) — lifts GAP-044's picker-suppression: a banded villa now shows the **week picker *and* the selected week's bands**; pick a week → its bands fan out → each saves at the chosen week's dates. Almost FE-only, zero new pricing cost (the `flex_days:0` reprice already returns the week's bands; only `stayRepriceSchema` needed the field). `resolvedBands` decoupled from reprice `available` (out-of-bracket stays saveable), checked-by-party-range-identity, `d68c1c1`/`37f6936`/`479b7e3`. Per-week chip "from" price / shortlist week-change / per-band override deferred |
 
 ## Open product questions
 

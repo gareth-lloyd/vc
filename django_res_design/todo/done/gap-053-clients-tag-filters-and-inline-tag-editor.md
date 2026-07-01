@@ -1,3 +1,14 @@
+> **✅ RESOLVED (2026-07-01)** — Shipped on local `main` (unpushed) as Landing 1
+> of the contacts-directory cluster. **Widened `/clients`** to agent-capacity
+> persons (agency members / deal-agents), added `?repeat=` + `?tags=` overlap
+> filters and `is_repeat_customer`/`tags` on the row (`c0efa66`, `Subquery`
+> booking_count so the always-on list COUNT stays accurate). **VIP/Trade/Repeat
+> one-click chip filters** on the Clients list, composing with capacity / status
+> / search (`4faa233`). **Inline (no-dialog) client-scoped tag editor** — a
+> Popover checkbox group with an optimistic audited per-edit mutation, gated on
+> clients-membership (customer OR agent-capacity), replacing `TagsFormDialog`
+> (`5c1888e`). Deferred: none material.
+
 # GAP-053 — Clients directory: VIP/Trade/Repeat chip filters + inline (no-dialog) tag editor
 
 - **Severity:** Gap (frontend-led) — follow-up to GAP-047 (Clients list) and

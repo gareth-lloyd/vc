@@ -327,7 +327,10 @@
         "repricing": "Repricing…",
         "reprice_failed": "Couldn't price these dates",
         "held_hint": "These dates are held or booked — pick another block.",
-        "shifted": "Priced as {{from}} → {{to}}"
+        "shifted": "Priced as {{from}} → {{to}}",
+        "requested": "Requested",
+        "caption_nights": "{{nights}}-night stays",
+        "option_aria": "{{range}} · {{nights}} · {{status}}"
       }
     },
     "shortlist": {

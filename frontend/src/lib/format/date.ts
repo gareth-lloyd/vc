@@ -117,6 +117,30 @@ export function formatNightRange(firstNight: Date, lastNight: Date): string {
 }
 
 /**
+ * Compact changeover-block label from the two ISO endpoints, formatted
+ * **directly** (checkout semantics — a block that runs `1 Aug → 8 Aug` reads
+ * "1–8 Aug", matching the pill it replaces; do NOT route through
+ * `nightRangeParts`, whose `lastNight` is `date_to − 1` and would shift the
+ * visible end date). Drops the year within a single year and the shared month
+ * when both endpoints land in it, so the week strip's cells stay narrow:
+ * `1–8 Aug`, `25 Jul–1 Aug`, `27 Dec 2026–3 Jan 2027`. Returns "—" when either
+ * endpoint is empty or unparseable.
+ */
+export function formatWeekRangeCompact(dateFrom: string, dateTo: string): string {
+  const from = parseISO(dateFrom);
+  const to = parseISO(dateTo);
+  if (!isValid(from) || !isValid(to)) return "—";
+  const locale = activeLocale();
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const sameMonth = sameYear && from.getMonth() === to.getMonth();
+  if (sameMonth) {
+    return `${format(from, "d", { locale })}–${format(to, "d MMM", { locale })}`;
+  }
+  const endpointFormat = sameYear ? "d MMM" : "d MMM yyyy";
+  return `${format(from, endpointFormat, { locale })}–${format(to, endpointFormat, { locale })}`;
+}
+
+/**
  * i18n interpolation args for a "N nights (21–30 Jul 2026)" summary of a
  * half-open `[date_from, date_to)` range, or `null` when it isn't a valid forward
  * span. The caller owns the translation key — the block dialogs live in different

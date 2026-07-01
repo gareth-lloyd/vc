@@ -65,3 +65,69 @@ export type DiscountWriteInput = z.infer<typeof discountWriteInputSchema>;
 
 /** Wire shape: an empty `amount`/date is sent as an explicit `null`. */
 export type DiscountWritePayload = Omit<DiscountWriteInput, "amount"> & { amount: string | null };
+
+// ---------------------------------------------------------------------------
+// Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
+// flat dict of decimal STRINGS; the schemas below parse only the guest-facing
+// fields we render and `.passthrough()` the rest (owner economics — net_to_owner
+// / commission / tax — ride along on the wire but are deliberately never shown,
+// per BUG-009's GROSS-plan mispricing).
+// ---------------------------------------------------------------------------
+
+export const priceProbeRequestSchema = z.object({
+  property_id: z.number().int(),
+  date_from: z
+    .string()
+    .min(1, { message: "properties:rate_workbench.probe.errors.dates_required" }),
+  date_to: z.string().min(1, { message: "properties:rate_workbench.probe.errors.dates_required" }),
+  adults: z.number().int().min(1),
+  children: z.number().int().min(0).default(0),
+  opt_in_extras: z.array(z.number().int()).default([]),
+  discount_code: z.string().default(""),
+});
+export type PriceProbeRequest = z.infer<typeof priceProbeRequestSchema>;
+
+export const quoteLineSchema = z
+  .object({
+    date: z.string(),
+    rule_id: z.number().nullable().optional(),
+    card_id: z.number().nullable().optional(),
+    nightly: z.string(),
+    notes: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const appliedExtraSchema = z
+  .object({
+    extra_id: z.number(),
+    name: z.string(),
+    kind: z.string().nullable().optional(),
+    calc: z.string().nullable().optional(),
+    computed_amount: z.string(),
+  })
+  .passthrough();
+
+export const priceQuoteSchema = z
+  .object({
+    currency_code: z.string().nullable().optional(),
+    party: z.number().nullable().optional(),
+    date_from: z.string().optional(),
+    date_to: z.string().optional(),
+    lines: z.array(quoteLineSchema).default([]),
+    rate_subtotal: z.string().optional(),
+    extras: z.array(appliedExtraSchema).default([]),
+    extras_total: z.string().optional(),
+    discount: z.string().optional(),
+    total: z.string().optional(),
+    plan_id: z.number().nullable().optional(),
+    winning_card_id: z.number().nullable().optional(),
+    changeover_shifted_from: z.string().nullable().optional(),
+    changeover_day: z.string().nullable().optional(),
+    is_projected: z.boolean().optional(),
+    inclusion: z.string().nullable().optional(),
+    min_nights: z.number().nullable().optional(),
+    max_nights: z.number().nullable().optional(),
+    occupancy_pricing: z.boolean().optional(),
+  })
+  .passthrough();
+export type PriceQuote = z.infer<typeof priceQuoteSchema>;

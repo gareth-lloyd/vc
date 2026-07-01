@@ -1112,6 +1112,37 @@
         "confirm": "Delete"
       }
     },
+    "probe": {
+      "title": "Price probe",
+      "subtitle": "Check what a guest would pay for a stay — a live quote from the pricing engine.",
+      "date_from": "Check-in",
+      "date_to": "Check-out",
+      "adults": "Adults",
+      "children": "Children",
+      "discount_code": "Discount code",
+      "opt_in_extras": "Optional extras",
+      "get_quote": "Get quote",
+      "getting": "Getting quote…",
+      "no_rate": "No rate is available for those dates and party size.",
+      "failed": "Couldn't get a quote. Please try again.",
+      "errors": {
+        "dates_required": "Choose a check-in and check-out date."
+      },
+      "result": {
+        "winning_default": "Best available rate",
+        "projected": "Projected",
+        "occupancy_priced": "Priced by party size",
+        "nights_one": "{{count}} night",
+        "nights_other": "{{count}} nights",
+        "extras": "Extras",
+        "discount": "Discount",
+        "guest_total": "Guest total",
+        "extras_heading": "Extras applied",
+        "included_heading": "Included",
+        "changeover_shifted": "Changeover shifted from {{from}}",
+        "owner_pending": "Owner net, commission and tax are pending the finance rewrite (BUG-009)."
+      }
+    },
     "inspector": {
       "title": "Inclusions, extras & discounts",
       "sections": {

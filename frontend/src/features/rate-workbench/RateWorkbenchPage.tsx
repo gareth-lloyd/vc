@@ -30,6 +30,7 @@ import { useYearWindow } from "./yearWindow";
 import { WorkbenchTimeline } from "./components/WorkbenchTimeline";
 import { MatrixEditor } from "./components/MatrixEditor";
 import { InspectorPanel } from "./components/InspectorPanel";
+import { PriceProbePanel } from "./components/PriceProbePanel";
 
 interface WorkbenchContext {
   property: PropertyDetail;
@@ -231,12 +232,29 @@ export function RateWorkbenchPage() {
       />
     ) : null;
 
+  // cardId → "Season · Card", so the probe can name the winning card.
+  const cardLabels: Record<number, string> = {};
+  for (const detail of fanOut.details) {
+    for (const card of detail.cards ?? []) {
+      cardLabels[card.id] = `${detail.name} · ${card.name}`;
+    }
+  }
+  const probeSection =
+    !isLoading && !isError ? (
+      <PriceProbePanel
+        propertyId={property.id}
+        extras={extras.data?.results ?? []}
+        cardLabels={cardLabels}
+      />
+    ) : null;
+
   return (
     <div className="space-y-6 p-6">
       {header}
       {body}
       {matrixSection}
       {inspectorSection}
+      {probeSection}
     </div>
   );
 }

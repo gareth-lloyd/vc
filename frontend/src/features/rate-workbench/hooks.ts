@@ -10,6 +10,7 @@ import {
   createExtra,
   deleteDiscount,
   deleteExtra,
+  runPriceProbe,
   updateDiscount,
   updateExtra,
 } from "./api";
@@ -167,4 +168,13 @@ export function useDeleteDiscount(propertyId: PropertyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.discounts(propertyId) });
     },
   });
+}
+
+/**
+ * Live guest-side price probe (Unit 6). Read-only — an explicit "Get quote"
+ * mutation, no cache writes/invalidation. Domain failures (e.g.
+ * `no_rate_available`) reject with a 409 `ApiError` the panel renders inline.
+ */
+export function usePriceProbe() {
+  return useMutation({ mutationFn: runPriceProbe });
 }

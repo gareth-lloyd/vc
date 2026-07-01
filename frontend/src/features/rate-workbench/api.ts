@@ -6,7 +6,13 @@ import {
   type Discount,
   type Extra,
 } from "@/features/properties/schemas";
-import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
+import {
+  priceQuoteSchema,
+  type DiscountWritePayload,
+  type ExtraWritePayload,
+  type PriceProbeRequest,
+  type PriceQuote,
+} from "./schemas";
 
 // Extras: list/create are property-scoped (`/properties/{id}/extras`); the
 // detail routes are flat (`/extras/{id}`) — see `django_res/pricing/urls.py`.
@@ -47,4 +53,11 @@ export async function updateDiscount(
 
 export async function deleteDiscount(discountId: number): Promise<void> {
   await apiSend<void>("DELETE", `/discounts/${discountId}`);
+}
+
+// Read-only live probe against the pricing engine (colon-verb custom action).
+// Domain failures (e.g. no_rate_available) surface as a 409 ApiError.
+export async function runPriceProbe(body: PriceProbeRequest): Promise<PriceQuote> {
+  const data = await apiSend<unknown>("POST", "/pricing:quote", body);
+  return priceQuoteSchema.parse(data);
 }

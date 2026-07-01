@@ -12,6 +12,7 @@ from core.api import (
     ConfigurablePageSizePagination,
     IsReservationsWriter,
 )
+from properties.filters import CountryFilter, RegionFilter
 from properties.models import (
     Country,
     NearbyPlaceType,
@@ -37,6 +38,7 @@ class CountryViewSet(viewsets.ModelViewSet):
     # The full ~250-row list is needed in one request to populate country
     # `<Select>`s (e.g. the property location form); allow a client page size.
     pagination_class = ConfigurablePageSizePagination
+    filterset_class = CountryFilter
     lookup_field = "iso2"
 
 
@@ -47,6 +49,7 @@ class RegionViewSet(viewsets.ModelViewSet):
     # Filter dropdowns need the full list in one request (same rationale as
     # CountryViewSet above).
     pagination_class = ConfigurablePageSizePagination
+    filterset_class = RegionFilter
     lookup_field = "slug"
 
 

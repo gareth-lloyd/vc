@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-01): **100 done** (95 resolved + 5 dropped), **32 open**
+Scoreboard (2026-07-02): **101 done** (96 resolved + 5 dropped), **31 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -37,7 +37,7 @@ follow-up.)
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-005](fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✏️ re-scoped — `IdempotencyRecord` is a dead table; decide delete-vs-revive first |
+| [FG-005](done/fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✅ resolved (2026-07-02, local main unpushed) — dead table dropped (`core.0006`; zero runtime writers ever); design docs annotated, issue #39 reversed; live idempotency stays the `core/idempotency.py` meta-key path |
 
 ## 🟡 Smells
 

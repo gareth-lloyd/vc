@@ -49,7 +49,7 @@ follow-up.)
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | 🟨 views-in-urls fixed (`refunds_for_booking` moved); filter/service/router shapes still open |
-| [SMELL-019](smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md) | Rate-model naming & UI residuals after GAP-056 | ⬜ deferred debt — `RateRule`→`RateBand` rename, `/seasons`→`/plans` route, GAP-025 changeover end-date suggestion removed (reinstate on period form?); `is_active` backfill = non-issue |
+| [SMELL-019](done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md) | Rate-model naming & UI residuals after GAP-056 | ✅ done (2026-07-02, local main unpushed) — `RateRule`→`RateBand` (model/API/routes/snapshot), `/seasons`→`/rate-plans`, GAP-025 changeover suggestion reinstated at period grain; `is_active` backfill non-issue confirmed |
 
 ## Surface gaps
 

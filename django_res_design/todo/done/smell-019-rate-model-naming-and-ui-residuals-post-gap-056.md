@@ -1,5 +1,27 @@
 # SMELL-019 — Rate-model naming & UI residuals after the GAP-056 restructure
 
+> **✅ RESOLVED (2026-07-02)** — all three residuals actioned on local `main`
+> (unpushed; commits `d234dcd`, `23110ec`, `18499a0`, `966d6f8`, `5d8df91`).
+> - **R1** `RateRule` → `RateBand`: model + table + FK reverse accessor
+>   (`.rules` → `.bands`) + API field + `/rules` → `/bands` routes + snapshot key
+>   (`rule_id` → `band_id`, back-compat read) + `rules_by_period`/`pick_rule_for_night`
+>   + FE types/components across ~55 backend + ~55 FE consumers. Migration 0016 is a
+>   pure `RenameModel` (renames the 3 CHECK constraints, the index, and — via raw
+>   SQL — the btree_gist EXCLUDE `raterule_bands_no_overlap`); no data moved.
+> - **R2** `/seasons` → `/rate-plans`: route family, five route names, view classes,
+>   `season_id` → `plan_id` kwarg, FE route builders + query keys + hooks + the
+>   RatePlanDetailPanel/RatePlanFormDialog components. Hard rename, no alias window.
+> - **R3** changeover end-date suggestion **reinstated** at the period grain:
+>   `suggestRatePeriodEnd` (recovered GAP-025 helper) + create-only no-clobber
+>   auto-fill on `RatePeriodFormDialog`, fed `changeover_day`/`min_nights_rental`
+>   from property settings.
+>
+> Deliberately kept (recorded so review doesn't re-raise): `Segment.rules` (internal
+> dataclass), the `loadlegacy rate_rule` CLI selector string, historical
+> `pricing_snapshot rule_id` + `AuditLog "pricing.RateRule"` labels (readers tolerate
+> both), and the rate-workbench timeline "seasons" lane + `pricing.season*`/
+> `pricing.rule*` i18n keys (presentation vocabulary, out of scope).
+
 - **Severity:** 🟡 Smell / debt (naming lag + one dropped UX affordance). No
   wrong-money-out, no structural risk — the [GAP-056](done/gap-056-rate-model-restructure-property-period-band.md)
   restructure is complete and verified end-to-end. These are the deliberately

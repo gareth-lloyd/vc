@@ -1,3 +1,16 @@
+> **✅ RESOLVED (2026-07-01)** — `RateRuleLoader` now recovers occupancy bands.
+> The `legacy_query` LEFT JOINs `VillaOccupencyPrice`, and `_prepare_occupancy_rows`
+> expands each `IsOccupationPrice` parent into one RateRule per valid band
+> (`legacy_id="occ-{OccId}"`, `OccupencyPrice` as weekly) plus base-weekly gap
+> fallback rules (`occ-fb-{parent}-{k}`) over the party ranges the bands leave
+> uncovered — so a guest count matching no band still gets the legacy base-weekly
+> quote (full parity). Invalid bands (null/≤0 bound, `From>To`, null/0 price) are
+> dropped; the fallback covers their range. `reconcile_legacy` counts both legacy
+> sources; `expected_gap` stays a placeholder to recalibrate at the first cutover
+> dry-run. Shipped to local `main` in `e7cbcc8` / `276a1d9` / `2b5a5a1`; see
+> `data_migration/CUTOVER.md` § "Occupancy-band pricing (BUG-013)" for the
+> band-vs-simple precedence cutover-verification note.
+
 # BUG-013 — Migration silently drops `VillaOccupencyPrice` (range-based occupancy rates lost)
 
 - **Severity:** 🔴 Bug (data + behaviour loss on cutover) — villas that priced by

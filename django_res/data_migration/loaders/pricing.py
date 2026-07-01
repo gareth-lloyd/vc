@@ -27,6 +27,12 @@ Strategy:
   trims/drops overlapping legacy rows before the upsert (legacy had no
   precedence concept — see "Rate rule overlap resolution" in
   data_migration/CUTOVER.md).
+- Occupancy bands (BUG-013): a VillaSeasonRate flagged `IsOccupationPrice`
+  carries child VillaOccupencyPrice rows (party-range → weekly price). The
+  RateRule query LEFT JOINs them and `_prepare_occupancy_rows` expands a banded
+  parent into one RateRule per band plus base-weekly fallbacks over the party
+  gaps the bands don't cover, so a guest count matching no band still gets the
+  legacy base-weekly quote.
 """
 
 from __future__ import annotations
@@ -381,25 +387,144 @@ class RatePlanLoader(BaseLoader):
             )
 
 
+def _party_gaps(bands: list[_Interval]) -> list[_Interval]:
+    """Inclusive party ranges NOT covered by any band — the complement of the
+    bands over ``[1, ∞)``, as disjoint brackets in ascending order. Delegates to
+    the resolver's `_subtract_party` (subtract every band from the whole range)
+    so the interval-complement logic lives in one place. Because bands have
+    finite highs, the result always ends in an open-topped gap (``high=None``);
+    `transform` clamps that to the property capacity (a fully-covered range
+    yields a gap whose low exceeds capacity, which `transform` then drops)."""
+    return sorted(_subtract_party([(1, None)], bands), key=lambda iv: iv[0])
+
+
+def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Expand a VillaSeasonRate x VillaOccupencyPrice LEFT JOIN into the flat
+    row set the resolver + `transform` consume (BUG-013).
+
+    Each input row is one parent VillaSeasonRate optionally joined to one child
+    band (`OccId`/`OccupencyFrom`/`OccupencyTo`/`OccupencyPrice`; all None when
+    the parent has no matching child). Rows for one parent share an `ID`.
+
+    - A parent NOT flagged `IsOccupationPrice`, or with NO valid occupancy child,
+      passes through unchanged — the normal base-weekly (simple) path. Gating on
+      the flag matches legacy (which only reads bands for occupancy rates) and
+      ignores stray/orphan child rows on a non-occupancy parent. A childless
+      occupancy parent likewise yields one OccId-null row → base-weekly.
+    - A flagged parent with ≥1 valid child (`OccupencyFrom`/`To` both > 0,
+      From ≤ To, and a non-zero `OccupencyPrice`) is replaced by: one **band
+      row** per valid child (its own party range + `OccupencyPrice` as the
+      weekly rate, `_legacy_id="occ-{OccId}"`) PLUS one **fallback row** per
+      party gap the bands leave uncovered (the parent's base price,
+      `_legacy_id="occ-fb-{parent}-{k}"`), so a guest count matching no band
+      still gets the legacy base-weekly quote.
+    - Invalid children (null/≤0 bound, From > To, null/0 price) are dropped, not
+      coerced — a null bound would `None <= int` crash the resolver, and a
+      priced-nobody band would otherwise leave a coverage hole. Legacy treats
+      such a band as matching nobody, so the gap fallback covers that party
+      range instead (parity, no hole).
+
+    Pure function; band rows set `WeeklyPrice=OccupencyPrice` and leave
+    `NightlyPrice` unset (the engine's `rule_nightly` derives it identically),
+    never POA.
+    """
+    by_parent: dict[Any, list[dict[str, Any]]] = defaultdict(list)
+    order: list[Any] = []
+    for row in rows:
+        pid = row.get("ID")
+        if pid not in by_parent:
+            order.append(pid)
+        by_parent[pid].append(row)
+
+    out: list[dict[str, Any]] = []
+    for pid in order:
+        group = by_parent[pid]
+        parent = group[0]
+        bands: list[tuple[int, int, Decimal, Any]] = []
+        if parent.get("IsOccupationPrice"):
+            for row in group:
+                occ_id = row.get("OccId")
+                if occ_id is None:
+                    continue
+                frm, to = row.get("OccupencyFrom"), row.get("OccupencyTo")
+                if frm is None or to is None:
+                    continue
+                frm, to = int(frm), int(to)
+                if frm <= 0 or to <= 0 or frm > to:
+                    continue
+                price = _to_decimal(row.get("OccupencyPrice"))
+                if not price:
+                    # A null/zero-price band prices nobody in legacy; dropping it
+                    # lets the base-weekly fallback cover its party range rather
+                    # than leaving a hole (no rule at all).
+                    continue
+                bands.append((frm, to, price, occ_id))
+
+        if not bands:
+            # Not an occupancy rate (or no valid children) → a plain base-weekly
+            # rate row (the LEFT JOIN emits one such row even for orphan children).
+            out.append(parent)
+            continue
+
+        for frm, to, price, occ_id in bands:
+            band = dict(parent)
+            band["ID"] = occ_id
+            band["_legacy_id"] = f"occ-{occ_id}"
+            band["_occ_band"] = (frm, to)
+            band["WeeklyPrice"] = price
+            # Nightly is derived from weekly by the engine (`rule_nightly`, same
+            # HALF_EVEN round) — don't duplicate that here, and clear the
+            # parent's nightly the copy inherited.
+            band["NightlyPrice"] = None
+            band["Price"] = None
+            band["IsPOA"] = False
+            out.append(band)
+
+        gap_bands: list[_Interval] = [(frm, to) for frm, to, _, _ in bands]
+        for k, gap in enumerate(_party_gaps(gap_bands)):
+            fallback = dict(parent)
+            fallback["_legacy_id"] = f"occ-fb-{pid}-{k}"
+            fallback["_occ_band"] = gap
+            out.append(fallback)
+
+    return out
+
+
 class RateRuleLoader(BaseLoader):
     """VillaSeasonRate -> RateRule on the season's default RateCard.
 
     Notes:
     - Skip `IsExTra=1` rows (extras, not base rates).
-    - `resolve_rate_rule_overlaps` runs over the full row set first, so the
-      inserted rules are overlap-free per card; each run is a full replace
-      (purge legacy-loaded rules, reinsert) — see `_load_rows`.
+    - `VillaOccupencyPrice` bands are recovered here (BUG-013): the query LEFT
+      JOINs the child table and `_prepare_occupancy_rows` expands a banded
+      parent into one rule per band plus base-weekly gap fallbacks, keyed on a
+      namespaced `legacy_id` (`occ-*`). See `_prepare_occupancy_rows`.
+    - `resolve_rate_rule_overlaps` runs over the expanded row set first, so the
+      inserted rules (simple + band + fallback) are jointly overlap-free per
+      card; each run is a full replace (purge legacy-loaded rules, reinsert) —
+      see `_load_rows`.
     - max_party falls back to the property's capacity when PartySize is null.
     """
 
     name = "rate_rule"
     target_model = RateRule
     legacy_pk_column = "ID"
+    # LEFT JOIN pulls occupancy bands alongside their parent rate (BUG-013).
+    # Both tables have an `Id`/`ID` PK, so every parent column is `r.`-qualified
+    # to avoid an ambiguous-column error; `VillaOccupencyPrice` has no
+    # `DeletedAt`, so the child is joined on `VillaSeasonRateId` alone. A banded
+    # parent with no children yields one OccId-null row (the base-weekly path).
+    # `IsOccupationPrice` gates band expansion so orphan child rows on a
+    # non-occupancy rate can't override its flat price (matches legacy).
     legacy_query = (
-        "SELECT ID, VillaId, SeasonId, CurrencyId, FromDate, ToDate, "
-        "PartySize, IsPOA, WeeklyPrice, NightlyPrice, Price, "
-        "PriceType, IsExTra, IsApprove, IsAvailable, Description "
-        "FROM VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra <> 1"
+        "SELECT r.ID, r.VillaId, r.SeasonId, r.CurrencyId, r.FromDate, r.ToDate, "
+        "r.PartySize, r.IsPOA, r.WeeklyPrice, r.NightlyPrice, r.Price, "
+        "r.PriceType, r.IsExTra, r.IsApprove, r.IsAvailable, r.Description, "
+        "r.IsOccupationPrice, "
+        "o.Id AS OccId, o.OccupencyFrom, o.OccupencyTo, o.OccupencyPrice "
+        "FROM VillaSeasonRate r "
+        "LEFT JOIN VillaOccupencyPrice o ON o.VillaSeasonRateId = r.ID "
+        "WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1"
     )
 
     def _apply_since(self, query: str) -> str:
@@ -423,6 +548,7 @@ class RateRuleLoader(BaseLoader):
         range would trip it mid-run). UI-created rules (legacy_id NULL)
         are never touched.
         """
+        rows = _prepare_occupancy_rows(rows)
         resolution = resolve_rate_rule_overlaps(rows)
         with transaction.atomic():
             purged, _ = RateRule.objects.filter(legacy_id__isnull=False).delete()
@@ -434,6 +560,17 @@ class RateRuleLoader(BaseLoader):
             party_clipped=resolution.party_clipped,
             purged=purged,
         )
+
+    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
+        # Band / gap-fallback rows carry a namespaced `_legacy_id` so the
+        # VillaOccupencyPrice.Id ↔ VillaSeasonRate.ID sequences can't clobber
+        # one another on upsert. `base._process_row` keys on the "ID" column, so
+        # surface the namespaced id there via a shallow shadow-copy (the
+        # resolver, which reads the integer "ID", has already run).
+        legacy_id = row.get("_legacy_id")
+        if legacy_id is not None:
+            row = {**row, "ID": legacy_id}
+        super()._process_row(row, report)
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         card = RateCard.objects.filter(legacy_id=str(row.get("SeasonId") or "")).first()

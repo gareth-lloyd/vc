@@ -201,7 +201,15 @@ export function RateWorkbenchPage() {
   const activeMatrixRatePlanId =
     matrixRatePlanId != null && allSeasonDetails.some((s) => s.id === matrixRatePlanId)
       ? matrixRatePlanId
-      : (allSeasonDetails.find((d) => (d.periods?.length ?? 0) > 0)?.id ??
+      : // Prefer a plan with periods in the year on screen. The timeline is now
+        // plan-scoped, so a multi-currency property whose plans live in different
+        // years must not default to one with nothing this year — that would read
+        // as "nothing scheduled" and hide the others. Falls back to any plan with
+        // periods, then the first plan.
+        (allSeasonDetails.find((d) =>
+          (d.periods ?? []).some((p) => p.date_from < to && p.date_to >= from),
+        )?.id ??
+        allSeasonDetails.find((d) => (d.periods?.length ?? 0) > 0)?.id ??
         allSeasonDetails[0]?.id ??
         null);
 
@@ -462,7 +470,14 @@ export function RateWorkbenchPage() {
               ))}
             </SelectContent>
           </Select>
-        ) : null}
+        ) : (
+          // Single plan: no picker, so name the plan the ··· menu acts on.
+          <span className="text-foreground text-sm font-medium">
+            {activeSeasonDetail.currency_code
+              ? `${activeSeasonDetail.name} · ${activeSeasonDetail.currency_code}`
+              : activeSeasonDetail.name}
+          </span>
+        )}
         {canWrite ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

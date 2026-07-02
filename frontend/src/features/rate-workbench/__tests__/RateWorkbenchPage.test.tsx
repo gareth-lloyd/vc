@@ -150,6 +150,9 @@ describe("RateWorkbenchPage", () => {
     expect(screen.queryByText("Seasons")).not.toBeInTheDocument();
     expect(screen.getByText("Rate periods")).toBeInTheDocument();
     expect(screen.getByText("Changeover")).toBeInTheDocument();
+    // Single plan → no picker, but the plan (and its currency) is named so the
+    // ··· menu has context.
+    expect(screen.getByText("Summer 2026 · EUR")).toBeInTheDocument();
   });
 
   it("shows the Rates tab in nav to a read-only user (GAP-060 dropped the writer-only gate)", async () => {
@@ -427,6 +430,82 @@ describe("RateWorkbenchPage — period create", () => {
     expect(screen.queryByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeNull();
   });
 
+  it("defaults to a plan with periods in the year on screen when plans span years", async () => {
+    setUser("reservations");
+    // First-listed plan prices only 2027; a second plan prices 2026 (the default
+    // year). Because the timeline is plan-scoped, defaulting to the first plan
+    // would show "nothing scheduled in 2026" and hide the 2026 plan entirely.
+    const offYearPlan = {
+      id: 100,
+      property: 7,
+      name: "USD sheet",
+      currency_code: "USD",
+      effective_from: "2027-01-01",
+      effective_to: "2027-12-31",
+      is_active: true,
+    };
+    const currentPlan = {
+      id: 101,
+      property: 7,
+      name: "EUR sheet",
+      currency_code: "EUR",
+      effective_from: "2026-01-01",
+      effective_to: "2026-12-31",
+      is_active: true,
+    };
+    server.use(
+      http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
+      http.get("/api/v1/properties/7/rate-plans", () =>
+        HttpResponse.json(drfPage([offYearPlan, currentPlan])),
+      ),
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({
+          ...offYearPlan,
+          periods: [
+            {
+              id: 700,
+              plan: 100,
+              name: "Next year",
+              date_from: "2027-06-01",
+              date_to: "2027-06-30",
+              is_active: true,
+              coverage_gaps: [],
+              bands: [{ id: 7, period: 700, min_party: 1, max_party: 8, nightly: "500" }],
+            },
+          ],
+        }),
+      ),
+      http.get("/api/v1/rate-plans/101", () =>
+        HttpResponse.json({
+          ...currentPlan,
+          periods: [
+            {
+              id: 701,
+              plan: 101,
+              name: "This year",
+              date_from: "2026-06-01",
+              date_to: "2026-06-30",
+              is_active: true,
+              coverage_gaps: [],
+              bands: [{ id: 8, period: 701, min_party: 1, max_party: 8, nightly: "600" }],
+            },
+          ],
+        }),
+      ),
+      http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/change-over-rules", () => HttpResponse.json(drfPage([]))),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    // The EUR plan (2026 periods) is chosen, not the first-listed USD plan.
+    expect(
+      await screen.findByRole("button", { name: /This year, 1 Jun 2026/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing scheduled/i)).not.toBeInTheDocument();
+  });
+
   it("offers no per-period + to a non-writer", async () => {
     setUser("viewer");
     installHandlers();
@@ -551,7 +630,7 @@ describe("RateWorkbenchPage — rate-plan lifecycle", () => {
     expect(await screen.findByRole("button", { name: "Add rate plan" })).toBeDisabled();
   });
 
-  it("warns when the active plan.s currency differs from the property currency", async () => {
+  it("warns when the active plan's currency differs from the property currency", async () => {
     setUser("reservations");
     installHandlers();
     server.use(

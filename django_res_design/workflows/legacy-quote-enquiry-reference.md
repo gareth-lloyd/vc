@@ -3,7 +3,7 @@
 The canonical description of the legacy quote/enquiry **screens and flow**, verified against a
 *runnable* April-2025 build of `ResSystem/` (branch `pinned-2025-04-03`, commit `05c69ed`), plus a
 trust map for the quote/enquiry workflow specs in this tree. Promoted from the investigation ticket
-[GAP-010](../todo/gap-010-quote-enquiry-analyzed-wrong-codebase.md), which holds the full history of
+[GAP-010](../todo/done/gap-010-quote-enquiry-analyzed-wrong-codebase.md), which holds the full history of
 how the original analysis went wrong; this document is the living copy.
 
 **Why this document exists.** The workflow specs here were extracted from `ResSystem@main` — but

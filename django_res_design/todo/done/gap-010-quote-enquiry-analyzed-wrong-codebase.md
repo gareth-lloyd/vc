@@ -1,3 +1,17 @@
+> **✅ RESOLVED (2026-07-02)** — normalized on `feat/gap-010-docs` (`bcc58dd`, `33516cc`).
+> **Problem:** this was an errata/reference doc wearing a ticket's filename — the wrong claims it
+> proved stood uncorrected in the live docs, and it couldn't retire while it was the only home of
+> the corrected reference content. **Fix:** §§1–4a (provenance, trust map, corrected claims,
+> 4-screen flow, mockup note) promoted to
+> [`workflows/legacy-quote-enquiry-reference.md`](../../workflows/legacy-quote-enquiry-reference.md)
+> — this file is now the historical record. Errata landed in the live docs: `workflows/README.md`
+> stubs bullet fixed in place (§3.1); `transmission.md` render claim corrected and its open
+> question struck (§3.3); `05-improvements-over-original.md` #7 re-grounded as UX-only (§3.4);
+> target-UX caveats added to `product-design/02+03` (§5.4); GAP-005's baseline premise corrected
+> (§5.3). §5.5 integrity sweep run: 07/08 workflow docs are clean — the only stub-mislabelling
+> was `workflows/README.md:36` (fixed). §5.1 ("trust the backend specs") is encoded in the
+> reference doc's trust map; §5.2 had already shipped as GAP-038/039/042/043/044.
+
 # GAP-010 — Quote/enquiry specs were analysed against the wrong (post-deletion) codebase
 
 - **Severity:** Gap (documentation / spec-fidelity) — tracker + corrected reference
@@ -220,11 +234,11 @@ Person / Holiday Dates / Flex? — match the legacy `/quote` grid; its New-Quote
 Overview mirrors the `ClientDetails` cards; its Rate Lookup mirrors the
 weeks/occupancy model). Use it as the **target** UX reference alongside the
 pinned legacy source. The screen/flow re-derivation called for in §5.2 is now
-ticketed: [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md),
-[GAP-039](done/gap-039-enquiry-dashboard-enrichment.md),
-[GAP-042](done/gap-042-customer-360-profile-view.md),
-[GAP-043](done/gap-043-quote-builder-multi-week-range.md),
-[GAP-044](done/gap-044-occupancy-band-fanout-builder.md).
+ticketed: [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md),
+[GAP-039](gap-039-enquiry-dashboard-enrichment.md),
+[GAP-042](gap-042-customer-360-profile-view.md),
+[GAP-043](gap-043-quote-builder-multi-week-range.md),
+[GAP-044](gap-044-occupancy-band-fanout-builder.md).
 
 ## 5. Recommended follow-up
 

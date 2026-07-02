@@ -39,7 +39,7 @@
   into the version that Ben and I designed") + the mockup at
   https://vc-new-res-system.netlify.app/ → **Quotes & Enquiries**. The mockup's
   columns match the real legacy `/quote` list reconstructed in
-  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md) (VC Ref, Name,
+  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md) (VC Ref, Name,
   Villa Name, Enq/Quote Date, Person, Holiday Dates, Flex?).
 - **Status:** ✅ Resolved (2026-06-19) — dashboard enrichment delivered (see the
   banner above); the remaining inline-edit / date-range / delete affordances are

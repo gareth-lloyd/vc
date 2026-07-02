@@ -33,7 +33,7 @@
 - **Source:** 2026-06-17 owner Loom walkthrough of Quotes & Enquiries + the
   Ben/owner mockup at https://vc-new-res-system.netlify.app/ (the mockup mirrors
   the real legacy 4-screen flow corrected in
-  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md)).
+  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md)).
 - **Status:** ✅ Resolved (2026-06-19) — see the banner above. Built on the
   **already-shipped** quote-stacking work (GAP-005); did not re-spec it.
 - **Files:**

@@ -1087,6 +1087,7 @@
       "season_picker": "Choose a season",
       "segment": "Dates",
       "any_party": "Any party",
+      "party_pax": "{{range}} pax",
       "poa": "POA",
       "fill_cell": "Add a price for this band",
       "cell_menu": "Rule actions",

@@ -191,11 +191,16 @@ export function MatrixEditor({
             <thead>
               <tr className="text-muted-foreground text-left">
                 <th className="py-2 pr-3 font-medium">{t("rate_workbench.matrix.segment")}</th>
-                {matrix.bands.map((b) => (
-                  <th key={bandLabel(b) ?? "any"} className="px-2 py-2 font-medium">
-                    {bandLabel(b) ?? t("rate_workbench.matrix.any_party")}
-                  </th>
-                ))}
+                {matrix.bands.map((b) => {
+                  const label = bandLabel(b);
+                  return (
+                    <th key={label ?? "any"} className="px-2 py-2 font-medium">
+                      {label != null
+                        ? t("rate_workbench.matrix.party_pax", { range: label })
+                        : t("rate_workbench.matrix.any_party")}
+                    </th>
+                  );
+                })}
                 {canWrite ? (
                   <th className="py-2 pl-2">
                     <span className="sr-only">{t("rate_workbench.matrix.add_band")}</span>

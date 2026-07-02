@@ -1,5 +1,22 @@
 # 04 — Pricing
 
+> ⚠️ **Stale rate-model sections (2026-07-02, GAP-056 / SMELL-019).** The "Rate model"
+> below (and the `rate.py` line in the file layout) still describes the retired
+> three-level `RatePlan → RateCard → RateRule` shape. The implemented model is
+> **`Property → RatePlan → RatePeriod → RateBand`**: `RateCard` was dropped;
+> `RatePeriod` owns the (inclusive) date axis plus nullable `min_nights`/`max_nights`;
+> `RateBand` is the per-party-band price row (renamed from `RateRule`); two
+> `btree_gist` EXCLUDEs make overlapping periods and ragged bands structurally
+> impossible. Authoritative sketches:
+> [`todo/done/gap-056-rate-model-restructure-property-period-band.md`](todo/done/gap-056-rate-model-restructure-property-period-band.md)
+> and [`todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md`](todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md).
+> Open follow-up: [`todo/gap-059-rate-period-name-compulsory.md`](todo/gap-059-rate-period-name-compulsory.md)
+> makes `RatePeriod.name` a required operator label. The retired names recur
+> throughout this document (rate-model section, `Discount.card` FK, the engine
+> walkthrough's card-ordering step, serializer/dialog names) — read them with the
+> restructure applied; where this doc and the code disagree, the code and the two
+> done-tickets above are authoritative.
+
 The pricing app is a pure library: given a property, dates, party size, and currency, return a Quote. It has no knowledge of bookings, enquiries, or payments — those import from here.
 
 ## File layout

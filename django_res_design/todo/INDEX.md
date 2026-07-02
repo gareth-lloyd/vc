@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-02, recounted from files): **111 done** (106 resolved + 5 dropped), **24 open**
+Scoreboard (2026-07-02, recounted from files): **111 done** (106 resolved + 5 dropped), **26 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -98,13 +98,15 @@ follow-up.)
 | [GAP-055](done/gap-055-occupancy-band-week-picker.md) | Quote builder: two-dimensional picker (week choice × occupancy bands) [GAP-044b] | ✅ resolved (2026-07-01) — lifts GAP-044's picker-suppression: a banded villa now shows the **week picker *and* the selected week's bands**; pick a week → its bands fan out → each saves at the chosen week's dates. Almost FE-only, zero new pricing cost (the `flex_days:0` reprice already returns the week's bands; only `stayRepriceSchema` needed the field). `resolvedBands` decoupled from reprice `available` (out-of-bracket stays saveable), checked-by-party-range-identity, `d68c1c1`/`37f6936`/`479b7e3`. Per-week chip "from" price / shortlist week-change / per-band override deferred |
 | [GAP-057](gap-057-2fa-enforcement-and-refund-stepup.md) | 2FA: staff enrolment enforcement + refund-execution step-up | ⬜ converted from Q-008 (policy decided 2026-07-02); 6-unit plan in ticket |
 | [GAP-058](gap-058-comms-pull-only-top-of-spine.md) | comms pull-only: retire all 7 blessed comms back-edges (reminder sweep → comms.tasks, password-reset signal, self-mounted email routes) | ⬜ converted from Q-017 (decision recorded 2026-07-02); 3-unit plan + docs in ticket |
+| [GAP-059](gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ⬜ expanded 2026-07-02; 4-unit plan in ticket — all legacy-migrated periods currently blank, workbench creates them blank, FE has 4 divergent fallbacks |
+| [GAP-060](gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ⬜ FE-only; parity punch-list (rate-plan create/edit/duplicate/delete + period edit/delete must land in the Workbench first — a near-verbatim port from PricingTab), then rename + delete; 4-unit plan in ticket |
 
 ## Open product questions
 
 | Id | Title | Status |
 |---|---|---|
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
-| [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ Q1 answered (both % and fixed reductions, specific weeks) |
+| [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ all questions answered + design decided 2026-07-02 (field shape, hazards, 8-unit build sketch in ticket); build not started |
 | [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed — questions drafted (A1–A3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); GAP-024's safe `beds` relaxation already shipped |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
 | [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ questions drafted (B1–B4, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); seeding half buildable now; groups stay (owner removal deemed premature) |

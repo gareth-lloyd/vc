@@ -74,7 +74,7 @@ export function MatrixEditor({
   const deleteRule = useDeleteRateBand(ratePlanId);
 
   // One create-dialog state for all three entry points: empty-cell fill,
-  // per-row "+ Add band", and coverage-gap chips.
+  // the trailing-column "+", and coverage-gap chips.
   const [creatingBand, setCreatingBand] = useState<{
     periodId: number;
     minParty: number;
@@ -209,62 +209,79 @@ export function MatrixEditor({
               </tr>
             </thead>
             <tbody>
-              {matrix.segments.map((segment, row) => (
-                <tr key={segment.periodId} className="border-border border-t">
-                  <td className="py-2 pr-3 align-middle whitespace-nowrap">
-                    {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
-                    {segment.name ? (
-                      <span className="text-muted-foreground ml-2">{segment.name}</span>
+              {matrix.segments.map((segment, row) => {
+                const rowCells = matrix.cells[row];
+                // The "+" always sits right of the row's last band: when an
+                // empty fillable cell is there, its own "+" is the add
+                // affordance; only otherwise (last band in the final column,
+                // or everything to its right covered) does the trailing
+                // column carry one. And when the create seed itself would
+                // overlap one of the period's bands (an unbounded band
+                // already covers it), saving could only 4xx — no "+" at all.
+                const lastBandCol = rowCells.reduce((acc, c, i) => (c.band ? i : acc), -1);
+                const period = periods.find((p) => p.id === segment.periodId);
+                const seed = period ? bandCreateSeed(period) : { minParty: 1, maxParty: 1 };
+                const seedCovered = (period?.bands ?? []).some(
+                  (b) =>
+                    (b.min_party == null || b.min_party <= seed.maxParty) &&
+                    (b.max_party == null || b.max_party >= seed.minParty),
+                );
+                const showTrailingAdd =
+                  lastBandCol >= 0 &&
+                  !seedCovered &&
+                  !rowCells.some((c, i) => i > lastBandCol && c.fillable);
+                return (
+                  <tr key={segment.periodId} className="border-border border-t">
+                    <td className="py-2 pr-3 align-middle whitespace-nowrap">
+                      {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
+                      {segment.name ? (
+                        <span className="text-muted-foreground ml-2">{segment.name}</span>
+                      ) : null}
+                    </td>
+                    {rowCells.map((cell, col) => (
+                      <td key={`${row}-${col}`} className="px-2 py-1 align-middle">
+                        <MatrixCell
+                          cell={cell}
+                          currencyCode={currencyCode}
+                          canWrite={canWrite}
+                          onCommitPrice={(bandId, field, value) =>
+                            price.mutate({ bandId, field, value })
+                          }
+                          onEditBand={setEditingBand}
+                          onFill={(c) =>
+                            setCreatingBand({
+                              periodId: c.periodId,
+                              minParty: c.minParty ?? 1,
+                              maxParty: c.maxParty ?? 1,
+                            })
+                          }
+                          onDeleteBand={setDeletingBand}
+                        />
+                      </td>
+                    ))}
+                    {canWrite ? (
+                      <td className="py-1 pl-2 align-middle">
+                        {showTrailingAdd ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground/60"
+                            aria-label={t("rate_workbench.matrix.add_band_for", {
+                              period:
+                                segment.name ||
+                                `${formatDate(segment.dateFrom)} – ${formatDate(segment.dateTo)}`,
+                            })}
+                            onClick={() => setCreatingBand({ periodId: segment.periodId, ...seed })}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                      </td>
                     ) : null}
-                  </td>
-                  {matrix.cells[row].map((cell, col) => (
-                    <td key={`${row}-${col}`} className="px-2 py-1 align-middle">
-                      <MatrixCell
-                        cell={cell}
-                        currencyCode={currencyCode}
-                        canWrite={canWrite}
-                        onCommitPrice={(bandId, field, value) =>
-                          price.mutate({ bandId, field, value })
-                        }
-                        onEditBand={setEditingBand}
-                        onFill={(c) =>
-                          setCreatingBand({
-                            periodId: c.periodId,
-                            minParty: c.minParty ?? 1,
-                            maxParty: c.maxParty ?? 1,
-                          })
-                        }
-                        onDeleteBand={setDeletingBand}
-                      />
-                    </td>
-                  ))}
-                  {canWrite ? (
-                    <td className="py-1 pl-2 align-middle whitespace-nowrap">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground h-6 px-2 text-xs"
-                        aria-label={t("rate_workbench.matrix.add_band_for", {
-                          period:
-                            segment.name ||
-                            `${formatDate(segment.dateFrom)} – ${formatDate(segment.dateTo)}`,
-                        })}
-                        onClick={() => {
-                          const period = periods.find((p) => p.id === segment.periodId);
-                          setCreatingBand({
-                            periodId: segment.periodId,
-                            ...(period ? bandCreateSeed(period) : { minParty: 1, maxParty: 1 }),
-                          });
-                        }}
-                      >
-                        <Plus className="h-3 w-3" />
-                        {t("rate_workbench.matrix.add_band")}
-                      </Button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

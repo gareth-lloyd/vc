@@ -289,6 +289,7 @@
           "currency": "Currency",
           "currency_placeholder": "Select currency",
           "price_basis": "Price basis",
+          "dates": "Dates",
           "effective_from": "Effective from",
           "effective_to": "Effective to",
           "is_active": "Active",

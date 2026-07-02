@@ -16,7 +16,7 @@ model evolves. Known issues and planned changes live in
 |---|---|---|
 | `accounts` | Auth users, the unified `Person` identity (booking-side customers + owners/agents/managers), sessions, RBAC | `User`, `Person` |
 | `properties` | The villa catalogue + inheritable per-property settings/finance + geography | `Property` |
-| `pricing` | Three-tier price model + surcharges/discounts + FX | `RatePlan` → `RateCard` → `RateRule` |
+| `pricing` | Three-tier price model + surcharges/discounts + FX | `RatePlan` → `RatePeriod` → `RateBand` |
 | `reservations` | Enquiry → Quotation → Booking lifecycle, plus guests, terms, holds, concierge | `Booking`, `Quotation` (customer = `accounts.Person`) |
 | `payments` | Unified payment ledger + events + refunds + webhooks + security deposit | `Payment` |
 | `comms` | Email sending (SMTP profiles, templates, append-only log) | `EmailLog` |
@@ -52,7 +52,7 @@ anchors, a lookup/config row, or a cross-cutting audit/sync record.
 ## 3. Relationships (high-level)
 
 ```
-Property ─1:N→ RatePlan ─1:N→ RateCard ─1:N→ RateRule
+Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
          ─1:1→ PropertySettings, PropertyFinance, PropertyCapacity
          ─1:N→ Room, PropertyImage, PropertyDescription, PropertyLocation
          ─M:M→ Person (via PropertyContactAssignment)

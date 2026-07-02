@@ -293,6 +293,25 @@ Small curated taxonomy (airport, beach, restaurant, station, etc.) FK'd from `Pr
 
 ### 2.4 Pricing
 
+> ⚠️ **Superseded surface (2026-07-02, GAP-056 / SMELL-019).** The Season /
+> Rate Card / Rate Rule endpoints below describe the retired model and no
+> longer exist. The implemented surface (see `django_res/pricing/urls.py`) is
+> period-native — `Property → RatePlan → RatePeriod → RateBand`, no card level:
+>
+> - `GET/POST /properties/{id}/rate-plans` · `POST /properties/{id}/rate-plans:carry-forward`
+> - `GET/PATCH/DELETE /rate-plans/{id}` · `POST /rate-plans/{id}:duplicate`
+> - `GET/POST /rate-plans/{id}/rate-periods` · `GET/PATCH/DELETE /periods/{id}`
+> - `GET/POST /periods/{id}/bands` · `GET/PATCH/DELETE /bands/{id}`
+>
+> Band writes are still validated serializer-side against the DB constraints
+> (band ranges are per-period; periods on a plan are EXCLUDE-disjoint). Open
+> follow-up: [`../todo/gap-059-rate-period-name-compulsory.md`](../todo/gap-059-rate-period-name-compulsory.md)
+> makes `name` required on period writes. The Extras and quote-helper endpoints
+> further down remain accurate; in the Discounts table, `pricing.Discount` is now
+> **property-scoped only** (the `card` FK went with `RateCard`), so the
+> `/rate-cards/{id}/discounts` routes and the card-or-property body rule no
+> longer exist.
+
 Three-level hierarchy: **Season → Rate Card → Rate Rule**. Seasons are scoped to a property; rate cards live inside a season; rate rules carry the actual prices (one row per date sub-range × party-size band). Occupancy bands are not a separate resource — they are sibling rate rules sharing a date range with different party ranges. Date ranges are not a separate resource — they are columns on rate rule.
 
 Backed by `pricing.RatePlan` (= Season), `pricing.RateCard`, and `pricing.RateRule` respectively.

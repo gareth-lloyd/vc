@@ -18,11 +18,13 @@ const rateBand: WorkbenchBand = {
   sourceId: 50,
   sublane: 0,
   meta: {
+    planId: 5,
     planName: "Summer",
     minPrice: 900,
     maxPrice: 900,
     currencyCode: "EUR",
     priceTier: "high",
+    addAfter: { date_from: "2026-09-01" },
   },
 };
 
@@ -68,7 +70,46 @@ describe("TimelineBand — add-after affordance", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Add a rate period starting 1 Sep 2026" }));
-    expect(onAddAfter).toHaveBeenCalledWith("2026-09-01");
+    expect(onAddAfter).toHaveBeenCalledWith({ planId: 5, date_from: "2026-09-01" });
+  });
+
+  it("hands the writer a gap-bounded prefill when the next period caps it", async () => {
+    const user = userEvent.setup();
+    const onAddAfter = vi.fn();
+    const bounded: WorkbenchBand = {
+      ...rateBand,
+      meta: { ...rateBand.meta, addAfter: { date_from: "2026-09-01", date_to: "2026-09-14" } },
+    };
+    renderWithProviders(
+      <TimelineBand
+        band={bounded}
+        windowStart={windowStart}
+        dayCount={dayCount}
+        onAddAfter={onAddAfter}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Add a rate period starting 1 Sep 2026" }));
+    expect(onAddAfter).toHaveBeenCalledWith({
+      planId: 5,
+      date_from: "2026-09-01",
+      date_to: "2026-09-14",
+    });
+  });
+
+  it("offers no + when the next period is contiguous (no addAfter prefill)", () => {
+    const contiguous: WorkbenchBand = {
+      ...rateBand,
+      meta: { ...rateBand.meta, addAfter: undefined },
+    };
+    renderWithProviders(
+      <TimelineBand
+        band={contiguous}
+        windowStart={windowStart}
+        dayCount={dayCount}
+        onAddAfter={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
   });
 
   it("offers no + without a handler (read-only)", () => {

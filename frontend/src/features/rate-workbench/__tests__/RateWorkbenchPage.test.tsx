@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { describe, expect, it, afterEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -352,12 +352,87 @@ describe("RateWorkbenchPage — period create", () => {
     setup("/properties/casa-sur/rate-workbench");
 
     const user = userEvent.setup();
-    // The "Standard" period runs Jun 1 – Jun 28 → its + starts Jun 29.
+    // "Peak" is the plan's last period (ends Aug 31) → its + starts Sep 1.
+    await user.click(
+      await screen.findByRole("button", { name: "Add a rate period starting 1 Sep 2026" }),
+    );
+    // "Standard" (Jun 1–28) is immediately followed by "Peak" (Jun 29–) — a
+    // create there can never succeed, so it gets no + at all.
+    expect(
+      screen.queryByRole("button", { name: "Add a rate period starting 29 Jun 2026" }),
+    ).toBeNull();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+  });
+
+  it("caps the + prefill at the day before the next period when there is a gap", async () => {
+    setUser("reservations");
+    installHandlers();
+    // Pull "Peak" later so a Jun 29 – Jul 14 hole opens between the periods.
+    server.use(
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({
+          ...ratePlanDetail,
+          periods: [
+            ratePlanDetail.periods[0],
+            { ...ratePlanDetail.periods[1], date_from: "2026-07-15" },
+          ],
+        }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", { name: "Add a rate period starting 29 Jun 2026" }),
     );
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-06-29");
+    expect(within(dialog).getByLabelText(/^To$/i)).toHaveValue("2026-07-14");
+  });
+
+  it("creates the period under the clicked band's plan, not the matrix selection", async () => {
+    setUser("reservations");
+    installMultiSeasonHandlers();
+    const posted: Array<Record<string, unknown>> = [];
+    const winterPeriod = {
+      id: 601,
+      plan: 101,
+      name: "Early winter",
+      date_from: "2026-11-01",
+      date_to: "2026-11-30",
+      is_active: true,
+      coverage_gaps: [],
+      bands: [],
+    };
+    server.use(
+      // Winter (plan 101) has a period; the matrix still defaults to Summer (100).
+      http.get("/api/v1/rate-plans/101", () =>
+        HttpResponse.json({ ...winterSeason, periods: [winterPeriod] }),
+      ),
+      http.post("/api/v1/rate-plans/101/rate-periods", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(
+          { ...winterPeriod, id: 602, name: "December", date_from: "2026-12-01" },
+          { status: 201 },
+        );
+      }),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Add a rate period starting 1 Dec 2026" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-12-01");
+    await user.type(within(dialog).getByLabelText(/Name/i), "December");
+    await user.type(within(dialog).getByLabelText(/^To$/i), "2026-12-31");
+    await user.click(within(dialog).getByRole("button", { name: /Save/i }));
+
+    // The POST must hit plan 101 (the band's owner), not 100 (the matrix plan).
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ date_from: "2026-12-01", date_to: "2026-12-31" });
   });
 
   it("offers no per-period + to a non-writer", async () => {

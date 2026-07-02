@@ -65,9 +65,12 @@ export function RateWorkbenchPage() {
   // first season that has periods once details load.
   const [matrixRatePlanId, setMatrixRatePlanId] = useState<number | null>(null);
   // Period-create dialog: null = closed; an (empty-allowed) prefill = open.
-  // Three openers share it — header button / matrix empty state (day after the
-  // latest period) and coverage-gap clicks (the gap's own inclusive range).
+  // Four openers share it — header button / matrix empty state (day after the
+  // latest period), coverage-gap clicks (the gap's own inclusive range), and
+  // the per-period timeline "+" (free range after the period, which also
+  // names the owning plan; without a planId the matrix's plan is the target).
   const [periodPrefill, setPeriodPrefill] = useState<{
+    planId?: number;
     date_from?: string;
     date_to?: string;
   } | null>(null);
@@ -218,9 +221,7 @@ export function RateWorkbenchPage() {
               ? (gap) => setPeriodPrefill({ date_from: gap.from, date_to: gap.to })
               : undefined
           }
-          onAddAfter={
-            canWrite ? (dateFrom) => setPeriodPrefill({ date_from: dateFrom }) : undefined
-          }
+          onAddAfter={canWrite ? (prefill) => setPeriodPrefill(prefill) : undefined}
         />
       );
     }
@@ -294,8 +295,8 @@ export function RateWorkbenchPage() {
         />
         {periodPrefill != null ? (
           <RatePeriodFormDialog
-            key={activeMatrixRatePlanId}
-            ratePlanId={activeMatrixRatePlanId}
+            key={periodPrefill.planId ?? activeMatrixRatePlanId}
+            ratePlanId={periodPrefill.planId ?? activeMatrixRatePlanId}
             open
             onOpenChange={(o) => {
               if (!o) setPeriodPrefill(null);

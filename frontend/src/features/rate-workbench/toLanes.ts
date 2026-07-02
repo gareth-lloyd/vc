@@ -43,6 +43,11 @@ export interface BandMeta {
   hasPoa?: boolean;
   /** Rates: the period exists but has no bands yet — rendered as an outline. */
   noRates?: boolean;
+  /** Rates: prefill for the "add a period after this one" affordance — absent
+   * when the plan's next period is contiguous (a create there can never pass
+   * the DB EXCLUDE). `date_to` caps the range at the day before the plan's
+   * next period, when one exists. */
+  addAfter?: { date_from: string; date_to?: string };
   /** Coverage: an unpriced gap in the selected plan (clickable for writers). */
   isGap?: boolean;
   /**
@@ -183,8 +188,9 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     meta: { currencyCode: season.currency_code ?? null, isActive: season.is_active ?? true },
   }));
 
-  const rateBandsUntiered: RawBand[] = input.ratePlanDetails.flatMap((plan) =>
-    (plan.periods ?? []).map((period) => {
+  const rateBandsUntiered: RawBand[] = input.ratePlanDetails.flatMap((plan) => {
+    const periods = plan.periods ?? [];
+    return periods.map((period) => {
       // A zero-band period still occupies its dates (the DB EXCLUDE reserves
       // them), so it renders as a "no rates yet" outline rather than vanishing.
       const bands = period.bands ?? [];
@@ -194,6 +200,25 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       const prices = bands
         .map((r) => numeric(r.nightly) ?? numeric(r.weekly))
         .filter((v): v is number => v != null);
+      // "Add a period after this one" prefill, scoped to the OWNING plan:
+      // the free range runs from the day after this period to the day before
+      // the plan's next one. A contiguous successor leaves no free day, so no
+      // prefill — the affordance is suppressed rather than offering a create
+      // the DB EXCLUDE is guaranteed to reject. Plan periods never overlap
+      // (same EXCLUDE), so the earliest start after this period IS the next.
+      const nextFrom = periods.reduce<string | null>(
+        (min, p) =>
+          p.date_from > period.date_to && (min == null || p.date_from < min) ? p.date_from : min,
+        null,
+      );
+      const dayAfter = addDaysIso(period.date_to, 1);
+      const addAfter =
+        nextFrom === dayAfter
+          ? undefined
+          : {
+              date_from: dayAfter,
+              ...(nextFrom != null ? { date_to: addDaysIso(nextFrom, -1) } : {}),
+            };
       return {
         id: `period-${period.id}`,
         // GAP-056: the period owns the dates — no need to derive them from bands.
@@ -209,10 +234,11 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
           maxPrice: prices.length ? Math.max(...prices) : null,
           hasPoa: bands.some((r) => r.is_poa),
           noRates: bands.length === 0,
+          addAfter,
         },
       };
-    }),
-  );
+    });
+  });
 
   // Rank ALL rate cards across the whole lane by min price into global tertiles,
   // so overlapping cards get distinct tone intensities regardless of which plan

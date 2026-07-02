@@ -10,7 +10,7 @@ interface TimelineLaneProps {
   dayCount: number;
   ticks: MonthTick[];
   onGapClick?: (gap: { from: string; to: string }) => void;
-  onAddAfter?: (dateFrom: string) => void;
+  onAddAfter?: (prefill: { planId: number; date_from: string; date_to?: string }) => void;
 }
 
 /** One concern lane: a sticky-left label + a relative band track with month gridlines. */

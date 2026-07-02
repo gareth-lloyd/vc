@@ -167,6 +167,63 @@ describe("toLanes", () => {
     });
   });
 
+  it("computes addAfter per period: suppressed when contiguous, capped at the next period, open for the last", () => {
+    const period = (id: number, date_from: string, date_to: string) => ({
+      id,
+      plan: 5,
+      name: `p${id}`,
+      date_from,
+      date_to,
+      coverage_gaps: [],
+      bands: [],
+    });
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          periods: [
+            // Deliberately unsorted: neighbour lookup must not rely on order.
+            period(52, "2026-08-10", "2026-08-31"),
+            period(50, "2026-06-01", "2026-06-28"),
+            period(51, "2026-06-29", "2026-07-26"),
+          ],
+        }),
+      ],
+    });
+    const meta = (id: number) => lane(lanes, "rates").bands.find((b) => b.sourceId === id)!.meta;
+    // 51 starts the day after 50 ends → nothing can be created between them.
+    expect(meta(50).addAfter).toBeUndefined();
+    // Gap between 51 and 52 → prefill spans exactly the free range.
+    expect(meta(51).addAfter).toEqual({ date_from: "2026-07-27", date_to: "2026-08-09" });
+    // No successor → open-ended prefill (dialog suggests the end).
+    expect(meta(52).addAfter).toEqual({ date_from: "2026-09-01" });
+  });
+
+  it("scopes addAfter neighbours to the owning plan, ignoring other plans' periods", () => {
+    const period = (id: number, plan: number, date_from: string, date_to: string) => ({
+      id,
+      plan,
+      name: `p${id}`,
+      date_from,
+      date_to,
+      coverage_gaps: [],
+      bands: [],
+    });
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({ id: 5, name: "A", periods: [period(50, 5, "2026-06-01", "2026-06-28")] }),
+        // Plan B prices the day right after plan A's period — must not suppress A's "+".
+        detail({ id: 6, name: "B", periods: [period(60, 6, "2026-06-29", "2026-07-26")] }),
+      ],
+    });
+    const meta = (id: number) => lane(lanes, "rates").bands.find((b) => b.sourceId === id)!.meta;
+    expect(meta(50).addAfter).toEqual({ date_from: "2026-06-29" });
+    expect(meta(60).addAfter).toEqual({ date_from: "2026-07-27" });
+  });
+
   it("takes one price per band (its own basis), never mixing nightly with weekly", () => {
     const lanes = toLanes({
       ...base(),

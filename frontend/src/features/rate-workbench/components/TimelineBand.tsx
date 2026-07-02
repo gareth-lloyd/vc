@@ -16,9 +16,11 @@ interface TimelineBandProps {
    * IS the write affordance — omit it for read-only users. */
   onGapClick?: (gap: { from: string; to: string }) => void;
   /** Rates lane only: a hover-revealed "+" at the band's right edge creates a
-   * period starting the day after this one. Same contract as `onGapClick` —
-   * the handler is the affordance, omit it for read-only users. */
-  onAddAfter?: (dateFrom: string) => void;
+   * period in the free range after this one (`band.meta.addAfter`, absent when
+   * the next period is contiguous), under the band's OWN plan. Same contract
+   * as `onGapClick` — the handler is the affordance, omit it for read-only
+   * users. */
+  onAddAfter?: (prefill: { planId: number; date_from: string; date_to?: string }) => void;
 }
 
 /**
@@ -40,7 +42,11 @@ export function TimelineBand({
 
   const dates = { from: formatDate(band.dateFrom), to: formatDate(band.dateTo) };
   const gapClickable = !!band.meta.isGap && !!onGapClick;
-  const addable = band.laneKey === "rates" && !!onAddAfter;
+  const addPrefill =
+    band.laneKey === "rates" && onAddAfter && band.meta.planId != null && band.meta.addAfter
+      ? { planId: band.meta.planId, ...band.meta.addAfter }
+      : undefined;
+  const addable = addPrefill != null;
   const positionStyle = {
     left: `${geometry.leftPct}%`,
     width: `${geometry.widthPct}%`,
@@ -78,7 +84,7 @@ export function TimelineBand({
     </HoverCard>
   );
 
-  if (!addable) return bandButton;
+  if (!addPrefill) return bandButton;
 
   // The "+" can't nest inside the band <button>, so a positioned `group`
   // wrapper takes the geometry and the two become siblings; the "+" sits on
@@ -89,9 +95,9 @@ export function TimelineBand({
       <button
         type="button"
         aria-label={t("rate_workbench.band.add_after_aria", {
-          date: formatDate(band.dateToExclusive),
+          date: formatDate(addPrefill.date_from),
         })}
-        onClick={() => onAddAfter(band.dateToExclusive)}
+        onClick={() => onAddAfter?.(addPrefill)}
         className="bg-primary text-primary-foreground focus-visible:ring-ring absolute top-1/2 -right-2 z-10 flex size-4 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none"
       >
         <Plus className="size-3" aria-hidden />

@@ -18,8 +18,8 @@
   audit, FG-001 interplay, render path). Spec-provenance caveat per
   [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md): the quote-screen specs were
   reverse-engineered from the post-deletion codebase, so the currency selector was never
-  a legacy behaviour. Sibling of [GAP-005](gap-005-quotation-flow-parity.md) and
-  [GAP-013](gap-013-quote-builder-ux-feedback-loops.md).
+  a legacy behaviour. Sibling of [GAP-005](../gap-005-quotation-flow-parity.md) and
+  [GAP-013](../gap-013-quote-builder-ux-feedback-loops.md).
 - **Files:**
   - `django_res/pricing/services/engine.py` — `_load_real_context` exact-matches
     `RatePlan.currency`; `currency` is a required input to `PricingEngine.quote()`
@@ -199,9 +199,9 @@ currency per `04-pricing.md`.
   ticket** (header-equality fix obsolete; invariant moves to the line currency).
 - [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md) — provenance: the
   selector came from the wrong-baseline analysis.
-- [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) — its item 3
+- [GAP-013](../gap-013-quote-builder-ux-feedback-loops.md) — its item 3
   (currency-change confirm) is mooted by this ticket; coordinate.
-- [GAP-005](gap-005-quotation-flow-parity.md) — flow tracker; this is a pricing/search
+- [GAP-005](../gap-005-quotation-flow-parity.md) — flow tracker; this is a pricing/search
   parity slice of the same surface.
 - [Q-005](q-005-currency-display-base.md) — reports/FX normalisation is separate and
   unaffected.

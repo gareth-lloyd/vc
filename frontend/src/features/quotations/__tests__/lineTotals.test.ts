@@ -5,10 +5,10 @@ import {
   lineEffectiveTotal,
   stagedLineErrors,
 } from "../lineTotals";
-import type { StagedBand, StagedLine } from "../schemas";
+import { type StagedBand, type StagedLine, stagedLineId } from "../schemas";
 
 function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
-  return {
+  const base = {
     property_id: 7,
     property_name: "Villa Sol",
     hero_image_url: null,
@@ -28,6 +28,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     notes: "",
     ...overrides,
   };
+  return { line_id: stagedLineId(base.property_id, base.date_from), ...base };
 }
 
 function band(overrides: Partial<StagedBand> = {}): StagedBand {

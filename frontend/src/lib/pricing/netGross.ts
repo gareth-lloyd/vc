@@ -5,15 +5,13 @@
  * pays). Staff type one figure and pick the basis; this derives the counterpart
  * *for display only* — the canonical stored figure is always exactly what was
  * typed, plus the plan's `price_basis`. Persisting the derived side would
- * double-count against the BUG-009 engine carve-out at quote time.
+ * double-count against the engine's basis-aware carve-out at quote time.
  *
- * The math mirrors the **corrected** pricing-engine spec — mode-aware steps 8-9
- * (`django_res_design/04-pricing.md`, legacy `RatesModel.Calculate()`). NOTE:
- * the *current* engine still adds commission+tax on top for every plan
- * (BUG-009's mode-aware carve-out is deferred to the finance rewrite), so a
- * band entered here will price identically at quote time only *once BUG-009
- * lands* — until then the live hint can differ from today's engine output (it
- * shows the figure the engine *should* produce). The math:
+ * The math mirrors the pricing engine's mode-aware steps 8-9
+ * (`django_res_design/04-pricing.md`, legacy `RatesModel.Calculate()`;
+ * implemented by BUG-009 — `PricingEngine._derive_commission_and_tax`, same
+ * quantization order: the raw commission feeds the tax base, rounding at the
+ * end), so a band entered here prices identically at quote time. The math:
  *
  *   GROSS (typed = guest gross) → derive owner net, by carving out:
  *     tax        = gross × taxPct/100                  (0 when exempt)

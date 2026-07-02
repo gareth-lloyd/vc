@@ -100,7 +100,7 @@ Owned by `Property` (CASCADE OneToOne) — no independent lifecycle. Hard-delete
 - `country` — FK Country PROTECT
 - `latitude` — DecimalField(9, 6, null=True, blank=True), validated to ±90
 - `longitude` — DecimalField(9, 6, null=True, blank=True), validated to ±180
-- `timezone` — CharField(max_length=64, default `"UTC"`), IANA name validated by `validate_iana_timezone`. A geographic fact of the *place* (follows `country`), not a property/group policy — hence it lives here, not on `PropertySettings`. See [FG-008](todo/fg-008-property-timezone.md).
+- `timezone` — CharField(max_length=64, default `"UTC"`), IANA name validated by `validate_iana_timezone`. A geographic fact of the *place* (follows `country`), not a property/group policy — hence it lives here, not on `PropertySettings`. See [FG-008](todo/done/fg-008-property-timezone.md).
 
 Replaces lat/lng as `nvarchar(500)` in legacy.
 

@@ -1,6 +1,6 @@
 # Villa Collective — Django REST + React SPA Design Package
 
-Top-level index. This directory contains **two complementary design packages** for rebuilding the .NET / Blazor villa-rental system (`../ResSystem/`) as a Django REST API + React SPA.
+Top-level index. This directory contains **two complementary design packages** for rebuilding the .NET / Blazor villa-rental system (`../ResSystem/`) as a Django REST API + React SPA, plus the as-built **workflow specs** in `workflows/` that underpin both.
 
 ## Package A — Backend Data Model (top-level files)
 
@@ -31,6 +31,10 @@ Files:
 - `04-rest-api-surface.md` — REST endpoint inventory. Specification only — no payload schemas.
 - `05-improvements-over-original.md` — catalog of deliberate UX/UX departures with rationale.
 - `06-verification.md` — how to validate the design, stakeholder review checklist, open questions requiring user decisions before implementation begins.
+
+## Workflow specs (in `workflows/`)
+
+Per-workflow extraction of the legacy system's as-built behaviour — see [`workflows/README.md`](./workflows/README.md) for the domain index. For the legacy quote/enquiry screens specifically, start from [`workflows/legacy-quote-enquiry-reference.md`](./workflows/legacy-quote-enquiry-reference.md) — the corrected reference for what the pre-deletion legacy UI actually did, plus a trust map for the quote/enquiry specs.
 
 ## Relationship between the packages
 

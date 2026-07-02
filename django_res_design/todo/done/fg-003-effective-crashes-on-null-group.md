@@ -47,5 +47,5 @@ option 2 if not.
 
 ## Dependencies
 
-May fold into [FG-002](fg-002-effective-null-vs-empty-string.md) since
+May fold into [FG-002](../fg-002-effective-null-vs-empty-string.md) since
 both touch the same resolver — consider doing them together.

@@ -1,27 +1,18 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney, parseMoney } from "@/lib/format/money";
-import type { PriceBasis } from "@/lib/pricing/netGross";
 import type { PriceQuote } from "../schemas";
 
 interface QuoteResultCardProps {
   quote: PriceQuote;
   /** Resolved "Season · Period" label for the winning period, when known. */
   periodLabel?: string | null;
-  /**
-   * Price basis of the winning plan, used to reconcile the guest total. GROSS
-   * plans mis-report `total` (BUG-009: commission added on top), so we recompute
-   * it from the shown lines; NET plans report a correct `total` and any gap over
-   * the lines is real taxes/fees. Defaults to "gross" — the safe reconciling
-   * path for all legacy data.
-   */
-  basis?: PriceBasis;
 }
 
 const nonZero = (value: string | undefined): boolean => !!value && Number(value) !== 0;
 
 /** parseMoney, but a missing/blank amount reads as 0 rather than NaN. */
-const money = (value: string | undefined): number => {
+const money = (value: string | null | undefined): number => {
   const n = parseMoney(value ?? "");
   return Number.isNaN(n) ? 0 : n;
 };
@@ -36,12 +27,13 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /**
- * Guest-side quote breakdown. Shows the guest total and its components (rate,
- * inclusions, opt-in extras, discount) — but deliberately NOT owner economics
- * (net_to_owner / commission / tax): the engine mis-prices those for GROSS
- * plans (BUG-009), so we mark them pending rather than headline a wrong number.
+ * Guest-side quote breakdown plus owner economics. The engine's `total` is
+ * `price_basis`-aware (BUG-009): the guest figure for GROSS (commission+tax
+ * carved out of the rate) and NET (grossed up) alike, so it is trusted as the
+ * headline. Owner economics (net_to_owner / commission / tax) render in their
+ * own section when the response carries them.
  */
-export function QuoteResultCard({ quote, periodLabel, basis }: QuoteResultCardProps) {
+export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
   const { t } = useTranslation("properties");
   const currency = quote.currency_code ?? null;
   const nights = quote.lines.length;
@@ -50,23 +42,29 @@ export function QuoteResultCard({ quote, periodLabel, basis }: QuoteResultCardPr
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // The guest total that reconciles with the lines above: rate + extras −
-  // discount. This is the correct guest figure for GROSS plans (where the
-  // engine's `total` is inflated by commission) and the components' running sum
-  // for NET plans.
   const lineSum = money(quote.rate_subtotal) + money(quote.extras_total) - money(quote.discount);
-  // Under NET the engine's `total` is the guest-facing figure and any excess
-  // over the line sum is genuine taxes/fees, surfaced as its own line. We only
-  // trust `total` when it's actually present and not below the line sum — a
-  // missing `total` (schema-optional) or an under-the-lines total would make the
-  // breakdown fail to add up, so those fall back to the reconciled line sum
-  // (identical to the GROSS path). Under GROSS we ignore `total` entirely.
-  const totalNum = money(quote.total);
-  const hasUsableTotal = quote.total != null && !Number.isNaN(parseMoney(quote.total));
-  const isNet = basis === "net" && hasUsableTotal && totalNum >= lineSum - 0.005;
-  const taxesFees = isNet ? totalNum - lineSum : 0;
+  // Trust the engine total; fall back to the reconciled line sum only when a
+  // (schema-optional) `total` is missing or unparseable — never headline £0.00.
+  const totalNum = parseMoney(quote.total ?? "");
+  const guestTotal = Number.isNaN(totalNum) ? lineSum : totalNum;
+  // "Taxes & fees" is the NET gross-up the guest pays on top of the owner net,
+  // taken from the engine's own commission+tax figures rather than re-derived
+  // by subtracting money (the same money renders owner-side below, under its
+  // explicit labels). GROSS plans carry commission+tax inside the rate — no
+  // additive guest line. Responses predating `price_basis` fall back to the
+  // total-over-lines gap.
+  const componentSum = money(quote.commission) + money(quote.tax);
+  const hasComponents = quote.commission != null || quote.tax != null;
+  const taxesFees =
+    quote.price_basis === "gross"
+      ? 0
+      : quote.price_basis === "net" && hasComponents
+        ? componentSum
+        : guestTotal - lineSum;
   const showTaxesFees = taxesFees > 0.005;
-  const guestTotal = isNet ? totalNum : lineSum;
+
+  const hasOwnerEconomics =
+    quote.net_to_owner != null || quote.commission != null || quote.tax != null;
 
   return (
     <div className="border-border bg-card shadow-card space-y-4 rounded-lg border p-4">
@@ -145,11 +143,30 @@ export function QuoteResultCard({ quote, periodLabel, basis }: QuoteResultCardPr
         </p>
       ) : null}
 
-      {/* BUG-009: owner economics are unreliable for GROSS plans — surfaced as a
-          pending note, never a figure. */}
-      <p className="text-muted-foreground border-border border-t pt-2 text-xs italic">
-        {t("rate_workbench.probe.result.owner_pending")}
-      </p>
+      {hasOwnerEconomics ? (
+        <div className="border-border space-y-1 border-t pt-2">
+          <p className="text-muted-foreground text-xs font-medium">
+            {t("rate_workbench.probe.result.owner_heading")}
+          </p>
+          <dl className="space-y-1 text-sm">
+            {quote.net_to_owner != null ? (
+              <Line label={t("rate_workbench.probe.result.net_to_owner")}>
+                {formatMoney(quote.net_to_owner, currency)}
+              </Line>
+            ) : null}
+            {quote.commission != null ? (
+              <Line label={t("rate_workbench.probe.result.commission")}>
+                {formatMoney(quote.commission, currency)}
+              </Line>
+            ) : null}
+            {quote.tax != null ? (
+              <Line label={t("rate_workbench.probe.result.tax")}>
+                {formatMoney(quote.tax, currency)}
+              </Line>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
     </div>
   );
 }

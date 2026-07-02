@@ -8,6 +8,7 @@ Read, edit, and status-transition workflows on existing enquiries.
 **Trigger:** Staff opens the Enquiries page; applies filters (date range, agent, status).
 **Actor:** Staff.
 **Legacy locus:** `ResService.cs:2660` (`GetEqnuireDetails` `[TYPO]`); SP `sp_getEnquireData`.
+**Screen:** the legacy `/quote` list grid this backs (columns, status-circle colours, admin-only delete, row navigation) is specified in [`../legacy-quote-enquiry-reference.md`](../legacy-quote-enquiry-reference.md) §4 — it was missing from the tree this spec was extracted from.
 
 ### Inputs
 `PageEventArgs`:

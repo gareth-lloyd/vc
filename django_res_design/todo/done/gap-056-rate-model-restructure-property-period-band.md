@@ -342,7 +342,7 @@ perfect translation of pre-existing dev rows.
   — its `RatePeriod`, `segmentation.py`, and `period_backfill.py` are the
   foundation here; fold it in rather than shipping it separately against the
   old 4-level tree.
-- Pairs with [BUG-013](done/…) — recovered `VillaOccupencyPrice` bands get a
+- Pairs with [BUG-013](bug-013-migration-drops-villaoccupencyprice.md) — recovered `VillaOccupencyPrice` bands get a
   natural home (period → N band children).
 - Coordinate with [BUG-009](bug-009-price-basis-ignored-by-engine.md) / the
   finance rewrite so the engine contract lands once.

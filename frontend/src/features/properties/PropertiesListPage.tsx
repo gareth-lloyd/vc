@@ -20,16 +20,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
+import { useCountries } from "@/features/admin/countries/hooks";
 import { useRegions } from "@/features/availability/hooks";
+import { TAXONOMY_PAGE_SIZE } from "./api";
 import { CreatePropertyDialog } from "./components/CreatePropertyDialog";
 import { propertyColumns } from "./columns";
 import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
 import type { PropertyFilters, PropertyListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";
-
-const COUNTRY_VALUES = ["es", "fr", "it", "pt", "gr"] as const;
-const COUNTRY_ISO = { es: "ES", fr: "FR", it: "IT", pt: "PT", gr: "GR" } as const;
 
 const STATUS_VALUES = ["active", "draft", "archived"] as const;
 
@@ -55,12 +54,21 @@ export function PropertiesListPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const canCreate = useHasReservationsRole();
   const regionsQuery = useRegions();
+  // In-use countries only — the filter should never offer a country that
+  // cannot match a property. Labels come from the API name field.
+  const countriesQuery = useCountries({
+    hasProperties: true,
+    ordering: "name",
+    pageSize: TAXONOMY_PAGE_SIZE,
+  });
 
   const countryOptions = [
     { value: ALL_VALUE, label: t("common:filters.any_country") },
-    ...COUNTRY_VALUES.map((v) => ({
-      value: v,
-      label: t(`common:countries.${COUNTRY_ISO[v]}`),
+    // Uppercase to match the Select-value mapping below — Country.iso2 has no
+    // server-side case normalisation.
+    ...(countriesQuery.data?.results ?? []).map((c) => ({
+      value: c.iso2.toUpperCase(),
+      label: c.name,
     })),
   ];
 
@@ -177,7 +185,9 @@ export function PropertiesListPage() {
           filters={
             <>
               <Select
-                value={filters.country ?? ALL_VALUE}
+                // Option values are uppercase iso2 (as the API returns); old
+                // lowercase bookmarks must still display their selection.
+                value={filters.country?.toUpperCase() ?? ALL_VALUE}
                 onValueChange={(v) => updateParam("country", v)}
               >
                 <SelectTrigger className="w-[160px]" aria-label={t("list.filter_country_aria")}>

@@ -254,6 +254,68 @@ never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
 > `legacy_query`. This is a pre-existing loader gap surfaced (not introduced) by
 > the GAP-048 remap.
 
+## 4g. Chargeable Extras → `BookingChargeItem` (GAP-017)
+
+`BookingChargeItemLoader` ports the staff-entered "Chargeable Extras"
+(`VillaBookingDetails`: `Id, BookingId, CurrencyId, Price, Notes`) onto
+`reservations.BookingChargeItem`. It runs after `PaymentLoader` in the
+registry (bookings and their payments must exist first). Mapping:
+`Notes → label` (stripped, truncated to 200 chars — overflow text is
+preserved in `notes`), `Price → amount` (signed), `Id → legacy_id`.
+Same-currency lines port **verbatim**, which reproduces legacy's displayed
+total by construction: legacy showed `RentalPrice + Σ details`, and the new
+total is `balance_due + Σ charge_items` with `balance_due` loaded from
+`RentalPrice`.
+
+**Currency policy (convert-or-flag — mismatched rows are never written
+verbatim):**
+
+- `CurrencyId` 0/NULL → treated as booking-currency (legacy summed these
+  rows blind into the booking total, so booking-currency is what they
+  meant). A *non-zero* `CurrencyId` with no matching `Currency` is an error
+  row, not a silent fallback.
+- Row currency ≠ booking currency → converted via `FxConverter` at the rate
+  most recent **on/before `booking.date_from`** (pinned so delta re-runs are
+  deterministic), quantised to the booking currency, with provenance appended
+  to `notes` (`Imported from legacy: 100.00 USD @ 0.8 (as of 2026-06-01).`).
+  These bookings' totals **deliberately differ from legacy**, whose blind
+  cross-currency sum was a latent bug.
+- **FX prerequisite:** rates must exist in the **row → booking** direction
+  (no inverse fallback) with `as_of ≤ booking.date_from`. Seeding today's
+  rate clears nothing for historical bookings — seed `FxRate` rows dated at
+  or before the earliest affected `date_from`, then re-run. Until then each
+  mismatched row lands in the loader's `errors` count
+  (`data_migration.charge_item_fx_failed`, `reason="no_rate"`).
+- A conversion that quantises to zero is skipped with a warning (the model's
+  `amount != 0` constraint forbids the write).
+
+**Payment-schedule resync is suppressed during the load.** Charge-item writes
+fire `booking_total_changed`, whose receiver rewrites PENDING payments
+(`PaymentScheduler.resync_for_booking`) and resizes pre-charge security
+deposits — and imported bookings *do* hold PENDING BALANCE rows, so an
+unsuppressed load would rewrite legacy payment amounts. The loader
+disconnects the `payments.resync_on_booking_total_changed` receiver around
+its row loop and reconnects it after (the package's first signal
+suppression; earlier notes claiming the loaders "already run with signal
+discipline" were aspirational). Everything else about the
+package's service-bypass convention holds: no `BookingEvent` rows, AuditLog
+still captures via tracked-model `pre_save`.
+
+**Removal sweep:** each run hard-deletes previously-imported rows
+(`legacy_id IS NOT NULL`) whose legacy source has vanished **or** now fails
+transform (zero price, FX-rounded-to-zero) — so a re-run converges on the
+legacy state. Staff-created rows (`legacy_id IS NULL`) are never touched.
+Zero-`Price` legacy rows are skipped (counted in `skipped`).
+
+**Accepted side-effects** (documented, not engineered around):
+
+- The loader bypasses `ChargeItemService._check_total`, so an imported
+  booking can carry `balance_due + Σ charges < 0`. Safe downstream (resync
+  clamps ≥ 0; the API renders a negative string), but a later staff charge
+  write via the API on such a booking can 400.
+- Imported bookings are DRAFT and the charge service's state gate rejects
+  DRAFT, so imported lines are API-immutable — desirable for historical data.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash
@@ -278,6 +340,7 @@ is where the dry-run calibration happens), not just here.
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
+| `VillaBookingDetails`     | 0 *(placeholder)* | **GAP-017**: recalibrate at the first dry-run. The legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
 
 Any other gap is a **blocker**. Track it down before proceeding.
 
@@ -401,6 +464,9 @@ Loaders use the legacy `UpdatedAt` column for this filter — a few lookups
 without that column will silently ignore the flag. `rate_rule` also ignores
 it by design: overlap resolution needs the whole season's row set, so it
 always does a full reload (see "Rate rule overlap resolution" above).
+`booking_charge_item` likewise ignores it (with a warning) —
+`VillaBookingDetails` has no `UpdatedAt`, and the removal sweep needs the
+full row set to detect deletions.
 
 ## 7. England → GB merge
 

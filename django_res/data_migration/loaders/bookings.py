@@ -1,4 +1,4 @@
-"""Booking + Payment loaders.
+"""Booking + Payment + charge-line loaders.
 
 VillaBooking has no FK to a QuotationLine — bookings often pre-date the
 quotation table or weren't linked. The new Booking schema requires a
@@ -8,16 +8,24 @@ the EXCLUDE constraint on active bookings.
 
 Payment: VillaPayment header + VillaPaymentDetails rows -> one Payment row
 per detail (purpose=BALANCE by default since legacy doesn't distinguish).
+
+BookingChargeItem: VillaBookingDetails rows -> signed charge lines (GAP-017),
+loaded with the booking_total_changed payment resync suppressed — see
+`_suppress_schedule_resync`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from django.utils import timezone
 
+from core.exceptions import NoRateAvailable
 from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
@@ -25,12 +33,15 @@ from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
-from pricing.services.currency import resolve_property_currency
+from pricing.services.currency import FxConverter, quantise_money, resolve_property_currency
 from properties.models.property import Property
 from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
+from reservations.models.charge_item import BookingChargeItem
 from reservations.models.quotation import Quotation, QuotationLine
+
+logger = structlog.get_logger(__name__)
 
 
 def _decimal(v: Any) -> Decimal | None:
@@ -243,4 +254,181 @@ class PaymentLoader(BaseLoader):
             "currency": currency,
             "provider_reference": (row.get("PaymentRefNo") or "")[:128],
             "payment_method": PaymentMethod.CARD,
+        }
+
+
+# payments' registration uid for its booking_total_changed receiver
+# (payments/signals.py `_register`). If payments ever renames it the
+# suppression tests fail behaviourally (the mocked resync gets called).
+_RESYNC_UID = "payments.resync_on_booking_total_changed"
+
+
+@contextmanager
+def _suppress_schedule_resync() -> Iterator[None]:
+    """Disconnect the payments booking_total_changed receiver for a load.
+
+    Charge-item writes fire `booking_total_changed` at the model layer, and
+    the payments receiver resizes PENDING DEPOSIT/BALANCE schedule rows —
+    which imported bookings hold (PaymentLoader defaults unknown legacy
+    statuses to PENDING). Loading historical charge lines must not rewrite
+    that legacy money, so the one receiver (it drives both the schedule
+    resync and the security-deposit resize) is disconnected by its
+    dispatch_uid, and reconnected on exit only if this invocation actually
+    disconnected it — nesting and deliberate prior disconnects both survive.
+
+    The disconnect is process-global (Django signals are singletons): any
+    other charge-item write in the same process during the window also skips
+    the resync. Fine for the single-writer `loadlegacy` management command
+    this exists for; don't use it in a process serving live traffic.
+    """
+    from payments.signals import _resync_schedule_on_booking_total_changed
+    from reservations.signals import booking_total_changed
+
+    was_connected = booking_total_changed.disconnect(dispatch_uid=_RESYNC_UID)
+    try:
+        yield
+    finally:
+        if was_connected:
+            booking_total_changed.connect(
+                _resync_schedule_on_booking_total_changed,
+                dispatch_uid=_RESYNC_UID,
+            )
+
+
+class BookingChargeItemLoader(BaseLoader):
+    """VillaBookingDetails -> BookingChargeItem (GAP-017).
+
+    Legacy rows are staff-entered "Chargeable Extras": customer-facing signed
+    money lines summed on top of RentalPrice — the same shape as the new
+    `balance_due + Σ charge_items`, so same-currency lines port verbatim and
+    totals reproduce legacy by construction.
+
+    Currency policy: lines are pinned to `booking.currency` (the Σ in the API
+    assumes single-currency rows). CurrencyId=0 means "no currency" in legacy
+    (rows were summed blind into the booking total) and pins to the booking
+    currency; a non-zero CurrencyId that doesn't resolve raises. A row whose
+    currency genuinely differs is never written verbatim: it converts via
+    `FxConverter` at the rate pinned to `booking.date_from` (rate + as-of
+    provenance kept in `notes`), raises `NoRateAvailable` into `report.errors`
+    for manual review when no rate is seeded, or — when the conversion rounds
+    to zero — is skipped and any previously loaded line for the row dropped.
+    """
+
+    name = "booking_charge_item"
+    target_model = BookingChargeItem
+    legacy_query = "SELECT Id, BookingId, CurrencyId, Price, Notes FROM VillaBookingDetails"
+
+    def _apply_since(self, query: str) -> str:
+        # Deliberate no-op: VillaBookingDetails has no UpdatedAt column, and
+        # the removal sweep in `_load_rows` needs the full row set anyway.
+        if self.since:
+            logger.warning(
+                "data_migration.charge_item_since_ignored",
+                since=str(self.since),
+                reason="VillaBookingDetails has no UpdatedAt; full reload",
+            )
+        return query
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        with _suppress_schedule_resync():
+            super()._load_rows(rows, report)
+            # Legacy hard-deletes "Chargeable Extras" (the table has no
+            # DeletedAt) and every run reads the full table, so rows that
+            # vanished from legacy must vanish here too or a deleted money
+            # line keeps inflating the guest total. Staff-created rows
+            # (legacy_id NULL) are out of scope; skipped/errored rows keep
+            # their ids in `seen`, so a previously-loaded version survives a
+            # transient transform failure. Inside the suppression window:
+            # post_delete also fires booking_total_changed.
+            seen = {str(r["Id"]) for r in rows if r.get("Id") is not None}
+            removed, _ = (
+                BookingChargeItem.objects.filter(legacy_id__isnull=False)
+                .exclude(legacy_id__in=seen)
+                .delete()
+            )
+            if removed:
+                logger.info("data_migration.charge_item_rows_removed", count=removed)
+
+    @staticmethod
+    def _drop_stale(row: dict[str, Any]) -> None:
+        """A zero outcome can follow a previously-loaded nonzero line (legacy
+        Price edited to zero, or a corrected FxRate now rounding to zero) —
+        drop the stale row so re-runs converge instead of leaving old money
+        live. The removal sweep can't do it: skipped rows keep their id in
+        its `seen` set."""
+        BookingChargeItem.objects.filter(legacy_id=str(row["Id"])).delete()
+
+    def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        booking = Booking.objects.filter(legacy_id=str(row.get("BookingId") or "")).first()
+        if booking is None:
+            return None
+        amount = _decimal(row.get("Price"))
+        if amount is None:
+            # Corrupt money must surface in `report.errors`, not vanish into
+            # the skipped count like a legitimate zero.
+            raise ValueError(f"unparseable Price {row.get('Price')!r}")
+        if amount == 0:
+            # amount=0 would violate `bookingchargeitem_amount_nonzero`.
+            self._drop_stale(row)
+            return None
+
+        row_currency = None
+        if row.get("CurrencyId"):
+            row_currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
+            if row_currency is None:
+                # Could be a genuinely foreign currency whose legacy row never
+                # loaded — writing the amount verbatim is the money bug this
+                # loader exists to avoid. (CurrencyId=0 means "no currency"
+                # and pins to the booking currency above.)
+                raise ValueError(f"unresolvable CurrencyId {row['CurrencyId']}")
+
+        provenance = ""
+        if row_currency is not None and row_currency.pk != booking.currency_id:
+            # Legacy summed mixed-currency rows blind into the booking total —
+            # a latent bug the single-currency Σ contract forbids reproducing.
+            # Convert at the most recent rate ≤ date_from (pinned so re-runs
+            # are deterministic); no rate → raise into `report.errors` for
+            # manual review (ops seeds the FxRate and re-runs).
+            original = amount
+            fx_ctx = {
+                "booking_id": booking.pk,
+                "charge_item_legacy_id": str(row.get("Id")),
+                "amount": str(original),
+                "currency": row_currency.code,
+            }
+            try:
+                rate = FxConverter.lookup_rate(
+                    row_currency, booking.currency, as_of=booking.date_from
+                )
+            except NoRateAvailable:
+                logger.warning("data_migration.charge_item_fx_failed", reason="no_rate", **fx_ctx)
+                raise
+            # Quantise to the column's 2dp as well as the currency's minor
+            # unit: a 3dp booking currency could otherwise pass the zero
+            # guard here and still round to 0.00 (IntegrityError) at write.
+            amount = quantise_money(original * rate.rate, booking.currency).quantize(
+                Decimal("0.01")
+            )
+            if amount == 0:
+                logger.warning("data_migration.charge_item_fx_rounded_to_zero", **fx_ctx)
+                self._drop_stale(row)
+                return None
+            # Self-verifying provenance: record the applied rate so a later
+            # backdated-rate correction (which reprices on re-run) is visible.
+            provenance = (
+                f"Imported from legacy: {quantise_money(original, row_currency)} "
+                f"{row_currency.code} @ {rate.rate.normalize()} (as of {rate.as_of})."
+            )
+
+        notes_text = (row.get("Notes") or "").strip()
+        # Label truncation must not lose customer-facing text.
+        notes = notes_text if len(notes_text) > 200 else ""
+        if provenance:
+            notes = f"{notes}\n{provenance}" if notes else provenance
+        return {
+            "booking": booking,
+            "label": notes_text[:200],
+            "amount": amount,
+            "currency": booking.currency,
+            "notes": notes,
         }

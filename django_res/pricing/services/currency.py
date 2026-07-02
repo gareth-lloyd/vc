@@ -106,15 +106,14 @@ class FxConverter:
     """Convert money amounts via the most recent `FxRate` ≤ `as_of`."""
 
     @classmethod
-    def convert(
+    def lookup_rate(
         cls,
-        amount: Decimal,
         from_ccy: Currency,
         to_ccy: Currency,
         as_of: date | None = None,
-    ) -> Decimal:
-        if from_ccy.pk == to_ccy.pk:
-            return amount
+    ) -> FxRate:
+        """The `FxRate` row `convert` would apply — exposed for callers that
+        need the applied rate itself (e.g. to record conversion provenance)."""
         cutoff = as_of or date.today()
         rate = (
             FxRate.objects.filter(base=from_ccy, quote=to_ccy, as_of__lte=cutoff)
@@ -125,4 +124,17 @@ class FxConverter:
             raise NoRateAvailable(
                 f"No FxRate available for {from_ccy.code}->{to_ccy.code} on/before {cutoff}"
             )
+        return rate
+
+    @classmethod
+    def convert(
+        cls,
+        amount: Decimal,
+        from_ccy: Currency,
+        to_ccy: Currency,
+        as_of: date | None = None,
+    ) -> Decimal:
+        if from_ccy.pk == to_ccy.pk:
+            return amount
+        rate = cls.lookup_rate(from_ccy, to_ccy, as_of)
         return quantise_money(amount * rate.rate, to_ccy)

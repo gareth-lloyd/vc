@@ -4,7 +4,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { QuoteShortlistLine } from "../components/QuoteShortlistLine";
-import type { StagedBand, StagedLine } from "../schemas";
+import { type StagedBand, type StagedLine, stagedLineId } from "../schemas";
 
 function band(overrides: Partial<StagedBand> = {}): StagedBand {
   return {
@@ -20,7 +20,7 @@ function band(overrides: Partial<StagedBand> = {}): StagedBand {
 }
 
 function bandedLine(overrides: Partial<StagedLine> = {}): StagedLine {
-  return {
+  const base = {
     property_id: 7,
     property_name: "Villa Sol",
     hero_image_url: null,
@@ -45,6 +45,7 @@ function bandedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     ],
     ...overrides,
   };
+  return { line_id: stagedLineId(base.property_id, base.date_from), ...base };
 }
 
 // The page owns the staged line; the shortlist edits via onUpdate. Mirror that so

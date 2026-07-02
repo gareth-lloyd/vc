@@ -140,7 +140,7 @@ above via their legacy `QuotationNo`.)
   fix for the Quotation anchor and sidesteps its TOCTOU race; coordinate so the
   two don't conflict. Booking still allocates in `save()`, so any
   `bulk_create` path for Booking/Quotation remains BUG-007's concern.
-- **Sibling of [GAP-005](gap-005-quotation-flow-parity.md)** (Enquiry→Quotation
+- **Sibling of [GAP-005](../gap-005-quotation-flow-parity.md)** (Enquiry→Quotation
   flow parity vs legacy).
 - Touches `data_migration` cutover — re-run `reconcile_legacy` after loader
   changes (`django_res/CLAUDE.md`).

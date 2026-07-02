@@ -1,5 +1,10 @@
 # 02 — Frontend Design (React SPA)
 
+> ⚠️ **Target design, not legacy description (2026-07-02, GAP-010).** This spec is prospective.
+> Where it characterises the *legacy* UI, treat that with caution: it was written against a
+> `ResSystem@main` tree missing the real quote/enquiry screens. For what legacy actually did, see
+> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md).
+
 A ground-up redesign of the Villa Collective ops tool as a React SPA backed by the Django REST API. This document is the screen-by-screen spec an engineer should be able to build from. Wireframes are described as ASCII; nothing here assumes a specific Figma file.
 
 ---
@@ -474,8 +479,8 @@ Kanban + list views, toggle in the header. Kanban is the default because enquiri
 > lead-status/date-range filters. The mockup's stage vocabulary (New Enquiry →
 > Progressing → Quote Sent → Follow-up; Dead+reason) must be reconciled with
 > `Enquiry.status`, and a **quotes-to-convert** metric surfaced. Tracked in
-> [`todo/gap-039-enquiry-dashboard-enrichment.md`](../todo/gap-039-enquiry-dashboard-enrichment.md)
-> and [`todo/gap-038-enquiry-quote-stacking-conversion-metric.md`](../todo/gap-038-enquiry-quote-stacking-conversion-metric.md).
+> [`todo/gap-039-enquiry-dashboard-enrichment.md`](../todo/done/gap-039-enquiry-dashboard-enrichment.md)
+> and [`todo/gap-038-enquiry-quote-stacking-conversion-metric.md`](../todo/done/gap-038-enquiry-quote-stacking-conversion-metric.md).
 - A "Lost" lane is reachable via overflow column (`▸ Lost (28)`) so it doesn't clutter.
 - List view is for power users who want sortable columns.
 

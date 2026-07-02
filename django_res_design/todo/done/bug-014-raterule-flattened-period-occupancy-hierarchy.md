@@ -1,4 +1,4 @@
-> **✅ SUPERSEDED / RESOLVED (2026-07-01) by [GAP-056](done/gap-056-rate-model-restructure-property-period-band.md).**
+> **✅ SUPERSEDED / RESOLVED (2026-07-01) by [GAP-056](gap-056-rate-model-restructure-property-period-band.md).**
 > This ticket proposed "Option B — reintroduce a `RatePeriod` parent." GAP-056
 > did exactly that (and went further: it **dropped `RateCard`** entirely). The
 > rate tree is now honestly two-level — `Property → RatePlan → RatePeriod →

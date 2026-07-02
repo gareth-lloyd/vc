@@ -77,6 +77,15 @@ Populate `created_by`/`updated_by` automatically. Threadlocal pattern:
 
 ## Idempotency
 
+> **⚠️ SUPERSEDED (2026-07-02, FG-005)** — the generic table + middleware below
+> were never built, and the `IdempotencyRecord` table was dropped
+> (`core/migrations/0006`). The live convention is the service-layer
+> `idempotency_key` kwarg with `core/idempotency.py` meta-key stamping
+> (`find_by_meta_key` / `stamp_meta`), per-model DB backstops (FG-010), and a
+> natural key where one exists — see `django_res/CLAUDE.md` §"State-mutating
+> services accept `idempotency_key`" and the 2026-07-02 decision-log entry for
+> issue #39. The section below is kept as historical context only.
+
 The API contract (`product-design/04-rest-api-surface.md` §1) honours `Idempotency-Key` on every `POST` action endpoint and every payment-creating endpoint. Implementation is generic — there is no per-model `idempotency_key` column. See reconciliation issue #39.
 
 ### `core.IdempotencyRecord`
@@ -233,5 +242,5 @@ The legacy `SchedullerJob` class was checked in but `[DISABLED]` in production (
 | `rebuild_pricing_summary` | `pricing` | debounced via signal | Rebuilds `VillaPricingSummary` rows; not on a fixed schedule — fired by `post_save`/`post_delete` on `RateRule` / `RatePlan`. Nightly refresh of `next_available_date` runs at 03:00 local time. |
 | `cleanup_orphan_images` | `properties` | weekly (Sun 04:00) | Removes `properties/%Y/%m/` files with no `PropertyImage` row pointing at them. |
 | `zoho_reconciliation` | `integrations` | nightly | Compares fingerprints in `SyncRecord` to source rows; opens `SyncIssue`s for drift. |
-| `cleanup_idempotency_records` | `core` | nightly (03:30) | Deletes `IdempotencyRecord` rows past `expires_at`. Idempotent (delete-where). |
+| ~~`cleanup_idempotency_records`~~ | `core` | — | Never built; `IdempotencyRecord` dropped per FG-005 (2026-07-02). |
 | `expire_upload_tickets` | `core` | hourly | Deletes `UploadTicket` rows past `expires_at` with `consumed_at IS NULL`. |

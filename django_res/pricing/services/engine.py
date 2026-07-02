@@ -19,7 +19,7 @@ from core.exceptions import (
     NoRateAvailable,
     PartyOutOfRange,
 )
-from pricing.enums import RuleKind
+from pricing.enums import PriceBasis, RuleKind
 from pricing.models import (
     Currency,
     Discount,
@@ -41,6 +41,7 @@ from pricing.services.rates import (
     pick_band_for_night,
     rule_nightly,
 )
+from properties.enums import CommissionCalcType
 from properties.models.services import PropertyService
 from properties.services.changeover import ChangeoverService
 
@@ -277,25 +278,21 @@ class PricingEngine:
             discount_code=discount_code,
         )
 
-        commission = cls._compute_commission(
-            property=property,
-            base=rate_subtotal + extras_total - discount_total,
-            as_of=as_of,
+        # Commission/tax are derived `price_basis`-aware (BUG-009, `04-pricing.md`
+        # Services steps 8-10): a GROSS rate already includes them (carve out,
+        # total == base), a NET rate is the owner net (gross up, total = base +
+        # commission + tax). `plan.price_basis` is the sole pricing authority.
+        base = rate_subtotal + extras_total - discount_total
+        commission, tax = cls._derive_commission_and_tax(
+            basis=plan.price_basis,
+            base=base,
+            commission_policy=cls._resolve_commission_policy(property, as_of),
+            tax_rate=cls._resolve_tax_policy(property, as_of),
         )
-        tax = cls._compute_tax(
-            property=property,
-            base=rate_subtotal + extras_total - discount_total,
-            as_of=as_of,
-        )
-
-        # BUG-009: this "add on top" assembly is correct only for a NET plan. A
-        # GROSS RatePlan's rate already includes commission+tax, so a GROSS plan
-        # should carve them out (total == the gross base), not add them. The
-        # mode-aware branch is deferred to the finance rewrite — see
-        # `_call_finance_resolver` and `04-pricing.md` Services steps 8-9.
-        total = (rate_subtotal + extras_total - discount_total + commission + tax).quantize(
-            Decimal("0.01")
-        )
+        if plan.price_basis == PriceBasis.NET:
+            total = (base + commission + tax).quantize(Decimal("0.01"))
+        else:
+            total = base.quantize(Decimal("0.01"))
         # Owner-net is captured at quote-time so downstream consumers (the
         # booking detail serializer, owner statements) never have to re-derive
         # it from the breakdown. See `09-departures.md`: serializers should
@@ -318,6 +315,9 @@ class PricingEngine:
             "total": str(total),
             "net_to_owner": str(net_to_owner),
             "plan_id": plan.pk,
+            # The basis the money above was assembled under (BUG-009) — plans
+            # are mutable, so a persisted snapshot must say which mode priced it.
+            "price_basis": plan.price_basis,
             "winning_period_id": winning_period.pk if winning_period is not None else None,
             "changeover_shifted_from": (
                 changeover_shifted_from.isoformat() if changeover_shifted_from is not None else None
@@ -692,16 +692,9 @@ class PricingEngine:
         finance rewrite lands.
 
         TODO(finance-rewrite): delete this shim and the dict branches in
-        `_compute_commission`/`_compute_tax` once `PropertyFinance.effective_*`
-        accepts `as_of` and returns the scalar/attribute shape directly. The
-        same rewrite must also make the maths `price_basis`-aware (BUG-009):
-        `_compute_commission`/`_compute_tax` and the `total`/`net_to_owner`
-        assembly in `quote()` currently always *add* commission+tax on top
-        (correct only for a NET plan), which over-charges GROSS plans — every
-        imported plan is GROSS. Branch on the resolved `RatePlan.price_basis`
-        per `04-pricing.md` Services steps 8-9 (GROSS carve-out vs NET gross-up,
-        mode-dependent tax/commission bases). See
-        `django_res_design/todo/bug-009-price-basis-ignored-by-engine.md`.
+        `_resolve_commission_policy`/`_resolve_tax_policy` once
+        `PropertyFinance.effective_*` accepts `as_of` and returns the
+        scalar/attribute shape directly.
         """
         try:
             return resolver(as_of=as_of)
@@ -739,53 +732,114 @@ class PricingEngine:
         )
 
     @staticmethod
-    def _compute_commission(
-        *,
-        property: Any,
-        base: Decimal,
-        as_of: date,
-    ) -> Decimal:
+    def _resolve_commission_policy(property: Any, as_of: date) -> tuple[str, Decimal] | None:
+        """The property's effective `(calculation_type, amount)` commission,
+        or None when no commission is configured.
+
+        Tolerates both the live no-arg dict resolver and the future
+        `as_of=`/scalar shape (see `_call_finance_resolver`); a bare scalar
+        is read as a percentage.
+        """
         finance = getattr(property, "finance", None)
         if finance is None:
-            return Decimal("0.00")
+            return None
         resolver = getattr(finance, "effective_commission", None)
         if resolver is None:
-            return Decimal("0.00")
+            return None
         commission = PricingEngine._call_finance_resolver(resolver, as_of)
         if commission is None:
-            return Decimal("0.00")
+            return None
         if isinstance(commission, dict):
-            # Only a percentage commission scales with the rate base; a fixed
-            # commission is an owner-payout concern, not a guest-price line.
-            if commission.get("calculation_type") != "percent":
-                return Decimal("0.00")
-            commission = commission.get("amount")
-        if commission is None:
-            return Decimal("0.00")
-        return (base * Decimal(str(commission)) / Decimal(100)).quantize(Decimal("0.01"))
+            calc_type = commission.get("calculation_type")
+            amount = commission.get("amount")
+        else:
+            calc_type = CommissionCalcType.PERCENT
+            amount = commission
+        if amount is None or calc_type not in CommissionCalcType.values:
+            return None
+        return (calc_type, Decimal(str(amount)))
 
     @staticmethod
-    def _compute_tax(
-        *,
-        property: Any,
-        base: Decimal,
-        as_of: date,
-    ) -> Decimal:
+    def _resolve_tax_policy(property: Any, as_of: date) -> Decimal | None:
+        """The property's effective tax rate (percentage), or None when tax
+        is unconfigured or the property is exempt — exemption skips the tax
+        maths entirely in both modes (spec step 9).
+        """
         finance = getattr(property, "finance", None)
         if finance is None:
-            return Decimal("0.00")
+            return None
         resolver = getattr(finance, "effective_tax_policy", None)
         if resolver is None:
-            return Decimal("0.00")
+            return None
         policy = PricingEngine._call_finance_resolver(resolver, as_of)
         if policy is None:
-            return Decimal("0.00")
+            return None
         if isinstance(policy, dict):
             if policy.get("is_exempt"):
-                return Decimal("0.00")
+                return None
             rate = policy.get("percentage")
         else:
+            if getattr(policy, "is_exempt", False):
+                return None
             rate = getattr(policy, "rate", None)
         if rate is None:
-            return Decimal("0.00")
-        return (base * Decimal(str(rate)) / Decimal(100)).quantize(Decimal("0.01"))
+            return None
+        return Decimal(str(rate))
+
+    @staticmethod
+    def _derive_commission_and_tax(
+        *,
+        basis: str,
+        base: Decimal,
+        commission_policy: tuple[str, Decimal] | None,
+        tax_rate: Decimal | None,
+    ) -> tuple[Decimal, Decimal]:
+        """Mode-aware commission + tax per `04-pricing.md` Services steps 8-9.
+
+        GROSS (the rate includes both — carve out): `tax = base x rate/100`,
+        `commission = (base - tax) x pct/100`. NET (the rate is the owner
+        net — gross up): `commission = base/(1 - pct/100) - base`,
+        `tax = (base + commission)/(1 - rate/100) - (base + commission)`.
+        A fixed commission is the flat amount in both modes and enters the
+        NET tax base (legacy `RatesModel.Calculate()` parity).
+
+        Quantization order is pinned to match the GAP-035 entry-form hint
+        (`frontend/src/lib/pricing/netGross.ts`): the RAW (unquantized)
+        commission feeds the tax base — and the raw tax the GROSS commission
+        base — with each component quantized to 0.01 only at the end.
+
+        Guards — a deliberate divergence from legacy (which leaves fields
+        unset on pct=100 via a swallowed exception and goes negative above):
+        `base <= 0` -> both 0.00; a tax rate >= 100 -> tax 0.00 in both modes
+        (NET: divide-by-<=0 on the gross-up; GROSS: a tax >= the gross would
+        flip the commission base negative); a NET commission pct >= 100
+        (divide-by-<=0) -> commission 0.00. A GROSS percent commission is
+        unguarded — with a sane tax it is always >= 0, and an oversized pct
+        is a real owner deficit, like an oversized fixed commission.
+        """
+        zero = Decimal("0.00")
+        if base <= 0:
+            return zero, zero
+        hundred = Decimal(100)
+        calc_type, amount = commission_policy if commission_policy is not None else (None, None)
+        rate = tax_rate if tax_rate is not None and tax_rate < hundred else None
+
+        raw_commission = Decimal(0)
+        raw_tax = Decimal(0)
+        if basis == PriceBasis.NET:
+            if calc_type == CommissionCalcType.FIXED and amount is not None:
+                raw_commission = amount
+            elif calc_type == CommissionCalcType.PERCENT and amount is not None:
+                if amount < hundred:
+                    raw_commission = base / (1 - amount / hundred) - base
+            if rate is not None:
+                tax_base = base + raw_commission
+                raw_tax = tax_base / (1 - rate / hundred) - tax_base
+        else:
+            if rate is not None:
+                raw_tax = base * rate / hundred
+            if calc_type == CommissionCalcType.FIXED and amount is not None:
+                raw_commission = amount
+            elif calc_type == CommissionCalcType.PERCENT and amount is not None:
+                raw_commission = (base - raw_tax) * amount / hundred
+        return raw_commission.quantize(Decimal("0.01")), raw_tax.quantize(Decimal("0.01"))

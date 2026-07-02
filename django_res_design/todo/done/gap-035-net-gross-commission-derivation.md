@@ -4,10 +4,10 @@
 > each price input, recomputing as they type — computed with the **same** mode-aware
 > commission **+ tax** math as the engine's `04-pricing.md` steps 8-9 (percentage
 > grosses up by `÷(1−pct)`, fixed commission flat both ways, tax skipped when
-> exempt, `ROUND_HALF_EVEN`) — i.e. the **corrected** engine. Since that carve-out
-> is itself deferred (BUG-009 — today's engine still adds on top), the hint will
-> match the engine's quote *once BUG-009 lands*; until then it shows the figure
-> the engine *should* produce. **Derive-on-display only** — the stored row is exactly the typed figure +
+> exempt, `ROUND_HALF_EVEN`) — i.e. the **corrected** engine. (That carve-out
+> was deferred at the time; **BUG-009 landed 2026-07-02** — the engine now
+> implements the same maths in the same quantization order, so the hint matches
+> the engine's quote.) **Derive-on-display only** — the stored row is exactly the typed figure +
 > `price_basis`, never the computed side (which the BUG-009 engine carve-out would
 > otherwise re-derive and double-count). Derivation inputs come from
 > `PropertyFinance.effective_commission()`/`effective_tax_policy()` resolved
@@ -22,9 +22,10 @@
 > `frontend/src/lib/pricing/netGross.ts`, `RateRuleFormDialog.tsx`,
 > `SeasonFormDialog.tsx`; spec `04-pricing.md` (rate-entry subsection + updated
 > authoritative-field note); decision row `10-decisions.md` (2026-06-22).
-> **Residual:** the Booking owner-statement serializer still reads
-> `prices_entered_as` for money — closed by the BUG-009 finance rewrite (reads
-> `net_to_owner` from the snapshot, step 10), not by this ticket.
+> **Residual (closed by BUG-009, 2026-07-02):** the Booking owner-statement
+> serializer reads `net_to_owner` from the snapshot (step 10), with a
+> derive-fallback only for legacy snapshots; its remaining `prices_entered_as`
+> read is a display label, not a money path.
 
 # GAP-035 — Net↔gross rate entry with automatic commission derivation
 

@@ -1,7 +1,7 @@
 """Regression: PricingEngine must tolerate the current PropertyFinance shape.
 
-`engine._compute_commission/_compute_tax` were written against a future
-`effective_*(as_of=...)` contract, but the live finance model returns
+`engine._resolve_commission_policy/_resolve_tax_policy` were written against
+a future `effective_*(as_of=...)` contract, but the live finance model returns
 no-arg dicts. A `Property` with a real `PropertyFinance` row (as the seeder
 and production create) must still quote instead of raising TypeError.
 """

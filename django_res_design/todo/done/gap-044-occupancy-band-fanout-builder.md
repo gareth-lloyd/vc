@@ -77,7 +77,7 @@ fan out all bands, checked. Record the reversal in `04-pricing.md` and
   ([GAP-043](gap-043-quote-builder-multi-week-range.md)), **checked by default**;
   unchecked bands are excluded from the quote.
 - Respect `is_poa` bands and the incomplete-pricing flag
-  ([Q-013](done/q-013-rate-card-incomplete-pricing.md)) — a band with no rate
+  ([Q-013](q-013-rate-card-incomplete-pricing.md)) — a band with no rate
   surfaces as manual, not silently dropped.
 
 ## Acceptance

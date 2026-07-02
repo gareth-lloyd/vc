@@ -42,7 +42,7 @@ Add a directed/labelled relationship between customer records — e.g. a
 (SPOUSE / CHILD / PA / OTHER). Render the mockup's "Linked contacts" accordion on
 the profile and quote-overview screens; allow linking an existing record or
 creating + linking inline (reuse the picker pattern from
-[GAP-027](done/gap-027-inline-contact-creation-primary-convention.md)).
+[GAP-027](gap-027-inline-contact-creation-primary-convention.md)).
 
 **Decisions to settle:**
 - **Which entity** holds relationships — `Guest`, `Contact`, or both — aligned
@@ -66,6 +66,6 @@ No soft delete — links are added/removed directly; audit the change.
 
 - [GAP-042](gap-042-customer-360-profile-view.md) (renders the accordion),
   [GAP-040](gap-040-customer-tags-taxonomy.md) (entity choice + PA tag overlap),
-  [GAP-027](done/gap-027-inline-contact-creation-primary-convention.md) /
+  [GAP-027](gap-027-inline-contact-creation-primary-convention.md) /
   [GAP-029](gap-029-contact-required-name-fields-divergence.md) (inline-create
   + name-field rules).

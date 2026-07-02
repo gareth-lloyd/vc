@@ -6,11 +6,19 @@ import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatMoney } from "@/lib/format/money";
-import { formatDate } from "@/lib/format/date";
+import { formatDate, formatWeekRangeCompact } from "@/lib/format/date";
 import { useRepriceStayOption } from "../hooks";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { StayOptionPicker } from "./StayOptionPicker";
-import type { ChosenStay, OccupancyBand, QuoteOption, StayReprice } from "../schemas";
+import {
+  type ChosenStay,
+  type OccupancyBand,
+  type QuoteOption,
+  type StayAdd,
+  type StayReprice,
+  stagedLineId,
+  stagedStayDates,
+} from "../schemas";
 
 // Day codes the backend's PrefilledChangeOverDay can emit ("any" serialises
 // as null). A closed set so we never build an i18n key from arbitrary input.
@@ -22,18 +30,22 @@ const INCLUSIONS_CLAMP_CHARS = 140;
 
 interface Props {
   option: QuoteOption;
-  staged: boolean;
+  // Staged line_ids — the per-week Added markers and add gating derive from
+  // these (GAP-043).
+  stagedKeys: Set<string>;
+  // The dates the search ran with — needed to map each week cell onto the
+  // line identity the builder would stage it under (stagedStayDates).
+  criteriaDates: { date_from: string; date_to: string };
   // Party for block reprices — the criteria the search ran with.
   adults: number;
   children: number;
-  // GAP-044: a banded result also hands the checked occupancy bands to the
-  // builder (consumed by a later unit); the third arg stays optional so
-  // non-banded callers are unaffected.
-  onAdd: (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => void;
+  // GAP-043: one add-unit per checked, addable week; a banded week's unit
+  // carries that week's checked occupancy bands (GAP-044).
+  onAdd: (option: QuoteOption, adds?: StayAdd[]) => void;
 }
 
-// What the currently selected stay block resolves to: the option's own price
-// for the default block, a cached reprice for a picked alternative.
+// What a checked stay block resolves to: the option's own price for the
+// default block, a cached reprice for any other week.
 type ResolvedPrice =
   | {
       state: "ready";
@@ -49,18 +61,28 @@ type ResolvedPrice =
 /**
  * Information-dense card for one priced (available) result: identity,
  * capacity + stay-constraint meta, pricing badges, the winning plan's
- * inclusions, the headline total — and, when the flexibility window admits
- * several changeover blocks, a block picker that reprices on pick.
+ * inclusions, per-week pricing — and, when the flexibility window admits
+ * several changeover blocks, a multi-select week picker (GAP-043): every
+ * checked week is repriced and becomes its own quote line on Add.
  */
-export function QuoteResultLine({ option, staged, adults, children, onAdd }: Props) {
+export function QuoteResultLine({
+  option,
+  stagedKeys,
+  criteriaDates,
+  adults,
+  children,
+  onAdd,
+}: Props) {
   const { t } = useTranslation("quotations");
   const [inclusionsExpanded, setInclusionsExpanded] = useState(false);
 
-  // GAP-044b two-axis picker: an occupancy-priced villa shows the *selected*
-  // week's brackets (see `resolvedBands` below). The operator trims bands by
-  // identity (party range), not array index, so a check survives a week flip
-  // even if the bracket set reorders/resizes across seasonal cards. Track the
-  // DESELECTED keys so a not-yet-seen bracket (a new week's) defaults to checked.
+  // GAP-044b: an occupancy-priced villa shows the lead banded week's brackets
+  // (see `leadBands` below). The operator trims bands by identity (party
+  // range), not array index, so a check survives across weeks even if the
+  // bracket set reorders/resizes across seasonal cards; the same shared check
+  // set applies to EVERY checked week (GAP-043 decision: one band-check,
+  // cross-product with weeks). Track the DESELECTED keys so a not-yet-seen
+  // bracket (another week's) defaults to checked.
   const bandKey = (b: OccupancyBand) => `${b.min_party}-${b.max_party}`;
   const [deselectedBands, setDeselectedBands] = useState<Set<string>>(() => new Set());
   const isBandChecked = (b: OccupancyBand) => !deselectedBands.has(bandKey(b));
@@ -79,15 +101,27 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
     0,
     stayOptions.findIndex((o) => o.is_default),
   );
-  // Default block preselected when it's free; otherwise the first free block
-  // (the whole point of the alternatives); otherwise fall back to the default.
-  // A banded villa now behaves identically (GAP-044b): its bands resolve per
-  // week, so a held default preselects — and reprices — a free alternate.
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (!hasPicker || stayOptions[defaultIndex]?.is_available) return defaultIndex;
+  // Default block pre-checked when it's free; otherwise the first free block
+  // (the whole point of the alternatives); otherwise nothing. Starting from a
+  // single check keeps mount to ≤1 reprice.
+  const [checkedIndices, setCheckedIndices] = useState<Set<number>>(() => {
+    if (stayOptions.length === 0) return new Set();
+    if (stayOptions[defaultIndex]?.is_available) return new Set([defaultIndex]);
     const firstAvailable = stayOptions.findIndex((o) => o.is_available);
-    return firstAvailable === -1 ? defaultIndex : firstAvailable;
+    return firstAvailable === -1 ? new Set() : new Set([firstAvailable]);
   });
+  const toggleWeek = (index: number) =>
+    setCheckedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  const checkedSorted = useMemo(
+    () => Array.from(checkedIndices).sort((a, b) => a - b),
+    [checkedIndices],
+  );
+
   // Per-block reprice cache, keyed by arrival date. Row-local on purpose: a
   // fresh search remounts the row (the parent keys it on the criteria), which
   // is exactly when these prices go stale.
@@ -95,44 +129,64 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
   const reprice = useRepriceStayOption();
   const repriceMutate = reprice.mutate;
 
-  const selected = stayOptions[selectedIndex];
-  const isDefaultSelected = !hasPicker || selectedIndex === defaultIndex;
-
-  // A non-default block has no up-front price — fetch it once on selection
-  // (this also covers a held default whose first-free alternative is
-  // preselected on mount).
+  // Any checked non-default week has no up-front price — fetch each once when
+  // checked (the per-key guard stops re-fires and loops; unchecking keeps the
+  // cache warm for a re-check).
   useEffect(() => {
-    if (!selected || isDefaultSelected) return;
-    const key = selected.date_from;
-    if (reprices[key] !== undefined) return;
-    setReprices((prev) => ({ ...prev, [key]: "pending" }));
-    repriceMutate(
-      {
-        property_id: option.property_id,
-        date_from: selected.date_from,
-        date_to: selected.date_to,
-        adults,
-        children,
-      },
-      {
-        onSuccess: (result) => setReprices((prev) => ({ ...prev, [key]: result })),
-        onError: () => setReprices((prev) => ({ ...prev, [key]: "error" })),
-      },
-    );
-  }, [selected, isDefaultSelected, reprices, repriceMutate, option.property_id, adults, children]);
+    for (const index of checkedIndices) {
+      if (index === defaultIndex) continue;
+      const block = stayOptions[index];
+      if (!block) continue;
+      const key = block.date_from;
+      if (reprices[key] !== undefined) continue;
+      setReprices((prev) => ({ ...prev, [key]: "pending" }));
+      repriceMutate(
+        {
+          property_id: option.property_id,
+          date_from: block.date_from,
+          date_to: block.date_to,
+          adults,
+          children,
+        },
+        {
+          onSuccess: (result) => setReprices((prev) => ({ ...prev, [key]: result })),
+          onError: () => setReprices((prev) => ({ ...prev, [key]: "error" })),
+        },
+      );
+    }
+  }, [
+    checkedIndices,
+    defaultIndex,
+    stayOptions,
+    reprices,
+    repriceMutate,
+    option.property_id,
+    adults,
+    children,
+  ]);
 
-  const resolved: ResolvedPrice = useMemo(() => {
-    if (!selected || isDefaultSelected) {
+  // The successful reprice object for a week, or null (default week: null —
+  // its pricing lives on the option itself).
+  const repriceFor = (index: number): StayReprice | null => {
+    if (index === defaultIndex) return null;
+    const block = stayOptions[index];
+    const entry = block ? reprices[block.date_from] : undefined;
+    return entry && entry !== "pending" && entry !== "error" ? entry : null;
+  };
+
+  const resolveWeek = (index: number): ResolvedPrice => {
+    const block = stayOptions[index];
+    if (index === defaultIndex || !block) {
       return {
         state: "ready",
         total: option.total ?? null,
         currency: option.currency ?? null,
-        pricedFrom: option.date_from ?? selected?.date_from ?? "",
-        pricedTo: option.date_to ?? selected?.date_to ?? "",
+        pricedFrom: option.date_from ?? block?.date_from ?? "",
+        pricedTo: option.date_to ?? block?.date_to ?? "",
         inclusion: option.inclusion ?? null,
       };
     }
-    const entry = reprices[selected.date_from];
+    const entry = reprices[block.date_from];
     if (entry === undefined || entry === "pending") return { state: "pending" };
     if (entry === "error") return { state: "error", detail: null };
     if (!entry.available) {
@@ -142,46 +196,141 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
       state: "ready",
       total: entry.total ?? null,
       currency: entry.currency_code ?? null,
-      pricedFrom: entry.date_from ?? selected.date_from,
-      pricedTo: entry.date_to ?? selected.date_to,
+      pricedFrom: entry.date_from ?? block.date_from,
+      pricedTo: entry.date_to ?? block.date_to,
       inclusion: entry.inclusion ?? option.inclusion ?? null,
     };
-  }, [selected, isDefaultSelected, reprices, option]);
+  };
 
-  // GAP-044b: the SELECTED week's occupancy bands — read straight from the
-  // default option or that week's cached reprice, decoupled from the reprice's
-  // `available`. An out-of-bracket party (B2) reprices to available:false yet
-  // still carries the full band array; gating bands on `resolved` (which
-  // collapses !available to an error) would wrongly hide a saveable selection.
-  const repriceEntry = !isDefaultSelected && selected ? reprices[selected.date_from] : undefined;
-  const repriceObj: StayReprice | null =
-    repriceEntry && repriceEntry !== "pending" && repriceEntry !== "error" ? repriceEntry : null;
-  const resolvedBands = useMemo<OccupancyBand[]>(() => {
-    if (isDefaultSelected) return option.occupancy_bands ?? [];
-    return repriceObj?.occupancy_bands ?? [];
-  }, [isDefaultSelected, option.occupancy_bands, repriceObj]);
-  const isBandedView = resolvedBands.length > 0;
-  const checkedSaveableBands = resolvedBands.filter(
+  // GAP-044b: a week's occupancy bands — from the option for the default
+  // block, from that week's cached reprice otherwise. Read independently of
+  // `resolveWeek` (which collapses !available to an error): an out-of-bracket
+  // party (B2) reprices to available:false yet still carries the full band
+  // array, and gating bands on it would wrongly hide a saveable selection.
+  const bandsForWeek = (index: number): OccupancyBand[] => {
+    if (index === defaultIndex) return option.occupancy_bands ?? [];
+    return repriceFor(index)?.occupancy_bands ?? [];
+  };
+  // Whether a week's dates/bands are known — the default block always, an
+  // alternate once its reprice returned (even out-of-bracket).
+  const weekKnown = (index: number): boolean => index === defaultIndex || repriceFor(index) != null;
+
+  // The dates a week actually priced at (may be changeover-shifted).
+  const pricedRange = (index: number): { from: string; to: string } => {
+    const block = stayOptions[index];
+    if (index === defaultIndex) {
+      return {
+        from: option.date_from ?? block?.date_from ?? "",
+        to: option.date_to ?? block?.date_to ?? "",
+      };
+    }
+    const entry = repriceFor(index);
+    return {
+      from: entry?.date_from ?? block?.date_from ?? "",
+      to: entry?.date_to ?? block?.date_to ?? "",
+    };
+  };
+
+  // No-stay-options results (legacy, or a flexible-changeover villa): the card
+  // has no picker and stages on the criteria dates.
+  const hasBlocks = stayOptions.length > 0;
+  const leadBands = hasBlocks
+    ? bandsForWeek(
+        checkedSorted.find((i) => bandsForWeek(i).length > 0) ?? checkedSorted[0] ?? defaultIndex,
+      )
+    : (option.occupancy_bands ?? []);
+  const isBandedView = leadBands.length > 0;
+  const checkedSaveableBands = leadBands.filter(
     (b) => isBandChecked(b) && !b.is_poa && b.total != null,
   );
 
-  // The dates the selected week actually priced at — kept independent of the
-  // flat `resolved` path so a banded/out-of-bracket week still surfaces a shift.
-  const selectedPricedFrom = isDefaultSelected
-    ? (option.date_from ?? selected?.date_from ?? "")
-    : (repriceObj?.date_from ?? selected?.date_from ?? "");
-  const selectedPricedTo = isDefaultSelected
-    ? (option.date_to ?? selected?.date_to ?? "")
-    : (repriceObj?.date_to ?? selected?.date_to ?? "");
+  // Per-week staged markers: map each block onto the line identity the
+  // builder would stage it under (same helper ⇒ same key, GAP-007 included).
+  // Plain per-render computation — a handful of cheap set lookups.
+  const stagedIndices = new Set<number>();
+  stayOptions.forEach((block, index) => {
+    const key = stagedLineId(option.property_id, stagedStayDates(criteriaDates, block).date_from);
+    if (stagedKeys.has(key)) stagedIndices.add(index);
+  });
+  const noStayStaged = stagedKeys.has(stagedLineId(option.property_id, criteriaDates.date_from));
 
-  // The engine can still nudge a repriced arrival (changeover rule boundary
-  // inside the window) — never silently show different dates than clicked.
-  // Dates are known for the default block, or once an alternate has repriced.
-  const datesKnown = isDefaultSelected || repriceObj != null;
-  const shifted =
-    selected != null &&
-    datesKnown &&
-    (selectedPricedFrom !== selected.date_from || selectedPricedTo !== selected.date_to);
+  // A week the Add button would actually stage: checked, bookable, not yet
+  // staged, and priced — a banded week needs its bands known and ≥1 saveable
+  // checked band; a flat week needs its price resolved.
+  const weekAddable = (index: number): boolean => {
+    const block = stayOptions[index];
+    if (!block?.is_available || stagedIndices.has(index)) return false;
+    const bands = bandsForWeek(index);
+    if (bands.length > 0) {
+      return bands.some((b) => isBandChecked(b) && !b.is_poa && b.total != null);
+    }
+    // A checked week that is still repricing may yet come back banded — not
+    // addable until it resolves either way.
+    return weekKnown(index) && resolveWeek(index).state === "ready";
+  };
+
+  const addableIndices = hasBlocks ? checkedSorted.filter(weekAddable) : [];
+  // No blocks: the single criteria-dates add, gated like the old card.
+  const noBlocksAddable =
+    !noStayStaged && (isBandedView ? checkedSaveableBands.length > 0 : option.total != null);
+  const addableCount = hasBlocks ? addableIndices.length : noBlocksAddable ? 1 : 0;
+
+  // Held gating: with a picker, held cells simply can't be checked; without
+  // one, a held single block keeps its explanatory tooltip.
+  const singleBlockHeld = !hasPicker && hasBlocks && !stayOptions[0].is_available;
+
+  // A checked, bookable, unstaged week still waiting on its reprice — the
+  // card is loading, not done, so it must not read "Added" yet.
+  const anyCheckedPending =
+    hasBlocks &&
+    checkedSorted.some((i) => {
+      const block = stayOptions[i];
+      return block?.is_available === true && !stagedIndices.has(i) && !weekKnown(i);
+    });
+
+  const stagedOut =
+    addableCount === 0 &&
+    !anyCheckedPending &&
+    (hasBlocks ? checkedSorted.some((i) => stagedIndices.has(i)) : noStayStaged);
+
+  const addDisabled = addableCount === 0 || singleBlockHeld;
+
+  const buildStay = (index: number): ChosenStay => {
+    const block = stayOptions[index];
+    const resolved = resolveWeek(index);
+    const priceReady = resolved.state === "ready";
+    const banded = bandsForWeek(index).length > 0;
+    const priced = pricedRange(index);
+    return {
+      date_from: block.date_from,
+      date_to: block.date_to,
+      is_default: index === defaultIndex,
+      priced_date_from: priced.from || block.date_from,
+      priced_date_to: priced.to || block.date_to,
+      // A banded line takes its total/currency from the bands, never a
+      // single figure (bands are alternatives) — leave them null.
+      total: banded ? null : priceReady ? resolved.total : null,
+      currency: banded ? null : priceReady ? resolved.currency : null,
+      inclusion: priceReady ? resolved.inclusion : (option.inclusion ?? null),
+    };
+  };
+
+  const handleAdd = () => {
+    if (!hasBlocks) {
+      // Legacy/blockless: one criteria-dates line; a banded villa rides on its
+      // checked bands (GAP-044), a flat one on the option's own price.
+      onAdd(option, isBandedView ? [{ bands: leadBands.filter(isBandChecked) }] : undefined);
+      return;
+    }
+    const adds: StayAdd[] = addableIndices.map((index) => {
+      const bands = bandsForWeek(index);
+      return bands.length > 0
+        ? { stay: buildStay(index), bands: bands.filter(isBandChecked) }
+        : { stay: buildStay(index) };
+    });
+    if (adds.length === 0) return;
+    onAdd(option, adds);
+  };
 
   const metaParts: string[] = [];
   if (option.internal_name && option.internal_name !== option.property_name) {
@@ -215,54 +364,64 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
       ? `${inclusions.slice(0, INCLUSIONS_CLAMP_CHARS).trimEnd()}…`
       : inclusions;
 
-  const heldSelected = selected != null && !selected.is_available;
-  // A booked (held) week can never be added, banded or not. Beyond that: a
-  // banded week needs ≥1 saveable (non-POA, priced) checked band; a flat week
-  // needs its price resolved (which also covers "still repricing"). `isBandedView`
-  // follows the SELECTED week, so a villa banded in one season and flat in
-  // another gates on whichever shape the chosen week resolved to.
-  const addDisabled =
-    staged ||
-    heldSelected ||
-    (isBandedView ? checkedSaveableBands.length === 0 : resolved.state !== "ready");
+  // Shift notes: a week whose priced dates differ from its block (the engine
+  // nudged the arrival inside the window) — per checked week, once known.
+  const shiftedWeeks = hasBlocks
+    ? checkedSorted.filter((index) => {
+        const block = stayOptions[index];
+        if (!block || !weekKnown(index)) return false;
+        const priced = pricedRange(index);
+        return priced.from !== block.date_from || priced.to !== block.date_to;
+      })
+    : [];
 
-  const handleAdd = () => {
-    // Carry the SELECTED week's stay whenever its dates are known: a flat week
-    // needs a resolved price; a banded week rides on its bands, so a repriced
-    // (or default) week is enough even out-of-bracket. A legacy option with no
-    // stay_options hands over no stay (the builder falls back to the criteria).
-    const priceReady = resolved.state === "ready";
-    const stay: ChosenStay | undefined =
-      selected && (isBandedView ? datesKnown : priceReady)
-        ? {
-            date_from: selected.date_from,
-            date_to: selected.date_to,
-            is_default: isDefaultSelected,
-            priced_date_from: selectedPricedFrom || selected.date_from,
-            priced_date_to: selectedPricedTo || selected.date_to,
-            // A banded line takes its total/currency from the bands, never a
-            // single figure (bands are alternatives) — leave them null.
-            total: isBandedView ? null : priceReady ? resolved.total : null,
-            currency: isBandedView ? null : priceReady ? resolved.currency : null,
-            inclusion: priceReady ? resolved.inclusion : (option.inclusion ?? null),
-          }
-        : undefined;
-    if (isBandedView) {
-      onAdd(option, stay, resolvedBands.filter(isBandChecked));
+  // Per-week price row content for the picker view.
+  const weekRow = (index: number) => {
+    const block = stayOptions[index];
+    const banded = bandsForWeek(index).length > 0;
+    const resolved = resolveWeek(index);
+    let value: React.ReactNode;
+    if (banded) {
+      value = (
+        <span className="text-muted-foreground">{t("builder.results.occupancy_pricing")}</span>
+      );
+    } else if (resolved.state === "pending") {
+      value = (
+        <span className="text-muted-foreground">{t("builder.results.stay_options.repricing")}</span>
+      );
+    } else if (resolved.state === "error") {
+      value = (
+        <span className="text-destructive" role="alert">
+          {resolved.detail ?? t("builder.results.stay_options.reprice_failed")}
+        </span>
+      );
     } else {
-      onAdd(option, stay);
+      value = (
+        <span className="text-foreground font-medium">
+          {formatMoney(resolved.total, resolved.currency)}
+        </span>
+      );
     }
+    return (
+      <p key={block.date_from} className="text-muted-foreground text-xs">
+        {formatWeekRangeCompact(block.date_from, block.date_to)}: {value}
+      </p>
+    );
   };
 
   const addButton = (
     <Button
       type="button"
       size="sm"
-      variant={staged ? "secondary" : "default"}
+      variant={stagedOut ? "secondary" : "default"}
       disabled={addDisabled}
       onClick={handleAdd}
     >
-      {staged ? t("builder.results.added") : t("builder.results.add")}
+      {stagedOut
+        ? t("builder.results.added")
+        : addableCount > 1
+          ? t("builder.results.add_count", { count: addableCount })
+          : t("builder.results.add")}
     </Button>
   );
 
@@ -315,16 +474,18 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
           {hasPicker ? (
             <StayOptionPicker
               options={stayOptions}
-              selectedIndex={selectedIndex}
-              onSelect={setSelectedIndex}
+              checkedIndices={checkedIndices}
+              onToggle={toggleWeek}
+              stagedIndices={stagedIndices}
             />
           ) : null}
+          {hasPicker ? checkedSorted.map(weekRow) : null}
           {isBandedView ? (
             <div className="space-y-1">
               <p className="text-foreground/80 text-xs font-medium">
                 {t("builder.results.bands.heading")}
               </p>
-              {resolvedBands.map((b, i) => (
+              {leadBands.map((b, i) => (
                 <CheckboxLabel
                   key={`${b.min_party}-${b.max_party}-${i}`}
                   className="justify-between"
@@ -347,32 +508,44 @@ export function QuoteResultLine({ option, staged, adults, children, onAdd }: Pro
                 </CheckboxLabel>
               ))}
             </div>
-          ) : resolved.state === "error" ? (
-            <p className="text-destructive text-xs" role="alert">
-              {resolved.detail ?? t("builder.results.stay_options.reprice_failed")}
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-xs">
-              {t("builder.results.total")}:{" "}
-              <span className="text-foreground font-medium">
-                {resolved.state === "pending"
-                  ? t("builder.results.stay_options.repricing")
-                  : // Per-result currency (GAP-014) — one list freely mixes £/€/$.
-                    formatMoney(resolved.total, resolved.currency)}
-              </span>
-            </p>
-          )}
-          {shifted ? (
-            <p className="text-warning text-xs">
-              {t("builder.results.stay_options.shifted", {
-                from: formatDate(selectedPricedFrom || null),
-                to: formatDate(selectedPricedTo || null),
-              })}
-            </p>
           ) : null}
+          {!hasPicker && !isBandedView
+            ? (() => {
+                const resolved = resolveWeek(defaultIndex);
+                if (resolved.state === "error") {
+                  return (
+                    <p className="text-destructive text-xs" role="alert">
+                      {resolved.detail ?? t("builder.results.stay_options.reprice_failed")}
+                    </p>
+                  );
+                }
+                return (
+                  <p className="text-muted-foreground text-xs">
+                    {t("builder.results.total")}:{" "}
+                    <span className="text-foreground font-medium">
+                      {resolved.state === "pending"
+                        ? t("builder.results.stay_options.repricing")
+                        : // Per-result currency (GAP-014) — one list mixes £/€/$.
+                          formatMoney(resolved.total, resolved.currency)}
+                    </span>
+                  </p>
+                );
+              })()
+            : null}
+          {shiftedWeeks.map((index) => {
+            const priced = pricedRange(index);
+            return (
+              <p key={`shift-${stayOptions[index].date_from}`} className="text-warning text-xs">
+                {t("builder.results.stay_options.shifted", {
+                  from: formatDate(priced.from || null),
+                  to: formatDate(priced.to || null),
+                })}
+              </p>
+            );
+          })}
         </div>
       </div>
-      {heldSelected ? (
+      {singleBlockHeld ? (
         <Tooltip>
           {/* span wrapper: a disabled button can't anchor a tooltip. */}
           <TooltipTrigger asChild>

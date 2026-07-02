@@ -173,7 +173,12 @@ export const queryKeys = {
   },
   regions: {
     all: () => ["regions"] as const,
-    list: () => ["regions", "list"] as const,
+    // No-arg call keeps the historical key so existing caches/invalidations
+    // are untouched; filtered variants get their own key segment.
+    list: <F>(filters?: F) =>
+      filters === undefined
+        ? (["regions", "list"] as const)
+        : (["regions", "list", filters] as const),
   },
   propertyCategories: {
     all: () => ["property-categories"] as const,

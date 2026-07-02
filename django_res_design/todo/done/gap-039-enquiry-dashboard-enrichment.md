@@ -18,7 +18,7 @@
 > **Dead→`lost_reason`** dropdowns, the **date-range filter** UI (its
 > `created_after`/`created_before` params are already plumbed end to end), the
 > **delete (ADMIN)** + leading **select** columns, and the page-size `10` option
-> — are split into **[GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md)**
+> — are split into **[GAP-050](../gap-050-enquiry-grid-inline-edits-and-controls.md)**
 > so this ticket records exactly what landed.
 
 > **🧱 Shared-enum foundation landed (2026-06-18)** — the stage, lead-status, and
@@ -44,7 +44,7 @@
 - **Status:** ✅ Resolved (2026-06-19) — dashboard enrichment delivered (see the
   banner above); the remaining inline-edit / date-range / delete affordances are
   tracked separately in
-  [GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md).
+  [GAP-050](../gap-050-enquiry-grid-inline-edits-and-controls.md).
 - **Files:**
   - `frontend/src/features/enquiries/EnquiriesListPage.tsx`, `columns.tsx`
   - `django_res/reservations/serializers/enquiry.py`,
@@ -88,7 +88,7 @@ the salesperson/region/date-range filters.
 > **Scope note (2026-06-19):** the inline **salesperson** / **stage** /
 > **lost_reason** edits and the **date-range filter** from the acceptance list
 > above were carved out to
-> [GAP-050](gap-050-enquiry-grid-inline-edits-and-controls.md); everything else
+> [GAP-050](../gap-050-enquiry-grid-inline-edits-and-controls.md); everything else
 > here is delivered.
 
 ## Dependencies

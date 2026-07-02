@@ -59,6 +59,7 @@ from properties.models.images import PropertyImage
 from properties.models.property import Property, PropertyCategory, PropertyGroup
 from properties.models.rooms import Room
 from reservations.models.booking import Booking
+from reservations.models.charge_item import BookingChargeItem
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
 
@@ -282,6 +283,25 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaPaymentDetails d JOIN VillaPayment p ON p.Id = d.PaymentId",
         Payment,
         "Payment",
+    ),
+    _Check(
+        # Zero-price rows are excluded (the loader skips them — the model's
+        # `amount != 0` constraint forbids the write); details on deleted
+        # bookings are excluded to mirror BookingLoader's DeletedAt filter.
+        "SELECT COUNT(*) FROM VillaBookingDetails d"
+        " JOIN VillaBooking b ON b.Id = d.BookingId AND b.DeletedAt IS NULL"
+        " WHERE d.Price <> 0",
+        BookingChargeItem,
+        "BookingChargeItem",
+        # Placeholder — recalibrate at cutover dry-run (BUG-013 precedent).
+        # Error/skip rows widen this gap until fixed: no FxRate for the
+        # row→booking pair, unresolvable non-zero CurrencyId, conversions
+        # that quantise to zero, and details on unresolvable bookings.
+        expected_gap=0,
+        # Staff-created charge items (legacy_id NULL) are the live adjustment
+        # mechanism and coexist with imports — count only the legacy slice,
+        # or any staff write during the cutover window turns this check RED.
+        loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
 ]
 

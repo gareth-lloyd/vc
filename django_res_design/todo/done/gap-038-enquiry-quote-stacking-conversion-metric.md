@@ -68,7 +68,7 @@ takes to convert each inquiry." Three sub-gaps:
 
 ## Already shipped (do NOT redo — frame against it)
 
-[GAP-005](gap-005-quotation-flow-parity.md) M3/M4 delivered the stacking
+[GAP-005](../gap-005-quotation-flow-parity.md) M3/M4 delivered the stacking
 foundation: `Quotation.enquiry` is NOT NULL + PROTECT (many quotes per enquiry),
 `EnquiryDetailSerializer` inlines the quotations + lines, the enquiry quote-stack
 prefetch uses `Quotation.objects.real()`, and `GET /guests/{id}/enquiries` is
@@ -104,5 +104,5 @@ metric/reporting* + the *per-quote status chip*, not the stack itself.
 ## Dependencies
 
 - Sibling of [GAP-039](gap-039-enquiry-dashboard-enrichment.md) (the list shares
-  the stage + lost-reason vocab) and [GAP-005](gap-005-quotation-flow-parity.md)
+  the stage + lost-reason vocab) and [GAP-005](../gap-005-quotation-flow-parity.md)
   (stacking foundation). Coordinate the stage enum once across all three.

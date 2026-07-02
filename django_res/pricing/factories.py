@@ -66,6 +66,7 @@ class RatePeriodFactory(DjangoModelFactory):
         django_get_or_create = ("plan", "date_from", "date_to")
 
     plan = factory.SubFactory(RatePlanFactory)
+    name = factory.Sequence(lambda n: f"Period {n}")
     date_from = _WINDOW_FROM
     date_to = _WINDOW_TO
     is_active = True

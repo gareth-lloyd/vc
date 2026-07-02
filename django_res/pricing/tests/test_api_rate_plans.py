@@ -122,6 +122,50 @@ def test_create_rate_period(api_client: APIClient, staff: User, plan: RatePlan) 
 
 
 @pytest.mark.django_db
+def test_create_period_requires_name(api_client: APIClient, staff: User, plan: RatePlan) -> None:
+    """GAP-059: the operator label is compulsory at the write surface."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}/rate-periods",
+        data={"date_from": "2026-07-01", "date_to": "2026-08-31"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "name" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_create_period_rejects_blank_name(
+    api_client: APIClient, staff: User, plan: RatePlan, blank: str
+) -> None:
+    """GAP-059: blank and whitespace-only names are rejected (DRF trims)."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}/rate-periods",
+        data={"name": blank, "date_from": "2026-07-01", "date_to": "2026-08-31"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "name" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_patch_period_cannot_clear_name(
+    api_client: APIClient, staff: User, period: RatePeriod
+) -> None:
+    """GAP-059: an existing name cannot be cleared back to blank."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/periods/{period.pk}",
+        data={"name": ""},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "name" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
 def test_create_rate_rule_under_period(
     api_client: APIClient, staff: User, period: RatePeriod
 ) -> None:
@@ -182,7 +226,9 @@ def test_create_period_rejects_overlapping_dates(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        data={"date_from": "2026-08-31", "date_to": "2026-09-30"},  # shares 08-31
+        # Shares 08-31 with the fixture period. Named: a missing name would
+        # 400 at field level (GAP-059) before the overlap check runs.
+        data={"name": "Autumn", "date_from": "2026-08-31", "date_to": "2026-09-30"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -287,6 +333,11 @@ def test_carry_forward_creates_editable_plan_for_future_year(
     assert payload["id"] != rule.period.plan_id
     # The materialised plan is a real, queryable row distinct from the anchor.
     assert RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
+    # GAP-059: every carried period arrives named (exact naming rules are the
+    # service's contract — see test_carryover).
+    carried = RatePeriod.objects.filter(plan_id=payload["id"])
+    assert carried.exists()
+    assert all(p.name for p in carried)
 
 
 @pytest.mark.django_db

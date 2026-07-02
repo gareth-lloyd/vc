@@ -475,6 +475,7 @@ def test_load_rows_purge_spares_ui_rules(loaded_plan: RatePlan) -> None:
     (legacy_id NULL) survive a full reload untouched."""
     ui_period = RatePeriod.objects.create(
         plan=loaded_plan,
+        name="UI January",
         date_from=date(2026, 1, 1),
         date_to=date(2026, 1, 31),
     )

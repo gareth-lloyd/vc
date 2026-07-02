@@ -548,6 +548,7 @@ def _priced_plan_in(
     )
     period = RatePeriod.objects.create(
         plan=plan,
+        name="Summer",
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
     )

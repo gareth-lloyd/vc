@@ -137,7 +137,7 @@ def _occupancy_period(plan: RatePlan) -> None:
     from pricing.models import RatePeriod
 
     period = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+        plan=plan, name="Summer", date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
     )
     RateBandModel.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100.00"))
     RateBandModel.objects.create(
@@ -453,7 +453,7 @@ class TestStayOptionsSearch:
 
         _sat_changeover(property_)
         period = RatePeriod.objects.create(
-            plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+            plan=plan, name="Summer", date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
         )
         RateBandModel.objects.create(
             period=period, min_party=1, max_party=8, nightly=Decimal("100.00")
@@ -557,7 +557,7 @@ class TestWeeklyPrices:
 
         _sat_changeover(property_)
         period = RatePeriod.objects.create(
-            plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+            plan=plan, name="Summer", date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
         )
         RateBandModel.objects.create(
             period=period,

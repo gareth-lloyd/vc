@@ -69,7 +69,7 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateBand:
         effective_to=date(2026, 12, 31),
     )
     period = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
+        plan=plan, name="Summer", date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
     )
     return RateBand.objects.create(
         period=period,
@@ -199,7 +199,10 @@ def test_project_skips_unapproved_rules(
     property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
     extra_period = RatePeriod.objects.create(
-        plan=anchor_plan.period.plan, date_from=date(2026, 9, 1), date_to=date(2026, 9, 30)
+        plan=anchor_plan.period.plan,
+        name="September",
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 30),
     )
     RateBand.objects.create(
         period=extra_period,

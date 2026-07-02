@@ -10,6 +10,7 @@ import pytest
 from core.exceptions import NoRateAvailable
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.carryover import RateCarryoverService
+from pricing.services.period_names import derive_period_name
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
@@ -120,6 +121,7 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
     # must not be carried.
     inactive = RatePeriod.objects.create(
         plan=anchor_plan,
+        name="Inactive Sept",
         date_from=date(2026, 9, 1),
         date_to=date(2026, 9, 30),
         is_active=False,
@@ -132,7 +134,7 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
     )
     # An unapproved band on a separate active period — filtered by is_approved.
     unapproved_period = RatePeriod.objects.create(
-        plan=anchor_plan, date_from=date(2026, 10, 1), date_to=date(2026, 10, 31)
+        plan=anchor_plan, name="October", date_from=date(2026, 10, 1), date_to=date(2026, 10, 31)
     )
     RateBand.objects.create(
         period=unapproved_period,
@@ -174,6 +176,7 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
     RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
+            name="Late Feb",
             date_from=date(2024, 2, 25),
             date_to=date(2024, 2, 29),  # spans Feb 29
         ),
@@ -183,7 +186,7 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
-            plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
+            plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
         ),
         min_party=1,
         max_party=8,
@@ -220,6 +223,7 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
     RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
+            name="Late Feb",
             date_from=date(2024, 2, 26),  # Mon → maps +3 to Mon 1 Mar 2027
             date_to=date(2024, 2, 29),
         ),
@@ -230,6 +234,7 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
     RateBand.objects.create(
         period=RatePeriod.objects.create(
             plan=plan,
+            name="Early March",
             date_from=date(2024, 3, 1),  # Fri → maps -3 to Fri 26 Feb 2027
             date_to=date(2024, 3, 10),
         ),
@@ -269,7 +274,7 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
     # (span preserved across the lost leap day), claiming 1 Mar first.
     RateBand.objects.create(
         period=RatePeriod.objects.create(
-            plan=plan, date_from=date(2024, 2, 27), date_to=date(2024, 2, 29)
+            plan=plan, name="Late Feb", date_from=date(2024, 2, 27), date_to=date(2024, 2, 29)
         ),
         min_party=1,
         max_party=8,
@@ -279,7 +284,7 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
     # claimed above, leaving a single-day remainder on 2 Mar.
     RateBand.objects.create(
         period=RatePeriod.objects.create(
-            plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 2)
+            plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 2)
         ),
         min_party=1,
         max_party=8,
@@ -318,7 +323,7 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
     # Lower pk, *later* dates — entered first.
     RateBand.objects.create(
         period=RatePeriod.objects.create(
-            plan=plan, date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
+            plan=plan, name="March week", date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
         ),
         min_party=1,
         max_party=8,
@@ -327,7 +332,7 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
     # Higher pk, earlier dates; spans Feb 29 so its mapped range collides on 1 Mar.
     RateBand.objects.create(
         period=RatePeriod.objects.create(
-            plan=plan, date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
+            plan=plan, name="Late Feb", date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
         ),
         min_party=1,
         max_party=8,
@@ -377,3 +382,71 @@ def test_materialise_carries_anchor_period_min_max_nights(
     carried = RatePeriod.objects.get(plan=new_plan, date_from=date(2028, 6, 1))
     assert carried.min_nights == 5
     assert carried.max_nights == 14
+
+
+@pytest.mark.django_db
+def test_materialise_copies_source_period_names(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """GAP-059: a carried period keeps its curated operator label when every
+    band in its segment descends from one source period (the common,
+    no-collision carry) — annual carry-forward must not destroy names."""
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
+    )
+    carried = RatePeriod.objects.get(plan=new_plan)
+    assert carried.name == "Peak"  # the anchor fixture's period label
+
+
+@pytest.mark.django_db
+def test_materialise_derives_name_when_segment_mixes_source_periods(
+    property_: Property, gbp: Currency
+) -> None:
+    """GAP-059: when date-mapping regroups bands from *different* source
+    periods into one segment, there is no single name to copy — the segment
+    falls back to the date-span placeholder (same derivation as the loader
+    and the 0017 backfill).
+
+    Setup mirrors the Feb-29 collision tests: the leap-day span lands one day
+    onto its neighbour after mapping, but here the bands are party-disjoint so
+    neither is clipped — the shared day becomes a mixed-parentage segment."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    RateBand.objects.create(
+        period=RatePeriod.objects.create(
+            plan=plan,
+            name="Late Feb",
+            date_from=date(2024, 2, 25),
+            date_to=date(2024, 2, 29),  # spans Feb 29
+        ),
+        min_party=1,
+        max_party=4,
+        nightly=Decimal("100.00"),
+    )
+    RateBand.objects.create(
+        period=RatePeriod.objects.create(
+            plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
+        ),
+        min_party=5,
+        max_party=8,
+        nightly=Decimal("150.00"),
+    )
+
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
+    )
+
+    names = list(
+        RatePeriod.objects.filter(plan=new_plan)
+        .order_by("date_from")
+        .values_list("name", flat=True)
+    )
+    # 2/25-2/28 is purely "Late Feb"; 3/1 mixes both parents (placeholder);
+    # 3/2-3/7 is purely "Early March".
+    sliver = derive_period_name(date(2025, 3, 1), date(2025, 3, 1))
+    assert names == ["Late Feb", sliver, "Early March"]

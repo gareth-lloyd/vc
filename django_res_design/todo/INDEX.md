@@ -99,9 +99,7 @@ follow-up.)
 | [GAP-057](gap-057-2fa-enforcement-and-refund-stepup.md) | 2FA: staff enrolment enforcement + refund-execution step-up | ⬜ converted from Q-008 (policy decided 2026-07-02); 6-unit plan in ticket |
 | [GAP-058](gap-058-comms-pull-only-top-of-spine.md) | comms pull-only: retire all 7 blessed comms back-edges (reminder sweep → comms.tasks, password-reset signal, self-mounted email routes) | ⬜ converted from Q-017 (decision recorded 2026-07-02); 3-unit plan + docs in ticket |
 | [GAP-059](gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ⬜ expanded 2026-07-02; 4-unit plan in ticket — all legacy-migrated periods currently blank, workbench creates them blank, FE has 4 divergent fallbacks |
-| [GAP-060](gap-060-kill-old-pricing-tab.md) | Kill old Pricing tab (superseded by Rate workbench); rename Workbench → Rates; feature-parity check first | ⬜ stub (2026-07-02), needs expansion |
-| [GAP-059](gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (needed for meaningful UI presentation of date bands) | ⬜ stub — sibling of GAP-060 |
-| [GAP-060](gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ⬜ FE-only; parity punch-list (rate-plan create/edit/duplicate/delete + period edit/delete must land in the Workbench first), then rename + delete; 4-unit plan in ticket |
+| [GAP-060](gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ⬜ FE-only; parity punch-list (rate-plan create/edit/duplicate/delete + period edit/delete must land in the Workbench first — a near-verbatim port from PricingTab), then rename + delete; 4-unit plan in ticket |
 
 ## Open product questions
 

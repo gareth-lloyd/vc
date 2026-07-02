@@ -126,16 +126,33 @@ run`).
 Bring the six missing affordances into the Workbench, reusing the existing
 shared dialogs and hooks — **no new endpoints, no new form components**.
 
-- **Rate-plan (season) lifecycle.** Add an "Add season" affordance and per-
-  season Edit / Duplicate / Delete on the Workbench. Natural home: a season
-  header/toolbar row next to the existing season picker
-  (`RateWorkbenchPage.tsx:233-255`), or an actions cluster on each seasons-lane
-  band. Wire the existing `RatePlanFormDialog` (create + edit modes) and
-  `useCreateRatePlan` / `useUpdateRatePlan` / `useDuplicateRatePlan` /
-  `useDeleteRatePlan`. Duplicate is the highest-value one — it copies an entire
-  year's rate sheet forward (the primary way owners roll rates year-on-year);
-  losing it would be the worst regression. Delete uses a `ConfirmDialog`
-  (mirror `PricingTab.tsx:210-225,288-327`).
+- **Rate-plan (season) creation — a near-verbatim port from `PricingTab`.** This
+  is the load-bearing gap (without it a plan-less property is un-priceable
+  through the UI). The old tab's implementation is tiny and lifts almost as-is:
+  an `addSeasonOpen` boolean state → an "Add season" `Button` (writer-gated,
+  disabled-with-tooltip when not) → `<RatePlanFormDialog propertyId
+  open mode="create" />`. See `PricingTab.tsx:210-225` (the button + tooltip),
+  `:231` (mounted in the section `actions` slot) and `:288-295` (the create
+  dialog). `RatePlanFormDialog` already owns `useCreateRatePlan` and all the
+  fields (name, currency, `price_basis`, `effective_from/to`, `is_active`,
+  notes) + 4xx→inline-error handling, so the port is: copy the state + button +
+  dialog mount into the Workbench and drop them in a season toolbar row next to
+  the existing season picker (`RateWorkbenchPage.tsx:233-255`). The `EmptyState`
+  at `RateWorkbenchPage.tsx:199-205` should also gain this "Add season" action
+  as its CTA so a zero-plan property can be bootstrapped from the Workbench.
+- **Rate-plan edit / duplicate / delete — the rest of the same port.** Same
+  pattern, same dialog: `editingSeason` state → `RatePlanFormDialog mode="edit"
+  season={…}`; `duplicatingSeason` / `deletingSeason` states →
+  `ConfirmDialog`s wired to `useDuplicateRatePlan` / `useDeleteRatePlan`. Lift
+  the handlers and dialog mounts wholesale from `PricingTab.tsx:200-225` and
+  `:296-327`. Duplicate is the highest-value of these — it copies an entire
+  year's rate sheet forward (`POST /rate-plans/{id}:duplicate`, the primary way
+  owners roll rates year-on-year); losing it would be the worst regression.
+  Per-season Edit/Duplicate/Delete controls live on each seasons-lane band or in
+  the season toolbar. Reuse the old tab's `pricing.seasons.*` i18n copy (move
+  the still-needed keys into the `rate_workbench.*` tree, or keep referencing
+  them — decide alongside the Unit 3 i18n cleanup so nothing is deleted while
+  still in use).
 - **Rate-period edit + delete.** The Workbench creates periods but can't edit or
   delete them (`RateWorkbenchPage.tsx:291` is `mode="create"` only; `MatrixEditor`
   has no period dialog). Add per-period Edit (open `RatePeriodFormDialog` in
@@ -225,6 +242,9 @@ Only after Unit 1 has landed the parity affordances.
   six ❌ rows are now ✅).
 - Duplicate-season still copies a full year's rate sheet forward (the
   `:duplicate` round-trip) from the new UI.
+- A property with **zero** rate plans can be bootstrapped end-to-end from the
+  Rates tab alone: the empty state offers "Add season" → create a plan → add a
+  period → add a band, with no recourse to the old tab or the API.
 - Only **one** rate-editing tab exists on the property page, labelled **"Rates"**
   (en + el); the "Rate Workbench" / "Rate & Service Workbench" strings are gone
   from user-facing copy; no "Pricing" tab remains.

@@ -10,7 +10,7 @@ unknown legacy statuses to PENDING) that the resync would otherwise rewrite.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from unittest import mock
 
@@ -19,36 +19,13 @@ import pytest
 from data_migration.base import LoadReport
 from data_migration.loaders.bookings import (
     BookingChargeItemLoader,
-    BookingLoader,
     _suppress_schedule_resync,
 )
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency, FxRate
-from properties.models.property import Property
 from reservations.models.booking import Booking
 from reservations.models.charge_item import BookingChargeItem
-
-
-@pytest.fixture
-def booking(seeded: Property) -> Booking:
-    """A legacy-imported booking (legacy_id="7", currency GBP) minted via the
-    real loader — the state BookingChargeItemLoader finds at cutover."""
-    BookingLoader()._process_row(
-        {
-            "Id": 7,
-            "VillaId": 900,
-            "Guest": 55,
-            "FromDate": date(2026, 6, 10),
-            "ToDate": date(2026, 6, 17),
-            "RentalPrice": Decimal("1400.00"),
-            "BalanceDue": datetime(2026, 5, 15, 0, 0),
-            "CurrencyId": 2,
-            "QuotationNo": 1805,
-        },
-        LoadReport(loader="booking"),
-    )
-    return Booking.objects.get(legacy_id="7")
 
 
 def _row(**overrides: object) -> dict[str, object]:

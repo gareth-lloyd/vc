@@ -1,5 +1,20 @@
 # GAP-017 — data-migration loader for legacy `VillaBookingDetails`
 
+> **✅ RESOLVED (2026-07-02)** — `BookingChargeItemLoader`
+> (`django_res/data_migration/loaders/bookings.py`) ports the rows with
+> convert-or-flag currency handling (`FxConverter` pinned at
+> `as_of=booking.date_from`, no-rate rows land in `LoadReport.errors`),
+> payment-resync suppression around the load (the receiver disconnect the
+> ticket asked for — note the "loaders already run with signal discipline"
+> claim below was wrong; this is the package's first suppression), a removal
+> sweep for vanished/zero rows, and a `reconcile_legacy` check
+> (`expected_gap=0` placeholder, recalibrate at dry-run). The double-count
+> worry resolved without heuristics: legacy's displayed total was
+> `RentalPrice + Σ details`, the exact shape of the new
+> `balance_due + Σ charge_items`, so verbatim same-currency porting
+> reproduces legacy totals by construction. Playbook:
+> `data_migration/CUTOVER.md` §4g.
+
 - **Severity:** Gap
 - **Source:** booking-charge-items work (2026-06-10)
 - **Files:** `django_res/data_migration/` (new loader),

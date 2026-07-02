@@ -22,6 +22,7 @@ from integrations.enums import SyncProvider
 from integrations.factories import SyncRecordFactory
 from properties.factories import PropertyFactory
 from reservations.factories import EnquiryFactory
+from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
 
 
@@ -319,6 +320,30 @@ def test_organisation_agency_check_counts_only_agencies(monkeypatch: pytest.Monk
 
     assert "Organisation (agency)" in output
     assert "OK" in output and "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_booking_charge_item_check_counts_only_the_legacy_slice(booking: Booking) -> None:
+    """GAP-017: the VillaBookingDetails port must be reconciled. The legacy
+    side excludes zero-price rows (the loader skips them) and details on
+    deleted bookings (mirrors BookingLoader's DeletedAt filter); the loaded
+    side counts only imported rows — staff-created charge items
+    (legacy_id NULL) are the live adjustment mechanism and must not turn the
+    check RED."""
+    from reservations.factories import BookingChargeItemFactory
+    from reservations.models.charge_item import BookingChargeItem
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "BookingChargeItem")
+    assert check.model is BookingChargeItem
+    assert "VillaBookingDetails" in check.legacy_query
+    assert "b.DeletedAt IS NULL" in check.legacy_query
+    assert "d.Price <> 0" in check.legacy_query
+
+    common = {"booking": booking, "currency": booking.currency}
+    BookingChargeItemFactory(legacy_id="31", **common)  # imported
+    BookingChargeItemFactory(legacy_id=None, **common)  # staff-created — excluded
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
 
 
 def test_documented_expected_gaps_are_encoded() -> None:

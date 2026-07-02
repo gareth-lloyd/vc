@@ -276,6 +276,7 @@
     "title": "Τροποποίηση ημερομηνιών",
     "description": "Ρυθμίστε check-in και check-out. Η τιμολόγηση ενδέχεται να χρειαστεί ξεχωριστό επανυπολογισμό.",
     "fields": {
+      "dates": "Ημερομηνίες",
       "check_in": "Check-in",
       "check_out": "Check-out",
       "reason": "Λόγος (προαιρετικό)"

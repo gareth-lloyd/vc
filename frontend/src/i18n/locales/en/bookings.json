@@ -276,6 +276,7 @@
     "title": "Modify dates",
     "description": "Adjust check-in and check-out. Pricing may need to be recalculated separately.",
     "fields": {
+      "dates": "Dates",
       "check_in": "Check-in",
       "check_out": "Check-out",
       "reason": "Reason (optional)"

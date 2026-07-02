@@ -12,9 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { ApiError } from "@/lib/api/errors";
 import { useModifyBookingDates } from "../hooks";
@@ -79,36 +79,20 @@ export function ModifyDatesDialog({ booking, open, onOpenChange }: ModifyDatesDi
           <DialogDescription>{t("modify_dates_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="modify-date-from">{t("modify_dates_dialog.fields.check_in")}</Label>
-              <Input
-                id="modify-date-from"
-                type="date"
-                {...form.register("date_from")}
-                aria-invalid={!!form.formState.errors.date_from}
-              />
-              {form.formState.errors.date_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.date_from.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="modify-date-to">{t("modify_dates_dialog.fields.check_out")}</Label>
-              <Input
-                id="modify-date-to"
-                type="date"
-                {...form.register("date_to")}
-                aria-invalid={!!form.formState.errors.date_to}
-              />
-              {form.formState.errors.date_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {form.formState.errors.date_to.message}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {/* modifyDatesInputSchema messages are pre-translated at module scope
+              (and server text passes through) — pass them raw, no fieldErrorText. */}
+          <DateRangePicker
+            control={form.control}
+            fromName="date_from"
+            toName="date_to"
+            mode="nights"
+            id="modify-dates"
+            label={t("modify_dates_dialog.fields.dates")}
+            fromLabel={t("modify_dates_dialog.fields.check_in")}
+            toLabel={t("modify_dates_dialog.fields.check_out")}
+            fromError={form.formState.errors.date_from?.message}
+            toError={form.formState.errors.date_to?.message}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="modify-dates-reason">{t("modify_dates_dialog.fields.reason")}</Label>

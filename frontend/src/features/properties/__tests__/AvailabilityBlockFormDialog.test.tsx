@@ -124,7 +124,9 @@ describe("AvailabilityBlockFormDialog", () => {
       http.get("/api/v1/properties/7/availability", () =>
         HttpResponse.json({
           property_id: 7,
-          cells: [{ date: "2026-07-23", available: false, reason: "booked" }],
+          // block_id is explicitly null on booked cells in the real API —
+          // regression guard for the create-mode null/null collision.
+          cells: [{ date: "2026-07-23", available: false, reason: "booked", block_id: null }],
         }),
       ),
     );
@@ -145,7 +147,7 @@ describe("AvailabilityBlockFormDialog", () => {
       http.get("/api/v1/properties/7/availability", () =>
         HttpResponse.json({
           property_id: 7,
-          cells: [{ date: "2026-07-23", available: false, reason: "booked" }],
+          cells: [{ date: "2026-07-23", available: false, reason: "booked", block_id: null }],
         }),
       ),
     );

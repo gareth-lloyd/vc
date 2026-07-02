@@ -10,7 +10,11 @@ export function disabledDaysFromCells(
   cells: { date: string; available: boolean; block_id?: number | null }[],
   editingBlockId: number | null = null,
 ): Date[] {
+  // Booked cells carry an explicit `block_id: null`, so the create-mode null
+  // sentinel must not compare against it — only a real block id exempts cells.
   return cells
-    .filter((cell) => !cell.available && cell.block_id !== editingBlockId)
+    .filter(
+      (cell) => !cell.available && (editingBlockId === null || cell.block_id !== editingBlockId),
+    )
     .map((cell) => parseISO(cell.date));
 }

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -138,28 +138,28 @@ export function ChangeoverRuleFormDialog(props: ChangeoverRuleFormDialogProps) {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="changeover-from">
-                {t("changeover.dialog.fields.effective_from")}
-              </Label>
-              <Input id="changeover-from" type="date" {...form.register("effective_from")} />
-              {form.formState.errors.effective_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_from.message)}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="changeover-to">{t("changeover.dialog.fields.effective_to")}</Label>
-              <Input id="changeover-to" type="date" {...form.register("effective_to")} />
-              {form.formState.errors.effective_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {/* Inclusive [effective_from, effective_to] — the rule applies on
+              both endpoint days, so days mode (single-day rule legal). */}
+          <DateRangePicker
+            control={form.control}
+            fromName="effective_from"
+            toName="effective_to"
+            mode="days"
+            id="changeover-dates"
+            label={t("changeover.dialog.fields.dates")}
+            fromLabel={t("changeover.dialog.fields.effective_from")}
+            toLabel={t("changeover.dialog.fields.effective_to")}
+            fromError={
+              form.formState.errors.effective_from
+                ? fieldErrorText(t, form.formState.errors.effective_from.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.effective_to
+                ? fieldErrorText(t, form.formState.errors.effective_to.message)
+                : undefined
+            }
+          />
 
           <div className="space-y-2">
             <Label htmlFor="changeover-notes">{t("changeover.dialog.fields.notes")}</Label>

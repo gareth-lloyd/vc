@@ -824,6 +824,7 @@
       "edit_title": "Edit changeover rule",
       "fields": {
         "weekday": "Weekday",
+        "dates": "Dates",
         "effective_from": "From",
         "effective_to": "To",
         "notes": "Notes"

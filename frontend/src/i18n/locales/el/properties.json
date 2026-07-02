@@ -824,6 +824,7 @@
       "edit_title": "Επεξεργασία κανόνα αλλαγής",
       "fields": {
         "weekday": "Ημέρα εβδομάδας",
+        "dates": "Ημερομηνίες",
         "effective_from": "Από",
         "effective_to": "Έως",
         "notes": "Σημειώσεις"

@@ -144,6 +144,34 @@ describe("PropertyDetailLayout", () => {
     expect(screen.getByLabelText("Property image placeholder")).toBeInTheDocument();
   });
 
+  it("collapses the summary rail on the rate-workbench tab (kept mounted)", async () => {
+    installDetailHandlers();
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties/:id" element={<PropertyDetailLayout />}>
+          <Route path="details" element={<DetailsTab />} />
+          <Route path="rate-workbench" element={<div>Workbench body</div>} />
+        </Route>
+      </Routes>,
+      { route: "/properties/casa-norte/rate-workbench" },
+    );
+    await screen.findByText("Workbench body");
+    // Rail subtree stays mounted (hideRail semantics) but its <aside> is
+    // display:none at all widths — `hidden` and no `lg:block` breakpoint show.
+    const railHeading = screen.getAllByText("Casa Norte").find((el) => el.tagName === "H2");
+    const aside = railHeading?.closest("aside");
+    expect(aside).toHaveClass("hidden");
+    expect(aside).not.toHaveClass("lg:block");
+  });
+
+  it("shows the summary rail from lg on non-workbench tabs", async () => {
+    installDetailHandlers();
+    setup("/properties/casa-norte/details");
+    await waitFor(() => expect(screen.getAllByText("Casa Norte")[0]).toBeInTheDocument());
+    const railHeading = screen.getAllByText("Casa Norte").find((el) => el.tagName === "H2");
+    expect(railHeading?.closest("aside")).toHaveClass("lg:block");
+  });
+
   it("renders the Details tab with sub-resources", async () => {
     installDetailHandlers();
     setup("/properties/casa-norte/details");

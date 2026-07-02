@@ -98,6 +98,18 @@
     "ical_tooltip": "Availability is auto-synced from the owner's iCal feed",
     "online_link": "Online calendar"
   },
+  "date_range": {
+    "placeholder": "Select dates",
+    "done": "Done",
+    "trigger_nights_one": "{{range}} · {{count}} night",
+    "trigger_nights_other": "{{range}} · {{count}} nights",
+    "trigger_days_one": "{{range}} · {{count}} day",
+    "trigger_days_other": "{{range}} · {{count}} days",
+    "nights_summary_one": "{{count}} night ({{range}})",
+    "nights_summary_other": "{{count}} nights ({{range}})",
+    "days_summary_one": "{{count}} day ({{range}})",
+    "days_summary_other": "{{count}} days ({{range}})"
+  },
   "filters": {
     "any_country": "All countries",
     "any_region": "All regions"

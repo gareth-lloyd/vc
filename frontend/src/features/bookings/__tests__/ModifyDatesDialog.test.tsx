@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { ModifyDatesDialog } from "../components/ModifyDatesDialog";
 import type { BookingDetail } from "../schemas";
 
@@ -68,16 +69,17 @@ describe("ModifyDatesDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog");
-    const dateFrom = within(dialog).getByLabelText(/check-in/i) as HTMLInputElement;
-    const dateTo = within(dialog).getByLabelText(/check-out/i) as HTMLInputElement;
+    // Seeded with the booking's current dates.
+    expectTriggerRange(/^dates/i, "1–8 Jul 2026 · 7 nights");
 
-    expect(dateFrom.value).toBe("2026-07-01");
-    expect(dateTo.value).toBe("2026-07-08");
-
-    await user.clear(dateFrom);
-    await user.type(dateFrom, "2026-07-10");
-    await user.clear(dateTo);
-    await user.type(dateTo, "2026-07-17");
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(
+      user,
+      picker,
+      { from: "2026-07-10", to: "2026-07-17" },
+      { from: /check-in/i, to: /check-out/i },
+    );
+    expectTriggerRange(/^dates/i, "10–17 Jul 2026 · 7 nights");
 
     await user.click(within(dialog).getByRole("button", { name: /save dates/i }));
 
@@ -101,11 +103,16 @@ describe("ModifyDatesDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog");
-    const dateTo = within(dialog).getByLabelText(/check-out/i) as HTMLInputElement;
-    await user.clear(dateTo);
-    await user.type(dateTo, "2026-06-15");
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(
+      user,
+      picker,
+      { to: "2026-06-15" },
+      { from: /check-in/i, to: /check-out/i },
+    );
     await user.click(within(dialog).getByRole("button", { name: /save dates/i }));
 
+    // The zod error renders next to the trigger — visible with the popover closed.
     expect(await within(dialog).findByText(/check-out must be after/i)).toBeInTheDocument();
     expect(networkCalls).not.toHaveBeenCalled();
   });

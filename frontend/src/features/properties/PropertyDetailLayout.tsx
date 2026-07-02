@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useMatch, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
 import { StatusBadge } from "@/components/data/StatusBadge";
@@ -20,6 +20,10 @@ export function PropertyDetailLayout() {
   const query = useProperty(id);
   const isAdmin = useHasAdminRole();
   const canWriteRates = useHasReservationsRole();
+  // The Rate Workbench is a wide UI (whole-year timeline + occupancy matrix), so
+  // collapse the shared summary rail on that tab to give it the full width. The
+  // rail subtree stays mounted (hideRail semantics), so other tabs are unchanged.
+  const onWorkbench = useMatch("/properties/:id/rate-workbench") != null;
   // The audit-log History tab is admin-only (Q-014); the Rate Workbench is a
   // writer-only preview (reservations OR admin) while we build confidence. This
   // only hides the nav entry — both routes stay mounted so a direct URL still
@@ -101,6 +105,7 @@ export function PropertyDetailLayout() {
       </div>
 
       <TwoColumn
+        hideRail={onWorkbench}
         rightRail={
           <div className="space-y-4">
             {property.hero_image_url ? (

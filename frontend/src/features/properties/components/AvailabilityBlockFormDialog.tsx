@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DateRangeField } from "@/components/form/DateRangeField";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { disabledDaysFromCells } from "@/components/form/disabledDays";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
@@ -185,15 +185,15 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
             </Select>
           </div>
 
-          <DateRangeField
+          <DateRangePicker
             control={form.control}
             fromName="date_from"
             toName="date_to"
-            fromId="block-from"
-            toId="block-to"
+            mode="nights"
+            id="block-dates"
+            label={t("availability.block_dialog.fields.dates")}
             fromLabel={t("availability.block_dialog.fields.date_from")}
             toLabel={t("availability.block_dialog.fields.date_to")}
-            pickLabel={t("availability.block_dialog.fields.pick_dates")}
             disabledDays={disabledDays}
             onPickerOpenChange={(open) => open && setPickerOpened(true)}
             fromError={
@@ -210,7 +210,7 @@ export function AvailabilityBlockFormDialog(props: AvailabilityBlockFormDialogPr
 
           {summaryArgs ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
-              {t("availability.block_dialog.nights_summary", summaryArgs)}
+              {t("common:date_range.nights_summary", summaryArgs)}
             </p>
           ) : null}
 

@@ -98,6 +98,18 @@
     "ical_tooltip": "Η διαθεσιμότητα συγχρονίζεται αυτόματα από τη ροή iCal του ιδιοκτήτη",
     "online_link": "Διαδικτυακό ημερολόγιο"
   },
+  "date_range": {
+    "placeholder": "Επιλογή ημερομηνιών",
+    "done": "Έτοιμο",
+    "trigger_nights_one": "{{range}} · {{count}} νύχτα",
+    "trigger_nights_other": "{{range}} · {{count}} νύχτες",
+    "trigger_days_one": "{{range}} · {{count}} ημέρα",
+    "trigger_days_other": "{{range}} · {{count}} ημέρες",
+    "nights_summary_one": "{{count}} νύχτα ({{range}})",
+    "nights_summary_other": "{{count}} νύχτες ({{range}})",
+    "days_summary_one": "{{count}} ημέρα ({{range}})",
+    "days_summary_other": "{{count}} ημέρες ({{range}})"
+  },
   "filters": {
     "any_country": "Όλες οι χώρες",
     "any_region": "Όλες οι περιοχές"

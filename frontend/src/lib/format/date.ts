@@ -1,5 +1,6 @@
 import {
   addDays,
+  differenceInCalendarDays,
   format,
   formatDistanceToNow,
   getDay,
@@ -102,22 +103,35 @@ export function formatDateTime(value: string | Date | null | undefined): string 
 }
 
 /**
+ * Shared endpoint collapse: render two dates the way a human says them,
+ * dropping the leading date's month/year when the trailing one repeats it,
+ * and the dash entirely when they coincide. `keepYear: true` always shows the
+ * trailing year and spaces the dash across month boundaries ("29 Jul – 1 Aug
+ * 2026"); `keepYear: false` is the compact form — tight dash, year(s) only
+ * when the range crosses a year boundary ("25 Jul–1 Aug").
+ */
+function collapseEndpoints(from: Date, to: Date, { keepYear }: { keepYear: boolean }): string {
+  const locale = activeLocale();
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const sameMonth = sameYear && from.getMonth() === to.getMonth();
+  const endFormat = keepYear || !sameYear ? "d MMM yyyy" : "d MMM";
+  if (from.getTime() === to.getTime()) {
+    return format(to, endFormat, { locale });
+  }
+  if (sameMonth) {
+    return `${format(from, "d", { locale })}–${format(to, endFormat, { locale })}`;
+  }
+  const startFormat = sameYear ? "d MMM" : "d MMM yyyy";
+  const dash = keepYear ? " – " : "–";
+  return `${format(from, startFormat, { locale })}${dash}${format(to, endFormat, { locale })}`;
+}
+
+/**
  * Render an inclusive night range "21–30 Jul 2026" from its first and last
- * nights (see `nightRangeParts`). Collapses shared month/year so the label reads
- * the way a human says it, and drops the dash entirely for a single night.
+ * nights (see `nightRangeParts`).
  */
 export function formatNightRange(firstNight: Date, lastNight: Date): string {
-  const locale = activeLocale();
-  if (firstNight.getTime() === lastNight.getTime()) {
-    return format(firstNight, "d MMM yyyy", { locale });
-  }
-  const sameYear = firstNight.getFullYear() === lastNight.getFullYear();
-  const sameMonth = sameYear && firstNight.getMonth() === lastNight.getMonth();
-  if (sameMonth) {
-    return `${format(firstNight, "d", { locale })}–${format(lastNight, "d MMM yyyy", { locale })}`;
-  }
-  const firstFormat = sameYear ? "d MMM" : "d MMM yyyy";
-  return `${format(firstNight, firstFormat, { locale })} – ${format(lastNight, "d MMM yyyy", { locale })}`;
+  return collapseEndpoints(firstNight, lastNight, { keepYear: true });
 }
 
 /**
@@ -125,23 +139,36 @@ export function formatNightRange(firstNight: Date, lastNight: Date): string {
  * **directly** (checkout semantics — a block that runs `1 Aug → 8 Aug` reads
  * "1–8 Aug", matching the pill it replaces; do NOT route through
  * `nightRangeParts`, whose `lastNight` is `date_to − 1` and would shift the
- * visible end date). Drops the year within a single year and the shared month
- * when both endpoints land in it, so the week strip's cells stay narrow:
- * `1–8 Aug`, `25 Jul–1 Aug`, `27 Dec 2026–3 Jan 2027`. Returns "—" when either
- * endpoint is empty or unparseable.
+ * visible end date). Drops the year within a single year so the week strip's
+ * cells stay narrow. Returns "—" when either endpoint is empty or unparseable.
  */
 export function formatWeekRangeCompact(dateFrom: string, dateTo: string): string {
   const from = parseISO(dateFrom);
   const to = parseISO(dateTo);
   if (!isValid(from) || !isValid(to)) return "—";
-  const locale = activeLocale();
-  const sameYear = from.getFullYear() === to.getFullYear();
-  const sameMonth = sameYear && from.getMonth() === to.getMonth();
-  if (sameMonth) {
-    return `${format(from, "d", { locale })}–${format(to, "d MMM", { locale })}`;
+  return collapseEndpoints(from, to, { keepYear: false });
+}
+
+/**
+ * DateRangePicker trigger label: the two stored ISO endpoints formatted
+ * **directly** (in nights mode `dateTo` is the exclusive checkout, shown
+ * as-is), year always kept. A valid start with a missing/unparseable end
+ * renders open ("12 Jul 2026 – …"); a missing/unparseable start renders ""
+ * so the caller can show its placeholder. An inverted range (mid-edit via the
+ * typed inputs) renders both endpoints uncollapsed rather than a garbled
+ * "30–1 Jun 2026".
+ */
+export function formatDateRangeEndpoints(dateFrom: string, dateTo: string): string {
+  const from = parseISO(dateFrom);
+  if (!dateFrom || !isValid(from)) return "";
+  const to = parseISO(dateTo);
+  if (!dateTo || !isValid(to)) {
+    return `${formatDate(from)} – …`;
   }
-  const endpointFormat = sameYear ? "d MMM" : "d MMM yyyy";
-  return `${format(from, endpointFormat, { locale })}–${format(to, endpointFormat, { locale })}`;
+  if (dateTo < dateFrom) {
+    return `${formatDate(from)} – ${formatDate(to)}`;
+  }
+  return collapseEndpoints(from, to, { keepYear: true });
 }
 
 /**
@@ -155,8 +182,29 @@ export function nightsSummaryArgs(
   dateTo: string,
 ): { range: string; count: number } | null {
   if (!dateFrom || !dateTo || dateTo <= dateFrom) return null;
+  if (!isValid(parseISO(dateFrom)) || !isValid(parseISO(dateTo))) return null;
   const parts = nightRangeParts(dateFrom, dateTo);
   return { range: formatNightRange(parts.firstNight, parts.lastNight), count: parts.nights };
+}
+
+/**
+ * Inclusive twin of `nightsSummaryArgs` for `[date_from, date_to]` ranges
+ * (rate periods, validity windows): "30 days (1–30 Jun 2026)". Equal endpoints
+ * are a legal one-day range; returns `null` for a missing endpoint or an
+ * inverted range.
+ */
+export function daysSummaryArgs(
+  dateFrom: string,
+  dateTo: string,
+): { range: string; count: number } | null {
+  if (!dateFrom || !dateTo || dateTo < dateFrom) return null;
+  const from = parseISO(dateFrom);
+  const to = parseISO(dateTo);
+  if (!isValid(from) || !isValid(to)) return null;
+  return {
+    range: collapseEndpoints(from, to, { keepYear: true }),
+    count: differenceInCalendarDays(to, from) + 1,
+  };
 }
 
 export function formatRelative(value: string | Date | null | undefined): string {

@@ -39,12 +39,17 @@ interface DateRangeFieldProps<T extends FieldValues> {
 }
 
 /**
- * Block-range picker: typed `<input type="date">` fields for power users plus a
- * visual range calendar. The calendar speaks **inclusive nights** — the user
- * picks the first and last night they want blocked — while the form stores the
+ * @deprecated Legacy block-range picker — use {@link DateRangePicker}
+ * (`@/components/form/DateRangePicker`, `mode="nights"`) for new work; it is
+ * the standard single-trigger control this component predates. Kept only for
+ * the owner-portal `BlockRequestDialog`; delete once that host migrates.
+ *
+ * Typed `<input type="date">` fields for power users plus a visual range
+ * calendar. The calendar speaks **inclusive nights** — the user picks the
+ * first and last night they want blocked — while the form stores the
  * canonical half-open range (`date_to` = last night + 1 = checkout morning).
- * Typed entry stays bound to the raw stored values; the live nights summary the
- * dialogs render disambiguates either path.
+ * Typed entry stays bound to the raw stored values; the live nights summary
+ * the dialogs render disambiguates either path.
  */
 export function DateRangeField<T extends FieldValues>({
   control,

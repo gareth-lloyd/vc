@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
+import { expectTriggerRange } from "@/test/dateRange";
 import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
 import { AvailabilityTab } from "../tabs/AvailabilityTab";
@@ -271,8 +272,7 @@ describe("AvailabilityTab", () => {
 
     expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
     // Half-open: nights 12–14 → date_to is the 15th (checkout morning).
-    expect(screen.getByLabelText("From")).toHaveValue("2026-05-12");
-    expect(screen.getByLabelText("To")).toHaveValue("2026-05-15");
+    expectTriggerRange(/^dates/i, "12–15 May 2026 · 3 nights");
   });
 
   it("truncates a drag before an occupied day", async () => {
@@ -298,9 +298,8 @@ describe("AvailabilityTab", () => {
     ]);
 
     expect(await screen.findByText(/Add availability block/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("From")).toHaveValue("2026-05-12");
     // Stops at the 13th (last selectable night) → date_to is the 14th.
-    expect(screen.getByLabelText("To")).toHaveValue("2026-05-14");
+    expectTriggerRange(/^dates/i, "12–14 May 2026 · 2 nights");
   });
 
   it("shows booked state on adjacent-month days in the grid", async () => {

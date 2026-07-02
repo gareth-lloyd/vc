@@ -199,8 +199,11 @@ export function MatrixCell({
   const adornment = currencyAdornment(currencyCode);
 
   return (
+    // The editor column sizes to its inputs (no flex-1) so the ··· menu stays
+    // visually attached to the band it acts on instead of drifting to the far
+    // edge of a wide cell.
     <div className="flex items-start gap-1">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex min-w-0 flex-col gap-1">
         <PriceRow
           label={t("rate_workbench.matrix.nightly_short")}
           ariaLabel={t("rate_workbench.matrix.nightly_for", {
@@ -228,7 +231,8 @@ export function MatrixCell({
           onCommit={(value) => onCommitPrice(band.id, "weekly", value)}
         />
       </div>
-      {menu}
+      {/* pt-1 centres the h-6 trigger against the first h-8 input row. */}
+      {menu ? <div className="pt-1">{menu}</div> : null}
     </div>
   );
 }

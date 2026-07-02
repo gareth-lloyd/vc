@@ -488,3 +488,56 @@ describe("MatrixEditor — first-class band creation (Unit 4)", () => {
     expect(screen.queryByRole("button", { name: /Add band/i })).toBeNull();
   });
 });
+
+// GAP-060: rate-period edit + delete, ported from the old Pricing tab's
+// RatePlanDetailPanel. The controls must survive the band-less case (a
+// just-created period has no bands yet, so the grid renders no row for it).
+describe("MatrixEditor — period edit + delete", () => {
+  it("opens the edit dialog for a period from its actions menu", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click((await screen.findAllByRole("button", { name: "Period actions" }))[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Early summer");
+  });
+
+  it("deletes a period through a destructive confirm dialog", async () => {
+    const user = userEvent.setup();
+    let deleted = false;
+    server.use(
+      http.delete("/api/v1/periods/500", () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderEditor();
+    await user.click((await screen.findAllByRole("button", { name: "Period actions" }))[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("still exposes period edit/delete when the plan has no bands at all", async () => {
+    const bandless: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: ratePlanDetail.periods.map((p) => ({ ...p, bands: [], coverage_gaps: [] })),
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[bandless]} canWrite commission={null} tax={null} />,
+    );
+    // The band-less plan shows the no-bands empty state, but its periods are
+    // still manageable via the period strip.
+    expect(await screen.findByText("This rate period has no bands yet.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Period actions" }).length).toBeGreaterThanOrEqual(
+      1,
+    );
+  });
+
+  it("offers no period actions to a non-writer", async () => {
+    renderEditor(false);
+    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    expect(screen.queryByRole("button", { name: "Period actions" })).toBeNull();
+  });
+});

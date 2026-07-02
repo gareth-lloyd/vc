@@ -22,7 +22,6 @@ const REAL_PROPERTY_TABS = new Set<string>([
   "rooms",
   "nearby",
   "features",
-  "pricing",
   "services",
   "people",
   "availability",
@@ -65,6 +64,16 @@ export const router = createBrowserRouter([
       {
         element: <RequireAuth />,
         children: [
+          {
+            // Forced 2FA enrolment — authenticated but standalone (no AppShell,
+            // no owner/staff gate) so an unenrolled staff user can render it
+            // even though every /api/ call would otherwise 403.
+            path: "/enroll-2fa",
+            lazy: async () => {
+              const m = await import("@/features/auth/Enroll2faPage");
+              return { Component: m.Enroll2faPage };
+            },
+          },
           {
             element: <RequireOwner />,
             children: [
@@ -168,11 +177,11 @@ export const router = createBrowserRouter([
                             },
                           },
                           {
+                            // GAP-060 retired the Pricing tab; its lifecycle
+                            // affordances now live in the Rates tab. Redirect so
+                            // stale bookmarks (…/pricing) still land somewhere.
                             path: "pricing",
-                            lazy: async () => {
-                              const m = await import("@/features/properties/tabs/PricingTab");
-                              return { Component: m.PricingTab };
-                            },
+                            element: <Navigate to="../rate-workbench" replace />,
                           },
                           {
                             path: "rate-workbench",

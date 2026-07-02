@@ -1,5 +1,33 @@
 # GAP-060 — retire the legacy property "Pricing" tab; rename the Workbench to "Rates"
 
+> **✅ RESOLVED (2026-07-02)** — shipped FE-only on local `main` (unpushed;
+> commits `7f8fe63`, `f7bd8b9`, `fc27581`). The Rate Workbench is now a strict
+> superset of the old Pricing tab, renamed **"Rates"**, and the Pricing tab is
+> deleted.
+> - **Unit 1 (`7f8fe63`)** — the six missing lifecycle affordances brought into
+>   the Workbench: rate-plan create (header button + a bootstrap CTA on the
+>   zero-config empty state) / edit / duplicate / delete via a per-season actions
+>   menu (reusing `RatePlanFormDialog` + `useDuplicateRatePlan`/`useDeleteRatePlan`),
+>   and rate-period edit / delete in `MatrixEditor` (hosted in the grid row-header
+>   **and** a band-less period list so a just-created empty period stays
+>   reachable). Re-added the GAP-026 currency-mismatch warning (it had lived in
+>   the now-deleted `RatePlanDetailPanel`). Review fix: an in-page add/duplicate
+>   no longer blanks the whole page to a skeleton while the new plan's detail
+>   loads (`isLoading` counts only the first fan-out load).
+> - **Unit 2 (`f7bd8b9`)** — user-facing rename → "Rates" (`tabs.rate_workbench`
+>   + `rate_workbench.title`, en/el); dropped the "Preview" badge. Slug, route,
+>   folder, symbols and the `rate_workbench.*` i18n namespace stay internal (full
+>   identifier rename deferred as an optional follow-up SMELL).
+> - **Unit 3 (`fc27581`)** — deleted `PricingTab.tsx` +
+>   `RatePlanDetailPanel.tsx` (+ the `ActiveBadge` only they used) and their
+>   tests; kept `RatePlanFormDialog`/`RatePeriodFormDialog`/`RateBandFormDialog`
+>   and all shared hooks/api/schemas. `/properties/:id/pricing` now redirects to
+>   the Rates tab; dropped the Workbench's writer-only nav gate so viewers keep
+>   read-only rate visibility (write affordances stay role-gated inline); pruned
+>   the PricingTab/RatePlanDetailPanel-only i18n keys at sub-key granularity
+>   (en/el parity kept). Full FE gate green (`eslint`, `prettier`, `tsc`,
+>   `vitest` — 1642 tests).
+
 - **Severity:** Gap (two property-admin tabs now edit the same rate model; the
   older one is a strict subset of the newer, so it's dead weight that confuses
   staff and doubles the maintenance surface for every rate change)

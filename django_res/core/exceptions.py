@@ -56,6 +56,29 @@ class AuthorizationError(DomainError):
     status_code = 403
 
 
+class TfaStepUpRequired(DomainError):
+    """A sensitive action needs a fresh TOTP step-up the request didn't carry.
+
+    Distinct from `AuthorizationError` (`forbidden`): the actor *is* permitted,
+    they just need to re-assert with a current 2FA code — so the FE renders a
+    code prompt rather than a permissions wall. Raised by the refund-execution
+    money-out path (GAP-057) when no/absent code or an un-enrolled actor.
+    """
+
+    code = "tfa_stepup_required"
+    status_code = 403
+
+
+class InvalidTfaCode(DomainValidationError):
+    """A supplied TOTP step-up code was wrong, expired, or already used.
+
+    A 400 (the request was wrong) distinct from `TfaStepUpRequired` (no code at
+    all): the FE keeps the code prompt open for a retry-with-a-new-code.
+    """
+
+    code = "invalid_tfa_code"
+
+
 class InvalidTransition(DomainError):
     """A state machine transition was attempted from a disallowed source."""
 

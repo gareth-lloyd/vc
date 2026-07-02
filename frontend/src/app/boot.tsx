@@ -31,10 +31,13 @@ export function BootGate() {
   return <AuthenticatedBoot />;
 }
 
+const ENROLL_PATH = "/enroll-2fa";
+
 function AuthenticatedBoot() {
   const me = useMe();
   const status = useAuthStore((s) => s.status);
   const isStaff = useAuthStore((s) => s.user?.is_staff ?? false);
+  const tfaMethod = useAuthStore((s) => s.user?.tfa_method ?? null);
   const setUnauthenticated = useAuthStore((s) => s.setUnauthenticated);
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,6 +66,26 @@ function AuthenticatedBoot() {
   useEffect(() => {
     if (me.isError) setUnauthenticated();
   }, [me.isError, setUnauthenticated]);
+
+  // Forced 2FA enrolment. Proactive (not just a 403 bounce): /auth/me already
+  // carries tfa_method, so an unenrolled staff user is funnelled to /enroll-2fa
+  // at boot — robust even on landing routes that fire no non-allowlisted query
+  // (the owner probe's /owner/me is not on the enrolment allowlist and would
+  // 403). The interceptor's emitEnrollmentRequired below is the fallback.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (isStaff && tfaMethod === "none" && location.pathname !== ENROLL_PATH) {
+      navigate(ENROLL_PATH, { replace: true });
+    }
+  }, [status, isStaff, tfaMethod, location.pathname, navigate]);
+
+  useEffect(() => {
+    return authChannel.onEnrollmentRequired(() => {
+      if (window.location.pathname !== ENROLL_PATH) {
+        navigate(ENROLL_PATH, { replace: true });
+      }
+    });
+  }, [navigate]);
 
   useEffect(() => {
     return authChannel.onUnauthorized(() => {

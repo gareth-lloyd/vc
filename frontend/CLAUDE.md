@@ -144,6 +144,11 @@ surfaces use `shadow-card`; popovers/dialogs use `shadow-popover` /
   `server.use(...)`.
 - Test the error split in dialog tests: 4xx → inline field errors, 5xx →
   toast.
+- **Agents — keep captured output lean.** Run `npm run test:agent`
+  (`vitest run --reporter=dot`): a compact dot line + totals instead of the
+  default reporter's ~200 per-file lines, failure detail still printed. Never
+  run bare `npm test` or `npm run test:watch` — both start **watch mode and
+  hang**; only `test:run`/`test:agent` exit.
 
 ## Component library
 

@@ -140,9 +140,7 @@ describe("RateWorkbenchPage", () => {
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
 
-    expect(
-      await screen.findByRole("heading", { name: /Rate & Service Workbench/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rates" })).toBeInTheDocument();
     // Bands render (once data loads) as buttons with descriptive aria labels
     // (no in-band text). Awaiting one confirms the timeline mounted.
     expect(await screen.findByRole("button", { name: /Summer 2026/ })).toBeInTheDocument();
@@ -154,17 +152,15 @@ describe("RateWorkbenchPage", () => {
     expect(screen.getByText("Changeover")).toBeInTheDocument();
   });
 
-  it("shows the tab in nav for a writer but hides it for a read-only user", async () => {
-    setUser("reservations");
-    installHandlers();
-    setup("/properties/casa-sur/rate-workbench");
-    expect(await screen.findByRole("link", { name: "Rate Workbench" })).toBeInTheDocument();
-    useAuthStore.getState().clear();
-
+  it("shows the Rates tab in nav to a read-only user (GAP-060 dropped the writer-only gate)", async () => {
+    // The old Pricing tab had no visibility gate; when the Rates tab absorbed it,
+    // the workbench's writer-only nav gate was dropped so viewers keep read-only
+    // rate visibility (its write affordances stay role-gated inline).
     setUser("readonly", false);
+    installHandlers();
     setup("/properties/casa-sur/details");
     expect(await screen.findByText("details tab")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Rate Workbench" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Rates" })).toBeInTheDocument();
   });
 
   it("shows the empty state when the property has no configuration", async () => {
@@ -454,5 +450,124 @@ describe("RateWorkbenchPage — period create", () => {
     expect(await screen.findByRole("heading", { name: /Rate matrix/i })).toBeInTheDocument();
     // Role gating: the affordance disables, it never disappears.
     expect(await screen.findByRole("button", { name: "Add period" })).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GAP-060: the rate-plan (season) lifecycle affordances the old Pricing tab
+// owned — create / edit / duplicate / delete — plus the GAP-026 currency
+// mismatch warning, all brought into the workbench.
+// ---------------------------------------------------------------------------
+
+describe("RateWorkbenchPage — season lifecycle", () => {
+  it("opens the create-season dialog from the header Add season button", async () => {
+    setUser("reservations");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add season" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Add season" })).toBeInTheDocument();
+  });
+
+  it("bootstraps a plan-less property from the empty-state Add season CTA", async () => {
+    setUser("reservations");
+    server.use(
+      http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
+      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/change-over-rules", () => HttpResponse.json(drfPage([]))),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    await screen.findByText(/No configuration yet/i);
+    // Header button + empty-state CTA both offer season creation.
+    const buttons = screen.getAllByRole("button", { name: "Add season" });
+    expect(buttons).toHaveLength(2);
+    const user = userEvent.setup();
+    await user.click(buttons[1]);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("opens the edit dialog for the active season from its actions menu", async () => {
+    setUser("reservations");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Edit season" })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Summer 2026");
+  });
+
+  it("duplicates the active season through a confirm dialog", async () => {
+    setUser("reservations");
+    installHandlers();
+    let duplicated = false;
+    server.use(
+      http.post("/api/v1/rate-plans/100:duplicate", () => {
+        duplicated = true;
+        return HttpResponse.json(
+          { ...season, id: 200, name: "Summer 2026 (copy)" },
+          { status: 201 },
+        );
+      }),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Duplicate" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Duplicate" }));
+    await waitFor(() => expect(duplicated).toBe(true));
+  });
+
+  it("deletes the active season through a destructive confirm dialog", async () => {
+    setUser("reservations");
+    installHandlers();
+    let deleted = false;
+    server.use(
+      http.delete("/api/v1/rate-plans/100", () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("disables the Add season button for a non-writer", async () => {
+    setUser("viewer");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    expect(await screen.findByRole("button", { name: "Add season" })).toBeDisabled();
+  });
+
+  it("warns when the active season's currency differs from the property currency", async () => {
+    setUser("reservations");
+    installHandlers();
+    server.use(
+      http.get("/api/v1/properties/7/settings", () =>
+        HttpResponse.json({ property: 7, currency_code: "GBP" }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    expect(
+      await screen.findByText(/prices in EUR, but the property's currency is GBP/i),
+    ).toBeInTheDocument();
   });
 });

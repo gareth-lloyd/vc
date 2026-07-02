@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import User
@@ -139,6 +140,63 @@ def test_approve_and_execute_separation_of_duties(
     api_client.force_login(other)
     execute = api_client.post(f"/api/v1/refunds/{refund.pk}:execute")
     assert execute.status_code == 200, execute.data
+    refund.refresh_from_db()
+    assert refund.status == RefundStatus.EXECUTING.value
+
+
+@pytest.mark.django_db
+@override_settings(TFA_ENFORCED=True)
+def test_execute_step_up_error_codes_surface(
+    api_client: APIClient,
+    requester: User,
+    approver: User,
+    booking: Booking,
+    succeeded_deposit: Payment,
+    gbp: Currency,
+) -> None:
+    """With TFA_ENFORCED, :execute needs a fresh code; error codes come through
+    the canonical handler and a valid code executes (view→service wiring)."""
+    import pyotp
+
+    from accounts.enums import TfaMethod
+
+    refund = Refund.objects.create(
+        booking=booking,
+        against_payment=succeeded_deposit,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        amount=Decimal("50.00"),
+        currency=gbp,
+        status=RefundStatus.APPROVED.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        requested_by=requester,
+        approved_by=approver,
+    )
+    executor = _make_accounts_user("refund-stepup@example.com")
+    secret = pyotp.random_base32()
+    executor.tfa_method = TfaMethod.TOTP
+    executor.tfa_secret = secret
+    executor.save(update_fields=["tfa_method", "tfa_secret"])
+    api_client.force_login(executor)
+
+    # No code → 403 tfa_stepup_required (distinct from `forbidden`).
+    missing = api_client.post(f"/api/v1/refunds/{refund.pk}:execute")
+    assert missing.status_code == 403
+    assert missing.data["code"] == "tfa_stepup_required"
+
+    # Wrong code → 400 invalid_tfa_code.
+    wrong = api_client.post(
+        f"/api/v1/refunds/{refund.pk}:execute", {"tfa_code": "000000"}, format="json"
+    )
+    assert wrong.status_code == 400
+    assert wrong.data["code"] == "invalid_tfa_code"
+
+    # Fresh code → executes.
+    ok = api_client.post(
+        f"/api/v1/refunds/{refund.pk}:execute",
+        {"tfa_code": pyotp.TOTP(secret).now()},
+        format="json",
+    )
+    assert ok.status_code == 200, ok.data
     refund.refresh_from_db()
     assert refund.status == RefundStatus.EXECUTING.value
 

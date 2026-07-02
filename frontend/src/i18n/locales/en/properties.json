@@ -51,7 +51,6 @@
     "details": "Details",
     "rooms": "Rooms",
     "nearby": "Nearby",
-    "pricing": "Pricing",
     "services": "Services",
     "availability": "Availability",
     "people": "People",
@@ -59,7 +58,7 @@
     "features": "Features",
     "settings": "Settings",
     "history": "History",
-    "rate_workbench": "Rate Workbench"
+    "rate_workbench": "Rates"
   },
   "detail": {
     "not_found_title": "Property not found",
@@ -222,32 +221,10 @@
     }
   },
   "pricing": {
-    "sections": {
-      "seasons": "Seasons",
-      "extras": "Extras",
-      "discounts": "Discounts"
-    },
     "season_detail": {
-      "back": "← Back to seasons",
-      "error_title": "Couldn't load season",
-      "error_body": "Try again.",
-      "fields": {
-        "name": "Name",
-        "currency": "Currency",
-        "price_basis": "Price basis",
-        "effective": "Effective",
-        "status": "Status"
-      },
-      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}.",
-      "rate_periods_heading": "Rate periods",
-      "empty_rate_periods": "No rate periods"
+      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}."
     },
-    "active_badge": "Active",
-    "inactive_badge": "Inactive",
     "seasons": {
-      "empty": "No seasons defined",
-      "error_title": "Couldn't load seasons",
-      "error_body": "Try again.",
       "add_button": "Add season",
       "add_button_disabled_tooltip": "You need the Reservations role to add seasons.",
       "row": {
@@ -302,44 +279,7 @@
         }
       }
     },
-    "rules_table": {
-      "party": "Party",
-      "nightly": "Nightly",
-      "weekly": "Weekly",
-      "actions": "Actions"
-    },
-    "extras": {
-      "empty": "No extras",
-      "error_title": "Couldn't load extras",
-      "error_body": "Try again."
-    },
-    "extras_table": {
-      "name": "Name",
-      "kind": "Kind",
-      "amount": "Amount",
-      "mandatory": "Mandatory",
-      "mandatory_yes": "Yes",
-      "mandatory_no": "No"
-    },
-    "discounts": {
-      "empty": "No discounts",
-      "error_title": "Couldn't load discounts",
-      "error_body": "Try again."
-    },
-    "discounts_table": {
-      "name": "Name",
-      "code": "Code",
-      "kind": "Kind",
-      "amount": "Amount",
-      "valid": "Valid"
-    },
     "rule": {
-      "add_button": "Add rule",
-      "row": {
-        "menu_label": "Rule actions",
-        "edit": "Edit",
-        "delete": "Delete"
-      },
       "dialog": {
         "create_title": "Add rule",
         "edit_title": "Edit rule",
@@ -365,26 +305,11 @@
       "toasts": {
         "created": "Rule added",
         "updated": "Rule updated",
-        "deleted": "Rule removed",
         "create_failed": "Couldn't add rule",
-        "update_failed": "Couldn't update rule",
-        "delete_failed": "Couldn't remove rule"
-      },
-      "delete_confirm": {
-        "title": "Remove rule?",
-        "description": "This rate rule will be permanently removed.",
-        "confirm": "Remove"
+        "update_failed": "Couldn't update rule"
       }
     },
     "rate_period": {
-      "any_length": "Any length",
-      "nights_range": "Nights {{min}}–{{max}}",
-      "nights_min_placeholder": "?",
-      "no_rules": "No bands",
-      "poa": "POA",
-      "add_button": "Add rate period",
-      "add_button_disabled_tooltip": "You need the Reservations role to edit rate periods.",
-      "coverage_gap_warning": "Unpriced party sizes: {{ranges}}. Add a band (POA counts) before activating.",
       "row": {
         "menu_label": "Period actions",
         "edit": "Edit",
@@ -1039,9 +964,8 @@
     "unset": "—"
   },
   "rate_workbench": {
-    "title": "Rate & Service Workbench",
+    "title": "Rates",
     "subtitle": "The whole year's rates, inclusions, extras, discounts and changeover in one view.",
-    "preview_badge": "Preview",
     "lanes": {
       "seasons": "Seasons",
       "rates": "Rate periods",
@@ -1065,7 +989,7 @@
       "body": "This property is configured, but none of it applies to the selected year. Try another year."
     },
     "error": {
-      "title": "Couldn't load the workbench",
+      "title": "Couldn't load rates",
       "body": "Something went wrong loading this property's rate configuration."
     },
     "band": {

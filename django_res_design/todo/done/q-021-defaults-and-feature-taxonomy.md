@@ -1,5 +1,16 @@
 # Q-021 — Seed group defaults + curate the feature taxonomy
 
+> **✅ SUPERSEDED (2026-07-02)** — split in two so neither half is orphaned:
+> the feature-taxonomy cleanup + room→property derivation half →
+> [GAP-067](../gap-067-room-feature-taxonomy-cleanup.md) (de-dupe the ~300-row
+> legacy `VillaFeatures` list, drop test/junk rows with link-remap, derive
+> property features from room attributes via a data-driven bridge); the
+> group-defaults + new-villa seeding half (deposit 30%, security deposit,
+> check-in/out times, starter included-features, housekeeping-frequency
+> vocabulary) → [GAP-068](../gap-068-seed-group-finance-settings-defaults.md).
+> The "Villa Groups stay" decision below is preserved and carried into GAP-068.
+> No work remains here.
+
 - **Severity:** Question (content/governance) + seeding
 - **Source:** 2026-06-11 new-villa setup transcript review
 - **Files:** `properties/models/finance.py` (`GroupFinance`),

@@ -250,15 +250,17 @@ describe("RefundsSection (lifecycle actions)", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("executes an approved refund with honest 'started' copy (online stays executing)", async () => {
+  it("executes an approved refund through the step-up dialog, posting { tfa_code }", async () => {
     setCurrentUserId(2);
     let executed = false;
+    let body: Record<string, unknown> | null = null;
     server.use(
       http.get(`/api/v1/bookings/${BOOKING_ID}/refunds`, () =>
         HttpResponse.json([makeRefund({ status: executed ? "executing" : "approved" })]),
       ),
       // Online gateway execution settles to `executing`, not `succeeded`.
-      http.post(`/api/v1/refunds/4:execute`, () => {
+      http.post(`/api/v1/refunds/4:execute`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
         executed = true;
         return HttpResponse.json(makeRefund({ status: "executing" }));
       }),
@@ -266,13 +268,40 @@ describe("RefundsSection (lifecycle actions)", () => {
     setup();
 
     await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
-    // The confirm copy must say "start", never "refunded".
-    expect(await screen.findByText(/start executing this refund/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Start execution" }));
+    // The step-up dialog demands a fresh authenticator code.
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/6-digit code/i), "123456");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Execute refund" }));
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Refund execution started"));
-    // The row now shows the in-flight (not green/succeeded) state.
+    await waitFor(() => expect(body).toEqual({ tfa_code: "123456" }));
+    expect(toast.success).toHaveBeenCalledWith("Refund execution started");
     expect(await screen.findByText("Executing — awaiting settlement")).toBeInTheDocument();
+  });
+
+  it("keeps the step-up dialog open with the reason on an invalid code", async () => {
+    setCurrentUserId(2);
+    server.use(
+      listHandler([makeRefund({ status: "approved" })]),
+      http.post(`/api/v1/refunds/4:execute`, () =>
+        HttpResponse.json(
+          {
+            code: "invalid_tfa_code",
+            detail: "That code is invalid or already used.",
+            field_errors: {},
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/6-digit code/i), "000000");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Execute refund" }));
+
+    expect(await screen.findByText(/invalid or already used/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("rejects a refund, posting { reason }", async () => {
@@ -298,7 +327,7 @@ describe("RefundsSection (lifecycle actions)", () => {
     expect(toast.success).toHaveBeenCalledWith("Refund rejected");
   });
 
-  it("surfaces the backend 409 detail (not a generic message) on execute", async () => {
+  it("surfaces the backend 409 detail inline in the step-up dialog", async () => {
     setCurrentUserId(2);
     server.use(
       listHandler([makeRefund({ status: "approved" })]),
@@ -309,11 +338,12 @@ describe("RefundsSection (lifecycle actions)", () => {
     setup();
 
     await userEvent.click(await screen.findByRole("button", { name: /execute refund RF-000004/i }));
-    await userEvent.click(await screen.findByRole("button", { name: "Start execution" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/6-digit code/i), "123456");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Execute refund" }));
 
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith("Refund is not in an executable state."),
-    );
+    expect(await screen.findByText(/not in an executable state/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows no row actions for a terminal refund", async () => {

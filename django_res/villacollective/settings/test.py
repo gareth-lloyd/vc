@@ -49,6 +49,9 @@ MIDDLEWARE = [
     # request-lifecycle logging + correlation-id adoption fire under pytest too.
     "django_structlog.middlewares.RequestMiddleware",
     "core.middleware.AuditMiddleware",
+    # Mirror base: enforcement is a no-op unless a test opts in with
+    # override_settings(TFA_ENFORCED=True), but it must be installed to run.
+    "accounts.middleware.TfaEnforcementMiddleware",
 ]
 
 # Tests exercise the seed_dev command; the guardrail must allow it here.

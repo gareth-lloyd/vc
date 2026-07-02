@@ -52,6 +52,29 @@ export const tfaVerifyResponseSchema = z.object({
   user: userMeSchema,
 });
 
+// `POST /auth/2fa:enroll` with no code — starts enrolment.
+export const enrollStartResponseSchema = z.object({
+  secret: z.string(),
+  provisioning_uri: z.string(),
+  recovery_codes: z.array(z.string()),
+});
+export type EnrollStartResponse = z.infer<typeof enrollStartResponseSchema>;
+
+// `POST /auth/2fa:enroll` with a code — confirms enrolment.
+export const enrollConfirmResponseSchema = z.object({
+  enrolled: z.boolean(),
+  tfa_method: z.string(),
+});
+export type EnrollConfirmResponse = z.infer<typeof enrollConfirmResponseSchema>;
+
+export const enrollConfirmInputSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, { message: "auth:errors.tfa_code_format" }),
+});
+export type EnrollConfirmInput = z.infer<typeof enrollConfirmInputSchema>;
+
 export const permissionsResponseSchema = z.object({
   role: z.string().nullable(),
   is_superuser: z.boolean(),

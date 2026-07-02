@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { useOwnerStore } from "@/features/owner-portal/ownerStore";
-import { fetchMe, fetchPermissions, login, logout, updateMe, verifyTfa } from "./api";
+import {
+  confirmTfaEnrollment,
+  fetchMe,
+  fetchPermissions,
+  login,
+  logout,
+  startTfaEnrollment,
+  updateMe,
+  verifyTfa,
+} from "./api";
 import { resetAuthQueryCache } from "./resetAuthQueryCache";
 import { useAuthStore } from "./store";
 import type { LoginInput, TfaVerifyInput, UserMe } from "./schemas";
@@ -50,6 +59,27 @@ export function useVerifyTfa() {
     mutationFn: (input: TfaVerifyInput) => verifyTfa(input),
     onSuccess: () => {
       useAuthStore.getState().setPendingTfa(null);
+      resetAuthQueryCache(queryClient);
+    },
+  });
+}
+
+export function useStartTfaEnrollment() {
+  return useMutation({
+    mutationFn: () => startTfaEnrollment(),
+  });
+}
+
+export function useConfirmTfaEnrollment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => confirmTfaEnrollment(code),
+    onSuccess: () => {
+      // The user's tfa_method just changed NONE → totp. Flip the store first so
+      // the boot proactive-redirect sees "totp" synchronously (a fast "continue"
+      // click must not bounce back to /enroll-2fa), then wipe cached queries
+      // (mirrors useVerifyTfa) so a fresh /auth/me repopulates from the server.
+      useAuthStore.getState().markTfaEnrolled();
       resetAuthQueryCache(queryClient);
     },
   });

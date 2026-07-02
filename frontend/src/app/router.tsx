@@ -65,6 +65,16 @@ export const router = createBrowserRouter([
         element: <RequireAuth />,
         children: [
           {
+            // Forced 2FA enrolment — authenticated but standalone (no AppShell,
+            // no owner/staff gate) so an unenrolled staff user can render it
+            // even though every /api/ call would otherwise 403.
+            path: "/enroll-2fa",
+            lazy: async () => {
+              const m = await import("@/features/auth/Enroll2faPage");
+              return { Component: m.Enroll2faPage };
+            },
+          },
+          {
             element: <RequireOwner />,
             children: [
               {

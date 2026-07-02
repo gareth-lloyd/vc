@@ -13,9 +13,10 @@ import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import type { BookingId } from "@/lib/query/keys";
-import { useApproveRefund, useBookingRefunds, useCancelRefund, useExecuteRefund } from "../hooks";
+import { useApproveRefund, useBookingRefunds, useCancelRefund } from "../hooks";
 import { RefundFormDialog } from "./RefundFormDialog";
 import { RejectRefundDialog } from "./RejectRefundDialog";
+import { StepUpDialog } from "./StepUpDialog";
 import { refundMethodLabel, refundStatusLabel, type Refund } from "../schemas";
 
 interface Props {
@@ -24,7 +25,9 @@ interface Props {
   canWrite: boolean;
 }
 
-type ConfirmAction = "approve" | "execute" | "cancel";
+// Execute is not here: it needs a fresh TOTP step-up (StepUpDialog), not a
+// plain confirm.
+type ConfirmAction = "approve" | "cancel";
 
 export function RefundsSection({ bookingId, currency, canWrite }: Props) {
   const { t } = useTranslation("bookings");
@@ -34,28 +37,25 @@ export function RefundsSection({ bookingId, currency, canWrite }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
   const approveMutation = useApproveRefund(bookingId);
-  const executeMutation = useExecuteRefund(bookingId);
   const cancelMutation = useCancelRefund(bookingId);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [rejecting, setRejecting] = useState<Refund | null>(null);
+  const [steppingUp, setSteppingUp] = useState<Refund | null>(null);
   const [confirming, setConfirming] = useState<{ action: ConfirmAction; refund: Refund } | null>(
     null,
   );
 
   const rows = refunds.data ?? [];
-  const actionBusy =
-    approveMutation.isPending || executeMutation.isPending || cancelMutation.isPending;
+  const actionBusy = approveMutation.isPending || cancelMutation.isPending;
 
   const handleConfirm = async () => {
     if (!confirming) return;
     const { action, refund } = confirming;
     try {
       if (action === "approve") await approveMutation.mutateAsync({ refundId: refund.id });
-      else if (action === "execute") await executeMutation.mutateAsync({ refundId: refund.id });
       else await cancelMutation.mutateAsync({ refundId: refund.id });
-      const toastKey =
-        action === "approve" ? "approved" : action === "execute" ? "executed" : "cancelled";
+      const toastKey = action === "approve" ? "approved" : "cancelled";
       toast.success(t(`refunds.toasts.${toastKey}`));
       setConfirming(null);
     } catch (error) {
@@ -79,16 +79,6 @@ export function RefundsSection({ bookingId, currency, canWrite }: Props) {
         title: t("refunds.confirm_approve.title"),
         description: t("refunds.confirm_approve.description", { reference: refund.reference }),
         confirmLabel: t("refunds.confirm_approve.confirm_label"),
-        destructive: false,
-      };
-    }
-    if (action === "execute") {
-      return {
-        title: t("refunds.confirm_execute.title"),
-        description: t("refunds.confirm_execute.description", {
-          amount: formatMoney(refund.amount, currency),
-        }),
-        confirmLabel: t("refunds.confirm_execute.confirm_label"),
         destructive: false,
       };
     }
@@ -161,7 +151,7 @@ export function RefundsSection({ bookingId, currency, canWrite }: Props) {
             variant="ghost"
             size="sm"
             aria-label={t("refunds.row.execute_for", { reference: refund.reference })}
-            onClick={() => setConfirming({ action: "execute", refund })}
+            onClick={() => setSteppingUp(refund)}
           >
             {t("refunds.row.execute")}
           </Button>
@@ -266,6 +256,18 @@ export function RefundsSection({ bookingId, currency, canWrite }: Props) {
           open
           onOpenChange={(open) => {
             if (!open) setRejecting(null);
+          }}
+        />
+      ) : null}
+
+      {steppingUp ? (
+        <StepUpDialog
+          bookingId={bookingId}
+          refund={steppingUp}
+          currency={currency}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSteppingUp(null);
           }}
         />
       ) : null}

@@ -14,6 +14,7 @@ Standard Django auth user, extended:
 - `tfa_secret` — `CharField(blank=True)` — base32-encoded TOTP shared secret (encrypted at rest; app-layer Fernet wrap with `settings.FERNET_KEYS`, same pattern as `comms.SmtpProfile` and `integrations.OAuthCredential`). Empty when `tfa_method=NONE`.
 - `tfa_enrolled_at` — `DateTimeField(null=True, blank=True)` — set on successful `:enroll`; cleared when `:disable` runs.
 - `tfa_recovery_codes` — `JSONField(default=list)` — list of hashed (bcrypt or pbkdf2 via Django's `make_password`) single-use recovery codes generated at enrollment. Plaintext is shown to the user **once** at the end of the `:enroll` flow; the API stores only hashes.
+- `tfa_last_verified_step` — `BigIntegerField(null=True, blank=True, editable=False)` — the last TOTP 30-second step index consumed by `verify_code` (GAP-057). The single-use replay guard: a code whose step is `<=` this value is refused, and a successful verify atomically advances it. `NULL` until the first `verify_code` (login or refund step-up). Not touched by the recovery-code path.
 - `last_login_ip` — `GenericIPAddressField(null=True, blank=True)`.
 - `role` — fixed `StaffRole` TextChoices (see "Staff roles" below).
 
@@ -204,6 +205,20 @@ class TwoFactorService:
         secret intact so the user can retry."""
 
     @staticmethod
+    def verify_code(user, code: str) -> bool:
+        """Single-use TOTP check against a raw (user, code) pair (GAP-057).
+
+        Computes the current 30s step, tries (cur-1, cur, cur+1) skipping
+        any step <= user.tfa_last_verified_step, and on a pyotp match
+        atomically claims that step via a guarded UPDATE
+        (WHERE tfa_last_verified_step < step OR IS NULL). A lost race
+        (rowcount 0 — a concurrent request already consumed the step)
+        rejects. This is the replay guard login previously lacked and the
+        refund step-up requires. Recovery codes are NOT accepted here —
+        they are a lockout escape hatch, not a money-movement credential.
+        """
+
+    @staticmethod
     def challenge(user) -> ChallengeToken:
         """Mint a short-lived challenge token (signed, expires in 5 min)
         that the client posts back with the TOTP code at :verify. Used
@@ -213,8 +228,11 @@ class TwoFactorService:
     def verify(challenge_token: str, code: str) -> User:
         """Validate the TOTP code (or a single-use recovery code) against
         the user resolved from the challenge token. Returns the fully
-        authenticated user. Failed attempts increment a rate-limited
-        counter; 5 fails within 5 minutes locks 2FA for 15 minutes."""
+        authenticated user. The TOTP branch delegates to `verify_code`
+        (GAP-057) so login and refund step-up share one replay-guarded
+        path; the recovery-code fallback stays login-only. Failed attempts
+        increment a rate-limited counter; 5 fails within 5 minutes locks
+        2FA for 15 minutes."""
 
     @staticmethod
     def disable(user, *, actor) -> None:
@@ -225,6 +243,57 @@ class TwoFactorService:
 ```
 
 The view dispatchers for `:challenge` / `:verify` / `:enroll` / `:disable` are thin DRF action endpoints that delegate to this service. The endpoint contract is documented in `04-rest-api-surface.md` §2.1 and stays unchanged by this issue.
+
+### Enrolment enforcement (GAP-057)
+
+The mechanism above is enrolment-*optional*. GAP-057 adds a policy layer that can
+force every `is_staff=True` user to enrol before they can use the API. See the
+`10-decisions.md` Q-008 → GAP-057 row for the decision.
+
+- **`TFA_ENFORCED` settings flag** — `False` in `base` (dev / test / `seed_dev`
+  stay ceremony-free), `True` in `production` (staging inherits via
+  `from .production import *`). Targeted tests opt in with
+  `override_settings(TFA_ENFORCED=True)`. The middleware reads it **per-request**
+  (never cached in `__init__`) so the override is honoured.
+
+- **`accounts.middleware.TfaEnforcementMiddleware`** — installed **after**
+  `AuthenticationMiddleware` in **both** `base.MIDDLEWARE` and the redefined
+  `test.MIDDLEWARE`. It blocks a request with `403`
+  `{"code": "tfa_enrollment_required", "detail": …, "field_errors": {}}` (the
+  canonical envelope) when **all** hold: `settings.TFA_ENFORCED`,
+  `request.user.is_authenticated`, `user.is_staff`, `user.tfa_method == NONE`,
+  `request.path.startswith("/api/")`, and the path is not in the allowlist.
+
+  The **`/api/` scope is load-bearing**: without it the middleware would 403 the
+  SPA HTML shell and static assets, so the user could never *render*
+  `/enroll-2fa`. Django admin (`/admin/`) is therefore **not** enforced —
+  acceptable per the "to use the API" scope and necessary for boot.
+
+- **Allowlist** (exact, full `/api/v1/…` paths — the root mounts accounts at
+  `/api/v1/`): `auth/csrf`, `auth/login`, `auth/logout`, `auth/me` (FE boot
+  probe), `auth/permissions`, `auth/2fa:enroll` — the minimum for a
+  logged-in-but-unenrolled user to complete enrolment and nothing else.
+  (`auth/2fa:verify` is `AllowAny`, pre-session; unaffected. Note the literal
+  `:` verb form and no trailing slash.)
+
+- **`:disable` guard** — `TfaDisableView` returns the same `403`
+  `tfa_enrollment_required` payload when enforcement would immediately re-trip
+  (enforced + staff), because self-serve disable would be an enforcement bypass.
+  The admin `users/{pk}:reset-2fa` escape hatch stays the only way out (lost
+  phone → reset → the user funnels back into forced enrolment on the next
+  request).
+
+- **`StaffExcludedBasicAuthentication`** (review finding, Unit 2) — DRF's
+  `DEFAULT_AUTHENTICATION_CLASSES` include `BasicAuthentication`, which runs at
+  the *view* layer, **after** the session-only middleware. Left as stock
+  `BasicAuthentication`, an unenrolled staff user could send an HTTP Basic
+  header and be authenticated past the middleware (which only saw an
+  anonymous session), fully bypassing both enrolment enforcement **and** the
+  2FA login challenge. `accounts.authentication.StaffExcludedBasicAuthentication`
+  raises `AuthenticationFailed` for any `is_staff` principal, so staff must go
+  through the session + 2FA login path; non-staff principals (the owner iCal
+  feed) keep Basic auth. Wired via
+  `REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]` in `base.py`.
 
 ## Sessions
 

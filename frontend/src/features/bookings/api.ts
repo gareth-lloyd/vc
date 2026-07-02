@@ -428,8 +428,9 @@ export async function rejectRefund(refundId: number, reason: string): Promise<Re
   return refundSchema.parse(data);
 }
 
-export async function executeRefund(refundId: number): Promise<Refund> {
-  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:execute`);
+export async function executeRefund(refundId: number, tfaCode?: string): Promise<Refund> {
+  const body = tfaCode ? { tfa_code: tfaCode } : undefined;
+  const data = await apiSend<unknown>("POST", `/refunds/${refundId}:execute`, body);
   return refundSchema.parse(data);
 }
 

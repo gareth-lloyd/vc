@@ -4,8 +4,23 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { openDateRange, typeDateRange } from "@/test/dateRange";
 import type { Extra } from "@/features/properties/schemas";
 import { PriceProbePanel } from "../components/PriceProbePanel";
+
+const DATE_LABELS = { from: /check-in/i, to: /check-out/i };
+
+/** The dates now live inside the picker popover — open it, type the ISO
+ * endpoints, then close (Escape) so the fields outside stay reachable. */
+async function setDates(
+  user: ReturnType<typeof userEvent.setup>,
+  from = "2026-07-12",
+  to = "2026-07-19",
+) {
+  const picker = await openDateRange(user, /^Dates/);
+  await typeDateRange(user, picker, { from, to }, DATE_LABELS);
+  await user.keyboard("{Escape}");
+}
 
 const optInExtra: Extra = {
   id: 11,
@@ -79,8 +94,7 @@ describe("PriceProbePanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await setDates(user);
     const adults = screen.getByLabelText("Adults");
     await user.clear(adults);
     await user.type(adults, "4");
@@ -124,8 +138,7 @@ describe("PriceProbePanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await setDates(user);
     await user.click(screen.getByRole("button", { name: "Get quote" }));
 
     expect(
@@ -142,8 +155,7 @@ describe("PriceProbePanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await setDates(user);
     await user.click(screen.getByRole("button", { name: "Get quote" }));
 
     expect(await screen.findByText("Guest total")).toBeInTheDocument();
@@ -154,8 +166,7 @@ describe("PriceProbePanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await setDates(user);
     await user.click(screen.getByRole("button", { name: "Get quote" }));
     expect(await screen.findByText("Guest total")).toBeInTheDocument();
 
@@ -170,9 +181,10 @@ describe("PriceProbePanel", () => {
     const user = userEvent.setup();
     renderPanel();
     expect(screen.getByRole("button", { name: "Get quote" })).toBeDisabled();
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
+    const picker = await openDateRange(user, /^Dates/);
+    await typeDateRange(user, picker, { from: "2026-07-12" }, DATE_LABELS);
     expect(screen.getByRole("button", { name: "Get quote" })).toBeDisabled();
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await typeDateRange(user, picker, { to: "2026-07-19" }, DATE_LABELS);
     expect(screen.getByRole("button", { name: "Get quote" })).toBeEnabled();
   });
 
@@ -188,8 +200,7 @@ describe("PriceProbePanel", () => {
   };
 
   async function submit(user: ReturnType<typeof userEvent.setup>) {
-    await user.type(screen.getByLabelText("Check-in"), "2026-07-12");
-    await user.type(screen.getByLabelText("Check-out"), "2026-07-19");
+    await setDates(user);
     await user.click(screen.getByRole("button", { name: "Get quote" }));
   }
 

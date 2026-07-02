@@ -1123,6 +1123,7 @@
     "probe": {
       "title": "Price probe",
       "subtitle": "Check what a guest would pay for a stay — a live quote from the pricing engine.",
+      "dates": "Dates",
       "date_from": "Check-in",
       "date_to": "Check-out",
       "adults": "Adults",

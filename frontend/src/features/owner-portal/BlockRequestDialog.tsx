@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DateRangeField } from "@/components/form/DateRangeField";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { disabledDaysFromCells } from "@/components/form/disabledDays";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { applyApiErrorToForm } from "@/lib/api/forms";
@@ -110,15 +110,15 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
           <DialogDescription>{t("blocks.dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
-          <DateRangeField
+          <DateRangePicker
             control={form.control}
             fromName="date_from"
             toName="date_to"
-            fromId="block-date-from"
-            toId="block-date-to"
+            mode="nights"
+            id="block-dates"
+            label={t("blocks.fields.dates")}
             fromLabel={t("blocks.fields.date_from")}
             toLabel={t("blocks.fields.date_to")}
-            pickLabel={t("blocks.fields.pick_dates")}
             disabledDays={disabledDays}
             onPickerOpenChange={(open) => open && setPickerOpened(true)}
             fromError={errors.date_from ? t(errors.date_from.message ?? "") : undefined}
@@ -127,7 +127,7 @@ export function BlockRequestDialog({ propertyId, open, onOpenChange }: Props) {
 
           {summaryArgs ? (
             <p className="text-muted-foreground text-sm" data-testid="block-nights-summary">
-              {t("blocks.dialog.nights_summary", summaryArgs)}
+              {t("common:date_range.nights_summary", summaryArgs)}
             </p>
           ) : null}
 

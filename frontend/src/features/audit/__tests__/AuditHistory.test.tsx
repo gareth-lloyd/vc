@@ -1,8 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { AuditHistory } from "../AuditHistory";
 
 interface AuditEntryFixture {
@@ -65,16 +67,64 @@ describe("AuditHistory", () => {
         return HttpResponse.json(listResponse([entry({ commission_amount: ["10.00", "12.50"] })]));
       }),
     );
+    const user = userEvent.setup();
     renderWithProviders(<AuditHistory entityType="properties.propertyfinance" entityId={5} />);
     await waitFor(() => expect(screen.getByText("Commission amount")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-05-01" } });
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-05-31" } });
+    const picker = await openDateRange(user, /^Dates/);
+    await typeDateRange(user, picker, { from: "2026-05-01", to: "2026-05-31" });
 
     await waitFor(() => {
       const params = new URL(urls.at(-1)!).searchParams;
       expect(params.get("created_after")).toBe("2026-05-01");
       expect(params.get("created_before")).toBe("2026-05-31T23:59:59");
+    });
+  });
+
+  it("applies a From-only bound (created_after alone)", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/v1/audit-log", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(listResponse([entry({ commission_amount: ["10.00", "12.50"] })]));
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<AuditHistory entityType="properties.propertyfinance" entityId={5} />);
+    await waitFor(() => expect(screen.getByText("Commission amount")).toBeInTheDocument());
+
+    const picker = await openDateRange(user, /^Dates/);
+    await typeDateRange(user, picker, { from: "2026-05-01" });
+
+    await waitFor(() => {
+      const params = new URL(urls.at(-1)!).searchParams;
+      expect(params.get("created_after")).toBe("2026-05-01");
+      expect(params.get("created_before")).toBeNull();
+    });
+  });
+
+  it("shows a To-only bound as partial trigger text, not the placeholder", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/v1/audit-log", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(listResponse([entry({ commission_amount: ["10.00", "12.50"] })]));
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<AuditHistory entityType="properties.propertyfinance" entityId={5} />);
+    await waitFor(() => expect(screen.getByText("Commission amount")).toBeInTheDocument());
+
+    const picker = await openDateRange(user, /^Dates/);
+    await typeDateRange(user, picker, { to: "2026-05-31" });
+    await user.keyboard("{Escape}");
+
+    // The active To bound stays visible at the trigger (Unit 8 partial text).
+    expectTriggerRange(/^Dates/, "… – 31 May 2026");
+    await waitFor(() => {
+      const params = new URL(urls.at(-1)!).searchParams;
+      expect(params.get("created_before")).toBe("2026-05-31T23:59:59");
+      expect(params.get("created_after")).toBeNull();
     });
   });
 

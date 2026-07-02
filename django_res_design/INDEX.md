@@ -1,6 +1,6 @@
 # Villa Collective — Django REST + React SPA Design Package
 
-Top-level index. This directory contains **two complementary design packages** for rebuilding the .NET / Blazor villa-rental system (`../ResSystem/`) as a Django REST API + React SPA.
+Top-level index. This directory contains **two complementary design packages** for rebuilding the .NET / Blazor villa-rental system (`../ResSystem/`) as a Django REST API + React SPA, plus the as-built **workflow specs** in `workflows/` that underpin both.
 
 ## Package A — Backend Data Model (top-level files)
 

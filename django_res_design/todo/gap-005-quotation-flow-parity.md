@@ -22,13 +22,11 @@
 
 ## Context — the one-screen → three-stage split
 
-> ⚠️ **Baseline corrected (2026-07-02, GAP-010).** The premise below is wrong: the legacy quote
-> flow was never a single `Booking.razor` workspace — it was a **4-screen flow**
-> (`/quote → /client-details → /quote-generator → /rate-look-up`), whose pages were deleted from
-> `ResSystem@main` in April 2025 and so were invisible to this review. `Booking.razor` is a
-> component-sharing *sibling* screen, which is why the concrete findings below (preview-before-send,
-> property imagery, per-line discount, inclusions) mostly survive even though the "one screen →
-> three stages" rationale does not. See
+> ⚠️ **Baseline corrected (2026-07-02, GAP-010).** The premise below is wrong: legacy was a
+> **4-screen flow**, not this single `Booking.razor` workspace. The concrete findings below mostly
+> survive (incl. preview-before-send, imagery, copy-to-Outlook, per-line discount, inclusions)
+> because `Booking.razor` is a component-sharing *sibling* — but the "one screen → three stages"
+> rationale does not. See
 > [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md) §3.2/§4.
 
 Legacy `Booking.razor` (1,151 lines) is a single combined workspace:

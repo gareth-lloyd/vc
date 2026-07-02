@@ -9,7 +9,7 @@
   set of mockup affordances it did **not** cover. Mockup:
   https://vc-new-res-system.netlify.app/ → **Quotes & Enquiries**; the column
   set mirrors the legacy `/quote` list reconstructed in
-  [GAP-010 §4](done/gap-010-quote-enquiry-analyzed-wrong-codebase.md).
+  [the legacy reference §4](../workflows/legacy-quote-enquiry-reference.md) (promoted from GAP-010).
 - **Status:** Open.
 - **Files:**
   - `frontend/src/features/enquiries/columns.tsx`,

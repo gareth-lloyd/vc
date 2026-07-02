@@ -42,10 +42,9 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 
 ## 7. Quote building → first-class multi-villa cart
 
-> ⚠️ **CORRECTED (2026-07-02, GAP-010)** — "worked one villa at a time" is wrong: legacy
-> `QuoteGenerator` generated a list of villa options, supported manual rows, and persisted multiple
-> villa lines per quote via `SaveQuotationDetails(List<…>)`. The improvement below stands as a
-> **UX** win (clear cart-vs-search separation), not a capability gap. See
+> ⚠️ **CORRECTED (2026-07-02, GAP-010)** — "worked one villa at a time" is wrong: legacy supported
+> multi-villa quotes ("buried under Quotes & Enquiries → New Quote" is correct). The improvement
+> stands as a **UX** win (clear cart-vs-search separation), not a capability gap. Evidence:
 > [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md) §3.4.
 
 **Was**: Quote-building UI was buried under "Quotes & Enquiries → New Quote" and worked one villa at a time, with no clear cart-vs-search separation.

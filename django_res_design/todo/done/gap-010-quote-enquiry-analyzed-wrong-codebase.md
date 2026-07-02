@@ -9,7 +9,7 @@
 > question struck (§3.3); `05-improvements-over-original.md` #7 re-grounded as UX-only (§3.4);
 > target-UX caveats added to `product-design/02+03` (§5.4); GAP-005's baseline premise corrected
 > (§5.3). §5.5 integrity sweep run: 07/08 workflow docs are clean — the only stub-mislabelling
-> was `workflows/README.md:36` (fixed). §5.1 ("trust the backend specs") is encoded in the
+> was the Known-stubs bullet in `workflows/README.md` (fixed in place). §5.1 ("trust the backend specs") is encoded in the
 > reference doc's trust map; §5.2 had already shipped as GAP-038/039/042/043/044.
 
 # GAP-010 — Quote/enquiry specs were analysed against the wrong (post-deletion) codebase
@@ -18,10 +18,11 @@
 - **Source:** Verification of the legacy analysis against a *runnable* April-2025 build of
   `ResSystem/` (branch `pinned-2025-04-03`, commit `05c69ed`), prompted by the discovery that
   the quote generator runs in production but is absent from `ResSystem`'s `main` branch.
-- **Status:** Findings recorded here only. **No existing design doc has been edited** (deliberate —
-  this doc is the single place the disagreement is surfaced, per CLAUDE.md "surface the
-  disagreement; do not silently choose one side"). Intentionally **not** added to `INDEX.md`;
-  add a one-line entry there if/when you want it discoverable from the index.
+- **Status:** ~~Findings recorded here only~~ *(superseded 2026-07-02 — see the ✅ banner above:
+  the errata have now been applied to the live docs and the promoted reference is indexed).*
+  Originally deliberate: this doc was the single place the disagreement was surfaced, per
+  CLAUDE.md "surface the disagreement; do not silently choose one side", and intentionally not
+  added to `INDEX.md`.
 
 ---
 

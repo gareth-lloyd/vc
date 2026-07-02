@@ -21,6 +21,7 @@ Loading a list view, opening a page, or rendering UI is **not** a workflow unles
 workflows/
 ├── README.md
 ├── 00-taxonomy.md            ← this file
+├── legacy-quote-enquiry-reference.md   ← corrected legacy screen/flow reference (not a workflow; see GAP-010)
 ├── NN-{domain}/
 │   ├── README.md             ← domain overview + workflow index
 │   └── {topic}.md            ← one or more related workflows

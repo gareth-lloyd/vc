@@ -55,7 +55,17 @@ The **SP names and behaviour match** — only the missing pages were the problem
 - [`07-enquiry/enquiry-management.md`](./07-enquiry/enquiry-management.md) — `GetEqnuireDetails`,
   status setter. Correct backend; the list-screen UX it could not describe is §4's `/quote` screen.
 
-**Corrected claims (verified against pinned source):**
+**Not adjudicated:** [`08-quotation/construction.md`](./08-quotation/construction.md) and
+[`08-quotation/lifecycle.md`](./08-quotation/lifecycle.md) were not verified by the GAP-010
+investigation — neither vouched sound nor corrected; apply the default caution for specs extracted
+from the post-deletion tree.
+
+**Target UX, not legacy:** [`../product-design/02-frontend-design.md`](../product-design/02-frontend-design.md)
+and [`../product-design/03-workflows.md`](../product-design/03-workflows.md) are prospective
+designs; their legacy characterisations were written believing the §3.2 baseline (each carries a
+caveat banner).
+
+## 3. Corrected claims (verified against pinned source)
 
 ### 3.1 "ClientInfomation / AgentInfomation are uncommitted stubs" — wrong
 
@@ -72,13 +82,13 @@ so those `[STUB]` marks (and `08-quotation`/`06-availability` calendar `[STUB]` 
 
 ### 3.2 "Legacy was one combined `Booking.razor` workspace" — wrong premise
 
-[GAP-005](../todo/gap-005-quotation-flow-parity.md) (Source at `:4-7`, Context at `:22-30`)
-benchmarked the rebuilt quote flow against the *booking* screen, because the actual quote screens
-were missing from `main`. The legacy quote flow was never a single screen — it was the four-screen
-flow in §4. Mitigating: `Booking.razor` is a component-sharing sibling (hero imagery
-`Booking.razor:91-92`, rich-text editor, pricing rows), so GAP-005's concrete findings
-(preview-before-send, property imagery, per-line discount, inclusions) mostly survive; its
-structural baseline does not.
+[GAP-005](../todo/gap-005-quotation-flow-parity.md) (its Source front-matter and `## Context`
+section, both of which now carry this correction) benchmarked the rebuilt quote flow against the
+*booking* screen, because the actual quote screens were missing from `main`. The legacy quote flow
+was never a single screen — it was the four-screen flow in §4. Mitigating: `Booking.razor` is a
+component-sharing sibling (hero imagery `Booking.razor:91-92`, rich-text editor, pricing rows), so
+GAP-005's concrete findings (preview-before-send, property imagery, copy-to-Outlook, per-line
+discount, inclusions) mostly survive; its structural baseline does not.
 
 ### 3.3 "Quote HTML is rendered client-side by Blazor" — refuted
 
@@ -100,6 +110,8 @@ quote via `SaveQuotationDetails(List<QuotationDetailsArgs>)` (`QuoteGenerator.ra
 "first-class multi-villa cart" improvement
 ([`05-improvements-over-original.md` #7](../product-design/05-improvements-over-original.md))
 stands as a **UX** improvement (cart-vs-search separation) — not because legacy was single-villa.
+(The other half of the same "Was" sentence — "buried under Quotes & Enquiries → New Quote" — **is**
+correct: that was the real navbar path.)
 
 ---
 
@@ -176,13 +188,12 @@ authoritative target for the enquiry list, the customer profile, and the quote b
 Quotes & Enquiries list columns — VC Ref / Name / Villa Name / Region / Enq/Quote Date / Sales
 Person / Holiday Dates / Flex? — match the legacy `/quote` grid; its New-Quote Overview mirrors the
 `ClientDetails` cards; its Rate Lookup mirrors the weeks/occupancy model). Use it as the **target**
-UX reference alongside the pinned legacy source. The screen/flow re-derivation this enabled shipped
+UX reference alongside the pinned legacy source; a deep component-level analysis of the mockup
+lives in [`../mock_up_analysis/01-new-res-system.md`](../mock_up_analysis/01-new-res-system.md).
+The screen/flow re-derivation this enabled shipped
 as [GAP-038](../todo/done/gap-038-enquiry-quote-stacking-conversion-metric.md),
 [GAP-039](../todo/done/gap-039-enquiry-dashboard-enrichment.md),
 [GAP-042](../todo/done/gap-042-customer-360-profile-view.md),
 [GAP-043](../todo/done/gap-043-quote-builder-multi-week-range.md),
 [GAP-044](../todo/done/gap-044-occupancy-band-fanout-builder.md).
-
-Relatedly: treat [`product-design/02-frontend-design.md`](../product-design/02-frontend-design.md)
-and [`product-design/03-workflows.md`](../product-design/03-workflows.md) as **target** UX
-(prospective), not legacy claims — they were designed believing the §3.2 baseline.
+(The trust verdict for `product-design/02+03` lives in §2's Target-UX note.)

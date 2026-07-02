@@ -644,11 +644,11 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 > ⚠️ **Stale entry points + rate-model shape (2026-07-02, GAP-056 / GAP-060).**
 > "Rate Cards" were retired by GAP-056 (model is now `Property → RatePlan →
 > RatePeriod → RateBand`; see the errata in [`04-pricing.md`](../04-pricing.md)).
-> Rate/season editing lives in the **Rate & Service Workbench** property tab, not
-> a separate "Pricing" tab: [`todo/gap-060-kill-old-pricing-tab.md`](../todo/gap-060-kill-old-pricing-tab.md)
-> retires the legacy Pricing tab and renames the Workbench to **"Rates"**, so the
-> "property detail → Pricing tab" entry point below becomes "property detail →
-> Rates tab". The two-level Season/RateCard form described here is superseded by
+> Rate/season editing lives in the **"Rates"** property tab (there is no separate
+> "Pricing" tab): [`todo/done/gap-060-kill-old-pricing-tab.md`](../todo/done/gap-060-kill-old-pricing-tab.md)
+> retired the legacy Pricing tab and renamed the Workbench to **"Rates"**
+> (resolved 2026-07-02), so the "property detail → Pricing tab" entry point below
+> is now "property detail → Rates tab". The two-level Season/RateCard form described here is superseded by
 > the Workbench's timeline + occupancy-matrix editor. Read this section for the
 > operator intent; the code and GAP-056/GAP-060 tickets are authoritative on shape.
 

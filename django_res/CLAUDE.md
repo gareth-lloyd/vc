@@ -34,6 +34,11 @@ prod); no result backend — tasks are fire-and-forget. App object in
   run. Pass `-n0` for the single-test TDD inner loop (readable output, live
   progress, clean `-x`).
 - `--reuse-db` is on by default; pass `--create-db` after changing migrations.
+- **Agents — keep captured output lean.** `addopts` already sets `--tb=short`.
+  For a scoped inner loop run `uv run pytest <path> -n0 -q`; on a suspected
+  failure capture only the tail rather than the whole run:
+  `uv run pytest <path> -n0 -q 2>&1 | tail -40`. Don't run the full suite when
+  a module or `-k` selection answers the question.
 - A linked git worktree (sibling `../villacollective-worktrees/<slug>/`)
   automatically gets its own `test_villacollective_<hash>` DB
   (`settings/test.py` detects the worktree via its file-pointer `.git`; override

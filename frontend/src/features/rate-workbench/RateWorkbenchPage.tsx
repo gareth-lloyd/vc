@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
+import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { addDaysIso } from "@/lib/format/date";
@@ -20,6 +28,8 @@ import { periodLabel } from "@/features/properties/periodLabel";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
+  useDeleteRatePlan,
+  useDuplicateRatePlan,
   usePropertyDiscounts,
   usePropertyExtras,
   usePropertyRatePlans,
@@ -27,7 +37,8 @@ import {
   usePropertySettings,
 } from "@/features/properties/hooks";
 import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
-import type { PropertyDetail } from "@/features/properties/schemas";
+import { RatePlanFormDialog } from "@/features/properties/components/RatePlanFormDialog";
+import type { PropertyDetail, RatePlan } from "@/features/properties/schemas";
 import { useRatePlanDetailsFanOut } from "./hooks";
 import { toLanes } from "./toLanes";
 import { useYearWindow } from "./yearWindow";
@@ -76,13 +87,70 @@ export function RateWorkbenchPage() {
     date_to?: string;
   } | null>(null);
 
+  // Rate-plan (season) lifecycle, ported from the retired Pricing tab. Create
+  // is offered from the always-rendered header (and the zero-config empty
+  // state) so a plan-less property is bootstrappable; edit/duplicate/delete act
+  // on the currently-selected matrix season via its actions menu.
+  const deleteSeasonMutation = useDeleteRatePlan(property.id);
+  const duplicateSeasonMutation = useDuplicateRatePlan(property.id);
+  const [addSeasonOpen, setAddSeasonOpen] = useState(false);
+  const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
+  const [duplicatingSeason, setDuplicatingSeason] = useState<RatePlan | null>(null);
+  const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
+
+  const handleDeleteSeason = async () => {
+    if (!deletingSeason) return;
+    try {
+      await deleteSeasonMutation.mutateAsync({ ratePlanId: deletingSeason.id });
+      toast.success(t("pricing.seasons.toasts.deleted"));
+      if (matrixRatePlanId === deletingSeason.id) setMatrixRatePlanId(null);
+      setDeletingSeason(null);
+    } catch {
+      toast.error(t("pricing.seasons.toasts.delete_failed"));
+    }
+  };
+
+  const handleDuplicateSeason = async () => {
+    if (!duplicatingSeason) return;
+    try {
+      await duplicateSeasonMutation.mutateAsync({ ratePlanId: duplicatingSeason.id });
+      toast.success(t("pricing.seasons.toasts.duplicated"));
+      setDuplicatingSeason(null);
+    } catch {
+      toast.error(t("pricing.seasons.toasts.duplicate_failed"));
+    }
+  };
+
+  // Writer-gated add affordance; disabled-in-tooltip, never hidden
+  // (frontend/CLAUDE.md role gating). Shared by the header and the empty state.
+  const addSeasonButton = canWrite ? (
+    <Button size="sm" onClick={() => setAddSeasonOpen(true)}>
+      {t("pricing.seasons.add_button")}
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button size="sm" disabled>
+            {t("pricing.seasons.add_button")}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("pricing.seasons.add_button_disabled_tooltip")}</TooltipContent>
+    </Tooltip>
+  );
+
   const isLoading =
     seasons.isLoading ||
     services.isLoading ||
     extras.isLoading ||
     discounts.isLoading ||
     changeover.isLoading ||
-    fanOut.isLoading;
+    // Only the FIRST fan-out load blanks the page. Once any season detail has
+    // resolved, a still-loading member (e.g. the plan just created/duplicated
+    // in-page, which grows the fan-out) must not collapse the whole workbench
+    // to a skeleton — the existing seasons stay rendered while it loads.
+    (fanOut.isLoading && fanOut.details.length === 0);
 
   const isError =
     seasons.isError ||
@@ -101,24 +169,27 @@ export function RateWorkbenchPage() {
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">{t("rate_workbench.subtitle")}</p>
       </div>
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={goPrev}
-          aria-label={t("rate_workbench.year.prev")}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="w-14 text-center text-sm font-medium tabular-nums">{year}</span>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={goNext}
-          aria-label={t("rate_workbench.year.next")}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center gap-2">
+        {addSeasonButton}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={goPrev}
+            aria-label={t("rate_workbench.year.prev")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="w-14 text-center text-sm font-medium tabular-nums">{year}</span>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={goNext}
+            aria-label={t("rate_workbench.year.next")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -146,6 +217,16 @@ export function RateWorkbenchPage() {
   const periodInitialValues = latestPeriodEnd
     ? { date_from: addDaysIso(latestPeriodEnd, 1) }
     : undefined;
+
+  // GAP-026 (ported from the retired RatePlanDetailPanel): softly flag — never
+  // block — an active season whose currency diverges from the property's
+  // effective currency.
+  const propertyCurrencyCode = settings.data?.currency_code ?? null;
+  const activeSeasonCurrencyCode = activeSeasonDetail?.currency_code ?? null;
+  const currencyMismatch =
+    !!propertyCurrencyCode &&
+    !!activeSeasonCurrencyCode &&
+    propertyCurrencyCode.toUpperCase() !== activeSeasonCurrencyCode.toUpperCase();
 
   let body: React.ReactNode;
   if (isLoading) {
@@ -202,6 +283,7 @@ export function RateWorkbenchPage() {
         <EmptyState
           title={t("rate_workbench.empty.title")}
           description={t("rate_workbench.empty.body")}
+          action={addSeasonButton}
         />
       );
     } else if (isEmptyForYear) {
@@ -278,8 +360,50 @@ export function RateWorkbenchPage() {
                 </Tooltip>
               )
             ) : null}
+            {/* Season lifecycle for the selected plan — ported from the retired
+                Pricing tab's SeasonsList dropdown. Writer-only (the whole menu
+                is a set of write actions). */}
+            {canWrite && activeSeasonDetail ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2"
+                    aria-label={t("pricing.seasons.row.menu_label")}
+                  >
+                    ···
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setEditingSeason(activeSeasonDetail)}>
+                    {t("pricing.seasons.row.edit")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDuplicatingSeason(activeSeasonDetail)}>
+                    {t("pricing.seasons.row.duplicate")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => setDeletingSeason(activeSeasonDetail)}
+                  >
+                    {t("pricing.seasons.row.delete")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
+        {currencyMismatch ? (
+          <p
+            role="status"
+            className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-xs"
+          >
+            {t("pricing.season_detail.currency_mismatch", {
+              season: activeSeasonCurrencyCode,
+              property: propertyCurrencyCode,
+            })}
+          </p>
+        ) : null}
         <MatrixEditor
           key={activeMatrixRatePlanId}
           ratePlanId={activeMatrixRatePlanId}
@@ -366,6 +490,47 @@ export function RateWorkbenchPage() {
       {matrixSection}
       {inspectorSection}
       {probeSection}
+
+      {addSeasonOpen ? (
+        <RatePlanFormDialog
+          propertyId={property.id}
+          open
+          onOpenChange={setAddSeasonOpen}
+          mode="create"
+        />
+      ) : null}
+      {editingSeason ? (
+        <RatePlanFormDialog
+          propertyId={property.id}
+          open
+          onOpenChange={(o) => !o && setEditingSeason(null)}
+          mode="edit"
+          season={editingSeason}
+        />
+      ) : null}
+      {deletingSeason ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDeletingSeason(null)}
+          onConfirm={handleDeleteSeason}
+          title={t("pricing.seasons.delete_confirm.title")}
+          description={t("pricing.seasons.delete_confirm.description")}
+          confirmLabel={t("pricing.seasons.delete_confirm.confirm")}
+          destructive
+          busy={deleteSeasonMutation.isPending}
+        />
+      ) : null}
+      {duplicatingSeason ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDuplicatingSeason(null)}
+          onConfirm={handleDuplicateSeason}
+          title={t("pricing.seasons.duplicate_confirm.title")}
+          description={t("pricing.seasons.duplicate_confirm.description")}
+          confirmLabel={t("pricing.seasons.duplicate_confirm.confirm")}
+          busy={duplicateSeasonMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

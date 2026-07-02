@@ -3,6 +3,12 @@ import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -10,7 +16,8 @@ import { formatDate } from "@/lib/format/date";
 import { periodLabel } from "@/features/properties/periodLabel";
 import type { CommissionInput, TaxInput } from "@/lib/pricing/netGross";
 import { RateBandFormDialog } from "@/features/properties/components/RateBandFormDialog";
-import { useDeleteRateBand } from "@/features/properties/hooks";
+import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
+import { useDeleteRateBand, useDeleteRatePeriod } from "@/features/properties/hooks";
 import { formatPartyGaps } from "@/features/properties/coverage";
 import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import { useOptimisticBandPrice } from "../hooks";
@@ -41,6 +48,44 @@ function bandCreateSeed(period: RatePeriod): { minParty: number; maxParty: numbe
   return { minParty: next, maxParty: next };
 }
 
+/** Rate-period lifecycle menu (edit / delete), ported from the retired Pricing
+ * tab's RatePlanDetailPanel. Rendered both in the grid row-header (when the
+ * plan has bands) and in the band-less period list, so a just-created,
+ * still-empty period stays editable/deletable. */
+function PeriodActionsMenu({
+  period,
+  onEdit,
+  onDelete,
+}: {
+  period: RatePeriod;
+  onEdit: (period: RatePeriod) => void;
+  onDelete: (period: RatePeriod) => void;
+}) {
+  const { t } = useTranslation("properties");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2"
+          aria-label={t("pricing.rate_period.row.menu_label")}
+        >
+          ···
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onEdit(period)}>
+          {t("pricing.rate_period.row.edit")}
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive" onClick={() => onDelete(period)}>
+          {t("pricing.rate_period.row.delete")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
  * Segment-first rate matrix for a chosen season. Rate periods are rows (each
  * owns an inclusive date range), party bands columns; a cell fast-edits its
@@ -68,6 +113,7 @@ export function MatrixEditor({
 
   const price = useOptimisticBandPrice(ratePlanId);
   const deleteRule = useDeleteRateBand(ratePlanId);
+  const deletePeriod = useDeleteRatePeriod(ratePlanId);
 
   // One create-dialog state for all three entry points: empty-cell fill,
   // the trailing-column "+", and coverage-gap chips.
@@ -78,6 +124,9 @@ export function MatrixEditor({
   } | null>(null);
   const [editingBand, setEditingBand] = useState<RateBand | null>(null);
   const [deletingBand, setDeletingBand] = useState<RateBand | null>(null);
+  // Period lifecycle, ported from the retired Pricing tab's RatePlanDetailPanel.
+  const [editingPeriod, setEditingPeriod] = useState<RatePeriod | null>(null);
+  const [deletingPeriod, setDeletingPeriod] = useState<RatePeriod | null>(null);
 
   const handleDelete = async () => {
     if (!deletingBand) return;
@@ -87,6 +136,17 @@ export function MatrixEditor({
       setDeletingBand(null);
     } catch {
       toast.error(t("rate_workbench.matrix.save_failed"));
+    }
+  };
+
+  const handleDeletePeriod = async () => {
+    if (!deletingPeriod) return;
+    try {
+      await deletePeriod.mutateAsync({ periodId: deletingPeriod.id });
+      toast.success(t("pricing.rate_period.toasts.deleted"));
+      setDeletingPeriod(null);
+    } catch {
+      toast.error(t("pricing.rate_period.toasts.delete_failed"));
     }
   };
 
@@ -167,20 +227,45 @@ export function MatrixEditor({
       ) : null}
 
       {matrix.bands.length === 0 ? (
-        <EmptyState
-          title={t("rate_workbench.matrix.no_rules")}
-          action={
-            canWrite && periods[0] ? (
-              <Button
-                onClick={() =>
-                  setCreatingBand({ periodId: periods[0].id, ...bandCreateSeed(periods[0]) })
-                }
-              >
-                {t("rate_workbench.matrix.add_band")}
-              </Button>
-            ) : undefined
-          }
-        />
+        <div className="space-y-3">
+          {/* No bands anywhere → the grid renders no period rows, so surface the
+              periods (with their lifecycle menu) here; else a just-created
+              period would be unreachable for edit/delete. Writer-only. */}
+          {canWrite ? (
+            <ul className="divide-border border-border divide-y rounded-md border">
+              {periods.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
+                >
+                  <span className="text-foreground">
+                    {formatDate(p.date_from)} – {formatDate(p.date_to)}
+                    {p.name ? <span className="text-muted-foreground ml-2">{p.name}</span> : null}
+                  </span>
+                  <PeriodActionsMenu
+                    period={p}
+                    onEdit={setEditingPeriod}
+                    onDelete={setDeletingPeriod}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <EmptyState
+            title={t("rate_workbench.matrix.no_rules")}
+            action={
+              canWrite && periods[0] ? (
+                <Button
+                  onClick={() =>
+                    setCreatingBand({ periodId: periods[0].id, ...bandCreateSeed(periods[0]) })
+                  }
+                >
+                  {t("rate_workbench.matrix.add_band")}
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-xs">
@@ -229,10 +314,21 @@ export function MatrixEditor({
                 return (
                   <tr key={segment.periodId} className="border-border border-t">
                     <td className="py-2 pr-3 align-middle whitespace-nowrap">
-                      {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
-                      {segment.name ? (
-                        <span className="text-muted-foreground ml-2">{segment.name}</span>
-                      ) : null}
+                      <span className="inline-flex items-center gap-2">
+                        <span>
+                          {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
+                          {segment.name ? (
+                            <span className="text-muted-foreground ml-2">{segment.name}</span>
+                          ) : null}
+                        </span>
+                        {canWrite && period ? (
+                          <PeriodActionsMenu
+                            period={period}
+                            onEdit={setEditingPeriod}
+                            onDelete={setDeletingPeriod}
+                          />
+                        ) : null}
+                      </span>
                     </td>
                     {rowCells.map((cell, col) => (
                       <td key={`${row}-${col}`} className="px-2 py-1 align-middle">
@@ -326,6 +422,27 @@ export function MatrixEditor({
           confirmLabel={t("rate_workbench.matrix.delete_confirm.confirm")}
           destructive
           busy={deleteRule.isPending}
+        />
+      ) : null}
+      {editingPeriod ? (
+        <RatePeriodFormDialog
+          ratePlanId={ratePlanId}
+          open
+          onOpenChange={(o) => !o && setEditingPeriod(null)}
+          mode="edit"
+          period={editingPeriod}
+        />
+      ) : null}
+      {deletingPeriod ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDeletingPeriod(null)}
+          onConfirm={handleDeletePeriod}
+          title={t("pricing.rate_period.delete_confirm.title")}
+          description={t("pricing.rate_period.delete_confirm.description")}
+          confirmLabel={t("pricing.rate_period.delete_confirm.confirm")}
+          destructive
+          busy={deletePeriod.isPending}
         />
       ) : null}
     </div>

@@ -6,7 +6,6 @@ import type {
   Discount,
   Extra,
   PropertyService,
-  RatePlan,
   RatePlanDetail,
 } from "@/features/properties/schemas";
 
@@ -18,7 +17,6 @@ function base(): ToLanesInput {
     dayCount: win.dayCount,
     windowFrom: win.from,
     windowTo: win.to,
-    seasons: [],
     ratePlanDetails: [],
     services: [],
     extras: [],
@@ -27,7 +25,6 @@ function base(): ToLanesInput {
   };
 }
 
-const season = (o: Partial<RatePlan>): RatePlan => ({ id: 1, property: 7, name: "S", ...o });
 const service = (o: Partial<PropertyService>): PropertyService => ({
   id: 1,
   property: 7,
@@ -49,10 +46,9 @@ const detail = (o: Partial<RatePlanDetail>): RatePlanDetail => ({
 const lane = (lanes: LaneModel[], key: LaneKey) => lanes.find((l) => l.key === key)!;
 
 describe("toLanes", () => {
-  it("returns the six lanes in order, all empty for empty input", () => {
+  it("returns the five base lanes in order (no seasons lane), all empty for empty input", () => {
     const lanes = toLanes(base());
     expect(lanes.map((l) => l.key)).toEqual([
-      "seasons",
       "rates",
       "inclusions",
       "extras",
@@ -60,30 +56,6 @@ describe("toLanes", () => {
       "changeover",
     ]);
     expect(lanes.every((l) => l.bands.length === 0)).toBe(true);
-  });
-
-  it("maps a season to a band using its effective dates", () => {
-    const lanes = toLanes({
-      ...base(),
-      seasons: [
-        season({
-          id: 1,
-          name: "Summer 2026",
-          effective_from: "2026-06-01",
-          effective_to: "2026-08-31",
-          currency_code: "EUR",
-        }),
-      ],
-    });
-    expect(lane(lanes, "seasons").bands[0]).toMatchObject({
-      id: "season-1",
-      laneKey: "seasons",
-      dateFrom: "2026-06-01",
-      dateTo: "2026-08-31",
-      label: "Summer 2026",
-      sourceId: 1,
-      sublane: 0,
-    });
   });
 
   it("clamps null (open-ended) dates to the window's inclusive bounds", () => {
@@ -102,9 +74,9 @@ describe("toLanes", () => {
   it("drops bands that fall entirely outside the window", () => {
     const lanes = toLanes({
       ...base(),
-      seasons: [season({ id: 1, effective_from: "2025-01-01", effective_to: "2025-12-31" })],
+      services: [service({ id: 1, applies_from: "2025-01-01", applies_to: "2025-12-31" })],
     });
-    expect(lane(lanes, "seasons").bands).toHaveLength(0);
+    expect(lane(lanes, "inclusions").bands).toHaveLength(0);
   });
 
   it("stacks overlapping bands onto separate sub-lanes", () => {
@@ -339,9 +311,9 @@ describe("toLanes", () => {
   it("keeps a single-day band visible (dates are inclusive, so one day has width)", () => {
     const lanes = toLanes({
       ...base(),
-      seasons: [season({ id: 1, effective_from: "2026-06-01", effective_to: "2026-06-01" })],
+      extras: [extra({ id: 1, applies_from: "2026-06-01", applies_to: "2026-06-01" })],
     });
-    expect(lane(lanes, "seasons").bands).toHaveLength(1);
+    expect(lane(lanes, "extras").bands).toHaveLength(1);
   });
 
   it("stacks bands that share only their boundary day (inclusive overlap)", () => {
@@ -473,7 +445,6 @@ describe("toLanes", () => {
     });
     // Positioned directly under the rates lane it annotates.
     expect(lanes.map((l) => l.key)).toEqual([
-      "seasons",
       "rates",
       "coverage",
       "inclusions",

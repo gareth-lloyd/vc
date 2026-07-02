@@ -255,7 +255,6 @@ export function RateWorkbenchPage() {
       dayCount,
       windowFrom: from,
       windowTo: to,
-      seasons: seasonList,
       ratePlanDetails: fanOut.details,
       coveragePlanId: activeMatrixRatePlanId,
       services: serviceList,

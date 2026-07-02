@@ -6,7 +6,6 @@ import type {
   Discount,
   Extra,
   PropertyService,
-  RatePlan,
   RatePlanDetail,
 } from "@/features/properties/schemas";
 import { periodLabel } from "@/features/properties/periodLabel";
@@ -15,7 +14,6 @@ import { coverageDateGaps } from "./coverageGaps";
 /** The stacked concern lanes, top to bottom. `coverage` is derived (the
  * selected plan's unpriced dates) and only present when a plan is selected. */
 export const LANE_KEYS = [
-  "seasons",
   "rates",
   "coverage",
   "inclusions",
@@ -33,7 +31,7 @@ export type LaneKey = (typeof LANE_KEYS)[number];
  * field is a compile error, not a silent `undefined` in the popover.
  */
 export interface BandMeta {
-  /** Seasons + rates + extras: currency for money formatting. */
+  /** Rates + extras: currency for money formatting. */
   currencyCode?: string | null;
   isActive?: boolean;
   planId?: number;
@@ -116,8 +114,7 @@ export interface ToLanesInput {
   /** ISO bounds used to substitute open-ended (null) band dates. */
   windowFrom: string;
   windowTo: string;
-  seasons: RatePlan[];
-  /** Season details (periods + bands) drive the rates lane; loading/absent → no rate bands. */
+  /** Rate-plan details (periods + bands) drive the rates lane; loading/absent → no rate bands. */
   ratePlanDetails: RatePlanDetail[];
   /** The matrix's selected plan: when its detail is loaded, a derived coverage
    * lane shows the dates that plan does not price. */
@@ -180,15 +177,6 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       })),
     };
   };
-
-  const seasonBands: RawBand[] = input.seasons.map((season) => ({
-    id: `season-${season.id}`,
-    dateFrom: season.effective_from ?? windowFrom,
-    dateTo: season.effective_to ?? windowLast,
-    label: season.name,
-    sourceId: season.id,
-    meta: { currencyCode: season.currency_code ?? null, isActive: season.is_active ?? true },
-  }));
 
   const rateBandsUntiered: RawBand[] = input.ratePlanDetails.flatMap((plan) => {
     const periods = plan.periods ?? [];
@@ -344,7 +332,6 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   }));
 
   return [
-    buildLane("seasons", seasonBands),
     buildLane("rates", rateBands),
     // Directly under the rates it annotates. Present even when gap-free —
     // an empty coverage lane reads as "fully priced", which is the feedback.

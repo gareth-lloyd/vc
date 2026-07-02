@@ -33,7 +33,7 @@ describe("bandToneClass", () => {
   });
 
   it("uses the flat lane tone for other lanes", () => {
-    expect(bandToneClass(band("seasons"))).toBe(TONE_CLASS.seasons);
+    expect(bandToneClass(band("coverage"))).toBe(TONE_CLASS.coverage);
     expect(bandToneClass(band("inclusions"))).toBe(TONE_CLASS.inclusions);
     expect(bandToneClass(band("discounts"))).toBe(TONE_CLASS.discounts);
     expect(bandToneClass(band("changeover"))).toBe(TONE_CLASS.changeover);

@@ -18,7 +18,6 @@ export function bandTop(sublane: number): number {
 
 /** Tone → token-driven fill + border classes (no raw Tailwind colours). */
 export const TONE_CLASS: Record<LaneKey, string> = {
-  seasons: "bg-primary/20 border-primary/50",
   rates: "bg-info/20 border-info/50",
   coverage: "bg-warning/10 border-warning/60 border-dashed",
   inclusions: "bg-success/20 border-success/50",

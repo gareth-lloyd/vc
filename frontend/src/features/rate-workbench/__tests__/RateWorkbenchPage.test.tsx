@@ -135,7 +135,7 @@ function setup(route: string) {
 afterEach(() => useAuthStore.getState().clear());
 
 describe("RateWorkbenchPage", () => {
-  it("renders all six lanes with bands for the reservations role", async () => {
+  it("renders the timeline lanes with bands for the reservations role", async () => {
     setUser("reservations");
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
@@ -143,11 +143,11 @@ describe("RateWorkbenchPage", () => {
     expect(await screen.findByRole("heading", { name: "Rates" })).toBeInTheDocument();
     // Bands render (once data loads) as buttons with descriptive aria labels
     // (no in-band text). Awaiting one confirms the timeline mounted.
-    expect(await screen.findByRole("button", { name: /Summer 2026/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Airport transfer/ })).toBeInTheDocument();
-    // Lane labels
-    expect(screen.getByText("Seasons")).toBeInTheDocument();
+    // Lane labels — the redundant per-currency "Seasons" (rate-plan) lane is gone;
+    // the timeline now leads with the rate-periods lane.
+    expect(screen.queryByText("Seasons")).not.toBeInTheDocument();
     expect(screen.getByText("Rate periods")).toBeInTheDocument();
     expect(screen.getByText("Changeover")).toBeInTheDocument();
   });

@@ -59,7 +59,7 @@
     "features": "Features",
     "settings": "Settings",
     "history": "History",
-    "rate_workbench": "Rate Workbench"
+    "rate_workbench": "Rates"
   },
   "detail": {
     "not_found_title": "Property not found",
@@ -1035,9 +1035,8 @@
     "unset": "—"
   },
   "rate_workbench": {
-    "title": "Rate & Service Workbench",
+    "title": "Rates",
     "subtitle": "The whole year's rates, inclusions, extras, discounts and changeover in one view.",
-    "preview_badge": "Preview",
     "lanes": {
       "seasons": "Seasons",
       "rates": "Rate periods",
@@ -1061,7 +1060,7 @@
       "body": "This property is configured, but none of it applies to the selected year. Try another year."
     },
     "error": {
-      "title": "Couldn't load the workbench",
+      "title": "Couldn't load rates",
       "body": "Something went wrong loading this property's rate configuration."
     },
     "band": {

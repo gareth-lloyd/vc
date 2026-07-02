@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -52,10 +51,11 @@ interface WorkbenchContext {
 }
 
 /**
- * The Rate & Service Workbench: a unified, whole-year view of a property's
- * commercial configuration. Preview tab that sits alongside the existing
- * Pricing tab. Phase 1 is the read-only timeline overview; matrix editing,
- * inline inspectors and the live price probe land in later phases.
+ * The "Rates" tab (internal name: rate workbench): a unified, whole-year view of
+ * a property's commercial configuration — the whole-year timeline overview,
+ * the season/period rate matrix editor, inline inclusion/extra/discount
+ * inspectors, and a live guest-side price probe. Since GAP-060 it is the single
+ * rate-editing surface, superseding the retired Pricing tab.
  */
 export function RateWorkbenchPage() {
   const { t } = useTranslation("properties");
@@ -163,9 +163,8 @@ export function RateWorkbenchPage() {
   const header = (
     <div className="flex items-start justify-between gap-4">
       <div>
-        <h1 className="text-foreground flex items-center gap-2 font-serif text-2xl font-semibold">
+        <h1 className="text-foreground font-serif text-2xl font-semibold">
           {t("rate_workbench.title")}
-          <Badge variant="secondary">{t("rate_workbench.preview_badge")}</Badge>
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">{t("rate_workbench.subtitle")}</p>
       </div>

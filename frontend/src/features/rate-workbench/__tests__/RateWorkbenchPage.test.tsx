@@ -140,9 +140,7 @@ describe("RateWorkbenchPage", () => {
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
 
-    expect(
-      await screen.findByRole("heading", { name: /Rate & Service Workbench/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rates" })).toBeInTheDocument();
     // Bands render (once data loads) as buttons with descriptive aria labels
     // (no in-band text). Awaiting one confirms the timeline mounted.
     expect(await screen.findByRole("button", { name: /Summer 2026/ })).toBeInTheDocument();
@@ -158,13 +156,13 @@ describe("RateWorkbenchPage", () => {
     setUser("reservations");
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
-    expect(await screen.findByRole("link", { name: "Rate Workbench" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Rates" })).toBeInTheDocument();
     useAuthStore.getState().clear();
 
     setUser("readonly", false);
     setup("/properties/casa-sur/details");
     expect(await screen.findByText("details tab")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Rate Workbench" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Rates" })).not.toBeInTheDocument();
   });
 
   it("shows the empty state when the property has no configuration", async () => {

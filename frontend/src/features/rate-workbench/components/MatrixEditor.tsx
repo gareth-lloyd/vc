@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { useDeleteRateBand } from "@/features/properties/hooks";
 import { formatPartyGaps } from "@/features/properties/coverage";
 import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import { useOptimisticBandNightly } from "../hooks";
-import { bandLabel, buildMatrix, type MatrixCell as CellModel } from "../matrixModel";
+import { bandLabel, buildMatrix } from "../matrixModel";
 import { MatrixCell } from "./MatrixCell";
 
 interface MatrixEditorProps {
@@ -29,6 +30,19 @@ interface MatrixEditorProps {
 /** Uncovered-party warning for each active period that has bands but a gap. */
 function periodLabel(period: RatePeriod): string {
   return period.name || `${formatDate(period.date_from)} – ${formatDate(period.date_to)}`;
+}
+
+/** Party-range prefill for a new band on this period. The serializer's
+ * coverage_gaps are authoritative (inclusive, disjoint from existing bands),
+ * so the first gap wins; otherwise seed just above the covered range. Falls
+ * back to 1 when the period has no bounded coverage to extend. */
+function bandCreateSeed(period: RatePeriod): { minParty: number; maxParty: number } {
+  const firstGap = (period.coverage_gaps ?? [])[0];
+  if (firstGap) return { minParty: firstGap[0], maxParty: firstGap[1] };
+  const maxes = (period.bands ?? []).map((b) => b.max_party);
+  if (maxes.length === 0 || maxes.some((m) => m == null)) return { minParty: 1, maxParty: 1 };
+  const next = Math.max(...(maxes as number[])) + 1;
+  return { minParty: next, maxParty: next };
 }
 
 /**
@@ -59,7 +73,13 @@ export function MatrixEditor({
   const nightly = useOptimisticBandNightly(ratePlanId);
   const deleteRule = useDeleteRateBand(ratePlanId);
 
-  const [creatingCell, setCreatingCell] = useState<CellModel | null>(null);
+  // One create-dialog state for all three entry points: empty-cell fill,
+  // per-row "+ Add band", and coverage-gap chips.
+  const [creatingBand, setCreatingBand] = useState<{
+    periodId: number;
+    minParty: number;
+    maxParty: number;
+  } | null>(null);
   const [editingBand, setEditingBand] = useState<RateBand | null>(null);
   const [deletingBand, setDeletingBand] = useState<RateBand | null>(null);
 
@@ -104,23 +124,67 @@ export function MatrixEditor({
   return (
     <div className="space-y-3">
       {gapPeriods.length > 0 ? (
+        // Interactive chips must NOT sit in a live region (controls inside
+        // role="status" get re-announced on every render), so only the
+        // viewer's text-only variant is a status region.
         <ul
-          role="status"
+          role={canWrite ? undefined : "status"}
           className="border-warning/40 bg-warning/10 text-warning space-y-1 rounded-md border px-3 py-2 text-xs"
         >
-          {gapPeriods.map((p) => (
-            <li key={p.id}>
-              {t("rate_workbench.matrix.coverage_gap", {
-                period: periodLabel(p),
-                ranges: formatPartyGaps(p.coverage_gaps ?? []),
-              })}
-            </li>
-          ))}
+          {gapPeriods.map((p) =>
+            canWrite ? (
+              // Actionable warning: each gap is a chip that opens the band
+              // dialog prefilled with that exact inclusive party range.
+              <li key={p.id} className="flex flex-wrap items-center gap-1.5">
+                <span>
+                  {t("rate_workbench.matrix.coverage_gap_intro", { period: periodLabel(p) })}
+                </span>
+                {(p.coverage_gaps ?? []).map(([low, high]) => {
+                  const range = formatPartyGaps([[low, high]]);
+                  return (
+                    <Button
+                      key={range}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-5 px-1.5 text-xs"
+                      aria-label={t("rate_workbench.matrix.fill_gap_chip", { range })}
+                      onClick={() =>
+                        setCreatingBand({ periodId: p.id, minParty: low, maxParty: high })
+                      }
+                    >
+                      {range}
+                    </Button>
+                  );
+                })}
+              </li>
+            ) : (
+              <li key={p.id}>
+                {t("rate_workbench.matrix.coverage_gap", {
+                  period: periodLabel(p),
+                  ranges: formatPartyGaps(p.coverage_gaps ?? []),
+                })}
+              </li>
+            ),
+          )}
         </ul>
       ) : null}
 
       {matrix.bands.length === 0 ? (
-        <EmptyState title={t("rate_workbench.matrix.no_rules")} />
+        <EmptyState
+          title={t("rate_workbench.matrix.no_rules")}
+          action={
+            canWrite && periods[0] ? (
+              <Button
+                onClick={() =>
+                  setCreatingBand({ periodId: periods[0].id, ...bandCreateSeed(periods[0]) })
+                }
+              >
+                {t("rate_workbench.matrix.add_band")}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-xs">
@@ -132,6 +196,11 @@ export function MatrixEditor({
                     {bandLabel(b) ?? t("rate_workbench.matrix.any_party")}
                   </th>
                 ))}
+                {canWrite ? (
+                  <th className="py-2 pl-2">
+                    <span className="sr-only">{t("rate_workbench.matrix.add_band")}</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -153,11 +222,42 @@ export function MatrixEditor({
                           nightly.mutate({ bandId, nightly: value })
                         }
                         onEditBand={setEditingBand}
-                        onFill={setCreatingCell}
+                        onFill={(c) =>
+                          setCreatingBand({
+                            periodId: c.periodId,
+                            minParty: c.minParty ?? 1,
+                            maxParty: c.maxParty ?? 1,
+                          })
+                        }
                         onDeleteBand={setDeletingBand}
                       />
                     </td>
                   ))}
+                  {canWrite ? (
+                    <td className="py-1 pl-2 align-middle whitespace-nowrap">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground h-6 px-2 text-xs"
+                        aria-label={t("rate_workbench.matrix.add_band_for", {
+                          period:
+                            segment.name ||
+                            `${formatDate(segment.dateFrom)} – ${formatDate(segment.dateTo)}`,
+                        })}
+                        onClick={() => {
+                          const period = periods.find((p) => p.id === segment.periodId);
+                          setCreatingBand({
+                            periodId: segment.periodId,
+                            ...(period ? bandCreateSeed(period) : { minParty: 1, maxParty: 1 }),
+                          });
+                        }}
+                      >
+                        <Plus className="h-3 w-3" />
+                        {t("rate_workbench.matrix.add_band")}
+                      </Button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -165,16 +265,16 @@ export function MatrixEditor({
         </div>
       )}
 
-      {creatingCell ? (
+      {creatingBand ? (
         <RateBandFormDialog
           ratePlanId={ratePlanId}
-          periodId={creatingCell.periodId}
-          open={!!creatingCell}
-          onOpenChange={(o) => !o && setCreatingCell(null)}
+          periodId={creatingBand.periodId}
+          open={!!creatingBand}
+          onOpenChange={(o) => !o && setCreatingBand(null)}
           mode="create"
           defaults={{
-            min_party: creatingCell.minParty ?? 1,
-            max_party: creatingCell.maxParty ?? 1,
+            min_party: creatingBand.minParty,
+            max_party: creatingBand.maxParty,
           }}
           currencyCode={currencyCode}
           priceBasis={priceBasis}

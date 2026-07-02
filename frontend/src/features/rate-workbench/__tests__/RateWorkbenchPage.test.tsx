@@ -145,7 +145,7 @@ describe("RateWorkbenchPage", () => {
     // Bands render (once data loads) as buttons with descriptive aria labels
     // (no in-band text). Awaiting one confirms the timeline mounted.
     expect(await screen.findByRole("button", { name: /Summer 2026/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Standard/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Airport transfer/ })).toBeInTheDocument();
     // Lane labels
     expect(screen.getByText("Seasons")).toBeInTheDocument();

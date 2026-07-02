@@ -1104,7 +1104,11 @@
       "coverage_gap": "{{period}}: unpriced party sizes {{ranges}}",
       "no_periods_hint": "Add the first rate period to start pricing this season.",
       "add_period": "Add period",
-      "add_period_disabled_tooltip": "You need the Reservations role to add rate periods."
+      "add_period_disabled_tooltip": "You need the Reservations role to add rate periods.",
+      "add_band": "Add band",
+      "add_band_for": "Add band — {{period}}",
+      "coverage_gap_intro": "{{period}}: unpriced party sizes",
+      "fill_gap_chip": "Add a band for parties {{range}}"
     },
     "probe": {
       "title": "Price probe",

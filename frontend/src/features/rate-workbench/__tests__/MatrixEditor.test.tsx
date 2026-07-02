@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -196,5 +196,91 @@ describe("MatrixEditor — zero-period season (period create CTA)", () => {
     );
     expect(screen.getByText("This season has no rate periods yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add period" })).toBeDisabled();
+  });
+});
+
+describe("MatrixEditor — first-class band creation (Unit 4)", () => {
+  it("opens the band dialog from a period row button, prefilled above the covered range", async () => {
+    const user = userEvent.setup();
+    const posted: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("/api/v1/periods/500/bands", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(
+          { id: 9, period: 500, min_party: 5, max_party: 5, nightly: "800" },
+          { status: 201 },
+        );
+      }),
+    );
+    renderEditor();
+
+    // Period 500 covers parties 2–4 → the new band starts at 5.
+    await user.click(await screen.findByRole("button", { name: /Add band — Early summer/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Minimum party/i)).toHaveValue(5);
+    expect(within(dialog).getByLabelText(/Maximum party/i)).toHaveValue(5);
+    await user.type(within(dialog).getByLabelText(/Nightly price/i), "800");
+    await user.click(within(dialog).getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ min_party: 5, max_party: 5, nightly: "800" });
+  });
+
+  it("turns coverage-gap warnings into clickable chips prefilled with the gap range", async () => {
+    const user = userEvent.setup();
+    const gappy: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          coverage_gaps: [[5, 6]],
+        },
+        ratePlanDetail.periods[1],
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[gappy]} canWrite commission={null} tax={null} />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /Add a band for parties 5–6/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Minimum party/i)).toHaveValue(5);
+    expect(within(dialog).getByLabelText(/Maximum party/i)).toHaveValue(6);
+  });
+
+  it("offers a first-band CTA when the plan's periods have no bands at all", async () => {
+    const user = userEvent.setup();
+    const bandless: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: ratePlanDetail.periods.map((p) => ({ ...p, bands: [], coverage_gaps: [] })),
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[bandless]} canWrite commission={null} tax={null} />,
+    );
+    expect(await screen.findByText("This rate period has no bands yet.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add band" }));
+    const dialog = await screen.findByRole("dialog");
+    // No coverage yet → seeded at party 1, on the first period.
+    expect(within(dialog).getByLabelText(/Minimum party/i)).toHaveValue(1);
+  });
+
+  it("offers viewers the gap information as text, without band-create affordances", async () => {
+    const gappy: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [{ ...ratePlanDetail.periods[0], coverage_gaps: [[5, 6]] }],
+    };
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[gappy]}
+        canWrite={false}
+        commission={null}
+        tax={null}
+      />,
+    );
+    expect(await screen.findByText(/unpriced party sizes/i)).toBeInTheDocument();
+    expect(screen.getByText(/5–6/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add a band/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add band/i })).toBeNull();
   });
 });

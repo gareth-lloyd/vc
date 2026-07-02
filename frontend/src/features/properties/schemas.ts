@@ -393,9 +393,14 @@ export type RatePeriod = z.infer<typeof ratePeriodSchema>;
 
 export const ratePeriodWriteInputSchema = z
   .object({
-    // GAP-056: the period owns the dates (inclusive) + optional name + nullable
-    // min/max-nights overrides; its bands (RateBand) inherit its dates.
-    name: z.string().trim().max(128).optional(),
+    // GAP-056: the period owns the dates (inclusive) + nullable min/max-nights
+    // overrides; its bands (RateBand) inherit its dates. GAP-059: the operator
+    // label is compulsory.
+    name: z
+      .string()
+      .trim()
+      .min(1, { message: "properties:errors.rate_period_name_required" })
+      .max(128),
     date_from: z.string().min(1, { message: "properties:errors.rate_period_date_from_required" }),
     date_to: z.string().min(1, { message: "properties:errors.rate_period_date_to_required" }),
     min_nights: z

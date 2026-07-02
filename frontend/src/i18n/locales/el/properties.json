@@ -396,7 +396,7 @@
         "create_title": "Προσθήκη περιόδου τιμών",
         "edit_title": "Επεξεργασία περιόδου τιμών",
         "fields": {
-          "name": "Όνομα (προαιρετικό)",
+          "name": "Όνομα",
           "name_placeholder": "Αιχμή καλοκαιριού",
           "date_from": "Από",
           "date_to": "Έως",
@@ -1027,6 +1027,7 @@
     "service_to_before_from": "Η ημερομηνία λήξης δεν μπορεί να είναι πριν την έναρξη",
     "rate_period_date_from_required": "Η ημερομηνία «Από» είναι υποχρεωτική",
     "rate_period_date_to_required": "Η ημερομηνία «Έως» είναι υποχρεωτική",
+    "rate_period_name_required": "Το όνομα περιόδου είναι υποχρεωτικό",
     "rate_period_date_to_before_from": "Η ημερομηνία «Έως» πρέπει να είναι ίδια ή μετά την «Από»",
     "rate_period_nights_min": "Τα βράδια πρέπει να είναι τουλάχιστον 1",
     "rate_period_max_nights_lt_min": "Τα μέγιστα βράδια δεν μπορούν να είναι λιγότερα από τα ελάχιστα"

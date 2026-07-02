@@ -396,7 +396,7 @@
         "create_title": "Add rate period",
         "edit_title": "Edit rate period",
         "fields": {
-          "name": "Name (optional)",
+          "name": "Name",
           "name_placeholder": "Peak summer",
           "date_from": "From",
           "date_to": "To",
@@ -1027,6 +1027,7 @@
     "service_to_before_from": "End date can't be before the start date",
     "rate_period_date_from_required": "From date is required",
     "rate_period_date_to_required": "To date is required",
+    "rate_period_name_required": "Period name is required",
     "rate_period_date_to_before_from": "To date must be on or after From date",
     "rate_period_nights_min": "Nights must be at least 1",
     "rate_period_max_nights_lt_min": "Maximum nights can't be below minimum nights"

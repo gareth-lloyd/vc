@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
-import { suggestRatePeriodEnd } from "@/lib/format/date";
+import { formatWeekRangeCompact, suggestRatePeriodEnd } from "@/lib/format/date";
 import { useCreateRatePeriod, useUpdateRatePeriod } from "../hooks";
 import { ratePeriodWriteInputSchema, type RatePeriod, type RatePeriodWriteInput } from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
@@ -108,6 +108,23 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
     form.setValue("date_to", suggested, { shouldDirty: false, shouldValidate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, isCreate, changeoverDay, minNightsRental]);
+
+  // GAP-059: the name is compulsory, so keep the fast create flows
+  // one-keystroke by suggesting the date-span label once both dates are known
+  // — same never-clobber rule as the end-date suggestion above (only fill
+  // while `name` is empty or still holds our own last suggestion).
+  const dateTo = form.watch("date_to");
+  const lastNameSuggestionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCreate || !dateFrom || !dateTo) return;
+    const currentName = form.getValues("name");
+    if (currentName && currentName !== lastNameSuggestionRef.current) return;
+    const suggested = formatWeekRangeCompact(dateFrom, dateTo);
+    if (suggested === "—" || suggested === currentName) return;
+    lastNameSuggestionRef.current = suggested;
+    form.setValue("name", suggested, { shouldDirty: false, shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, isCreate]);
 
   const handleSubmit = async (values: RatePeriodWriteInput) => {
     setTopLevelError(null);

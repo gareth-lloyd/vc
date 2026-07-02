@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysIso,
+  daysSummaryArgs,
   formatDate,
+  formatDateRangeEndpoints,
   formatNightRange,
   formatWeekRangeCompact,
+  nightsSummaryArgs,
   suggestRatePeriodEnd,
   toDatetimeLocal,
 } from "./date";
@@ -64,6 +67,73 @@ describe("formatWeekRangeCompact", () => {
   it("returns a dash for empty or unparseable endpoints", () => {
     expect(formatWeekRangeCompact("", "2026-08-08")).toBe("—");
     expect(formatWeekRangeCompact("2026-08-01", "not-a-date")).toBe("—");
+  });
+});
+
+describe("formatDateRangeEndpoints", () => {
+  // Formats the two stored ISO endpoints DIRECTLY (the DateRangePicker trigger
+  // label — in nights mode the end is the exclusive checkout, shown as-is).
+  // Unlike formatWeekRangeCompact, the year is always kept.
+  it("renders a single-day range as one date", () => {
+    expect(formatDateRangeEndpoints("2026-06-01", "2026-06-01")).toBe("1 Jun 2026");
+  });
+
+  it("collapses the leading day within one month, keeping the year", () => {
+    expect(formatDateRangeEndpoints("2026-06-01", "2026-06-30")).toBe("1–30 Jun 2026");
+  });
+
+  it("keeps both months when the range crosses a month boundary", () => {
+    expect(formatDateRangeEndpoints("2026-07-29", "2026-08-01")).toBe("29 Jul – 1 Aug 2026");
+  });
+
+  it("keeps both years when the range crosses a year boundary", () => {
+    expect(formatDateRangeEndpoints("2026-12-30", "2027-01-01")).toBe("30 Dec 2026 – 1 Jan 2027");
+  });
+
+  it("renders an open end for a partial range", () => {
+    expect(formatDateRangeEndpoints("2026-07-12", "")).toBe("12 Jul 2026 – …");
+    expect(formatDateRangeEndpoints("2026-07-12", "not-a-date")).toBe("12 Jul 2026 – …");
+  });
+
+  it("returns empty when the start is missing or unparseable", () => {
+    expect(formatDateRangeEndpoints("", "2026-07-12")).toBe("");
+    expect(formatDateRangeEndpoints("not-a-date", "2026-07-12")).toBe("");
+  });
+
+  it("renders an inverted range uncollapsed instead of garbling it", () => {
+    expect(formatDateRangeEndpoints("2026-06-30", "2026-06-01")).toBe("30 Jun 2026 – 1 Jun 2026");
+  });
+});
+
+describe("nightsSummaryArgs", () => {
+  it("returns null for unparseable endpoints instead of throwing", () => {
+    expect(nightsSummaryArgs("not-a-date", "really-not-a-date")).toBeNull();
+    expect(nightsSummaryArgs("2026-06-01", "not-a-date")).toBeNull();
+  });
+});
+
+describe("daysSummaryArgs", () => {
+  // Inclusive twin of nightsSummaryArgs: [date_from, date_to] where a
+  // single-day range is legal and counts as 1 day.
+  it("counts inclusive days with a formatted range", () => {
+    expect(daysSummaryArgs("2026-06-01", "2026-06-30")).toEqual({
+      range: "1–30 Jun 2026",
+      count: 30,
+    });
+  });
+
+  it("treats equal endpoints as a legal one-day range", () => {
+    expect(daysSummaryArgs("2026-06-01", "2026-06-01")).toEqual({
+      range: "1 Jun 2026",
+      count: 1,
+    });
+  });
+
+  it("returns null when either endpoint is missing or the range is inverted", () => {
+    expect(daysSummaryArgs("", "2026-06-30")).toBeNull();
+    expect(daysSummaryArgs("2026-06-01", "")).toBeNull();
+    expect(daysSummaryArgs("2026-06-30", "2026-06-01")).toBeNull();
+    expect(daysSummaryArgs("not-a-date", "2026-06-30")).toBeNull();
   });
 });
 

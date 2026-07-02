@@ -62,7 +62,7 @@ def test_create_period_rejects_inverted_date_range(api_client: APIClient, plan: 
     """An inverted span (date_from after date_to) is rejected."""
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        data={"date_from": "2026-06-08", "date_to": "2026-06-01"},
+        data={"name": "Inverted", "date_from": "2026-06-08", "date_to": "2026-06-01"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -74,7 +74,7 @@ def test_create_single_day_period_succeeds(api_client: APIClient, plan: RatePlan
     """GAP-056: inclusive dates — date_from == date_to is a valid one-day period."""
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        data={"date_from": "2026-06-01", "date_to": "2026-06-01"},
+        data={"name": "One day", "date_from": "2026-06-01", "date_to": "2026-06-01"},
         format="json",
     )
     assert response.status_code == 201, response.content

@@ -52,6 +52,7 @@ from pricing.models.currency import Currency
 from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
+from pricing.services.period_names import derive_period_name
 from pricing.services.segmentation import segment_card_rules
 from properties.models.property import Property
 from properties.models.services import PropertyService
@@ -688,8 +689,13 @@ class RateBandLoader(BaseLoader):
                 # keep legacy_ids distinct, mirroring `backfill_plan_periods`.
                 occurrences: dict[int, int] = defaultdict(int)
                 for i, seg in enumerate(segment_card_rules(bands).segments):
+                    # GAP-059: legacy has no period-name column (the season
+                    # name lands on RatePlan), so synthesize the placeholder
+                    # from the segment span — pure on the dates, keeping
+                    # re-runs byte-identical.
                     period = RatePeriod.objects.create(
                         plan=plan,
+                        name=derive_period_name(seg.date_from, seg.date_to),
                         date_from=seg.date_from,
                         date_to=seg.date_to,
                         legacy_id=f"{plan.legacy_id}:p{i}",

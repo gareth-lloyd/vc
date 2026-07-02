@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
+import { periodLabel } from "../periodLabel";
 import {
   useDeleteRatePeriod,
   useDeleteRateBand,
@@ -62,9 +63,7 @@ function RatePeriodBlock({
     <div className="border-border bg-card space-y-3 rounded-lg border p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h4 className="text-foreground text-sm font-semibold">
-            {period.name || t("pricing.rate_period.untitled")}
-          </h4>
+          <h4 className="text-foreground text-sm font-semibold">{periodLabel(period)}</h4>
           <p className="text-muted-foreground text-xs">
             {formatDate(period.date_from)} – {formatDate(period.date_to)}
           </p>

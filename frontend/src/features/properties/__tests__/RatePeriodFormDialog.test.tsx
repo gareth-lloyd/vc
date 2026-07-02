@@ -365,3 +365,93 @@ describe("RatePeriodFormDialog — create with initialValues (workbench prefill)
     await waitFor(() => expectTriggerRange(/^dates/i, "1–30 Sep 2026 · 30 days"));
   });
 });
+
+describe("RatePeriodFormDialog — compulsory name + date-span suggestion (GAP-059)", () => {
+  it("suggests the date-span name once both dates are entered", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await fillValidPeriod();
+    await waitFor(() => expect(screen.getByLabelText(/^Name$/i)).toHaveValue("1–30 Jun"));
+  });
+
+  it("blocks save when the name is cleared and fires no request", async () => {
+    setReservationsUser();
+    let requested = false;
+    server.use(
+      http.post("/api/v1/rate-plans/11/rate-periods", () => {
+        requested = true;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await fillValidPeriod();
+    await userEvent.clear(screen.getByLabelText(/^Name$/i));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
+  it("clears the stale required-error once the suggestion refills the name", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await fillValidPeriod();
+    await userEvent.clear(screen.getByLabelText(/^Name$/i));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
+
+    // Adjusting a date re-fires the suggestion; the error must not linger
+    // under the now-filled field.
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(userEvent, picker, { to: "2026-07-15" });
+    await waitFor(() => expect(screen.getByLabelText(/^Name$/i)).not.toHaveValue(""));
+    await waitFor(() => expect(screen.queryByText(/name is required/i)).not.toBeInTheDocument());
+  });
+
+  it("never clobbers a name the user typed", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await userEvent.type(screen.getByLabelText(/^Name$/i), "Peak summer");
+    await fillValidPeriod();
+    expect(screen.getByLabelText(/^Name$/i)).toHaveValue("Peak summer");
+  });
+
+  it("prefills the name from a coverage-gap prefill so one keystroke saves", async () => {
+    setReservationsUser();
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/rate-plans/11/rate-periods", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 1, plan: 11, ...postBody }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        initialValues={{ date_from: "2026-09-01", date_to: "2026-09-30" }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByLabelText(/^Name$/i)).toHaveValue("1–30 Sep"));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({
+      name: "1–30 Sep",
+      date_from: "2026-09-01",
+      date_to: "2026-09-30",
+    });
+  });
+});

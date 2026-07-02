@@ -188,6 +188,7 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
     )
     period2 = RatePeriod.objects.create(
         plan=plan2,
+        name="Summer",
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
     )
@@ -427,6 +428,7 @@ def test_quote_bulk_carries_hero_image_url(
     )
     period2 = RatePeriod.objects.create(
         plan=plan2,
+        name="Summer",
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
     )

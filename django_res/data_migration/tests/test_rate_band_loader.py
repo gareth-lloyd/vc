@@ -439,6 +439,9 @@ def test_load_rows_creates_disjoint_periods_for_overlapping_party_rows(
     assert all(r.period_id is not None for r in rules)
     # The wider rule was fragmented across the segment boundary at Jun 10/11.
     assert spans == [(date(2025, 6, 1), date(2025, 6, 10)), (date(2025, 6, 11), date(2025, 6, 20))]
+    # GAP-059: every synthesized period carries the derived date-span name
+    # (legacy has no period-name column to draw from).
+    assert [p.name for p in periods] == ["1\u201310 Jun", "11\u201320 Jun"]
 
 
 @pytest.mark.django_db
@@ -455,11 +458,11 @@ def test_load_rows_periods_stable_and_disjoint_across_reruns(loaded_plan: RatePl
 
     loader = RateBandLoader()
     loader._load_rows(rows(), LoadReport(loader="rate_rule"))
-    first_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to"))
+    first_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to", "name"))
     first_period_count = RatePeriod.objects.count()
 
     loader._load_rows(rows(), LoadReport(loader="rate_rule"))
-    second_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to"))
+    second_spans = sorted(RatePeriod.objects.values_list("date_from", "date_to", "name"))
 
     assert second_spans == first_spans  # stable — no drift
     assert RatePeriod.objects.count() == first_period_count  # no stale accumulation
@@ -472,6 +475,7 @@ def test_load_rows_purge_spares_ui_rules(loaded_plan: RatePlan) -> None:
     (legacy_id NULL) survive a full reload untouched."""
     ui_period = RatePeriod.objects.create(
         plan=loaded_plan,
+        name="UI January",
         date_from=date(2026, 1, 1),
         date_to=date(2026, 1, 31),
     )

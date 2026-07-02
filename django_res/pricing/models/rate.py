@@ -67,7 +67,10 @@ class RatePeriod(AuditedModel):
     holds a party-band set (its ``RateBand`` children). Dates are **inclusive**
     (``date_from == date_to`` is a legitimate single-day period). ``min_nights``/
     ``max_nights`` are nullable per-period overrides of the villa default; ``name``
-    is an optional operator label with no grouping semantics.
+    is a compulsory operator label (GAP-059, CHECK-enforced) with no grouping
+    semantics — season *tiers* are a separate concern (Q-022). Writers with no
+    meaningful label derive the date-span placeholder
+    (`pricing.services.period_names.derive_period_name`).
     """
 
     plan = models.ForeignKey(
@@ -75,7 +78,7 @@ class RatePeriod(AuditedModel):
         on_delete=models.CASCADE,
         related_name="periods",
     )
-    name = models.CharField(max_length=128, blank=True, default="")
+    name = models.CharField(max_length=128)
     date_from = models.DateField()
     date_to = models.DateField()
     min_nights = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -89,6 +92,10 @@ class RatePeriod(AuditedModel):
             models.CheckConstraint(
                 condition=models.Q(date_from__lte=models.F("date_to")),
                 name="rateperiod_date_from_lte_date_to",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(name=""),
+                name="rateperiod_name_not_blank",
             ),
         ]
         indexes = [

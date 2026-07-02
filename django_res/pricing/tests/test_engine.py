@@ -37,7 +37,9 @@ def _rule(
     dates get their own (disjoint) period — the GAP-056 date axis. Mirrors the
     old `RateBand.objects.create(card=…, date_from=…, date_to=…)` call shape.
     """
-    period, _ = RatePeriod.objects.get_or_create(plan=plan, date_from=date_from, date_to=date_to)
+    period, _ = RatePeriod.objects.get_or_create(
+        plan=plan, date_from=date_from, date_to=date_to, defaults={"name": "Test window"}
+    )
     return RateBand.objects.create(
         period=period, min_party=min_party, max_party=max_party, **kwargs
     )
@@ -362,7 +364,11 @@ def test_quote_excludes_deactivated_period_rules(
     # from the live period (the periods-disjoint EXCLUDE forbids sharing a span),
     # and being inactive it is filtered out of the context before pricing.
     withdrawn = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 6, 1), date_to=date(2026, 6, 8), is_active=False
+        plan=plan,
+        name="Withdrawn June",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 6, 8),
+        is_active=False,
     )
     RateBand.objects.create(
         period=withdrawn,

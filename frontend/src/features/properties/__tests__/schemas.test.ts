@@ -229,19 +229,30 @@ describe("propertyContactAssignmentWriteInputSchema", () => {
 });
 
 describe("ratePeriodWriteInputSchema", () => {
-  // GAP-056: the period owns the dates + optional name + nullable min/max-nights.
-  const valid = { date_from: "2026-06-01", date_to: "2026-06-30" };
+  // GAP-056: the period owns the dates + nullable min/max-nights.
+  // GAP-059: the operator label is compulsory.
+  const valid = { name: "Peak", date_from: "2026-06-01", date_to: "2026-06-30" };
 
-  it("accepts a minimal period (name optional)", () => {
+  it("accepts a named period", () => {
     const result = ratePeriodWriteInputSchema.parse(valid);
+    expect(result.name).toBe("Peak");
     expect(result.date_from).toBe("2026-06-01");
     expect(result.date_to).toBe("2026-06-30");
   });
 
-  it("accepts an optional name", () => {
-    expect(ratePeriodWriteInputSchema.parse({ ...valid, name: "Peak summer" }).name).toBe(
-      "Peak summer",
-    );
+  it.each(["", "   "])("rejects a blank name (%j) with the i18n key (GAP-059)", (name) => {
+    const result = ratePeriodWriteInputSchema.safeParse({ ...valid, name });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("properties:errors.rate_period_name_required");
+    }
+  });
+
+  it("rejects a missing name (GAP-059)", () => {
+    expect(
+      ratePeriodWriteInputSchema.safeParse({ date_from: "2026-06-01", date_to: "2026-06-30" })
+        .success,
+    ).toBe(false);
   });
 
   it("requires both dates", () => {
@@ -251,13 +262,18 @@ describe("ratePeriodWriteInputSchema", () => {
 
   it("treats dates as inclusive — a single-day period (date_to === date_from) is valid", () => {
     expect(
-      ratePeriodWriteInputSchema.parse({ date_from: "2026-06-01", date_to: "2026-06-01" }).date_to,
+      ratePeriodWriteInputSchema.parse({ ...valid, date_from: "2026-06-01", date_to: "2026-06-01" })
+        .date_to,
     ).toBe("2026-06-01");
   });
 
   it("rejects date_to before date_from", () => {
     expect(() =>
-      ratePeriodWriteInputSchema.parse({ date_from: "2026-06-30", date_to: "2026-06-01" }),
+      ratePeriodWriteInputSchema.parse({
+        ...valid,
+        date_from: "2026-06-30",
+        date_to: "2026-06-01",
+      }),
     ).toThrow();
   });
 

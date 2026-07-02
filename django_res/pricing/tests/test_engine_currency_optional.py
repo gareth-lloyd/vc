@@ -43,6 +43,7 @@ def _priced_plan(
     )
     period = RatePeriod.objects.create(
         plan=plan,
+        name="Full year",
         date_from=date(year, 1, 1),
         date_to=date(year, 12, 31),
     )

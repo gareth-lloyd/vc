@@ -17,7 +17,8 @@ let periodId = 0;
 const period = (dateFrom: string, dateTo: string, bands: RateBand[]): RatePeriod => ({
   id: ++periodId,
   plan: 5,
-  name: "",
+  // GAP-059: names are compulsory in real data; segment tests don't read them.
+  name: `P${periodId}`,
   date_from: dateFrom,
   date_to: dateTo,
   bands,

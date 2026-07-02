@@ -240,6 +240,9 @@ noun (or moving the name onto the period) is in scope.
 - **Optional period name.** Add a **nullable `name`** on `RatePeriod` for operator
   labels ("Peak", "Christmas") — a *label only*, no grouping semantics, no
   named-season layer (prod data doesn't warrant one; median ~2 seasons/villa).
+  *(Superseded by GAP-059, 2026-07-02: the label is now **required** — CHECK
+  `rateperiod_name_not_blank`; writers with no meaningful label derive a
+  date-span placeholder via `pricing.services.period_names.derive_period_name`.)*
 - **Keep `/seasons` = `RatePlan`.** Do not rename the API noun. The plan stays
   "Season" in the REST surface even though the period now owns dates — accepted
   cosmetic debt in exchange for zero API/FE churn.
@@ -254,7 +257,7 @@ Property (villa)  +  PropertySettings { min_nights_rental?, max_nights_rental? (
       │  1
       │  N        periods on a plan are DISJOINT in date (EXCLUDE)
    RatePeriod   [ date_from .. date_to ]  (inclusive; single-day allowed)
-      { name?, min_nights?, max_nights? }   ← nullable override of the villa default; name is a label
+      { name, min_nights?, max_nights? }   ← nights nullable; name REQUIRED since GAP-059 (label only)
       │  1
       │  N        bands in a period are DISJOINT in party (EXCLUDE); MUST cover 1..max
    RateRule  (the "band")
@@ -358,8 +361,8 @@ perfect translation of pre-existing dev rows.
   `PropertySettings.min_nights_rental`** (add `max_nights_rental` if a max default
   is wanted); multi-period stays resolve **strictest-wins** (`min = max()`,
   `max = min()` across touched periods).
-- **Named seasons** — **no grouping layer**; add a nullable `name` label on
-  `RatePeriod` only.
+- **Named seasons** — **no grouping layer**; add a `name` label on
+  `RatePeriod` only (nullable at the time; required since GAP-059).
 - **Party-gap policy** — **require a `1..max` base band per period** (editor +
   serializer/DB check); POA only as an explicit band.
 - **"Season" vocabulary** — **keep** `/seasons` → `RatePlan`; no rename.

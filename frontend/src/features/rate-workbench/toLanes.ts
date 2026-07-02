@@ -9,6 +9,7 @@ import type {
   RatePlan,
   RatePlanDetail,
 } from "@/features/properties/schemas";
+import { periodLabel } from "@/features/properties/periodLabel";
 import { coverageDateGaps } from "./coverageGaps";
 
 /** The stacked concern lanes, top to bottom. `coverage` is derived (the
@@ -229,7 +230,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
         // GAP-056: the period owns the dates — no need to derive them from bands.
         dateFrom: period.date_from,
         dateTo: period.date_to,
-        label: period.name || plan.name,
+        label: periodLabel(period),
         sourceId: period.id,
         meta: {
           planId: plan.id,

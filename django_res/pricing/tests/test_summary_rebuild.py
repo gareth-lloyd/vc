@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def rule(plan: RatePlan) -> RateBand:
     period = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 7, 1), date_to=date(2026, 7, 31)
+        plan=plan, name="July", date_from=date(2026, 7, 1), date_to=date(2026, 7, 31)
     )
     return RateBand.objects.create(
         period=period,
@@ -60,7 +60,11 @@ def test_rebuild_summary_excludes_deactivated_period_rules(
     GAP-056 Unit 9), so the summary would otherwise advertise a rate no quote
     will use."""
     withdrawn = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 7, 1), date_to=date(2026, 7, 31), is_active=False
+        plan=plan,
+        name="Withdrawn July",
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 31),
+        is_active=False,
     )
     RateBand.objects.create(
         period=withdrawn,
@@ -70,7 +74,7 @@ def test_rebuild_summary_excludes_deactivated_period_rules(
     )
     # A disjoint active period (the periods-disjoint EXCLUDE forbids sharing dates).
     live = RatePeriod.objects.create(
-        plan=plan, date_from=date(2026, 8, 1), date_to=date(2026, 8, 31)
+        plan=plan, name="Live August", date_from=date(2026, 8, 1), date_to=date(2026, 8, 31)
     )
     RateBand.objects.create(
         period=live,

@@ -26,6 +26,7 @@ from django.db import transaction
 from core.exceptions import NoRateAvailable
 from pricing.models import RateBand, RatePeriod, RatePlan
 from pricing.services.extras import date_ranges_overlap
+from pricing.services.period_names import derive_period_name
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
@@ -46,8 +47,9 @@ class _Band:
 
     Feeds both the collision resolver (`_unclaimed_segments`) and the date
     segmentation (`segment_card_rules`, which reads `date_from`/`date_to`/
-    `min_party`/`max_party`). `min_nights`/`max_nights` ride along from the band's
-    source period so the materialised period can carry them.
+    `min_party`/`max_party`). `min_nights`/`max_nights` and `period_name` ride
+    along from the band's source period so the materialised period can carry
+    them (GAP-059: the curated label survives the yearly carry).
     """
 
     source_pk: int
@@ -61,6 +63,7 @@ class _Band:
     notes: str
     min_nights: int | None
     max_nights: int | None
+    period_name: str
 
 
 def _unclaimed_segments(band: _Band, claimed: list[_Band]) -> list[tuple[date, date]]:
@@ -162,6 +165,7 @@ class RateCarryoverService:
                         notes=rule.notes,
                         min_nights=period.min_nights,
                         max_nights=period.max_nights,
+                        period_name=period.name,
                     )
                 )
 
@@ -208,8 +212,19 @@ class RateCarryoverService:
             # are too and `bands[0]` (lowest pk) carries the winning min/max nights.
             for seg in segment_card_rules(disjoint).segments:
                 bands: tuple[_Band, ...] = seg.rules
+                # GAP-059: keep the curated label when the segment's bands all
+                # descend from one source period (the common carry); a segment
+                # that regrouped bands from different periods has no single
+                # name to copy — fall back to the same date-span placeholder
+                # the loader and backfill use.
+                source_names = {band.period_name for band in bands}
                 new_period = RatePeriod.objects.create(
                     plan=new_plan,
+                    name=(
+                        source_names.pop()
+                        if len(source_names) == 1
+                        else derive_period_name(seg.date_from, seg.date_to)
+                    ),
                     date_from=seg.date_from,
                     date_to=seg.date_to,
                     min_nights=bands[0].min_nights,

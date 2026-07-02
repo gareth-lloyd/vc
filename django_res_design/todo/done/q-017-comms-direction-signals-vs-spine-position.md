@@ -1,3 +1,22 @@
+> **✅ RESOLVED (2026-07-02)** — Problem: comms sits top-of-spine yet 7 of the
+> 8 blessed back-edges point up into it, and every email feature re-fought
+> "signal or direct call?". Fix: **decided + converted to a build ticket.**
+> comms stays top-of-spine and becomes strictly **pull-only** — nothing below
+> comms may import it; comms consumes the domain via signal receivers
+> (events) and its own beat sweeps (time). Inspection showed all seven edges
+> dissolve without new machinery: the five `payments.tasks → comms.*` edges
+> all serve `send_payment_reminders`, a pure notification sweep that belongs
+> in `comms/tasks.py` (it mutates no payment state); the `password_reset`
+> direct call is a domain event → new `password_reset_requested` signal; the
+> `reservations.urls → comms.views` edge is routing-only → comms mounts
+> `bookings/{pk}/emails` itself. End state: zero blessed comms back-edges,
+> and the pattern choice is enforced by `lint-imports` instead of re-argued.
+> Decision row in `10-decisions.md`; the 3-unit implementation plan is
+> **GAP-058** (`gap-058-comms-pull-only-top-of-spine.md`). No code change on
+> this ticket.
+>
+> _Original ticket preserved below for context._
+
 # Q-017 — comms: signals-only sink, or move it down the spine?
 
 - **Severity:** Question

@@ -395,6 +395,25 @@ describe("RatePeriodFormDialog — compulsory name + date-span suggestion (GAP-0
     expect(requested).toBe(false);
   });
 
+  it("clears the stale required-error once the suggestion refills the name", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
+    );
+    await fillValidPeriod();
+    await userEvent.clear(screen.getByLabelText(/^Name$/i));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
+
+    // Adjusting a date re-fires the suggestion; the error must not linger
+    // under the now-filled field.
+    const to = screen.getByLabelText(/^To$/i);
+    await userEvent.clear(to);
+    await userEvent.type(to, "2026-07-15");
+    await waitFor(() => expect(screen.getByLabelText(/^Name$/i)).not.toHaveValue(""));
+    await waitFor(() => expect(screen.queryByText(/name is required/i)).not.toBeInTheDocument());
+  });
+
   it("never clobbers a name the user typed", async () => {
     setReservationsUser();
     renderWithProviders(

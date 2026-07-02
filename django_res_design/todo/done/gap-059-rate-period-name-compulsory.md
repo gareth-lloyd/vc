@@ -1,3 +1,23 @@
+> **✅ RESOLVED (2026-07-02)** — shipped on `feat/gap-059` in four units:
+> (1) `pricing.services.period_names.derive_period_name` (compact en-dashed
+> date span, fixed-English/deterministic) + the legacy loader names every
+> synthesized period; (2) model field required + CHECK
+> `rateperiod_name_not_blank`, migration `pricing.0017` (backfill incl.
+> whitespace-only rows → AlterField → AddConstraint), factory + ~40 test
+> sites named; (3) FE write schema `.min(1)` (i18n key en+el), dialog label
+> drops "(optional)", live date-span name suggestion (never clobbers typed
+> input, revalidates after a failed submit); (4) one shared `periodLabel()`
+> fallback replaces the five divergent renderings, `untitled` key deleted,
+> docs errata. Two deviations from the plan above, both improvements:
+> **carry-forward copies the curated source-period name** when a segment's
+> bands unanimously descend from one source period (date-span placeholder
+> only for mixed-parentage segments) — better than the placeholder-always
+> recommendation; and decision 2's "collision-free within a plan" claim is
+> only true within a calendar year (two periods with the same day-span in
+> different years share a placeholder) — accepted: names are editable,
+> non-unique labels. FE suggestion is locale-aware (Greek months under `el`)
+> while backend placeholders are fixed-English — deliberate.
+
 # GAP-059 — `RatePeriod.name` should be compulsory
 
 - **Severity:** Gap (data-quality / UI-presentation; the field exists but

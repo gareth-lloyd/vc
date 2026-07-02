@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { formatDate } from "@/lib/format/date";
+import { periodLabel } from "@/features/properties/periodLabel";
 import type { CommissionInput, TaxInput } from "@/lib/pricing/netGross";
 import { RateBandFormDialog } from "@/features/properties/components/RateBandFormDialog";
 import { useDeleteRateBand } from "@/features/properties/hooks";
@@ -25,11 +26,6 @@ interface MatrixEditorProps {
   /** Opens the parent's period-create dialog; a zero-period season renders an
    * "Add period" CTA in its empty state when this is provided. */
   onAddPeriod?: () => void;
-}
-
-/** Uncovered-party warning for each active period that has bands but a gap. */
-function periodLabel(period: RatePeriod): string {
-  return period.name || `${formatDate(period.date_from)} – ${formatDate(period.date_to)}`;
 }
 
 /** Party-range prefill for a new band on this period. The serializer's
@@ -268,9 +264,11 @@ export function MatrixEditor({
                             size="icon-sm"
                             className="text-muted-foreground/60"
                             aria-label={t("rate_workbench.matrix.add_band_for", {
-                              period:
-                                segment.name ||
-                                `${formatDate(segment.dateFrom)} – ${formatDate(segment.dateTo)}`,
+                              period: periodLabel({
+                                name: segment.name,
+                                date_from: segment.dateFrom,
+                                date_to: segment.dateTo,
+                              }),
                             })}
                             onClick={() => setCreatingBand({ periodId: segment.periodId, ...seed })}
                           >

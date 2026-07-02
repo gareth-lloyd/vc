@@ -15,7 +15,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { addDaysIso, formatDate } from "@/lib/format/date";
+import { addDaysIso } from "@/lib/format/date";
+import { periodLabel } from "@/features/properties/periodLabel";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
@@ -344,9 +345,7 @@ export function RateWorkbenchPage() {
     const labels: Record<number, string> = {};
     for (const detail of fanOut.details) {
       for (const period of detail.periods ?? []) {
-        const label =
-          period.name || `${formatDate(period.date_from)} – ${formatDate(period.date_to)}`;
-        labels[period.id] = `${detail.name} · ${label}`;
+        labels[period.id] = `${detail.name} · ${periodLabel(period)}`;
       }
     }
     return labels;

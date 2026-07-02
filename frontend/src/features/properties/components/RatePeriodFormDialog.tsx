@@ -122,7 +122,12 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
     const suggested = formatWeekRangeCompact(dateFrom, dateTo);
     if (suggested === "—" || suggested === currentName) return;
     lastNameSuggestionRef.current = suggested;
-    form.setValue("name", suggested, { shouldDirty: false, shouldValidate: false });
+    // Revalidate after a failed submit so a stale "name is required" error
+    // doesn't linger under the field the suggestion just filled.
+    form.setValue("name", suggested, {
+      shouldDirty: false,
+      shouldValidate: form.formState.isSubmitted,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo, isCreate]);
 

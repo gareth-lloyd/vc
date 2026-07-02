@@ -288,7 +288,7 @@ describe("toLanes", () => {
     expect(lane(lanes, "rates").bands[0].meta).toMatchObject({ minPrice: 650, maxPrice: 900 });
   });
 
-  it("falls back to the plan name when the period is unnamed", () => {
+  it("falls back to the compact date span when the period is unnamed (GAP-059)", () => {
     const lanes = toLanes({
       ...base(),
       ratePlanDetails: [
@@ -308,7 +308,7 @@ describe("toLanes", () => {
         }),
       ],
     });
-    expect(lane(lanes, "rates").bands[0]).toMatchObject({ id: "period-51", label: "Summer" });
+    expect(lane(lanes, "rates").bands[0]).toMatchObject({ id: "period-51", label: "1–30 Jun" });
   });
 
   it("keeps zero-band periods visible, flagged noRates (not silently dropped)", () => {

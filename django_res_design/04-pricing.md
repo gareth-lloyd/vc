@@ -10,8 +10,10 @@
 > impossible. Authoritative sketches:
 > [`todo/done/gap-056-rate-model-restructure-property-period-band.md`](todo/done/gap-056-rate-model-restructure-property-period-band.md)
 > and [`todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md`](todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md).
-> Open follow-up: [`todo/gap-059-rate-period-name-compulsory.md`](todo/gap-059-rate-period-name-compulsory.md)
-> makes `RatePeriod.name` a required operator label. The retired names recur
+> GAP-059 (2026-07-02) made `RatePeriod.name` a **compulsory** operator label
+> (CHECK `rateperiod_name_not_blank`; legacy/blank rows backfilled with a
+> deterministic date-span placeholder, e.g. "3 Jul–21 Aug" — see
+> [`todo/done/gap-059-rate-period-name-compulsory.md`](todo/done/gap-059-rate-period-name-compulsory.md)). The retired names recur
 > throughout this document (rate-model section, `Discount.card` FK, the engine
 > walkthrough's card-ordering step, serializer/dialog names) — read them with the
 > restructure applied; where this doc and the code disagree, the code and the two

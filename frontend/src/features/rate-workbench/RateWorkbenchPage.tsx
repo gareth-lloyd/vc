@@ -450,7 +450,7 @@ export function RateWorkbenchPage() {
           >
             <SelectTrigger
               className="w-[240px]"
-              aria-label={t("rate_workbench.matrix.season_picker")}
+              aria-label={t("rate_workbench.matrix.rate_plan_picker")}
             >
               <SelectValue />
             </SelectTrigger>

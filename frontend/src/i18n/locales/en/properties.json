@@ -222,11 +222,11 @@
   },
   "pricing": {
     "season_detail": {
-      "currency_mismatch": "This season prices in {{season}}, but the property's currency is {{property}}."
+      "currency_mismatch": "This rate plan prices in {{season}}, but the property's currency is {{property}}."
     },
     "seasons": {
-      "add_button": "Add season",
-      "add_button_disabled_tooltip": "You need the Reservations role to add seasons.",
+      "add_button": "Add rate plan",
+      "add_button_disabled_tooltip": "You need the Reservations role to add rate plans.",
       "row": {
         "menu_label": "Actions",
         "edit": "Edit",
@@ -234,23 +234,23 @@
         "delete": "Delete"
       },
       "toasts": {
-        "created": "Season added",
-        "updated": "Season updated",
-        "deleted": "Season removed",
-        "duplicated": "Season duplicated",
-        "create_failed": "Couldn't add season",
-        "update_failed": "Couldn't update season",
-        "delete_failed": "Couldn't remove season",
-        "duplicate_failed": "Couldn't duplicate season"
+        "created": "Rate plan added",
+        "updated": "Rate plan updated",
+        "deleted": "Rate plan removed",
+        "duplicated": "Rate plan duplicated",
+        "create_failed": "Couldn't add rate plan",
+        "update_failed": "Couldn't update rate plan",
+        "delete_failed": "Couldn't remove rate plan",
+        "duplicate_failed": "Couldn't duplicate rate plan"
       },
       "delete_confirm": {
-        "title": "Remove season?",
-        "description": "This season and all of its rate cards and rules will be permanently removed.",
+        "title": "Remove rate plan?",
+        "description": "This rate plan and all of its rate periods will be permanently removed.",
         "confirm": "Remove"
       },
       "duplicate_confirm": {
-        "title": "Duplicate season?",
-        "description": "A copy of this season — including its rate cards and rules — will be created with \" (copy)\" appended to the name.",
+        "title": "Duplicate rate plan?",
+        "description": "A copy of this rate plan — including its rate periods — will be created with \" (copy)\" appended to the name.",
         "confirm": "Duplicate"
       },
       "price_basis": {
@@ -258,8 +258,8 @@
         "net": "Net"
       },
       "dialog": {
-        "create_title": "Add season",
-        "edit_title": "Edit season",
+        "create_title": "Add rate plan",
+        "edit_title": "Edit rate plan",
         "fields": {
           "name": "Name",
           "name_placeholder": "Summer 2026",
@@ -935,7 +935,7 @@
     "changeover_from_required": "From date is required",
     "changeover_to_required": "To date is required",
     "changeover_to_before_from": "To date must be on or after From date",
-    "season_name_required": "Season name is required",
+    "season_name_required": "Rate plan name is required",
     "season_currency_required": "Pick a currency",
     "season_effective_from_required": "Effective from date is required",
     "season_effective_to_before_from": "Effective to must be on or after Effective from",
@@ -999,7 +999,7 @@
       "dates": "Dates",
       "price_range": "Price",
       "poa": "POA",
-      "plan": "Season",
+      "plan": "Rate plan",
       "required": "Required",
       "mandatory": "Mandatory",
       "optional": "Optional",
@@ -1011,7 +1011,7 @@
     },
     "matrix": {
       "title": "Rate matrix",
-      "season_picker": "Choose a season",
+      "rate_plan_picker": "Rate plan",
       "segment": "Dates",
       "any_party": "Any party",
       "party_pax": "{{range}} pax",
@@ -1033,9 +1033,9 @@
         "description": "This removes the price for this date segment and party band.",
         "confirm": "Delete"
       },
-      "no_periods": "This season has no rate periods yet.",
+      "no_periods": "This rate plan has no rate periods yet.",
       "coverage_gap": "{{period}}: unpriced party sizes {{ranges}}",
-      "no_periods_hint": "Add the first rate period to start pricing this season.",
+      "no_periods_hint": "Add the first rate period to start pricing this rate plan.",
       "add_period": "Add period",
       "add_period_disabled_tooltip": "You need the Reservations role to add rate periods.",
       "add_band": "Add band",

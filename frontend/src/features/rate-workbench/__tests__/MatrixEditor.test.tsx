@@ -282,7 +282,7 @@ describe("MatrixEditor — zero-period season (period create CTA)", () => {
         onAddPeriod={onAddPeriod}
       />,
     );
-    expect(screen.getByText("This season has no rate periods yet.")).toBeInTheDocument();
+    expect(screen.getByText("This rate plan has no rate periods yet.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Add period" }));
     expect(onAddPeriod).toHaveBeenCalledTimes(1);
   });
@@ -298,7 +298,7 @@ describe("MatrixEditor — zero-period season (period create CTA)", () => {
         onAddPeriod={() => {}}
       />,
     );
-    expect(screen.getByText("This season has no rate periods yet.")).toBeInTheDocument();
+    expect(screen.getByText("This rate plan has no rate periods yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add period" })).toBeDisabled();
   });
 });

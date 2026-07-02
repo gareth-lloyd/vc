@@ -232,12 +232,12 @@ describe("RateWorkbenchPage — period create", () => {
     setup("/properties/casa-sur/rate-workbench");
 
     const user = userEvent.setup();
-    const picker = await screen.findByRole("combobox", { name: "Choose a season" });
+    const picker = await screen.findByRole("combobox", { name: "Rate plan" });
     await user.click(picker);
     // Option labels carry the plan's currency (a plan == a currency).
     await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
 
-    expect(await screen.findByText("This season has no rate periods yet.")).toBeInTheDocument();
+    expect(await screen.findByText("This rate plan has no rate periods yet.")).toBeInTheDocument();
     // Both the header button and the empty-state CTA offer period creation.
     expect(screen.getAllByRole("button", { name: "Add period" }).length).toBeGreaterThanOrEqual(1);
   });
@@ -418,7 +418,7 @@ describe("RateWorkbenchPage — period create", () => {
 
     // Switching the top picker re-scopes the whole timeline to the other plan.
     const user = userEvent.setup();
-    await user.click(screen.getByRole("combobox", { name: "Choose a season" }));
+    await user.click(screen.getByRole("combobox", { name: "Rate plan" }));
     await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
 
     expect(
@@ -454,19 +454,19 @@ describe("RateWorkbenchPage — period create", () => {
 // mismatch warning, all brought into the workbench.
 // ---------------------------------------------------------------------------
 
-describe("RateWorkbenchPage — season lifecycle", () => {
-  it("opens the create-season dialog from the header Add season button", async () => {
+describe("RateWorkbenchPage — rate-plan lifecycle", () => {
+  it("opens the create dialog from the header Add rate plan button", async () => {
     setUser("reservations");
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Add season" }));
+    await user.click(await screen.findByRole("button", { name: "Add rate plan" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Add season" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Add rate plan" })).toBeInTheDocument();
   });
 
-  it("bootstraps a plan-less property from the empty-state Add season CTA", async () => {
+  it("bootstraps a plan-less property from the empty-state Add rate plan CTA", async () => {
     setUser("reservations");
     server.use(
       http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
@@ -480,14 +480,14 @@ describe("RateWorkbenchPage — season lifecycle", () => {
 
     await screen.findByText(/No configuration yet/i);
     // Header button + empty-state CTA both offer season creation.
-    const buttons = screen.getAllByRole("button", { name: "Add season" });
+    const buttons = screen.getAllByRole("button", { name: "Add rate plan" });
     expect(buttons).toHaveLength(2);
     const user = userEvent.setup();
     await user.click(buttons[1]);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("opens the edit dialog for the active season from its actions menu", async () => {
+  it("opens the edit dialog for the active plan from its actions menu", async () => {
     setUser("reservations");
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
@@ -496,11 +496,11 @@ describe("RateWorkbenchPage — season lifecycle", () => {
     await user.click(await screen.findByRole("button", { name: "Actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Edit season" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Edit rate plan" })).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Summer 2026");
   });
 
-  it("duplicates the active season through a confirm dialog", async () => {
+  it("duplicates the active plan through a confirm dialog", async () => {
     setUser("reservations");
     installHandlers();
     let duplicated = false;
@@ -523,7 +523,7 @@ describe("RateWorkbenchPage — season lifecycle", () => {
     await waitFor(() => expect(duplicated).toBe(true));
   });
 
-  it("deletes the active season through a destructive confirm dialog", async () => {
+  it("deletes the active plan through a destructive confirm dialog", async () => {
     setUser("reservations");
     installHandlers();
     let deleted = false;
@@ -543,15 +543,15 @@ describe("RateWorkbenchPage — season lifecycle", () => {
     await waitFor(() => expect(deleted).toBe(true));
   });
 
-  it("disables the Add season button for a non-writer", async () => {
+  it("disables the Add rate plan button for a non-writer", async () => {
     setUser("viewer");
     installHandlers();
     setup("/properties/casa-sur/rate-workbench");
 
-    expect(await screen.findByRole("button", { name: "Add season" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Add rate plan" })).toBeDisabled();
   });
 
-  it("warns when the active season's currency differs from the property currency", async () => {
+  it("warns when the active plan.s currency differs from the property currency", async () => {
     setUser("reservations");
     installHandlers();
     server.use(

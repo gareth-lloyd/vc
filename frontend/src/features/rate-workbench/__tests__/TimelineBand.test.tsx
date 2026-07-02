@@ -35,7 +35,7 @@ describe("TimelineBand", () => {
     );
     expect(screen.getByRole("button", { name: /Standard/ })).toBeInTheDocument();
     // Detail is not mounted until hover/focus.
-    expect(screen.queryByText("Season")).toBeNull();
+    expect(screen.queryByText("Rate plan")).toBeNull();
   });
 
   it("reveals the band detail on hover", async () => {
@@ -44,8 +44,8 @@ describe("TimelineBand", () => {
       <TimelineBand band={rateBand} windowStart={windowStart} dayCount={dayCount} />,
     );
     await user.hover(screen.getByRole("button", { name: /Standard/ }));
-    // BandDetail surfaces the plan ("Season") row for a rate band.
-    expect(await screen.findByText("Season")).toBeInTheDocument();
+    // BandDetail surfaces the plan ("Rate plan") row for a rate band.
+    expect(await screen.findByText("Rate plan")).toBeInTheDocument();
   });
 
   it("reveals the band detail on keyboard focus", async () => {
@@ -53,7 +53,7 @@ describe("TimelineBand", () => {
       <TimelineBand band={rateBand} windowStart={windowStart} dayCount={dayCount} />,
     );
     screen.getByRole("button", { name: /Standard/ }).focus();
-    await waitFor(() => expect(screen.getByText("Season")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Rate plan")).toBeInTheDocument());
   });
 });
 

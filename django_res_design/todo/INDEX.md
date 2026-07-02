@@ -13,8 +13,10 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-02, recounted from files): **111 done** (106 resolved + 5 dropped), **26 open**
-(incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
+Scoreboard (2026-07-02, recounted from files): **111 done** (106 resolved + 5 dropped), **39 open**
+(incl. ✏️ revise and 🟨 partial; +13 from the 2026-07-02 audits — backend complexity:
+BUG-015/016/017, SMELL-020/021/022/023/024, GAP-061, Q-024; frontend complexity:
+BUG-018, GAP-062/063, REFACTOR-001). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
 GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
@@ -32,6 +34,10 @@ follow-up.)
 | [BUG-009](done/bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ✅ resolved (2026-07-02) — engine branch landed **independently of the finance rewrite** (the maths only need pct/fixed/exempt, already flowing through the `_call_finance_resolver` shim, which stays): `PricingEngine._derive_commission_and_tax` branches on `price_basis` (GROSS carve-out / NET gross-up, raw-commission-feeds-tax-base quantization order, ≥100%/zero-base sanitisation guards), breakdown snapshots `price_basis` + `net_to_owner`, FE probe workaround unwound (probe trusts engine `total`, owner economics shown). Spec slice was 2026-06-22 |
 | [BUG-013](done/bug-013-migration-drops-villaoccupencyprice.md) | Migration silently drops `VillaOccupencyPrice` — range-based occupancy rates lost on cutover | ⬜ open — `RateRuleLoader` reads only `VillaSeasonRate`/`PartySize`; needs a child loader emitting one `RateRule` per occupancy band. Feeds GAP-044 |
 | [BUG-014](done/bug-014-raterule-flattened-period-occupancy-hierarchy.md) | `RateRule` flattened legacy's period→occupancy hierarchy — permits ragged/misaligned bands | ✅ superseded (2026-07-01) by **GAP-056** — Option B shipped and then some: `RateCard` dropped, `Property → RatePlan → RatePeriod → RateRule`, two `btree_gist` EXCLUDEs make ragged bands structurally impossible |
+| [BUG-018](bug-018-frontend-cache-staleness-missing-invalidations.md) | Frontend cache staleness — booking mutations skip the availability calendar; contact sub-tabs never invalidate | ⬜ from 2026-07-02 frontend complexity audit; per-mutation hand-listed invalidations have drifted → operator sees stale dates/history |
+| [BUG-015](bug-015-scattered-state-machines-false-409.md) | State machines hand-rolled 4 ways; SD's bare `ValueError` → false 409s; `BookingHold`/`DamageClaim` lifecycles unguarded | ⬜ from 2026-07-02 complexity audit; shape depends on Q-024 |
+| [BUG-016](bug-016-rate-grid-disjointness-reimplemented.md) | Rate-grid disjointness/precedence reimplemented by 4 producers — projected quote can price ≠ its materialised twin | ⬜ from 2026-07-02 complexity audit; needs a cross-producer equivalence test |
+| [BUG-017](bug-017-refund-approval-permissions-ungoverned.md) | Refund approve/execute perms declared but granted to nobody — SoD split governed by untracked config | ⬜ **high priority** from 2026-07-02 complexity audit; refunds un-approvable in a fresh env; affects BUG-010/GAP-057 |
 
 ## 🟠 Footguns
 
@@ -49,7 +55,18 @@ follow-up.)
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | 🟨 views-in-urls fixed (`refunds_for_booking` moved); filter/service/router shapes still open |
+| [SMELL-020](smell-020-booking-money-authority.md) | Booking has no single money authority; guest total re-derived byte-for-byte in two apps; dead `adjustment` column | ⬜ from 2026-07-02 complexity audit; builds on FG-011 |
+| [SMELL-021](smell-021-price-basis-two-sources.md) | `PriceBasis` defined twice + two competing authorities; loader defaults imported plans to GROSS (NET villa mis-priced on cutover) | ⬜ from 2026-07-02 complexity audit; sibling to BUG-009/GAP-035 |
+| [SMELL-022](smell-022-exclude-constraints-raw-sql-only.md) | Rate-grid overlap EXCLUDE constraints live only in raw migration SQL — invisible to `makemigrations` | ⬜ from 2026-07-02 complexity audit; port to `ExclusionConstraint` |
+| [SMELL-023](smell-023-two-money-rounding-conventions.md) | Two money-rounding conventions; hardcoded 2dp paths mis-round for 0/3-decimal currencies | ⬜ from 2026-07-02 complexity audit; dormant until a non-2dp currency ships |
+| [SMELL-024](smell-024-god-objects-model-business-logic.md) | God objects: business logic on `Booking` model + in quotation views; oversized engine/stay-options methods | ⬜ from 2026-07-02 complexity audit; incremental extractions, overlaps SMELL-009/012 |
 | [SMELL-019](done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md) | Rate-model naming & UI residuals after GAP-056 | ✅ done (2026-07-02, local main unpushed) — `RateRule`→`RateBand` (model/API/routes/snapshot), `/seasons`→`/rate-plans`, GAP-025 changeover suggestion reinstated at period grain; `is_active` backfill non-issue confirmed |
+
+## Refactor
+
+| Id | Title | Status |
+|---|---|---|
+| [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate repeated frontend boilerplate: CRUD-dialog state, FormDialog reset-effect, toast/error extraction, optimistic updates | ⬜ from 2026-07-02 frontend complexity audit; first `refactor-*` ticket (no behaviour change) |
 
 ## Surface gaps
 
@@ -100,6 +117,15 @@ follow-up.)
 | [GAP-058](gap-058-comms-pull-only-top-of-spine.md) | comms pull-only: retire all 7 blessed comms back-edges (reminder sweep → comms.tasks, password-reset signal, self-mounted email routes) | ⬜ converted from Q-017 (decision recorded 2026-07-02); 3-unit plan + docs in ticket |
 | [GAP-059](gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ⬜ expanded 2026-07-02; 4-unit plan in ticket — all legacy-migrated periods currently blank, workbench creates them blank, FE has 4 divergent fallbacks |
 | [GAP-060](gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ⬜ FE-only; parity punch-list (rate-plan create/edit/duplicate/delete + period edit/delete must land in the Workbench first — a near-verbatim port from PricingTab), then rename + delete; 4-unit plan in ticket |
+| [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
+| [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
+| [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ⬜ from 2026-07-02 frontend complexity audit; add eslint boundaries + break the two schema cycles |
+
+## Refactors
+
+| Id | Title | Status |
+|---|---|---|
+| [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate frontend boilerplate — `useCrudDialog`, FormDialog reset-effect wrapper, `toastError`/`apiErrorMessage`, one optimistic-update helper; decompose QuoteBuilder/QuoteResultLine | ⬜ from 2026-07-02 frontend complexity audit; mechanical, no behaviour change; coordinates with BUG-018 on shared mutation helpers |
 
 ## Open product questions
 
@@ -112,12 +138,14 @@ follow-up.)
 | [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ questions drafted (B1–B4, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); seeding half buildable now; groups stay (owner removal deemed premature) |
 | [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); tier-list confirmation drafted (C1, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)) |
 | [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; confirmation questions drafted (D1–D3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); docs+tests half can proceed ahead of answers |
+| [Q-024](q-024-signals-as-control-flow.md) | Cross-app money/lifecycle side-effects: stay on domain signals, or move to explicit orchestration? | ⬜ from 2026-07-02 complexity audit; architecture direction — blocks SMELL-020/BUG-015/GAP-061 |
 
 ## Decisions blocking implementation
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
 - **Q-019** — Structured room attributes (owner vocabulary; blocks room-attribute write surface)
+- **Q-024** — Signals vs explicit orchestration for cross-app money side-effects (architecture; blocks SMELL-020, BUG-015, GAP-061)
 
 ---
 

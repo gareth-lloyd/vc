@@ -25,6 +25,7 @@ from typing import Any
 import structlog
 from django.utils import timezone
 
+from core.exceptions import NoRateAvailable
 from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
@@ -32,7 +33,7 @@ from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
-from pricing.services.currency import resolve_property_currency
+from pricing.services.currency import FxConverter, quantise_money, resolve_property_currency
 from properties.models.property import Property
 from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
@@ -303,11 +304,14 @@ class BookingChargeItemLoader(BaseLoader):
     totals reproduce legacy by construction.
 
     Currency policy: lines are pinned to `booking.currency` (the Σ in the API
-    assumes single-currency rows). A CurrencyId of 0 or one that doesn't
-    resolve means "booking currency" — legacy had no FX handling and summed
-    detail rows blind into the booking total. A row whose currency genuinely
-    differs must never be written verbatim; for now it raises into
-    `report.errors` (FX convert-or-flag lands next).
+    assumes single-currency rows). CurrencyId=0 means "no currency" in legacy
+    (rows were summed blind into the booking total) and pins to the booking
+    currency; a non-zero CurrencyId that doesn't resolve raises. A row whose
+    currency genuinely differs is never written verbatim: it converts via
+    `FxConverter` at the rate pinned to `booking.date_from` (rate + as-of
+    provenance kept in `notes`), raises `NoRateAvailable` into `report.errors`
+    for manual review when no rate is seeded, or — when the conversion rounds
+    to zero — is skipped and any previously loaded line for the row dropped.
     """
 
     name = "booking_charge_item"
@@ -345,6 +349,15 @@ class BookingChargeItemLoader(BaseLoader):
             if removed:
                 logger.info("data_migration.charge_item_rows_removed", count=removed)
 
+    @staticmethod
+    def _drop_stale(row: dict[str, Any]) -> None:
+        """A zero outcome can follow a previously-loaded nonzero line (legacy
+        Price edited to zero, or a corrected FxRate now rounding to zero) —
+        drop the stale row so re-runs converge instead of leaving old money
+        live. The removal sweep can't do it: skipped rows keep their id in
+        its `seen` set."""
+        BookingChargeItem.objects.filter(legacy_id=str(row["Id"])).delete()
+
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         booking = Booking.objects.filter(legacy_id=str(row.get("BookingId") or "")).first()
         if booking is None:
@@ -356,6 +369,7 @@ class BookingChargeItemLoader(BaseLoader):
             raise ValueError(f"unparseable Price {row.get('Price')!r}")
         if amount == 0:
             # amount=0 would violate `bookingchargeitem_amount_nonzero`.
+            self._drop_stale(row)
             return None
 
         row_currency = None
@@ -367,18 +381,54 @@ class BookingChargeItemLoader(BaseLoader):
                 # loader exists to avoid. (CurrencyId=0 means "no currency"
                 # and pins to the booking currency above.)
                 raise ValueError(f"unresolvable CurrencyId {row['CurrencyId']}")
+
+        provenance = ""
         if row_currency is not None and row_currency.pk != booking.currency_id:
-            raise ValueError(
-                f"currency mismatch — FX conversion pending (row currency {row_currency.code}, "
-                f"booking currency {booking.currency.code})"
+            # Legacy summed mixed-currency rows blind into the booking total —
+            # a latent bug the single-currency Σ contract forbids reproducing.
+            # Convert at the most recent rate ≤ date_from (pinned so re-runs
+            # are deterministic); no rate → raise into `report.errors` for
+            # manual review (ops seeds the FxRate and re-runs).
+            original = amount
+            fx_ctx = {
+                "booking_id": booking.pk,
+                "charge_item_legacy_id": str(row.get("Id")),
+                "amount": str(original),
+                "currency": row_currency.code,
+            }
+            try:
+                rate = FxConverter.lookup_rate(
+                    row_currency, booking.currency, as_of=booking.date_from
+                )
+            except NoRateAvailable:
+                logger.warning("data_migration.charge_item_fx_failed", reason="no_rate", **fx_ctx)
+                raise
+            # Quantise to the column's 2dp as well as the currency's minor
+            # unit: a 3dp booking currency could otherwise pass the zero
+            # guard here and still round to 0.00 (IntegrityError) at write.
+            amount = quantise_money(original * rate.rate, booking.currency).quantize(
+                Decimal("0.01")
+            )
+            if amount == 0:
+                logger.warning("data_migration.charge_item_fx_rounded_to_zero", **fx_ctx)
+                self._drop_stale(row)
+                return None
+            # Self-verifying provenance: record the applied rate so a later
+            # backdated-rate correction (which reprices on re-run) is visible.
+            provenance = (
+                f"Imported from legacy: {quantise_money(original, row_currency)} "
+                f"{row_currency.code} @ {rate.rate.normalize()} (as of {rate.as_of})."
             )
 
         notes_text = (row.get("Notes") or "").strip()
+        # Label truncation must not lose customer-facing text.
+        notes = notes_text if len(notes_text) > 200 else ""
+        if provenance:
+            notes = f"{notes}\n{provenance}" if notes else provenance
         return {
             "booking": booking,
             "label": notes_text[:200],
             "amount": amount,
             "currency": booking.currency,
-            # Label truncation must not lose customer-facing text.
-            "notes": notes_text if len(notes_text) > 200 else "",
+            "notes": notes,
         }

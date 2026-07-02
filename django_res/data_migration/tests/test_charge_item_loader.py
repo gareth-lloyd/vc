@@ -24,7 +24,7 @@ from data_migration.loaders.bookings import (
 )
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
-from pricing.models.currency import Currency
+from pricing.models.currency import Currency, FxRate
 from properties.models.property import Property
 from reservations.models.booking import Booking
 from reservations.models.charge_item import BookingChargeItem
@@ -128,17 +128,6 @@ def test_transform_errors_on_unresolvable_nonzero_currency(booking: Booking) -> 
     currency — writing it verbatim is the exact money bug GAP-017 forbids."""
     with pytest.raises(ValueError, match="unresolvable CurrencyId"):
         BookingChargeItemLoader().transform(_row(CurrencyId=424242))
-
-
-@pytest.mark.django_db
-def test_transform_rejects_mismatched_currency(booking: Booking) -> None:
-    """A resolvable CurrencyId differing from the booking currency must never
-    be written verbatim (GAP-017). Interim: raise so the row lands in
-    `report.errors`; FX convert-or-flag replaces this."""
-    Currency.objects.create(code="USD", name="US Dollar", symbol="$", legacy_id="3")
-
-    with pytest.raises(ValueError, match="currency mismatch"):
-        BookingChargeItemLoader().transform(_row(CurrencyId=3))
 
 
 @pytest.mark.django_db
@@ -355,6 +344,109 @@ def test_suppress_cm_is_reentrant_and_restores_prior_state(booking: Booking) -> 
             _resync_schedule_on_booking_total_changed,
             dispatch_uid="payments.resync_on_booking_total_changed",
         )
+
+
+# ---------------------------------------------------------------------------
+# FX convert-or-flag (mismatched currencies)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def usd(db: None) -> Currency:
+    return Currency.objects.create(code="USD", name="US Dollar", symbol="$", legacy_id="3")
+
+
+@pytest.mark.django_db
+def test_mismatched_currency_converts_at_booking_date_from(booking: Booking, usd: Currency) -> None:
+    """Convert via the most recent rate ≤ booking.date_from (pinned so
+    re-runs are deterministic), quantised to the booking currency, with
+    self-verifying rate provenance kept in notes."""
+    FxRate.objects.create(base=usd, quote=booking.currency, rate="0.80", as_of=date(2026, 6, 1))
+    # A later rate after date_from must NOT win — determinism on re-runs.
+    FxRate.objects.create(base=usd, quote=booking.currency, rate="0.90", as_of=date(2026, 6, 15))
+
+    kwargs = BookingChargeItemLoader().transform(_row(CurrencyId=3, Price=Decimal("100.00")))
+
+    assert kwargs is not None
+    assert kwargs["amount"] == Decimal("80.00")
+    assert kwargs["currency"] == booking.currency
+    assert kwargs["label"] == "Chef service"
+    # Rate + as-of make the conversion auditable from the note alone (a
+    # backdated-rate correction reprices on re-run and must be visible).
+    assert "100.00 USD @ 0.8 (as of 2026-06-01)" in kwargs["notes"]
+
+
+@pytest.mark.django_db
+def test_conversion_provenance_appends_to_overflowed_notes(booking: Booking, usd: Currency) -> None:
+    FxRate.objects.create(base=usd, quote=booking.currency, rate="0.80", as_of=date(2026, 6, 1))
+    long_text = "x" * 250
+
+    kwargs = BookingChargeItemLoader().transform(
+        _row(CurrencyId=3, Price=Decimal("100.00"), Notes=long_text)
+    )
+
+    assert kwargs is not None
+    assert kwargs["label"] == "x" * 200
+    assert long_text in kwargs["notes"]
+    assert "100.00 USD" in kwargs["notes"]
+
+
+@pytest.mark.django_db
+def test_no_rate_available_flags_row_for_manual_review(booking: Booking, usd: Currency) -> None:
+    """The ticket's flag path: no FxRate → the row lands in report.errors
+    (ops seeds a rate and re-runs; the load is idempotent) with a warning."""
+    import structlog.testing
+
+    report = LoadReport(loader="booking_charge_item")
+    with structlog.testing.capture_logs() as logs:
+        BookingChargeItemLoader()._process_row(_row(CurrencyId=3), report)
+
+    assert not BookingChargeItem.objects.filter(legacy_id="31").exists()
+    assert len(report.errors) == 1
+    assert report.errors[0][0] == "31"
+    assert "NoRateAvailable" in report.errors[0][1]
+    assert any(
+        log["event"] == "data_migration.charge_item_fx_failed" and log["reason"] == "no_rate"
+        for log in logs
+    )
+
+
+@pytest.mark.django_db
+def test_conversion_rounding_to_zero_skips_with_warning(booking: Booking, usd: Currency) -> None:
+    """A converted amount that quantises to 0.00 would violate the amount!=0
+    constraint — skip it with a warning rather than an opaque IntegrityError."""
+    import structlog.testing
+
+    FxRate.objects.create(base=usd, quote=booking.currency, rate="0.10", as_of=date(2026, 6, 1))
+
+    report = LoadReport(loader="booking_charge_item")
+    with structlog.testing.capture_logs() as logs:
+        BookingChargeItemLoader()._process_row(_row(CurrencyId=3, Price=Decimal("0.01")), report)
+
+    assert not BookingChargeItem.objects.filter(legacy_id="31").exists()
+    assert report.skipped == 1
+    assert report.errors == []
+    assert any(log["event"] == "data_migration.charge_item_fx_rounded_to_zero" for log in logs)
+
+
+@pytest.mark.django_db
+def test_zero_outcomes_drop_a_previously_loaded_line(booking: Booking, usd: Currency) -> None:
+    """A zero outcome (legacy Price zeroed, or a corrected rate now rounding
+    to zero) must delete the stale line an earlier run wrote — the removal
+    sweep can't (skipped rows stay in its `seen` set)."""
+    report = LoadReport(loader="booking_charge_item")
+    BookingChargeItemLoader()._process_row(_row(), report)
+    assert BookingChargeItem.objects.filter(legacy_id="31").exists()
+
+    # Legacy Price edited to zero between runs.
+    BookingChargeItemLoader()._process_row(_row(Price=Decimal("0.00")), report)
+    assert not BookingChargeItem.objects.filter(legacy_id="31").exists()
+
+    # Re-load, then a corrected FxRate makes the conversion round to zero.
+    BookingChargeItemLoader()._process_row(_row(), report)
+    FxRate.objects.create(base=usd, quote=booking.currency, rate="0.10", as_of=date(2026, 6, 1))
+    BookingChargeItemLoader()._process_row(_row(CurrencyId=3, Price=Decimal("0.01")), report)
+    assert not BookingChargeItem.objects.filter(legacy_id="31").exists()
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,20 @@
 # GAP-057 — 2FA: staff enrolment enforcement + refund-execution step-up
 
+> **✅ RESOLVED (2026-07-02)** — Shipped in six TDD commits.
+> Unit 1 — single-use `TwoFactorService.verify_code` + `User.tfa_last_verified_step`
+> replay guard (login TOTP branch refactored onto it). Unit 2 —
+> `TfaEnforcementMiddleware` (behind `TFA_ENFORCED`, `/api/`-scoped, allowlisted)
+> + `:disable` guard; a review finding added `StaffExcludedBasicAuthentication`
+> to close a Basic-auth staff bypass of the middleware/2FA login. Unit 3 —
+> refund `:execute` step-up (`tfa_code`, `TfaStepUpRequired` 403 /
+> `InvalidTfaCode` 400, gated on `TFA_ENFORCED`, `actor=None` exempt). Units 4–5 —
+> forced-enrolment UX (`Enroll2faPage`, QR + recovery ack, proactive boot
+> redirect + 403 interceptor) and the refund step-up dialog. Unit 6 — these docs.
+> **Decision deviation (reversible):** the refund step-up is gated on
+> `TFA_ENFORCED` rather than always-on — prod/staging fully protected (middleware
+> guarantees every staff actor enrolled), dev/test/`seed_dev` stay code-free.
+> Docs updated: `01-accounts.md`, `07-payments.md`, `10-decisions.md`.
+
 - **Severity:** Gap (security posture; mechanism built, policy unenforced)
 - **Source:** Q-008 (converted 2026-07-02 with the policy decided);
   `product-design/06-verification.md` open question 8

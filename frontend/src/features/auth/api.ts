@@ -1,9 +1,13 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import {
+  enrollConfirmResponseSchema,
+  enrollStartResponseSchema,
   loginResponseSchema,
   permissionsResponseSchema,
   tfaVerifyResponseSchema,
   userMeSchema,
+  type EnrollConfirmResponse,
+  type EnrollStartResponse,
   type LoginInput,
   type LoginResponse,
   type PermissionsResponse,
@@ -43,4 +47,14 @@ export async function logout(): Promise<void> {
 export async function verifyTfa(input: TfaVerifyInput): Promise<UserMe> {
   const data = await apiSend<unknown>("POST", "/auth/2fa:verify", input);
   return tfaVerifyResponseSchema.parse(data).user;
+}
+
+export async function startTfaEnrollment(): Promise<EnrollStartResponse> {
+  const data = await apiSend<unknown>("POST", "/auth/2fa:enroll", {});
+  return enrollStartResponseSchema.parse(data);
+}
+
+export async function confirmTfaEnrollment(code: string): Promise<EnrollConfirmResponse> {
+  const data = await apiSend<unknown>("POST", "/auth/2fa:enroll", { code });
+  return enrollConfirmResponseSchema.parse(data);
 }

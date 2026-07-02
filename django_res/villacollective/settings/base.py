@@ -60,6 +60,10 @@ MIDDLEWARE = [
     # request_id as its correlation id (see core.middleware.AuditMiddleware).
     "django_structlog.middlewares.RequestMiddleware",
     "core.middleware.AuditMiddleware",
+    # Forces TOTP enrolment on staff before they can use the API (needs
+    # request.user, so after AuthenticationMiddleware). No-op unless
+    # TFA_ENFORCED. See accounts.middleware.TfaEnforcementMiddleware.
+    "accounts.middleware.TfaEnforcementMiddleware",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -159,7 +163,10 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 50,
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
+        # Basic auth for non-staff owner principals only (iCal calendar feed).
+        # Staff are excluded so Basic auth can't bypass the 2FA login challenge
+        # or TfaEnforcementMiddleware — see accounts.authentication.
+        "accounts.authentication.StaffExcludedBasicAuthentication",
     ],
     # Secure default: the staff API is staff-only. Public endpoints opt out
     # with `AllowAny`; owner-portal endpoints with `owners.permissions.IsOwner`;
@@ -213,6 +220,12 @@ OPS_EMAIL_RECIPIENTS = env.list("OPS_EMAIL_RECIPIENTS", default=[])
 # in production, which inherits base) hard-blocks fake-data generation. Dev,
 # test, and staging settings flip this to True. Never set in production.
 SEED_DEV_ALLOWED = False
+
+# Enforce TOTP enrolment on every is_staff user before they can use the API
+# (accounts.middleware.TfaEnforcementMiddleware) and require a fresh code on
+# refund execution. False here (and therefore in dev/test/seed_dev, which keep
+# 2FA ceremony-free); production flips it True and staging inherits that.
+TFA_ENFORCED = False
 
 # Email safety: two independent default-closed gates protect real sends. Any
 # settings module that fails to override these gets zero real email — see

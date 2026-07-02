@@ -25,6 +25,10 @@ class User(AbstractUser):
     tfa_enrolled_at = models.DateTimeField(null=True, blank=True)
     # Hashed (pbkdf2) single-use recovery codes; plaintext shown once at enroll.
     tfa_recovery_codes = models.JSONField(default=list, blank=True)
+    # Last consumed TOTP timestep (unix // 30). The single-use replay guard:
+    # a code whose step is <= this value is refused, so a code cannot be
+    # replayed within its ±1 window. Null until the first verify_code call.
+    tfa_last_verified_step = models.BigIntegerField(null=True, blank=True, editable=False)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
     role = models.CharField(
         max_length=16,

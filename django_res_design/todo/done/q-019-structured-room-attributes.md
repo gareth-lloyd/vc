@@ -1,5 +1,15 @@
 # Q-019 — Structured room attributes (bath/shower, aircon, views, accessibility, floor)
 
+> **✅ SUPERSEDED (2026-07-02)** by three legacy-grounded build tickets:
+> [GAP-064](../gap-064-structured-room-attributes.md) (room attributes —
+> enum-column facets + an admin-editable `RoomAttribute` catalog),
+> [GAP-065](../gap-065-room-location-building-floor.md) (building + floor; also
+> fixes a live migration data-loss bug where `RoomLoader` discards every
+> `PlacementId`), and [GAP-066](../gap-066-room-bed-size.md) (bed size). The
+> A1/A2 owner-vocabulary decision this ticket raised is carried in those tickets'
+> "Owner steer" sections and the
+> [owner-questions](../owner-questions-2026-07-02.md) round. No work remains here.
+
 - **Severity:** Question (vocabulary decision) + build
 - **Source:** 2026-06-11 new-villa setup transcript review
 - **Files:** `properties/models/rooms.py` (`Room`, `RoomBeds`),

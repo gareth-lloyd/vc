@@ -71,7 +71,10 @@ class RefundViewSet(
     @action(detail=True, methods=["post"], url_path="execute")
     def execute(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()
-        RefundService.execute(refund, actor=request.user)
+        # Optional single field; mirror the sibling `reject` action's inline
+        # read rather than adding a serializer. TfaStepUpRequired (403) /
+        # InvalidTfaCode (400) surface through the canonical handler.
+        RefundService.execute(refund, actor=request.user, tfa_code=request.data.get("tfa_code"))
         refund.refresh_from_db()
         return Response(RefundSerializer(refund).data)
 

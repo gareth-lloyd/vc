@@ -19,6 +19,12 @@ SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# Force staff TOTP enrolment + refund step-up (staging inherits via
+# `from .production import *`). Flipping this on funnels every existing staff
+# user into the enrolment screen on their next request — announce it (they
+# need their phones) per the rollout note in the GAP-057 ticket.
+TFA_ENFORCED = True
+
 # Fail fast (like SECRET_KEY above) instead of inheriting the repo-committed
 # dev defaults from base.py: the dev Fernet key and webhook secrets are
 # public, so a deploy that forgot these env vars would encrypt TOTP/SMTP/

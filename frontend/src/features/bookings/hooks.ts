@@ -537,7 +537,8 @@ export function useRejectRefund(bookingId: BookingId) {
 export function useExecuteRefund(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ refundId }: { refundId: number }) => executeRefund(refundId),
+    mutationFn: ({ refundId, tfaCode }: { refundId: number; tfaCode?: string }) =>
+      executeRefund(refundId, tfaCode),
     onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
   });
 }

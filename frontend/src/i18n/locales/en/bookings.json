@@ -548,10 +548,12 @@
       "description": "Approving {{reference}} clears it for execution. A separate person must execute it.",
       "confirm_label": "Approve"
     },
-    "confirm_execute": {
-      "title": "Start executing this refund?",
-      "description": "This starts the refund of {{amount}}. Online refunds settle once the gateway confirms; manual and offline refunds settle immediately.",
-      "confirm_label": "Start execution"
+    "step_up": {
+      "title": "Confirm with your authenticator",
+      "description": "Executing the refund of {{amount}} ({{reference}}) needs a current code from your authenticator app.",
+      "code_label": "6-digit code",
+      "same_window_hint": "If you just signed in, wait for your app's next code before executing.",
+      "submit": "Execute refund"
     },
     "confirm_cancel": {
       "title": "Cancel this refund?",
@@ -658,6 +660,7 @@
   "schema_errors": {
     "reason_max": "Keep it under 500 characters",
     "reason_required": "Reason is required",
+    "tfa_code_format": "Enter the 6-digit code",
     "check_out_after_check_in": "Check-out must be after check-in",
     "at_least_one_adult": "At least one adult",
     "children_negative": "Cannot be negative",

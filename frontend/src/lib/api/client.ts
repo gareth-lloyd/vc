@@ -73,7 +73,14 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new ApiError(401, await parseErrorBody(response));
   }
   if (!response.ok) {
-    throw new ApiError(response.status, await parseErrorBody(response));
+    const body = await parseErrorBody(response);
+    // A staff user who hasn't enrolled in 2FA — route them to enrolment
+    // (keeps the session, unlike the 401 logout path). CSRF-reject 403s have
+    // no JSON body, so `code` is absent and this never mis-fires on them.
+    if (response.status === 403 && body?.code === "tfa_enrollment_required") {
+      authChannel.emitEnrollmentRequired();
+    }
+    throw new ApiError(response.status, body);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

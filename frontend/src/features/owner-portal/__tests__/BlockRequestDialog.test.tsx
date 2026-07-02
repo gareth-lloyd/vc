@@ -32,6 +32,11 @@ function created(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// File-wide fake timers require every userEvent to advance them, or its
+// internal delays never elapse and the interaction hangs — so the setup is
+// paired here once rather than repeated (and mis-copied) per test.
+let user: ReturnType<typeof userEvent.setup>;
+
 beforeEach(() => {
   toastSuccess.mockClear();
   toastError.mockClear();
@@ -40,6 +45,7 @@ beforeEach(() => {
   // tests don't depend on the real date.
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date(2026, 6, 2));
+  user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 });
 
 afterEach(() => {
@@ -49,7 +55,6 @@ afterEach(() => {
 
 describe("BlockRequestDialog", () => {
   it("rejects a non-forward date range with an inline error", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
     const picker = await openDateRange(user, /^dates/i);
@@ -62,7 +67,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("shows an inclusive nights summary as dates are entered", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
     const picker = await openDateRange(user, /^dates/i);
@@ -76,7 +80,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("posts the request and toasts on success", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     let body: unknown = null;
     server.use(
       http.post("/api/v1/owner/block-requests", async ({ request }) => {
@@ -104,7 +107,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("stores a half-open range from an inclusive calendar selection", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     let body: unknown = null;
     server.use(
       http.post("/api/v1/owner/block-requests", async ({ request }) => {
@@ -127,7 +129,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("defers the availability fetch until the picker opens, then greys out an occupied day", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     let calendarCalls = 0;
     server.use(
       http.get("/api/v1/owner/properties/3/calendar", () => {
@@ -153,7 +154,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("maps a 409 conflict to a top-level alert and stays open", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     server.use(
       http.post("/api/v1/owner/block-requests", () =>
         HttpResponse.json(
@@ -175,7 +175,6 @@ describe("BlockRequestDialog", () => {
   });
 
   it("toasts on a 5xx server error", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     server.use(
       http.post("/api/v1/owner/block-requests", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),

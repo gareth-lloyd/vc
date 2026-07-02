@@ -127,9 +127,11 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           {/* Half-open [date_from, date_to) stay — the backend engine prices
               nights and the model enforces date_from < date_to, so nights mode
-              (checkout day stored exclusive). quotationLineWriteInputSchema has
-              no date messages of its own; only server-set errors from
-              applyApiErrorToForm land here — pass them raw, no fieldErrorText. */}
+              (checkout day stored exclusive). Error messages here are already
+              plain text — the schema's z.string().min(1) resolves through the
+              global zodErrorMap (translated "Required") and server errors from
+              applyApiErrorToForm are backend strings — so pass them raw, no
+              fieldErrorText (matches the ModifyDatesDialog nights pilot). */}
           <DateRangePicker
             control={form.control}
             fromName="date_from"

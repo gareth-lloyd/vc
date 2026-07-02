@@ -174,8 +174,8 @@ export function formatDateRangeEndpoints(dateFrom: string, dateTo: string): stri
 /**
  * i18n interpolation args for a "N nights (21–30 Jul 2026)" summary of a
  * half-open `[date_from, date_to)` range, or `null` when it isn't a valid forward
- * span. The caller owns the translation key — the block dialogs live in different
- * namespaces but share this shape.
+ * span. Callers interpolate these into the shared `common:date_range.nights_summary`
+ * key (the block dialogs and DateRangePicker all render the same summary shape).
  */
 export function nightsSummaryArgs(
   dateFrom: string,

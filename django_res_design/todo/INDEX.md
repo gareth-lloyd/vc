@@ -105,11 +105,11 @@ follow-up.)
 |---|---|---|
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ Q1 answered (both % and fixed reductions, specific weeks) |
-| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed; GAP-024's safe `beds` relaxation already shipped |
+| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed — questions drafted (A1–A3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); GAP-024's safe `beds` relaxation already shipped |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
-| [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ groups stay (owner removal deemed premature); coordinate seed list with GAP-022 |
-| [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); cross-villa reporting still open |
-| [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; partial-week rule open |
+| [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ questions drafted (B1–B4, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); seeding half buildable now; groups stay (owner removal deemed premature) |
+| [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); tier-list confirmation drafted (C1, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)) |
+| [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; confirmation questions drafted (D1–D3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); docs+tests half can proceed ahead of answers |
 
 ## Decisions blocking implementation
 

@@ -10,6 +10,7 @@ interface TimelineLaneProps {
   dayCount: number;
   ticks: MonthTick[];
   onGapClick?: (gap: { from: string; to: string }) => void;
+  onAddAfter?: (dateFrom: string) => void;
 }
 
 /** One concern lane: a sticky-left label + a relative band track with month gridlines. */
@@ -19,6 +20,7 @@ export function TimelineLane({
   dayCount,
   ticks,
   onGapClick,
+  onAddAfter,
 }: TimelineLaneProps) {
   const { t } = useTranslation("properties");
   const maxSublane = lane.bands.reduce((m, b) => Math.max(m, b.sublane), 0);
@@ -58,6 +60,7 @@ export function TimelineLane({
               windowStart={windowStart}
               dayCount={dayCount}
               onGapClick={onGapClick}
+              onAddAfter={onAddAfter}
             />
           ))
         )}

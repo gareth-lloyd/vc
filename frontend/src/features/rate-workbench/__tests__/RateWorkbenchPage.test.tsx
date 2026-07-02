@@ -346,6 +346,30 @@ describe("RateWorkbenchPage — period create", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("clicking a period's + opens the dialog prefilled with the day after that period", async () => {
+    setUser("reservations");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    // The "Standard" period runs Jun 1 – Jun 28 → its + starts Jun 29.
+    await user.click(
+      await screen.findByRole("button", { name: "Add a rate period starting 29 Jun 2026" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-06-29");
+  });
+
+  it("offers no per-period + to a non-writer", async () => {
+    setUser("viewer");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    // Wait for the timeline (the period bands) to be on screen first.
+    expect(await screen.findByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
+  });
+
   it("offers no Add period affordance to a non-writer", async () => {
     setUser("viewer");
     installMultiSeasonHandlers();

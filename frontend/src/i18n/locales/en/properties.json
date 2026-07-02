@@ -1066,7 +1066,8 @@
       "body": "Something went wrong loading this property's rate configuration."
     },
     "band": {
-      "aria": "{{label}}, {{from}} to {{to}}"
+      "aria": "{{label}}, {{from}} to {{to}}",
+      "add_after_aria": "Add a rate period starting {{date}}"
     },
     "detail": {
       "dates": "Dates",

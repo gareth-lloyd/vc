@@ -55,6 +55,42 @@ describe("TimelineBand", () => {
   });
 });
 
+describe("TimelineBand — add-after affordance", () => {
+  it("shows a + that hands the writer the day after the period's end", async () => {
+    const user = userEvent.setup();
+    const onAddAfter = vi.fn();
+    renderWithProviders(
+      <TimelineBand
+        band={rateBand}
+        windowStart={windowStart}
+        dayCount={dayCount}
+        onAddAfter={onAddAfter}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Add a rate period starting 1 Sep 2026" }));
+    expect(onAddAfter).toHaveBeenCalledWith("2026-09-01");
+  });
+
+  it("offers no + without a handler (read-only)", () => {
+    renderWithProviders(
+      <TimelineBand band={rateBand} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
+  });
+
+  it("offers no + on non-rates bands even for writers", () => {
+    renderWithProviders(
+      <TimelineBand
+        band={gapBand}
+        windowStart={windowStart}
+        dayCount={dayCount}
+        onAddAfter={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
+  });
+});
+
 const gapBand: WorkbenchBand = {
   id: "coverage-2026-09-01",
   laneKey: "coverage",

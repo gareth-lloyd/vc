@@ -218,6 +218,9 @@ export function RateWorkbenchPage() {
               ? (gap) => setPeriodPrefill({ date_from: gap.from, date_to: gap.to })
               : undefined
           }
+          onAddAfter={
+            canWrite ? (dateFrom) => setPeriodPrefill({ date_from: dateFrom }) : undefined
+          }
         />
       );
     }

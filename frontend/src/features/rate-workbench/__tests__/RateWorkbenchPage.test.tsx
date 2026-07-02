@@ -294,6 +294,58 @@ describe("RateWorkbenchPage — period create", () => {
     });
   });
 
+  it("shows the selected plan's coverage lane with no-gap feedback when fully priced", async () => {
+    setUser("reservations");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    // Summer 2026's periods tile its effective range exactly (Jun 1 – Aug 31).
+    expect(await screen.findByText("Coverage — Summer 2026")).toBeInTheDocument();
+    expect(screen.getByText(/No gaps — every date in range has a rate period/)).toBeInTheDocument();
+  });
+
+  it("clicking a coverage gap opens the period dialog prefilled with the gap's inclusive range", async () => {
+    setUser("reservations");
+    installHandlers();
+    // Shrink the plan to a single early period: Jun 21 – Aug 31 becomes a gap
+    // (the plan is effective through Aug 31).
+    server.use(
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({ ...ratePlanDetail, periods: [ratePlanDetail.periods[0]] }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    // ratePlanDetail.periods[0] runs Jun 1 – Jun 28. Writers get the
+    // action-bearing accessible name.
+    await user.click(
+      await screen.findByRole("button", {
+        name: "No rates, 29 Jun 2026 to 31 Aug 2026 — add a rate period",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-06-29");
+    expect(within(dialog).getByLabelText(/^To$/i)).toHaveValue("2026-08-31");
+  });
+
+  it("keeps coverage gaps inert for a non-writer", async () => {
+    setUser("viewer");
+    installHandlers();
+    server.use(
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({ ...ratePlanDetail, periods: [ratePlanDetail.periods[0]] }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "No rates, 29 Jun 2026 to 31 Aug 2026" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("offers no Add period affordance to a non-writer", async () => {
     setUser("viewer");
     installMultiSeasonHandlers();

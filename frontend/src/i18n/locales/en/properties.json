@@ -1042,6 +1042,7 @@
     "lanes": {
       "seasons": "Seasons",
       "rates": "Rate periods",
+      "coverage": "Coverage — {{plan}}",
       "inclusions": "Inclusions",
       "extras": "Extras",
       "discounts": "Discounts",
@@ -1078,7 +1079,8 @@
       "amount": "Amount",
       "code": "Code",
       "kind": "Kind",
-      "copy": "Included"
+      "copy": "Included",
+      "no_rates_yet": "No rates yet — add a band in the matrix below."
     },
     "matrix": {
       "title": "Rate matrix",
@@ -1251,6 +1253,12 @@
         "save_failed": "Something went wrong. Please try again.",
         "delete_failed": "Couldn't delete. Please try again."
       }
+    },
+    "coverage": {
+      "gap_title": "No rates",
+      "gap_hint": "Add a rate period to price these dates.",
+      "no_gaps": "No gaps — every date in range has a rate period",
+      "gap_aria_action": "No rates, {{from}} to {{to}} — add a rate period"
     }
   }
 }

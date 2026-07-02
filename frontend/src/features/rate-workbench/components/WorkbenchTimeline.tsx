@@ -8,10 +8,18 @@ interface WorkbenchTimelineProps {
   lanes: LaneModel[];
   windowStart: Date;
   dayCount: number;
+  /** Coverage lane interactivity: a gap-band click creates a period over the
+   * gap. Pass only for write-capable users — the handler is the affordance. */
+  onGapClick?: (gap: { from: string; to: string }) => void;
 }
 
-/** Whole-year timeline: a month header over six stacked concern lanes. */
-export function WorkbenchTimeline({ lanes, windowStart, dayCount }: WorkbenchTimelineProps) {
+/** Whole-year timeline: a month header over the stacked concern lanes. */
+export function WorkbenchTimeline({
+  lanes,
+  windowStart,
+  dayCount,
+  onGapClick,
+}: WorkbenchTimelineProps) {
   const locale = activeLocale();
   const ticks = monthTicks(windowStart, dayCount);
 
@@ -38,6 +46,7 @@ export function WorkbenchTimeline({ lanes, windowStart, dayCount }: WorkbenchTim
           windowStart={windowStart}
           dayCount={dayCount}
           ticks={ticks}
+          onGapClick={onGapClick}
         />
       ))}
     </div>

@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import { assignLanes, bandEdges } from "@/lib/timeline/geometry";
+import { addDaysIso } from "@/lib/format/date";
 import type {
   ChangeOverRule,
   Discount,
@@ -8,11 +9,14 @@ import type {
   RatePlan,
   RatePlanDetail,
 } from "@/features/properties/schemas";
+import { coverageDateGaps } from "./coverageGaps";
 
-/** The six stacked concern lanes, top to bottom. */
+/** The stacked concern lanes, top to bottom. `coverage` is derived (the
+ * selected plan's unpriced dates) and only present when a plan is selected. */
 export const LANE_KEYS = [
   "seasons",
   "rates",
+  "coverage",
   "inclusions",
   "extras",
   "discounts",
@@ -37,6 +41,10 @@ export interface BandMeta {
   minPrice?: number | null;
   maxPrice?: number | null;
   hasPoa?: boolean;
+  /** Rates: the period exists but has no bands yet — rendered as an outline. */
+  noRates?: boolean;
+  /** Coverage: an unpriced gap in the selected plan (clickable for writers). */
+  isGap?: boolean;
   /**
    * Rates: global price tier (tertile of `minPrice` across the whole rates
    * lane), driving tone intensity so stacked cards read as cheap→expensive.
@@ -58,9 +66,16 @@ export interface BandMeta {
 export interface WorkbenchBand {
   id: string;
   laneKey: LaneKey;
-  /** ISO date, nulls substituted with the window bounds so open-ended bands span the year. */
+  /** ISO dates, both INCLUSIVE (the backend convention), nulls substituted
+   * with the window bounds so open-ended bands span the year. Display sites
+   * (aria labels, popovers) use these raw. */
   dateFrom: string;
   dateTo: string;
+  /** `dateTo + 1`, the band's EXCLUSIVE end. Geometry (`bandGeometry`,
+   * `bandEdges`) treats its end as exclusive, so every geometry call must use
+   * this — computed once here so render sites can't drift from the culling
+   * and sub-lane packing below. */
+  dateToExclusive: string;
   label: string;
   sourceId: number;
   /** Greedy sub-lane index for overlapping bands within the lane. */
@@ -69,11 +84,13 @@ export interface WorkbenchBand {
 }
 
 /**
- * The band's display title. Changeover bands translate their weekday enum;
+ * The band's display title. Changeover bands translate their weekday enum,
+ * coverage gaps announce the absence ("No rates") rather than the plan name;
  * everything else uses the source record's name. Shared by the band button's
  * aria-label and the popover heading so the two never drift.
  */
 export function bandTitle(band: WorkbenchBand, t: TFunction<"properties">): string {
+  if (band.meta.isGap) return t("rate_workbench.coverage.gap_title");
   return band.laneKey === "changeover"
     ? t(`changeover_days.${band.meta.weekday ?? ""}`)
     : band.label;
@@ -82,6 +99,8 @@ export function bandTitle(band: WorkbenchBand, t: TFunction<"properties">): stri
 export interface LaneModel {
   key: LaneKey;
   bands: WorkbenchBand[];
+  /** Coverage lane only: the annotated plan's name, interpolated into the lane label. */
+  planName?: string;
 }
 
 export interface ToLanesInput {
@@ -93,6 +112,9 @@ export interface ToLanesInput {
   seasons: RatePlan[];
   /** Season details (periods + bands) drive the rates lane; loading/absent → no rate bands. */
   ratePlanDetails: RatePlanDetail[];
+  /** The matrix's selected plan: when its detail is loaded, a derived coverage
+   * lane shows the dates that plan does not price. */
+  coveragePlanId?: number | null;
   services: PropertyService[];
   extras: Extra[];
   discounts: Discount[];
@@ -123,17 +145,27 @@ const numeric = (value: string | null | undefined): number | null => {
  */
 export function toLanes(input: ToLanesInput): LaneModel[] {
   const { windowStart, dayCount, windowFrom, windowTo } = input;
+  // `windowTo` is exclusive (next Jan 1); the last INCLUSIVE window date is
+  // what open-ended band dates substitute — band dates are inclusive.
+  const windowLast = addDaysIso(windowTo, -1);
 
-  const isVisible = (dateFrom: string, dateTo: string) => {
-    const { start, end } = bandEdges(dateFrom, dateTo, windowStart);
-    return end > 0 && start < dayCount;
-  };
+  // Band dates are inclusive but the geometry treats its end as an exclusive
+  // edge, so edges are computed on `dateTo + 1`: a single-day band gets width,
+  // contiguous periods kiss instead of leaving a phantom one-day slit, and
+  // bands sharing a boundary day genuinely overlap (they stack).
+  const withEnd = (b: RawBand) => ({ ...b, dateToExclusive: addDaysIso(b.dateTo, 1) });
+  const edges = (b: RawBand & { dateToExclusive: string }) =>
+    bandEdges(b.dateFrom, b.dateToExclusive, windowStart);
 
-  const buildLane = (laneKey: LaneKey, raw: RawBand[]): LaneModel => {
-    const visible = raw.filter((b) => isVisible(b.dateFrom, b.dateTo));
-    const lanes = assignLanes(visible.map((b) => bandEdges(b.dateFrom, b.dateTo, windowStart)));
+  const buildLane = (laneKey: LaneKey, raw: RawBand[], planName?: string): LaneModel => {
+    const visible = raw.map(withEnd).filter((b) => {
+      const { start, end } = edges(b);
+      return end > 0 && start < dayCount;
+    });
+    const lanes = assignLanes(visible.map(edges));
     return {
       key: laneKey,
+      planName,
       bands: visible.map((b, i) => ({
         ...b,
         laneKey,
@@ -145,40 +177,40 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   const seasonBands: RawBand[] = input.seasons.map((season) => ({
     id: `season-${season.id}`,
     dateFrom: season.effective_from ?? windowFrom,
-    dateTo: season.effective_to ?? windowTo,
+    dateTo: season.effective_to ?? windowLast,
     label: season.name,
     sourceId: season.id,
     meta: { currencyCode: season.currency_code ?? null, isActive: season.is_active ?? true },
   }));
 
   const rateBandsUntiered: RawBand[] = input.ratePlanDetails.flatMap((plan) =>
-    (plan.periods ?? []).flatMap((period) => {
+    (plan.periods ?? []).map((period) => {
+      // A zero-band period still occupies its dates (the DB EXCLUDE reserves
+      // them), so it renders as a "no rates yet" outline rather than vanishing.
       const bands = period.bands ?? [];
-      if (bands.length === 0) return [];
       // One figure per band: a band prices either nightly or weekly (its basis),
       // never both — flat-mapping both mixes per-night and per-week amounts into
       // one nonsensical range (e.g. €650 nightly and €4,550 weekly → "€650–€4,550").
       const prices = bands
         .map((r) => numeric(r.nightly) ?? numeric(r.weekly))
         .filter((v): v is number => v != null);
-      return [
-        {
-          id: `period-${period.id}`,
-          // GAP-056: the period owns the dates — no need to derive them from bands.
-          dateFrom: period.date_from,
-          dateTo: period.date_to,
-          label: period.name || plan.name,
-          sourceId: period.id,
-          meta: {
-            planId: plan.id,
-            planName: plan.name,
-            currencyCode: plan.currency_code ?? null,
-            minPrice: prices.length ? Math.min(...prices) : null,
-            maxPrice: prices.length ? Math.max(...prices) : null,
-            hasPoa: bands.some((r) => r.is_poa),
-          },
+      return {
+        id: `period-${period.id}`,
+        // GAP-056: the period owns the dates — no need to derive them from bands.
+        dateFrom: period.date_from,
+        dateTo: period.date_to,
+        label: period.name || plan.name,
+        sourceId: period.id,
+        meta: {
+          planId: plan.id,
+          planName: plan.name,
+          currencyCode: plan.currency_code ?? null,
+          minPrice: prices.length ? Math.min(...prices) : null,
+          maxPrice: prices.length ? Math.max(...prices) : null,
+          hasPoa: bands.some((r) => r.is_poa),
+          noRates: bands.length === 0,
         },
-      ];
+      };
     }),
   );
 
@@ -207,7 +239,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   const inclusionBands: RawBand[] = input.services.map((service) => ({
     id: `service-${service.id}`,
     dateFrom: service.applies_from ?? windowFrom,
-    dateTo: service.applies_to ?? windowTo,
+    dateTo: service.applies_to ?? windowLast,
     label: service.name,
     sourceId: service.id,
     meta: { copy: service.copy },
@@ -216,7 +248,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   const extraBands: RawBand[] = input.extras.map((extra) => ({
     id: `extra-${extra.id}`,
     dateFrom: extra.applies_from ?? windowFrom,
-    dateTo: extra.applies_to ?? windowTo,
+    dateTo: extra.applies_to ?? windowLast,
     label: extra.name,
     sourceId: extra.id,
     meta: {
@@ -229,7 +261,7 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   const discountBands: RawBand[] = input.discounts.map((discount) => ({
     id: `discount-${discount.id}`,
     dateFrom: discount.valid_from ?? windowFrom,
-    dateTo: discount.valid_to ?? windowTo,
+    dateTo: discount.valid_to ?? windowLast,
     label: discount.name,
     sourceId: discount.id,
     meta: {
@@ -238,6 +270,37 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       kind: discount.kind ?? discount.rule_kind ?? null,
     },
   }));
+
+  // Coverage: the selected plan's unpriced dates, as clickable gap bands.
+  // Only meaningful once that plan's detail (periods) has loaded, and only
+  // when the plan's effective range touches the window at all — otherwise the
+  // empty lane would falsely read "no gaps" for a year the plan never prices.
+  const selectedPlan =
+    input.coveragePlanId != null
+      ? (input.ratePlanDetails.find((p) => p.id === input.coveragePlanId) ?? null)
+      : null;
+  const coveragePlan =
+    selectedPlan &&
+    !(selectedPlan.effective_to && selectedPlan.effective_to < windowFrom) &&
+    !(selectedPlan.effective_from && selectedPlan.effective_from > windowLast)
+      ? selectedPlan
+      : null;
+  const coverageBands: RawBand[] = coveragePlan
+    ? coverageDateGaps({
+        periods: coveragePlan.periods ?? [],
+        windowFrom,
+        windowTo,
+        effectiveFrom: coveragePlan.effective_from,
+        effectiveTo: coveragePlan.effective_to,
+      }).map((gap) => ({
+        id: `coverage-${gap.from}`,
+        dateFrom: gap.from,
+        dateTo: gap.to,
+        label: coveragePlan.name,
+        sourceId: coveragePlan.id,
+        meta: { isGap: true, planId: coveragePlan.id, planName: coveragePlan.name },
+      }))
+    : [];
 
   const changeoverBands: RawBand[] = input.changeover.map((rule) => ({
     id: `changeover-${rule.id}`,
@@ -251,6 +314,9 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   return [
     buildLane("seasons", seasonBands),
     buildLane("rates", rateBands),
+    // Directly under the rates it annotates. Present even when gap-free —
+    // an empty coverage lane reads as "fully priced", which is the feedback.
+    ...(coveragePlan ? [buildLane("coverage", coverageBands, coveragePlan.name)] : []),
     buildLane("inclusions", inclusionBands),
     buildLane("extras", extraBands),
     buildLane("discounts", discountBands),

@@ -11,6 +11,9 @@ interface TimelineBandProps {
   band: WorkbenchBand;
   windowStart: Date;
   dayCount: number;
+  /** Coverage gaps only: a click creates a period over the gap. Passing this
+   * IS the write affordance — omit it for read-only users. */
+  onGapClick?: (gap: { from: string; to: string }) => void;
 }
 
 /**
@@ -19,26 +22,33 @@ interface TimelineBandProps {
  * and reveal their detail on hover or keyboard focus. Returns null when the
  * band lies entirely outside the window.
  */
-export function TimelineBand({ band, windowStart, dayCount }: TimelineBandProps) {
+export function TimelineBand({ band, windowStart, dayCount, onGapClick }: TimelineBandProps) {
   const { t } = useTranslation("properties");
-  const geometry = bandGeometry(band.dateFrom, band.dateTo, windowStart, dayCount);
+  const geometry = bandGeometry(band.dateFrom, band.dateToExclusive, windowStart, dayCount);
   if (!geometry) return null;
 
-  const label = bandTitle(band, t);
+  const dates = { from: formatDate(band.dateFrom), to: formatDate(band.dateTo) };
+  const gapClickable = !!band.meta.isGap && !!onGapClick;
 
   return (
     <HoverCard openDelay={150} closeDelay={100}>
       <HoverCardTrigger asChild>
         <button
           type="button"
-          aria-label={t("rate_workbench.band.aria", {
-            label,
-            from: formatDate(band.dateFrom),
-            to: formatDate(band.dateTo),
-          })}
+          // A clickable gap's accessible name must promise the action, not
+          // just the information — the hover card is pointer-only.
+          aria-label={
+            gapClickable
+              ? t("rate_workbench.coverage.gap_aria_action", dates)
+              : t("rate_workbench.band.aria", { label: bandTitle(band, t), ...dates })
+          }
+          onClick={
+            gapClickable ? () => onGapClick({ from: band.dateFrom, to: band.dateTo }) : undefined
+          }
           className={cn(
             "focus-visible:ring-ring absolute min-w-[6px] rounded-sm border focus-visible:ring-2 focus-visible:outline-none",
             bandToneClass(band),
+            gapClickable ? "cursor-pointer" : "cursor-default",
           )}
           style={{
             left: `${geometry.leftPct}%`,
@@ -49,7 +59,7 @@ export function TimelineBand({ band, windowStart, dayCount }: TimelineBandProps)
         />
       </HoverCardTrigger>
       <HoverCardContent align="start">
-        <BandDetail band={band} />
+        <BandDetail band={band} showGapAction={gapClickable} />
       </HoverCardContent>
     </HoverCard>
   );

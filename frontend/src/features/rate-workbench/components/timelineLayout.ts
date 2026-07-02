@@ -20,6 +20,7 @@ export function bandTop(sublane: number): number {
 export const TONE_CLASS: Record<LaneKey, string> = {
   seasons: "bg-primary/20 border-primary/50",
   rates: "bg-info/20 border-info/50",
+  coverage: "bg-warning/10 border-warning/60 border-dashed",
   inclusions: "bg-success/20 border-success/50",
   extras: "bg-warning/25 border-warning/60",
   discounts: "bg-accent border-accent-foreground/30",
@@ -37,13 +38,19 @@ const RATE_TIER_CLASS: Record<NonNullable<WorkbenchBand["meta"]["priceTier"]>, s
 const EXTRA_MANDATORY_CLASS = "bg-warning/45 border-warning/70";
 const EXTRA_OPTIONAL_CLASS = "bg-warning/15 border-warning/40";
 
+/** Rates: a period with no bands yet — an outline, not a priced fill. */
+const RATE_NO_RATES_CLASS = "bg-transparent border-info/40 border-dashed";
+
 /**
  * The fill+border classes for a band, coloured by *meaning* rather than lane
- * alone: rate bands by price tier, extras by mandatory-vs-optional, everything
- * else by the flat lane tone. Untiered rate bands (all-POA) fall back to the
- * lane tone.
+ * alone: rate bands by price tier (zero-band periods as a dashed outline),
+ * extras by mandatory-vs-optional, everything else by the flat lane tone.
+ * Untiered rate bands (all-POA) fall back to the lane tone.
  */
 export function bandToneClass(band: WorkbenchBand): string {
+  if (band.laneKey === "rates" && band.meta.noRates) {
+    return RATE_NO_RATES_CLASS;
+  }
   if (band.laneKey === "rates" && band.meta.priceTier) {
     return RATE_TIER_CLASS[band.meta.priceTier];
   }

@@ -14,7 +14,14 @@ function Row({ term, children }: { term: string; children: React.ReactNode }) {
 }
 
 /** Contextual detail shown in a band's popover — the primary read affordance at year scale. */
-export function BandDetail({ band }: { band: WorkbenchBand }) {
+export function BandDetail({
+  band,
+  showGapAction = false,
+}: {
+  band: WorkbenchBand;
+  /** Coverage gaps, writers only: append the "add a period" call to action. */
+  showGapAction?: boolean;
+}) {
   const { t } = useTranslation("properties");
   const meta = band.meta;
   const currency = meta.currencyCode ?? null;
@@ -28,6 +35,10 @@ export function BandDetail({ band }: { band: WorkbenchBand }) {
         <Row term={t("rate_workbench.detail.dates")}>
           {formatDate(band.dateFrom)} – {formatDate(band.dateTo)}
         </Row>
+
+        {meta.isGap || (band.laneKey === "rates" && meta.noRates) ? (
+          <Row term={t("rate_workbench.detail.plan")}>{meta.planName}</Row>
+        ) : null}
 
         {band.laneKey === "rates" && (meta.minPrice != null || meta.hasPoa) ? (
           <>
@@ -87,6 +98,13 @@ export function BandDetail({ band }: { band: WorkbenchBand }) {
           </Row>
         ) : null}
       </dl>
+
+      {band.laneKey === "rates" && meta.noRates ? (
+        <p className="text-muted-foreground">{t("rate_workbench.detail.no_rates_yet")}</p>
+      ) : null}
+      {showGapAction ? (
+        <p className="text-muted-foreground">{t("rate_workbench.coverage.gap_hint")}</p>
+      ) : null}
     </div>
   );
 }

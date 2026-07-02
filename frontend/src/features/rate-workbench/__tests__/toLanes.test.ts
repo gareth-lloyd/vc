@@ -86,14 +86,17 @@ describe("toLanes", () => {
     });
   });
 
-  it("clamps null (open-ended) dates to the window bounds", () => {
+  it("clamps null (open-ended) dates to the window's inclusive bounds", () => {
     const lanes = toLanes({
       ...base(),
       services: [service({ id: 9, name: "Wifi", applies_from: null, applies_to: null })],
     });
     const band = lane(lanes, "inclusions").bands[0];
     expect(band.dateFrom).toBe("2026-01-01");
-    expect(band.dateTo).toBe("2027-01-01");
+    // Band dates are inclusive, so the substitute is the year's LAST day —
+    // display sites must never announce next Jan 1 as an included date.
+    expect(band.dateTo).toBe("2026-12-31");
+    expect(band.dateToExclusive).toBe("2027-01-01");
   });
 
   it("drops bands that fall entirely outside the window", () => {
@@ -216,7 +219,7 @@ describe("toLanes", () => {
     expect(lane(lanes, "rates").bands[0]).toMatchObject({ id: "period-51", label: "Summer" });
   });
 
-  it("skips periods with no rules", () => {
+  it("keeps zero-band periods visible, flagged noRates (not silently dropped)", () => {
     const lanes = toLanes({
       ...base(),
       ratePlanDetails: [
@@ -236,7 +239,35 @@ describe("toLanes", () => {
         }),
       ],
     });
-    expect(lane(lanes, "rates").bands).toHaveLength(0);
+    const band = lane(lanes, "rates").bands[0];
+    expect(band).toMatchObject({ id: "period-50", label: "Empty" });
+    expect(band.meta).toMatchObject({ noRates: true, minPrice: null, hasPoa: false });
+  });
+
+  it("keeps a single-day band visible (dates are inclusive, so one day has width)", () => {
+    const lanes = toLanes({
+      ...base(),
+      seasons: [season({ id: 1, effective_from: "2026-06-01", effective_to: "2026-06-01" })],
+    });
+    expect(lane(lanes, "seasons").bands).toHaveLength(1);
+  });
+
+  it("stacks bands that share only their boundary day (inclusive overlap)", () => {
+    // A ends Jul 1 and B starts Jul 1: both price Jul 1, so they overlap and
+    // must stack — treating the inclusive date_to as an exclusive edge used to
+    // let them share a sub-lane.
+    const lanes = toLanes({
+      ...base(),
+      extras: [
+        extra({ id: 1, name: "A", applies_from: "2026-06-01", applies_to: "2026-07-01" }),
+        extra({ id: 2, name: "B", applies_from: "2026-07-01", applies_to: "2026-07-15" }),
+      ],
+    });
+    const bySource = Object.fromEntries(
+      lane(lanes, "extras").bands.map((b) => [b.sourceId, b.sublane]),
+    );
+    expect(bySource[1]).toBe(0);
+    expect(bySource[2]).toBe(1);
   });
 
   it("labels a changeover band with its weekday and required dates", () => {
@@ -322,6 +353,108 @@ describe("toLanes", () => {
     for (const b of lane(twoDistinct, "rates").bands) {
       expect(b.meta.priceTier).toBeUndefined();
     }
+  });
+
+  it("inserts a coverage lane for the selected plan, with inclusive gap bands", () => {
+    const lanes = toLanes({
+      ...base(),
+      coveragePlanId: 5,
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          effective_from: "2026-05-01",
+          effective_to: "2026-09-30",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              name: "Standard",
+              date_from: "2026-06-01",
+              date_to: "2026-08-31",
+              coverage_gaps: [],
+              bands: [{ id: 1, period: 50, nightly: "650" }],
+            },
+          ],
+        }),
+      ],
+    });
+    // Positioned directly under the rates lane it annotates.
+    expect(lanes.map((l) => l.key)).toEqual([
+      "seasons",
+      "rates",
+      "coverage",
+      "inclusions",
+      "extras",
+      "discounts",
+      "changeover",
+    ]);
+    const coverage = lane(lanes, "coverage");
+    expect(coverage.planName).toBe("Summer");
+    expect(coverage.bands).toHaveLength(2);
+    expect(coverage.bands[0]).toMatchObject({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-31",
+      sourceId: 5,
+      meta: { isGap: true, planName: "Summer" },
+    });
+    expect(coverage.bands[1]).toMatchObject({
+      dateFrom: "2026-09-01",
+      dateTo: "2026-09-30",
+    });
+  });
+
+  it("includes an empty coverage lane when the selected plan is fully covered", () => {
+    const lanes = toLanes({
+      ...base(),
+      coveragePlanId: 5,
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          effective_from: "2026-06-01",
+          effective_to: "2026-08-31",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              date_from: "2026-06-01",
+              date_to: "2026-08-31",
+              coverage_gaps: [],
+              bands: [{ id: 1, period: 50, nightly: "650" }],
+            },
+          ],
+        }),
+      ],
+    });
+    // Present but empty — "no gaps" is positive feedback, not a missing lane.
+    expect(lane(lanes, "coverage").bands).toHaveLength(0);
+  });
+
+  it("omits the coverage lane when no plan is selected or its detail is not loaded", () => {
+    expect(toLanes(base()).some((l) => l.key === "coverage")).toBe(false);
+    expect(toLanes({ ...base(), coveragePlanId: 99 }).some((l) => l.key === "coverage")).toBe(
+      false,
+    );
+  });
+
+  it("omits the coverage lane when the plan's effective range misses the window", () => {
+    // An empty lane would falsely read "no gaps" for a year the plan never
+    // prices — the lane only appears when the plan touches the window.
+    const lanes = toLanes({
+      ...base(),
+      coveragePlanId: 5,
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer 2025",
+          effective_from: "2025-06-01",
+          effective_to: "2025-08-31",
+          periods: [],
+        }),
+      ],
+    });
+    expect(lanes.some((l) => l.key === "coverage")).toBe(false);
   });
 
   it("leaves all-POA rate periods untiered (fall back to lane tone)", () => {

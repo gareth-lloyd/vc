@@ -65,7 +65,13 @@ export function RateWorkbenchPage() {
   // Which season's rate matrix is open (below the timeline). Defaults to the
   // first season that has periods once details load.
   const [matrixRatePlanId, setMatrixRatePlanId] = useState<number | null>(null);
-  const [addPeriodOpen, setAddPeriodOpen] = useState(false);
+  // Period-create dialog: null = closed; an (empty-allowed) prefill = open.
+  // Three openers share it — header button / matrix empty state (day after the
+  // latest period) and coverage-gap clicks (the gap's own inclusive range).
+  const [periodPrefill, setPeriodPrefill] = useState<{
+    date_from?: string;
+    date_to?: string;
+  } | null>(null);
 
   const isLoading =
     seasons.isLoading ||
@@ -114,6 +120,30 @@ export function RateWorkbenchPage() {
     </div>
   );
 
+  // The rate matrix is season/period-structural, not year-scoped, so it renders
+  // below the timeline whenever any season has loaded — independent of the year
+  // in view. ALL plans are selectable: a zero-period plan is exactly the one
+  // that needs the "Add period" flow, so it must not be filtered out of reach.
+  const allSeasonDetails = fanOut.details;
+  const activeMatrixRatePlanId =
+    matrixRatePlanId != null && allSeasonDetails.some((s) => s.id === matrixRatePlanId)
+      ? matrixRatePlanId
+      : (allSeasonDetails.find((d) => (d.periods?.length ?? 0) > 0)?.id ??
+        allSeasonDetails[0]?.id ??
+        null);
+
+  // "Add period" prefill: the day after the selected plan's latest period
+  // (inactive ones included — the DB EXCLUDE rejects overlaps regardless of
+  // is_active), so consecutive creates walk forward gap-free.
+  const activeSeasonDetail = allSeasonDetails.find((s) => s.id === activeMatrixRatePlanId) ?? null;
+  const latestPeriodEnd = (activeSeasonDetail?.periods ?? []).reduce<string | null>(
+    (max, p) => (max == null || p.date_to > max ? p.date_to : max),
+    null,
+  );
+  const periodInitialValues = latestPeriodEnd
+    ? { date_from: addDaysIso(latestPeriodEnd, 1) }
+    : undefined;
+
   let body: React.ReactNode;
   if (isLoading) {
     body = <Skeleton className="h-72 w-full" />;
@@ -144,6 +174,7 @@ export function RateWorkbenchPage() {
       windowTo: to,
       seasons: seasonList,
       ratePlanDetails: fanOut.details,
+      coveragePlanId: activeMatrixRatePlanId,
       services: serviceList,
       extras: extraList,
       discounts: discountList,
@@ -158,7 +189,11 @@ export function RateWorkbenchPage() {
       extraList.length > 0 ||
       discountList.length > 0 ||
       changeoverList.length > 0;
-    const isEmptyForYear = lanes.every((lane) => lane.bands.length === 0);
+    // The coverage lane is derived (it has bands precisely when nothing is
+    // priced), so it must not count as "something scheduled this year".
+    const isEmptyForYear = lanes
+      .filter((lane) => lane.key !== "coverage")
+      .every((lane) => lane.bands.length === 0);
     if (!hasAnyConfig) {
       body = (
         <EmptyState
@@ -174,33 +209,20 @@ export function RateWorkbenchPage() {
         />
       );
     } else {
-      body = <WorkbenchTimeline lanes={lanes} windowStart={windowStart} dayCount={dayCount} />;
+      body = (
+        <WorkbenchTimeline
+          lanes={lanes}
+          windowStart={windowStart}
+          dayCount={dayCount}
+          onGapClick={
+            canWrite
+              ? (gap) => setPeriodPrefill({ date_from: gap.from, date_to: gap.to })
+              : undefined
+          }
+        />
+      );
     }
   }
-
-  // The rate matrix is season/period-structural, not year-scoped, so it renders
-  // below the timeline whenever any season has loaded — independent of the year
-  // in view. ALL plans are selectable: a zero-period plan is exactly the one
-  // that needs the "Add period" flow, so it must not be filtered out of reach.
-  const allSeasonDetails = fanOut.details;
-  const activeMatrixRatePlanId =
-    matrixRatePlanId != null && allSeasonDetails.some((s) => s.id === matrixRatePlanId)
-      ? matrixRatePlanId
-      : (allSeasonDetails.find((d) => (d.periods?.length ?? 0) > 0)?.id ??
-        allSeasonDetails[0]?.id ??
-        null);
-
-  // "Add period" prefill: the day after the selected plan's latest period
-  // (inactive ones included — the DB EXCLUDE rejects overlaps regardless of
-  // is_active), so consecutive creates walk forward gap-free.
-  const activeSeasonDetail = allSeasonDetails.find((s) => s.id === activeMatrixRatePlanId) ?? null;
-  const latestPeriodEnd = (activeSeasonDetail?.periods ?? []).reduce<string | null>(
-    (max, p) => (max == null || p.date_to > max ? p.date_to : max),
-    null,
-  );
-  const periodInitialValues = latestPeriodEnd
-    ? { date_from: addDaysIso(latestPeriodEnd, 1) }
-    : undefined;
 
   const matrixSection =
     !isLoading && !isError && activeMatrixRatePlanId != null ? (
@@ -235,7 +257,11 @@ export function RateWorkbenchPage() {
                 never hidden, for non-writers (frontend/CLAUDE.md role gating). */}
             {(activeSeasonDetail?.periods?.length ?? 0) > 0 ? (
               canWrite ? (
-                <Button variant="outline" size="sm" onClick={() => setAddPeriodOpen(true)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPeriodPrefill(periodInitialValues ?? {})}
+                >
                   {t("rate_workbench.matrix.add_period")}
                 </Button>
               ) : (
@@ -262,16 +288,18 @@ export function RateWorkbenchPage() {
           canWrite={canWrite}
           commission={settings.data?.commission ?? null}
           tax={settings.data?.tax ?? null}
-          onAddPeriod={() => setAddPeriodOpen(true)}
+          onAddPeriod={() => setPeriodPrefill(periodInitialValues ?? {})}
         />
-        {addPeriodOpen ? (
+        {periodPrefill != null ? (
           <RatePeriodFormDialog
             key={activeMatrixRatePlanId}
             ratePlanId={activeMatrixRatePlanId}
-            open={addPeriodOpen}
-            onOpenChange={setAddPeriodOpen}
+            open
+            onOpenChange={(o) => {
+              if (!o) setPeriodPrefill(null);
+            }}
             mode="create"
-            initialValues={periodInitialValues}
+            initialValues={periodPrefill}
             changeoverDay={settings.data?.changeover_day ?? null}
             minNightsRental={settings.data?.min_nights_rental ?? null}
           />

@@ -7,6 +7,7 @@ const band = (laneKey: LaneKey, meta: BandMeta = {}): WorkbenchBand => ({
   laneKey,
   dateFrom: "2026-01-01",
   dateTo: "2026-02-01",
+  dateToExclusive: "2026-02-02",
   label: "B",
   sourceId: 1,
   sublane: 0,

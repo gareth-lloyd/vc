@@ -8,6 +8,10 @@ import { StatusFilterBar } from "@/components/data/StatusFilterBar";
 import { DataTable } from "@/components/data/DataTable";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { UncontrolledDateRangePicker } from "@/components/form/UncontrolledDateRangePicker";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import {
   Select,
   SelectContent,
@@ -105,6 +109,51 @@ export function BookingsListPage() {
     );
   };
 
+  // Writes a check-in / check-out range as one atomic history entry (one
+  // refetch). The picker emits the full latest pair on every edit, so setting
+  // both keys from `prev` each time is correct (latest-wins).
+  const applyRange = (afterKey: string, beforeKey: string) => (from: string, to: string) => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (from) next.set(afterKey, from);
+        else next.delete(afterKey);
+        if (to) next.set(beforeKey, to);
+        else next.delete(beforeKey);
+        next.delete("page");
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  // Clears every filter but keeps the sort (Clear *filters*, not the ordering).
+  const clearAllFilters = () => {
+    setSearch("");
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams();
+        const ordering = prev.get("ordering");
+        if (ordering) next.set("ordering", ordering);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  // `search` (a superset of `filters.q` — it leads during the 250ms debounce)
+  // so the affordance appears the moment the user starts typing.
+  const hasActiveFilters = Boolean(
+    filters.status ||
+    filters.site ||
+    filters.check_in_after ||
+    filters.check_in_before ||
+    filters.check_out_after ||
+    filters.check_out_before ||
+    filters.exclude_terminal ||
+    search,
+  );
+
   const goToPage = (zeroBased: number) => {
     setParams(
       (prev) => {
@@ -171,6 +220,46 @@ export function BookingsListPage() {
             </>
           }
         />
+
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Bounded width keeps each w-full trigger from stretching the row. */}
+          <div className="w-64">
+            <UncontrolledDateRangePicker
+              id="booking-check-in"
+              mode="days"
+              label={t("filters.check_in")}
+              fromLabel={t("filters.from")}
+              toLabel={t("filters.to")}
+              value={{ from: filters.check_in_after ?? "", to: filters.check_in_before ?? "" }}
+              onChange={applyRange("check_in_after", "check_in_before")}
+            />
+          </div>
+          <div className="w-64">
+            <UncontrolledDateRangePicker
+              id="booking-check-out"
+              mode="days"
+              label={t("filters.check_out")}
+              fromLabel={t("filters.from")}
+              toLabel={t("filters.to")}
+              value={{ from: filters.check_out_after ?? "", to: filters.check_out_before ?? "" }}
+              onChange={applyRange("check_out_after", "check_out_before")}
+            />
+          </div>
+          <CheckboxLabel className="h-9">
+            <Checkbox
+              checked={!!filters.exclude_terminal}
+              onCheckedChange={(c) =>
+                updateParam("exclude_terminal", c === true ? "true" : undefined)
+              }
+            />
+            {t("filters.exclude_terminal")}
+          </CheckboxLabel>
+          {hasActiveFilters ? (
+            <Button variant="ghost" size="sm" className="h-9" onClick={clearAllFilters}>
+              {t("filters.clear_all")}
+            </Button>
+          ) : null}
+        </div>
 
         {query.isError ? (
           <ErrorState

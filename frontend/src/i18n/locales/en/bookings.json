@@ -12,7 +12,13 @@
   },
   "filters": {
     "any_status": "Any status",
-    "any_source": "Any source"
+    "any_source": "Any source",
+    "check_in": "Check-in",
+    "check_out": "Check-out",
+    "from": "From",
+    "to": "To",
+    "exclude_terminal": "Hide cancelled & completed",
+    "clear_all": "Clear filters"
   },
   "source": {
     "main_website": "Main website",

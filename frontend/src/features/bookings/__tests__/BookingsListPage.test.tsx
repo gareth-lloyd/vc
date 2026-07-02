@@ -5,6 +5,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { BookingsListPage } from "../BookingsListPage";
 
 const baseBooking = {
@@ -140,5 +141,102 @@ describe("BookingsListPage", () => {
     );
     await userEvent.click(await screen.findByText("B-AAA-001"));
     await waitFor(() => expect(screen.getByText("Detail: 51")).toBeInTheDocument());
+  });
+
+  // Registers the list handler (capturing every request URL) plus the always-on
+  // status-counts handler so nothing hits onUnhandledRequest:"error".
+  function captureBookings() {
+    const urls: string[] = [];
+    server.use(
+      http.get("/api/v1/bookings/status-counts", () => HttpResponse.json({ deposit_paid: 2 })),
+      http.get("/api/v1/bookings", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(fixture);
+      }),
+    );
+    return urls;
+  }
+
+  const renderPage = (route: string) =>
+    renderWithProviders(
+      <Routes>
+        <Route path="/bookings" element={<BookingsListPage />} />
+      </Routes>,
+      { route },
+    );
+
+  it("hydrates the check-in range + exclude-terminal toggle from the URL and forwards them", async () => {
+    const urls = captureBookings();
+    renderPage(
+      "/bookings?check_in_after=2026-07-02&check_in_before=2026-07-02&exclude_terminal=true",
+    );
+    await screen.findByText("B-AAA-001");
+    // Trigger shows the formatted date, never the raw ISO string.
+    expectTriggerRange(/^Check-in/, /2 Jul 2026/);
+    expect(screen.queryByText("2026-07-02")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /hide cancelled/i })).toBeChecked();
+    await waitFor(() => {
+      const p = new URL(urls.at(-1)!).searchParams;
+      expect(p.get("check_in_after")).toBe("2026-07-02");
+      expect(p.get("check_in_before")).toBe("2026-07-02");
+      expect(p.get("exclude_terminal")).toBe("true");
+    });
+  });
+
+  it("writes the check-in range params when a range is entered", async () => {
+    const urls = captureBookings();
+    const user = userEvent.setup();
+    renderPage("/bookings");
+    await screen.findByText("B-AAA-001");
+    const picker = await openDateRange(user, /^Check-in/);
+    await typeDateRange(user, picker, { from: "2026-07-10", to: "2026-07-20" });
+    await waitFor(() => {
+      const p = new URL(urls.at(-1)!).searchParams;
+      expect(p.get("check_in_after")).toBe("2026-07-10");
+      expect(p.get("check_in_before")).toBe("2026-07-20");
+      expect(p.get("page")).toBeNull();
+    });
+  });
+
+  it("clears the check-in range via the picker's Clear button", async () => {
+    const urls = captureBookings();
+    const user = userEvent.setup();
+    renderPage("/bookings?check_in_after=2026-07-10&check_in_before=2026-07-20");
+    await screen.findByText("B-AAA-001");
+    const picker = await openDateRange(user, /^Check-in/);
+    await user.click(picker.getByRole("button", { name: /^clear$/i }));
+    await waitFor(() => {
+      const p = new URL(urls.at(-1)!).searchParams;
+      expect(p.get("check_in_after")).toBeNull();
+      expect(p.get("check_in_before")).toBeNull();
+    });
+  });
+
+  it("removes exclude_terminal when the toggle is unchecked", async () => {
+    const urls = captureBookings();
+    const user = userEvent.setup();
+    renderPage("/bookings?exclude_terminal=true");
+    await screen.findByText("B-AAA-001");
+    const box = screen.getByRole("checkbox", { name: /hide cancelled/i });
+    expect(box).toBeChecked();
+    await user.click(box);
+    await waitFor(() => {
+      const p = new URL(urls.at(-1)!).searchParams;
+      expect(p.get("exclude_terminal")).toBeNull();
+    });
+  });
+
+  it("clears every filter but keeps the sort via Clear filters", async () => {
+    const urls = captureBookings();
+    const user = userEvent.setup();
+    renderPage("/bookings?check_in_after=2026-07-10&exclude_terminal=true&ordering=-date_from");
+    await screen.findByText("B-AAA-001");
+    await user.click(screen.getByRole("button", { name: /clear filters/i }));
+    await waitFor(() => {
+      const p = new URL(urls.at(-1)!).searchParams;
+      expect(p.get("check_in_after")).toBeNull();
+      expect(p.get("exclude_terminal")).toBeNull();
+      expect(p.get("ordering")).toBe("-date_from");
+    });
   });
 });

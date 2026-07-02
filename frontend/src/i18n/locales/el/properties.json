@@ -178,14 +178,12 @@
     "block_dialog": {
       "create_title": "Προσθήκη αποκλεισμού διαθεσιμότητας",
       "edit_title": "Επεξεργασία αποκλεισμού διαθεσιμότητας",
-      "nights_summary_one": "{{count}} νύχτα ({{range}})",
-      "nights_summary_other": "{{count}} νύχτες ({{range}})",
       "fields": {
         "reason": "Λόγος",
+        "dates": "Ημερομηνίες",
         "date_from": "Από",
         "date_to": "Έως",
-        "notes": "Σημειώσεις",
-        "pick_dates": "Επιλογή στο ημερολόγιο"
+        "notes": "Σημειώσεις"
       },
       "actions": {
         "cancel": "Άκυρο",

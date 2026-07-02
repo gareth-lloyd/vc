@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UncontrolledDateRangePicker } from "@/components/form/UncontrolledDateRangePicker";
 import { ApiError } from "@/lib/api/errors";
 import type { Extra } from "@/features/properties/schemas";
 import { usePriceProbe } from "../hooks";
@@ -88,32 +89,20 @@ export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbe
       <p className="text-muted-foreground text-sm">{t("rate_workbench.probe.subtitle")}</p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="space-y-1">
-          <Label htmlFor="probe-from">{t("rate_workbench.probe.date_from")}</Label>
-          <Input
-            id="probe-from"
-            type="date"
-            // Native date controls need room for DD/MM/YYYY + the picker icon;
-            // the shared Input's `min-w-0` otherwise lets the grid track clip the
-            // day at narrow widths. Floor the width so the full date always shows.
-            className="min-w-[9rem]"
-            value={dateFrom}
-            onChange={(e) => {
+        {/* Half-open nights [date_from, date_to) — the probe feeds the same
+            PricingEngine.quote as a real quote line. */}
+        <div className="sm:col-span-2">
+          <UncontrolledDateRangePicker
+            id="probe-dates"
+            mode="nights"
+            label={t("rate_workbench.probe.dates")}
+            fromLabel={t("rate_workbench.probe.date_from")}
+            toLabel={t("rate_workbench.probe.date_to")}
+            value={{ from: dateFrom, to: dateTo }}
+            onChange={(from, to) => {
               clearStaleResult();
-              setDateFrom(e.target.value);
-            }}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="probe-to">{t("rate_workbench.probe.date_to")}</Label>
-          <Input
-            id="probe-to"
-            type="date"
-            className="min-w-[9rem]"
-            value={dateTo}
-            onChange={(e) => {
-              clearStaleResult();
-              setDateTo(e.target.value);
+              setDateFrom(from);
+              setDateTo(to);
             }}
           />
         </div>

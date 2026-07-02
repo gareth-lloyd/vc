@@ -153,16 +153,23 @@ export function formatWeekRangeCompact(dateFrom: string, dateTo: string): string
  * DateRangePicker trigger label: the two stored ISO endpoints formatted
  * **directly** (in nights mode `dateTo` is the exclusive checkout, shown
  * as-is), year always kept. A valid start with a missing/unparseable end
- * renders open ("12 Jul 2026 – …"); a missing/unparseable start renders ""
- * so the caller can show its placeholder. An inverted range (mid-edit via the
- * typed inputs) renders both endpoints uncollapsed rather than a garbled
- * "30–1 Jun 2026".
+ * renders open ("12 Jul 2026 – …"); a valid end with a missing/unparseable
+ * start renders open the other way ("… – 12 Jul 2026", e.g. a To-only audit
+ * filter bound — so the active bound stays visible at the trigger rather than
+ * collapsing to the placeholder); only when NEITHER endpoint is set does it
+ * return "" so the caller can show its placeholder. An inverted range (mid-edit
+ * via the typed inputs) renders both endpoints uncollapsed rather than a
+ * garbled "30–1 Jun 2026".
  */
 export function formatDateRangeEndpoints(dateFrom: string, dateTo: string): string {
   const from = parseISO(dateFrom);
-  if (!dateFrom || !isValid(from)) return "";
   const to = parseISO(dateTo);
-  if (!dateTo || !isValid(to)) {
+  const hasFrom = !!dateFrom && isValid(from);
+  const hasTo = !!dateTo && isValid(to);
+  if (!hasFrom) {
+    return hasTo ? `… – ${formatDate(to)}` : "";
+  }
+  if (!hasTo) {
     return `${formatDate(from)} – …`;
   }
   if (dateTo < dateFrom) {
@@ -174,8 +181,8 @@ export function formatDateRangeEndpoints(dateFrom: string, dateTo: string): stri
 /**
  * i18n interpolation args for a "N nights (21–30 Jul 2026)" summary of a
  * half-open `[date_from, date_to)` range, or `null` when it isn't a valid forward
- * span. The caller owns the translation key — the block dialogs live in different
- * namespaces but share this shape.
+ * span. Callers interpolate these into the shared `common:date_range.nights_summary`
+ * key (the block dialogs and DateRangePicker all render the same summary shape).
  */
 export function nightsSummaryArgs(
   dateFrom: string,

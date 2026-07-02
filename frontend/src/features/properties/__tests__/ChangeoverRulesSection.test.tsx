@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { useAuthStore } from "@/features/auth/store";
@@ -64,8 +65,9 @@ describe("ChangeoverRulesSection", () => {
 
     renderWithProviders(<ChangeoverRulesSection propertyId={7} />);
     await userEvent.click(await screen.findByRole("button", { name: /add rule/i }));
-    await userEvent.type(screen.getByLabelText(/^from$/i), "2026-06-01");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-09-30");
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(userEvent, picker, { from: "2026-06-01", to: "2026-09-30" });
+    expectTriggerRange(/^dates/i, "1 Jun – 30 Sep 2026 · 122 days");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(posted).not.toBeNull());

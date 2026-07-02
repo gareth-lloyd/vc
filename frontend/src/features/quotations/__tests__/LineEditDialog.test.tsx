@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { LineEditDialog } from "../components/LineEditDialog";
 import type { QuotationLine } from "../schemas";
 
@@ -45,6 +46,63 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 
 describe("LineEditDialog", () => {
+  it("shows the stay on the trigger and submits typed date edits", async () => {
+    const user = userEvent.setup();
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLine({ date_from: "2026-07-10", date_to: "2026-07-17" }));
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog open onOpenChange={vi.fn()} quotationId={QUOTATION_ID} line={makeLine()} />,
+    );
+
+    // Nights mode: raw half-open endpoints on the trigger (checkout the 8th)
+    // with the inclusive night count.
+    expectTriggerRange(/^dates/i, "1–8 Jul 2026 · 7 nights");
+
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-07-10", to: "2026-07-17" });
+    expectTriggerRange(/^dates/i, "10–17 Jul 2026 · 7 nights");
+
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(body).toMatchObject({ date_from: "2026-07-10", date_to: "2026-07-17" });
+  });
+
+  it("writes a half-open range from an inclusive calendar pick", async () => {
+    const user = userEvent.setup();
+    let body: Record<string, unknown> | null = null;
+    server.use(
+      http.patch(`/api/v1/quotations/${QUOTATION_ID}/lines/33`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLine({ date_from: "2026-07-10", date_to: "2026-07-15" }));
+      }),
+    );
+    renderWithProviders(
+      <LineEditDialog open onOpenChange={vi.fn()} quotationId={QUOTATION_ID} line={makeLine()} />,
+    );
+
+    const picker = await openDateRange(user, /^dates/i);
+    // Clear the prefilled stay so the two clicks start a fresh range. The
+    // calendar stays on July 2026 — its month derives from the prefilled
+    // date_from, not the real clock.
+    await user.click(picker.getByRole("button", { name: /^clear$/i }));
+    await user.click(picker.getByRole("button", { name: /10 july 2026/i }));
+    await user.click(picker.getByRole("button", { name: /14 july 2026/i }));
+    // First + last NIGHT clicked (10–14 inclusive) → stored half-open with
+    // checkout the 15th: date_to = last night + 1.
+    expectTriggerRange(/^dates/i, "10–15 Jul 2026 · 5 nights");
+
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(body).toMatchObject({ date_from: "2026-07-10", date_to: "2026-07-15" });
+  });
+
   it("sends an edited discount on a priced line", async () => {
     let body: Record<string, unknown> | null = null;
     server.use(

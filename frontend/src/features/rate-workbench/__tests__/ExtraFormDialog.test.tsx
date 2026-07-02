@@ -94,3 +94,46 @@ describe("ExtraFormDialog currency default", () => {
     expect(posted[0]).toMatchObject({ currency: 9 });
   });
 });
+
+describe("ExtraFormDialog currency mismatch hint", () => {
+  function renderCreate(planCurrencyIds: number[] | undefined) {
+    installReads(5);
+    return renderWithProviders(
+      <ExtraFormDialog
+        propertyId={7}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="GBP"
+        defaultCurrencyId={5}
+        planCurrencyIds={planCurrencyIds}
+      />,
+    );
+  }
+
+  it("warns when the chosen currency is not used by any rate plan", async () => {
+    renderCreate([9]);
+    expect(
+      await screen.findByText(
+        "No rate plan uses this currency, so the pricing engine will never apply this extra to a quote.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no warning when the currency matches a plan currency", async () => {
+    renderCreate([5, 9]);
+    // Wait for the seeded currency (5/GBP) to actually land in the picker —
+    // only then does the mismatch predicate run against a real value.
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(within(dialog).getByRole("combobox", { name: "Currency" })).toHaveTextContent("GBP"),
+    );
+    expect(screen.queryByText(/never apply this extra/)).not.toBeInTheDocument();
+  });
+
+  it("shows no warning when plan currencies are unknown", async () => {
+    renderCreate(undefined);
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/never apply this extra/)).not.toBeInTheDocument();
+  });
+});

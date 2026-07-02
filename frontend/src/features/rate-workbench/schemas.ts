@@ -43,6 +43,13 @@ export const RULE_KINDS = [
   "repeat_guest",
   "promo_code",
 ] as const;
+/** Rule kinds gated by a booking lead-time threshold (`threshold_days`). The
+ * engine skips the lead-time check entirely when `threshold_days` is null, so
+ * these kinds REQUIRE a threshold — a null one would apply unconditionally. */
+export const THRESHOLD_RULE_KINDS = [
+  "early_bird",
+  "last_minute",
+] as const satisfies readonly (typeof RULE_KINDS)[number][];
 
 export const extraWriteInputSchema = z
   .object({
@@ -125,7 +132,18 @@ export const discountWriteInputSchema = z
   .refine((v) => !v.valid_from || !v.valid_to || v.valid_to >= v.valid_from, {
     path: ["valid_to"],
     message: "properties:rate_workbench.inspector.errors.discount_to_before_from",
-  });
+  })
+  // Lead-time kinds without a threshold would apply to EVERY booking in the
+  // validity window (the engine skips the check when threshold_days is null).
+  .refine(
+    (v) =>
+      !(THRESHOLD_RULE_KINDS as readonly string[]).includes(v.rule_kind) ||
+      v.threshold_days != null,
+    {
+      path: ["threshold_days"],
+      message: "properties:rate_workbench.inspector.errors.discount_threshold_required",
+    },
+  );
 export type DiscountWriteInput = z.infer<typeof discountWriteInputSchema>;
 
 /** Wire shape: an empty `code` collapses to `null` (a "" collides on the UNIQUE index). */

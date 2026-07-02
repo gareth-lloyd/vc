@@ -57,7 +57,7 @@ export function RateWorkbenchPage() {
   const changeover = useChangeOverRules(property.id);
   const settings = usePropertySettings(property.id);
 
-  const seasonList = seasons.data?.results ?? [];
+  const seasonList = useMemo(() => seasons.data?.results ?? [], [seasons.data]);
   const fanOut = useRatePlanDetailsFanOut(seasonList.map((s) => s.id));
 
   // Which season's rate matrix is open (below the timeline). Defaults to the
@@ -232,6 +232,17 @@ export function RateWorkbenchPage() {
   const currencySeason = seasonList.find((s) => s.currency != null || s.currency_code);
   const currencyCode = currencySeason?.currency_code ?? settings.data?.currency_code ?? null;
   const defaultCurrencyId = currencySeason?.currency ?? null;
+  // Every currency an ACTIVE rate plan prices in — the extra dialog warns when
+  // an extra's currency is outside this set (the engine only quotes in active
+  // plans' currencies and hard-filters extras by quote currency). If any active
+  // plan inherits its currency (null FK, group-resolved code), the universe is
+  // unknowable by id — pass undefined so the hint stays silent rather than
+  // firing falsely.
+  const planCurrencyIds = useMemo(() => {
+    const active = seasonList.filter((s) => s.is_active !== false);
+    if (active.length === 0 || active.some((s) => s.currency == null)) return undefined;
+    return [...new Set(active.map((s) => s.currency as number))];
+  }, [seasonList]);
 
   const inspectorSection =
     !isLoading && !isError ? (
@@ -240,6 +251,7 @@ export function RateWorkbenchPage() {
         canWrite={canWrite}
         currencyCode={currencyCode}
         defaultCurrencyId={defaultCurrencyId}
+        planCurrencyIds={planCurrencyIds}
       />
     ) : null;
 

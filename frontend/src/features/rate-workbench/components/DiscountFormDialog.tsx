@@ -18,6 +18,7 @@ import { useCreateDiscount, useUpdateDiscount } from "../hooks";
 import {
   DISCOUNT_KINDS,
   RULE_KINDS,
+  THRESHOLD_RULE_KINDS,
   discountWriteInputSchema,
   type DiscountWriteInput,
   type DiscountWritePayload,
@@ -67,7 +68,9 @@ function defaultsFromDiscount(discount: Discount): DiscountWriteInput {
     rule_kind: discount.rule_kind ?? "promo_code",
     kind: discount.kind ?? "percent",
     amount: discount.amount ?? "",
-    min_nights: discount.min_nights ?? null,
+    // The column is NOT NULL default 0, so a stored 0 means "no minimum" —
+    // present it as the blank input the operator originally left.
+    min_nights: discount.min_nights || null,
     threshold_days: discount.threshold_days ?? null,
     valid_from: discount.valid_from ?? "",
     valid_to: discount.valid_to ?? "",
@@ -76,10 +79,17 @@ function defaultsFromDiscount(discount: Discount): DiscountWriteInput {
   };
 }
 
+const isThresholdKind = (ruleKind: string) =>
+  (THRESHOLD_RULE_KINDS as readonly string[]).includes(ruleKind);
+
 function toPayload(values: DiscountWriteInput): DiscountWritePayload {
   // `amount`/dates are required (schema-guaranteed). An empty `code` collapses
   // to `null`, never "" — the model's UNIQUE index treats "" as a real value
   // that a second code-less discount would collide on, but allows many NULLs.
+  // Note: hidden fields (code / threshold_days for the "wrong" rule kind) are
+  // deliberately submitted as-is, never nulled — the rule-kind switch handler
+  // restores them to their stored values, so an edit can't silently wipe a
+  // live promo code the engine merely ignores for the current kind.
   return {
     ...values,
     code: values.code ? values.code : null,
@@ -139,6 +149,23 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
   const kind = form.watch("kind");
   const isActive = form.watch("is_active") ?? true;
 
+  // Switching rule kind hides the irrelevant field (code / threshold_days).
+  // Restore hidden fields to their pristine (stored or default) values so a
+  // half-typed or stale value can neither be submitted invisibly nor block
+  // validation from inside an unmounted branch.
+  const handleRuleKindChange = (v: string) => {
+    const pristine = isCreate ? CREATE_DEFAULTS : defaultsFromDiscount(props.entity);
+    if ((v === "promo_code") !== (ruleKind === "promo_code")) {
+      form.setValue("code", pristine.code);
+      form.clearErrors("code");
+    }
+    if (isThresholdKind(v) !== isThresholdKind(ruleKind)) {
+      form.setValue("threshold_days", pristine.threshold_days);
+      form.clearErrors("threshold_days");
+    }
+    form.setValue("rule_kind", v, { shouldValidate: true });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -168,7 +195,7 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
               <EnumSelect
                 id="discount-rule-kind"
                 value={ruleKind}
-                onChange={(v) => form.setValue("rule_kind", v, { shouldValidate: true })}
+                onChange={handleRuleKindChange}
                 options={RULE_KINDS}
                 labelFor={(v) => t(`rate_workbench.inspector.enums.rule_kind.${v}`)}
               />
@@ -210,9 +237,39 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 </p>
               ) : null}
             </div>
+            {/* One grid cell whose contents follow the rule kind: promo codes
+                get the Code input, lead-time kinds get the threshold (with a
+                direction-specific label — early bird is a minimum lead time,
+                last minute a maximum), other kinds leave the slot empty. */}
             <div className="space-y-2">
-              <Label htmlFor="discount-code">{t("rate_workbench.inspector.fields.code")}</Label>
-              <Input id="discount-code" {...form.register("code")} />
+              {ruleKind === "promo_code" ? (
+                <>
+                  <Label htmlFor="discount-code">{t("rate_workbench.inspector.fields.code")}</Label>
+                  <Input id="discount-code" {...form.register("code")} />
+                  {form.formState.errors.code ? (
+                    <p className="text-destructive text-sm" role="alert">
+                      {fieldErrorText(t, form.formState.errors.code.message)}
+                    </p>
+                  ) : null}
+                </>
+              ) : isThresholdKind(ruleKind) ? (
+                <>
+                  <Label htmlFor="discount-threshold-days">
+                    {t(`rate_workbench.inspector.fields.threshold_days_${ruleKind}`)}
+                  </Label>
+                  <Input
+                    id="discount-threshold-days"
+                    type="number"
+                    min={0}
+                    {...form.register("threshold_days", { setValueAs: asNumberOrNull })}
+                  />
+                  {form.formState.errors.threshold_days ? (
+                    <p className="text-destructive text-sm" role="alert">
+                      {fieldErrorText(t, form.formState.errors.threshold_days.message)}
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="discount-min-nights">
@@ -224,6 +281,11 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 min={0}
                 {...form.register("min_nights", { setValueAs: asNumberOrNull })}
               />
+              {form.formState.errors.min_nights ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.min_nights.message)}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -260,6 +322,11 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 min={0}
                 {...form.register("max_uses", { setValueAs: asNumberOrNull })}
               />
+              {form.formState.errors.max_uses ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {fieldErrorText(t, form.formState.errors.max_uses.message)}
+                </p>
+              ) : null}
             </div>
           </div>
 

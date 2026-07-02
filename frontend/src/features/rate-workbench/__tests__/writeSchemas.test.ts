@@ -18,6 +18,9 @@ const validDiscount = {
   rule_kind: "early_bird",
   kind: "percent",
   amount: "10",
+  // Lead-time kinds require a threshold — a null one would make the discount
+  // apply to every booking (the engine skips the check when null).
+  threshold_days: 60,
   valid_from: "2026-01-01",
   valid_to: "2026-03-01",
 };

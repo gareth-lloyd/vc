@@ -1166,6 +1166,8 @@
         "valid_from": "Valid from",
         "valid_to": "Valid to",
         "min_nights": "Min nights",
+        "threshold_days_early_bird": "Min days before arrival",
+        "threshold_days_last_minute": "Max days before arrival",
         "max_uses": "Max uses",
         "is_mandatory": "Mandatory",
         "is_active": "Active"
@@ -1209,7 +1211,8 @@
       },
       "extra_dialog": {
         "create_title": "Add extra",
-        "edit_title": "Edit extra"
+        "edit_title": "Edit extra",
+        "currency_mismatch_hint": "No rate plan uses this currency, so the pricing engine will never apply this extra to a quote."
       },
       "discount_dialog": {
         "create_title": "Add discount",
@@ -1226,7 +1229,8 @@
         "discount_kind_required": "Choose a kind.",
         "discount_rule_kind_required": "Choose what it applies to.",
         "discount_dates_required": "Enter both valid-from and valid-to dates.",
-        "amount_required": "Enter an amount."
+        "amount_required": "Enter an amount.",
+        "discount_threshold_required": "Enter the days-before-arrival threshold."
       },
       "delete_confirm": {
         "title": "Delete this item?",

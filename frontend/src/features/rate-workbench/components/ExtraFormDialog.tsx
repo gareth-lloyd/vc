@@ -39,6 +39,12 @@ interface CommonProps {
    * required `currency` when the settings row leaves the FK null.
    */
   defaultCurrencyId?: number | null;
+  /**
+   * Currency FK ids across the property's rate plans. The pricing engine only
+   * applies extras matching the quote currency, so a currency outside this set
+   * gets a non-blocking warning. Omit/empty when unknown — no warning then.
+   */
+  planCurrencyIds?: number[] | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -96,7 +102,8 @@ function toPayload(values: ExtraWriteInput): ExtraWritePayload {
 }
 
 export function ExtraFormDialog(props: ExtraFormDialogProps) {
-  const { propertyId, open, onOpenChange, currencyCode, defaultCurrencyId } = props;
+  const { propertyId, open, onOpenChange, currencyCode, defaultCurrencyId, planCurrencyIds } =
+    props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const amountAdornment = currencyAdornment(currencyCode);
@@ -162,6 +169,8 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
   const kind = form.watch("kind");
   const calc = form.watch("calc");
   const currency = form.watch("currency");
+  const currencyMismatch =
+    !!currency && !!planCurrencyIds?.length && !planCurrencyIds.includes(currency);
   const isMandatory = form.watch("is_mandatory") ?? false;
   const isActive = form.watch("is_active") ?? true;
 
@@ -251,6 +260,15 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
               ) : null}
             </div>
           </div>
+
+          {currencyMismatch ? (
+            <p
+              className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-sm"
+              role="note"
+            >
+              {t("rate_workbench.inspector.extra_dialog.currency_mismatch_hint")}
+            </p>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="extra-description">

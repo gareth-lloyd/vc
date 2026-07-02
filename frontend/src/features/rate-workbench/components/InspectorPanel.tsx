@@ -26,6 +26,8 @@ interface InspectorPanelProps {
   currencyCode: string | null;
   /** The property's currency FK id (from a season), seeding new extras. */
   defaultCurrencyId: number | null;
+  /** Currency FK ids across the property's rate plans (extras currency hint). */
+  planCurrencyIds?: number[];
 }
 
 /**
@@ -39,6 +41,7 @@ export function InspectorPanel({
   canWrite,
   currencyCode,
   defaultCurrencyId,
+  planCurrencyIds,
 }: InspectorPanelProps) {
   const { t } = useTranslation("properties");
   return (
@@ -52,6 +55,7 @@ export function InspectorPanel({
         canWrite={canWrite}
         currencyCode={currencyCode}
         defaultCurrencyId={defaultCurrencyId}
+        planCurrencyIds={planCurrencyIds}
       />
       <DiscountsSection propertyId={propertyId} canWrite={canWrite} currencyCode={currencyCode} />
     </section>
@@ -248,11 +252,13 @@ function ExtrasSection({
   canWrite,
   currencyCode,
   defaultCurrencyId,
+  planCurrencyIds,
 }: {
   propertyId: number;
   canWrite: boolean;
   currencyCode: string | null;
   defaultCurrencyId: number | null;
+  planCurrencyIds?: number[];
 }) {
   const { t } = useTranslation("properties");
   const extras = usePropertyExtras(propertyId);
@@ -316,6 +322,7 @@ function ExtrasSection({
           mode="create"
           currencyCode={currencyCode}
           defaultCurrencyId={defaultCurrencyId}
+          planCurrencyIds={planCurrencyIds}
         />
       ) : null}
       {editing ? (
@@ -327,6 +334,7 @@ function ExtrasSection({
           entity={editing}
           currencyCode={currencyCode}
           defaultCurrencyId={defaultCurrencyId}
+          planCurrencyIds={planCurrencyIds}
         />
       ) : null}
       {deleting ? (

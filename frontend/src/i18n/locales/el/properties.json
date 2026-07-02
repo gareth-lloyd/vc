@@ -1166,6 +1166,8 @@
         "valid_from": "Έγκυρο από",
         "valid_to": "Έγκυρο έως",
         "min_nights": "Ελάχ. διανυκτερεύσεις",
+        "threshold_days_early_bird": "Ελάχ. ημέρες πριν από την άφιξη",
+        "threshold_days_last_minute": "Μέγ. ημέρες πριν από την άφιξη",
         "max_uses": "Μέγ. χρήσεις",
         "is_mandatory": "Υποχρεωτικό",
         "is_active": "Ενεργό"
@@ -1209,7 +1211,8 @@
       },
       "extra_dialog": {
         "create_title": "Προσθήκη έξτρα",
-        "edit_title": "Επεξεργασία έξτρα"
+        "edit_title": "Επεξεργασία έξτρα",
+        "currency_mismatch_hint": "Κανένα πλάνο τιμών δεν χρησιμοποιεί αυτό το νόμισμα, οπότε η μηχανή τιμολόγησης δεν θα εφαρμόσει ποτέ αυτό το έξτρα σε προσφορά."
       },
       "discount_dialog": {
         "create_title": "Προσθήκη έκπτωσης",
@@ -1226,7 +1229,8 @@
         "discount_kind_required": "Επιλέξτε τύπο.",
         "discount_rule_kind_required": "Επιλέξτε πού εφαρμόζεται.",
         "discount_dates_required": "Εισαγάγετε ημερομηνίες έγκυρο-από και έγκυρο-έως.",
-        "amount_required": "Εισαγάγετε ποσό."
+        "amount_required": "Εισαγάγετε ποσό.",
+        "discount_threshold_required": "Συμπληρώστε το όριο ημερών πριν από την άφιξη."
       },
       "delete_confirm": {
         "title": "Διαγραφή αυτού του στοιχείου;",

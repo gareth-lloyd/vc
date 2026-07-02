@@ -37,6 +37,7 @@ const discount = {
   rule_kind: "early_bird",
   kind: "percent",
   amount: "10",
+  threshold_days: 60,
   valid_from: "2026-01-01",
   valid_to: "2026-03-01",
 };
@@ -107,18 +108,23 @@ describe("InspectorPanel", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(posted).toHaveLength(1));
-    // The required NOT-NULL fields the API demands must all be present: kind and
-    // calc (enum defaults), the currency FK (seeded from settings) and amount.
-    expect(posted[0]).toMatchObject({
+    // Full-body equality, not a subset assert — a subset is exactly how the
+    // required-`property` / `min_nights:null` regressions slipped past tests.
+    // Read-only currency_code is never written, `property` comes from the URL,
+    // absent dates go as explicit null.
+    expect(posted[0]).toEqual({
       name: "Cleaning",
+      description: "",
       kind: "other",
       calc: "fixed_per_stay",
-      currency: 1,
       amount: "50",
+      currency: 1,
+      is_mandatory: false,
+      applies_from: null,
+      applies_to: null,
+      is_active: true,
     });
-    // Read-only currency_code is never written; dates absent → explicit null.
-    expect(posted[0].currency_code).toBeUndefined();
-    expect(posted[0].applies_from).toBeNull();
+    expect("property" in posted[0]).toBe(false);
     expect(await screen.findByText("Cleaning")).toBeInTheDocument();
   });
 

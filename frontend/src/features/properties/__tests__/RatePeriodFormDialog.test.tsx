@@ -325,3 +325,41 @@ describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SME
     expect(dateTo.value).toBe("2026-06-30");
   });
 });
+
+describe("RatePeriodFormDialog — create with initialValues (workbench prefill)", () => {
+  it("prefills date_from and lets the changeover suggestion complete date_to", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        initialValues={{ date_from: "2026-09-01" }}
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+    expect(screen.getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+    // GAP-025 suggestion still fires off the prefilled start date.
+    await waitFor(() => expect(screen.getByLabelText(/^To$/i)).not.toHaveValue(""));
+  });
+
+  it("never clobbers an initialValues date_to with the changeover suggestion", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RatePeriodFormDialog
+        ratePlanId={11}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        initialValues={{ date_from: "2026-09-01", date_to: "2026-09-30" }}
+        changeoverDay="sat"
+        minNightsRental={7}
+      />,
+    );
+    expect(screen.getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+    // A caller-provided end date wins over the weekday suggestion, always.
+    await waitFor(() => expect(screen.getByLabelText(/^To$/i)).toHaveValue("2026-09-30"));
+  });
+});

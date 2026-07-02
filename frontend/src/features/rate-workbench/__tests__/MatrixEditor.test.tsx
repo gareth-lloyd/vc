@@ -162,3 +162,39 @@ describe("MatrixEditor", () => {
     expect(screen.queryByRole("button", { name: /Add a price for this band/i })).toBeNull();
   });
 });
+
+describe("MatrixEditor — zero-period season (period create CTA)", () => {
+  const emptySeason: RatePlanDetail = { ...ratePlanDetail, periods: [] };
+
+  it("shows an Add period CTA for a writer", async () => {
+    const onAddPeriod = vi.fn();
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[emptySeason]}
+        canWrite
+        commission={null}
+        tax={null}
+        onAddPeriod={onAddPeriod}
+      />,
+    );
+    expect(screen.getByText("This season has no rate periods yet.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add period" }));
+    expect(onAddPeriod).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables (never hides) the CTA without the write role", () => {
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[emptySeason]}
+        canWrite={false}
+        commission={null}
+        tax={null}
+        onAddPeriod={() => {}}
+      />,
+    );
+    expect(screen.getByText("This season has no rate periods yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add period" })).toBeDisabled();
+  });
+});

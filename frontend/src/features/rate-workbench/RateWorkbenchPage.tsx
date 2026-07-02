@@ -12,9 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { formatDate } from "@/lib/format/date";
+import { addDaysIso, formatDate } from "@/lib/format/date";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { asPriceBasis, type PriceBasis } from "@/lib/pricing/netGross";
 import {
@@ -25,6 +26,7 @@ import {
   usePropertyServices,
   usePropertySettings,
 } from "@/features/properties/hooks";
+import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
 import type { PropertyDetail } from "@/features/properties/schemas";
 import { useRatePlanDetailsFanOut } from "./hooks";
 import { toLanes } from "./toLanes";
@@ -63,6 +65,7 @@ export function RateWorkbenchPage() {
   // Which season's rate matrix is open (below the timeline). Defaults to the
   // first season that has periods once details load.
   const [matrixRatePlanId, setMatrixRatePlanId] = useState<number | null>(null);
+  const [addPeriodOpen, setAddPeriodOpen] = useState(false);
 
   const isLoading =
     seasons.isLoading ||
@@ -176,13 +179,28 @@ export function RateWorkbenchPage() {
   }
 
   // The rate matrix is season/period-structural, not year-scoped, so it renders
-  // below the timeline whenever any loaded season has periods — independent of
-  // the year in view.
-  const seasonsWithPeriods = fanOut.details.filter((d) => (d.periods?.length ?? 0) > 0);
+  // below the timeline whenever any season has loaded — independent of the year
+  // in view. ALL plans are selectable: a zero-period plan is exactly the one
+  // that needs the "Add period" flow, so it must not be filtered out of reach.
+  const allSeasonDetails = fanOut.details;
   const activeMatrixRatePlanId =
-    matrixRatePlanId != null && seasonsWithPeriods.some((s) => s.id === matrixRatePlanId)
+    matrixRatePlanId != null && allSeasonDetails.some((s) => s.id === matrixRatePlanId)
       ? matrixRatePlanId
-      : (seasonsWithPeriods[0]?.id ?? null);
+      : (allSeasonDetails.find((d) => (d.periods?.length ?? 0) > 0)?.id ??
+        allSeasonDetails[0]?.id ??
+        null);
+
+  // "Add period" prefill: the day after the selected plan's latest period
+  // (inactive ones included — the DB EXCLUDE rejects overlaps regardless of
+  // is_active), so consecutive creates walk forward gap-free.
+  const activeSeasonDetail = allSeasonDetails.find((s) => s.id === activeMatrixRatePlanId) ?? null;
+  const latestPeriodEnd = (activeSeasonDetail?.periods ?? []).reduce<string | null>(
+    (max, p) => (max == null || p.date_to > max ? p.date_to : max),
+    null,
+  );
+  const periodInitialValues = latestPeriodEnd
+    ? { date_from: addDaysIso(latestPeriodEnd, 1) }
+    : undefined;
 
   const matrixSection =
     !isLoading && !isError && activeMatrixRatePlanId != null ? (
@@ -191,35 +209,73 @@ export function RateWorkbenchPage() {
           <h2 className="text-foreground text-lg font-semibold">
             {t("rate_workbench.matrix.title")}
           </h2>
-          {seasonsWithPeriods.length > 1 ? (
-            <Select
-              value={String(activeMatrixRatePlanId)}
-              onValueChange={(v) => setMatrixRatePlanId(Number(v))}
-            >
-              <SelectTrigger
-                className="w-[220px]"
-                aria-label={t("rate_workbench.matrix.season_picker")}
+          <div className="flex items-center gap-2">
+            {allSeasonDetails.length > 1 ? (
+              <Select
+                value={String(activeMatrixRatePlanId)}
+                onValueChange={(v) => setMatrixRatePlanId(Number(v))}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {seasonsWithPeriods.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
+                <SelectTrigger
+                  className="w-[220px]"
+                  aria-label={t("rate_workbench.matrix.season_picker")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {allSeasonDetails.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            {/* Only when the plan has periods — a zero-period plan's create
+                affordance lives in the matrix empty state instead. Disabled,
+                never hidden, for non-writers (frontend/CLAUDE.md role gating). */}
+            {(activeSeasonDetail?.periods?.length ?? 0) > 0 ? (
+              canWrite ? (
+                <Button variant="outline" size="sm" onClick={() => setAddPeriodOpen(true)}>
+                  {t("rate_workbench.matrix.add_period")}
+                </Button>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button variant="outline" size="sm" disabled>
+                        {t("rate_workbench.matrix.add_period")}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("rate_workbench.matrix.add_period_disabled_tooltip")}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            ) : null}
+          </div>
         </div>
         <MatrixEditor
           key={activeMatrixRatePlanId}
           ratePlanId={activeMatrixRatePlanId}
-          seasons={seasonsWithPeriods}
+          seasons={allSeasonDetails}
           canWrite={canWrite}
           commission={settings.data?.commission ?? null}
           tax={settings.data?.tax ?? null}
+          onAddPeriod={() => setAddPeriodOpen(true)}
         />
+        {addPeriodOpen ? (
+          <RatePeriodFormDialog
+            key={activeMatrixRatePlanId}
+            ratePlanId={activeMatrixRatePlanId}
+            open={addPeriodOpen}
+            onOpenChange={setAddPeriodOpen}
+            mode="create"
+            initialValues={periodInitialValues}
+            changeoverDay={settings.data?.changeover_day ?? null}
+            minNightsRental={settings.data?.min_nights_rental ?? null}
+          />
+        ) : null}
       </section>
     ) : null;
 

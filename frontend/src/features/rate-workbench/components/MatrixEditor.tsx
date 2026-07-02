@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { formatDate } from "@/lib/format/date";
@@ -19,6 +21,9 @@ interface MatrixEditorProps {
   canWrite: boolean;
   commission: CommissionInput | null;
   tax: TaxInput | null;
+  /** Opens the parent's period-create dialog; a zero-period season renders an
+   * "Add period" CTA in its empty state when this is provided. */
+  onAddPeriod?: () => void;
 }
 
 /** Uncovered-party warning for each active period that has bands but a gap. */
@@ -39,6 +44,7 @@ export function MatrixEditor({
   canWrite,
   commission,
   tax,
+  onAddPeriod,
 }: MatrixEditorProps) {
   const { t } = useTranslation("properties");
   const season = seasons.find((s) => s.id === ratePlanId) ?? null;
@@ -69,7 +75,30 @@ export function MatrixEditor({
   };
 
   if (!season || periods.length === 0) {
-    return <EmptyState title={t("rate_workbench.matrix.no_periods")} />;
+    return (
+      <EmptyState
+        title={t("rate_workbench.matrix.no_periods")}
+        description={season ? t("rate_workbench.matrix.no_periods_hint") : undefined}
+        action={
+          season && onAddPeriod ? (
+            canWrite ? (
+              <Button onClick={onAddPeriod}>{t("rate_workbench.matrix.add_period")}</Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button disabled>{t("rate_workbench.matrix.add_period")}</Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t("rate_workbench.matrix.add_period_disabled_tooltip")}
+                </TooltipContent>
+              </Tooltip>
+            )
+          ) : undefined
+        }
+      />
+    );
   }
 
   return (

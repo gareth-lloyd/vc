@@ -1101,7 +1101,10 @@
         "confirm": "Delete"
       },
       "no_periods": "This season has no rate periods yet.",
-      "coverage_gap": "{{period}}: unpriced party sizes {{ranges}}"
+      "coverage_gap": "{{period}}: unpriced party sizes {{ranges}}",
+      "no_periods_hint": "Add the first rate period to start pricing this season.",
+      "add_period": "Add period",
+      "add_period_disabled_tooltip": "You need the Reservations role to add rate periods."
     },
     "probe": {
       "title": "Price probe",

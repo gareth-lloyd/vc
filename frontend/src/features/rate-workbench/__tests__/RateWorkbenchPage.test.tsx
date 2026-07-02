@@ -1,7 +1,8 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { describe, expect, it, afterEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
@@ -196,5 +197,110 @@ describe("RateWorkbenchPage", () => {
     setup("/properties/casa-sur/rate-workbench");
     expect(await screen.findByText(/Nothing scheduled in 2026/i)).toBeInTheDocument();
     expect(screen.queryByText(/No configuration yet/i)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Period creation from the workbench (Unit 3): the season selector must list
+// ALL plans (a zero-period plan is exactly the one you need to add periods
+// to), and the matrix header offers "Add period" prefilled after the latest
+// existing period.
+// ---------------------------------------------------------------------------
+
+const winterSeason = {
+  id: 101,
+  property: 7,
+  name: "Winter 2026",
+  currency_code: "EUR",
+  effective_from: "2026-11-01",
+  effective_to: "2027-02-28",
+  is_active: true,
+};
+
+function installMultiSeasonHandlers() {
+  installHandlers();
+  // Second, zero-period season on top of the shared single-season handlers.
+  server.use(
+    http.get("/api/v1/properties/7/rate-plans", () =>
+      HttpResponse.json(drfPage([season, winterSeason])),
+    ),
+    http.get("/api/v1/rate-plans/101", () => HttpResponse.json({ ...winterSeason, periods: [] })),
+  );
+}
+
+describe("RateWorkbenchPage — period create", () => {
+  it("lists a zero-period season in the selector and shows its Add period empty state", async () => {
+    setUser("reservations");
+    installMultiSeasonHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    const picker = await screen.findByRole("combobox", { name: "Choose a season" });
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: "Winter 2026" }));
+
+    expect(await screen.findByText("This season has no rate periods yet.")).toBeInTheDocument();
+    // Both the header button and the empty-state CTA offer period creation.
+    expect(screen.getAllByRole("button", { name: "Add period" }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens the period dialog prefilled with the day after the latest period and creates", async () => {
+    setUser("reservations");
+    installMultiSeasonHandlers();
+    let created = false;
+    const posted: Array<Record<string, unknown>> = [];
+    const autumnPeriod = {
+      id: 502,
+      plan: 100,
+      name: "Autumn",
+      date_from: "2026-09-01",
+      date_to: "2026-09-30",
+      is_active: true,
+      coverage_gaps: [],
+      bands: [],
+    };
+    server.use(
+      http.post("/api/v1/rate-plans/100/rate-periods", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        created = true;
+        return HttpResponse.json(autumnPeriod, { status: 201 });
+      }),
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json(
+          created
+            ? { ...ratePlanDetail, periods: [...ratePlanDetail.periods, autumnPeriod] }
+            : ratePlanDetail,
+        ),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    // Summer 2026 (the plan with periods) is the default selection.
+    await user.click(await screen.findByRole("button", { name: "Add period" }));
+    const dialog = await screen.findByRole("dialog");
+    // Latest period ends 2026-08-31 → prefill starts the day after.
+    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+    await user.type(within(dialog).getByLabelText(/Name/i), "Autumn");
+    await user.type(within(dialog).getByLabelText(/^To$/i), "2026-09-30");
+    await user.click(within(dialog).getByRole("button", { name: /Save/i }));
+
+    await screen.findByText("Autumn", { exact: false });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject({
+      name: "Autumn",
+      date_from: "2026-09-01",
+      date_to: "2026-09-30",
+    });
+  });
+
+  it("offers no Add period affordance to a non-writer", async () => {
+    setUser("viewer");
+    installMultiSeasonHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    expect(await screen.findByRole("heading", { name: /Rate matrix/i })).toBeInTheDocument();
+    // Role gating: the affordance disables, it never disappears.
+    expect(await screen.findByRole("button", { name: "Add period" })).toBeDisabled();
   });
 });

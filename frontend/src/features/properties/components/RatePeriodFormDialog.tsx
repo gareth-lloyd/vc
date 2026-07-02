@@ -29,6 +29,10 @@ interface CommonProps {
 
 interface CreateProps extends CommonProps {
   mode: "create";
+  /** Optional date prefills (e.g. the workbench seeds `date_from` as the day
+   * after the plan's latest period, or a coverage gap's exact range). A
+   * provided `date_to` always wins over the changeover suggestion. */
+  initialValues?: { date_from?: string; date_to?: string };
 }
 
 interface EditProps extends CommonProps {
@@ -38,11 +42,14 @@ interface EditProps extends CommonProps {
 
 type RatePeriodFormDialogProps = CreateProps | EditProps;
 
-function createDefaults(): RatePeriodWriteInput {
+function createDefaults(initialValues?: {
+  date_from?: string;
+  date_to?: string;
+}): RatePeriodWriteInput {
   return {
     name: "",
-    date_from: "",
-    date_to: "",
+    date_from: initialValues?.date_from ?? "",
+    date_to: initialValues?.date_to ?? "",
     min_nights: null,
     max_nights: null,
     is_active: true,
@@ -64,10 +71,11 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
   const { ratePlanId, open, onOpenChange, changeoverDay, minNightsRental } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
+  const initialValues = props.mode === "create" ? props.initialValues : undefined;
 
   const form = useForm<RatePeriodWriteInput>({
     resolver: zodResolver(ratePeriodWriteInputSchema),
-    defaultValues: isCreate ? createDefaults() : defaultsFromPeriod(props.period),
+    defaultValues: isCreate ? createDefaults(initialValues) : defaultsFromPeriod(props.period),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -77,7 +85,7 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? createDefaults() : defaultsFromPeriod(props.period));
+      form.reset(isCreate ? createDefaults(initialValues) : defaultsFromPeriod(props.period));
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

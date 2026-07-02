@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-02, recounted from files): **108 done** (103 resolved + 5 dropped), **25 open**
+Scoreboard (2026-07-02, recounted from files): **109 done** (104 resolved + 5 dropped), **24 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -101,7 +101,6 @@ follow-up.)
 
 | Id | Title | Status |
 |---|---|---|
-| [Q-007](q-007-concierge-supplier-directory.md) | Concierge supplier directory shape | ⬜ |
 | [Q-008](q-008-2fa-enforcement.md) | 2FA enforcement scope | ⬜ |
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
@@ -175,6 +174,7 @@ problem, fix, and commit. Listed here for traceability.
 | [Q-004](done/q-004-hold-expiry-default.md) | Hold expiry default (shape) |
 | [Q-005](done/q-005-currency-display-base.md) | Reports base currency + FX → EUR base, daily snapshot |
 | [Q-006](done/q-006-owner-statement-scheduling.md) | Owner statements → monthly + on-demand, portal-only (PDF+CSV), auto-send deferred to v2 |
+| [Q-007](done/q-007-concierge-supplier-directory.md) | Concierge supplier shape → contact-only (`Person`/`Organisation`), no `Supplier` entity |
 | [Q-009](done/q-009-multi-site-inventory-sharing.md) | Multi-site inventory sharing → single site v1 |
 | [Q-011](done/q-011-email-template-inheritance.md) | Email template inheritance → system → site |
 | [Q-013](done/q-013-rate-card-incomplete-pricing.md) | Rate-card incomplete pricing → flag + manual quote |

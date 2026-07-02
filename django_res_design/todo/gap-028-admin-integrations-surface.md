@@ -1,7 +1,7 @@
 # GAP-028 — Admin `/system/integrations` configuration surface
 
 - **Severity:** Gap
-- **Source:** split out of [GAP-002](gap-002-integrations-empty-url-surface.md) slice 3 (2026-06-15)
+- **Source:** split out of [GAP-002](done/gap-002-integrations-empty-url-surface.md) slice 3 (2026-06-15)
 - **Files:** `django_res/integrations/urls.py` (still empty), `integrations/views.py`
 
 ## Problem
@@ -21,7 +21,7 @@ GAP-002 slice 1 (Flywire payment webhook) turned out to already exist in the
 
 Admin-only DRF viewsets in `integrations/`, mounted in
 `integrations/urls.py`, gated by the staff-write permission floor. Read
-[INV-004](inv-004-syncrun-syncissue-retry.md) first — it closed the
+[INV-004](done/inv-004-syncrun-syncissue-retry.md) first — it closed the
 `SyncRun`/`SyncIssue` schema as adequate (execution is v1.1), so these are
 read surfaces over existing rows, not new execution machinery.
 

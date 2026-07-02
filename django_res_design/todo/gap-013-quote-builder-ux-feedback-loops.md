@@ -31,7 +31,7 @@ changed:
 2. **Line removal is silent + instant** (`handleRemove`) — no confirm, no undo,
    though staged lines are pure client state (cheaply recoverable).
 3. ~~**Currency change wipes a non-empty cart**~~ **Moot** —
-   [GAP-014](gap-014-quote-currency-forced-selection.md) removed the currency
+   [GAP-014](done/gap-014-quote-currency-forced-selection.md) removed the currency
    selector (and the cart-wipe) entirely; each villa prices in its own rate
    card's currency.
 4. **Unpriceable "available" results can be added blind** — an `available`
@@ -93,7 +93,7 @@ Independent, individually shippable. Recommended order:
 - Sibling of **GAP-005** (flow tracker) — coordinate if that overhaul reshapes
   the builder layout.
 - **Coordinate with [GAP-043](done/gap-043-quote-builder-multi-week-range.md)
-  (multi-week range) and [GAP-044](gap-044-occupancy-band-fanout-builder.md)
+  (multi-week range) and [GAP-044](done/gap-044-occupancy-band-fanout-builder.md)
   (occupancy-band fan-out)** — both reshape the results/cart surface this ticket
   polishes (owner Loom 2026-06-17). Land the structural rework before (or with)
   these feedback-loop tweaks so the builder isn't reworked twice.

@@ -77,7 +77,7 @@ base differs by mode. Expand the `TODO(finance-rewrite)` comment at
 - **Blocked on the finance rewrite** — the `_call_finance_resolver` shim
   (`engine.py:327-343`) exists because `PropertyFinance.effective_*` still returns
   no-arg dicts. The mode-aware fix lands when that shim is removed.
-- Relates to [FG-001](fg-001-booking-quotation-currency-drift.md) (also pricing-snapshot money correctness).
+- Relates to [FG-001](done/fg-001-booking-quotation-currency-drift.md) (also pricing-snapshot money correctness).
 - Note: `PropertyFinance` does **not** model NET/GROSS — basis lives on
   `RatePlan`; the finance side only needs to supply pct / fixed / exempt (it
   already does), so no new finance field is required.

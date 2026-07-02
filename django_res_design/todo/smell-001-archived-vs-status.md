@@ -8,7 +8,7 @@
 
 The constraint `archived_at IS NULL OR status ∈ TERMINAL` makes
 `archived_at` a "second status" that the schema only loosely couples to
-the real `status` enum. Combined with [BUG-001](bug-001-cancelled-status-requires-cancelled-at.md),
+the real `status` enum. Combined with [BUG-001](done/bug-001-cancelled-status-requires-cancelled-at.md),
 it's easy to land an inconsistent pair.
 
 ## Proposed fix
@@ -26,4 +26,4 @@ or the next bookings-app refactor.
 
 ## Dependencies
 
-[BUG-001](bug-001-cancelled-status-requires-cancelled-at.md) should land first.
+[BUG-001](done/bug-001-cancelled-status-requires-cancelled-at.md) should land first.

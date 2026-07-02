@@ -344,7 +344,7 @@ perfect translation of pre-existing dev rows.
   old 4-level tree.
 - Pairs with [BUG-013](done/…) — recovered `VillaOccupencyPrice` bands get a
   natural home (period → N band children).
-- Coordinate with [BUG-009](bug-009-price-basis-ignored-by-engine.md) / the
+- Coordinate with [BUG-009](../bug-009-price-basis-ignored-by-engine.md) / the
   finance rewrite so the engine contract lands once.
 - Related product questions: `q-022-seasons-defined-by-rates.md`,
   `q-023-partial-week-nightly-composition.md`.

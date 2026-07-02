@@ -23,7 +23,7 @@
 > `pricing.rule*` i18n keys (presentation vocabulary, out of scope).
 
 - **Severity:** 🟡 Smell / debt (naming lag + one dropped UX affordance). No
-  wrong-money-out, no structural risk — the [GAP-056](done/gap-056-rate-model-restructure-property-period-band.md)
+  wrong-money-out, no structural risk — the [GAP-056](gap-056-rate-model-restructure-property-period-band.md)
   restructure is complete and verified end-to-end. These are the deliberately
   **deferred** cosmetic/rename items and one intentionally-removed helper, parked
   here so they aren't lost.
@@ -67,7 +67,7 @@ reads awkwardly ("periods under a season").
 
 ## Residual 3 — GAP-025 changeover-aware end-date suggestion was removed, not relocated
 
-[GAP-025](done/gap-025-changeover-aware-rate-band-dates.md) shipped a
+[GAP-025](gap-025-changeover-aware-rate-band-dates.md) shipped a
 `suggestRateBandEnd` helper that auto-filled a rate **band's** end date to the
 next changeover weekday (Sat→Fri) as you typed the start. GAP-056 Unit 8 **deleted
 that helper** (and its 6-test suite) as dead code, because bands no longer own

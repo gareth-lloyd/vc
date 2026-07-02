@@ -45,7 +45,7 @@ All timestamps stored UTC. `Property.timezone` is the property's IANA timezone (
 Numeric `BigAutoField` PKs for entities frequently referenced in URLs (`Booking.id`, `Property.id`). UUIDs for entities where leaking sequential IDs is undesirable (`MagicLink`, `WebhookEvent`, `AuditLog`).
 
 ### Reference numbers
-`Quotation.reference` (e.g., `QVC184`) and `Booking.reference` (e.g., `VC184`) are user-facing alphanumeric strings, matching the legacy `ResSystem` format. The **booking number is carried forward from its quotation**, not an independent sequence: a quote `QVC184` becomes booking `VC184` — same digits, prefix swapped. `Quotation.number` is the canonical integer (sequence-backed, `unique`); both references derive from it. Prefixes (`QVC`, `VC`) default in `core.refs` and are overridable via `SystemSettings.settings` (`quotation_no_prefix` / `booking_no_prefix`). Separate from the internal PK. See [GAP-006](../todo/gap-006-legacy-reference-format-parity.md).
+`Quotation.reference` (e.g., `QVC184`) and `Booking.reference` (e.g., `VC184`) are user-facing alphanumeric strings, matching the legacy `ResSystem` format. The **booking number is carried forward from its quotation**, not an independent sequence: a quote `QVC184` becomes booking `VC184` — same digits, prefix swapped. `Quotation.number` is the canonical integer (sequence-backed, `unique`); both references derive from it. Prefixes (`QVC`, `VC`) default in `core.refs` and are overridable via `SystemSettings.settings` (`quotation_no_prefix` / `booking_no_prefix`). Separate from the internal PK. See [GAP-006](../todo/done/gap-006-legacy-reference-format-parity.md).
 
 ---
 

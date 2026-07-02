@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { renderWithProviders } from "@/test/render";
+import { clickDateRange, expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { DateRangePicker, type DateRangePickerMode } from "./DateRangePicker";
 import type { Matcher } from "react-day-picker";
 
@@ -55,9 +56,8 @@ function trigger() {
   return screen.getByRole("button", { name: /dates/i });
 }
 
-async function openPicker() {
-  await userEvent.click(trigger());
-  await screen.findByRole("grid");
+function openPicker() {
+  return openDateRange(userEvent, /dates/i);
 }
 
 describe("DateRangePicker trigger text", () => {
@@ -109,9 +109,8 @@ describe("DateRangePicker selection", () => {
   it("writes a half-open range from an inclusive two-click nights selection", async () => {
     const onSubmit = vi.fn();
     renderWithProviders(<Harness mode="nights" onSubmit={onSubmit} />);
-    await openPicker();
-    await userEvent.click(screen.getByRole("button", { name: /21 july 2026/i }));
-    await userEvent.click(screen.getByRole("button", { name: /25 july 2026/i }));
+    const picker = await openPicker();
+    await clickDateRange(userEvent, picker, /21 july 2026/i, /25 july 2026/i);
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith({ date_from: "2026-07-21", date_to: "2026-07-26" }),
@@ -208,10 +207,9 @@ describe("DateRangePicker popover controls", () => {
   it("round-trips raw ISO values through the typed inputs", async () => {
     const onSubmit = vi.fn();
     renderWithProviders(<Harness mode="nights" onSubmit={onSubmit} />);
-    await openPicker();
-    await userEvent.type(screen.getByLabelText(/^From$/), "2026-07-12");
-    await userEvent.type(screen.getByLabelText(/^To$/), "2026-07-19");
-    expect(trigger()).toHaveTextContent("12–19 Jul 2026 · 7 nights");
+    const picker = await openPicker();
+    await typeDateRange(userEvent, picker, { from: "2026-07-12", to: "2026-07-19" });
+    expectTriggerRange(/dates/i, "12–19 Jul 2026 · 7 nights");
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith({ date_from: "2026-07-12", date_to: "2026-07-19" }),
@@ -240,8 +238,8 @@ describe("DateRangePicker popover controls", () => {
 describe("DateRangePicker disabled days", () => {
   it("greys out disabled days in the calendar", async () => {
     renderWithProviders(<Harness mode="nights" disabledDays={new Date(2026, 6, 23)} />);
-    await openPicker();
-    expect(screen.getByRole("button", { name: /23 july 2026/i })).toBeDisabled();
+    const picker = await openPicker();
+    expect(picker.getByRole("button", { name: /23 july 2026/i })).toBeDisabled();
   });
 
   it("collapses a selection spanning a disabled day to the clicked day (nights)", async () => {

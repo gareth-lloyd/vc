@@ -14,7 +14,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:agent": "vitest run --reporter=dot"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

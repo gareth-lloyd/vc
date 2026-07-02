@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { openDateRange, typeDateRange } from "@/test/dateRange";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import { ServiceFormDialog } from "../components/ServiceFormDialog";
@@ -192,16 +193,71 @@ describe("ServiceFormDialog — edit", () => {
       />,
     );
 
-    const fromInput = (await screen.findByLabelText(/Applies from/i)) as HTMLInputElement;
-    await waitFor(() => expect(fromInput.value).toBe("2026-06-01"));
-    await userEvent.clear(fromInput);
-    await userEvent.clear(screen.getByLabelText(/Applies to/i));
+    // The date band lives behind the DateRangePicker trigger — its typed
+    // inputs portal to the popover, so open it before clearing.
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await waitFor(() => expect(picker.getByLabelText(/^applies from$/i)).toHaveValue("2026-06-01"));
+    await typeDateRange(
+      userEvent,
+      picker,
+      { from: "", to: "" },
+      { from: /^applies from$/i, to: /^applies to$/i },
+    );
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
     // Emptied dates must go over the wire as explicit null (not omitted) so the
     // band is actually cleared, converting the service to year-round.
     expect(patchBody!.applies_from).toBeNull();
+    expect(patchBody!.applies_to).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("PATCHes an open end (null applies_to) when only To is cleared", async () => {
+    setReservationsUser();
+    const service: PropertyService = {
+      id: 300,
+      property: 7,
+      name: "Private chef",
+      copy: "Chef prepares dinner.",
+      notes: "",
+      applies_from: "2026-06-01",
+      applies_to: "2026-08-31",
+      sort_order: 0,
+      is_active: true,
+    };
+    let patchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/services/300", async ({ request }) => {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...service, applies_from: "2026-05-15", applies_to: null });
+      }),
+    );
+
+    renderWithProviders(
+      <ServiceFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        service={service}
+        onOpenChange={() => {}}
+      />,
+    );
+
+    // Partial window via the popover's typed inputs: retype From, clear To.
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(
+      userEvent,
+      picker,
+      { from: "2026-05-15", to: "" },
+      { from: /^applies from$/i, to: /^applies to$/i },
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    // From survives as typed; the cleared To crosses the wire as explicit null
+    // (open-ended band), never "" which the API rejects as an invalid date.
+    expect(patchBody!.applies_from).toBe("2026-05-15");
     expect(patchBody!.applies_to).toBeNull();
     useAuthStore.getState().clear();
   });

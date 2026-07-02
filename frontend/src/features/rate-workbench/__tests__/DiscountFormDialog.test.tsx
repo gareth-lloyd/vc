@@ -7,6 +7,7 @@ vi.mock("sonner", () => ({
 }));
 import { toast } from "sonner";
 import { server } from "@/test/msw/server";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { renderWithProviders } from "@/test/render";
 import { DiscountFormDialog } from "../components/DiscountFormDialog";
 import type { Discount } from "@/features/properties/schemas";
@@ -43,8 +44,15 @@ function renderCreate() {
 async function fillRequired(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
   await user.type(within(dialog).getByLabelText("Name"), "Early bird 10%");
   await user.type(within(dialog).getByLabelText("Amount"), "10");
-  await user.type(within(dialog).getByLabelText("Valid from"), "2026-01-01");
-  await user.type(within(dialog).getByLabelText("Valid to"), "2026-12-31");
+  // The validity window lives behind the DateRangePicker trigger — its typed
+  // inputs portal to the popover, not the dialog subtree.
+  const picker = await openDateRange(user, /^dates/i);
+  await typeDateRange(
+    user,
+    picker,
+    { from: "2026-01-01", to: "2026-12-31" },
+    { from: /^valid from$/i, to: /^valid to$/i },
+  );
 }
 
 describe("DiscountFormDialog create contract", () => {
@@ -61,6 +69,7 @@ describe("DiscountFormDialog create contract", () => {
 
     const dialog = await screen.findByRole("dialog");
     await fillRequired(user, dialog);
+    expectTriggerRange(/^dates/i, "1 Jan – 31 Dec 2026 · 365 days");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(posted).toHaveLength(1));

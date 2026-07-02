@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -157,24 +158,28 @@ export function ServiceFormDialog(props: ServiceFormDialogProps) {
             <Textarea id="service-notes" rows={2} {...form.register("notes")} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="service-applies-from">
-                {t("services.dialog.fields.applies_from")}
-              </Label>
-              <Input id="service-applies-from" type="date" {...form.register("applies_from")} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="service-applies-to">{t("services.dialog.fields.applies_to")}</Label>
-              <Input id="service-applies-to" type="date" {...form.register("applies_to")} />
-              {form.formState.errors.applies_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.applies_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {/* Inclusive [applies_from, applies_to] — the service applies on both
+              endpoint days; either side may stay open (empty → null on submit). */}
+          <DateRangePicker
+            control={form.control}
+            fromName="applies_from"
+            toName="applies_to"
+            mode="days"
+            id="service-dates"
+            label={t("services.dialog.fields.dates")}
+            fromLabel={t("services.dialog.fields.applies_from")}
+            toLabel={t("services.dialog.fields.applies_to")}
+            fromError={
+              form.formState.errors.applies_from
+                ? fieldErrorText(t, form.formState.errors.applies_from.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.applies_to
+                ? fieldErrorText(t, form.formState.errors.applies_to.message)
+                : undefined
+            }
+          />
 
           <div className="flex items-center gap-2">
             <Checkbox

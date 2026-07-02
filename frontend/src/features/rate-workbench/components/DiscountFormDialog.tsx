@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
@@ -290,27 +291,29 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="discount-valid-from">
-                {t("rate_workbench.inspector.fields.valid_from")}
-              </Label>
-              <Input id="discount-valid-from" type="date" {...form.register("valid_from")} />
-              {form.formState.errors.valid_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.valid_from.message)}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="discount-valid-to">
-                {t("rate_workbench.inspector.fields.valid_to")}
-              </Label>
-              <Input id="discount-valid-to" type="date" {...form.register("valid_to")} />
-              {form.formState.errors.valid_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.valid_to.message)}
-                </p>
-              ) : null}
+            {/* Inclusive [valid_from, valid_to] — the discount applies on both
+                endpoint days; both ends are required (schema .min(1)). */}
+            <div className="col-span-2">
+              <DateRangePicker
+                control={form.control}
+                fromName="valid_from"
+                toName="valid_to"
+                mode="days"
+                id="discount-dates"
+                label={t("rate_workbench.inspector.discount_dialog.fields.dates")}
+                fromLabel={t("rate_workbench.inspector.fields.valid_from")}
+                toLabel={t("rate_workbench.inspector.fields.valid_to")}
+                fromError={
+                  form.formState.errors.valid_from
+                    ? fieldErrorText(t, form.formState.errors.valid_from.message)
+                    : undefined
+                }
+                toError={
+                  form.formState.errors.valid_to
+                    ? fieldErrorText(t, form.formState.errors.valid_to.message)
+                    : undefined
+                }
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="discount-max-uses">

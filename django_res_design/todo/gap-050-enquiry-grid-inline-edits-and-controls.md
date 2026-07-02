@@ -45,6 +45,16 @@ and the leading **select** + trailing **Action (delete)** columns are absent.
 5. **Action column** — delete, ADMIN-gated (legacy `Enquires.razor:113`), plus a
    leading **select** checkbox column for bulk affordances.
 6. **Page-size `10`** option (mockup lists 10/25/50/100; shipped 25/50/100).
+7. **Flex? vocabulary widening** — the mockup's Flex? presets
+   (`Specific dates` / `+/- 3 days` / `+/- 7 days` / `Flexible`) exceed the
+   intake cap: widen `Enquiry.flexibility_days` (`MaxValueValidator(3)` → 21)
+   with a migration, add an open **"Flexible"** mode, and surface the preset in
+   the intake form + grid column. Orphan-rescued here 2026-07-02: GAP-039
+   deferred it to GAP-043, whose shipped builder (arrival-window search, done
+   2026-07-02) doesn't need it — the window already runs to ±21 days without
+   touching intake — leaving this as the only open home. The builder's
+   `enquiryToSearchForm` seeding (`date_from ± flexibility_days`) picks the
+   wider values up automatically.
 
 ## Acceptance
 
@@ -65,5 +75,6 @@ and the leading **select** + trailing **Action (delete)** columns are absent.
   `:assign` / `:close` actions already in `reservations/views/enquiry.py`.
 - The **Stage-dropdown** sub-item is blocked on the `05-reservations.md`
   stage-transition decision.
-- `± 7 days` flex labelling stays with
-  [GAP-043](gap-043-quote-builder-multi-week-range.md).
+- `± 7 days` flex labelling / `flexibility_days` widening now lives HERE
+  (item 7) — GAP-043 shipped the builder side without it
+  ([done/gap-043](done/gap-043-quote-builder-multi-week-range.md)).

@@ -5,10 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import { QuoteShortlist } from "../components/QuoteShortlist";
-import type { StagedLine } from "../schemas";
+import { type StagedLine, stagedLineId } from "../schemas";
 
 function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
-  return {
+  const base = {
     property_id: 7,
     property_name: "Villa Sol",
     hero_image_url: null,
@@ -28,6 +28,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     notes: "",
     ...overrides,
   };
+  return { line_id: stagedLineId(base.property_id, base.date_from), ...base };
 }
 
 // A no-rate villa staged from the builder (Q-013): manual from the start,
@@ -50,9 +51,9 @@ function Harness({ initial }: { initial: StagedLine[] }) {
     <QuoteShortlist
       lines={lines}
       onUpdateLine={(id, patch) =>
-        setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
+        setLines((prev) => prev.map((l) => (l.line_id === id ? { ...l, ...patch } : l)))
       }
-      onRemove={(id) => setLines((prev) => prev.filter((l) => l.property_id !== id))}
+      onRemove={(id) => setLines((prev) => prev.filter((l) => l.line_id !== id))}
       onSaveDraft={() => undefined}
       onSendToGuest={() => undefined}
     />
@@ -123,6 +124,45 @@ describe("QuoteShortlist", () => {
     // 4500 − 500 = 4000 on the line; the other line is untouched.
     expect(screen.getByText("$4,000.00")).toBeInTheDocument();
     expect(screen.getByText("$7,200.00")).toBeInTheDocument();
+  });
+
+  it("targets update, remove and expand at a single week-line when two lines share a property (GAP-043)", async () => {
+    // Two weeks of the SAME villa staged side by side — line identity must be
+    // the composite line_id, not the property_id.
+    renderWithProviders(
+      <Harness
+        initial={[
+          stagedLine({
+            date_from: "2026-07-04",
+            date_to: "2026-07-11",
+            priced_date_from: "2026-07-04",
+            priced_date_to: "2026-07-11",
+          }),
+          stagedLine({
+            date_from: "2026-07-11",
+            date_to: "2026-07-18",
+            priced_date_from: "2026-07-11",
+            priced_date_to: "2026-07-18",
+            total: "5200.00",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByText("Villa Sol")).toHaveLength(2);
+
+    // Expanding the second week opens exactly ONE editor…
+    await userEvent.click(screen.getAllByRole("button", { name: /edit line/i })[1]);
+    const discount = screen.getByLabelText(/^discount$/i);
+    // …and a discount typed there nets off only that week's total.
+    await userEvent.clear(discount);
+    await userEvent.type(discount, "200");
+    expect(screen.getByText("$5,000.00")).toBeInTheDocument();
+    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+
+    // Removing the first week keeps the second.
+    await userEvent.click(screen.getAllByRole("button", { name: /^remove$/i })[0]);
+    expect(screen.getAllByText("Villa Sol")).toHaveLength(1);
+    expect(screen.getByText("$5,000.00")).toBeInTheDocument();
   });
 
   it("blocks the commit actions until a manual override has a total and reason", async () => {
@@ -203,9 +243,9 @@ describe("QuoteShortlist", () => {
           <QuoteShortlist
             lines={lines}
             onUpdateLine={(id, patch) =>
-              setLines((prev) => prev.map((l) => (l.property_id === id ? { ...l, ...patch } : l)))
+              setLines((prev) => prev.map((l) => (l.line_id === id ? { ...l, ...patch } : l)))
             }
-            onRemove={(id) => setLines((prev) => prev.filter((l) => l.property_id !== id))}
+            onRemove={(id) => setLines((prev) => prev.filter((l) => l.line_id !== id))}
             onSaveDraft={() => undefined}
             onSendToGuest={() => undefined}
           />

@@ -73,7 +73,7 @@ This document is a **table-of-contents level inventory** of endpoints the Django
 - Standard problem-detail JSON shape with `code`, `detail`, `field_errors`. Implementation decides exact field names.
 
 ### Idempotency
-- `Idempotency-Key` header honored on all `POST` action endpoints and payment-creating endpoints.
+- ~~`Idempotency-Key` header honored on all `POST` action endpoints and payment-creating endpoints.~~ **Superseded (2026-07-02, FG-005)** — the header/middleware surface was never built and the backing `core.IdempotencyRecord` table is dropped; idempotency is a request-body `idempotency_key` handled by the service layer (see `django_res/CLAUDE.md` §"State-mutating services accept `idempotency_key`").
 
 ---
 
@@ -193,7 +193,7 @@ Per-property bounded set of weekdays on which a booking may start. Many rows per
 | GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval. Null fields inherit from `/property-groups/{id}/settings`. Also surfaces `timezone` **read-only** (sourced from the location). |
 | PATCH | `/properties/{id}/settings` | Update settings. `timezone` is read-only here — write it via `/location`. |
 | GET | `/properties/{id}/location` | Postal address, country, lat/lng, and `timezone`. Singleton sub-resource (no `POST`/`DELETE`); auto-provisioned with country/timezone derived from `region.country` on create/duplicate and lazily on first GET, so a property is never location-less. |
-| PATCH | `/properties/{id}/location` | Update location. Sole writer of `timezone` (a geographic fact of the place — see [FG-008](../todo/fg-008-property-timezone.md)). |
+| PATCH | `/properties/{id}/location` | Update location. Sole writer of `timezone` (a geographic fact of the place — see [FG-008](../todo/done/fg-008-property-timezone.md)). |
 | GET | `/properties/{id}/capacity` | Headline guest/room counts (`guests`, `additional_guests`, `bedrooms`, `ensuites`, `bathrooms`, `size_sqm`). Singleton sub-resource (no `POST`/`DELETE`); auto-provisioned via `get_or_create` on first GET. |
 | PATCH | `/properties/{id}/capacity` | Update capacity. `guests = 0` (or no row) excludes the property from `?min_guests=` quote search — the quote builder surfaces a "capacity not set" hint rather than silently dropping it. |
 | GET | `/properties/{id}/finance` | Flat finance config: commission, tax, bank account, payment schedule, security-deposit policy. Null fields inherit from `/property-groups/{id}/finance`. See reconciliation issue #36 (5-OneToOne-children split collapsed to one flat model). |
@@ -255,17 +255,17 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 | GET / PATCH / DELETE | `/feature-categories/{id}` |
 
 #### Regions
-| Method | Path |
-|---|---|
-| GET / POST | `/regions` |
-| GET / PATCH / DELETE | `/regions/{slug}` |
-| GET | `/regions/{slug}/properties` |
+| Method | Path | Purpose |
+|---|---|---|
+| GET / POST | `/regions` | List filter: `?has_properties=true` narrows to regions holding ≥1 property (opt-in; `false`/absent = full list). Feeds the staff geo dropdowns (quote builder, property/timeline filters). |
+| GET / PATCH / DELETE | `/regions/{slug}` | |
+| GET | `/regions/{slug}/properties` | |
 
 #### Countries
-| Method | Path |
-|---|---|
-| GET / POST | `/countries` |
-| GET / PATCH / DELETE | `/countries/{code}` |
+| Method | Path | Purpose |
+|---|---|---|
+| GET / POST | `/countries` | List filter: `?has_properties=true` — same semantics as `/regions` (via `regions__properties`). |
+| GET / PATCH / DELETE | `/countries/{code}` | |
 
 #### Currencies
 | Method | Path |

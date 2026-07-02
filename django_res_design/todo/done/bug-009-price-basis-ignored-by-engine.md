@@ -109,7 +109,7 @@ on `RatePlan.price_basis` per the corrected spec — shipped as
   **stays** until the real rewrite — see `TODO(finance-rewrite)` in
   `engine.py` (`_resolve_commission_policy` / `_resolve_tax_policy` are the
   seams to simplify).
-- Relates to [FG-001](../fg-001-booking-quotation-currency-drift.md) (also pricing-snapshot money correctness).
+- Relates to [FG-001](fg-001-booking-quotation-currency-drift.md) (also pricing-snapshot money correctness).
 - Note: `PropertyFinance` does **not** model NET/GROSS — basis lives on
   `RatePlan`; the finance side only needs to supply pct / fixed / exempt (it
   already does), so no new finance field is required.

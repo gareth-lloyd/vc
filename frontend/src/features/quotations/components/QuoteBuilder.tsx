@@ -10,16 +10,18 @@ import { QuoteShortlist } from "./QuoteShortlist";
 import { SaveQuoteDialog } from "./SaveQuoteDialog";
 import { SendPreviewDialog } from "./SendPreviewDialog";
 import { useQuoteOptionsSearch } from "../hooks";
-import { nightsCount } from "@/lib/nights";
-import type {
-  ChosenStay,
-  HiddenCapacityProperty,
-  OccupancyBand,
-  QuotationDetail,
-  QuoteCriteriaInput,
-  QuoteOption,
-  StagedBand,
-  StagedLine,
+import { enquiryToSearchForm } from "../searchCriteria";
+import {
+  type HiddenCapacityProperty,
+  type QuotationDetail,
+  type QuoteCriteriaInput,
+  type QuoteOption,
+  type QuoteSearchForm,
+  type StagedBand,
+  type StagedLine,
+  type StayAdd,
+  stagedLineId,
+  stagedStayDates,
 } from "../schemas";
 
 // Which commit the operator triggered — Save draft persists and completes;
@@ -70,24 +72,13 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
 
   const search = useQuoteOptionsSearch();
 
-  const initial = useMemo<Partial<QuoteCriteriaInput>>(
-    () => ({
-      date_from: enquiry.date_from ?? "",
-      date_to: enquiry.date_to ?? "",
-      adults: enquiry.adults,
-      children: enquiry.children ?? 0,
-      min_bedrooms: enquiry.min_bedrooms ?? null,
-      // The enquiry's structured flexibility seeds the search window; the
-      // dates above stay the client's true requested stay.
-      flex_days: enquiry.flexibility_days ?? 0,
-    }),
-    [enquiry],
-  );
+  // Seed the arrival-window form from the enquiry (GAP-043): its dates ±
+  // flexibility_days become the window, its stay length rounds to weeks.
+  const initial = useMemo<Partial<QuoteSearchForm>>(() => enquiryToSearchForm(enquiry), [enquiry]);
 
-  const stagedPropertyIds = useMemo(
-    () => new Set(staged.map((line) => line.property_id)),
-    [staged],
-  );
+  // The staged line_ids (`${property_id}:${date_from}`) — the results side
+  // derives both per-property and (from U4) per-week staged markers from this.
+  const stagedKeys = useMemo(() => new Set(staged.map((line) => line.line_id)), [staged]);
 
   // Runs one page of the search. Page 1 replaces the results; page 2+ (Load
   // more) concatenates. No currency input (GAP-014): each villa is priced in
@@ -136,84 +127,91 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
     }
   };
 
-  const handleAdd = (option: QuoteOption, stay?: ChosenStay, selectedBands?: OccupancyBand[]) => {
+  // GAP-043: a result card hands over ONE add-unit per checked week; already
+  // staged weeks are skipped (dedup on line_id). Manual-quotable rows and
+  // legacy results pass no adds — they stage a single line on the criteria
+  // dates, exactly as before.
+  const handleAdd = (option: QuoteOption, adds?: StayAdd[]) => {
     if (!lastCriteria) return;
-    // GAP-044: a banded result hands over the CHECKED occupancy brackets. They
-    // stage onto the line as alternatives — no single total (bands never sum),
-    // never manual; each expands to its own saved line at save time.
-    const bands: StagedBand[] | undefined =
-      selectedBands && selectedBands.length > 0
-        ? selectedBands.map((b) => ({
-            min_party: b.min_party,
-            max_party: b.max_party,
-            adults: b.adults,
-            total: b.total ?? null,
-            currency: b.currency_code ?? null,
-            is_poa: b.is_poa ?? false,
-            checked: true,
-          }))
-        : undefined;
-    // The chosen stay's dates become the line's requested dates when the stay
-    // is a real alternative: an explicitly picked non-default block, or a
-    // default block the search rounded to a different length than requested.
-    // A default block with the SAME night count is the preferred stay
-    // (possibly changeover-shifted): keep posting the criteria dates so the
-    // backend stays the single source of the shift (GAP-007) and records it.
-    const useStayDates =
-      stay != null &&
-      (!stay.is_default ||
-        nightsCount(stay.date_from, stay.date_to) !==
-          nightsCount(lastCriteria.date_from, lastCriteria.date_to));
+    const criteria = lastCriteria;
+    const entries: StayAdd[] = adds && adds.length > 0 ? adds : [{}];
     setStaged((prev) => {
-      if (prev.some((line) => line.property_id === option.property_id)) return prev;
-      // Q-013: a no-rate villa stages straight onto the manual path — there is
-      // no engine price, so the operator must type the total (legacy NO RATE).
-      const manualOnly = option.error_code === "no_rate_available";
-      const next: StagedLine = {
-        property_id: option.property_id,
-        property_name: option.property_name,
-        hero_image_url: option.hero_image_url ?? null,
-        date_from: useStayDates ? stay.date_from : lastCriteria.date_from,
-        date_to: useStayDates ? stay.date_to : lastCriteria.date_to,
-        // Display the dates the engine actually priced — possibly shifted
-        // forward. The note fires when they differ from the requested dates.
-        priced_date_from: stay?.priced_date_from ?? option.date_from ?? lastCriteria.date_from,
-        priced_date_to: stay?.priced_date_to ?? option.date_to ?? lastCriteria.date_to,
-        adults: lastCriteria.adults,
-        children: lastCriteria.children,
-        // The currency the engine priced this option in — carried per line
-        // (GAP-014) so the shortlist and save path stay per-currency. A banded
-        // line takes its currency from the first band and has NO single total.
-        currency: bands
-          ? (bands[0].currency ?? null)
-          : stay
-            ? stay.currency
-            : (option.currency ?? null),
-        total: bands ? null : stay ? stay.total : (option.total ?? null),
-        discount: "0",
-        // Seed from the winning plan's inclusion text (legacy parity —
-        // ResService.cs:1241). Display-only convenience pre-save: the backend
-        // seeds authoritatively at line creation; still editable in the shortlist.
-        inclusions: stay?.inclusion ?? option.inclusion ?? "",
-        price_override_reason: "",
-        // A banded line is never manual — each band is priced by the server.
-        is_manual: bands ? false : manualOnly,
-        manual_only: bands ? false : manualOnly,
-        notes: "",
-        ...(bands ? { occupancy_bands: bands } : {}),
-      };
-      return [...prev, next];
+      let next = prev;
+      for (const { stay, bands: selectedBands } of entries) {
+        // GAP-044: a banded week carries its CHECKED occupancy brackets. They
+        // stage onto the line as alternatives — no single total (bands never
+        // sum), never manual; each expands to its own saved line at save time.
+        const bands: StagedBand[] | undefined =
+          selectedBands && selectedBands.length > 0
+            ? selectedBands.map((b) => ({
+                min_party: b.min_party,
+                max_party: b.max_party,
+                adults: b.adults,
+                total: b.total ?? null,
+                currency: b.currency_code ?? null,
+                is_poa: b.is_poa ?? false,
+                checked: true,
+              }))
+            : undefined;
+        const { date_from: dateFrom, date_to: dateTo } = stagedStayDates(criteria, stay);
+        const lineId = stagedLineId(option.property_id, dateFrom);
+        if (next.some((line) => line.line_id === lineId)) continue;
+        // Q-013: a no-rate villa stages straight onto the manual path — there
+        // is no engine price, so the operator must type the total (legacy NO
+        // RATE).
+        const manualOnly = option.error_code === "no_rate_available";
+        next = [
+          ...next,
+          {
+            line_id: lineId,
+            property_id: option.property_id,
+            property_name: option.property_name,
+            hero_image_url: option.hero_image_url ?? null,
+            date_from: dateFrom,
+            date_to: dateTo,
+            // Display the dates the engine actually priced — possibly shifted
+            // forward. The note fires when they differ from the requested dates.
+            priced_date_from: stay?.priced_date_from ?? option.date_from ?? dateFrom,
+            priced_date_to: stay?.priced_date_to ?? option.date_to ?? dateTo,
+            adults: criteria.adults,
+            children: criteria.children,
+            // The currency the engine priced this option in — carried per line
+            // (GAP-014) so the shortlist and save path stay per-currency. A
+            // banded line takes its currency from the first band and has NO
+            // single total.
+            currency: bands
+              ? (bands[0].currency ?? null)
+              : stay
+                ? stay.currency
+                : (option.currency ?? null),
+            total: bands ? null : stay ? stay.total : (option.total ?? null),
+            discount: "0",
+            // Seed from the winning plan's inclusion text (legacy parity —
+            // ResService.cs:1241). Display-only convenience pre-save: the
+            // backend seeds authoritatively at line creation; still editable
+            // in the shortlist.
+            inclusions: stay?.inclusion ?? option.inclusion ?? "",
+            price_override_reason: "",
+            // A banded line is never manual — each band is priced per bracket.
+            is_manual: bands ? false : manualOnly,
+            manual_only: bands ? false : manualOnly,
+            notes: "",
+            ...(bands ? { occupancy_bands: bands } : {}),
+          },
+        ];
+      }
+      return next;
     });
   };
 
-  const handleUpdateLine = (propertyId: number, patch: Partial<StagedLine>) => {
+  const handleUpdateLine = (lineId: string, patch: Partial<StagedLine>) => {
     setStaged((prev) =>
-      prev.map((line) => (line.property_id === propertyId ? { ...line, ...patch } : line)),
+      prev.map((line) => (line.line_id === lineId ? { ...line, ...patch } : line)),
     );
   };
 
-  const handleRemove = (propertyId: number) => {
-    setStaged((prev) => prev.filter((line) => line.property_id !== propertyId));
+  const handleRemove = (lineId: string) => {
+    setStaged((prev) => prev.filter((line) => line.line_id !== lineId));
   };
 
   const openSave = (intent: SaveIntent) => {
@@ -250,13 +248,21 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             options={results}
             hiddenForCapacity={hiddenForCapacity}
             isLoading={search.isPending && !isLoadingMore}
-            stagedPropertyIds={stagedPropertyIds}
+            stagedKeys={stagedKeys}
+            criteriaDates={
+              lastCriteria
+                ? { date_from: lastCriteria.date_from, date_to: lastCriteria.date_to }
+                : null
+            }
             onAdd={handleAdd}
             adults={lastCriteria?.adults ?? enquiry.adults}
             children={lastCriteria?.children ?? enquiry.children ?? 0}
             searchKey={
+              // Dates + flex + party: the rows' reprice caches key off the
+              // arrival date alone, so a party-only re-search must also
+              // remount them or stale per-party prices would survive.
               lastCriteria
-                ? `${lastCriteria.date_from}:${lastCriteria.date_to}:${lastCriteria.flex_days}`
+                ? `${lastCriteria.date_from}:${lastCriteria.date_to}:${lastCriteria.flex_days}:${lastCriteria.adults}:${lastCriteria.children}`
                 : ""
             }
             hasMore={hasMore}

@@ -10,6 +10,9 @@
   },
   "schema_errors": {
     "at_least_one_adult": "At least one adult",
+    "at_least_one_week": "At least one week",
+    "arrive_to_before_arrive_from": "Must be on or after the first arrival date",
+    "arrive_window_too_wide": "Arrival window can span at most 42 days",
     "date_to_after_date_from": "Must be after the start date",
     "override_reason_required": "A reason is required when overriding the price",
     "manual_total_required": "A manual line needs a total greater than zero",
@@ -175,6 +178,8 @@
       "line_edit": {
         "title": "Edit line",
         "description": "Adjust the dates, party size, or pricing. The server re-prices priced lines on save.",
+        "date_from": "From",
+        "date_to": "To",
         "notes_label": "Notes",
         "discount_label": "Discount",
         "discount_hint": "Subtracted from the priced total.",
@@ -239,27 +244,25 @@
     "criteria": {
       "title": "Search options",
       "aria_label": "Search criteria",
-      "date_from": "From",
-      "date_to": "To",
+      "arrive_from": "Arrive from",
+      "arrive_to": "Arrive to",
       "adults": "Adults",
       "children": "Children",
-      "country": "Country (ISO-2)",
-      "country_placeholder": "e.g. ES",
+      "country": "Country",
       "region": "Region",
-      "region_placeholder": "slug or id",
       "min_bedrooms": "Min bedrooms",
       "max_bedrooms": "Max bedrooms",
       "q": "Name search",
       "q_placeholder": "e.g. Villa Sol",
       "search": "Search",
       "searching": "Searching…",
-      "flex": {
-        "label": "Flexible by",
-        "value_one": "± {{count}} day",
-        "value_other": "± {{count}} days",
-        "decrease_aria": "Decrease date flexibility",
-        "increase_aria": "Increase date flexibility",
-        "window_hint": "Search window: {{from}} → {{to}}. The requested dates stay the preferred stay."
+      "specific_date": "Search specific date",
+      "weeks": {
+        "label": "Number of weeks",
+        "value_one": "{{count}} week",
+        "value_other": "{{count}} weeks",
+        "decrease_aria": "Decrease number of weeks",
+        "increase_aria": "Increase number of weeks"
       }
     },
     "results": {
@@ -267,6 +270,8 @@
       "total": "Total",
       "thumbnail_alt": "{{name}} thumbnail",
       "add": "Add to quote",
+      "add_count_one": "Add {{count}} week",
+      "add_count_other": "Add {{count}} weeks",
       "added": "Added",
       "idle": {
         "title": "Run a search to see priced options",
@@ -274,7 +279,7 @@
       },
       "empty": {
         "title": "No villas match these criteria",
-        "description": "Widen the date range, drop a filter, or check region/country."
+        "description": "Widen the date range or drop a filter."
       },
       "incomplete_pricing": "Incomplete pricing — manual quote",
       "incomplete_pricing_aria": "{{name}} — incomplete pricing, add manually to type the price",
@@ -329,6 +334,7 @@
         "held_hint": "These dates are held or booked — pick another block.",
         "shifted": "Priced as {{from}} → {{to}}",
         "requested": "Requested",
+        "staged": "Added",
         "caption_nights": "{{nights}}-night stays",
         "option_aria": "{{range}} · {{nights}} · {{status}}"
       }

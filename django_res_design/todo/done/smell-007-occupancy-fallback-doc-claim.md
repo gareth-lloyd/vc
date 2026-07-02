@@ -68,5 +68,5 @@ django_res_design/` is clean outside this ticket.
 
 ## Dependencies
 
-- None. Pairs with [BUG-009](bug-009-price-basis-ignored-by-engine.md) and the
+- None. Pairs with [BUG-009](../bug-009-price-basis-ignored-by-engine.md) and the
   GAP-007/008 parity tickets as the output of the same pricing audit.

@@ -51,6 +51,9 @@ function installTaxonomyHandlers() {
         drfPage([{ id: 1, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza" }]),
       ),
     ),
+    http.get("/api/v1/countries", () =>
+      HttpResponse.json(drfPage([{ id: 1, iso2: "ES", name: "Spain", is_active: true }])),
+    ),
     http.get("/api/v1/collections", () =>
       HttpResponse.json(drfPage([{ id: 1, name: "Signature", slug: "signature" }])),
     ),

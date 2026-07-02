@@ -15,6 +15,7 @@ function toQuery(filters: CountryFilters): QueryParams {
     ordering: filters.ordering || undefined,
     page: filters.page && filters.page > 1 ? filters.page : undefined,
     page_size: filters.pageSize || undefined,
+    has_properties: filters.hasProperties || undefined,
   };
 }
 

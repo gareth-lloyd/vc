@@ -1,3 +1,14 @@
+> **✅ RESOLVED (2026-07-02)** — Problem: originally "make `IdempotencyRecord.user`
+> nullable so system actors can dedupe"; the re-scope established the table is
+> dead (zero runtime writers, ever). Fix: dropped the model + table
+> (`core.0006` pure `DeleteModel`; `expires_at` default inlined into `core.0001`
+> per the UploadTicket-shim precedent) and annotated the design docs
+> (reconciliation issue #39 reversed, dated decision-log entry). Live
+> idempotency is unchanged: `core/idempotency.py` meta-key stamping + FG-010 DB
+> backstops. Commits: 9d06a64 (drop), ae8020b (docs).
+>
+> _Re-scope decision and original ticket preserved below for context._
+
 > **⚠️ RE-SCOPED (2026-06-20, per `CRITIQUE-2026-06-19.md`)** — The premise below
 > is moot as written: `IdempotencyRecord` is a **dead table** — zero runtime
 > writers (`grep IdempotencyRecord.objects` → only the class def). Live

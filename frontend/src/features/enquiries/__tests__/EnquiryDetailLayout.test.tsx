@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { geoLookupHandlers } from "@/test/msw/handlers";
 import { createTestQueryClient, renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
@@ -122,6 +123,9 @@ function setup(initial: string) {
 
 beforeEach(() => {
   useAuthStore.getState().clear();
+  // The quote builder (auto-opened when an enquiry has no quotes) mounts the
+  // criteria form, whose geo dropdowns fetch /countries + /regions.
+  server.use(...geoLookupHandlers);
 });
 afterEach(() => {
   server.resetHandlers();

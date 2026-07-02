@@ -65,7 +65,7 @@ sat on sand without them. Both are now fixed on branch
   `QuotationService.create_from_enquiry` priced correctly, which masked the bug
   in `seed_dev` data. **Fix:** extracted `QuotationService.price_line` and call
   it from `perform_create`/`perform_update` (non-manual lines), under
-  `select_for_update` per [FG-006](fg-006-modify-without-select-for-update.md).
+  `select_for_update` per [FG-006](done/fg-006-modify-without-select-for-update.md).
 - **F2 — The quotation email was a content-less stub.**
   `quotation_sent_handler` passed only guest/agent/reference (and never the
   `{{ property_name }}` the template referenced); the MJML body had no line
@@ -162,7 +162,7 @@ Priority order below reflects operator-pain / spec-commitment.
     `Available / Hold-able / Partial / Unavailable` + an "incomplete
     pricing — manual quote" flag on result cards. The incomplete-pricing
     flag + manual-quote path landed with
-    [Q-013](q-013-rate-card-incomplete-pricing.md) (resolved); the richer
+    [Q-013](done/q-013-rate-card-incomplete-pricing.md) (resolved); the richer
     `Hold-able / Partial` badge taxonomy stays open here.
 11. **TBC occupancy mode** — legacy TBC checkbox (`Booking.razor:119`)
     clears adults/children for flexible group quotes; `QuotationLine`
@@ -174,7 +174,7 @@ Priority order below reflects operator-pain / spec-commitment.
 ## Follow-up surfaced by code review (not yet fixed)
 
 - **Builder line create/update changeover.** ✅ Resolved by
-  [GAP-007](gap-007-changeover-autoshift-parity.md). There is no separate
+  [GAP-007](done/gap-007-changeover-autoshift-parity.md). There is no separate
   changeover *validation* to reinstate: changeover is now always handled by the
   auto-shift inside `PricingEngine.quote()`, and `QuotationLineViewSet._reprice`
   reflects the engine's shifted `date_from`/`date_to` (plus
@@ -266,7 +266,7 @@ by email). See the record for the full field/constraint list and migration order
 - **Mock-vs-real caveat (general).** The mock's reference formats
   (`QVC-####`/`VCB-####`) and status words ("Booked"/"Completed") are
   illustrative only. Use the real `QVC####` (quotation) / `VC####` (booking)
-  formats ([GAP-006](gap-006-legacy-reference-format-parity.md), `core/refs.py`)
+  formats ([GAP-006](done/gap-006-legacy-reference-format-parity.md), `core/refs.py`)
   and map to real enum values (booking status is DRAFT…CHECKED_OUT/CANCELLED,
   not "Completed").
 
@@ -343,24 +343,24 @@ A later owner walkthrough (Loom + the Ben/owner mockup at
 https://vc-new-res-system.netlify.app/) asks for a next wave on top of the
 shipped M1–M4. Spun out as focused tickets rather than reopening this tracker:
 
-- [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md) — stage-taxonomy
+- [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md) — stage-taxonomy
   reconciliation + quotes-to-convert metric + per-quote status in the stack
   (the stacking + `quote_count` foundation here is reused, not redone).
-- [GAP-039](gap-039-enquiry-dashboard-enrichment.md) — richer enquiry list.
-- [GAP-043](gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
+- [GAP-039](done/gap-039-enquiry-dashboard-enrichment.md) — richer enquiry list.
+- [GAP-043](done/gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
   (the concrete shape of the deferred #9 two-pane builder rework).
-- [GAP-044](gap-044-occupancy-band-fanout-builder.md) — occupancy-band fan-out.
+- [GAP-044](done/gap-044-occupancy-band-fanout-builder.md) — occupancy-band fan-out.
 
 (Customer-profile asks — tags, linked contacts, profile view — are
-[GAP-040](gap-040-customer-tags-taxonomy.md) /
-[GAP-041](gap-041-standing-linked-contacts.md) /
-[GAP-042](gap-042-customer-360-profile-view.md).)
+[GAP-040](done/gap-040-customer-tags-taxonomy.md) /
+[GAP-041](done/gap-041-standing-linked-contacts.md) /
+[GAP-042](done/gap-042-customer-360-profile-view.md).)
 
 ## Dependencies
 
 - #3 (auto-hold) depends on the availability/hold surface.
-- [Q-013](q-013-rate-card-incomplete-pricing.md) is resolved — the
+- [Q-013](done/q-013-rate-card-incomplete-pricing.md) is resolved — the
   incomplete-pricing manual-quote path is built; it no longer blocks
   anything here.
-- [SMELL-002](smell-002-quotation-expire-draft.md) (quote expiry) is
+- [SMELL-002](done/smell-002-quotation-expire-draft.md) (quote expiry) is
   related but tracked separately.

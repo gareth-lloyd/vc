@@ -42,9 +42,9 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 > Time-waster), **linked contacts** (spouse/child/PA), and history accordions
 > (enquiries, quotes, previous bookings — "calls" has no backing model yet).
 > These are new CRM surfaces tracked in
-> [`todo/gap-040-customer-tags-taxonomy.md`](../todo/gap-040-customer-tags-taxonomy.md),
-> [`todo/gap-041-standing-linked-contacts.md`](../todo/gap-041-standing-linked-contacts.md),
-> [`todo/gap-042-customer-360-profile-view.md`](../todo/gap-042-customer-360-profile-view.md).
+> [`todo/gap-040-customer-tags-taxonomy.md`](../todo/done/gap-040-customer-tags-taxonomy.md),
+> [`todo/gap-041-standing-linked-contacts.md`](../todo/done/gap-041-standing-linked-contacts.md),
+> [`todo/gap-042-customer-360-profile-view.md`](../todo/done/gap-042-customer-360-profile-view.md).
 
 2. **Guest section.** Fields: first name, last name, email (validated format, debounced duplicate-check that surfaces "We have an existing contact for jane@example.com — link?" with a *Link* / *Create new* choice), phone (libphonenumber formatted, country-inferred), preferred contact channel (email/phone/whatsapp). Linking to an existing contact is optimistic locally; saving the enquiry persists the link.
 
@@ -105,18 +105,24 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 4. **Price computation.** Server computes per-villa price by walking season → rate card → occupancy band for each night in range. Result is cached client-side keyed by `(villa_id, from, to, party_size)` for the session. If a villa's rate card is incomplete for some nights, the card flags "Incomplete pricing — manual quote" and disables auto-add, requiring operator to type the price.
 
-> **Owner Loom (2026-06-17) — multi-week range + occupancy fan-out.** The owner
-> calls the fixed-date builder "not correct": search should accept a **date range**
-> and the results render **per-week boxes** the agent ticks (quote every wanted
-> week), and for occupancy-priced villas each week should show **all occupancy
-> bands as separate lines, checked by default** (full price-by-group-size
-> visibility; agent deselects). The latter reverses the prior "salesperson
-> curates / no auto fan-out" default in `04-pricing.md` (engine still resolves one
-> band per call; the builder fans out). Multi-week range is in tension with the
-> `flexibility_days` rework (`05-reservations.md`) — replace-vs-coexist left open.
-> See the mockup's Rate Lookup screen, and
-> [`todo/gap-043-quote-builder-multi-week-range.md`](../todo/gap-043-quote-builder-multi-week-range.md)
-> + [`todo/gap-044-occupancy-band-fanout-builder.md`](../todo/gap-044-occupancy-band-fanout-builder.md).
+> **Owner Loom (2026-06-17) — multi-week range + occupancy fan-out: both
+> SHIPPED.** The owner called the fixed-date builder "not correct": search
+> should accept a **date range** and the results render **per-week boxes** the
+> agent ticks (quote every wanted week), and for occupancy-priced villas each
+> week should show **all occupancy bands as separate lines, checked by
+> default** (full price-by-group-size visibility; agent deselects — reversing
+> the prior "salesperson curates / no auto fan-out" default in `04-pricing.md`;
+> the engine still resolves one band per call, the builder fans out). Fan-out
+> shipped 2026-07-01 (GAP-044/044b); the multi-week range shipped 2026-07-02
+> (GAP-043): the search form is now **Arrive from + Arrive to + Number of
+> weeks + Search Specific Date** (the ±flex stepper in step 2 above is
+> superseded — replace-vs-coexist resolved as **replace**), and the week strip
+> is **multi-select** — every ticked bookable week stages its own quotation
+> line, weeks × checked bands at save; held weeks stay non-selectable. The
+> as-built builder is single-column (criteria → results → shortlist), not the
+> two-pane/cart shape steps 1–5 sketch. See
+> [`todo/done/gap-043-quote-builder-multi-week-range.md`](../todo/done/gap-043-quote-builder-multi-week-range.md)
+> + [`todo/done/gap-044-occupancy-band-fanout-builder.md`](../todo/done/gap-044-occupancy-band-fanout-builder.md).
 
 5. **Add to quote.** Clicking "Add" opens a small inline editor under the card: dates (pre-filled), price (pre-filled, overridable with "Override" toggle that forces a reason field), currency (per-site default, switchable), notes shown to guest (optional, e.g. "Owner offering 10% off for direct booking"), internal notes (not shown to guest). Saving adds the line to the quote draft in the cart-style summary at the bottom of the page.
 

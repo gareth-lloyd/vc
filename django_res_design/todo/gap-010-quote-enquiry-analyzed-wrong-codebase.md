@@ -220,11 +220,11 @@ Person / Holiday Dates / Flex? — match the legacy `/quote` grid; its New-Quote
 Overview mirrors the `ClientDetails` cards; its Rate Lookup mirrors the
 weeks/occupancy model). Use it as the **target** UX reference alongside the
 pinned legacy source. The screen/flow re-derivation called for in §5.2 is now
-ticketed: [GAP-038](gap-038-enquiry-quote-stacking-conversion-metric.md),
-[GAP-039](gap-039-enquiry-dashboard-enrichment.md),
-[GAP-042](gap-042-customer-360-profile-view.md),
-[GAP-043](gap-043-quote-builder-multi-week-range.md),
-[GAP-044](gap-044-occupancy-band-fanout-builder.md).
+ticketed: [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md),
+[GAP-039](done/gap-039-enquiry-dashboard-enrichment.md),
+[GAP-042](done/gap-042-customer-360-profile-view.md),
+[GAP-043](done/gap-043-quote-builder-multi-week-range.md),
+[GAP-044](done/gap-044-occupancy-band-fanout-builder.md).
 
 ## 5. Recommended follow-up
 

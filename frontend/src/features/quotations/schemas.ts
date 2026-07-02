@@ -2,6 +2,7 @@ import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 import { isPositiveMoney } from "@/lib/format/money";
+import { nightsCount } from "@/lib/nights";
 
 export const quotationStatusSchema = z.enum(["draft", "sent", "accepted", "expired", "cancelled"]);
 export type QuotationStatus = z.infer<typeof quotationStatusSchema>;
@@ -88,6 +89,11 @@ export type QuotationLine = z.infer<typeof quotationLineSchema>;
 // Quote builder schemas — criteria, search results, save payload.
 // ----------------------------------------------------------------------
 
+// Mirror of the backend's SEARCH_FLEX_MAX — the widest ± arrival flex the
+// search-options endpoint accepts. The range form's window width maps to
+// flex via ceil(W / 2), so the window caps at 2 * this.
+export const SEARCH_FLEX_MAX = 21;
+
 export const quoteCriteriaInputSchema = z
   .object({
     date_from: z.string().min(1, i18n.t("common:errors.field_required")),
@@ -101,16 +107,70 @@ export const quoteCriteriaInputSchema = z
     q: z.string(),
     // ± days around the preferred dates (seeded from the enquiry's
     // flexibility_days). The backend derives the search window; the dates
-    // above stay the client's true requested stay. Mirrors the backend's
-    // SEARCH_FLEX_MAX of 21 — wide enough for a multi-week sweep ("any week
-    // in June") while intake's flexibility_days stays capped at 3.
-    flex_days: z.number().int().min(0).max(21),
+    // above stay the client's true requested stay. Wide enough for a
+    // multi-week sweep ("any week in June") while intake's flexibility_days
+    // stays capped at 3.
+    flex_days: z.number().int().min(0).max(SEARCH_FLEX_MAX),
   })
   .refine((v) => !v.date_from || !v.date_to || v.date_from < v.date_to, {
     path: ["date_to"],
     message: i18n.t("quotations:schema_errors.date_to_after_date_from"),
   });
 export type QuoteCriteriaInput = z.infer<typeof quoteCriteriaInputSchema>;
+
+// What the operator fills in (GAP-043): an arrival window + a preferred stay
+// length in weeks, not a fixed stay. `searchFormToCriteria` (searchCriteria.ts)
+// translates this to the unchanged `QuoteCriteriaInput` wire shape — the
+// backend contract stays put. "Search Specific Date" (legacy IsSpecificDate)
+// collapses the window to the exact `arrive_from`.
+export const quoteSearchFormSchema = z
+  .object({
+    arrive_from: z.string().min(1, i18n.t("common:errors.field_required")),
+    // Ignored (and hidden in the form) when `specific_date` is on, so it may
+    // be empty then; the refines below enforce it otherwise.
+    arrive_to: z.string(),
+    // The PREFERRED length: the engine snaps each block to the winning card's
+    // min/max_nights, and the per-cell nights in the results are authoritative.
+    weeks: z.number().int().min(1, i18n.t("quotations:schema_errors.at_least_one_week")),
+    specific_date: z.boolean(),
+    adults: z.number().int().min(1, i18n.t("quotations:schema_errors.at_least_one_adult")),
+    children: z.number().int().min(0),
+    country: z.string(),
+    region: z.string(),
+    min_bedrooms: z.number().int().min(0).nullable(),
+    max_bedrooms: z.number().int().min(0).nullable(),
+    q: z.string(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.specific_date) return;
+    if (!v.arrive_to) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arrive_to"],
+        message: i18n.t("common:errors.field_required"),
+      });
+      return;
+    }
+    if (v.arrive_to < v.arrive_from) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arrive_to"],
+        message: i18n.t("quotations:schema_errors.arrive_to_before_arrive_from"),
+      });
+      return;
+    }
+    // Window width W maps to flex_days = ceil(W / 2) (searchCriteria.ts), and
+    // the backend rejects flex_days > SEARCH_FLEX_MAX — so the window caps at
+    // twice that.
+    if (nightsCount(v.arrive_from, v.arrive_to) > 2 * SEARCH_FLEX_MAX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arrive_to"],
+        message: i18n.t("quotations:schema_errors.arrive_window_too_wide"),
+      });
+    }
+  });
+export type QuoteSearchForm = z.infer<typeof quoteSearchFormSchema>;
 
 // One offerable stay block for a result — always ≥1 on a priced result; >1
 // only when a fixed-changeover property's flexibility window admits several
@@ -234,6 +294,41 @@ export interface ChosenStay {
   inclusion: string | null;
 }
 
+// One add-unit handed from a result card to the builder (GAP-043): a chosen
+// week (absent for legacy results without stay_options — the builder then
+// stages the criteria dates) plus, for a banded villa, that week's checked
+// occupancy bands.
+export interface StayAdd {
+  stay?: ChosenStay;
+  bands?: OccupancyBand[];
+}
+
+// Which dates a chosen stay stages and posts (GAP-007): a real alternative —
+// an explicitly picked non-default block, or a default block the search
+// rounded to a different length than requested — carries its own dates. A
+// default block with the SAME night count is the preferred stay (possibly
+// changeover-shifted): the criteria dates are kept so the backend stays the
+// single source of the shift and records it. Shared by the builder (staging)
+// and the result card (per-week staged markers) so the two can't disagree on
+// a week's line identity.
+export function stagedStayDates(
+  criteria: { date_from: string; date_to: string },
+  stay?: { date_from: string; date_to: string; is_default: boolean },
+): { date_from: string; date_to: string } {
+  // Empty criteria (defensive — a card rendered before any search recorded)
+  // fall through to the stay's own dates rather than NaN-poisoning the
+  // night-count comparison below.
+  const useStayDates =
+    stay != null &&
+    (!criteria.date_from ||
+      !stay.is_default ||
+      nightsCount(stay.date_from, stay.date_to) !==
+        nightsCount(criteria.date_from, criteria.date_to));
+  return useStayDates
+    ? { date_from: stay.date_from, date_to: stay.date_to }
+    : { date_from: criteria.date_from, date_to: criteria.date_to };
+}
+
 // A property that matched the operator's name search but is excluded from the
 // priced options because its capacity isn't set (no row, or guests === 0).
 // Surfaced as a hint so the operator learns why a known property is missing,
@@ -272,7 +367,18 @@ export interface StagedBand {
 // One row in the operator-staged "lines so far" panel. Pre-save shape.
 // `is_selected` is intentionally absent — the backend sets it during the
 // `accept()` transition (convert-to-booking), not at create time.
+// Stable staged-line identity (GAP-043): one villa can be staged at several
+// weeks — each week is its OWN line. Sole producer of the `line_id` format;
+// `stagedLineProperty` is its only decoder.
+export const stagedLineId = (propertyId: number, dateFrom: string): string =>
+  `${propertyId}:${dateFrom}`;
+
+export const stagedLineProperty = (lineId: string): number => Number(lineId.split(":", 1)[0]);
+
 export interface StagedLine {
+  // `stagedLineId(property_id, date_from)` — everything that updates/removes/
+  // expands a line keys on this, never on property_id alone.
+  line_id: string;
   property_id: number;
   property_name: string;
   hero_image_url: string | null;

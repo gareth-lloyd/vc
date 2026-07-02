@@ -126,11 +126,11 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="qle-date-from">{t("builder.criteria.date_from")}</Label>
+              <Label htmlFor="qle-date-from">{t("detail.dialogs.line_edit.date_from")}</Label>
               <Input id="qle-date-from" type="date" {...form.register("date_from")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="qle-date-to">{t("builder.criteria.date_to")}</Label>
+              <Label htmlFor="qle-date-to">{t("detail.dialogs.line_edit.date_to")}</Label>
               <Input id="qle-date-to" type="date" {...form.register("date_to")} />
             </div>
           </div>

@@ -21,7 +21,7 @@ model evolves. Known issues and planned changes live in
 | `payments` | Unified payment ledger + events + refunds + webhooks + security deposit | `Payment` |
 | `comms` | Email sending (SMTP profiles, templates, append-only log) | `EmailLog` |
 | `integrations` | Generic sync metadata, Zoho OAuth, sync run audit | `SyncRecord` |
-| `core` | Shared base classes, audit registry, idempotency, reference generation | `TimestampedModel`, `AuditedModel`, `AuditLog`, `IdempotencyRecord` |
+| `core` | Shared base classes, audit registry, idempotency helpers, reference generation | `TimestampedModel`, `AuditedModel`, `AuditLog` |
 
 ## 2. Anchor models
 
@@ -119,8 +119,9 @@ def effective(self, attr):
 `effective_bank_account()`.
 
 ### Idempotency
-- `IdempotencyRecord` table — `(user, path, key)` unique together — used at
-  the HTTP boundary.
+- ~~`IdempotencyRecord` table — used at the HTTP boundary~~ — dropped per
+  FG-005 (2026-07-02): it never gained a runtime writer; dedupe lives in the
+  meta-key path below.
 - `meta["idempotency_key"]` stamped on state-mutating service calls
   (Payment, Refund, Booking creation).
 - `EmailLog` uses a SHA-256 content hash of
@@ -174,4 +175,4 @@ flows are currently represented twice — once as a `Payment` row with
 `purpose=SECURITY_DEPOSIT`, once as a `SecurityDeposit` row. Whether
 `Payment` should be a generic ledger or the customer-facing money request
 (with `SECURITY_DEPOSIT` living only in `SecurityDeposit`) is an open
-decision — see [Q-016](todo/q-016-payment-ledger-vs-dedicated-models.md).
+decision — see [Q-016](todo/done/q-016-payment-ledger-vs-dedicated-models.md).

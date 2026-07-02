@@ -1,8 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { geoLookupHandlers } from "@/test/msw/handlers";
 import { drfPage } from "@/test/drf";
 import { createTestQueryClient, renderWithProviders } from "@/test/render";
 import { queryKeys } from "@/lib/query/keys";
@@ -105,6 +106,9 @@ function mockSearch() {
 
 beforeEach(() => {
   useAuthStore.setState({ role: "RESERVATIONS", isSuperuser: false, status: "authenticated" });
+  // The criteria form's country/region dropdowns fetch the geo lookups on
+  // mount; none of these tests care about the option lists.
+  server.use(...geoLookupHandlers);
 });
 afterEach(() => {
   useAuthStore.getState().clear();
@@ -146,8 +150,12 @@ describe("QuoteBuilder", () => {
   it("prefills criteria from the enquiry", async () => {
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
 
-    expect(await screen.findByLabelText(/^from$/i)).toHaveValue("2026-07-01");
-    expect(screen.getByLabelText(/^to$/i)).toHaveValue("2026-07-08");
+    // A no-flex enquiry seeds a specific-date search: the arrival window
+    // collapses (Arrive-to hidden) and the 7-night stay rounds to 1 week.
+    expect(await screen.findByLabelText(/arrive from/i)).toHaveValue("2026-07-01");
+    expect(screen.queryByLabelText(/arrive to/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /search specific date/i })).toBeChecked();
+    expect(screen.getByText(/1 week$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/adults/i)).toHaveValue(2);
   });
 
@@ -245,7 +253,7 @@ describe("QuoteBuilder", () => {
     expect(screen.getByLabelText(/inclusions/i)).toHaveValue("Daily maid service");
   });
 
-  it("seeds the flexibility stepper from the enquiry and sends it on search", async () => {
+  it("seeds the arrival window from the enquiry's ± flexibility and sends it on search", async () => {
     let searchBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
@@ -258,13 +266,15 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
 
-    // The criteria form's stepper reflects the enquiry's structured flex…
-    expect(screen.getAllByText("± 2 days").length).toBeGreaterThan(0);
+    // The criteria form seeds a symmetric arrival window from the enquiry's
+    // ± flexibility…
+    expect(await screen.findByLabelText(/arrive from/i)).toHaveValue("2026-06-29");
+    expect(screen.getByLabelText(/arrive to/i)).toHaveValue("2026-07-03");
 
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await screen.findByText("Villa Sol");
 
-    // …and the search posts it with the unwidened preferred dates.
+    // …which translates back to exactly the enquiry's preferred dates + flex.
     expect(searchBody).toMatchObject({
       flex_days: 2,
       requests: [
@@ -273,7 +283,7 @@ describe("QuoteBuilder", () => {
     });
   });
 
-  it("steps the flexibility window by whole weeks beyond ±3 days, up to ±21", async () => {
+  it("maps a wide arrival window to the backend's maximum ±21-day flex", async () => {
     let searchBody: Record<string, unknown> | null = null;
     server.use(
       http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
@@ -286,15 +296,10 @@ describe("QuoteBuilder", () => {
     );
     renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 3 }} />);
 
-    // Past the day-level spread the stepper jumps in whole weeks…
-    const increase = screen.getByRole("button", { name: /increase date flexibility/i });
-    await userEvent.click(increase);
-    expect(screen.getAllByText("± 7 days").length).toBeGreaterThan(0);
-    await userEvent.click(increase);
-    await userEvent.click(increase);
-    expect(screen.getAllByText("± 21 days").length).toBeGreaterThan(0);
-    // …and ±21 is the ceiling.
-    expect(increase).toBeDisabled();
+    // Widen the window to the 42-day maximum ("any week in June-ish sweep").
+    const arriveTo = await screen.findByLabelText(/arrive to/i);
+    await userEvent.clear(arriveTo);
+    await userEvent.type(arriveTo, "2026-08-09"); // 42 days after 2026-06-28
 
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await screen.findByText("Villa Sol");
@@ -369,7 +374,12 @@ describe("QuoteBuilder", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await screen.findByText("Villa Sol");
 
-    await userEvent.click(screen.getAllByRole("radio")[1]);
+    // Keep only the later week checked (uncheck the pre-checked default).
+    const cells = within(screen.getByRole("group", { name: /stay options/i })).getAllByRole(
+      "checkbox",
+    );
+    await userEvent.click(cells[0]);
+    await userEvent.click(cells[1]);
     await screen.findByText("$5,200.00");
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
 
@@ -382,6 +392,98 @@ describe("QuoteBuilder", () => {
     await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
     await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
     await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines[0]).toMatchObject({
+      date_from: "2026-07-11",
+      date_to: "2026-07-18",
+    });
+  });
+
+  it("stages one line per checked week, dedups re-adds, and removes weeks independently (GAP-043)", async () => {
+    let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.get("/api/v1/terms-versions/current", () =>
+        HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
+      ),
+      http.post("/api/v1/quotations", async ({ request }) => {
+        saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
+        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+      }),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        const body = (await request.json()) as { flex_days: number };
+        if (body.flex_days === 0) {
+          // The alternate week's reprice.
+          return HttpResponse.json({
+            quotes: [
+              {
+                property_id: 7,
+                available: true,
+                total: "5200.00",
+                currency_code: "USD",
+                date_from: "2026-07-11",
+                date_to: "2026-07-18",
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+
+    // Tick the alternate as well (the default is pre-checked) → 2 weeks stage
+    // as two independent lines of the same villa.
+    const cells = within(screen.getByRole("group", { name: /stay options/i })).getAllByRole(
+      "checkbox",
+    );
+    await userEvent.click(cells[1]);
+    await screen.findByText("$5,200.00");
+    await userEvent.click(screen.getByRole("button", { name: /add 2 weeks/i }));
+    expect(await screen.findByText(/shortlist \(2\)/i)).toBeInTheDocument();
+
+    // Both weeks staged → the card flips to Added and can't re-add (dedup).
+    expect(screen.getByRole("button", { name: /^added$/i })).toBeDisabled();
+
+    // Removing one week keeps the other and frees that week for re-adding.
+    await userEvent.click(screen.getAllByRole("button", { name: /^remove$/i })[0]);
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
+
+    // Saving persists one line per staged week, each at its own dates.
+    await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^save quote$/i }));
+    await waitFor(() => expect(saveBody).not.toBeNull());
+    expect(saveBody!.lines).toHaveLength(1);
     expect(saveBody!.lines[0]).toMatchObject({
       date_from: "2026-07-11",
       date_to: "2026-07-18",
@@ -517,11 +619,11 @@ describe("QuoteBuilder", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("Villa Sol")).toBeInTheDocument();
 
-    // Extend the stay and re-search → the re-price 500s, leaving the original
-    // results on screen.
-    const to = screen.getByLabelText(/^to$/i);
-    await userEvent.clear(to);
-    await userEvent.type(to, "2026-07-22");
+    // Extend the stay to 3 weeks (1 Jul + 21 nights = 22 Jul) and re-search →
+    // the re-price 500s, leaving the original results on screen.
+    const increase = screen.getByRole("button", { name: /increase number of weeks/i });
+    await userEvent.click(increase);
+    await userEvent.click(increase);
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
     // Adding the stale option must record the ORIGINAL Jul 1–8 stay (7 nights),
@@ -696,9 +798,14 @@ describe("QuoteBuilder", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     await screen.findByText("Villa Sol");
 
-    // Default week shows its bands; flip to the alternate → its bands reprice.
+    // Default week shows its bands; move to the alternate alone → its bands
+    // reprice (uncheck the pre-checked default first).
     expect(screen.getAllByText("$4,500.00").length).toBeGreaterThan(0);
-    await userEvent.click(screen.getAllByRole("radio")[1]);
+    const cells = within(screen.getByRole("group", { name: /stay options/i })).getAllByRole(
+      "checkbox",
+    );
+    await userEvent.click(cells[0]);
+    await userEvent.click(cells[1]);
     await screen.findByText("$4,800.00");
 
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));

@@ -367,12 +367,23 @@ export async function fetchPropertyContacts(
 }
 
 // Filter dropdowns need every row in one request — the default page size of
-// 50 would silently truncate the lists as the portfolio grows.
-const TAXONOMY_PAGE_SIZE = 500;
+// 50 would silently truncate the lists as the portfolio grows. Exported for
+// callers whose fetch layer doesn't bake it in (e.g. the countries lookup).
+export const TAXONOMY_PAGE_SIZE = 500;
 
-export async function fetchRegions(): Promise<Paginated<Region>> {
+export interface RegionListFilters {
+  // Only regions that actually hold properties (quote-builder criteria
+  // dropdown); server-side opt-in narrowing, false behaves like absent.
+  hasProperties?: boolean;
+}
+
+export async function fetchRegions(filters: RegionListFilters = {}): Promise<Paginated<Region>> {
   const data = await apiGet<unknown>("/regions", {
-    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
+    query: {
+      ordering: "name",
+      page_size: TAXONOMY_PAGE_SIZE,
+      has_properties: filters.hasProperties || undefined,
+    },
   });
   return regionsResponseSchema.parse(data);
 }

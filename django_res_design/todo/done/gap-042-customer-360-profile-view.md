@@ -23,12 +23,12 @@
   inquiries/quotes/calls, linked contacts, previous bookings) + the mockup at
   https://vc-new-res-system.netlify.app/ → **New Quote → Overview** panel and its
   accordions. Mirrors the legacy `ClientDetails` cards in
-  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md).
+  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md).
 - **Status:** Open — consumes GAP-040 (tags) and GAP-041 (linked contacts).
 - **Files:**
   - `django_res/reservations/` — a per-guest profile read endpoint (or extend
     the existing `GET /guests/{id}/enquiries` from
-    [GAP-005](gap-005-quotation-flow-parity.md) M3)
+    [GAP-005](../gap-005-quotation-flow-parity.md) M3)
   - `frontend/src/features/quotations/` (the New-Quote Overview panel) +
     `features/enquiries/`
 
@@ -66,7 +66,7 @@ detail both render from a single source.
 "inquiries, quotes, **calls**", but there is **no call/activity-log model** in
 the backend. Either scope calls out of v1 or raise a separate modeling
 dependency (a lightweight activity/interaction log) — do not imply it exists.
-Cross-ref [Q-017](q-017-comms-direction-signals-vs-spine-position.md) (comms
+Cross-ref [Q-017](../q-017-comms-direction-signals-vs-spine-position.md) (comms
 spine) as the natural home if pursued.
 
 ## Acceptance
@@ -81,5 +81,5 @@ spine) as the natural home if pursued.
 
 - Consumes [GAP-040](gap-040-customer-tags-taxonomy.md) and
   [GAP-041](gap-041-standing-linked-contacts.md); extends
-  [GAP-005](gap-005-quotation-flow-parity.md) M3 history. "Calls" needs a new
+  [GAP-005](../gap-005-quotation-flow-parity.md) M3 history. "Calls" needs a new
   activity-log decision before that part can land.

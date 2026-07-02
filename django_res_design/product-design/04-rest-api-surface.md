@@ -255,17 +255,17 @@ Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable
 | GET / PATCH / DELETE | `/feature-categories/{id}` |
 
 #### Regions
-| Method | Path |
-|---|---|
-| GET / POST | `/regions` |
-| GET / PATCH / DELETE | `/regions/{slug}` |
-| GET | `/regions/{slug}/properties` |
+| Method | Path | Purpose |
+|---|---|---|
+| GET / POST | `/regions` | List filter: `?has_properties=true` narrows to regions holding ≥1 property (opt-in; `false`/absent = full list). Feeds the staff geo dropdowns (quote builder, property/timeline filters). |
+| GET / PATCH / DELETE | `/regions/{slug}` | |
+| GET | `/regions/{slug}/properties` | |
 
 #### Countries
-| Method | Path |
-|---|---|
-| GET / POST | `/countries` |
-| GET / PATCH / DELETE | `/countries/{code}` |
+| Method | Path | Purpose |
+|---|---|---|
+| GET / POST | `/countries` | List filter: `?has_properties=true` — same semantics as `/regions` (via `regions__properties`). |
+| GET / PATCH / DELETE | `/countries/{code}` | |
 
 #### Currencies
 | Method | Path |

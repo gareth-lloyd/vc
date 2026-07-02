@@ -300,7 +300,7 @@ export function DiscountFormDialog(props: DiscountFormDialogProps) {
                 toName="valid_to"
                 mode="days"
                 id="discount-dates"
-                label={t("rate_workbench.inspector.discount_dialog.fields.dates")}
+                label={t("rate_workbench.inspector.fields.dates")}
                 fromLabel={t("rate_workbench.inspector.fields.valid_from")}
                 toLabel={t("rate_workbench.inspector.fields.valid_to")}
                 fromError={

@@ -118,9 +118,12 @@ export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
 
   const handleSubmit = async (values: RatePlanWriteInput) => {
     setTopLevelError(null);
+    // An empty To is "open-ended season" — send explicit `null`, never the
+    // empty string the API rejects as an invalid date, and never `undefined`
+    // (which a PATCH would omit, leaving a previously-set end date uncleared).
     const body: RatePlanWriteInput = {
       ...values,
-      effective_to: values.effective_to ? values.effective_to : undefined,
+      effective_to: values.effective_to || null,
     };
     try {
       if (isCreate) {

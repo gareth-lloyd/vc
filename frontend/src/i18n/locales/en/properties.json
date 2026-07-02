@@ -1181,6 +1181,7 @@
         "currency_placeholder": "Select a currency",
         "amount": "Amount",
         "description": "Description",
+        "dates": "Dates",
         "applies_from": "Applies from",
         "applies_to": "Applies to",
         "valid_from": "Valid from",
@@ -1232,17 +1233,11 @@
       "extra_dialog": {
         "create_title": "Add extra",
         "edit_title": "Edit extra",
-        "fields": {
-          "dates": "Dates"
-        },
         "currency_mismatch_hint": "No rate plan uses this currency, so the pricing engine will never apply this extra to a quote."
       },
       "discount_dialog": {
         "create_title": "Add discount",
-        "edit_title": "Edit discount",
-        "fields": {
-          "dates": "Dates"
-        }
+        "edit_title": "Edit discount"
       },
       "errors": {
         "extra_name_required": "Enter a name for this extra.",

@@ -183,20 +183,21 @@ describe("RatePlanFormDialog — create", () => {
 });
 
 describe("RatePlanFormDialog — edit", () => {
+  const season: RatePlan = {
+    id: 11,
+    property: 7,
+    name: "Summer 2026",
+    currency: 42,
+    price_basis: "gross",
+    effective_from: "2026-06-01",
+    effective_to: "2026-09-30",
+    is_active: true,
+    notes: "",
+  };
+
   it("PATCHes the season with edited fields", async () => {
     setReservationsUser();
     installBaseHandlers(42);
-    const season: RatePlan = {
-      id: 11,
-      property: 7,
-      name: "Summer 2026",
-      currency: 42,
-      price_basis: "gross",
-      effective_from: "2026-06-01",
-      effective_to: "2026-09-30",
-      is_active: true,
-      notes: "",
-    };
     let patchBody: Record<string, unknown> | null = null;
     server.use(
       http.patch("/api/v1/rate-plans/11", async ({ request }) => {
@@ -228,20 +229,9 @@ describe("RatePlanFormDialog — edit", () => {
     useAuthStore.getState().clear();
   });
 
-  it("supports an open-ended season: cleared To shows partial trigger text and is omitted from the payload", async () => {
+  it("supports an open-ended season: cleared To shows partial trigger text and PATCHes explicit null", async () => {
     setReservationsUser();
     installBaseHandlers(42);
-    const season: RatePlan = {
-      id: 11,
-      property: 7,
-      name: "Summer 2026",
-      currency: 42,
-      price_basis: "gross",
-      effective_from: "2026-06-01",
-      effective_to: "2026-09-30",
-      is_active: true,
-      notes: "",
-    };
     let patchBody: Record<string, unknown> | null = null;
     server.use(
       http.patch("/api/v1/rate-plans/11", async ({ request }) => {
@@ -275,10 +265,10 @@ describe("RatePlanFormDialog — edit", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
-    // The submit mapping sends `effective_to: undefined` for an empty To, so
-    // the key is dropped from the JSON body entirely (never "" / null).
+    // The submit mapping sends explicit `null` for an empty To (never "" or
+    // an omitted key) so the PATCH actually clears a previously-set end date.
     expect(patchBody!.effective_from).toBe("2026-07-04");
-    expect(patchBody).not.toHaveProperty("effective_to");
+    expect(patchBody!.effective_to).toBeNull();
     useAuthStore.getState().clear();
   });
 });

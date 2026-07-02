@@ -128,11 +128,17 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
 
   const handleSubmit = async (values: PropertyContactAssignmentWriteInput) => {
     setTopLevelError(null);
+    // An empty date input is "no bound on that end" — send explicit `null`,
+    // never the empty string DRF rejects as an invalid date, and never
+    // `undefined` (which a PATCH would omit, leaving a previously-set date
+    // uncleared).
+    const start_date = values.start_date || null;
+    const end_date = values.end_date || null;
     try {
       if (isCreate) {
-        await createMutation.mutateAsync(values);
+        await createMutation.mutateAsync({ ...values, start_date, end_date });
       } else {
-        const { role, start_date, end_date, is_primary } = values;
+        const { role, is_primary } = values;
         await updateMutation.mutateAsync({
           mappingId: props.assignment.id,
           input: { role, start_date, end_date, is_primary },
@@ -209,8 +215,8 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
           {/* Inclusive [start_date, end_date] tenure window, so days mode.
               BOTH ends are fully optional (no ordering refine in the schema —
               pre-existing): an open or empty window is cleared via the
-              popover's typed inputs. The submit mapping sends "" verbatim
-              (never null) — see handleSubmit above. */}
+              popover's typed inputs. The submit mapping sends empty ends as
+              explicit null so a PATCH clears them — see handleSubmit above. */}
           <DateRangePicker
             control={form.control}
             fromName="start_date"

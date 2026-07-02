@@ -9,6 +9,9 @@ import { useAuthStore } from "@/features/auth/store";
 import { ServiceFormDialog } from "../components/ServiceFormDialog";
 import type { PropertyService } from "../schemas";
 
+// The picker's popover inputs reuse the existing per-field labels.
+const SERVICE_DATE_LABELS = { from: /^applies from$/i, to: /^applies to$/i };
+
 function setReservationsUser() {
   useAuthStore.getState().setMe(
     {
@@ -196,13 +199,10 @@ describe("ServiceFormDialog — edit", () => {
     // The date band lives behind the DateRangePicker trigger — its typed
     // inputs portal to the popover, so open it before clearing.
     const picker = await openDateRange(userEvent, /^dates/i);
-    await waitFor(() => expect(picker.getByLabelText(/^applies from$/i)).toHaveValue("2026-06-01"));
-    await typeDateRange(
-      userEvent,
-      picker,
-      { from: "", to: "" },
-      { from: /^applies from$/i, to: /^applies to$/i },
+    await waitFor(() =>
+      expect(picker.getByLabelText(SERVICE_DATE_LABELS.from)).toHaveValue("2026-06-01"),
     );
+    await typeDateRange(userEvent, picker, { from: "", to: "" }, SERVICE_DATE_LABELS);
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
@@ -246,12 +246,7 @@ describe("ServiceFormDialog — edit", () => {
 
     // Partial window via the popover's typed inputs: retype From, clear To.
     const picker = await openDateRange(userEvent, /^dates/i);
-    await typeDateRange(
-      userEvent,
-      picker,
-      { from: "2026-05-15", to: "" },
-      { from: /^applies from$/i, to: /^applies to$/i },
-    );
+    await typeDateRange(userEvent, picker, { from: "2026-05-15", to: "" }, SERVICE_DATE_LABELS);
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());

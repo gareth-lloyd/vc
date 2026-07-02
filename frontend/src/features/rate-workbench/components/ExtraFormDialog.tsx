@@ -286,7 +286,7 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
             toName="applies_to"
             mode="days"
             id="extra-dates"
-            label={t("rate_workbench.inspector.extra_dialog.fields.dates")}
+            label={t("rate_workbench.inspector.fields.dates")}
             fromLabel={t("rate_workbench.inspector.fields.applies_from")}
             toLabel={t("rate_workbench.inspector.fields.applies_to")}
             fromError={

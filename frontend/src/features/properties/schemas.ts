@@ -690,7 +690,12 @@ export const ratePlanWriteInputSchema = z
     effective_from: z
       .string()
       .min(1, { message: "properties:errors.season_effective_from_required" }),
-    effective_to: z.string().optional(),
+    // Nullable so a cleared To can be sent as explicit `null` to CLEAR an
+    // existing end date on PATCH (making the season open-ended). `.optional()`
+    // alone would emit `undefined`, omit the field from the JSON body, and
+    // silently keep the old end date — same trap as documented on
+    // `propertyServiceWriteInputSchema` above.
+    effective_to: z.string().nullable().optional(),
     is_active: z.boolean().optional(),
     notes: z.string().trim().optional(),
   })
@@ -883,8 +888,12 @@ export type PropertyCapacityWriteInput = z.infer<typeof propertyCapacityWriteInp
 export const propertyContactAssignmentWriteInputSchema = z.object({
   contact: z.number().int(),
   role: propertyContactRoleSchema,
-  start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  // Nullable so an emptied tenure end can be sent as explicit `null` — DRF
+  // rejects "" as an invalid date, and an omitted key would leave a
+  // previously-set date uncleared on PATCH (see
+  // `propertyServiceWriteInputSchema` above).
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
   is_primary: z.boolean().optional(),
 });
 export type PropertyContactAssignmentWriteInput = z.infer<

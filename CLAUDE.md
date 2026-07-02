@@ -70,3 +70,9 @@ the underlying problem.
 - Prefer small, incremental, test-backed commits over large landings.
 - If a task seems to require breaking the quality gate (skipping tests,
   disabling a lint rule), stop and ask.
+- **Keep your context window lean.** Token-efficient test invocations are
+  documented per stack (`django_res/CLAUDE.md` §Tests, `frontend/CLAUDE.md`
+  §Testing). For large outputs of any kind, capture only what you need:
+  `git --no-pager diff --stat` before a full diff and scope diffs to a path
+  (`git diff -- <path>`); prefer the Read tool with a line range over `cat`ing
+  a large file (a single design doc can be several thousand tokens).

@@ -40,45 +40,77 @@ export function useRatePlanDetailsFanOut(seasonIds: number[]) {
   });
 }
 
-interface NightlyEditVars {
+export type PriceField = "nightly" | "weekly";
+
+interface PriceEditVars {
   bandId: number;
-  nightly: string;
+  field: PriceField;
+  value: string;
 }
-interface NightlyEditContext {
-  snapshot?: RatePlanDetail;
+interface PriceEditContext {
+  /** The field's cached value before the optimistic patch; undefined = nothing to roll back. */
+  previous?: string | null;
+}
+
+/** Patch one price field on one band across the plan's periods, clearing POA
+ * (a priced cell is not price-on-application). */
+function patchBandField(
+  detail: RatePlanDetail,
+  bandId: number,
+  field: PriceField,
+  value: string | null,
+): RatePlanDetail {
+  return {
+    ...detail,
+    periods: detail.periods.map((period) => ({
+      ...period,
+      bands: (period.bands ?? []).map((r) =>
+        r.id === bandId ? { ...r, [field]: value, is_poa: false } : r,
+      ),
+    })),
+  };
 }
 
 /**
- * Optimistic inline nightly-price edit for a matrix cell. Mirrors
+ * Optimistic inline price edit (nightly or weekly) for a matrix cell. Mirrors
  * `useToggleBookingNotePin`: patch the shared `ratePlanDetail` cache immediately,
  * PATCH the rule (clearing POA — a priced cell is not price-on-application),
  * roll back + toast on failure, and invalidate on settle so the timeline and
- * matrix reconcile from the server. Structural edits (party bands, weekly, POA,
- * new rows/columns) go through `RateBandFormDialog`, not this path.
+ * matrix reconcile from the server. Structural edits (party bands, POA, clearing
+ * a price, new rows/columns) go through `RateBandFormDialog`, not this path.
+ *
+ * Both fields of one band are fast-editable, so overlapping in-flight edits are
+ * possible: rollback restores only the failed field (never a whole-detail
+ * snapshot that would revert the other edit), and only the last mutation to
+ * settle invalidates (an earlier refetch would predate the later PATCH).
  */
-export function useOptimisticBandNightly(ratePlanId: number) {
+export function useOptimisticBandPrice(ratePlanId: number) {
   const queryClient = useQueryClient();
   const key = queryKeys.properties.ratePlanDetail(ratePlanId);
-  return useMutation<RateBand, Error, NightlyEditVars, NightlyEditContext>({
-    mutationFn: ({ bandId, nightly }) => updateRateBand(bandId, { nightly, is_poa: false }),
-    onMutate: async ({ bandId, nightly }) => {
+  const mutationKey = [...key, "inline-price"];
+  return useMutation<RateBand, Error, PriceEditVars, PriceEditContext>({
+    mutationKey,
+    mutationFn: ({ bandId, field, value }) =>
+      updateRateBand(
+        bandId,
+        field === "nightly" ? { nightly: value, is_poa: false } : { weekly: value, is_poa: false },
+      ),
+    onMutate: async ({ bandId, field, value }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const snapshot = queryClient.getQueryData<RatePlanDetail>(key);
-      if (snapshot) {
-        queryClient.setQueryData<RatePlanDetail>(key, {
-          ...snapshot,
-          periods: snapshot.periods.map((period) => ({
-            ...period,
-            bands: (period.bands ?? []).map((r) =>
-              r.id === bandId ? { ...r, nightly, is_poa: false } : r,
-            ),
-          })),
-        });
-      }
-      return { snapshot };
+      if (!snapshot) return {};
+      const band = snapshot.periods
+        .flatMap((period) => period.bands ?? [])
+        .find((r) => r.id === bandId);
+      queryClient.setQueryData<RatePlanDetail>(key, patchBandField(snapshot, bandId, field, value));
+      return band ? { previous: band[field] ?? null } : {};
     },
-    onError: (err, _vars, ctx) => {
-      if (ctx?.snapshot) queryClient.setQueryData(key, ctx.snapshot);
+    onError: (err, { bandId, field }, ctx) => {
+      if (ctx && ctx.previous !== undefined) {
+        queryClient.setQueryData<RatePlanDetail>(key, (current) =>
+          current ? patchBandField(current, bandId, field, ctx.previous ?? null) : current,
+        );
+      }
       const message =
         err instanceof ApiError
           ? err.detail
@@ -86,7 +118,9 @@ export function useOptimisticBandNightly(ratePlanId: number) {
       toast.error(message);
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: key });
+      if (queryClient.isMutating({ mutationKey }) === 1) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
     },
   });
 }

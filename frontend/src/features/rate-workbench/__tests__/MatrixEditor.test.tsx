@@ -28,7 +28,7 @@ const ratePlanDetail: RatePlanDetail = {
       date_to: "2026-06-28",
       is_active: true,
       coverage_gaps: [],
-      bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
+      bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650", weekly: "4200" }],
     },
     {
       id: 501,
@@ -160,6 +160,110 @@ describe("MatrixEditor", () => {
     const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
     expect(input).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Add a price for this band/i })).toBeNull();
+  });
+});
+
+describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
+  it("renders both price inputs with party-qualified accessible names", async () => {
+    renderEditor();
+    const nightly = await screen.findByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 2–4 pax");
+    const weekly = screen.getByLabelText("Weekly rate, 2026-06-01 to 2026-06-28, 2–4 pax");
+    expect(nightly).toHaveValue("650");
+    expect(weekly).toHaveValue("4200");
+  });
+
+  it("gives two bands in the same period distinct accessible names", async () => {
+    const twoBands: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [
+            { id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" },
+            { id: 3, period: 500, min_party: 5, max_party: 6, nightly: "900" },
+          ],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[twoBands]} canWrite commission={null} tax={null} />,
+    );
+    expect(
+      await screen.findByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 2–4 pax"),
+    ).toHaveValue("650");
+    expect(screen.getByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 5–6 pax")).toHaveValue(
+      "900",
+    );
+  });
+
+  it("shows a weekly-only band's price alongside an empty nightly input", async () => {
+    const weeklyOnly: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, weekly: "4550" }],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[weeklyOnly]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
+    );
+    expect(await screen.findByLabelText(/Weekly rate, 2026-06-01 to 2026-06-28/i)).toHaveValue(
+      "4550",
+    );
+    expect(screen.getByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i)).toHaveValue("");
+  });
+
+  it("PATCHes the rule with a new weekly (clearing POA) when the weekly cell is edited inline", async () => {
+    const user = userEvent.setup();
+    const patched: Array<{ id: string; body: unknown }> = [];
+    server.use(
+      http.patch("/api/v1/bands/:id", async ({ params, request }) => {
+        const body = await request.json();
+        patched.push({ id: String(params.id), body });
+        return HttpResponse.json({ ...ratePlanDetail.periods[0].bands[0], weekly: "4500" });
+      }),
+    );
+
+    renderEditor();
+    const input = await screen.findByLabelText(/Weekly rate, 2026-06-01 to 2026-06-28/i);
+    await user.clear(input);
+    await user.type(input, "4500");
+    await user.tab(); // blur commits
+
+    await waitFor(() => expect(patched).toHaveLength(1));
+    expect(patched[0].id).toBe("1");
+    expect(patched[0].body).toMatchObject({ weekly: "4500", is_poa: false });
+    expect(patched[0].body).not.toMatchObject({ nightly: expect.anything() });
+  });
+
+  it("resets an invalid draft on blur without issuing a PATCH", async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    server.use(
+      http.patch("/api/v1/bands/:id", () => {
+        calls += 1;
+        return HttpResponse.json(ratePlanDetail.periods[0].bands[0]);
+      }),
+    );
+
+    renderEditor();
+    const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    await user.clear(input);
+    await user.type(input, "1,200");
+    await user.tab();
+
+    // Give any (unexpected) request a tick to land.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toBe(0);
+    expect(input).toHaveValue("650");
   });
 });
 

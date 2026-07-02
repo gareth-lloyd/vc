@@ -423,7 +423,7 @@ export const ratePeriodWriteInputSchema = z
   });
 export type RatePeriodWriteInput = z.infer<typeof ratePeriodWriteInputSchema>;
 
-const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+export const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
 
 export const rateBandWriteInputSchema = z
   .object({

@@ -12,7 +12,7 @@ import { RateBandFormDialog } from "@/features/properties/components/RateBandFor
 import { useDeleteRateBand } from "@/features/properties/hooks";
 import { formatPartyGaps } from "@/features/properties/coverage";
 import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
-import { useOptimisticBandNightly } from "../hooks";
+import { useOptimisticBandPrice } from "../hooks";
 import { bandLabel, buildMatrix } from "../matrixModel";
 import { MatrixCell } from "./MatrixCell";
 
@@ -47,10 +47,10 @@ function bandCreateSeed(period: RatePeriod): { minParty: number; maxParty: numbe
 
 /**
  * Segment-first rate matrix for a chosen season. Rate periods are rows (each
- * owns an inclusive date range), party bands columns; a cell fast-edits nightly
- * inline (optimistic) or opens the rule dialog for structural edits. New bands
- * are always seeded on the grid's period/band axes, so raggedness is never
- * introduced here.
+ * owns an inclusive date range), party bands columns; a cell fast-edits its
+ * nightly and weekly prices inline (optimistic) or opens the rule dialog for
+ * structural edits. New bands are always seeded on the grid's period/band
+ * axes, so raggedness is never introduced here.
  */
 export function MatrixEditor({
   ratePlanId,
@@ -70,7 +70,7 @@ export function MatrixEditor({
   const matrix = useMemo(() => buildMatrix(periods), [periods]);
   const gapPeriods = periods.filter((p) => (p.coverage_gaps ?? []).length > 0);
 
-  const nightly = useOptimisticBandNightly(ratePlanId);
+  const price = useOptimisticBandPrice(ratePlanId);
   const deleteRule = useDeleteRateBand(ratePlanId);
 
   // One create-dialog state for all three entry points: empty-cell fill,
@@ -223,8 +223,8 @@ export function MatrixEditor({
                         cell={cell}
                         currencyCode={currencyCode}
                         canWrite={canWrite}
-                        onCommitNightly={(bandId, value) =>
-                          nightly.mutate({ bandId, nightly: value })
+                        onCommitPrice={(bandId, field, value) =>
+                          price.mutate({ bandId, field, value })
                         }
                         onEditBand={setEditingBand}
                         onFill={(c) =>

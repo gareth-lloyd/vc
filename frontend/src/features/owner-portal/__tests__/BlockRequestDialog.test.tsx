@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { blockCalendarHandlers } from "@/test/msw/handlers";
 import { renderWithProviders } from "@/test/render";
+import { clickDateRange, expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { BlockRequestDialog } from "../BlockRequestDialog";
 
 const toastSuccess = vi.fn();
@@ -31,13 +32,24 @@ function created(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// File-wide fake timers require every userEvent to advance them, or its
+// internal delays never elapse and the interaction hangs — so the setup is
+// paired here once rather than repeated (and mis-copied) per test.
+let user: ReturnType<typeof userEvent.setup>;
+
 beforeEach(() => {
   toastSuccess.mockClear();
   toastError.mockClear();
   server.use(...blockCalendarHandlers);
+  // Anchor the empty picker's default month (July 2026) so calendar-click
+  // tests don't depend on the real date.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 6, 2));
+  user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   server.resetHandlers();
 });
 
@@ -45,9 +57,11 @@ describe("BlockRequestDialog", () => {
   it("rejects a non-forward date range with an inline error", async () => {
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-08");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-01");
-    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-08-08", to: "2026-08-01" });
+    // Submit sits outside the popover, so this click also closes the picker —
+    // the zod error must still be visible next to the trigger.
+    await user.click(screen.getByRole("button", { name: /block dates/i }));
 
     expect(await screen.findByText(/end date must be after/i)).toBeInTheDocument();
   });
@@ -55,10 +69,11 @@ describe("BlockRequestDialog", () => {
   it("shows an inclusive nights summary as dates are entered", async () => {
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-08-01", to: "2026-08-08" });
 
-    // [1 Aug, 8 Aug) is 7 nights — the summary must not surface the exclusive 8th.
+    // [1 Aug, 8 Aug) is 7 nights — the summary must not surface the exclusive
+    // 8th. The dialog-level line stays visible with the popover closed.
     expect(await screen.findByTestId("block-nights-summary")).toHaveTextContent(
       "7 nights (1–7 Aug 2026)",
     );
@@ -75,11 +90,18 @@ describe("BlockRequestDialog", () => {
     const onOpenChange = vi.fn();
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={onOpenChange} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-08-01", to: "2026-08-08" });
+    await user.click(screen.getByRole("button", { name: /block dates/i }));
 
-    await waitFor(() => expect(body).toMatchObject({ property: 3, kind: "owner_stay" }));
+    await waitFor(() =>
+      expect(body).toMatchObject({
+        property: 3,
+        kind: "owner_stay",
+        date_from: "2026-08-01",
+        date_to: "2026-08-08",
+      }),
+    );
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -94,34 +116,41 @@ describe("BlockRequestDialog", () => {
     );
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
-    // Anchor July 2026 via the typed first night, then pick the last night on
-    // the calendar — the user never enters the exclusive checkout date.
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-07-21");
-    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /21 july 2026/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /25 july 2026/i }));
-    await userEvent.click(screen.getByRole("button", { name: /^block dates$/i }));
+    // Pick first and last night on the calendar — the user never enters the
+    // exclusive checkout date.
+    const picker = await openDateRange(user, /^dates/i);
+    await clickDateRange(user, picker, /21 july 2026/i, /25 july 2026/i);
+    expectTriggerRange(/^dates/i, "21–26 Jul 2026 · 5 nights");
+    await user.click(screen.getByRole("button", { name: /^block dates$/i }));
 
     await waitFor(() => expect(body).not.toBeNull());
     // Inclusive nights 21–25 → stored half-open with checkout the 26th.
     expect(body).toMatchObject({ date_from: "2026-07-21", date_to: "2026-07-26" });
   });
 
-  it("greys out an occupied day in the calendar picker", async () => {
+  it("defers the availability fetch until the picker opens, then greys out an occupied day", async () => {
+    let calendarCalls = 0;
     server.use(
-      http.get("/api/v1/owner/properties/3/calendar", () =>
-        HttpResponse.json({
+      http.get("/api/v1/owner/properties/3/calendar", () => {
+        calendarCalls += 1;
+        return HttpResponse.json({
           property_id: 3,
           can_request_block: true,
           cells: [{ date: "2026-07-23", available: false, reason: "booked" }],
-        }),
-      ),
+        });
+      }),
     );
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-07-21");
-    await userEvent.click(screen.getByRole("button", { name: /pick on calendar/i }));
-    expect(await screen.findByRole("button", { name: /23 july 2026/i })).toBeDisabled();
+    // The list only feeds the calendar popover — no fetch on mount.
+    expect(await screen.findByRole("button", { name: /^dates/i })).toBeInTheDocument();
+    expect(calendarCalls).toBe(0);
+
+    const picker = await openDateRange(user, /^dates/i);
+    await waitFor(() =>
+      expect(picker.getByRole("button", { name: /23 july 2026/i })).toBeDisabled(),
+    );
+    expect(calendarCalls).toBeGreaterThan(0);
   });
 
   it("maps a 409 conflict to a top-level alert and stays open", async () => {
@@ -136,9 +165,9 @@ describe("BlockRequestDialog", () => {
     const onOpenChange = vi.fn();
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={onOpenChange} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-08-01", to: "2026-08-08" });
+    await user.click(screen.getByRole("button", { name: /block dates/i }));
 
     expect(await screen.findByText(/overlap an existing booking or block/i)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
@@ -153,9 +182,9 @@ describe("BlockRequestDialog", () => {
     );
     renderWithProviders(<BlockRequestDialog propertyId={3} open onOpenChange={() => {}} />);
 
-    await userEvent.type(screen.getByLabelText(/from/i), "2026-08-01");
-    await userEvent.type(screen.getByLabelText(/^to$/i), "2026-08-08");
-    await userEvent.click(screen.getByRole("button", { name: /block dates/i }));
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { from: "2026-08-01", to: "2026-08-08" });
+    await user.click(screen.getByRole("button", { name: /block dates/i }));
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
   });

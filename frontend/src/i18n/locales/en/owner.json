@@ -95,16 +95,14 @@
     "load_failed": "Couldn't load your blocked dates.",
     "dialog": {
       "title": "Block availability",
-      "description": "Hold these dates so they can't be booked.",
-      "nights_summary_one": "{{count}} night ({{range}})",
-      "nights_summary_other": "{{count}} nights ({{range}})"
+      "description": "Hold these dates so they can't be booked."
     },
     "fields": {
+      "dates": "Dates",
       "date_from": "From",
       "date_to": "To",
       "kind": "Reason",
-      "notes": "Notes",
-      "pick_dates": "Pick on calendar"
+      "notes": "Notes"
     },
     "kind": {
       "owner_stay": "Owner stay",

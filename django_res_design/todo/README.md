@@ -14,6 +14,8 @@ file is one ticket. Filenames encode `<bucket>-<id>-<short-slug>.md`.
   that block a slice of implementation until answered.
 - **`gap-*`** — designed-but-unbuilt surface area (empty URL files,
   uncovered endpoint sets, frontend placeholders).
+- **`refactor-*`** — no behaviour change; consolidate duplicated
+  patterns / decompose god-modules before the copy count compounds.
 - **`inv-*`** — investigations the audit flagged as "noticed but didn't
   fully chase". Each becomes a ticket if it turns up a real issue.
 

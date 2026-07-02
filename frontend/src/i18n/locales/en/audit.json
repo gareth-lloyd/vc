@@ -25,6 +25,7 @@
     "arrow": "→"
   },
   "filters": {
+    "dates": "Dates",
     "from": "From",
     "to": "To",
     "clear": "Clear"

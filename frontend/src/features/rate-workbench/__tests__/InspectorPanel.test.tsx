@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
+import { openDateRange, typeDateRange } from "@/test/dateRange";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { InspectorPanel } from "../components/InspectorPanel";
@@ -144,8 +145,15 @@ describe("InspectorPanel", () => {
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText("Name"), "Long stay");
     await user.type(within(dialog).getByLabelText("Amount"), "15");
-    await user.type(within(dialog).getByLabelText("Valid from"), "2026-06-01");
-    await user.type(within(dialog).getByLabelText("Valid to"), "2026-09-30");
+    // The validity window lives behind the DateRangePicker trigger — its typed
+    // inputs portal to the popover, not the dialog subtree.
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(
+      user,
+      picker,
+      { from: "2026-06-01", to: "2026-09-30" },
+      { from: /^valid from$/i, to: /^valid to$/i },
+    );
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(posted).toHaveLength(1));

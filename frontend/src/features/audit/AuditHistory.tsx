@@ -2,8 +2,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityList } from "@/components/data/ActivityList";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { UncontrolledDateRangePicker } from "@/components/form/UncontrolledDateRangePicker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -109,8 +108,6 @@ export function AuditHistory({
   const { t } = useTranslation("audit");
   // Unique per instance — the property History tab mounts two side by side.
   const baseId = useId();
-  const fromId = `${baseId}-from`;
-  const toId = `${baseId}-to`;
   const [page, setPage] = useState(1);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -137,44 +134,28 @@ export function AuditHistory({
     created_before: to ? `${to}T23:59:59` : undefined,
   });
 
-  const updateFrom = (value: string) => {
-    setFrom(value);
+  // One-sided bounds stay legal — clearing either endpoint in the popover's
+  // typed inputs filters on just the other; a To-only bound shows partial
+  // trigger text rather than the placeholder. Any change resets paging.
+  const applyRange = (nextFrom: string, nextTo: string) => {
+    setFrom(nextFrom);
+    setTo(nextTo);
     setPage(1);
   };
-  const updateTo = (value: string) => {
-    setTo(value);
-    setPage(1);
-  };
-  const clearFilters = () => {
-    setFrom("");
-    setTo("");
-    setPage(1);
-  };
+  const clearFilters = () => applyRange("", "");
 
   const filterBar = (
     <div className="flex flex-wrap items-end gap-3">
-      <div className="space-y-1">
-        <Label htmlFor={fromId} className="text-xs">
-          {t("filters.from")}
-        </Label>
-        <Input
-          id={fromId}
-          type="date"
-          value={from}
-          onChange={(e) => updateFrom(e.target.value)}
-          className="h-8 w-auto"
-        />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor={toId} className="text-xs">
-          {t("filters.to")}
-        </Label>
-        <Input
-          id={toId}
-          type="date"
-          value={to}
-          onChange={(e) => updateTo(e.target.value)}
-          className="h-8 w-auto"
+      {/* Bounded width keeps the w-full trigger from stretching the filter bar. */}
+      <div className="w-64">
+        <UncontrolledDateRangePicker
+          id={`${baseId}-dates`}
+          mode="days"
+          label={t("filters.dates")}
+          fromLabel={t("filters.from")}
+          toLabel={t("filters.to")}
+          value={{ from, to }}
+          onChange={applyRange}
         />
       </div>
       {from || to ? (

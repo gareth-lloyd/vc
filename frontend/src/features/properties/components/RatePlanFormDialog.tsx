@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -117,9 +118,12 @@ export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
 
   const handleSubmit = async (values: RatePlanWriteInput) => {
     setTopLevelError(null);
+    // An empty To is "open-ended season" — send explicit `null`, never the
+    // empty string the API rejects as an invalid date, and never `undefined`
+    // (which a PATCH would omit, leaving a previously-set end date uncleared).
     const body: RatePlanWriteInput = {
       ...values,
-      effective_to: values.effective_to ? values.effective_to : undefined,
+      effective_to: values.effective_to || null,
     };
     try {
       if (isCreate) {
@@ -213,31 +217,30 @@ export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="season-effective-from">
-                {t("pricing.seasons.dialog.fields.effective_from")}
-              </Label>
-              <Input id="season-effective-from" type="date" {...form.register("effective_from")} />
-              {form.formState.errors.effective_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_from.message)}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="season-effective-to">
-                {t("pricing.seasons.dialog.fields.effective_to")}
-              </Label>
-              <Input id="season-effective-to" type="date" {...form.register("effective_to")} />
-              {form.formState.errors.effective_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {/* Inclusive [effective_from, effective_to] — the season covers both
+              endpoint days, so days mode. effective_to is optional: an
+              open-ended season is legal and common — clear the To typed input
+              in the popover (a calendar click always writes a closed range). */}
+          <DateRangePicker
+            control={form.control}
+            fromName="effective_from"
+            toName="effective_to"
+            mode="days"
+            id="season-dates"
+            label={t("pricing.seasons.dialog.fields.dates")}
+            fromLabel={t("pricing.seasons.dialog.fields.effective_from")}
+            toLabel={t("pricing.seasons.dialog.fields.effective_to")}
+            fromError={
+              form.formState.errors.effective_from
+                ? fieldErrorText(t, form.formState.errors.effective_from.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.effective_to
+                ? fieldErrorText(t, form.formState.errors.effective_to.message)
+                : undefined
+            }
+          />
 
           <div className="flex items-center gap-2">
             <Checkbox

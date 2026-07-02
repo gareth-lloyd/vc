@@ -266,6 +266,7 @@
           "currency": "Currency",
           "currency_placeholder": "Select currency",
           "price_basis": "Price basis",
+          "dates": "Dates",
           "effective_from": "Effective from",
           "effective_to": "Effective to",
           "is_active": "Active",
@@ -395,6 +396,7 @@
         "copy": "Guest-facing copy",
         "copy_placeholder": "Described to guests as…",
         "notes": "Internal notes",
+        "dates": "Dates",
         "applies_from": "Applies from",
         "applies_to": "Applies to",
         "is_active": "Active"
@@ -475,6 +477,7 @@
         "housekeeper": "Housekeeper",
         "owners_rep": "Owner's representative"
       },
+      "dates_label": "Dates",
       "start_label": "Start date",
       "end_label": "End date",
       "primary_label": "Primary contact",
@@ -748,6 +751,7 @@
       "edit_title": "Edit changeover rule",
       "fields": {
         "weekday": "Weekday",
+        "dates": "Dates",
         "effective_from": "From",
         "effective_to": "To",
         "notes": "Notes"
@@ -1043,6 +1047,7 @@
     "probe": {
       "title": "Price probe",
       "subtitle": "Check what a guest would pay for a stay — a live quote from the pricing engine.",
+      "dates": "Dates",
       "date_from": "Check-in",
       "date_to": "Check-out",
       "adults": "Adults",
@@ -1101,6 +1106,7 @@
         "currency_placeholder": "Select a currency",
         "amount": "Amount",
         "description": "Description",
+        "dates": "Dates",
         "applies_from": "Applies from",
         "applies_to": "Applies to",
         "valid_from": "Valid from",

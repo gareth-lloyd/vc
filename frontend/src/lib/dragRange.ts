@@ -3,8 +3,8 @@ import { addDays, format, parseISO } from "date-fns";
 const ISO = "yyyy-MM-dd";
 
 /** A drag-selected block range, half-open `[date_from, date_to)` — `date_to` is
- * exclusive, matching the typed/picker path (`DateRangeField` stores
- * `date_to = lastNight + 1`) and the backend's overlap predicates. */
+ * exclusive, matching the typed/picker path (`DateRangePicker` in nights mode
+ * stores `date_to = lastNight + 1`) and the backend's overlap predicates. */
 export interface DragRange {
   date_from: string;
   date_to: string;

@@ -103,6 +103,14 @@ describe("DateRangePicker trigger text", () => {
     );
     expect(trigger()).toHaveTextContent("12 Jul 2026 – …");
   });
+
+  it("shows an open start when only the end is set (To-only bound stays visible)", () => {
+    renderWithProviders(
+      <Harness mode="days" defaults={{ date_from: "", date_to: "2026-07-12" }} />,
+    );
+    expect(trigger()).toHaveTextContent("… – 12 Jul 2026");
+    expect(trigger()).not.toHaveTextContent("Select dates");
+  });
 });
 
 describe("DateRangePicker selection", () => {

@@ -95,9 +95,14 @@ describe("formatDateRangeEndpoints", () => {
     expect(formatDateRangeEndpoints("2026-07-12", "not-a-date")).toBe("12 Jul 2026 – …");
   });
 
-  it("returns empty when the start is missing or unparseable", () => {
-    expect(formatDateRangeEndpoints("", "2026-07-12")).toBe("");
-    expect(formatDateRangeEndpoints("not-a-date", "2026-07-12")).toBe("");
+  it("renders an open start when only the end is set (To-only filter bound)", () => {
+    expect(formatDateRangeEndpoints("", "2026-07-12")).toBe("… – 12 Jul 2026");
+    expect(formatDateRangeEndpoints("not-a-date", "2026-07-12")).toBe("… – 12 Jul 2026");
+  });
+
+  it("returns empty when neither endpoint is set", () => {
+    expect(formatDateRangeEndpoints("", "")).toBe("");
+    expect(formatDateRangeEndpoints("", "not-a-date")).toBe("");
   });
 
   it("renders an inverted range uncollapsed instead of garbling it", () => {

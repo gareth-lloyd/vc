@@ -153,16 +153,23 @@ export function formatWeekRangeCompact(dateFrom: string, dateTo: string): string
  * DateRangePicker trigger label: the two stored ISO endpoints formatted
  * **directly** (in nights mode `dateTo` is the exclusive checkout, shown
  * as-is), year always kept. A valid start with a missing/unparseable end
- * renders open ("12 Jul 2026 – …"); a missing/unparseable start renders ""
- * so the caller can show its placeholder. An inverted range (mid-edit via the
- * typed inputs) renders both endpoints uncollapsed rather than a garbled
- * "30–1 Jun 2026".
+ * renders open ("12 Jul 2026 – …"); a valid end with a missing/unparseable
+ * start renders open the other way ("… – 12 Jul 2026", e.g. a To-only audit
+ * filter bound — so the active bound stays visible at the trigger rather than
+ * collapsing to the placeholder); only when NEITHER endpoint is set does it
+ * return "" so the caller can show its placeholder. An inverted range (mid-edit
+ * via the typed inputs) renders both endpoints uncollapsed rather than a
+ * garbled "30–1 Jun 2026".
  */
 export function formatDateRangeEndpoints(dateFrom: string, dateTo: string): string {
   const from = parseISO(dateFrom);
-  if (!dateFrom || !isValid(from)) return "";
   const to = parseISO(dateTo);
-  if (!dateTo || !isValid(to)) {
+  const hasFrom = !!dateFrom && isValid(from);
+  const hasTo = !!dateTo && isValid(to);
+  if (!hasFrom) {
+    return hasTo ? `… – ${formatDate(to)}` : "";
+  }
+  if (!hasTo) {
     return `${formatDate(from)} – …`;
   }
   if (dateTo < dateFrom) {

@@ -234,7 +234,8 @@ describe("RateWorkbenchPage — period create", () => {
     const user = userEvent.setup();
     const picker = await screen.findByRole("combobox", { name: "Choose a season" });
     await user.click(picker);
-    await user.click(await screen.findByRole("option", { name: "Winter 2026" }));
+    // Option labels carry the plan's currency (a plan == a currency).
+    await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
 
     expect(await screen.findByText("This season has no rate periods yet.")).toBeInTheDocument();
     // Both the header button and the empty-state CTA offer period creation.
@@ -387,49 +388,43 @@ describe("RateWorkbenchPage — period create", () => {
     expectTriggerRange(/^dates/i, "29 Jun – 14 Jul 2026");
   });
 
-  it("creates the period under the clicked band's plan, not the matrix selection", async () => {
+  it("scopes the timeline to the picker-selected plan when several plans exist", async () => {
     setUser("reservations");
-    installMultiSeasonHandlers();
-    const posted: Array<Record<string, unknown>> = [];
+    installHandlers();
     const winterPeriod = {
-      id: 601,
+      id: 610,
       plan: 101,
-      name: "Early winter",
+      name: "Winter break",
       date_from: "2026-11-01",
       date_to: "2026-11-30",
       is_active: true,
       coverage_gaps: [],
-      bands: [],
+      bands: [{ id: 5, period: 610, min_party: 1, max_party: 8, nightly: "700" }],
     };
     server.use(
-      // Winter (plan 101) has a period; the matrix still defaults to Summer (100).
+      http.get("/api/v1/properties/7/rate-plans", () =>
+        HttpResponse.json(drfPage([season, winterSeason])),
+      ),
       http.get("/api/v1/rate-plans/101", () =>
         HttpResponse.json({ ...winterSeason, periods: [winterPeriod] }),
       ),
-      http.post("/api/v1/rate-plans/101/rate-periods", async ({ request }) => {
-        posted.push((await request.json()) as Record<string, unknown>);
-        return HttpResponse.json(
-          { ...winterPeriod, id: 602, name: "December", date_from: "2026-12-01" },
-          { status: 201 },
-        );
-      }),
     );
     setup("/properties/casa-sur/rate-workbench");
 
-    const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "Add a rate period starting 1 Dec 2026" }),
-    );
-    const dialog = await screen.findByRole("dialog");
-    expectTriggerRange(/^dates/i, "1 Dec 2026 – …");
-    await user.type(within(dialog).getByLabelText(/Name/i), "December");
-    const picker = await openDateRange(user, /^dates/i);
-    await typeDateRange(user, picker, { to: "2026-12-31" });
-    await user.click(within(dialog).getByRole("button", { name: /Save/i }));
+    // Default selection is Summer (the first plan with periods): its bands show,
+    // Winter's do not — the timeline reflects a single plan, not all of them.
+    expect(await screen.findByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Winter break, 1 Nov 2026/ })).toBeNull();
 
-    // The POST must hit plan 101 (the band's owner), not 100 (the matrix plan).
-    await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toMatchObject({ date_from: "2026-12-01", date_to: "2026-12-31" });
+    // Switching the top picker re-scopes the whole timeline to the other plan.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("combobox", { name: "Choose a season" }));
+    await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
+
+    expect(
+      await screen.findByRole("button", { name: /Winter break, 1 Nov 2026/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Standard, 1 Jun 2026/ })).toBeNull();
   });
 
   it("offers no per-period + to a non-writer", async () => {

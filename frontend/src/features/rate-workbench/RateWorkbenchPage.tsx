@@ -255,7 +255,12 @@ export function RateWorkbenchPage() {
       dayCount,
       windowFrom: from,
       windowTo: to,
-      ratePlanDetails: fanOut.details,
+      // The top rate-plan picker scopes the whole view: the rates lane (and the
+      // derived coverage lane below) reflect only the selected plan. For the
+      // common single-plan villa this is the one plan, unchanged; for a
+      // multi-currency property it keeps each currency's periods in their own
+      // coherent view rather than stacking mixed currencies in one lane.
+      ratePlanDetails: activeSeasonDetail ? [activeSeasonDetail] : [],
       coveragePlanId: activeMatrixRatePlanId,
       services: serviceList,
       extras: extraList,
@@ -311,26 +316,6 @@ export function RateWorkbenchPage() {
             {t("rate_workbench.matrix.title")}
           </h2>
           <div className="flex items-center gap-2">
-            {allSeasonDetails.length > 1 ? (
-              <Select
-                value={String(activeMatrixRatePlanId)}
-                onValueChange={(v) => setMatrixRatePlanId(Number(v))}
-              >
-                <SelectTrigger
-                  className="w-[220px]"
-                  aria-label={t("rate_workbench.matrix.season_picker")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {allSeasonDetails.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
             {/* Only when the plan has periods — a zero-period plan's create
                 affordance lives in the matrix empty state instead. Disabled,
                 never hidden, for non-writers (frontend/CLAUDE.md role gating). */}
@@ -357,37 +342,6 @@ export function RateWorkbenchPage() {
                   </TooltipContent>
                 </Tooltip>
               )
-            ) : null}
-            {/* Season lifecycle for the selected plan — ported from the retired
-                Pricing tab's SeasonsList dropdown. Writer-only (the whole menu
-                is a set of write actions). */}
-            {canWrite && activeSeasonDetail ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2"
-                    aria-label={t("pricing.seasons.row.menu_label")}
-                  >
-                    ···
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditingSeason(activeSeasonDetail)}>
-                    {t("pricing.seasons.row.edit")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDuplicatingSeason(activeSeasonDetail)}>
-                    {t("pricing.seasons.row.duplicate")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => setDeletingSeason(activeSeasonDetail)}
-                  >
-                    {t("pricing.seasons.row.delete")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             ) : null}
           </div>
         </div>
@@ -481,9 +435,69 @@ export function RateWorkbenchPage() {
       />
     ) : null;
 
+  // The rate-plan (currency) picker sits at the very top because it scopes the
+  // whole view — timeline periods, coverage, and the matrix all follow it.
+  // Rendered only when several plans exist (one per currency; most villas have
+  // exactly one, so no picker). The ··· menu edits/duplicates/deletes the
+  // selected plan; writer-only. Suppressed entirely when neither is applicable.
+  const planBar =
+    !isLoading && !isError && activeSeasonDetail && (allSeasonDetails.length > 1 || canWrite) ? (
+      <div className="flex items-center gap-2">
+        {allSeasonDetails.length > 1 ? (
+          <Select
+            value={String(activeMatrixRatePlanId)}
+            onValueChange={(v) => setMatrixRatePlanId(Number(v))}
+          >
+            <SelectTrigger
+              className="w-[240px]"
+              aria-label={t("rate_workbench.matrix.season_picker")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {allSeasonDetails.map((s) => (
+                <SelectItem key={s.id} value={String(s.id)}>
+                  {s.currency_code ? `${s.name} · ${s.currency_code}` : s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+        {canWrite ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2"
+                aria-label={t("pricing.seasons.row.menu_label")}
+              >
+                ···
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditingSeason(activeSeasonDetail)}>
+                {t("pricing.seasons.row.edit")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDuplicatingSeason(activeSeasonDetail)}>
+                {t("pricing.seasons.row.duplicate")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => setDeletingSeason(activeSeasonDetail)}
+              >
+                {t("pricing.seasons.row.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-6 p-6">
       {header}
+      {planBar}
       {body}
       {matrixSection}
       {inspectorSection}

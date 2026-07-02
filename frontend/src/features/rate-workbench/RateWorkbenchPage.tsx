@@ -216,12 +216,7 @@ export function RateWorkbenchPage() {
           lanes={lanes}
           windowStart={windowStart}
           dayCount={dayCount}
-          onGapClick={
-            canWrite
-              ? (gap) => setPeriodPrefill({ date_from: gap.from, date_to: gap.to })
-              : undefined
-          }
-          onAddAfter={canWrite ? (prefill) => setPeriodPrefill(prefill) : undefined}
+          onCreatePeriod={canWrite ? (prefill) => setPeriodPrefill(prefill) : undefined}
         />
       );
     }

@@ -201,6 +201,41 @@ describe("toLanes", () => {
     expect(meta(52).addAfter).toEqual({ date_from: "2026-09-01" });
   });
 
+  it("suppresses addAfter for periods running past the window, keeps it at the exact edge", () => {
+    const period = (id: number, date_from: string, date_to: string) => ({
+      id,
+      plan: 5,
+      name: `p${id}`,
+      date_from,
+      date_to,
+      coverage_gaps: [],
+      bands: [],
+    });
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Winter",
+          periods: [
+            // Ends beyond the 2026 window: the band renders clamped at Dec 31,
+            // so a "+" there would sit mid-period — no prefill.
+            period(50, "2026-11-01", "2027-02-25"),
+          ],
+        }),
+        detail({
+          id: 6,
+          name: "Year-end",
+          // Ends exactly on the window's last day: the true end IS visible.
+          periods: [period(60, "2026-10-01", "2026-12-31")],
+        }),
+      ],
+    });
+    const meta = (id: number) => lane(lanes, "rates").bands.find((b) => b.sourceId === id)!.meta;
+    expect(meta(50).addAfter).toBeUndefined();
+    expect(meta(60).addAfter).toEqual({ date_from: "2027-01-01" });
+  });
+
   it("scopes addAfter neighbours to the owning plan, ignoring other plans' periods", () => {
     const period = (id: number, plan: number, date_from: string, date_to: string) => ({
       id,

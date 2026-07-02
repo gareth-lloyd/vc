@@ -45,8 +45,9 @@ export interface BandMeta {
   noRates?: boolean;
   /** Rates: prefill for the "add a period after this one" affordance — absent
    * when the plan's next period is contiguous (a create there can never pass
-   * the DB EXCLUDE). `date_to` caps the range at the day before the plan's
-   * next period, when one exists. */
+   * the DB EXCLUDE) or when the period runs past the window (its band is
+   * clamped, so a "+" would sit visually mid-period). `date_to` caps the
+   * range at the day before the plan's next period, when one exists. */
   addAfter?: { date_from: string; date_to?: string };
   /** Coverage: an unpriced gap in the selected plan (clickable for writers). */
   isGap?: boolean;
@@ -212,8 +213,12 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
         null,
       );
       const dayAfter = addDaysIso(period.date_to, 1);
+      // A period running past the window renders clamped at the window edge,
+      // so its "+" would sit visually mid-period and prefill an offscreen
+      // date — suppressed; view next year to extend it. Ending exactly on the
+      // window's last day is fine: the true end is visible.
       const addAfter =
-        nextFrom === dayAfter
+        nextFrom === dayAfter || period.date_to > windowLast
           ? undefined
           : {
               date_from: dayAfter,

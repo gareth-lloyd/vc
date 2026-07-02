@@ -3,18 +3,17 @@ import { activeLocale } from "@/lib/format/date";
 import type { LaneModel } from "../toLanes";
 import { monthTicks } from "../yearWindow";
 import { TimelineLane } from "./TimelineLane";
+import type { CreatePeriodPrefill } from "./TimelineBand";
 
 interface WorkbenchTimelineProps {
   lanes: LaneModel[];
   windowStart: Date;
   dayCount: number;
-  /** Coverage lane interactivity: a gap-band click creates a period over the
-   * gap. Pass only for write-capable users — the handler is the affordance. */
-  onGapClick?: (gap: { from: string; to: string }) => void;
-  /** Rates lane interactivity: a hover-revealed "+" on a period creates a
-   * period in the free range after it, under the period's own plan. Same
-   * contract — the handler is the affordance, omit for read-only users. */
-  onAddAfter?: (prefill: { planId: number; date_from: string; date_to?: string }) => void;
+  /** Timeline write interactivity: coverage-gap clicks create a period over
+   * the gap; the rates lane's hover-revealed "+" creates a period in the free
+   * range after a period, under its own plan. Pass only for write-capable
+   * users — the handler is the affordance. */
+  onCreatePeriod?: (prefill: CreatePeriodPrefill) => void;
 }
 
 /** Whole-year timeline: a month header over the stacked concern lanes. */
@@ -22,8 +21,7 @@ export function WorkbenchTimeline({
   lanes,
   windowStart,
   dayCount,
-  onGapClick,
-  onAddAfter,
+  onCreatePeriod,
 }: WorkbenchTimelineProps) {
   const locale = activeLocale();
   const ticks = monthTicks(windowStart, dayCount);
@@ -51,8 +49,7 @@ export function WorkbenchTimeline({
           windowStart={windowStart}
           dayCount={dayCount}
           ticks={ticks}
-          onGapClick={onGapClick}
-          onAddAfter={onAddAfter}
+          onCreatePeriod={onCreatePeriod}
         />
       ))}
     </div>

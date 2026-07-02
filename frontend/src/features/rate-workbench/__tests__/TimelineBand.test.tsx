@@ -60,22 +60,22 @@ describe("TimelineBand", () => {
 describe("TimelineBand — add-after affordance", () => {
   it("shows a + that hands the writer the day after the period's end", async () => {
     const user = userEvent.setup();
-    const onAddAfter = vi.fn();
+    const onCreatePeriod = vi.fn();
     renderWithProviders(
       <TimelineBand
         band={rateBand}
         windowStart={windowStart}
         dayCount={dayCount}
-        onAddAfter={onAddAfter}
+        onCreatePeriod={onCreatePeriod}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Add a rate period starting 1 Sep 2026" }));
-    expect(onAddAfter).toHaveBeenCalledWith({ planId: 5, date_from: "2026-09-01" });
+    expect(onCreatePeriod).toHaveBeenCalledWith({ planId: 5, date_from: "2026-09-01" });
   });
 
   it("hands the writer a gap-bounded prefill when the next period caps it", async () => {
     const user = userEvent.setup();
-    const onAddAfter = vi.fn();
+    const onCreatePeriod = vi.fn();
     const bounded: WorkbenchBand = {
       ...rateBand,
       meta: { ...rateBand.meta, addAfter: { date_from: "2026-09-01", date_to: "2026-09-14" } },
@@ -85,11 +85,11 @@ describe("TimelineBand — add-after affordance", () => {
         band={bounded}
         windowStart={windowStart}
         dayCount={dayCount}
-        onAddAfter={onAddAfter}
+        onCreatePeriod={onCreatePeriod}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Add a rate period starting 1 Sep 2026" }));
-    expect(onAddAfter).toHaveBeenCalledWith({
+    expect(onCreatePeriod).toHaveBeenCalledWith({
       planId: 5,
       date_from: "2026-09-01",
       date_to: "2026-09-14",
@@ -106,7 +106,7 @@ describe("TimelineBand — add-after affordance", () => {
         band={contiguous}
         windowStart={windowStart}
         dayCount={dayCount}
-        onAddAfter={() => {}}
+        onCreatePeriod={() => {}}
       />,
     );
     expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
@@ -119,13 +119,57 @@ describe("TimelineBand — add-after affordance", () => {
     expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
   });
 
+  it("marks a band running past the window with an end-continuation cue instead of a +", () => {
+    const crossYear: WorkbenchBand = {
+      ...rateBand,
+      dateFrom: "2026-11-01",
+      dateTo: "2027-02-25",
+      dateToExclusive: "2027-02-26",
+      // toLanes suppresses the prefill for window-clipped periods.
+      meta: { ...rateBand.meta, addAfter: undefined },
+    };
+    renderWithProviders(
+      <TimelineBand
+        band={crossYear}
+        windowStart={windowStart}
+        dayCount={dayCount}
+        onCreatePeriod={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
+    expect(screen.getByTestId("band-continues-end")).toBeInTheDocument();
+    expect(screen.queryByTestId("band-continues-start")).toBeNull();
+  });
+
+  it("marks a band starting before the window with a start-continuation cue", () => {
+    const fromLastYear: WorkbenchBand = {
+      ...rateBand,
+      dateFrom: "2025-12-01",
+      dateTo: "2026-01-31",
+      dateToExclusive: "2026-02-01",
+    };
+    renderWithProviders(
+      <TimelineBand band={fromLastYear} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    expect(screen.getByTestId("band-continues-start")).toBeInTheDocument();
+    expect(screen.queryByTestId("band-continues-end")).toBeNull();
+  });
+
+  it("shows no continuation cues on a band fully inside the window", () => {
+    renderWithProviders(
+      <TimelineBand band={rateBand} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    expect(screen.queryByTestId("band-continues-start")).toBeNull();
+    expect(screen.queryByTestId("band-continues-end")).toBeNull();
+  });
+
   it("offers no + on non-rates bands even for writers", () => {
     renderWithProviders(
       <TimelineBand
         band={gapBand}
         windowStart={windowStart}
         dayCount={dayCount}
-        onAddAfter={() => {}}
+        onCreatePeriod={() => {}}
       />,
     );
     expect(screen.queryByRole("button", { name: /rate period starting/ })).toBeNull();
@@ -159,13 +203,13 @@ const noRatesBand: WorkbenchBand = {
 describe("TimelineBand — coverage gaps", () => {
   it("clicking a gap hands the writer its inclusive date range", async () => {
     const user = userEvent.setup();
-    const onGapClick = vi.fn();
+    const onCreatePeriod = vi.fn();
     renderWithProviders(
       <TimelineBand
         band={gapBand}
         windowStart={windowStart}
         dayCount={dayCount}
-        onGapClick={onGapClick}
+        onCreatePeriod={onCreatePeriod}
       />,
     );
     // The accessible name must promise the action, not just the information —
@@ -173,7 +217,11 @@ describe("TimelineBand — coverage gaps", () => {
     await user.click(
       screen.getByRole("button", { name: /No rates, 1 Sep 2026 to 30 Sep 2026 — add/ }),
     );
-    expect(onGapClick).toHaveBeenCalledWith({ from: "2026-09-01", to: "2026-09-30" });
+    expect(onCreatePeriod).toHaveBeenCalledWith({
+      planId: 5,
+      date_from: "2026-09-01",
+      date_to: "2026-09-30",
+    });
   });
 
   it("shows the add-a-period hint on hover for writers", async () => {
@@ -183,7 +231,7 @@ describe("TimelineBand — coverage gaps", () => {
         band={gapBand}
         windowStart={windowStart}
         dayCount={dayCount}
-        onGapClick={() => {}}
+        onCreatePeriod={() => {}}
       />,
     );
     await user.hover(screen.getByRole("button", { name: /No rates/ }));

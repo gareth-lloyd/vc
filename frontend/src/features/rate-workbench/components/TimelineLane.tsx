@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { LaneModel } from "../toLanes";
 import type { MonthTick } from "../yearWindow";
-import { TimelineBand } from "./TimelineBand";
+import { TimelineBand, type CreatePeriodPrefill } from "./TimelineBand";
 import { laneHeight } from "./timelineLayout";
 
 interface TimelineLaneProps {
@@ -9,8 +9,7 @@ interface TimelineLaneProps {
   windowStart: Date;
   dayCount: number;
   ticks: MonthTick[];
-  onGapClick?: (gap: { from: string; to: string }) => void;
-  onAddAfter?: (prefill: { planId: number; date_from: string; date_to?: string }) => void;
+  onCreatePeriod?: (prefill: CreatePeriodPrefill) => void;
 }
 
 /** One concern lane: a sticky-left label + a relative band track with month gridlines. */
@@ -19,8 +18,7 @@ export function TimelineLane({
   windowStart,
   dayCount,
   ticks,
-  onGapClick,
-  onAddAfter,
+  onCreatePeriod,
 }: TimelineLaneProps) {
   const { t } = useTranslation("properties");
   const maxSublane = lane.bands.reduce((m, b) => Math.max(m, b.sublane), 0);
@@ -59,8 +57,7 @@ export function TimelineLane({
               band={band}
               windowStart={windowStart}
               dayCount={dayCount}
-              onGapClick={onGapClick}
-              onAddAfter={onAddAfter}
+              onCreatePeriod={onCreatePeriod}
             />
           ))
         )}

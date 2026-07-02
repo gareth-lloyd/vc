@@ -19,6 +19,7 @@ interface AuthState {
   setUnauthenticated: () => void;
   clear: () => void;
   setPendingTfa: (pending: PendingTfa | null) => void;
+  markTfaEnrolled: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -56,4 +57,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       pendingTfa: null,
     }),
   setPendingTfa: (pending) => set({ pendingTfa: pending }),
+  // Optimistically flip tfa_method after a successful enrolment confirm so the
+  // boot proactive-redirect (which reads the store) sees "totp" immediately and
+  // doesn't bounce the user back to /enroll-2fa before /auth/me refetches.
+  markTfaEnrolled: () => set((s) => (s.user ? { user: { ...s.user, tfa_method: "totp" } } : {})),
 }));

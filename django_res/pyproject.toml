@@ -133,7 +133,10 @@ python_files = ["test_*.py", "tests.py"]
 # pytest-django gives each worker its own `test_villacollective_gw{n}` DB, so
 # isolation is identical to serial. For the single-test TDD inner loop, pass
 # `-n0` to run serially with readable output and clean `-x` behaviour.
-addopts = "-ra --strict-markers --reuse-db -n auto"
+# `--tb=short`: compact tracebacks on failure — keeps CI logs and (esp.) an
+# AI agent's captured output lean without dropping the failing assertion +
+# location. Global (also applies to `make test`, the pre-push hook, and CI).
+addopts = "-ra --strict-markers --reuse-db -n auto --tb=short"
 
 # ---------------------------------------------------------------------------
 # import-linter — the horizontal (app-to-app) layering contract.

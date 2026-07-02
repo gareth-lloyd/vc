@@ -5,7 +5,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api/errors";
-import type { PriceBasis } from "@/lib/pricing/netGross";
 import type { Extra } from "@/features/properties/schemas";
 import { usePriceProbe } from "../hooks";
 import { QuoteResultCard } from "./QuoteResultCard";
@@ -16,29 +15,15 @@ interface PriceProbePanelProps {
   extras: Extra[];
   /** periodId → "Season · Period" label, to name the winning period in the result. */
   periodLabels: Record<number, string>;
-  /**
-   * planId → price basis, used to reconcile the guest total (see
-   * QuoteResultCard). Optional so callers/tests that don't wire pricing seasons
-   * still work; the panel falls back to `defaultBasis` then "gross".
-   */
-  basisByPlan?: Record<number, PriceBasis>;
-  /** Property-level default basis (`prices_entered_as_effective`) fallback. */
-  defaultBasis?: PriceBasis;
 }
 
 /**
  * A read-only "what would a guest pay?" probe. Pick dates + party (+ optional
- * extras/code), hit the pricing engine, and render the guest-side breakdown.
- * `party` is `adults + children` (the engine's single occupancy input); owner
- * economics stay hidden (see QuoteResultCard / BUG-009).
+ * extras/code), hit the pricing engine, and render the guest-side breakdown
+ * plus owner economics (basis-aware since BUG-009 — see QuoteResultCard).
+ * `party` is `adults + children` (the engine's single occupancy input).
  */
-export function PriceProbePanel({
-  propertyId,
-  extras,
-  periodLabels,
-  basisByPlan,
-  defaultBasis,
-}: PriceProbePanelProps) {
+export function PriceProbePanel({ propertyId, extras, periodLabels }: PriceProbePanelProps) {
   const { t } = useTranslation("properties");
   const probe = usePriceProbe();
 
@@ -210,11 +195,6 @@ export function PriceProbePanel({
           quote={probe.data}
           periodLabel={
             probe.data.winning_period_id != null ? periodLabels[probe.data.winning_period_id] : null
-          }
-          basis={
-            (probe.data.plan_id != null ? basisByPlan?.[probe.data.plan_id] : undefined) ??
-            defaultBasis ??
-            "gross"
           }
         />
       ) : null}

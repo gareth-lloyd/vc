@@ -1132,7 +1132,10 @@
         "extras_heading": "Extras applied",
         "included_heading": "Included",
         "changeover_shifted": "Changeover shifted from {{from}}",
-        "owner_pending": "Owner net, commission and tax are pending the finance rewrite (BUG-009)."
+        "owner_heading": "Owner economics",
+        "net_to_owner": "Net to owner",
+        "commission": "Commission",
+        "tax": "Tax"
       }
     },
     "inspector": {

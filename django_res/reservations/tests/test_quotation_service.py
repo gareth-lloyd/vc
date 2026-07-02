@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.utils import timezone
 
 from accounts.enums import PersonPreferredMethod
-from properties.enums import PrefilledChangeOverDay
-from properties.models import PropertyService
+from properties.enums import CommissionCalcType, PrefilledChangeOverDay
+from properties.models import PropertyFinance, PropertyService
 from properties.models.settings import PropertySettings
 from reservations.enums import (
     BookingHoldReason,
@@ -607,3 +608,49 @@ def test_create_from_enquiry_seeds_line_inclusions_from_plan(
 
     line = quotation.lines.get()
     assert line.inclusions == "Daily maid service"
+
+
+@pytest.mark.django_db
+def test_line_total_is_the_gross_base_for_a_gross_plan_with_finance(
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+    rate_rule: RateBand,
+) -> None:
+    """BUG-009 consumer pin: a GROSS plan with non-zero finance must not
+    inflate `QuotationLine.total` — commission+tax are carved OUT of the
+    rate, and the snapshot carries the carve-out figures for the owner side.
+    """
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT,
+        commission_amount=Decimal("15"),
+        tax_percentage=Decimal("10"),
+        tax_is_exempt=False,
+    )
+    enquiry = Enquiry.objects.create(person=customer, email=customer.primary_email() or "")
+
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        [
+            {
+                "property": property_,
+                "date_from": date(2026, 6, 10),
+                "date_to": date(2026, 6, 17),  # 7 nights x 200 = 1400 gross
+                "adults": 2,
+                "children": 0,
+            },
+        ],
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    line = quotation.lines.get()
+    assert line.total == Decimal("1400.00")  # not 1400 + 189 + 140
+    snapshot = line.pricing_snapshot
+    assert snapshot["total"] == "1400.00"
+    assert snapshot["tax"] == "140.00"  # 1400 x 10%
+    assert snapshot["commission"] == "189.00"  # (1400 - 140) x 15%
+    assert snapshot["net_to_owner"] == "1071.00"
+    assert snapshot["price_basis"] == "gross"

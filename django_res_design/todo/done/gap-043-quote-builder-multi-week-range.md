@@ -24,7 +24,7 @@
   not correct … we do a date range … click all the weeks we want to quote") +
   the mockup at https://vc-new-res-system.netlify.app/ → **Rate Lookup**.
   Mirrors the legacy `QuoteGenerator`/`RateLookup` weeks model in
-  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md).
+  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md).
 - **Status:** Open — **replace-vs-coexist is an open question** (see Tension).
 - **Files:**
   - `frontend/src/features/quotations/QuoteCriteriaForm.tsx`,

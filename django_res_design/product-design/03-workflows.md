@@ -1,5 +1,11 @@
 # React SPA Workflow Specification — Villa Rental Management System
 
+> ⚠️ **Target design, not legacy description (2026-07-02, GAP-010).** This spec is prospective.
+> Where it characterises the *legacy* flows (including its "departures from the original"), treat
+> that with caution: it was written against a `ResSystem@main` tree missing the real quote/enquiry
+> screens. For what legacy actually did, see
+> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md).
+
 This document defines user-facing workflows for the new Django REST + React SPA replacement for the Blazor ResSystem. Each workflow specifies entry points, screen-by-screen steps, decision branches, state transitions, side effects, permissions, failure modes, and deliberate departures from the original.
 
 ## Cross-Cutting Conventions (reference for all workflows)

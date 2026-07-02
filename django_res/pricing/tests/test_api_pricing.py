@@ -10,9 +10,10 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.enums import DiscountKind, RuleKind
+from pricing.enums import DiscountKind, PriceBasis, RuleKind
 from pricing.models import Currency, Discount, RateBand
-from properties.models import Property, PropertyService
+from properties.enums import CommissionCalcType
+from properties.models import Property, PropertyFinance, PropertyService
 
 
 @pytest.fixture
@@ -464,3 +465,102 @@ def test_quote_bulk_carries_hero_image_url(
     assert by_id[property_.pk]["hero_image_url"] is not None
     assert ".jpg" in by_id[property_.pk]["hero_image_url"]
     assert by_id[no_hero.pk]["hero_image_url"] is None
+
+
+@pytest.mark.django_db
+def test_pricing_quote_bulk_gross_plan_total_is_the_line_sum_with_finance(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateBand,
+) -> None:
+    """BUG-009 consumer pin: the bulk endpoint's guest `total` for a GROSS
+    plan equals the line sum even with non-zero finance terms — commission
+    and tax are carved out of the rate, never added on top.
+    """
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT,
+        commission_amount=Decimal("15"),
+        tax_percentage=Decimal("10"),
+        tax_is_exempt=False,
+    )
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "currency": "GBP",
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",  # 7 nights x 200 = 1400 gross
+                    "adults": 4,
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    quote = response.json()["quotes"][0]
+    assert quote["available"] is True
+    assert quote["total"] == "1400.00"  # not 1400 + 189 + 140
+    # The carve-out figures must be present (breakdown is spread into the
+    # entry) — total alone can't distinguish "carved out" from "finance
+    # silently ignored".
+    assert quote["tax"] == "140.00"
+    assert quote["commission"] == "189.00"
+    assert quote["net_to_owner"] == "1071.00"
+    assert quote["price_basis"] == "gross"
+
+
+@pytest.mark.django_db
+def test_pricing_quote_bulk_net_plan_total_is_grossed_up(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateBand,
+) -> None:
+    """BUG-009 consumer pin, NET side: the bulk `total` is the grossed-up
+    figure (base + commission + tax), not the line sum — a consumer that
+    recomputed from the lines would under-quote and stay green on GROSS.
+    """
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT,
+        commission_amount=Decimal("15"),
+        tax_percentage=Decimal("10"),
+        tax_is_exempt=False,
+    )
+    plan = rule.period.plan
+    plan.price_basis = PriceBasis.NET
+    plan.save(update_fields=["price_basis"])
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        "/api/v1/pricing:quote-bulk",
+        data={
+            "currency": "GBP",
+            "requests": [
+                {
+                    "property_id": property_.pk,
+                    "date_from": "2026-06-10",
+                    "date_to": "2026-06-17",  # 7 nights x 200 = 1400 net
+                    "adults": 4,
+                },
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    quote = response.json()["quotes"][0]
+    assert quote["available"] is True
+    assert quote["rate_subtotal"] == "1400.00"
+    assert quote["total"] == "1830.07"  # 1400 + 247.06 + 183.01
+    assert quote["net_to_owner"] == "1400.00"
+    assert quote["price_basis"] == "net"

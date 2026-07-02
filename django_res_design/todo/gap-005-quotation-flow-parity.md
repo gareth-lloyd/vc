@@ -2,7 +2,8 @@
 
 - **Severity:** Gap (frontend + backend) — tracker
 - **Source:** stakeholder-driven parity review of the enquiry→quotation
-  flow against legacy `ResSystem/` (the combined `Booking.razor` screen),
+  flow against legacy `ResSystem/` (the combined `Booking.razor` screen —
+  the wrong baseline; see the ⚠️ correction in Context below),
   plus a second round of stakeholder UX feedback (2026-06-08) — the "spine
   UX overhaul" program below.
 - **Key files:**
@@ -20,6 +21,13 @@
     `ResSystem/Database/Data/TblVillaQuotationMaster.cs`
 
 ## Context — the one-screen → three-stage split
+
+> ⚠️ **Baseline corrected (2026-07-02, GAP-010).** The premise below is wrong: legacy was a
+> **4-screen flow**, not this single `Booking.razor` workspace. The concrete findings below mostly
+> survive (incl. preview-before-send, imagery, copy-to-Outlook, per-line discount, inclusions)
+> because `Booking.razor` is a component-sharing *sibling* — but the "one screen → three stages"
+> rationale does not. See
+> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md) §3.2/§4.
 
 Legacy `Booking.razor` (1,151 lines) is a single combined workspace:
 enquiry capture + quote pricing + full payment schedule + concierge +

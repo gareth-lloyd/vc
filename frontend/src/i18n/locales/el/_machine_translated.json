@@ -162,7 +162,11 @@
     "services.dialog.actions.saving",
     "errors.service_name_required",
     "errors.service_copy_required",
-    "errors.service_to_before_from"
+    "errors.service_to_before_from",
+    "rate_workbench.probe.result.owner_heading",
+    "rate_workbench.probe.result.net_to_owner",
+    "rate_workbench.probe.result.commission",
+    "rate_workbench.probe.result.tax"
   ],
   "quotations": [
     "builder.shortlist.line.manual_locked_hint",

@@ -23,7 +23,7 @@
   inquiries/quotes/calls, linked contacts, previous bookings) + the mockup at
   https://vc-new-res-system.netlify.app/ → **New Quote → Overview** panel and its
   accordions. Mirrors the legacy `ClientDetails` cards in
-  [GAP-010 §4](../gap-010-quote-enquiry-analyzed-wrong-codebase.md).
+  [GAP-010 §4](gap-010-quote-enquiry-analyzed-wrong-codebase.md).
 - **Status:** Open — consumes GAP-040 (tags) and GAP-041 (linked contacts).
 - **Files:**
   - `django_res/reservations/` — a per-guest profile read endpoint (or extend

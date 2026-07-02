@@ -93,5 +93,5 @@ fan out all bands, checked. Record the reversal in `04-pricing.md` and
 
 - [GAP-043](gap-043-quote-builder-multi-week-range.md) (bands render inside the
   week boxes). Spec amendments: `04-pricing.md` (fan-out decision),
-  `10-decisions.md`. Related: [BUG-009](../bug-009-price-basis-ignored-by-engine.md)
+  `10-decisions.md`. Related: [BUG-009](bug-009-price-basis-ignored-by-engine.md)
   (price_basis) touches the same engine path.

@@ -16,7 +16,7 @@
   census of the legacy `VillaSeasonRate` table (24-Apr-2025 prod snapshot), and the new
   engine/builder code. Revised same day after critique (projection seam, migrated-data
   audit, FG-001 interplay, render path). Spec-provenance caveat per
-  [GAP-010](../gap-010-quote-enquiry-analyzed-wrong-codebase.md): the quote-screen specs were
+  [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md): the quote-screen specs were
   reverse-engineered from the post-deletion codebase, so the currency selector was never
   a legacy behaviour. Sibling of [GAP-005](../gap-005-quotation-flow-parity.md) and
   [GAP-013](../gap-013-quote-builder-ux-feedback-loops.md).
@@ -197,7 +197,7 @@ currency per `04-pricing.md`.
   pricing against unaudited migrated currencies.
 - [FG-001](fg-001-booking-quotation-currency-drift.md) — **must be re-scoped by this
   ticket** (header-equality fix obsolete; invariant moves to the line currency).
-- [GAP-010](../gap-010-quote-enquiry-analyzed-wrong-codebase.md) — provenance: the
+- [GAP-010](gap-010-quote-enquiry-analyzed-wrong-codebase.md) — provenance: the
   selector came from the wrong-baseline analysis.
 - [GAP-013](../gap-013-quote-builder-ux-feedback-loops.md) — its item 3
   (currency-change confirm) is mooted by this ticket; coordinate.

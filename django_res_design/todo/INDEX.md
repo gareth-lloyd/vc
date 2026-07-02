@@ -13,7 +13,7 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-02, recounted from files): **109 done** (104 resolved + 5 dropped), **24 open**
+Scoreboard (2026-07-02, recounted from files): **110 done** (105 resolved + 5 dropped), **24 open**
 (incl. ✏️ revise and 🟨 partial). Resolved files moved to `done/`. (GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
@@ -96,12 +96,12 @@ follow-up.)
 | [GAP-053](done/gap-053-clients-tag-filters-and-inline-tag-editor.md) | Clients directory: VIP/Trade/Repeat chip filters + inline (no-dialog) client-only tag editor | ✅ resolved (2026-07-01) — widened `/clients` to agent-capacity + `?repeat=`/`?tags=` (`c0efa66`); VIP/Trade/Repeat one-click chips (`4faa233`); inline Popover tag editor (optimistic, audited, replaced TagsFormDialog, `5c1888e`) |
 | [GAP-054](gap-054-damage-claims-workflow-remainder.md) | Damage-claims workflow remainder: capture thresholds + Senior Op role, guest damages email + acceptance, capture-guard tightening, photo polish | ⬜ continues BUG-008; wf8 state-machine + photo upload already shipped (merge `c20dc9e`), these are the deferred permission/guest-facing pieces (`03-workflows.md:429/440/447`) |
 | [GAP-055](done/gap-055-occupancy-band-week-picker.md) | Quote builder: two-dimensional picker (week choice × occupancy bands) [GAP-044b] | ✅ resolved (2026-07-01) — lifts GAP-044's picker-suppression: a banded villa now shows the **week picker *and* the selected week's bands**; pick a week → its bands fan out → each saves at the chosen week's dates. Almost FE-only, zero new pricing cost (the `flex_days:0` reprice already returns the week's bands; only `stayRepriceSchema` needed the field). `resolvedBands` decoupled from reprice `available` (out-of-bracket stays saveable), checked-by-party-range-identity, `d68c1c1`/`37f6936`/`479b7e3`. Per-week chip "from" price / shortlist week-change / per-band override deferred |
+| [GAP-057](gap-057-2fa-enforcement-and-refund-stepup.md) | 2FA: staff enrolment enforcement + refund-execution step-up | ⬜ converted from Q-008 (policy decided 2026-07-02); 6-unit plan in ticket |
 
 ## Open product questions
 
 | Id | Title | Status |
 |---|---|---|
-| [Q-008](q-008-2fa-enforcement.md) | 2FA enforcement scope | ⬜ |
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-017](q-017-comms-direction-signals-vs-spine-position.md) | comms: signals-only sink, or move it down the spine? | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ Q1 answered (both % and fixed reductions, specific weeks) |
@@ -175,6 +175,7 @@ problem, fix, and commit. Listed here for traceability.
 | [Q-005](done/q-005-currency-display-base.md) | Reports base currency + FX → EUR base, daily snapshot |
 | [Q-006](done/q-006-owner-statement-scheduling.md) | Owner statements → monthly + on-demand, portal-only (PDF+CSV), auto-send deferred to v2 |
 | [Q-007](done/q-007-concierge-supplier-directory.md) | Concierge supplier shape → contact-only (`Person`/`Organisation`), no `Supplier` entity |
+| [Q-008](done/q-008-2fa-enforcement.md) | 2FA enforcement → all staff forced to enrol + always-fresh refund step-up; build plan → GAP-057 |
 | [Q-009](done/q-009-multi-site-inventory-sharing.md) | Multi-site inventory sharing → single site v1 |
 | [Q-011](done/q-011-email-template-inheritance.md) | Email template inheritance → system → site |
 | [Q-013](done/q-013-rate-card-incomplete-pricing.md) | Rate-card incomplete pricing → flag + manual quote |

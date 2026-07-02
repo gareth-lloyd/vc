@@ -178,6 +178,7 @@
       "line_edit": {
         "title": "Edit line",
         "description": "Adjust the dates, party size, or pricing. The server re-prices priced lines on save.",
+        "dates": "Dates",
         "date_from": "From",
         "date_to": "To",
         "notes_label": "Notes",

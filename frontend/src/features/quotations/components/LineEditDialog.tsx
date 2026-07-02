@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { toDecimalString } from "@/lib/format/money";
 import { applyApiErrorToForm } from "@/lib/api/forms";
@@ -124,16 +125,23 @@ export function LineEditDialog({ open, onOpenChange, quotationId, line }: Props)
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="qle-date-from">{t("detail.dialogs.line_edit.date_from")}</Label>
-              <Input id="qle-date-from" type="date" {...form.register("date_from")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qle-date-to">{t("detail.dialogs.line_edit.date_to")}</Label>
-              <Input id="qle-date-to" type="date" {...form.register("date_to")} />
-            </div>
-          </div>
+          {/* Half-open [date_from, date_to) stay — the backend engine prices
+              nights and the model enforces date_from < date_to, so nights mode
+              (checkout day stored exclusive). quotationLineWriteInputSchema has
+              no date messages of its own; only server-set errors from
+              applyApiErrorToForm land here — pass them raw, no fieldErrorText. */}
+          <DateRangePicker
+            control={form.control}
+            fromName="date_from"
+            toName="date_to"
+            mode="nights"
+            id="qle-dates"
+            label={t("detail.dialogs.line_edit.dates")}
+            fromLabel={t("detail.dialogs.line_edit.date_from")}
+            toLabel={t("detail.dialogs.line_edit.date_to")}
+            fromError={form.formState.errors.date_from?.message}
+            toError={form.formState.errors.date_to?.message}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

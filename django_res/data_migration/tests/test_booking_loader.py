@@ -16,46 +16,11 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.bookings import BookingLoader
-from data_migration.loaders.reservations import ClientLoader
-from pricing.models.currency import Currency
 from properties.models.property import Property
 from reservations.models.booking import Booking
 
-
-@pytest.fixture
-def seeded(db: None) -> Property:
-    from properties.models import Country, PropertyCategory, PropertyGroup, Region
-
-    country, _ = Country.objects.get_or_create(
-        iso2="GB", defaults={"name": "United Kingdom", "iso3": "GBR"}
-    )
-    region = Region.objects.create(country=country, name="South West", slug="south-west")
-    category = PropertyCategory.objects.create(name="Villa", slug="villa")
-    group = PropertyGroup.objects.create(name="Test group")
-    prop = Property.objects.create(
-        name="Test Villa",
-        display_name="Test Villa",
-        slug="test-villa",
-        category=category,
-        group=group,
-        region=region,
-        legacy_id="900",
-    )
-    # GAP-045 D5-3: the booking's customer is a `client-55` Person, written by
-    # ClientLoader from a legacy VillaClientDetails row (Id=55) — the loader now
-    # resolves it via `person_for_client`, no Guest in the graph.
-    ClientLoader()._process_row(
-        {
-            "Id": 55,
-            "FirstName": "Ada",
-            "LastName": "Lovelace",
-            "Email": "ada@example.com",
-            "MobileNo": "",
-        },
-        LoadReport(loader="client"),
-    )
-    Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="2")
-    return prop
+# The `seeded` fixture (Property + client-55 Person + GBP Currency) lives in
+# conftest.py — shared with the charge-item loader suite.
 
 
 def _row(**overrides: object) -> dict[str, object]:

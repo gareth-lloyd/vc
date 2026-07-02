@@ -7,7 +7,11 @@ dependency-aware orchestration harder to reason about.
 from __future__ import annotations
 
 from data_migration.base import Loader
-from data_migration.loaders.bookings import BookingLoader, PaymentLoader
+from data_migration.loaders.bookings import (
+    BookingChargeItemLoader,
+    BookingLoader,
+    PaymentLoader,
+)
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.finance import (
     GroupFinanceLoader,
@@ -90,6 +94,11 @@ LOADERS: dict[str, type[Loader]] = {
     QuotationLineLoader.name: QuotationLineLoader,
     BookingLoader.name: BookingLoader,
     PaymentLoader.name: PaymentLoader,
+    # Charge lines resolve their parent Booking by legacy_id, so they must
+    # follow BookingLoader; they run after PaymentLoader so legacy payment
+    # rows are already in place when the load (with the booking_total_changed
+    # resync suppressed) writes on top of them.
+    BookingChargeItemLoader.name: BookingChargeItemLoader,
     # External-ID backfill — registered last so every domain target row
     # (Property/Person/Enquiry/Quotation/Booking) already carries its
     # legacy_id when SyncRecord rows are written.

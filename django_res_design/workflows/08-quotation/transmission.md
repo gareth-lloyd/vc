@@ -14,7 +14,7 @@ Rendering the quote as HTML and sending it to the client, plus the Zoho push tha
 - `Id` (quotation id), `EnquireId`
 - `Email` (recipient), `FirstName`, `LastName`, `Title`
 - `ClientDetails`, `QuotationDetails` (line items)
-- `Content` (HTML-rendered quotation body fragment from the builder)
+- `Content` (HTML quotation body — **server-rendered** by `GetQuotationDetails`, then optionally hand-edited by staff in the builder's `ResEditor`; see the ⚠️ correction below)
 - Implicit: `userId` (staff sending)
 
 ### Process
@@ -58,10 +58,18 @@ The reason both paths exist: the in-app sender is convenient and tracked, but Ni
 See `10-decisions.md` "Quotation transmission supports two send paths" and the open follow-up on whether to deprecate the manual path in v2.
 
 ### Open questions
-- Render the HTML email server-side from a template (Django + Jinja or Mjml), not by inlining a CSS file.
+- ~~Render the HTML email server-side from a template (Django + Jinja or Mjml), not by inlining a CSS file.~~ Resolved — legacy already renders server-side from a template (see the ⚠️ correction below); the Django server-side render seam matches legacy.
 - Decide whether the Zoho push should be synchronous (so its failure prevents marking the quote sent) or asynchronous (so a transient Zoho outage doesn't block staff).
 
 ---
+
+> ⚠️ **CORRECTED (2026-07-02, GAP-010)** — this section's "client-side Blazor render" claim is
+> wrong; it was inferred from a tree missing the real quote screens. The quote HTML is rendered
+> **server-side** by `ResService.GetQuotationDetails` (`ResService.cs:2566-2634` on
+> `pinned-2025-04-03`): it reads `wwwroot/templates/quote-rate-lookup.html`, runs
+> `sp_getQuotationDetailsByQuotationId`, and substitutes `[#…#]` placeholders; the Blazor
+> `ResEditor` only lets staff edit that server-rendered HTML before send. See
+> [`../legacy-quote-enquiry-reference.md`](../legacy-quote-enquiry-reference.md) §3.3.
 
 ## (Implicit) Render quote HTML for email
 

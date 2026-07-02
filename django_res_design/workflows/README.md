@@ -35,7 +35,7 @@ These specifications are the source of truth for the **what** that the Django re
 - **Stored procedures everywhere**: the legacy system implements ~97 stored procedures (`sp_*` / `SP_*`) that hold business logic. Workflow files cite the SP names verbatim — these are the contracts the Django services replace.
 - **Sync flags drive integration outbound**: most mutation workflows set `SyncId = 0` and call `UpdateSyncId(module, id, 0, user, action)`; a separate sync step picks these up and pushes to WordPress.
 - **Three integration boundaries**: Zoho CRM (custom modules `VILLA_ENQUIRY`, `VILLA_QUOTATIONS`, `VILLA_BOOKING`, `VILLLA_MASTER` [sic]), the public WordPress site (`WP_Sync_*` endpoints), and Flywire payment gateway. See [`11-integrations/`](./11-integrations/).
-- **Known stubs**: several pieces are referenced in code but not committed — `AvailabilityCard`, `ConnectionTracker`, `ClientInfomation`, `AgentInfomation`. Workflow files mark these explicitly.
+- **Known stubs**: two pieces are referenced in code but genuinely never committed — `AvailabilityCard`, `ConnectionTracker`. Workflow files mark these explicitly. (`ClientInfomation` and `AgentInfomation` were previously listed here in error — they are real, committed components on the `pinned-2025-04-03` prod lineage, deleted from `main` in April 2025; see [`legacy-quote-enquiry-reference.md`](./legacy-quote-enquiry-reference.md) §3.1.)
 - **Known disabled features**: tokenized recurring charge to Flywire (`InvokeChargeApi`) and security-deposit pre-auth (`PreAuthPayReqDTO` flow) are commented out in source. They are documented because the Django redesign should decide whether to revive them.
 
 ## Relationship to the rest of `django_res_design/`

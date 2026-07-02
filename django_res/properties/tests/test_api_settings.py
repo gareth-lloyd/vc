@@ -287,6 +287,27 @@ def test_patch_settings_null_clears_calendar_url(
 
 
 @pytest.mark.django_db
+def test_patch_settings_null_clears_min_nights_rental_note(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`min_nights_rental_note` is inheritable, so `null` (SettingsTab's
+    `blankToNull` clearing an empty note on submit) must clear it, not 400.
+    Regression: an emptied note used to 400 the whole Operational form, and the
+    generic banner made it look like the calendar URL edit had failed."""
+    PropertySettings.objects.update_or_create(
+        property=property_, defaults={"min_nights_rental_note": "No New Year weeks"}
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"min_nights_rental_note": None},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["min_nights_rental_note"] is None
+
+
+@pytest.mark.django_db
 def test_patch_settings_invalid_calendar_url_returns_400(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
@@ -21,6 +22,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.enums import TfaMethod
+from accounts.middleware import tfa_enrollment_required_payload
 from accounts.models import User, UserSession
 from accounts.serializers import (
     LoginSerializer,
@@ -298,7 +300,16 @@ class TfaDisableView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request) -> Response:
-        TwoFactorService.disable(cast(User, request.user))
+        user = cast(User, request.user)
+        # Self-serve disable would be an enforcement bypass: an enrolled staff
+        # user passes the middleware, so :disable itself must refuse while
+        # enforcement applies. Admin :reset-2fa stays the escape hatch.
+        if settings.TFA_ENFORCED and user.is_staff:
+            return Response(
+                tfa_enrollment_required_payload(),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        TwoFactorService.disable(user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

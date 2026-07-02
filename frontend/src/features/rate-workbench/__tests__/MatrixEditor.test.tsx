@@ -304,30 +304,130 @@ describe("MatrixEditor — zero-period season (period create CTA)", () => {
 });
 
 describe("MatrixEditor — first-class band creation (Unit 4)", () => {
-  it("opens the band dialog from a period row button, prefilled above the covered range", async () => {
+  it("opens the band dialog from the trailing '+', prefilled above the covered range", async () => {
     const user = userEvent.setup();
     const posted: Array<Record<string, unknown>> = [];
     server.use(
-      http.post("/api/v1/periods/500/bands", async ({ request }) => {
+      http.post("/api/v1/periods/501/bands", async ({ request }) => {
         posted.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json(
-          { id: 9, period: 500, min_party: 5, max_party: 5, nightly: "800" },
+          { id: 9, period: 501, min_party: 7, max_party: 7, nightly: "800" },
           { status: 201 },
         );
       }),
     );
     renderEditor();
 
-    // Period 500 covers parties 2–4 → the new band starts at 5.
-    await user.click(await screen.findByRole("button", { name: /Add band — Early summer/i }));
+    // Period 501's band (5–6) sits in the final column, so the trailing "+" is
+    // its add affordance — seeded just above the covered range.
+    await user.click(await screen.findByRole("button", { name: /Add band — Peak/i }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText(/Minimum party/i)).toHaveValue(5);
-    expect(within(dialog).getByLabelText(/Maximum party/i)).toHaveValue(5);
+    expect(within(dialog).getByLabelText(/Minimum party/i)).toHaveValue(7);
+    expect(within(dialog).getByLabelText(/Maximum party/i)).toHaveValue(7);
     await user.type(within(dialog).getByLabelText(/Nightly price/i), "800");
     await user.click(within(dialog).getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toMatchObject({ min_party: 5, max_party: 5, nightly: "800" });
+    expect(posted[0]).toMatchObject({ min_party: 7, max_party: 7, nightly: "800" });
+  });
+
+  it("offers no trailing '+' for a row with a fillable cell right of its last band", async () => {
+    renderEditor();
+    // Period 500's band (2–4) has the empty 5–6 column to its right — that
+    // cell's fillable "+" IS the add affordance; a trailing button would
+    // duplicate it. (Both fillable cells share one accessible name.)
+    const fillButtons = await screen.findAllByRole("button", {
+      name: /Add a price for this band/i,
+    });
+    expect(fillButtons.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Add band — Early summer/i })).toBeNull();
+  });
+
+  it("keeps the trailing '+' when the cells right of the last band are covered", async () => {
+    // Columns are 2–4 and 3–6; period 500 prices only 2–4, and its empty 3–6
+    // cell is covered (party overlap) so it offers no fill "+" — the trailing
+    // button is the row's only way to add a band.
+    const overlapping: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
+        },
+        {
+          ...ratePlanDetail.periods[1],
+          bands: [{ id: 2, period: 501, min_party: 3, max_party: 6, nightly: "1200" }],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[overlapping]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
+    );
+    expect(
+      await screen.findByRole("button", { name: /Add band — Early summer/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no trailing '+' for a row whose band already covers every party size", async () => {
+    const unbounded: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [{ id: 1, period: 500, min_party: null, max_party: null, nightly: "650" }],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[unbounded]} canWrite commission={null} tax={null} />,
+    );
+    // The unbounded band leaves no party size to price — a "+" would only 4xx.
+    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    expect(screen.queryByRole("button", { name: /Add band — Early summer/i })).toBeNull();
+  });
+
+  it("offers no trailing '+' when a half-open band leaves nothing to seed", async () => {
+    // A 1+ band covers every party size: the create seed (1/1, since an
+    // unbounded max defeats the max+1 rule) would overlap it and 4xx.
+    const saturated: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [{ id: 1, period: 500, min_party: 1, max_party: null, nightly: "650" }],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[saturated]} canWrite commission={null} tax={null} />,
+    );
+    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    expect(screen.queryByRole("button", { name: /Add band — Early summer/i })).toBeNull();
+  });
+
+  it("keeps the trailing '+' for a half-open band that leaves smaller parties unpriced", async () => {
+    // A 2+ band leaves party 1 open — the 1/1 seed is valid, so the "+" stays.
+    const twoPlus: RatePlanDetail = {
+      ...ratePlanDetail,
+      periods: [
+        {
+          ...ratePlanDetail.periods[0],
+          bands: [{ id: 1, period: 500, min_party: 2, max_party: null, nightly: "650" }],
+        },
+      ],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[twoPlus]} canWrite commission={null} tax={null} />,
+    );
+    expect(
+      await screen.findByRole("button", { name: /Add band — Early summer/i }),
+    ).toBeInTheDocument();
   });
 
   it("turns coverage-gap warnings into clickable chips prefilled with the gap range", async () => {

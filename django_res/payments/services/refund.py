@@ -21,12 +21,21 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from accounts.enums import TfaMethod
+from accounts.services import TwoFactorService
 from core.api.permissions import actor_has_perm
-from core.exceptions import AuthorizationError, DomainValidationError, InvalidPaymentState
+from core.exceptions import (
+    AuthorizationError,
+    DomainValidationError,
+    InvalidPaymentState,
+    InvalidTfaCode,
+    TfaStepUpRequired,
+)
 from core.idempotency import find_by_meta_key, stamp_meta
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
@@ -235,7 +244,7 @@ class RefundService:
 
     @classmethod
     @transaction.atomic
-    def execute(cls, refund: Refund, *, actor: Any) -> Refund:
+    def execute(cls, refund: Refund, *, actor: Any, tfa_code: str | None = None) -> Refund:
         """APPROVED → EXECUTING.
 
         Creates one `Payment(purpose=REFUND, status=PROCESSING)` linked
@@ -281,6 +290,31 @@ class RefundService:
         ):
             raise AuthorizationError(
                 f"Approver cannot also execute a refund without {PERM_SELF_APPROVE!r}",
+            )
+
+        # Money-out step-up: require a fresh, single-use TOTP code from the
+        # acting user on every execute. Gated on TFA_ENFORCED so dev/test/seed
+        # stay ceremony-free; prod/staging (flag on) are fully protected. The
+        # system caller (actor=None) is exempt. MUST stay below the idempotency
+        # short-circuit above, so an idempotent retry never demands a code.
+        # verify_code's step claim runs inside this atomic block, so if execute
+        # rolls back the code is un-consumed (a failed execute doesn't burn it);
+        # exactly one *committed* execute can ever consume a given code.
+        if settings.TFA_ENFORCED and actor is not None:
+            if getattr(actor, "tfa_method", None) != TfaMethod.TOTP:
+                raise TfaStepUpRequired(
+                    "Enrol in two-factor authentication before executing refunds."
+                )
+            if not tfa_code:
+                raise TfaStepUpRequired(
+                    "A current two-factor code is required to execute a refund."
+                )
+            if not TwoFactorService.verify_code(actor, tfa_code):
+                raise InvalidTfaCode("That two-factor code is invalid or already used.")
+            logger.info(
+                "refund.stepup_verified",
+                refund_id=refund.pk,
+                actor_id=getattr(actor, "pk", None),
             )
 
         with log_operation(

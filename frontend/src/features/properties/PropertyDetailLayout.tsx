@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
-import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useProperty } from "./hooks";
 import { PROPERTY_TABS } from "./tabConfig";
 
@@ -19,18 +18,16 @@ export function PropertyDetailLayout() {
   const { id } = useParams<{ id: string }>();
   const query = useProperty(id);
   const isAdmin = useHasAdminRole();
-  const canWriteRates = useHasReservationsRole();
-  // The Rate Workbench is a wide UI (whole-year timeline + occupancy matrix), so
+  // The Rates tab is a wide UI (whole-year timeline + occupancy matrix), so
   // collapse the shared summary rail on that tab to give it the full width. The
   // rail subtree stays mounted (hideRail semantics), so other tabs are unchanged.
   const onWorkbench = useMatch("/properties/:id/rate-workbench") != null;
-  // The audit-log History tab is admin-only (Q-014); the Rate Workbench is a
-  // writer-only preview (reservations OR admin) while we build confidence. This
-  // only hides the nav entry — both routes stay mounted so a direct URL still
-  // resolves (the workbench is read-only in this phase, so that's acceptable).
+  // The audit-log History tab is admin-only (Q-014). The Rates tab is visible to
+  // everyone (read-only for viewers; its write affordances are role-gated
+  // inline) — GAP-060 dropped its writer-only nav gate when it absorbed the
+  // Pricing tab, which viewers could always see.
   const tabs = PROPERTY_TABS.filter((tab) => {
     if (tab.slug === "history") return isAdmin;
-    if (tab.slug === "rate-workbench") return canWriteRates;
     return true;
   });
 

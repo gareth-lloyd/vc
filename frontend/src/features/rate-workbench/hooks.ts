@@ -19,9 +19,9 @@ import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
 /**
  * Fan out one `useRatePlanDetail` query per season to assemble the whole rate
  * picture (periods + bands) the timeline needs — `usePropertyRatePlans` returns
- * only the plan envelopes. Keyed on the shared `ratePlanDetail` query key so the
- * cache is deduped with `PricingTab`'s `RatePlanDetailPanel`, and any RateBand
- * mutation invalidating that key refreshes the workbench too.
+ * only the plan envelopes. Keyed on the shared `ratePlanDetail` query key, so
+ * any period/band mutation invalidating that key refreshes the timeline and
+ * matrix from one cache.
  */
 export function useRatePlanDetailsFanOut(seasonIds: number[]) {
   return useQueries({

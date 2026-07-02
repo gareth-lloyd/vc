@@ -152,17 +152,15 @@ describe("RateWorkbenchPage", () => {
     expect(screen.getByText("Changeover")).toBeInTheDocument();
   });
 
-  it("shows the tab in nav for a writer but hides it for a read-only user", async () => {
-    setUser("reservations");
-    installHandlers();
-    setup("/properties/casa-sur/rate-workbench");
-    expect(await screen.findByRole("link", { name: "Rates" })).toBeInTheDocument();
-    useAuthStore.getState().clear();
-
+  it("shows the Rates tab in nav to a read-only user (GAP-060 dropped the writer-only gate)", async () => {
+    // The old Pricing tab had no visibility gate; when the Rates tab absorbed it,
+    // the workbench's writer-only nav gate was dropped so viewers keep read-only
+    // rate visibility (its write affordances stay role-gated inline).
     setUser("readonly", false);
+    installHandlers();
     setup("/properties/casa-sur/details");
     expect(await screen.findByText("details tab")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Rates" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Rates" })).toBeInTheDocument();
   });
 
   it("shows the empty state when the property has no configuration", async () => {

@@ -7,7 +7,6 @@ import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
 import { DetailsTab } from "../tabs/DetailsTab";
-import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
 
 const propertyFixture = {
   id: 5,
@@ -109,7 +108,7 @@ function setup(initial: string) {
       <Route path="/properties/:id" element={<PropertyDetailLayout />}>
         <Route index element={<Navigate to="details" replace />} />
         <Route path="details" element={<DetailsTab />} />
-        <Route path="pricing" element={<ComingSoonTab tabName="Pricing" />} />
+        <Route path="media" element={<div>media placeholder</div>} />
       </Route>
     </Routes>,
     { route: initial },
@@ -180,7 +179,7 @@ describe("PropertyDetailLayout", () => {
     expect(await screen.findByText("Master bedroom")).toBeInTheDocument();
   });
 
-  it("renders coming-soon on /pricing without making sub-resource calls", async () => {
+  it("renders a non-details tab without making Details sub-resource calls", async () => {
     let descriptionsCalls = 0;
     server.use(
       http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)),
@@ -191,8 +190,8 @@ describe("PropertyDetailLayout", () => {
       http.get("/api/v1/features", () => HttpResponse.json(emptyPage([]))),
       http.get("/api/v1/properties/5/rooms", () => HttpResponse.json(emptyPage([]))),
     );
-    setup("/properties/casa-norte/pricing");
-    expect(await screen.findByText(/Pricing — coming in next phase/i)).toBeInTheDocument();
+    setup("/properties/casa-norte/media");
+    expect(await screen.findByText("media placeholder")).toBeInTheDocument();
     expect(descriptionsCalls).toBe(0);
   });
 

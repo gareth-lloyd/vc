@@ -32,6 +32,10 @@ Files:
 - `05-improvements-over-original.md` — catalog of deliberate UX/UX departures with rationale.
 - `06-verification.md` — how to validate the design, stakeholder review checklist, open questions requiring user decisions before implementation begins.
 
+## Workflow specs (in `workflows/`)
+
+Per-workflow extraction of the legacy system's as-built behaviour — see [`workflows/README.md`](./workflows/README.md) for the domain index. For the legacy quote/enquiry screens specifically, start from [`workflows/legacy-quote-enquiry-reference.md`](./workflows/legacy-quote-enquiry-reference.md) — the corrected reference for what the pre-deletion legacy UI actually did, plus a trust map for the quote/enquiry specs.
+
 ## Relationship between the packages
 
 The two packages were authored by different design passes and have **slightly different mental models in places**. Resolve remaining discrepancies during implementation by asking the user and updating both packages.

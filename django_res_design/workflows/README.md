@@ -4,6 +4,8 @@ Comprehensive technical workflow specifications extracted from the legacy .NET 7
 
 These specifications are the source of truth for the **what** that the Django redesign in this directory must reproduce (or deliberately depart from). They complement the data-model design in `../README.md` and the higher-level product design in `../product-design/`.
 
+> **Legacy provenance caveat.** These specs were extracted from `ResSystem@main`, which is missing the real quote/enquiry Blazor pages (deleted April 2025 while still running in production). The corrected 4-screen quote/enquiry flow — and a trust map for which specs are grounded vs inferred — is in [`legacy-quote-enquiry-reference.md`](./legacy-quote-enquiry-reference.md).
+
 ## Reading order
 
 1. [`00-taxonomy.md`](./00-taxonomy.md) — naming convention, file structure, what counts as a "workflow"

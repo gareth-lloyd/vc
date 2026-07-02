@@ -553,6 +553,7 @@
         "housekeeper": "Housekeeper",
         "owners_rep": "Owner's representative"
       },
+      "dates_label": "Dates",
       "start_label": "Start date",
       "end_label": "End date",
       "primary_label": "Primary contact",

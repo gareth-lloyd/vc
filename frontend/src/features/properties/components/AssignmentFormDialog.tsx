@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -206,16 +206,31 @@ export function AssignmentFormDialog(props: AssignmentFormDialogProps) {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="assignment-start">{t("people.assignment_dialog.start_label")}</Label>
-              <Input id="assignment-start" type="date" {...form.register("start_date")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="assignment-end">{t("people.assignment_dialog.end_label")}</Label>
-              <Input id="assignment-end" type="date" {...form.register("end_date")} />
-            </div>
-          </div>
+          {/* Inclusive [start_date, end_date] tenure window, so days mode.
+              BOTH ends are fully optional (no ordering refine in the schema —
+              pre-existing): an open or empty window is cleared via the
+              popover's typed inputs. The submit mapping sends "" verbatim
+              (never null) — see handleSubmit above. */}
+          <DateRangePicker
+            control={form.control}
+            fromName="start_date"
+            toName="end_date"
+            mode="days"
+            id="assignment-dates"
+            label={t("people.assignment_dialog.dates_label")}
+            fromLabel={t("people.assignment_dialog.start_label")}
+            toLabel={t("people.assignment_dialog.end_label")}
+            fromError={
+              form.formState.errors.start_date
+                ? fieldErrorText(t, form.formState.errors.start_date.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.end_date
+                ? fieldErrorText(t, form.formState.errors.end_date.message)
+                : undefined
+            }
+          />
 
           <CheckboxLabel>
             <Checkbox

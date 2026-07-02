@@ -6,7 +6,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from django.shortcuts import get_object_or_404
-from rest_framework import generics, status, viewsets
+from rest_framework import generics, mixins, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,7 +25,16 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
-class DiscountViewSet(viewsets.ModelViewSet):
+class DiscountViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """`/discounts` — list/detail/update/delete. Creation lives under
+    `/properties/{id}/discounts`, where `property` comes from the URL."""
+
     queryset = Discount.objects.all()
     serializer_class = DiscountSerializer
     permission_classes = [IsReservationsWriter]

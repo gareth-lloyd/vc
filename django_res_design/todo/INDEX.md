@@ -13,10 +13,12 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 
-Scoreboard (2026-07-02, recounted from files): **111 done** (106 resolved + 5 dropped), **39 open**
+Scoreboard (2026-07-02, recounted from files): **113 done** (108 resolved + 5 dropped), **42 open**
 (incl. ✏️ revise and 🟨 partial; +13 from the 2026-07-02 audits — backend complexity:
 BUG-015/016/017, SMELL-020/021/022/023/024, GAP-061, Q-024; frontend complexity:
-BUG-018, GAP-062/063, REFACTOR-001). Resolved files moved to `done/`. (GAP-030–037
+BUG-018, GAP-062/063, REFACTOR-001). Resolved files moved to `done/`. (GAP-064–068 are
+the room-model cluster — legacy-grounded build tickets that superseded Q-019 and Q-021.)
+(GAP-030–037
 are the availability/commission/region/services cluster; GAP-038–044 are the
 enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
 GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
@@ -120,6 +122,11 @@ follow-up.)
 | [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
 | [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
 | [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ⬜ from 2026-07-02 frontend complexity audit; add eslint boundaries + break the two schema cycles |
+| [GAP-064](gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ⬜ supersedes Q-019 (attributes); legacy-grounded; needs A1 owner steer (seed catalog + which attrs imply a property feature) |
+| [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
+| [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
+| [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
+| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ carries the seeding half of Q-021; buildable now (deposit 30% / SD / commission % / 16:30 / 10:30); groups stay |
 
 ## Refactors
 
@@ -133,9 +140,9 @@ follow-up.)
 |---|---|---|
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ all questions answered + design decided 2026-07-02 (field shape, hazards, 8-unit build sketch in ticket); build not started |
-| [Q-019](q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ⬜ owner vocabulary decision needed — questions drafted (A1–A3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); GAP-024's safe `beds` relaxation already shipped |
+| [Q-019](done/q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ✅ superseded (2026-07-02) by **GAP-064/065/066** — legacy-grounded build tickets; the A1/A2 owner-vocabulary decision is carried in their "Owner steer" sections |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
-| [Q-021](q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ⬜ questions drafted (B1–B4, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); seeding half buildable now; groups stay (owner removal deemed premature) |
+| [Q-021](done/q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ✅ superseded (2026-07-02) — split into **GAP-067** (feature taxonomy + room→property derivation) and **GAP-068** (group-defaults seeding, buildable now); groups stay |
 | [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); tier-list confirmation drafted (C1, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)) |
 | [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; confirmation questions drafted (D1–D3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); docs+tests half can proceed ahead of answers |
 | [Q-024](q-024-signals-as-control-flow.md) | Cross-app money/lifecycle side-effects: stay on domain signals, or move to explicit orchestration? | ⬜ from 2026-07-02 complexity audit; architecture direction — blocks SMELL-020/BUG-015/GAP-061 |
@@ -144,7 +151,7 @@ follow-up.)
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **Q-019** — Structured room attributes (owner vocabulary; blocks room-attribute write surface)
+- **GAP-064 / GAP-065** — Structured room attributes + floor (owner vocabulary A1/A2; blocks the room-attribute write surface)
 - **Q-024** — Signals vs explicit orchestration for cross-app money side-effects (architecture; blocks SMELL-020, BUG-015, GAP-061)
 
 ---

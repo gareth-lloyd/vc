@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "@/features/properties/PropertyDetailLayout";
 import { RateWorkbenchPage } from "../RateWorkbenchPage";
@@ -279,10 +280,11 @@ describe("RateWorkbenchPage — period create", () => {
     // Summer 2026 (the plan with periods) is the default selection.
     await user.click(await screen.findByRole("button", { name: "Add period" }));
     const dialog = await screen.findByRole("dialog");
-    // Latest period ends 2026-08-31 → prefill starts the day after.
-    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+    // Latest period ends 2026-08-31 → prefill starts the day after (open end).
+    expectTriggerRange(/^dates/i, "1 Sep 2026 – …");
     await user.type(within(dialog).getByLabelText(/Name/i), "Autumn");
-    await user.type(within(dialog).getByLabelText(/^To$/i), "2026-09-30");
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { to: "2026-09-30" });
     await user.click(within(dialog).getByRole("button", { name: /Save/i }));
 
     await screen.findByText("Autumn", { exact: false });
@@ -324,9 +326,8 @@ describe("RateWorkbenchPage — period create", () => {
         name: "No rates, 29 Jun 2026 to 31 Aug 2026 — add a rate period",
       }),
     );
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-06-29");
-    expect(within(dialog).getByLabelText(/^To$/i)).toHaveValue("2026-08-31");
+    await screen.findByRole("dialog");
+    expectTriggerRange(/^dates/i, "29 Jun – 31 Aug 2026");
   });
 
   it("keeps coverage gaps inert for a non-writer", async () => {
@@ -361,8 +362,8 @@ describe("RateWorkbenchPage — period create", () => {
     expect(
       screen.queryByRole("button", { name: "Add a rate period starting 29 Jun 2026" }),
     ).toBeNull();
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
+    await screen.findByRole("dialog");
+    expectTriggerRange(/^dates/i, "1 Sep 2026 – …");
   });
 
   it("caps the + prefill at the day before the next period when there is a gap", async () => {
@@ -386,9 +387,8 @@ describe("RateWorkbenchPage — period create", () => {
     await user.click(
       await screen.findByRole("button", { name: "Add a rate period starting 29 Jun 2026" }),
     );
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-06-29");
-    expect(within(dialog).getByLabelText(/^To$/i)).toHaveValue("2026-07-14");
+    await screen.findByRole("dialog");
+    expectTriggerRange(/^dates/i, "29 Jun – 14 Jul 2026");
   });
 
   it("creates the period under the clicked band's plan, not the matrix selection", async () => {
@@ -425,9 +425,10 @@ describe("RateWorkbenchPage — period create", () => {
       await screen.findByRole("button", { name: "Add a rate period starting 1 Dec 2026" }),
     );
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText(/^From$/i)).toHaveValue("2026-12-01");
+    expectTriggerRange(/^dates/i, "1 Dec 2026 – …");
     await user.type(within(dialog).getByLabelText(/Name/i), "December");
-    await user.type(within(dialog).getByLabelText(/^To$/i), "2026-12-31");
+    const picker = await openDateRange(user, /^dates/i);
+    await typeDateRange(user, picker, { to: "2026-12-31" });
     await user.click(within(dialog).getByRole("button", { name: /Save/i }));
 
     // The POST must hit plan 101 (the band's owner), not 100 (the matrix plan).

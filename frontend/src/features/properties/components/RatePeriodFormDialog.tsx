@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { suggestRatePeriodEnd } from "@/lib/format/date";
+import { DateRangePicker } from "@/components/form/DateRangePicker";
 import { useCreateRatePeriod, useUpdateRatePeriod } from "../hooks";
 import { ratePeriodWriteInputSchema, type RatePeriod, type RatePeriodWriteInput } from "../schemas";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
@@ -95,7 +96,10 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
   // changes over on a fixed weekday, suggest the period's end date as soon as
   // `date_from` is known — but never clobber a value the user typed (only fill
   // while `date_to` is empty or still holds our own last suggestion). Edit mode
-  // keeps the stored value untouched.
+  // keeps the stored value untouched. Known limit: a calendar *click* on the
+  // start day commits a provisional one-day range (date_to = date_from), so the
+  // suggestion only fires for the typed From input and host prefills — fixing
+  // that would clobber deliberate single-day picks.
   const dateFrom = form.watch("date_from");
   const lastSuggestionRef = useRef<string | null>(null);
   useEffect(() => {
@@ -161,31 +165,29 @@ export function RatePeriodFormDialog(props: RatePeriodFormDialogProps) {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="rate-period-date-from">
-                {t("pricing.rate_period.dialog.fields.date_from")}
-              </Label>
-              <Input id="rate-period-date-from" type="date" {...form.register("date_from")} />
-              {form.formState.errors.date_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.date_from.message)}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rate-period-date-to">
-                {t("pricing.rate_period.dialog.fields.date_to")}
-              </Label>
-              <Input id="rate-period-date-to" type="date" {...form.register("date_to")} />
-              {form.formState.errors.date_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.date_to.message)}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {/* Inclusive [date_from, date_to] — a one-day period is legal. The
+              changeover suggestion effect above drives the fields via setValue,
+              so it works with the popover open or closed. */}
+          <DateRangePicker
+            control={form.control}
+            fromName="date_from"
+            toName="date_to"
+            mode="days"
+            id="rate-period-dates"
+            label={t("pricing.rate_period.dialog.fields.dates")}
+            fromLabel={t("pricing.rate_period.dialog.fields.date_from")}
+            toLabel={t("pricing.rate_period.dialog.fields.date_to")}
+            fromError={
+              form.formState.errors.date_from
+                ? fieldErrorText(t, form.formState.errors.date_from.message)
+                : undefined
+            }
+            toError={
+              form.formState.errors.date_to
+                ? fieldErrorText(t, form.formState.errors.date_to.message)
+                : undefined
+            }
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

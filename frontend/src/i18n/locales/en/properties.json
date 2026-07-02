@@ -398,6 +398,7 @@
         "fields": {
           "name": "Name (optional)",
           "name_placeholder": "Peak summer",
+          "dates": "Dates",
           "date_from": "From",
           "date_to": "To",
           "min_nights": "Minimum nights",

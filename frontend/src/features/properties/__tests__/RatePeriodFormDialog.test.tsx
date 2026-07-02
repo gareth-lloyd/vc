@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { useAuthStore } from "@/features/auth/store";
 import { RatePeriodFormDialog } from "../components/RatePeriodFormDialog";
 import type { RatePeriod } from "../schemas";
@@ -51,8 +52,8 @@ afterEach(() => {
 });
 
 async function fillValidPeriod() {
-  await userEvent.type(screen.getByLabelText(/^From$/i), "2026-06-01");
-  await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-30");
+  const picker = await openDateRange(userEvent, /^dates/i);
+  await typeDateRange(userEvent, picker, { from: "2026-06-01", to: "2026-06-30" });
 }
 
 describe("RatePeriodFormDialog — create", () => {
@@ -116,10 +117,11 @@ describe("RatePeriodFormDialog — create", () => {
     renderWithProviders(
       <RatePeriodFormDialog ratePlanId={11} open onOpenChange={() => {}} mode="create" />,
     );
-    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-06-30");
-    await userEvent.type(screen.getByLabelText(/^To$/i), "2026-06-01");
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(userEvent, picker, { from: "2026-06-30", to: "2026-06-01" });
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
+    // The zod error renders next to the trigger — visible with the popover closed.
     expect(await screen.findByText(/on or after From date/i)).toBeInTheDocument();
     expect(requested).toBe(false);
   });
@@ -235,7 +237,7 @@ describe("RatePeriodFormDialog — edit", () => {
 
     const nameInput = (await screen.findByLabelText(/Name/i)) as HTMLInputElement;
     await waitFor(() => expect(nameInput.value).toBe("Peak summer"));
-    expect((screen.getByLabelText(/^From$/i) as HTMLInputElement).value).toBe("2026-06-01");
+    expectTriggerRange(/^dates/i, "1–30 Jun 2026 · 30 days");
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Renamed peak");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -261,9 +263,9 @@ describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SME
     );
 
     // 2026-07-04 is a Saturday; sat changeover, 7-night min → Fri 10 Jul.
-    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
-    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
-    await waitFor(() => expect(dateTo.value).toBe("2026-07-10"));
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(userEvent, picker, { from: "2026-07-04" });
+    await waitFor(() => expect(picker.getByLabelText(/^To$/i)).toHaveValue("2026-07-10"));
   });
 
   it("never clobbers a date_to the user has already typed", async () => {
@@ -279,12 +281,12 @@ describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SME
       />,
     );
 
-    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
-    await userEvent.type(dateTo, "2026-09-19");
-    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await userEvent.type(picker.getByLabelText(/^To$/i), "2026-09-19");
+    await userEvent.type(picker.getByLabelText(/^From$/i), "2026-07-04");
 
     // The manually typed value survives even though a suggestion would apply.
-    expect(dateTo.value).toBe("2026-09-19");
+    expect(picker.getByLabelText(/^To$/i)).toHaveValue("2026-09-19");
   });
 
   it("makes no suggestion when the changeover day is 'any'", async () => {
@@ -300,10 +302,10 @@ describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SME
       />,
     );
 
-    await userEvent.type(screen.getByLabelText(/^From$/i), "2026-07-04");
-    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
+    const picker = await openDateRange(userEvent, /^dates/i);
+    await typeDateRange(userEvent, picker, { from: "2026-07-04" });
     await new Promise((r) => setTimeout(r, 0));
-    expect(dateTo.value).toBe("");
+    expect(picker.getByLabelText(/^To$/i)).toHaveValue("");
   });
 
   it("leaves the stored date_to untouched in edit mode", async () => {
@@ -320,9 +322,9 @@ describe("RatePeriodFormDialog — changeover end-date suggestion (GAP-025 / SME
       />,
     );
 
-    const dateTo = screen.getByLabelText(/^To$/i) as HTMLInputElement;
     await new Promise((r) => setTimeout(r, 0));
-    expect(dateTo.value).toBe("2026-06-30");
+    // The stored range stays untouched — asserted on the closed trigger.
+    expectTriggerRange(/^dates/i, "1–30 Jun 2026 · 30 days");
   });
 });
 
@@ -340,9 +342,10 @@ describe("RatePeriodFormDialog — create with initialValues (workbench prefill)
         minNightsRental={7}
       />,
     );
-    expect(screen.getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
-    // GAP-025 suggestion still fires off the prefilled start date.
-    await waitFor(() => expect(screen.getByLabelText(/^To$/i)).not.toHaveValue(""));
+    // The suggestion fires while the popover has never been opened and lands
+    // on the closed trigger: 1 Sep 2026 is a Tuesday; sat changeover, 7-night
+    // min → next Sat ≥ 7 days out is 12 Sep, so date_to is Fri 11 Sep.
+    await waitFor(() => expectTriggerRange(/^dates/i, "1–11 Sep 2026 · 11 days"));
   });
 
   it("never clobbers an initialValues date_to with the changeover suggestion", async () => {
@@ -358,8 +361,7 @@ describe("RatePeriodFormDialog — create with initialValues (workbench prefill)
         minNightsRental={7}
       />,
     );
-    expect(screen.getByLabelText(/^From$/i)).toHaveValue("2026-09-01");
     // A caller-provided end date wins over the weekday suggestion, always.
-    await waitFor(() => expect(screen.getByLabelText(/^To$/i)).toHaveValue("2026-09-30"));
+    await waitFor(() => expectTriggerRange(/^dates/i, "1–30 Sep 2026 · 30 days"));
   });
 });

@@ -19,7 +19,7 @@ const HISTORY = {
       request_type: "quote",
       created_at: "2026-05-01T00:00:00Z",
       quote_count: 3,
-      converted_booking: { reference: "VC1234", status: "deposit_paid" },
+      converted_booking: { id: 5001, reference: "VC1234", status: "deposit_paid" },
     },
     {
       id: 2,
@@ -64,6 +64,24 @@ describe("ContactEnquiryHistory", () => {
     expect(screen.getByText(/deposit paid/i)).toBeInTheDocument();
     // The unconverted enquiry shows no booking reference.
     expect(screen.getByText(/1 quote\b/i)).toBeInTheDocument();
+  });
+
+  it("links the enquiry reference and the converted-booking reference", async () => {
+    server.use(http.get("/api/v1/contacts/55/enquiries", () => HttpResponse.json(HISTORY)));
+
+    renderWithProviders(<ContactEnquiryHistory contactId={55} />);
+    await userEvent.click(await screen.findByRole("button", { name: /toggle enquiry history/i }));
+
+    await screen.findByText("E-2026-000001");
+    expect(screen.getByRole("link", { name: "E-2026-000001" })).toHaveAttribute(
+      "href",
+      "/enquiries/1",
+    );
+    // The converted-booking chip links to that booking's overview by its id.
+    expect(screen.getByRole("link", { name: "VC1234" })).toHaveAttribute(
+      "href",
+      "/bookings/5001/overview",
+    );
   });
 
   it("shows the empty state when the contact has no enquiries", async () => {

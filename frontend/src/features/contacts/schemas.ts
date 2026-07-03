@@ -156,6 +156,10 @@ export const contactSchema = z.object({
   // roles). Left `.optional()` like `tags`/`booking_count` so existing fixtures
   // stay assignable; consumers read `contact.contact_types ?? []`.
   contact_types: z.array(z.string()).optional(),
+  // Gate for the Properties tab: True when the contact holds any property
+  // assignment (active OR historical). Derived server-side; `.optional()` like
+  // the sibling derived fields so existing fixtures stay assignable.
+  has_property_assignments: z.boolean().optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left
@@ -229,6 +233,8 @@ export const contactListFiltersSchema = z.object({
 // its own copy of the schema; it superseded the old `/guests/{id}/enquiries`
 // surface, which was retired in D4.
 export const contactConvertedBookingSchema = z.object({
+  // `id` lets the enquiry-history chip link to /bookings/:id/overview.
+  id: z.number(),
   reference: z.string(),
   status: bookingStatusSchema,
 });

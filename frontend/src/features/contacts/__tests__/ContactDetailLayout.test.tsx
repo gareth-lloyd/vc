@@ -103,6 +103,68 @@ describe("ContactDetailLayout customer-360 profile (GAP-042)", () => {
   });
 });
 
+describe("ContactDetailLayout Properties tab gating", () => {
+  it("hides the Properties tab for a pure client", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          ...contactFixture,
+          contact_types: ["customer"],
+          has_property_assignments: false,
+        }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.queryByRole("link", { name: "Properties" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Properties tab for an owner", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          ...contactFixture,
+          contact_types: ["owner"],
+          has_property_assignments: false,
+        }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.getByRole("link", { name: "Properties" })).toBeInTheDocument();
+  });
+
+  it("shows the Properties tab for an agent", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          ...contactFixture,
+          contact_types: ["customer", "agent"],
+          has_property_assignments: false,
+        }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.getByRole("link", { name: "Properties" })).toBeInTheDocument();
+  });
+
+  it("shows the Properties tab for a client that actually holds a property link", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          ...contactFixture,
+          contact_types: ["customer"],
+          has_property_assignments: true,
+        }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.getByRole("link", { name: "Properties" })).toBeInTheDocument();
+  });
+});
+
 describe("ContactDetailLayout error differentiation", () => {
   it("shows 'Contact not found' on 404 without a retry button", async () => {
     server.use(

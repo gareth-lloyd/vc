@@ -6,7 +6,7 @@ from typing import Any
 
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models, transaction
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import (
     CharFilter,
@@ -54,6 +54,23 @@ def _active_roles_subquery() -> Subquery:
         .annotate(roles=ArrayAgg("role", distinct=True))
         .values("roles")
     )
+
+
+def _has_assignments_subquery() -> Exists:
+    """Correlated `Exists` — does this contact hold ANY property assignment?
+
+    Feeds the serializer's `has_property_assignments`, the gate for the FE
+    Properties tab. Counts active AND ended assignments (no `end_date` filter,
+    unlike `_active_roles_subquery`). An `Exists` correlated subquery, NOT a
+    JOIN/Count — it rides the same SELECT without multiplying rows or inflating
+    the paginator COUNT, so it's safe on the list action. Resolved at call time
+    through the reverse relation's model meta so `accounts` reaches
+    `properties.PropertyContactAssignment` without importing it (import-spine
+    floor), mirroring `_active_roles_subquery`.
+    """
+    assignment_model = Person._meta.get_field("property_assignments").related_model
+    assert assignment_model is not None and not isinstance(assignment_model, str)
+    return Exists(assignment_model._default_manager.filter(contact=OuterRef("pk")))
 
 
 def _guard_last_channel(contact: Person, *, keeping_emails: int, keeping_phones: int) -> None:
@@ -154,6 +171,8 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
                 booking_count=models.Count("bookings_as_customer", distinct=True),
                 # GAP-052: active property-assignment roles feed `contact_types`.
                 active_roles=_active_roles_subquery(),
+                # Gate for the FE Properties tab (active OR historical link).
+                has_property_assignments=_has_assignments_subquery(),
             )
         return qs
 

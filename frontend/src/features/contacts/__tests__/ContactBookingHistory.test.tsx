@@ -55,6 +55,23 @@ describe("ContactBookingHistory", () => {
     expect(screen.getByText(/deposit paid/i)).toBeInTheDocument();
   });
 
+  it("links each booking reference to its overview page", async () => {
+    server.use(http.get("/api/v1/contacts/55/bookings", () => HttpResponse.json(BOOKINGS)));
+
+    renderWithProviders(<ContactBookingHistory contactId={55} />);
+    await userEvent.click(await screen.findByRole("button", { name: /toggle previous bookings/i }));
+
+    await screen.findByText("VC1234");
+    expect(screen.getByRole("link", { name: "VC1234" })).toHaveAttribute(
+      "href",
+      "/bookings/1/overview",
+    );
+    expect(screen.getByRole("link", { name: "VC0099" })).toHaveAttribute(
+      "href",
+      "/bookings/2/overview",
+    );
+  });
+
   it("shows the empty state when the contact has no bookings", async () => {
     server.use(
       http.get("/api/v1/contacts/77/bookings", () =>

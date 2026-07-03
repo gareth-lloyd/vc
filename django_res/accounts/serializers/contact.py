@@ -80,6 +80,12 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     # detail (a person can be customer + owner + agent at once — show all hats).
     # Derived, never stored; distinct from `tags` (the client-only flag set).
     contact_types = serializers.SerializerMethodField()
+    # Gate for the FE Properties tab: True when the contact holds ANY property
+    # assignment (active OR historical). Reads the `has_property_assignments`
+    # Exists annotation from ContactViewSet when present (one correlated
+    # subquery, no N+1); falls back to a scoped `.exists()` for un-annotated
+    # callers (merge/anonymize responses).
+    has_property_assignments = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
@@ -105,6 +111,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "booking_count",
             "is_repeat_customer",
             "contact_types",
+            "has_property_assignments",
             "anonymized_at",
             "user",
             "emails",
@@ -134,6 +141,12 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         # GAP-042 (confirmed): a returning client is one with >= 1 booking,
         # property-agnostic. Distinct from the owner API's property-scoped flag.
         return self.get_booking_count(obj) >= 1
+
+    def get_has_property_assignments(self, obj: Person) -> bool:
+        annotated = getattr(obj, "has_property_assignments", None)
+        if annotated is None:
+            return obj.property_assignments.exists()
+        return bool(annotated)
 
     def get_contact_types(self, obj: Person) -> list[str]:
         # GAP-052: union of every capacity, sorted for a stable response. Values

@@ -3,6 +3,21 @@
 from django.db import migrations, models
 
 
+def _noop(apps, schema_editor):
+    pass
+
+
+def _backfill_nulls_to_blank(apps, schema_editor):
+    # Reverse path only: the column is about to be re-tightened to NOT NULL, so
+    # any NULLs written while it was nullable would break the AlterField reverse
+    # DDL. Coalesce them to '' first. RunPython sits *after* the AlterField so on
+    # reverse it runs *before* the NOT NULL DDL.
+    PropertySettings = apps.get_model("properties", "PropertySettings")
+    PropertySettings.objects.filter(min_nights_rental_note__isnull=True).update(
+        min_nights_rental_note=""
+    )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("properties", "0024_propertyservice"),
@@ -14,4 +29,5 @@ class Migration(migrations.Migration):
             name="min_nights_rental_note",
             field=models.TextField(blank=True, null=True),
         ),
+        migrations.RunPython(_noop, _backfill_nulls_to_blank),
     ]

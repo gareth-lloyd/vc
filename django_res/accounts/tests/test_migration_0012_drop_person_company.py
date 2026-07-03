@@ -21,6 +21,7 @@ import importlib
 from typing import Any
 
 import pytest
+from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.state import ProjectState
@@ -141,7 +142,13 @@ def test_backfill_links_dedupes_and_is_idempotent() -> None:
     finally:
         _delete_rows("accounts_person", person_pks)  # FK to org (PROTECT) → persons first
         _delete_rows("accounts_organisation", org_pks)
-        _migrate(_LEAF)
+        # Rolling `accounts` (bottom of the dependency spine) back to 0011
+        # cascades a project-wide reversal — every app that FKs into
+        # accounts_user (pricing, reservations, …) is un-applied too. Restoring
+        # only `accounts` would leave those reverted, so the transaction=True
+        # flush teardown TRUNCATEs a half-reverted schema and fails, poisoning
+        # the shared xdist worker DB. Restore the WHOLE project to its leaves.
+        call_command("migrate", verbosity=0)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -162,21 +169,27 @@ def test_forward_migration_drops_column_with_company_rows_present() -> None:
     person = _make_person(HPerson, company="Forward Travel Co")
     person_pk = person.pk
 
-    # Forward migration runs backfill (writes deferred FK) *then* drops the
-    # column in the same transaction — this is the line that used to blow up.
-    _migrate(_LEAF)
+    try:
+        # Forward migration runs backfill (writes deferred FK) *then* drops the
+        # column in the same transaction — this is the line that used to blow up.
+        _migrate(_LEAF)
 
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT agency_id FROM accounts_person WHERE id = %s", [person_pk])
-        (agency_id,) = cursor.fetchone()
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'accounts_person' AND column_name = 'company'"
-        )
-        company_column_exists = cursor.fetchone() is not None
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT agency_id FROM accounts_person WHERE id = %s", [person_pk])
+            (agency_id,) = cursor.fetchone()
+            cursor.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'accounts_person' AND column_name = 'company'"
+            )
+            company_column_exists = cursor.fetchone() is not None
 
-    assert company_column_exists is False, "0012 should have dropped the company column"
-    assert agency_id is not None, "backfill should have linked the person to an agency"
+        assert company_column_exists is False, "0012 should have dropped the company column"
+        assert agency_id is not None, "backfill should have linked the person to an agency"
 
-    _delete_rows("accounts_person", [person_pk])
-    _delete_rows("accounts_organisation", [agency_id])
+        _delete_rows("accounts_person", [person_pk])
+        _delete_rows("accounts_organisation", [agency_id])
+    finally:
+        # `_migrate(_BEFORE)` reverted the whole project (see the sibling test);
+        # `_migrate(_LEAF)` only restores `accounts`. Bring every app back to its
+        # leaf so the transaction=True flush teardown TRUNCATEs a whole schema.
+        call_command("migrate", verbosity=0)

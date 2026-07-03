@@ -27,7 +27,9 @@ follow-up.)
 _2026-07-03 additions (not in the 2026-07-02 count above): GAP-069
 (workbench carry-forward affordance) and SPEC-001 (rate-model date-authority
 exploration) from the far-future-rates investigation; GAP-070 (remove property
-groups) already landed on this branch. First `spec-*` ticket — see `README.md`._
+groups) already landed on this branch. First `spec-*` ticket — see `README.md`.
+GAP-071 (no manual security-deposit creation) from the `/bookings/383/payments`
+empty-state investigation._
 
 ---
 
@@ -140,6 +142,7 @@ groups) already landed on this branch. First `spec-*` ticket — see `README.md`
 | [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ ⚠️ superseded by **GAP-070** (which drops groups); its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
 | [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
 | [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
+| [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
 
 ## Refactors
 

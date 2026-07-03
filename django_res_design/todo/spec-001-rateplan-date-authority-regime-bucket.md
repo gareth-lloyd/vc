@@ -45,6 +45,61 @@ MAX(date_to)`) — and it *began life* as exactly that derivation at migration t
 (`pricing.py:322-323`). It only became a free-floating stored field that can disagree
 with reality. This is the root smell.
 
+## Problem (adjacent) — coexisting same-currency plans have no invariant, only a recency guess
+
+The schema permits **N `RatePlan` rows for the same `(property, currency)` overlapping
+the same dates**. Nothing at the DB level forbids it: the only per-plan invariant is
+`rateperiod_no_overlap` (`0015:25`, `plan_id WITH =`), which makes *periods* disjoint
+**within a plan** but says nothing **across plans**. So two plans on the same villa,
+same currency, can both claim to price the same night.
+
+When they do, disambiguation is entirely **`pick_preferred_plan`**
+(`currency.py:52-70`), a soft, ordering-dependent tiebreak, not a constraint:
+`_load_real_context` (`engine.py:515-543`) gathers every plan whose *envelope* covers
+the stay and picks `-effective_from, -pk` — **most recent `effective_from` wins, newest
+`pk` breaks a same-day tie.** That is a silent guess: the loser is masked with no error,
+and the winner flips if someone back-dates a plan or the rows reorder. The 18
+overlapping legacy pairs the docstring cites are all *cross-currency*; the *same-currency*
+overlap is unhandled by design because it wasn't supposed to happen — but nothing stops
+it being authored in the workbench today.
+
+### Should the constraint be "coexisting plans must differ by currency"?
+
+This is the tempting fix, and it's **wrong on two counts**:
+
+1. **Too strict on the wrong axis, too weak on the real one.** `price_basis`
+   (GROSS/NET) is also plan-level (`SMELL-021`), so a currency-only uniqueness key
+   would *permit* two same-currency plans that differ only by basis to overlap the same
+   night — and the engine treats `price_basis` as a **per-stay singleton**
+   (`engine.py:286-295`, the money authority): a stay drawing nights from a GROSS and a
+   NET plan at once has no coherent basis. Overlap is ambiguous regardless of currency.
+   Currency-difference neither prevents the ambiguity it should nor permits only what's
+   safe.
+2. **It doesn't match how selection actually works.** `pick_preferred_plan` resolves
+   same-currency overlap by *recency*, i.e. it treats a same-currency overlap as legal
+   and silently picks one. A "must differ by currency" constraint would make that path
+   dead code and reject data the engine currently (mis)handles — a semantics change
+   dressed as an integrity check.
+
+**The correct invariant is the regime-era one this SPEC already proposes:** *at most one
+active regime prices any `(property, currency, night)`.* That is **stricter** than
+currency-difference (it also forbids two same-currency plans sharing a night) but scoped
+to **active priced periods**, not plan envelopes — so it permits the *legitimate*
+coexistence (same-currency plans whose periods don't overlap; a scheduled currency/basis
+switch; explicitly-selected market segments where they exist) while forbidding the silent
+guess. Implemented, it's the widened `(property_id, currency_id)` EXCLUDE in the
+"Disjointness constraint widens" bullet below — which is why the two problems share a
+fix.
+
+Legitimate same-day coexistence that the invariant must **keep**: (a) different currency
+(the EUR/GBP market split — the partition is `(property, currency)`, so these never
+collide); (b) a scheduled future-dated switch where the new plan's *periods* start after
+the old plan's end; (c) if/when the price path grows an explicit segment/market selector
+(agent vs direct), plans chosen by the caller rather than auto-resolved. Today's price
+path has **no** such selector — selection is fully automatic via `pick_preferred_plan` —
+so today, same-currency same-night overlap is *only* ever the silent guess, never an
+intended alternative.
+
 ## Recommended direction — cut the fields; `RatePlan` = regime bucket
 
 Drop `effective_from`/`effective_to`. `RatePlan` becomes `property + currency +
@@ -173,6 +228,13 @@ even across a year boundary. Not worth it.
 4. Is the offer-item season-linkage drift worth addressing (and does that reopen any
    argument for plan-scoped offer-items — the one good idea the rejected year model
    had)?
+5. Same-currency plan overlap (adjacent problem): confirm the regime invariant "at most
+   one active regime per `(property, currency, night)`" is the intended rule — i.e. we
+   reject the "coexist iff different currency" constraint — and decide whether a cheap
+   interim guard is worth it (a validation-layer check rejecting a new plan/period that
+   overlaps an existing same-`(property, currency)` priced night) ahead of the full
+   widened-EXCLUDE cut, since `pick_preferred_plan`'s silent guess is a live foot-gun in
+   the workbench now.
 
 ## Acceptance (for the exploration, not a build)
 

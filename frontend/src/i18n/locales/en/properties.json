@@ -994,6 +994,27 @@
       "title": "Nothing scheduled in {{year}}",
       "body": "This property is configured, but none of it applies to the selected year. Try another year."
     },
+    "carry_forward": {
+      "button": "Carry rates forward",
+      "button_disabled_tooltip": "You do not have permission to change rates.",
+      "dialog_title": "Carry rates forward into {{year}}",
+      "dialog_description": "Copy this property's most recent earlier rates into {{year}} as editable rows, optionally raised by an uplift. You can adjust every figure afterwards.",
+      "summary": "Carry earlier rates forward into {{year}} · {{currency}}",
+      "uplift_label": "Uplift %",
+      "uplift_hint": "Raise every carried price by this percentage (0 to copy them unchanged).",
+      "submit": "Carry forward",
+      "submitting": "Carrying forward…",
+      "cancel": "Cancel",
+      "no_rates": "There are no earlier rates to carry forward for this property.",
+      "errors": {
+        "uplift_invalid": "Enter a valid uplift percentage.",
+        "uplift_negative": "The uplift can't be negative."
+      },
+      "toasts": {
+        "success": "Rates carried forward into {{year}}.",
+        "failed": "Couldn't carry rates forward. Please try again."
+      }
+    },
     "error": {
       "title": "Couldn't load rates",
       "body": "Something went wrong loading this property's rate configuration."

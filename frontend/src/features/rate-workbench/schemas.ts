@@ -150,6 +150,31 @@ export type DiscountWriteInput = z.infer<typeof discountWriteInputSchema>;
 export type DiscountWritePayload = Omit<DiscountWriteInput, "code"> & { code: string | null };
 
 // ---------------------------------------------------------------------------
+// Carry-forward (GAP-069) — POST /properties/{id}/rate-plans:carry-forward.
+// Promotes a projected future year into real editable rate rows. The only user
+// input is the uplift %; `currency` (a Currency CODE string, not the FK id) and
+// `target_year` are contextual and passed as props, not form fields.
+// ---------------------------------------------------------------------------
+
+export const carryForwardInputSchema = z.object({
+  // An uplift, never a reduction (reductions are Q-018's separate concern). The
+  // number input yields a number via the field's `setValueAs` (blank → 0), so
+  // the schema stays a plain `z.number()` like every other numeric form field.
+  uplift_pct: z
+    .number({ message: "properties:rate_workbench.carry_forward.errors.uplift_invalid" })
+    .min(0, { message: "properties:rate_workbench.carry_forward.errors.uplift_negative" }),
+});
+export type CarryForwardInput = z.infer<typeof carryForwardInputSchema>;
+
+/** Wire shape: the form's uplift plus the two contextual, non-form props.
+ * `currency` is the Currency CODE (e.g. "GBP"), which the endpoint resolves via
+ * `Currency.code`; sending the numeric FK id would 404. */
+export type CarryForwardPayload = CarryForwardInput & {
+  currency: string;
+  target_year: number;
+};
+
+// ---------------------------------------------------------------------------
 // Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
 // flat dict of decimal STRINGS; the schemas below parse the fields we render —
 // including owner economics (net_to_owner / commission / tax), trustworthy

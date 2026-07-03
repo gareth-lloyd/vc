@@ -1,6 +1,10 @@
-# 09 — Departures from the Original
+# Departures from the Original
 
-A table-by-table mapping of the legacy .NET model to the Django redesign. Use this to orient yourself relative to the .NET codebase or schema.
+The living, canonical table-by-table mapping of the legacy .NET model
+([`../legacy/`](../legacy/)) to the Django redesign. Use this to orient yourself
+relative to the .NET codebase or schema. The "Dropped from legacy" tails inside
+the frozen `backend/` specs restate slices of this mapping; this file is the
+canonical version.
 
 Disposition column legend:
 - **Split** — single legacy model decomposed into multiple Django models.

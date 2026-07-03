@@ -1,6 +1,11 @@
-# 10 — Decisions Log
+# Decisions Log
 
-Cross-reference of design decisions surfaced by the workflow audit (`workflows/**`) against the design docs. Keyed by **what we decided**, not by **what legacy did** — `09-departures.md` is the per-legacy-table mapping; this file is "why doesn't the design do X?" / "where did this come from?".
+The living log of design decisions surfaced by the workflow audit
+(`../legacy/workflows/**`) against the design docs. Keyed by **what we decided**,
+not by **what legacy did** — [`departures.md`](departures.md) is the
+per-legacy-table mapping; this file is "why doesn't the design do X?" / "where
+did this come from?". This is the canonical home for decision rationale; frozen
+specs under `backend/` and `product/` may restate a decision but this file wins.
 
 Each row carries a status:
 

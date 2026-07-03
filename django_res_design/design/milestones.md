@@ -1,4 +1,4 @@
-# 11 — Milestones (delivery phasing)
+# Milestones (delivery phasing)
 
 The rest of this package is a near-complete specification of the rebuild. It does **not**,
 on its own, say *what ships first*. The earlier docs use "v1" to mean "the rebuild" — a

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +13,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { formatDate } from "@/lib/format/date";
+import { formatDate, todayIso } from "@/lib/format/date";
 import { periodLabel } from "@/features/properties/periodLabel";
 import type { CommissionInput, TaxInput } from "@/lib/pricing/netGross";
 import { RateBandFormDialog } from "@/features/properties/components/RateBandFormDialog";
@@ -21,7 +22,7 @@ import { useDeleteRateBand, useDeleteRatePeriod } from "@/features/properties/ho
 import { formatPartyGaps } from "@/features/properties/coverage";
 import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import { useOptimisticBandPrice } from "../hooks";
-import { bandLabel, buildMatrix } from "../matrixModel";
+import { bandLabel, buildMatrix, isHistoricalPeriod } from "../matrixModel";
 import { MatrixCell } from "./MatrixCell";
 
 interface MatrixEditorProps {
@@ -113,9 +114,28 @@ export function MatrixEditor({
   // second band is a mode switch, not an in-grid action (the backend 400s it).
   const pricesByOccupancy = season?.prices_by_occupancy ?? false;
 
-  const matrix = useMemo(() => buildMatrix(periods), [periods]);
+  // Historical periods (window fully elapsed) clutter the grid with rates that
+  // can no longer change. Hide them by default; a toggle reveals them read-only.
+  // `today` is snapshotted once so filtering/memoisation stay stable per mount.
+  const today = useMemo(() => todayIso(), []);
+  const [showHistorical, setShowHistorical] = useState(false);
+  const historicalIds = useMemo(
+    () => new Set(periods.filter((p) => isHistoricalPeriod(p, today)).map((p) => p.id)),
+    [periods, today],
+  );
+  const visiblePeriods = useMemo(
+    () => (showHistorical ? periods : periods.filter((p) => !historicalIds.has(p.id))),
+    [periods, showHistorical, historicalIds],
+  );
+  // The band-create CTA (bandless plan) always targets a live period — you
+  // cannot add a band to a locked historical one.
+  const firstEditablePeriod = visiblePeriods.find((p) => !historicalIds.has(p.id)) ?? null;
+
+  const matrix = useMemo(() => buildMatrix(visiblePeriods), [visiblePeriods]);
+  // Coverage gaps are actionable only on live periods — a historical one is
+  // locked, so warning about its gaps would only offer a dead-end "fill" chip.
   const gapPeriods = pricesByOccupancy
-    ? periods.filter((p) => (p.coverage_gaps ?? []).length > 0)
+    ? visiblePeriods.filter((p) => !historicalIds.has(p.id) && (p.coverage_gaps ?? []).length > 0)
     : [];
 
   const price = useOptimisticBandPrice(ratePlanId);
@@ -184,211 +204,266 @@ export function MatrixEditor({
     );
   }
 
+  const historicalToggle =
+    historicalIds.size > 0 ? (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground text-xs"
+          aria-pressed={showHistorical}
+          onClick={() => setShowHistorical((v) => !v)}
+        >
+          {showHistorical
+            ? t("rate_workbench.matrix.hide_historical")
+            : t("rate_workbench.matrix.show_historical", { count: historicalIds.size })}
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-3">
-      {gapPeriods.length > 0 ? (
-        // Interactive chips must NOT sit in a live region (controls inside
-        // role="status" get re-announced on every render), so only the
-        // viewer's text-only variant is a status region.
-        <ul
-          role={canWrite ? undefined : "status"}
-          className="border-warning/40 bg-warning/10 text-warning space-y-1 rounded-md border px-3 py-2 text-xs"
-        >
-          {gapPeriods.map((p) =>
-            canWrite ? (
-              // Actionable warning: each gap is a chip that opens the band
-              // dialog prefilled with that exact inclusive party range.
-              <li key={p.id} className="flex flex-wrap items-center gap-1.5">
-                <span>
-                  {t("rate_workbench.matrix.coverage_gap_intro", { period: periodLabel(p) })}
-                </span>
-                {(p.coverage_gaps ?? []).map(([low, high]) => {
-                  const range = formatPartyGaps([[low, high]]);
-                  return (
-                    <Button
-                      key={range}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-5 px-1.5 text-xs"
-                      aria-label={t("rate_workbench.matrix.fill_gap_chip", { range })}
-                      onClick={() =>
-                        setCreatingBand({ periodId: p.id, minParty: low, maxParty: high })
-                      }
-                    >
-                      {range}
-                    </Button>
-                  );
-                })}
-              </li>
-            ) : (
-              <li key={p.id}>
-                {t("rate_workbench.matrix.coverage_gap", {
-                  period: periodLabel(p),
-                  ranges: formatPartyGaps(p.coverage_gaps ?? []),
-                })}
-              </li>
-            ),
-          )}
-        </ul>
-      ) : null}
-
-      {matrix.bands.length === 0 ? (
-        <div className="space-y-3">
-          {/* No bands anywhere → the grid renders no period rows, so surface the
-              periods (with their lifecycle menu) here; else a just-created
-              period would be unreachable for edit/delete. Writer-only. */}
-          {canWrite ? (
-            <ul className="divide-border border-border divide-y rounded-md border">
-              {periods.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
-                >
-                  <span className="text-foreground">
-                    {formatDate(p.date_from)} – {formatDate(p.date_to)}
-                    {p.name ? <span className="text-muted-foreground ml-2">{p.name}</span> : null}
-                  </span>
-                  <PeriodActionsMenu
-                    period={p}
-                    onEdit={setEditingPeriod}
-                    onDelete={setDeletingPeriod}
-                  />
-                </li>
-              ))}
+      {historicalToggle}
+      {visiblePeriods.length === 0 ? (
+        <EmptyState
+          title={t("rate_workbench.matrix.all_historical_title")}
+          description={t("rate_workbench.matrix.all_historical_body", {
+            count: historicalIds.size,
+          })}
+        />
+      ) : (
+        <>
+          {gapPeriods.length > 0 ? (
+            // Interactive chips must NOT sit in a live region (controls inside
+            // role="status" get re-announced on every render), so only the
+            // viewer's text-only variant is a status region.
+            <ul
+              role={canWrite ? undefined : "status"}
+              className="border-warning/40 bg-warning/10 text-warning space-y-1 rounded-md border px-3 py-2 text-xs"
+            >
+              {gapPeriods.map((p) =>
+                canWrite ? (
+                  // Actionable warning: each gap is a chip that opens the band
+                  // dialog prefilled with that exact inclusive party range.
+                  <li key={p.id} className="flex flex-wrap items-center gap-1.5">
+                    <span>
+                      {t("rate_workbench.matrix.coverage_gap_intro", { period: periodLabel(p) })}
+                    </span>
+                    {(p.coverage_gaps ?? []).map(([low, high]) => {
+                      const range = formatPartyGaps([[low, high]]);
+                      return (
+                        <Button
+                          key={range}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-5 px-1.5 text-xs"
+                          aria-label={t("rate_workbench.matrix.fill_gap_chip", { range })}
+                          onClick={() =>
+                            setCreatingBand({ periodId: p.id, minParty: low, maxParty: high })
+                          }
+                        >
+                          {range}
+                        </Button>
+                      );
+                    })}
+                  </li>
+                ) : (
+                  <li key={p.id}>
+                    {t("rate_workbench.matrix.coverage_gap", {
+                      period: periodLabel(p),
+                      ranges: formatPartyGaps(p.coverage_gaps ?? []),
+                    })}
+                  </li>
+                ),
+              )}
             </ul>
           ) : null}
-          <EmptyState
-            title={t("rate_workbench.matrix.no_rules")}
-            action={
-              canWrite && periods[0] ? (
-                <Button
-                  onClick={() =>
-                    setCreatingBand({ periodId: periods[0].id, ...bandCreateSeed(periods[0]) })
-                  }
-                >
-                  {t("rate_workbench.matrix.add_band")}
-                </Button>
-              ) : undefined
-            }
-          />
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="text-muted-foreground text-left">
-                <th className="py-2 pr-3 font-medium">{t("rate_workbench.matrix.segment")}</th>
-                {matrix.bands.map((b) => {
-                  const label = bandLabel(b);
-                  return (
-                    <th key={label ?? "any"} className="px-2 py-2 font-medium">
-                      {!pricesByOccupancy
-                        ? t("rate_workbench.matrix.flat_rate")
-                        : label != null
-                          ? t("rate_workbench.matrix.party_pax", { range: label })
-                          : t("rate_workbench.matrix.any_party")}
-                    </th>
-                  );
-                })}
-                {canWrite ? (
-                  <th className="py-2 pl-2">
-                    <span className="sr-only">{t("rate_workbench.matrix.add_band")}</span>
-                  </th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.segments.map((segment, row) => {
-                const rowCells = matrix.cells[row];
-                // The "+" always sits right of the row's last band: when an
-                // empty fillable cell is there, its own "+" is the add
-                // affordance; only otherwise (last band in the final column,
-                // or everything to its right covered) does the trailing
-                // column carry one. And when the create seed itself would
-                // overlap one of the period's bands (an unbounded band
-                // already covers it), saving could only 4xx — no "+" at all.
-                const lastBandCol = rowCells.reduce((acc, c, i) => (c.band ? i : acc), -1);
-                const period = periods.find((p) => p.id === segment.periodId);
-                const seed = period ? bandCreateSeed(period) : { minParty: 1, maxParty: 1 };
-                const seedCovered = (period?.bands ?? []).some(
-                  (b) =>
-                    (b.min_party == null || b.min_party <= seed.maxParty) &&
-                    (b.max_party == null || b.max_party >= seed.minParty),
-                );
-                const showTrailingAdd =
-                  pricesByOccupancy &&
-                  lastBandCol >= 0 &&
-                  !seedCovered &&
-                  !rowCells.some((c, i) => i > lastBandCol && c.fillable);
-                return (
-                  <tr key={segment.periodId} className="border-border border-t">
-                    <td className="py-2 pr-3 align-middle whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2">
-                        <span>
-                          {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
-                          {segment.name ? (
-                            <span className="text-muted-foreground ml-2">{segment.name}</span>
+
+          {matrix.bands.length === 0 ? (
+            <div className="space-y-3">
+              {/* No bands anywhere → the grid renders no period rows, so surface the
+              periods (with their lifecycle menu) here; else a just-created
+              period would be unreachable for edit/delete. Writer-only. */}
+              {canWrite ? (
+                <ul className="divide-border border-border divide-y rounded-md border">
+                  {visiblePeriods.map((p) => {
+                    const locked = historicalIds.has(p.id);
+                    return (
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
+                      >
+                        <span className={locked ? "text-muted-foreground" : "text-foreground"}>
+                          {formatDate(p.date_from)} – {formatDate(p.date_to)}
+                          {p.name ? (
+                            <span className="text-muted-foreground ml-2">{p.name}</span>
                           ) : null}
                         </span>
-                        {canWrite && period ? (
+                        {locked ? (
+                          <Badge variant="outline">
+                            {t("rate_workbench.matrix.historical_badge")}
+                          </Badge>
+                        ) : (
                           <PeriodActionsMenu
-                            period={period}
+                            period={p}
                             onEdit={setEditingPeriod}
                             onDelete={setDeletingPeriod}
                           />
-                        ) : null}
-                      </span>
-                    </td>
-                    {rowCells.map((cell, col) => (
-                      <td key={`${row}-${col}`} className="px-2 py-1 align-middle">
-                        <MatrixCell
-                          cell={cell}
-                          currencyCode={currencyCode}
-                          canWrite={canWrite}
-                          onCommitPrice={(bandId, field, value) =>
-                            price.mutate({ bandId, field, value })
-                          }
-                          onEditBand={setEditingBand}
-                          onFill={(c) =>
-                            setCreatingBand({
-                              periodId: c.periodId,
-                              minParty: c.minParty ?? 1,
-                              maxParty: c.maxParty ?? 1,
-                            })
-                          }
-                          onDeleteBand={setDeletingBand}
-                        />
-                      </td>
-                    ))}
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              <EmptyState
+                title={t("rate_workbench.matrix.no_rules")}
+                action={
+                  canWrite && firstEditablePeriod ? (
+                    <Button
+                      onClick={() =>
+                        setCreatingBand({
+                          periodId: firstEditablePeriod.id,
+                          ...bandCreateSeed(firstEditablePeriod),
+                        })
+                      }
+                    >
+                      {t("rate_workbench.matrix.add_band")}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="text-muted-foreground text-left">
+                    <th className="py-2 pr-3 font-medium">{t("rate_workbench.matrix.segment")}</th>
+                    {matrix.bands.map((b) => {
+                      const label = bandLabel(b);
+                      return (
+                        <th key={label ?? "any"} className="px-2 py-2 font-medium">
+                          {!pricesByOccupancy
+                            ? t("rate_workbench.matrix.flat_rate")
+                            : label != null
+                              ? t("rate_workbench.matrix.party_pax", { range: label })
+                              : t("rate_workbench.matrix.any_party")}
+                        </th>
+                      );
+                    })}
                     {canWrite ? (
-                      <td className="py-1 pl-2 align-middle">
-                        {showTrailingAdd ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground/60"
-                            aria-label={t("rate_workbench.matrix.add_band_for", {
-                              period: periodLabel({
-                                name: segment.name,
-                                date_from: segment.dateFrom,
-                                date_to: segment.dateTo,
-                              }),
-                            })}
-                            onClick={() => setCreatingBand({ periodId: segment.periodId, ...seed })}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                      </td>
+                      <th className="py-2 pl-2">
+                        <span className="sr-only">{t("rate_workbench.matrix.add_band")}</span>
+                      </th>
                     ) : null}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {matrix.segments.map((segment, row) => {
+                    const rowCells = matrix.cells[row];
+                    // The "+" always sits right of the row's last band: when an
+                    // empty fillable cell is there, its own "+" is the add
+                    // affordance; only otherwise (last band in the final column,
+                    // or everything to its right covered) does the trailing
+                    // column carry one. And when the create seed itself would
+                    // overlap one of the period's bands (an unbounded band
+                    // already covers it), saving could only 4xx — no "+" at all.
+                    const lastBandCol = rowCells.reduce((acc, c, i) => (c.band ? i : acc), -1);
+                    const period = periods.find((p) => p.id === segment.periodId);
+                    const seed = period ? bandCreateSeed(period) : { minParty: 1, maxParty: 1 };
+                    const seedCovered = (period?.bands ?? []).some(
+                      (b) =>
+                        (b.min_party == null || b.min_party <= seed.maxParty) &&
+                        (b.max_party == null || b.max_party >= seed.minParty),
+                    );
+                    // A historical period is locked: no inline edits, no add "+",
+                    // no lifecycle menu — just a "Past" marker (the backend 400s any
+                    // write regardless).
+                    const rowLocked = historicalIds.has(segment.periodId);
+                    const showTrailingAdd =
+                      pricesByOccupancy &&
+                      !rowLocked &&
+                      lastBandCol >= 0 &&
+                      !seedCovered &&
+                      !rowCells.some((c, i) => i > lastBandCol && c.fillable);
+                    return (
+                      <tr key={segment.periodId} className="border-border border-t">
+                        <td className="py-2 pr-3 align-middle whitespace-nowrap">
+                          <span className="inline-flex items-center gap-2">
+                            <span className={rowLocked ? "text-muted-foreground" : undefined}>
+                              {formatDate(segment.dateFrom)} – {formatDate(segment.dateTo)}
+                              {segment.name ? (
+                                <span className="text-muted-foreground ml-2">{segment.name}</span>
+                              ) : null}
+                            </span>
+                            {rowLocked ? (
+                              <Badge variant="outline">
+                                {t("rate_workbench.matrix.historical_badge")}
+                              </Badge>
+                            ) : canWrite && period ? (
+                              <PeriodActionsMenu
+                                period={period}
+                                onEdit={setEditingPeriod}
+                                onDelete={setDeletingPeriod}
+                              />
+                            ) : null}
+                          </span>
+                        </td>
+                        {rowCells.map((cell, col) => (
+                          <td key={`${row}-${col}`} className="px-2 py-1 align-middle">
+                            <MatrixCell
+                              cell={cell}
+                              currencyCode={currencyCode}
+                              canWrite={canWrite && !rowLocked}
+                              onCommitPrice={(bandId, field, value) =>
+                                price.mutate({ bandId, field, value })
+                              }
+                              onEditBand={setEditingBand}
+                              onFill={(c) =>
+                                setCreatingBand({
+                                  periodId: c.periodId,
+                                  minParty: c.minParty ?? 1,
+                                  maxParty: c.maxParty ?? 1,
+                                })
+                              }
+                              onDeleteBand={setDeletingBand}
+                            />
+                          </td>
+                        ))}
+                        {canWrite ? (
+                          <td className="py-1 pl-2 align-middle">
+                            {showTrailingAdd ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground/60"
+                                aria-label={t("rate_workbench.matrix.add_band_for", {
+                                  period: periodLabel({
+                                    name: segment.name,
+                                    date_from: segment.dateFrom,
+                                    date_to: segment.dateTo,
+                                  }),
+                                })}
+                                onClick={() =>
+                                  setCreatingBand({ periodId: segment.periodId, ...seed })
+                                }
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {creatingBand ? (

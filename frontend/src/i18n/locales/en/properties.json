@@ -1049,7 +1049,12 @@
       "add_band": "Add band",
       "add_band_for": "Add band — {{period}}",
       "coverage_gap_intro": "{{period}}: unpriced party sizes",
-      "fill_gap_chip": "Add a band for parties {{range}}"
+      "fill_gap_chip": "Add a band for parties {{range}}",
+      "show_historical": "Show past periods ({{count}})",
+      "hide_historical": "Hide past periods",
+      "historical_badge": "Past",
+      "all_historical_title": "All rate periods have ended",
+      "all_historical_body": "Every rate period on this plan is in the past. Show them to review historical rates."
     },
     "probe": {
       "title": "Price probe",

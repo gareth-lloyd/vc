@@ -16,6 +16,11 @@ from rest_framework import serializers
 from pricing.models import RateBand, RatePeriod, RatePlan
 from properties.models import Property
 
+# Record-level lock message shared by the serializers and the destroy views.
+HISTORICAL_LOCKED_MESSAGE = (
+    "This rate period has already ended, so its rates are locked and read-only."
+)
+
 
 def _max_occupancy(plan: RatePlan) -> int | None:
     """The property's occupancy cap (`PropertyCapacity.guests`) for coverage.
@@ -114,6 +119,8 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
             )
 
         period = self._resolve_period()
+        if period is not None and period.is_historical:
+            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
         if period is not None and self.instance is None and not period.plan.prices_by_occupancy:
             if period.bands.exists():
                 raise serializers.ValidationError(
@@ -217,6 +224,11 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
             model_field = RatePeriod._meta.get_field(field)
             assert isinstance(model_field, models.Field)
             return model_field.get_default() if model_field.has_default() else None
+
+        # A period whose window has fully elapsed is locked: reject any edit to
+        # the stored row (creates in the past stay allowed — backfill/carryover).
+        if self.instance is not None and self.instance.is_historical:
+            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
 
         date_from, date_to = effective("date_from"), effective("date_to")
         if date_from is not None and date_to is not None and date_from > date_to:

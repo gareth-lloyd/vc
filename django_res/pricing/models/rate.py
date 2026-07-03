@@ -8,6 +8,7 @@ one cell. The old `RateCard` precedence level is gone (no prod villa used it).
 from __future__ import annotations
 
 from django.db import models
+from django.utils import timezone
 
 from core.models.base import AuditedModel
 from pricing.enums import PriceBasis
@@ -111,6 +112,17 @@ class RatePeriod(AuditedModel):
 
     def __str__(self) -> str:
         return f"{self.plan_id} [{self.date_from}..{self.date_to}]"
+
+    @property
+    def is_historical(self) -> bool:
+        """True once the whole date window has elapsed (``date_to`` before today).
+
+        Historical periods are read-only in the workbench: their dates, name, and
+        bands (including inline price edits) are locked, and the period/its bands
+        cannot be deleted. Enforced in the serializers/views; the frontend mirrors
+        the lock by disabling the row's controls.
+        """
+        return self.date_to < timezone.localdate()
 
 
 class RateBand(AuditedModel):

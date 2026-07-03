@@ -37,6 +37,11 @@ export function addDaysIso(isoDate: string, days: number): string {
   return format(addDays(parseISO(isoDate), days), "yyyy-MM-dd");
 }
 
+/** Today's local date as `yyyy-MM-dd` — the cut line for "historical" date ranges. */
+export function todayIso(): string {
+  return format(new Date(), "yyyy-MM-dd");
+}
+
 /** Changeover day codes (`PROPERTY_CHANGEOVER_DAYS`) → `date-fns` `getDay` index
  * (0 = Sunday … 6 = Saturday). `"any"` and unknown codes are absent on purpose:
  * no fixed weekday → no suggestion. */

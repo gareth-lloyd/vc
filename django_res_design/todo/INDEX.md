@@ -24,6 +24,11 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
 GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
 follow-up.)
 
+_2026-07-03 additions (not in the 2026-07-02 count above): GAP-069
+(workbench carry-forward affordance) and SPEC-001 (rate-model date-authority
+exploration) from the far-future-rates investigation; GAP-070 (remove property
+groups) already landed on this branch. First `spec-*` ticket — see `README.md`._
+
 ---
 
 # Open / actionable
@@ -69,6 +74,12 @@ follow-up.)
 | Id | Title | Status |
 |---|---|---|
 | [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate repeated frontend boilerplate: CRUD-dialog state, FormDialog reset-effect, toast/error extraction, optimistic updates | ⬜ from 2026-07-02 frontend complexity audit; first `refactor-*` ticket (no behaviour change) |
+
+## Speculative
+
+| Id | Title | Status |
+|---|---|---|
+| [SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) | Make `RatePeriod` the sole date authority; `RatePlan` becomes a dateless regime bucket (drop `effective_from/to`) | 🔵 exploration from 2026-07-03 far-future-rates investigation; year-on-`RatePlan` alt considered + rejected (cross-year multi-regime stays); cheap interim = bind envelope to period union; related Q-022/Q-018/SMELL-021/22, GAP-069 |
 
 ## Surface gaps
 

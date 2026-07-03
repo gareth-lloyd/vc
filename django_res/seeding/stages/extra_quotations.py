@@ -25,13 +25,24 @@ def _run(ctx: SeedContext) -> int:
     # Longer live window on dense runs so SENT quotation cells stay visible
     # across the demo calendar; the legacy 7 days otherwise.
     expires_at = timezone.now() + timedelta(days=30 if ctx.knobs.dense_calendar else 7)
+    # Keep stays inside the seeded rate-coverage window. The `properties` stage
+    # seeds RatePeriods out to `today + (spread + 60)` (or the factory default
+    # `today + 400`); an unbounded `i * 21` stride marches years past that and
+    # trips NoRateAvailable, which aborts the whole stage. Wrap the forward
+    # offset within the covered window, leaving a 13-day tail for the longest
+    # conforming stay (min-nights + up-to-6-day changeover alignment).
+    spread = ctx.knobs.booking_date_spread_days
+    coverage_days = spread + 60 if spread > 30 else 400
+    span = max(1, coverage_days - 30 - 13)
     made = 0
     for i in range(target):
         prop = active_properties[i % len(active_properties)]
-        # 21-day stride: a constrained villa's stay conforms to 7 nights plus
-        # an up-to-6-day forward alignment (13 days end-to-end), so the old
-        # 11-day stride would collide consecutive holds on a small portfolio.
-        date_from, date_to = conforming_stay(ctx, prop, ctx.today + timedelta(days=30 + i * 21), 5)
+        # 21-day stride spaces consecutive holds on the same villa apart; the
+        # modulo wrap keeps every stay inside the rate-coverage window. On the
+        # same property, quotes are `len(active_properties)` iterations apart,
+        # so wrapping never lands two holds on the same dates.
+        offset = 30 + (i * 21) % span
+        date_from, date_to = conforming_stay(ctx, prop, ctx.today + timedelta(days=offset), 5)
         customer = pick_guest(ctx)
         terms = ctx.terms[0]
         enquiry = cast(

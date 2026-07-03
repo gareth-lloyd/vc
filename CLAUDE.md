@@ -42,7 +42,8 @@ the underlying problem.
   `django_res/CLAUDE.md` and `django_res/data_migration/CUTOVER.md`.
 - `frontend/` — Vite + React + TypeScript SPA.
 - `django_res_design/` — detailed design specs (models, REST surface,
-  workflows). Start at `django_res_design/INDEX.md`.
+  workflows), organised into three tiers (`legacy/`, `design/`, `todo/`). Start
+  at `django_res_design/README.md`.
 - `ResSystem/` — **read-only** legacy .NET app; source of truth for behaviour
   we're reproducing. Do not modify.
 - `investigation/` — ad-hoc investigation notes.
@@ -61,8 +62,9 @@ the underlying problem.
 
 ## Working principles for agents
 
-- Read `django_res_design/INDEX.md` before designing new backend models or
-  endpoints — the spec is detailed and authoritative.
+- Read `django_res_design/README.md` before designing new backend models or
+  endpoints, then `design/data-model-overview.md` (canonical as-built map) — the
+  spec is detailed but has drifted; the code + overview + `todo/` are the truth.
 - Before touching `django_res/data_migration/`, read its `CUTOVER.md`; the
   package is the executable legacy → Postgres spec and must stay idempotent.
 - When the spec and code disagree, surface the disagreement to the user; do

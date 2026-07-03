@@ -1,64 +1,70 @@
-# Villa Collective — Django Data Model Redesign
+# `django_res_design/` — Villa Collective design & reference
 
-A specification for re-implementing the Villa Collective reservation platform as a pure-Django + Postgres application. The current system (`../ResSystem/`) is a .NET 6 / EF Core / SQL Server stack carrying substantial structural debt. This redesign aims for **moderate departures**: fix the structural issues, preserve the product shape and workflows.
+This directory documents both the **legacy** villa-rental platform
+(`../ResSystem/`, .NET 7 / Blazor / SQL Server) and the **rebuild** we are
+shipping (Django REST API + React SPA). It has drifted from the code over time,
+so it is organised into three tiers by *what you can trust each for*:
 
-This package is the **design specification**, not the migration plan: documents are detailed enough to implement directly but contain no executable code. Legacy data does carry over — see [09-departures.md](./09-departures.md) for the table-by-table mapping and `../django_res/data_migration/` for the loaders that execute it (`./manage.py loadlegacy --all`, `reconcile_legacy`, `merge_country`; full playbook in `../django_res/data_migration/CUTOVER.md`).
+| Tier | Directory | What it is | Trust it for |
+|---|---|---|---|
+| **1 — Legacy** | [`legacy/`](legacy/) | The old .NET system's as-built behaviour, extracted from `../ResSystem/`. **Frozen.** | "What did the old system actually do?" |
+| **2 — Design** | [`design/`](design/) | The design of the system we're building. A few living docs + code are canonical; the field-level specs are frozen design-time rationale. | "Why is the rebuild shaped this way?" — and, via its canonical map, "what is the backend today?" |
+| **3 — Work queue** | [`todo/`](todo/) | The live ticket system: bugs, gaps, smells, questions, decisions blocking implementation. **The most significant record of what we're building.** | "What's built, broken, or still to do — right now?" |
 
-## Product
+## Where is the truth?
 
-A management platform for **luxury whole-property villa rentals**. Core capabilities:
+The design specs were written ahead of the code and drifted (models were
+renamed, folded, or dropped: `RateCard` gone, `RateRule` → `RateBand`, the
+former `Guest` folded into a unified `accounts.Person`, property `Group`s being
+removed). When a spec disagrees with reality, trust this order:
 
-- Curated portfolio of villas across countries/regions, with rich descriptive content, image galleries, features, owner contacts
-- **Enquiry → Quotation → Booking → Check-in → Check-out** lifecycle, sourced via website forms and direct agent input
-- Sophisticated pricing: per-villa seasons, occupancy bands, taxes, agent commissions, discounts, POA, multi-currency
-- Owner-confirmed bookings (manual approval workflow)
-- 3-tier payment schedule: Initial Deposit, Rental Balance, Security Deposit (processed via Flywire)
-- Concierge add-ons per booking
-- Integration with Zoho CRM
+1. **The code in `../django_res/`** — the final authority.
+2. **[`design/data-model-overview.md`](design/data-model-overview.md)** — the
+   canonical, living as-built map of the backend.
+3. **[`todo/INDEX.md`](todo/INDEX.md)** — what's open, and the decisions that
+   have been taken.
+4. **[`design/decisions.md`](design/decisions.md)** /
+   **[`design/departures.md`](design/departures.md)** — why the design is what it
+   is, and how it maps to the legacy tables.
 
-## Design Philosophy
+Everything under `design/backend/`, `design/product/`, and `design/history/`
+carries a **frozen** header — read it for design-time *rationale*, never as a
+description of what currently exists.
 
-- **Pure Django** — stdlib + Django + Postgres. No `django-fsm`, `django-money`, or third-party state-machine libraries.
-- **Database-enforced integrity** — real FKs (`PROTECT`/`CASCADE` chosen deliberately), `EXCLUDE` constraints for non-overlap, `UniqueConstraint`/`CheckConstraint` everywhere they apply.
-- **Decompose god objects** — `VillaMaster` and `VillaFinance` split into focused models with OneToOne relationships per concern.
-- **Single source of truth** — drop drifting denormalized archive tables in favour of state + audit event rows. Where caches are required for performance, name them explicitly and own them via signals.
-- **Null-means-inherit** — replace `IsDefaultSetting*` boolean flags with nullable fields and an `effective_*()` resolver merging from a group default.
-- **Explicit state machines** — `TextChoices` + per-transition methods + atomic blocks + audit events + signals. No magic.
-- **Service boundaries** — pricing and availability live in `services.py`, not on model methods. Stateless, testable.
+## The product (unchanged across legacy & rebuild)
 
-## App Map
+A management platform for **luxury whole-property villa rentals**:
 
-```
-accounts/       Users, Contacts (owners/managers), Roles
-properties/     Property, Location, Capacity, Settings, Rooms, Images, Features, Collections, Groups, Geography
-                + Finance config (Commission, Tax, BankAccount, PaymentSchedule, SecurityDepositPolicy)
-pricing/        RatePlan, RateRule, Surcharge, Discount, ChangeOverRule, Currency, FxRate, PricingEngine service
-reservations/   Enquiry, Quotation, QuotationLine, Booking, BookingGuest, BookingHold, BookingEvent, TermsVersion, Concierge
-payments/       Payment, PaymentEvent, WebhookDelivery, Flywire webhook flow
-integrations/   SyncRecord (generic FK to external systems — Zoho, etc.)
-```
+- A curated portfolio of villas across countries/regions — rich descriptions,
+  image galleries, features, owner/agent contacts.
+- An **Enquiry → Quotation → Booking → Check-in → Check-out** lifecycle, sourced
+  from website forms and direct agent input.
+- Sophisticated pricing: per-villa rate periods, occupancy bands, taxes, agent
+  commissions, discounts, POA, multi-currency.
+- Owner-confirmed bookings (manual approval), a 3-tier payment schedule (deposit
+  / balance / security deposit, via Flywire), concierge add-ons, and Zoho CRM
+  integration.
 
-`reservations` depends on `pricing` (and uses its `AvailabilityService`). `payments` depends on `reservations` (signals only — reservations doesn't import payments). `integrations` is referenced via generic FK from any model that syncs. `properties` and `accounts` are foundational.
+## Reading order
 
-## Documents
+- **New to the project?** [`design/data-model-overview.md`](design/data-model-overview.md)
+  (what the backend is) → [`design/departures.md`](design/departures.md) (how it
+  differs from the legacy system) → [`todo/INDEX.md`](todo/INDEX.md) (what's left).
+- **Reproducing a legacy behaviour?** Start in [`legacy/`](legacy/) — its
+  [`README.md`](legacy/README.md) indexes the workflow domains, and
+  [`legacy/quote-enquiry-reference.md`](legacy/quote-enquiry-reference.md) is the
+  corrected reference for the pre-deletion quote/enquiry UI.
+- **Doing product/UX or API work?** The frozen [`design/product/`](design/product/)
+  specs (frontend design, workflows, REST surface) give the design-time intent —
+  always cross-checked against the code and `todo/`.
+- **Picking up implementation?** Work from [`todo/`](todo/); consult the frozen
+  [`design/backend/`](design/backend/) specs for field-level rationale on the
+  area you're touching.
 
-| File | Topic |
-|---|---|
-| [00-conventions.md](./00-conventions.md) | Abstract bases, soft-delete, audit middleware, naming, currency, enums |
-| [01-accounts.md](./01-accounts.md) | User, Person (unified — GAP-045), PersonEmail, PersonPhone, Role |
-| [02-properties.md](./02-properties.md) | Property decomposition, Location, Capacity, Settings, Rooms, Images, Features, Collections, Geography |
-| [03-finance-config.md](./03-finance-config.md) | PropertyFinance and its 5 child models; group-level defaults |
-| [04-pricing.md](./04-pricing.md) | Rate model, surcharges, discounts, change-over rules, PricingEngine |
-| [05-reservations.md](./05-reservations.md) | Enquiry, Quotation, Booking, BookingGuest, lifecycle |
-| [06-availability.md](./06-availability.md) | BookingHold, range-overlap availability, state machine, change-over enforcement |
-| [07-payments.md](./07-payments.md) | Payment, PaymentEvent, WebhookDelivery, Flywire flow |
-| [08-integrations.md](./08-integrations.md) | SyncRecord, Zoho reconciliation |
-| [09-departures.md](./09-departures.md) | Table-by-table mapping of original → new (kept/merged/renamed/dropped) |
-| [10-comms.md](./10-comms.md) | `comms` app — SmtpProfile, EmailTemplate, EmailLog, EmailService; per-user SMTP send-as |
-| [10-decisions.md](./10-decisions.md) | Cross-reference log of design decisions vs workflows — live / deferred / dropped |
+## Legacy data carry-over
 
-## Reading Order
-
-For first-time readers: README → 00 → 09 (departures table gives the at-a-glance shape) → 02 → 05 → 06 → 04 → 07 → others.
-
-For someone about to implement an app: start at the per-app doc; cross-reference 00 for shared bases and 09 for context on what was changed and why.
+Legacy data is ported by the loaders in `../django_res/data_migration/`
+(`./manage.py loadlegacy --all`, `reconcile_legacy`, `merge_country`; full
+playbook in `../django_res/data_migration/CUTOVER.md`).
+[`design/departures.md`](design/departures.md) is the table-by-table mapping
+that migration follows.

@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { useAuthStore } from "@/features/auth/store";
 import { ContactDetailLayout } from "../ContactDetailLayout";
 import { DetailsTab } from "../tabs/DetailsTab";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
@@ -140,5 +141,118 @@ describe("ContactDetailLayout error differentiation", () => {
     );
     expect(await screen.findByText("Couldn't load this contact")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+});
+
+function setupClient(initial: string) {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/clients/:id" element={<ContactDetailLayout />}>
+        <Route index element={<Navigate to="details" replace />} />
+        <Route path="details" element={<DetailsTab />} />
+      </Route>
+      <Route path="/clients" element={<div>Clients list</div>} />
+    </Routes>,
+    { route: initial },
+  );
+}
+
+function setupSupplier(initial: string) {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/contacts/:id" element={<ContactDetailLayout />}>
+        <Route index element={<Navigate to="details" replace />} />
+        <Route path="details" element={<DetailsTab />} />
+      </Route>
+      <Route path="/contacts" element={<div>Suppliers list</div>} />
+    </Routes>,
+    { route: initial },
+  );
+}
+
+describe("ContactDetailLayout role broadcast", () => {
+  it("renders every contact type as a badge in the header", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({ ...contactFixture, contact_types: ["customer", "agent", "owner"] }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.getByText("Customer")).toBeInTheDocument();
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getByText("Owner")).toBeInTheDocument();
+  });
+
+  it("shows a 'No roles recorded' fallback when the contact has no types", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({ ...contactFixture, contact_types: [] }),
+      ),
+    );
+    setup("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    expect(screen.getByText("No roles recorded")).toBeInTheDocument();
+  });
+});
+
+describe("ContactDetailLayout client context (/clients/:id)", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ role: "RESERVATIONS", isSuperuser: false });
+  });
+  afterEach(() => {
+    useAuthStore.setState({ user: null, role: null, status: "unauthenticated" });
+  });
+
+  it("breadcrumbs back to the Clients list, not Suppliers", async () => {
+    server.use(http.get("/api/v1/contacts/7", () => HttpResponse.json(contactFixture)));
+    setupClient("/clients/7/details");
+    await screen.findByText("ada@example.com");
+    const crumb = screen.getByRole("link", { name: "Clients" });
+    expect(crumb).toHaveAttribute("href", "/clients");
+    expect(screen.queryByRole("link", { name: "Suppliers" })).not.toBeInTheDocument();
+  });
+
+  it("redirects to the Clients list after delete", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () => HttpResponse.json(contactFixture)),
+      http.delete("/api/v1/contacts/7", () => new HttpResponse(null, { status: 204 })),
+    );
+    setupClient("/clients/7/details");
+    await screen.findByText("ada@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByText("Clients list")).toBeInTheDocument());
+  });
+});
+
+describe("ContactDetailLayout supplier context (/contacts/:id)", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ role: "RESERVATIONS", isSuperuser: false });
+  });
+  afterEach(() => {
+    useAuthStore.setState({ user: null, role: null, status: "unauthenticated" });
+  });
+
+  it("breadcrumbs back to the Suppliers list", async () => {
+    server.use(http.get("/api/v1/contacts/7", () => HttpResponse.json(contactFixture)));
+    setupSupplier("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    const crumb = screen.getByRole("link", { name: "Suppliers" });
+    expect(crumb).toHaveAttribute("href", "/contacts");
+  });
+
+  it("redirects to the Suppliers list after delete", async () => {
+    server.use(
+      http.get("/api/v1/contacts/7", () => HttpResponse.json(contactFixture)),
+      http.delete("/api/v1/contacts/7", () => new HttpResponse(null, { status: 204 })),
+    );
+    setupSupplier("/contacts/7/details");
+    await screen.findByText("ada@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByText("Suppliers list")).toBeInTheDocument());
   });
 });

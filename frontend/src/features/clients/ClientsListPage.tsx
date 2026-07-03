@@ -165,10 +165,10 @@ export function ClientsListPage() {
   const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / CLIENTS_PAGE_SIZE)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
 
-  // List-only directory: rows open the existing contact detail until GAP-042
-  // builds the customer-360 profile.
+  // Rows open the shared contact detail under the /clients prefix so the Clients
+  // nav item stays highlighted (a client id resolves against GET /contacts/{id}).
   const handleRowClick = (row: ClientListItem) => {
-    navigate(`/contacts/${row.id}`);
+    navigate(`/clients/${row.id}`);
   };
 
   return (

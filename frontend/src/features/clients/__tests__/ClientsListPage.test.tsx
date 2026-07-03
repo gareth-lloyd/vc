@@ -232,10 +232,10 @@ describe("ClientsListPage", () => {
     expect(screen.getByRole("button", { name: /trade/i })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("navigates to the contact detail page on row click", async () => {
+  it("navigates to the client detail page on row click", async () => {
     server.use(http.get("/api/v1/clients", () => HttpResponse.json(fixture)));
-    renderList(<Route path="/contacts/:id" element={<div>Contact detail</div>} />);
+    renderList(<Route path="/clients/:id" element={<div>Client detail</div>} />);
     await userEvent.click(await screen.findByText("Ada Lovelace"));
-    await waitFor(() => expect(screen.getByText("Contact detail")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Client detail")).toBeInTheDocument());
   });
 });

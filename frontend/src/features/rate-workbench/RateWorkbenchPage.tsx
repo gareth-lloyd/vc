@@ -430,8 +430,15 @@ export function RateWorkbenchPage() {
           onAddPeriod={() => setPeriodPrefill(periodInitialValues ?? {})}
         />
         {periodPrefill != null ? (
+          // The key is namespaced ("period-dialog-…") so it can never equal the
+          // sibling MatrixEditor's key (activeMatrixRatePlanId). A bare plan-id
+          // key collided when the target plan matched the active plan, and the
+          // duplicate-key clash corrupted reconciliation — React kept the stale
+          // MatrixEditor fiber and mounted a fresh one, rendering the matrix
+          // twice. The suffix still changes with the target plan, so the dialog
+          // resets when switching plans while open (its original purpose).
           <RatePeriodFormDialog
-            key={periodPrefill.planId ?? activeMatrixRatePlanId}
+            key={`period-dialog-${periodPrefill.planId ?? activeMatrixRatePlanId}`}
             ratePlanId={periodPrefill.planId ?? activeMatrixRatePlanId}
             open
             onOpenChange={(o) => {

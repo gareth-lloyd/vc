@@ -1,8 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Check } from "lucide-react";
-import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
-import { bandTitle, type WorkbenchBand } from "../toLanes";
+import { bandDateRangeLabel, bandTitle, type WorkbenchBand } from "../toLanes";
 
 function Row({ term, children }: { term: string; children: React.ReactNode }) {
   return (
@@ -32,9 +31,7 @@ export function BandDetail({
     <div className="space-y-2 text-sm">
       <p className="text-foreground font-medium">{title}</p>
       <dl className="text-muted-foreground space-y-1">
-        <Row term={t("rate_workbench.detail.dates")}>
-          {formatDate(band.dateFrom)} – {formatDate(band.dateTo)}
-        </Row>
+        <Row term={t("rate_workbench.detail.dates")}>{bandDateRangeLabel(band, t)}</Row>
 
         {meta.isGap || (band.laneKey === "rates" && meta.noRates) ? (
           <Row term={t("rate_workbench.detail.plan")}>{meta.planName}</Row>

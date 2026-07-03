@@ -176,6 +176,62 @@ describe("TimelineBand — add-after affordance", () => {
   });
 });
 
+const yearRoundInclusion: WorkbenchBand = {
+  id: "service-70",
+  laneKey: "inclusions",
+  // Coerced to the window bounds by toLanes; the openStart/openEnd flags carry
+  // the fact that both source dates were null.
+  dateFrom: "2026-01-01",
+  dateTo: "2026-12-31",
+  dateToExclusive: "2027-01-01",
+  openStart: true,
+  openEnd: true,
+  label: "Daily maid",
+  sourceId: 70,
+  sublane: 0,
+  meta: { copy: "Daily cleaning" },
+};
+
+describe("TimelineBand — open-ended bands", () => {
+  it("labels a year-round inclusion 'Year-round' instead of the coerced Jan 1 – Dec 31", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <TimelineBand band={yearRoundInclusion} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    await user.hover(screen.getByRole("button", { name: /Daily maid/ }));
+    expect(await screen.findByText("Year-round")).toBeInTheDocument();
+    expect(screen.queryByText(/1 Jan 2026/)).toBeNull();
+    expect(screen.queryByText(/31 Dec 2026/)).toBeNull();
+  });
+
+  it("names the year-round band accessibly without the coerced window dates", () => {
+    renderWithProviders(
+      <TimelineBand band={yearRoundInclusion} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    expect(screen.getByRole("button", { name: "Daily maid, Year-round" })).toBeInTheDocument();
+  });
+
+  it("substitutes an em-dash for the open side of a half-bounded extra", async () => {
+    const user = userEvent.setup();
+    const openStartExtra: WorkbenchBand = {
+      ...yearRoundInclusion,
+      id: "extra-71",
+      laneKey: "extras",
+      label: "Airport transfer",
+      openStart: true,
+      openEnd: false,
+      dateTo: "2026-08-31",
+      dateToExclusive: "2026-09-01",
+      meta: { isMandatory: false },
+    };
+    renderWithProviders(
+      <TimelineBand band={openStartExtra} windowStart={windowStart} dayCount={dayCount} />,
+    );
+    await user.hover(screen.getByRole("button", { name: /Airport transfer/ }));
+    expect(await screen.findByText("— – 31 Aug 2026")).toBeInTheDocument();
+  });
+});
+
 const gapBand: WorkbenchBand = {
   id: "coverage-2026-09-01",
   laneKey: "coverage",

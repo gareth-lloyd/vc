@@ -1000,7 +1000,8 @@
     },
     "band": {
       "aria": "{{label}}, {{from}} to {{to}}",
-      "add_after_aria": "Add a rate period starting {{date}}"
+      "add_after_aria": "Add a rate period starting {{date}}",
+      "aria_range": "{{label}}, {{range}}"
     },
     "detail": {
       "dates": "Dates",
@@ -1014,7 +1015,10 @@
       "code": "Code",
       "kind": "Kind",
       "copy": "Included",
-      "no_rates_yet": "No rates yet — add a band in the matrix below."
+      "no_rates_yet": "No rates yet — add a band in the matrix below.",
+      "year_round": "Year-round",
+      "open_end": "—",
+      "band": "{{from}} – {{to}}"
     },
     "matrix": {
       "title": "Rate matrix",

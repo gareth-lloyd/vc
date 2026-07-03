@@ -4,7 +4,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { bandEdges, bandGeometry } from "@/lib/timeline/geometry";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format/date";
-import { bandTitle, type WorkbenchBand } from "../toLanes";
+import { bandDateRangeLabel, bandTitle, type WorkbenchBand } from "../toLanes";
 import { BAND_HEIGHT, bandToneClass, bandTop } from "./timelineLayout";
 import { BandDetail } from "./BandDetail";
 
@@ -44,6 +44,10 @@ export function TimelineBand({ band, windowStart, dayCount, onCreatePeriod }: Ti
   if (!geometry) return null;
 
   const dates = { from: formatDate(band.dateFrom), to: formatDate(band.dateTo) };
+  // Open-ended bands must not announce the window bounds their null dates were
+  // coerced to — route them through the shared range label ("Year-round" / "—")
+  // so the accessible name matches the hover card.
+  const openEnded = !!band.openStart || !!band.openEnd;
   const gapClickable = !!band.meta.isGap && !!onCreatePeriod;
   const addPrefill =
     band.laneKey === "rates" && onCreatePeriod && band.meta.planId != null && band.meta.addAfter
@@ -72,7 +76,12 @@ export function TimelineBand({ band, windowStart, dayCount, onCreatePeriod }: Ti
             aria-label={
               gapClickable
                 ? t("rate_workbench.coverage.gap_aria_action", dates)
-                : t("rate_workbench.band.aria", { label: bandTitle(band, t), ...dates })
+                : openEnded
+                  ? t("rate_workbench.band.aria_range", {
+                      label: bandTitle(band, t),
+                      range: bandDateRangeLabel(band, t),
+                    })
+                  : t("rate_workbench.band.aria", { label: bandTitle(band, t), ...dates })
             }
             onClick={
               gapClickable

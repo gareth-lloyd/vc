@@ -69,6 +69,22 @@ describe("toLanes", () => {
     // display sites must never announce next Jan 1 as an included date.
     expect(band.dateTo).toBe("2026-12-31");
     expect(band.dateToExclusive).toBe("2027-01-01");
+    // ...but the coercion is flagged so the label can read "Year-round".
+    expect(band.openStart).toBe(true);
+    expect(band.openEnd).toBe(true);
+  });
+
+  it("flags only the open side of a half-bounded band", () => {
+    const lanes = toLanes({
+      ...base(),
+      extras: [
+        extra({ id: 3, name: "Late checkout", applies_from: null, applies_to: "2026-08-31" }),
+      ],
+    });
+    const band = lane(lanes, "extras").bands[0];
+    expect(band.openStart).toBe(true);
+    expect(band.openEnd).toBe(false);
+    expect(band.dateTo).toBe("2026-08-31");
   });
 
   it("drops bands that fall entirely outside the window", () => {

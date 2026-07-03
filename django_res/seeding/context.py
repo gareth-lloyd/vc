@@ -83,6 +83,10 @@ class ProfileKnobs:
     # Number of distinct PropertyGroups created up-front to be assigned to
     # properties. 0 falls back to legacy 1-to-1 group-per-property.
     n_property_groups: int = 0
+    # Number of `accounts.Organisation` (B2B companies — agencies / suppliers /
+    # management companies) minted by the `companies` stage. Nonzero on every
+    # profile including happy: a populated Companies directory is a deliverable.
+    n_organisations: int = 0
     # Inclusive room count range per property; (0, 0) disables.
     rooms_per_property: tuple[int, int] = (0, 0)
     # Inclusive feature count range per property.
@@ -148,9 +152,10 @@ class ProfileKnobs:
 
 
 _PROFILES: dict[Profile, ProfileKnobs] = {
-    Profile.HAPPY: ProfileKnobs(name="happy"),
+    Profile.HAPPY: ProfileKnobs(name="happy", n_organisations=4),
     Profile.MIXED: ProfileKnobs(
         name="mixed",
+        n_organisations=8,
         pct_pre_approval_property=0.15,
         pct_owner_contact=0.70,
         pct_property_draft=0.05,
@@ -203,6 +208,7 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
     ),
     Profile.CHAOS: ProfileKnobs(
         name="chaos",
+        n_organisations=14,
         pct_pre_approval_property=0.30,
         pct_owner_contact=0.50,
         pct_property_draft=0.08,
@@ -272,6 +278,9 @@ class SeedContext:
     # for the HERO), keeping each property's image set coherent.
     property_villa: dict[int, str] = field(default_factory=dict)
     groups: list[Any] = field(default_factory=list)
+    # `accounts.Organisation` rows seeded by the `companies` stage, so the
+    # `contacts` stage can attach agent contacts to an agency.
+    organisations: list[Any] = field(default_factory=list)
     guest_pool: list[Any] = field(default_factory=list)
     terms: list[Any] = field(default_factory=list)
     # Run-local pks so later stages (notes, webhooks) can scope to rows this

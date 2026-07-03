@@ -12,6 +12,8 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 
+from accounts.enums import OrgType
+from accounts.models import Organisation
 from comms.models import EmailTemplate, SmtpProfile
 from integrations.models.oauth_credential import OAuthCredential
 from integrations.models.sync_issue import SyncIssue
@@ -109,6 +111,9 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     assert CollectionMembership.objects.exists()
     assert PropertyContactAssignment.objects.exists()
     assert ChangeOverRule.objects.exists()
+
+    # ---- B2B companies: the Companies directory + contact→agency filter ----
+    assert Organisation.objects.filter(org_type=OrgType.AGENCY).exists()
 
     # ---- Service inclusions: every villa carries a year-round PropertyService
     # whose `copy` seeds the quote "Includes:" blob (GAP-037 — promoted out of

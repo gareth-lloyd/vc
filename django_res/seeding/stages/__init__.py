@@ -14,6 +14,7 @@ from seeding.stages import (
     availability_blocks,  # noqa: F401
     bookings,  # noqa: F401
     collections,  # noqa: F401
+    companies,  # noqa: F401
     concierge_items,  # noqa: F401
     contacts,  # noqa: F401
     dashboard_activity,  # noqa: F401

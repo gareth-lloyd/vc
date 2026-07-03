@@ -7,7 +7,7 @@ from typing import Any
 from django.db import transaction
 from rest_framework import serializers
 
-from accounts.enums import PersonKind, PersonStatus, PersonTag
+from accounts.enums import ContactType, PersonKind, PersonStatus, PersonTag
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
 from accounts.serializers.organisation import OrganisationSummarySerializer
 
@@ -136,24 +136,23 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         return self.get_booking_count(obj) >= 1
 
     def get_contact_types(self, obj: Person) -> list[str]:
-        # GAP-052: union of every capacity, sorted for a stable response. Mixes
-        # two synthetic labels ("customer", "agent") with raw `ContactRole`
-        # values from `active_roles`; the set dedups any overlap.
-        # - `customer`: classified as one, or has booked.
-        # - `agent`: belongs to an agency (GAP-046) AND/OR holds an `agent`
-        #   property role — both collapse to the single "agent" badge. NB the
-        #   synthetic "agent" label is deliberately the same string as
-        #   `ContactRole.AGENT`; a synthetic label must never collide with a
-        #   *different* role value. A pure deal-channel agent (used as `.agent`
-        #   on a deal, no agency, no agent-role) is not surfaced here —
-        #   accounts-only derivation, full fidelity deferred; still in Clients.
+        # GAP-052: union of every capacity, sorted for a stable response. Values
+        # come from `ContactType`; the set dedups any overlap.
+        # - CUSTOMER: classified as one, or has booked.
+        # - AGENT: belongs to an agency (GAP-046) AND/OR holds an `agent`
+        #   property role — both collapse to the single AGENT badge, which is why
+        #   ContactType.AGENT shares ContactRole.AGENT's value. A pure
+        #   deal-channel agent (used as `.agent` on a deal, no agency, no
+        #   agent-role) is not surfaced here — accounts-only derivation, full
+        #   fidelity deferred; still in Clients.
         # - property roles (owner/manager/…): from the `active_roles` annotation
-        #   (ACTIVE assignments only), coalesced to [] for un-annotated callers.
+        #   (ACTIVE assignments only, raw ContactRole values — every one is a
+        #   valid ContactType member), coalesced to [] for un-annotated callers.
         types: set[str] = set()
         if obj.kind == PersonKind.CUSTOMER.value or self.get_booking_count(obj) > 0:
-            types.add("customer")
+            types.add(ContactType.CUSTOMER.value)
         if obj.agency_id is not None:
-            types.add("agent")
+            types.add(ContactType.AGENT.value)
         types.update(getattr(obj, "active_roles", None) or [])
         return sorted(types)
 

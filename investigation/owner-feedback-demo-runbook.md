@@ -71,10 +71,7 @@ seeded data (run `seed_dev` with realistic pricing first)._
 - Go to **Properties** (`/properties`)
 - Show the **region** dropdown filtering alongside country and status
 
-### Services split from pricing (#17)
-- Open a property → **Services** tab (`/properties/:id/services`)
-- Show inclusions as their own records (dates + guest-facing copy), separate from Rates
-- Then switch to the **Rate Workbench** tab to contrast — pricing lives here, services don't
+
 
 ### Weekly bands + net/gross auto-calc + nightly (#18, #20, #21)
 - On the **Rate Workbench** (`/properties/:id/rate-workbench`)
@@ -91,6 +88,17 @@ seeded data (run `seed_dev` with realistic pricing first)._
   **peak / high / shoulder** as a proper tier for colour-coding and reporting — a small
   model addition still to come."
 
+### Create a property from the UI
+- Go to **Properties** (`/properties`) → **Create property** button → fill the dialog → save
+- Point out this didn't exist before — properties previously only arrived via migration
+
+### Rate Workbench — power features beyond the basics
+- On the **Rate Workbench** (`/properties/:id/rate-workbench`):
+  - Flip the **pricing-mode toggle** — flat vs occupancy-based pricing per plan
+  - Point out **historical rate periods are hidden and locked read-only** (past pricing can't
+    be edited by accident)
+  - Point out the **coverage-gap lane** flagging uncovered dates, and the stacked
+    **nightly + weekly** inline editors in the matrix
 ---
 
 ## 4. Quotes & Enquiries
@@ -123,12 +131,6 @@ seeded data (run `seed_dev` with realistic pricing first)._
 - _Say:_ "address, notes and tags all exist on the linked contact record; surfacing them
   on this creation form is a quick front-end follow-up."
 
-### 🟡 Call history on the profile (#25)
-- On the customer profile (enquiry rail), point out enquiries, quotes, bookings and
-  linked contacts (spouse/child/PA) are all shown
-- _Say:_ "the one thing not here is a **call log** — there's no call-tracking concept yet;
-  worth deciding whether that lives here or in Zoho before we build it."
-
 ---
 
 ## 5. Beyond the feedback — extra progress worth showing
@@ -150,9 +152,7 @@ claims and 2FA — they're whole features nobody asked for._
 - On a booking with a captured payment, start a **refund** → point out the **TOTP step-up
   dialog** gates execution (a fresh code required for the sensitive action)
 
-### Create a property from the UI
-- Go to **Properties** (`/properties`) → **Create property** button → fill the dialog → save
-- Point out this didn't exist before — properties previously only arrived via migration
+
 
 ### Bookings list filters
 - On **Bookings** (`/bookings`), show the **date-range filter** and the
@@ -162,14 +162,8 @@ claims and 2FA — they're whole features nobody asked for._
 - Not a standalone screen — call it out opportunistically as you use date ranges anywhere
   (availability block, quote window, rate period, modify-dates): "the **same** single-trigger
   range picker everywhere now, with nights/days modes" — replaced a dozen inconsistent inputs
+  
 
-### Rate Workbench — power features beyond the basics
-- On the **Rate Workbench** (`/properties/:id/rate-workbench`):
-  - Flip the **pricing-mode toggle** — flat vs occupancy-based pricing per plan
-  - Point out **historical rate periods are hidden and locked read-only** (past pricing can't
-    be edited by accident)
-  - Point out the **coverage-gap lane** flagging uncovered dates, and the stacked
-    **nightly + weekly** inline editors in the matrix
 
 ---
 

@@ -4,6 +4,7 @@ import { Section } from "@/components/data/Section";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/card";
+import { todayIso } from "@/lib/format/date";
 import { useArrivalsToday } from "../hooks";
 
 const MAX_ROWS = 8;
@@ -73,8 +74,4 @@ function SkeletonRows() {
       </ul>
     </Card>
   );
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }

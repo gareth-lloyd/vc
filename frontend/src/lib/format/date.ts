@@ -37,9 +37,10 @@ export function addDaysIso(isoDate: string, days: number): string {
   return format(addDays(parseISO(isoDate), days), "yyyy-MM-dd");
 }
 
-/** Today's local date as `yyyy-MM-dd` — the cut line for "historical" date ranges. */
+/** Today's date (UTC) as `yyyy-MM-dd` — matches the server's `timezone.localdate()`
+ *  (TIME_ZONE="UTC"), so the client- and server-side "historical" cut lines agree. */
 export function todayIso(): string {
-  return format(new Date(), "yyyy-MM-dd");
+  return new Date().toISOString().slice(0, 10);
 }
 
 /** Changeover day codes (`PROPERTY_CHANGEOVER_DAYS`) → `date-fns` `getDay` index

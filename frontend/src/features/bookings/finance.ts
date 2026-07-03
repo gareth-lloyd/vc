@@ -1,4 +1,5 @@
 import type { StatTone } from "@/components/data/StatTiles";
+import { todayIso } from "@/lib/format/date";
 import { parseMoney } from "@/lib/format/money";
 
 /**
@@ -23,7 +24,7 @@ export function bookingFinance(booking: {
 
 /** A balance is overdue once today is past its due date. */
 export function isBalanceOverdue(balanceDueAt: string | null | undefined): boolean {
-  return balanceDueAt != null && balanceDueAt < new Date().toISOString().slice(0, 10);
+  return balanceDueAt != null && balanceDueAt < todayIso();
 }
 
 /**

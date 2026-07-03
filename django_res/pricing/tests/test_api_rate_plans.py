@@ -111,8 +111,8 @@ def test_create_rate_period(api_client: APIClient, staff: User, plan: RatePlan) 
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
         data={
             "name": "Peak",
-            "date_from": "2026-07-01",
-            "date_to": "2026-08-31",
+            "date_from": "2099-07-01",
+            "date_to": "2099-08-31",
             "min_nights": 7,
         },
         format="json",
@@ -127,7 +127,7 @@ def test_create_period_requires_name(api_client: APIClient, staff: User, plan: R
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        data={"date_from": "2026-07-01", "date_to": "2026-08-31"},
+        data={"date_from": "2099-07-01", "date_to": "2099-08-31"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -143,7 +143,7 @@ def test_create_period_rejects_blank_name(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        data={"name": blank, "date_from": "2026-07-01", "date_to": "2026-08-31"},
+        data={"name": blank, "date_from": "2099-07-01", "date_to": "2099-08-31"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -152,12 +152,12 @@ def test_create_period_rejects_blank_name(
 
 @pytest.mark.django_db
 def test_patch_period_cannot_clear_name(
-    api_client: APIClient, staff: User, period: RatePeriod
+    api_client: APIClient, staff: User, future_period: RatePeriod
 ) -> None:
     """GAP-059: an existing name cannot be cleared back to blank."""
     api_client.force_login(staff)
     response = api_client.patch(
-        f"/api/v1/periods/{period.pk}",
+        f"/api/v1/periods/{future_period.pk}",
         data={"name": ""},
         format="json",
     )
@@ -167,19 +167,19 @@ def test_patch_period_cannot_clear_name(
 
 @pytest.mark.django_db
 def test_create_rate_rule_under_period(
-    api_client: APIClient, staff: User, period: RatePeriod
+    api_client: APIClient, staff: User, future_period: RatePeriod
 ) -> None:
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/periods/{period.pk}/bands",
+        f"/api/v1/periods/{future_period.pk}/bands",
         data={"min_party": 1, "max_party": 6, "nightly": "180.00"},
         format="json",
     )
     assert response.status_code == 201, response.content
-    created = RateBand.objects.get(period=period, nightly=Decimal("180.00"))
+    created = RateBand.objects.get(period=future_period, nightly=Decimal("180.00"))
     # The band hangs off the period and inherits its dates (GAP-056 — no own
     # date columns).
-    assert created.period_id == period.pk
+    assert created.period_id == future_period.pk
 
 
 @pytest.mark.django_db
@@ -193,11 +193,11 @@ def test_get_rate_rule_detail(api_client: APIClient, staff: User, rule: RateBand
 
 
 @pytest.mark.django_db
-def test_delete_rate_period(api_client: APIClient, staff: User, period: RatePeriod) -> None:
+def test_delete_rate_period(api_client: APIClient, staff: User, future_period: RatePeriod) -> None:
     api_client.force_login(staff)
-    response = api_client.delete(f"/api/v1/periods/{period.pk}")
+    response = api_client.delete(f"/api/v1/periods/{future_period.pk}")
     assert response.status_code == 204
-    assert not RatePeriod.objects.filter(pk=period.pk).exists()
+    assert not RatePeriod.objects.filter(pk=future_period.pk).exists()
 
 
 @pytest.mark.django_db
@@ -220,15 +220,15 @@ def test_rate_plan_detail_inlines_periods_with_rules(
 
 @pytest.mark.django_db
 def test_create_period_rejects_overlapping_dates(
-    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+    api_client: APIClient, staff: User, plan: RatePlan, future_period: RatePeriod
 ) -> None:
     """Periods on one plan must be date-disjoint (Unit 9 EXCLUDE surfaced as 400)."""
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
-        # Shares 08-31 with the fixture period. Named: a missing name would
+        # Shares 08-31 with `future_period`. Named: a missing name would
         # 400 at field level (GAP-059) before the overlap check runs.
-        data={"name": "Autumn", "date_from": "2026-08-31", "date_to": "2026-09-30"},
+        data={"name": "Autumn", "date_from": "2099-08-31", "date_to": "2099-09-30"},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -236,27 +236,27 @@ def test_create_period_rejects_overlapping_dates(
 
 
 @pytest.mark.django_db
-def test_patch_period_dates(api_client: APIClient, staff: User, period: RatePeriod) -> None:
+def test_patch_period_dates(api_client: APIClient, staff: User, future_period: RatePeriod) -> None:
     """Moving a period's dates moves the effective dates of its bands, which
     inherit them (GAP-056 — bands have no own date columns)."""
     band = RateBand.objects.create(
-        period=period,
+        period=future_period,
         min_party=1,
         max_party=8,
         nightly=Decimal("200.00"),
     )
     api_client.force_login(staff)
     response = api_client.patch(
-        f"/api/v1/periods/{period.pk}",
-        data={"date_from": "2026-06-15", "date_to": "2026-09-15"},
+        f"/api/v1/periods/{future_period.pk}",
+        data={"date_from": "2099-06-15", "date_to": "2099-09-15"},
         format="json",
     )
     assert response.status_code == 200, response.content
-    period.refresh_from_db()
-    assert period.date_from == date(2026, 6, 15)
-    assert period.date_to == date(2026, 9, 15)
+    future_period.refresh_from_db()
+    assert future_period.date_from == date(2099, 6, 15)
+    assert future_period.date_to == date(2099, 9, 15)
     # The band still hangs off the moved period — it inherits the new span.
-    assert band.period_id == period.pk
+    assert band.period_id == future_period.pk
 
 
 @pytest.mark.django_db

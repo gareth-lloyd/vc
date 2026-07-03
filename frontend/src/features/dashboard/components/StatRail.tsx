@@ -1,12 +1,8 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
-import {
-  todayIso,
-  useAwaitingBalanceCount,
-  useDeparturesTodayCount,
-  useNewEnquiriesCount,
-} from "../hooks";
+import { todayIso } from "@/lib/format/date";
+import { useAwaitingBalanceCount, useDeparturesTodayCount, useNewEnquiriesCount } from "../hooks";
 
 interface RailStatProps {
   label: string;

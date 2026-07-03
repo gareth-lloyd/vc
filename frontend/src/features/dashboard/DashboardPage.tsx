@@ -1,10 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { formatDate } from "@/lib/format/date";
+import { formatDate, todayIso } from "@/lib/format/date";
 import { HeroArrivals } from "./components/HeroArrivals";
 import { StatRail } from "./components/StatRail";
 import { RecentEnquiriesList } from "./components/RecentEnquiriesList";
-import { todayIso } from "./hooks";
 
 export function DashboardPage() {
   const { t } = useTranslation("dashboard");

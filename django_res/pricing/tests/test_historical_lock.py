@@ -5,9 +5,11 @@ record of what was charged. The serializers/views reject any edit to it or its
 bands, and reject deleting either — the workbench hides these rows by default
 and disables their controls when shown, and this is the server-side backstop.
 
-Creating a past-dated period is *not* blocked (backfill / carry-over): only
-mutating an already-elapsed stored row is. Dates here are deliberately far in
-the past (2019) / future (2999) so the suite stays clock-independent.
+Creating a past-dated period through the API is *also* blocked — a period born
+historical would be locked on arrival (no bands, unremovable). Only current or
+upcoming periods can be created here (loaders backfill via the ORM, which
+bypasses the serializer). Dates here are deliberately far in the past (2019) /
+future (2999) so the suite stays clock-independent.
 """
 
 from __future__ import annotations
@@ -106,14 +108,17 @@ def test_delete_future_period_allowed(api_client: APIClient, future_period: Rate
 
 
 @pytest.mark.django_db
-def test_create_past_dated_period_allowed(api_client: APIClient, plan: RatePlan) -> None:
-    """Backfilling a past period is fine; only mutating a stored one is locked."""
+def test_create_past_dated_period_rejected(api_client: APIClient, plan: RatePlan) -> None:
+    """A period that has already ended can't be created — it would be born locked."""
     response = api_client.post(
         f"/api/v1/rate-plans/{plan.pk}/rate-periods",
         data={"name": "Backfill 2018", "date_from": "2018-01-01", "date_to": "2018-12-31"},
         format="json",
     )
-    assert response.status_code == 201, response.content
+    assert response.status_code == 400, response.content
+    # Keyed under `date_to`, so it lands in field_errors (not the detail string).
+    assert "ended" in str(response.json()["field_errors"])
+    assert not RatePeriod.objects.filter(plan=plan, name="Backfill 2018").exists()
 
 
 # --- Band edits on a historical period --------------------------------------

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import generics, serializers, status
+from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,7 +20,7 @@ from pricing.serializers import (
     RatePlanDetailSerializer,
     RatePlanSerializer,
 )
-from pricing.serializers.rate import HISTORICAL_LOCKED_MESSAGE
+from pricing.serializers.rate import guard_period_editable
 from pricing.services.carryover import RateCarryoverService
 from properties.models import Property
 
@@ -184,8 +184,7 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance: RatePeriod) -> None:
         # A fully-elapsed period is a read-only record of what was charged.
-        if instance.is_historical:
-            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+        guard_period_editable(instance)
         instance.delete()
 
 
@@ -213,6 +212,5 @@ class RateBandDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance: RateBand) -> None:
         # Bands on a fully-elapsed period are locked along with the period.
-        if instance.period.is_historical:
-            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+        guard_period_editable(instance.period)
         instance.delete()

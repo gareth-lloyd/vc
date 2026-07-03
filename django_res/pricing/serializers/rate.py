@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.db import models
+from django.utils import timezone
 from rest_framework import serializers
 
 from pricing.models import RateBand, RatePeriod, RatePlan
@@ -20,6 +21,17 @@ from properties.models import Property
 HISTORICAL_LOCKED_MESSAGE = (
     "This rate period has already ended, so its rates are locked and read-only."
 )
+
+# Refusal shown when someone tries to *create* a period that has already ended.
+HISTORICAL_CREATE_MESSAGE = (
+    "You can only add a rate period that is current or upcoming — this one has already ended."
+)
+
+
+def guard_period_editable(period: RatePeriod | None) -> None:
+    """Raise if ``period`` has fully elapsed (its rates are frozen)."""
+    if period is not None and period.is_historical:
+        raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
 
 
 def _max_occupancy(plan: RatePlan) -> int | None:
@@ -119,8 +131,7 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
             )
 
         period = self._resolve_period()
-        if period is not None and period.is_historical:
-            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+        guard_period_editable(period)
         if period is not None and self.instance is None and not period.plan.prices_by_occupancy:
             if period.bands.exists():
                 raise serializers.ValidationError(
@@ -226,15 +237,20 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
             return model_field.get_default() if model_field.has_default() else None
 
         # A period whose window has fully elapsed is locked: reject any edit to
-        # the stored row (creates in the past stay allowed — backfill/carryover).
-        if self.instance is not None and self.instance.is_historical:
-            raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+        # the stored row.
+        guard_period_editable(self.instance)
 
         date_from, date_to = effective("date_from"), effective("date_to")
         if date_from is not None and date_to is not None and date_from > date_to:
             raise serializers.ValidationError(
                 {"date_to": "date_to must be on or after date_from."},
             )
+
+        # ...and you can't manufacture a fresh one that has already ended — it
+        # would be born locked (unremovable, no bands). Only current/upcoming
+        # periods can be created via the API (loaders backfill via the ORM).
+        if self.instance is None and date_to is not None and date_to < timezone.localdate():
+            raise serializers.ValidationError({"date_to": HISTORICAL_CREATE_MESSAGE})
 
         plan = self._resolve_plan(attrs)
         if plan is not None and None not in (date_from, date_to):

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { todayIso } from "@/lib/format/date";
 import { queryKeys } from "@/lib/query/keys";
 import {
   fetchArrivalsToday,
@@ -7,10 +8,6 @@ import {
   fetchNewEnquiriesCount,
   fetchRecentEnquiries,
 } from "./api";
-
-export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function useArrivalsToday() {
   const today = todayIso();

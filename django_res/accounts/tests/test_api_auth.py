@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pyotp
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from accounts.enums import TfaMethod
@@ -39,6 +40,54 @@ def user(db: None, password: str) -> User:
 def test_login_returns_user_when_tfa_disabled(
     api_client: APIClient, user: User, password: str
 ) -> None:
+    response = api_client.post(
+        "/api/v1/auth/login",
+        {"email": user.email, "password": password},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tfa_required"] is False
+    assert body["user"]["email"] == user.email
+
+
+def _enrol_totp(user: User) -> None:
+    user.tfa_method = TfaMethod.TOTP
+    user.tfa_secret = pyotp.random_base32()
+    user.save(update_fields=["tfa_method", "tfa_secret"])
+
+
+@pytest.mark.django_db
+def test_login_challenges_enrolled_user_when_challenge_on(
+    api_client: APIClient, user: User, password: str
+) -> None:
+    """Fail-closed default (base/prod): an enrolled user gets an OTP challenge
+    instead of a completed session."""
+    _enrol_totp(user)
+
+    response = api_client.post(
+        "/api/v1/auth/login",
+        {"email": user.email, "password": password},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tfa_required"] is True
+    assert body["challenge_token"]
+    assert "user" not in body
+
+
+@pytest.mark.django_db
+@override_settings(TFA_LOGIN_CHALLENGE=False)
+def test_login_skips_challenge_for_enrolled_user_in_dev(
+    api_client: APIClient, user: User, password: str
+) -> None:
+    """With TFA_LOGIN_CHALLENGE off (dev), an enrolled user logs in directly —
+    no OTP step, so Playwright and the pre-enrolled dev superuser breeze in."""
+    _enrol_totp(user)
+
     response = api_client.post(
         "/api/v1/auth/login",
         {"email": user.email, "password": password},

@@ -227,6 +227,15 @@ SEED_DEV_ALLOWED = False
 # 2FA ceremony-free); production flips it True and staging inherits that.
 TFA_ENFORCED = False
 
+# Whether `POST /auth/login` challenges a TOTP-enrolled user for a code (vs
+# completing the session directly). Fail-closed: True here so any settings
+# module that forgets to set it (test, staging, prod) keeps the OTP step. Only
+# `dev.py` flips it False — so local dev logins, including the pre-enrolled
+# `glloyd` dev superuser (see seeding.stages.users) and Playwright, skip the
+# OTP step. Independent of TFA_ENFORCED: enforcement is about *requiring*
+# enrolment, this is about *challenging* an already-enrolled user at login.
+TFA_LOGIN_CHALLENGE = True
+
 # Email safety: two independent default-closed gates protect real sends. Any
 # settings module that fails to override these gets zero real email — see
 # `production.py` / `staging.py` for the only places they flip open, and

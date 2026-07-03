@@ -60,9 +60,11 @@ class CsrfView(APIView):
 class LoginView(APIView):
     """`POST /auth/login` — credential login, sets the session cookie.
 
-    If the user has 2FA enrolled, returns a `challenge_token` instead of
-    completing the session. The caller then submits the OTP to
-    `POST /auth/2fa:verify` to finalise login.
+    If the user has 2FA enrolled *and* `settings.TFA_LOGIN_CHALLENGE` is on
+    (production/staging), returns a `challenge_token` instead of completing the
+    session; the caller then submits the OTP to `POST /auth/2fa:verify` to
+    finalise login. In dev/test the flag is off, so an enrolled user logs in
+    directly — keeps Playwright and the pre-enrolled dev superuser OTP-free.
     """
 
     permission_classes = [AllowAny]
@@ -84,7 +86,7 @@ class LoginView(APIView):
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        if user.tfa_method == TfaMethod.TOTP:
+        if settings.TFA_LOGIN_CHALLENGE and user.tfa_method == TfaMethod.TOTP:
             challenge = TwoFactorService.challenge(user)
             return Response(
                 {

@@ -35,11 +35,3 @@ Property (villa) master data and the workflows that produce, edit, and publish i
 | `ResModule.VILLA_LOCATION` | `/WP_Sync_Villa` (nearby variant) | nearby POI save |
 
 A property's "site status" is pushed in the `VILLA_DETAILS` variant of the villa sync.
-
-## Open design questions for the Django redesign
-
-- **Decompose `VillaMaster`** into focused models per concern (overview / location / capacity / settings) joined OneToOne. The `../02-properties.md` design already plans this.
-- **Decompose `VillaFinance`** into five FK-attached models (Commission, Tax, BankAccount, PaymentSchedule, SecurityDepositPolicy). The `../03-finance-config.md` design already plans this with `null-means-inherit` semantics replacing the `IsDefaultSetting*` flag pairs.
-- **Image storage** in legacy is to a hardcoded URL pattern `https://vc2.mojodev.co.uk/PropertyImages/{VillaId}/{filename}`. Redesign should use Django's `FileField` with a storage backend (S3 / Cloud Storage).
-- **Bulk imports** are per-row SP calls with `RowError = "Fail"` strings — replace with proper validation + transactional CSV import.
-- **Site descriptions** ("Web Des 1", "Interior Para", etc.) are a fixed slot-based content model. Redesign as a richer `PropertyContent` with named blocks or use a CMS-style structure.

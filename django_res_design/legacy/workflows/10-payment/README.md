@@ -42,9 +42,3 @@ Plus the checkout-form flow (capture guest personal info before payment) and the
   - Flywire API key `S2EyL25NWnU5Ynl0T2lXSi91Q1pjdz09` (base64) in `ResService.cs:320, 384`
   - Internal API key `130d0022-8fe4-4878-8ec2-c44c939bb336` in `PaymentController` constructor
 - **Sandbox URL hardcoded** as production endpoint: `https://api-platform-sandbox.flywire.com/`.
-
-## Open design questions for the Django redesign
-
-- The data-model design (`../07-payments.md`) plans `payments.Payment`, `payments.PaymentEvent`, `payments.WebhookDelivery` with proper idempotency and audit. Critically: signature verification is a hard requirement.
-- Tokens should never round-trip through the application unencrypted — keep them at the gateway side, only store gateway-issued `customer_id`.
-- Pre-auth security deposit is currently `[DISABLED]` but the data shape exists; decide whether to revive.

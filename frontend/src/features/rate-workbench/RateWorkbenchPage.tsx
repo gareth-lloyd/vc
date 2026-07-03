@@ -29,6 +29,7 @@ import {
   useChangeOverRules,
   useDeleteRatePlan,
   useDuplicateRatePlan,
+  usePropertyCapacity,
   usePropertyDiscounts,
   usePropertyExtras,
   usePropertyRatePlans,
@@ -71,6 +72,7 @@ export function RateWorkbenchPage() {
   const discounts = usePropertyDiscounts(property.id);
   const changeover = useChangeOverRules(property.id);
   const settings = usePropertySettings(property.id);
+  const capacity = usePropertyCapacity(property.id);
 
   const seasonList = useMemo(() => seasons.data?.results ?? [], [seasons.data]);
   const fanOut = useRatePlanDetailsFanOut(seasonList.map((s) => s.id));
@@ -344,7 +346,19 @@ export function RateWorkbenchPage() {
           lanes={lanes}
           windowStart={windowStart}
           dayCount={dayCount}
-          onCreatePeriod={canWrite ? (prefill) => setPeriodPrefill(prefill) : undefined}
+          onCreatePeriod={
+            canWrite
+              ? (prefill) => {
+                  // The timeline can target a lane whose plan isn't the one the
+                  // matrix is showing. Switch the matrix to that plan first, so
+                  // the just-created period is visible immediately rather than
+                  // only after a manual reload (which resets the plan selection
+                  // to whichever plan has periods).
+                  if (prefill.planId != null) setMatrixRatePlanId(prefill.planId);
+                  setPeriodPrefill(prefill);
+                }
+              : undefined
+          }
         />
       );
     }
@@ -412,6 +426,7 @@ export function RateWorkbenchPage() {
           canWrite={canWrite}
           commission={settings.data?.commission ?? null}
           tax={settings.data?.tax ?? null}
+          capacity={capacity.data?.guests ?? null}
           onAddPeriod={() => setPeriodPrefill(periodInitialValues ?? {})}
         />
         {periodPrefill != null ? (

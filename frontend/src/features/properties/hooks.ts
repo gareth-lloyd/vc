@@ -336,8 +336,13 @@ export function useDuplicateRatePlan(propertyId: PropertyId) {
 function useRatePlanDetailInvalidation(ratePlanId: RatePlanId) {
   const queryClient = useQueryClient();
   return () => {
+    // `refetchType: "all"` so the rate-plan detail refetches even when the
+    // workbench reads it through a `useQueries` fan-out entry that React Query
+    // treats as momentarily inactive — otherwise a just-added period/band stays
+    // invisible until a manual page reload.
     void queryClient.invalidateQueries({
       queryKey: queryKeys.properties.ratePlanDetail(ratePlanId),
+      refetchType: "all",
     });
   };
 }

@@ -41,6 +41,14 @@ interface CommonProps {
   priceBasis?: string | null;
   commission?: CommissionInput | null;
   tax?: TaxInput | null;
+  /** The owning plan's pricing mode. When `false` (flat rate) party size is
+   * ignored: the min/max party inputs are hidden and the single band is auto-set
+   * to cover the whole party range (1..capacity). Defaults to occupancy. */
+  pricesByOccupancy?: boolean;
+  /** The property's guest capacity — the `max_party` a flat band spans, so a
+   * booking of any party size prices (the engine still matches party against the
+   * band range even for flat plans). Null falls back to 1. */
+  capacity?: number | null;
 }
 
 interface CreateProps extends CommonProps {
@@ -121,15 +129,32 @@ function DerivedCounterpartHint({
 }
 
 export function RateBandFormDialog(props: RateBandFormDialogProps) {
-  const { ratePlanId, periodId, open, onOpenChange, currencyCode, priceBasis, commission, tax } =
-    props;
+  const {
+    ratePlanId,
+    periodId,
+    open,
+    onOpenChange,
+    currencyCode,
+    priceBasis,
+    commission,
+    tax,
+    pricesByOccupancy = true,
+    capacity,
+  } = props;
   const { t } = useTranslation("properties");
   const isCreate = props.mode === "create";
   const priceAdornment = currencyAdornment(currencyCode);
 
+  // Flat plans price one rate per period (party ignored). Hide the party inputs
+  // and pin the single band to span the whole party range so any-size bookings
+  // still price — the engine matches party against the band even when flat.
+  const flatSeed: Partial<RateBandWriteInput> = { min_party: 1, max_party: capacity ?? 1 };
+  const buildCreateDefaults = (seed?: Partial<RateBandWriteInput>) =>
+    createDefaults(pricesByOccupancy ? seed : { ...seed, ...flatSeed });
+
   const form = useForm<RateBandWriteInput>({
     resolver: zodResolver(rateBandWriteInputSchema),
-    defaultValues: isCreate ? createDefaults(props.defaults) : defaultsFromRule(props.rule),
+    defaultValues: isCreate ? buildCreateDefaults(props.defaults) : defaultsFromRule(props.rule),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -139,7 +164,7 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? createDefaults(props.defaults) : defaultsFromRule(props.rule));
+      form.reset(isCreate ? buildCreateDefaults(props.defaults) : defaultsFromRule(props.rule));
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,45 +220,50 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
           className="space-y-4"
           noValidate
         >
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="rate-rule-min-party">
-                {t("pricing.rule.dialog.fields.min_party")}
-              </Label>
-              <Input
-                id="rate-rule-min-party"
-                type="number"
-                min={1}
-                {...form.register("min_party", {
-                  setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
-                })}
-              />
-              {form.formState.errors.min_party ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.min_party.message)}
-                </p>
-              ) : null}
-            </div>
+          {/* Party bands only apply to occupancy pricing. A flat plan has one
+              band spanning the whole party range (auto-set to 1..capacity), so
+              the inputs are hidden rather than asked for. */}
+          {pricesByOccupancy ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="rate-rule-min-party">
+                  {t("pricing.rule.dialog.fields.min_party")}
+                </Label>
+                <Input
+                  id="rate-rule-min-party"
+                  type="number"
+                  min={1}
+                  {...form.register("min_party", {
+                    setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
+                  })}
+                />
+                {form.formState.errors.min_party ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {fieldErrorText(t, form.formState.errors.min_party.message)}
+                  </p>
+                ) : null}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="rate-rule-max-party">
-                {t("pricing.rule.dialog.fields.max_party")}
-              </Label>
-              <Input
-                id="rate-rule-max-party"
-                type="number"
-                min={1}
-                {...form.register("max_party", {
-                  setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
-                })}
-              />
-              {form.formState.errors.max_party ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.max_party.message)}
-                </p>
-              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="rate-rule-max-party">
+                  {t("pricing.rule.dialog.fields.max_party")}
+                </Label>
+                <Input
+                  id="rate-rule-max-party"
+                  type="number"
+                  min={1}
+                  {...form.register("max_party", {
+                    setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
+                  })}
+                />
+                {form.formState.errors.max_party ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {fieldErrorText(t, form.formState.errors.max_party.message)}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="flex items-center gap-2">
             <Checkbox
@@ -316,7 +346,9 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
             >
               {t("pricing.rule.dialog.actions.cancel")}
             </Button>
-            {isCreate ? (
+            {/* A flat plan allows only one band (the backend 400s a second), so
+                "save and add another" is offered for occupancy pricing only. */}
+            {isCreate && pricesByOccupancy ? (
               <Button
                 type="button"
                 variant="secondary"

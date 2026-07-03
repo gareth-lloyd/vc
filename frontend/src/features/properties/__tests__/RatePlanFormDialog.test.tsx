@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
-import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { useAuthStore } from "@/features/auth/store";
@@ -27,8 +26,16 @@ function setReservationsUser() {
   );
 }
 
-// The picker's popover inputs reuse the existing field labels.
-const SEASON_DATE_LABELS = { from: /^effective from$/i, to: /^effective to$/i };
+// Two independent single-date inputs (not a range picker) — a plan's effective
+// window is typically very wide, so the range picker was the wrong control.
+const FROM_LABEL = /^effective from$/i;
+const TO_LABEL = /^effective to$/i;
+
+async function typeDate(label: RegExp, value: string) {
+  const input = screen.getByLabelText(label);
+  await userEvent.clear(input);
+  if (value) await userEvent.type(input, value);
+}
 
 const eurCurrency = {
   id: 42,
@@ -90,14 +97,8 @@ describe("RatePlanFormDialog — create", () => {
 
     const nameInput = await screen.findByLabelText(/^Name$/i);
     await userEvent.type(nameInput, "Summer 2027");
-    const picker = await openDateRange(userEvent, /^dates/i);
-    await typeDateRange(
-      userEvent,
-      picker,
-      { from: "2027-06-01", to: "2027-09-30" },
-      SEASON_DATE_LABELS,
-    );
-    expectTriggerRange(/^dates/i, "1 Jun – 30 Sep 2027 · 122 days");
+    await typeDate(FROM_LABEL, "2027-06-01");
+    await typeDate(TO_LABEL, "2027-09-30");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(postBody).not.toBeNull());
@@ -146,8 +147,7 @@ describe("RatePlanFormDialog — create", () => {
     await waitFor(() => expect(within(basisTrigger).getByText(/^Net$/i)).toBeInTheDocument());
 
     await userEvent.type(screen.getByLabelText(/^Name$/i), "Agent net 2027");
-    const picker = await openDateRange(userEvent, /^dates/i);
-    await typeDateRange(userEvent, picker, { from: "2027-06-01" }, SEASON_DATE_LABELS);
+    await typeDate(FROM_LABEL, "2027-06-01");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(postBody).not.toBeNull());
@@ -174,8 +174,7 @@ describe("RatePlanFormDialog — create", () => {
       <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
     await userEvent.type(await screen.findByLabelText(/^Name$/i), "Summer 2027");
-    const picker = await openDateRange(userEvent, /^dates/i);
-    await typeDateRange(userEvent, picker, { from: "2027-06-01" }, SEASON_DATE_LABELS);
+    await typeDate(FROM_LABEL, "2027-06-01");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByText(/already taken/i)).toBeInTheDocument();
     useAuthStore.getState().clear();
@@ -218,8 +217,9 @@ describe("RatePlanFormDialog — edit", () => {
 
     const nameInput = (await screen.findByLabelText(/^Name$/i)) as HTMLInputElement;
     await waitFor(() => expect(nameInput.value).toBe("Summer 2026"));
-    // The stored season window prefills the picker trigger.
-    expectTriggerRange(/^dates/i, "1 Jun – 30 Sep 2026 · 122 days");
+    // The stored season window prefills both date inputs.
+    expect(screen.getByLabelText(FROM_LABEL)).toHaveValue("2026-06-01");
+    expect(screen.getByLabelText(TO_LABEL)).toHaveValue("2026-09-30");
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Summer 2026 (revised)");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -229,7 +229,7 @@ describe("RatePlanFormDialog — edit", () => {
     useAuthStore.getState().clear();
   });
 
-  it("supports an open-ended season: cleared To shows partial trigger text and PATCHes explicit null", async () => {
+  it("supports an open-ended season: a cleared To PATCHes explicit null", async () => {
     setReservationsUser();
     installBaseHandlers(42);
     let patchBody: Record<string, unknown> | null = null;
@@ -250,23 +250,16 @@ describe("RatePlanFormDialog — edit", () => {
       />,
     );
 
-    // Open end via the popover's typed inputs: retype From, clear To (a
-    // calendar click always writes a closed 1-day range in days mode).
-    const picker = await openDateRange(userEvent, /^dates/i);
-    await waitFor(() =>
-      expect(picker.getByLabelText(SEASON_DATE_LABELS.from)).toHaveValue("2026-06-01"),
-    );
-    await typeDateRange(userEvent, picker, { from: "2026-07-04", to: "" }, SEASON_DATE_LABELS);
-
-    // From-only partial text — no day count, no dangling end.
-    expectTriggerRange(/^dates/i, "4 Jul 2026 – …");
-    expect(screen.getByRole("button", { name: /^dates/i })).not.toHaveTextContent("days");
+    // Retype From, clear To → an open-ended season.
+    await waitFor(() => expect(screen.getByLabelText(FROM_LABEL)).toHaveValue("2026-06-01"));
+    await typeDate(FROM_LABEL, "2026-07-04");
+    await typeDate(TO_LABEL, "");
 
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
-    // The submit mapping sends explicit `null` for an empty To (never "" or
-    // an omitted key) so the PATCH actually clears a previously-set end date.
+    // The submit mapping sends explicit `null` for an empty To (never "" or an
+    // omitted key) so the PATCH actually clears a previously-set end date.
     expect(patchBody!.effective_from).toBe("2026-07-04");
     expect(patchBody!.effective_to).toBeNull();
     useAuthStore.getState().clear();

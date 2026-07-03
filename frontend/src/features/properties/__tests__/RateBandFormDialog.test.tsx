@@ -208,6 +208,78 @@ describe("RateBandFormDialog — create", () => {
   });
 });
 
+describe("RateBandFormDialog — flat (non-occupancy) plan", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  it("hides the party inputs and posts a band spanning 1..capacity", async () => {
+    setReservationsUser();
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return ruleResponse(postBody);
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        pricesByOccupancy={false}
+        capacity={12}
+      />,
+    );
+
+    // No party inputs asked for on a flat plan.
+    expect(screen.queryByLabelText(/Minimum party/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Maximum party/i)).not.toBeInTheDocument();
+    // Nor the multi-band "save & add another" affordance.
+    expect(screen.queryByRole("button", { name: /save & add another/i })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "150.00");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    // The single flat band must span the whole party range so any-size
+    // bookings price (the engine matches party against the band even when flat).
+    expect(postBody).toMatchObject({ min_party: 1, max_party: 12, nightly: "150.00" });
+    useAuthStore.getState().clear();
+  });
+
+  it("falls back to max_party=1 when the property has no capacity row", async () => {
+    setReservationsUser();
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return ruleResponse(postBody);
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        pricesByOccupancy={false}
+        capacity={null}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "150.00");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({ min_party: 1, max_party: 1 });
+    useAuthStore.getState().clear();
+  });
+});
+
 describe("RateBandFormDialog — edit", () => {
   it("prefills from the rule and PATCHes edited fields", async () => {
     setReservationsUser();

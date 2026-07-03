@@ -31,6 +31,9 @@ interface MatrixEditorProps {
   canWrite: boolean;
   commission: CommissionInput | null;
   tax: TaxInput | null;
+  /** The property's guest capacity — a flat band spans 1..capacity. Absent
+   * (no capacity row) falls back to 1 in the band dialog. */
+  capacity?: number | null;
   /** Opens the parent's period-create dialog; a zero-period season renders an
    * "Add period" CTA in its empty state when this is provided. */
   onAddPeriod?: () => void;
@@ -100,6 +103,7 @@ export function MatrixEditor({
   canWrite,
   commission,
   tax,
+  capacity,
   onAddPeriod,
 }: MatrixEditorProps) {
   const { t } = useTranslation("properties");
@@ -481,6 +485,8 @@ export function MatrixEditor({
           priceBasis={priceBasis}
           commission={commission}
           tax={tax}
+          pricesByOccupancy={pricesByOccupancy}
+          capacity={capacity}
         />
       ) : null}
       {editingBand ? (
@@ -495,6 +501,8 @@ export function MatrixEditor({
           priceBasis={priceBasis}
           commission={commission}
           tax={tax}
+          pricesByOccupancy={pricesByOccupancy}
+          capacity={capacity}
         />
       ) : null}
       {deletingBand ? (

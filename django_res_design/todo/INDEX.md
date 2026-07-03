@@ -3,33 +3,32 @@
 Live status of every ticket. **Open work is at the top; resolved and
 dropped tickets are listed at the bottom and their files live in
 [`done/`](done/)** (each carries a top-of-file `✅ RESOLVED` / `❌ DROPPED`
-banner with the problem, fix, and commit). See `README.md` for conventions;
-`CRITIQUE-2026-06-19.md` (current) for the review that drove the latest status
-changes. (The superseded `CRITIQUE-2026-05-27.md` was cut once fully worked
-through; its outcomes survive in the `done/` ticket banners.)
+banner with the problem, fix, and commit). See `README.md` for conventions.
+The two review passes that drove past status changes are both fully worked
+through: `CRITIQUE-2026-05-27.md` was cut once absorbed, and
+`CRITIQUE-2026-06-19.md` is retained under [`reviews/`](reviews/) for
+provenance. Their outcomes survive in the `done/` ticket banners.
 
 Status icons:
 - ⬜ open (default)
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
+- ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-02, recounted from files): **114 done** (109 resolved + 5 dropped), **41 open**
-(incl. ✏️ revise and 🟨 partial; +13 from the 2026-07-02 audits — backend complexity:
-BUG-015/016/017, SMELL-020/021/022/023/024, GAP-061, Q-024; frontend complexity:
-BUG-018, GAP-062/063, REFACTOR-001). Resolved files moved to `done/`. (GAP-064–068 are
-the room-model cluster — legacy-grounded build tickets that superseded Q-019 and Q-021.)
-(GAP-030–037
-are the availability/commission/region/services cluster; GAP-038–044 are the
-enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
-GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
-follow-up.)
+Scoreboard (2026-07-03, recounted from files): **118 done** (113 resolved + 5 dropped), **43 open**
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
+listed inline in their topic section marked ✅ (not moved to the bottom table); the
+scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
+(superseded Q-019/Q-021); GAP-030–037 availability/commission/region/services; GAP-038–044
+enquiry/quote/customer-profile (2026-06-17 owner Loom); GAP-048 + GAP-052/053 contacts-
+directory (2026-06-29 owner Loom follow-up).
 
-_2026-07-03 additions (not in the 2026-07-02 count above): GAP-069
-(workbench carry-forward affordance) and SPEC-001 (rate-model date-authority
-exploration) from the far-future-rates investigation; GAP-070 (remove property
-groups) already landed on this branch. First `spec-*` ticket — see `README.md`.
-GAP-071 (no manual security-deposit creation) from the `/bookings/383/payments`
-empty-state investigation._
+_2026-07-03 additions: GAP-069 (workbench carry-forward, resolved) and SPEC-001
+(rate-model date-authority exploration) from the far-future-rates investigation;
+GAP-070 (remove property groups) already landed on this branch. GAP-071 (no manual
+security-deposit creation) from the `/bookings/383/payments` empty-state
+investigation. INV-006 harvests the still-open questions surfaced when the legacy
+workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` reorg)._
 
 ---
 
@@ -41,7 +40,7 @@ empty-state investigation._
 |---|---|---|
 | [BUG-008](done/bug-008-securitydeposit-damageclaim-fk.md) | `SecurityDeposit.damage_claim_id` is a fake FK | ✅ resolved (2026-06-23) — `DamageClaim` shipped in `reservations/` (v1, "fuller" model: reference seq, booking/currency FKs, status, `itemized_lines`/`photos`/`accepted_by_guest_at` scaffolds, audited) + `SecurityDeposit.damage_claim` → real `FK(SET_NULL)`; `claim()` resolves PK/instance/None into a booking-matched claim, `DomainValidationError` (400) on bad/foreign ref; damages workflow (report/photos/thresholds/email/approval SM) deferred to wf 8/17 |
 | [BUG-009](done/bug-009-price-basis-ignored-by-engine.md) | Engine ignores `RatePlan.price_basis` — GROSS plans mis-priced | ✅ resolved (2026-07-02) — engine branch landed **independently of the finance rewrite** (the maths only need pct/fixed/exempt, already flowing through the `_call_finance_resolver` shim, which stays): `PricingEngine._derive_commission_and_tax` branches on `price_basis` (GROSS carve-out / NET gross-up, raw-commission-feeds-tax-base quantization order, ≥100%/zero-base sanitisation guards), breakdown snapshots `price_basis` + `net_to_owner`, FE probe workaround unwound (probe trusts engine `total`, owner economics shown). Spec slice was 2026-06-22 |
-| [BUG-013](done/bug-013-migration-drops-villaoccupencyprice.md) | Migration silently drops `VillaOccupencyPrice` — range-based occupancy rates lost on cutover | ⬜ open — `RateRuleLoader` reads only `VillaSeasonRate`/`PartySize`; needs a child loader emitting one `RateRule` per occupancy band. Feeds GAP-044 |
+| [BUG-013](done/bug-013-migration-drops-villaoccupencyprice.md) | Migration silently drops `VillaOccupencyPrice` — range-based occupancy rates lost on cutover | ✅ resolved (2026-07-01) — `RateRuleLoader.legacy_query` LEFT JOINs `VillaOccupencyPrice`; `_prepare_occupancy_rows` expands each `IsOccupationPrice` parent into one band per rule (`legacy_id="occ-{OccId}"`) + base-weekly gap fallbacks. Fed GAP-044 |
 | [BUG-014](done/bug-014-raterule-flattened-period-occupancy-hierarchy.md) | `RateRule` flattened legacy's period→occupancy hierarchy — permits ragged/misaligned bands | ✅ superseded (2026-07-01) by **GAP-056** — Option B shipped and then some: `RateCard` dropped, `Property → RatePlan → RatePeriod → RateRule`, two `btree_gist` EXCLUDEs make ragged bands structurally impossible |
 | [BUG-018](bug-018-frontend-cache-staleness-missing-invalidations.md) | Frontend cache staleness — booking mutations skip the availability calendar; contact sub-tabs never invalidate | ⬜ from 2026-07-02 frontend complexity audit; per-mutation hand-listed invalidations have drifted → operator sees stale dates/history |
 | [BUG-015](bug-015-scattered-state-machines-false-409.md) | State machines hand-rolled 4 ways; SD's bare `ValueError` → false 409s; `BookingHold`/`DamageClaim` lifecycles unguarded | ⬜ from 2026-07-02 complexity audit; shape depends on Q-024 |
@@ -58,7 +57,7 @@ empty-state investigation._
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ demoted from footgun (low real-world risk today); ⚠️ mooted by **GAP-070** (deletes `effective()`) |
+| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⏸ superseded-pending **GAP-070** (deletes `effective()` entirely) — demoted from footgun (low real-world risk); drop when GAP-070 lands |
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) lives in one file | ⬜ |
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
@@ -71,17 +70,23 @@ empty-state investigation._
 | [SMELL-024](smell-024-god-objects-model-business-logic.md) | God objects: business logic on `Booking` model + in quotation views; oversized engine/stay-options methods | ⬜ from 2026-07-02 complexity audit; incremental extractions, overlaps SMELL-009/012 |
 | [SMELL-019](done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md) | Rate-model naming & UI residuals after GAP-056 | ✅ done (2026-07-02, local main unpushed) — `RateRule`→`RateBand` (model/API/routes/snapshot), `/seasons`→`/rate-plans`, GAP-025 changeover suggestion reinstated at period grain; `is_active` backfill non-issue confirmed |
 
-## Refactor
+## Refactors
 
 | Id | Title | Status |
 |---|---|---|
-| [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate repeated frontend boilerplate: CRUD-dialog state, FormDialog reset-effect, toast/error extraction, optimistic updates | ⬜ from 2026-07-02 frontend complexity audit; first `refactor-*` ticket (no behaviour change) |
+| [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate frontend boilerplate — `useCrudDialog`, FormDialog reset-effect wrapper, `toastError`/`apiErrorMessage`, one optimistic-update helper; decompose QuoteBuilder/QuoteResultLine | ⬜ from 2026-07-02 frontend complexity audit; first `refactor-*` ticket, mechanical, no behaviour change; coordinates with BUG-018 on shared mutation helpers |
 
 ## Speculative
 
 | Id | Title | Status |
 |---|---|---|
 | [SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) | Make `RatePeriod` the sole date authority; `RatePlan` becomes a dateless regime bucket (drop `effective_from/to`) | 🔵 exploration from 2026-07-03 far-future-rates investigation; year-on-`RatePlan` alt considered + rejected (cross-year multi-regime stays); cheap interim = bind envelope to period union; related Q-022/Q-018/SMELL-021/22, GAP-069 |
+
+## Investigations
+
+| Id | Title | Status |
+|---|---|---|
+| [INV-006](inv-006-legacy-open-questions.md) | Live open questions harvested from the legacy workflow specs when they were frozen into `../legacy/` | ⬜ holding pen (2026-07-03 reorg) — ~19 still-open questions tracked nowhere else; promote each to its own ticket when its app is next touched |
 
 ## Surface gaps
 
@@ -92,7 +97,7 @@ empty-state investigation._
 | [GAP-012](gap-012-s3-image-hosting.md) | S3 image hosting for staging & prod (+ legacy binary import) | 🟨 code complete; remaining: ops prereqs + run the cutover runbook |
 | [GAP-013](gap-013-quote-builder-ux-feedback-loops.md) | Quote builder UX: tighten feedback loops (invalid-line flag, remove-undo, unpriceable note, a11y) | ⬜ FE polish, sibling of GAP-005 |
 | [GAP-017](done/gap-017-legacy-villabookingdetails-loader.md) | Data-migration loader for legacy `VillaBookingDetails` | ✅ resolved (2026-07-02) — `BookingChargeItemLoader` ports Chargeable Extras with convert-or-flag FX (pinned `as_of=booking.date_from`, no-rate → `errors`), payment-resync suppression around the load (package's first), removal sweep, `reconcile_legacy` check (gap 0 placeholder, recalibrate at dry-run); same-currency rows verbatim reproduce legacy totals by construction (CUTOVER.md §4g) |
-| [GAP-018](done/gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ⬜ |
+| [GAP-018](done/gap-018-comms-charge-itemisation.md) | Itemise charge lines in guest-facing comms | ✅ resolved (2026-06-21) — shared `booking_charge_breakdown(booking)` builder (`reservations/services/charges.py`) decomposes the billed total, surfaced in guest-facing email |
 | [GAP-021](done/gap-021-audit-history-ui.md) | Per-entity "History" tab in the SPA (audit-log surface) | ✅ resolved (2026-06-22) — reusable single-target `<AuditHistory>` renders the real `field_diffs` contract (`[old,new]`, `__deleted__` banner, merge summary, `[REDACTED]`) as `field: old → new` rows + date-range filter + pagination; admin-gated History tabs on Booking, Property (property + `propertyfinance`, finance pk == property id), and a fixed Contacts tab (`accounts.contact`→`accounts.person` + raw-JSON→formatted, 2 live bugs); en+el; vitest. FE-only — backend read surface already admin-only; `action`-filter GIN index unneeded (UI doesn't use it) |
 | [GAP-022](done/gap-022-per-property-feature-ordering.md) | Per-property feature display ordering dropped vs legacy (`MappingOrder`) | ✅ resolved (2026-06-18) — `PropertyFeature` through model w/ `sort_order` (non-destructive migration + FG-017 audit), ordered-`feature_ids` diff-write serializer, `MIN(MappingOrder)` loader, flat drag-drop FeaturesTab |
 | [GAP-023](gap-023-owner-approval-preview-lifecycle.md) | `live_offline` replacement: `owner_approved_at` + draft preview link + badges | ⬜ deferred per 2026-06-11 owner decision (no approval gating in v1) |
@@ -130,7 +135,8 @@ empty-state investigation._
 | [GAP-055](done/gap-055-occupancy-band-week-picker.md) | Quote builder: two-dimensional picker (week choice × occupancy bands) [GAP-044b] | ✅ resolved (2026-07-01) — lifts GAP-044's picker-suppression: a banded villa now shows the **week picker *and* the selected week's bands**; pick a week → its bands fan out → each saves at the chosen week's dates. Almost FE-only, zero new pricing cost (the `flex_days:0` reprice already returns the week's bands; only `stayRepriceSchema` needed the field). `resolvedBands` decoupled from reprice `available` (out-of-bracket stays saveable), checked-by-party-range-identity, `d68c1c1`/`37f6936`/`479b7e3`. Per-week chip "from" price / shortlist week-change / per-band override deferred |
 | [GAP-057](done/gap-057-2fa-enforcement-and-refund-stepup.md) | 2FA: staff enrolment enforcement + refund-execution step-up | ✅ resolved (2026-07-02, local main unpushed) — six TDD units: single-use `verify_code` + `tfa_last_verified_step` replay guard; `TfaEnforcementMiddleware` (behind `TFA_ENFORCED`, `/api/`-scoped, allowlisted) + `:disable` guard + `StaffExcludedBasicAuthentication` (review: closes a Basic-auth staff bypass); refund `:execute` step-up (`tfa_code`, `tfa_stepup_required` 403 / `invalid_tfa_code` 400, gated on `TFA_ENFORCED`, `actor=None` exempt); forced-enrolment UX (`Enroll2faPage` QR + recovery ack, boot redirect + 403 interceptor) + step-up dialog. Step-up gated on `TFA_ENFORCED` not always-on (reversible deviation) |
 | [GAP-058](gap-058-comms-pull-only-top-of-spine.md) | comms pull-only: retire all 7 blessed comms back-edges (reminder sweep → comms.tasks, password-reset signal, self-mounted email routes) | ⬜ converted from Q-017 (decision recorded 2026-07-02); 3-unit plan + docs in ticket |
-| [GAP-059](gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ⬜ expanded 2026-07-02; 4-unit plan in ticket — all legacy-migrated periods currently blank, workbench creates them blank, FE has 4 divergent fallbacks |
+| [GAP-056](done/gap-056-rate-model-restructure-property-period-band.md) | Rate-model restructure: `Property → RatePlan → RatePeriod → RateBand`, drop `RateCard` | ✅ resolved (2026-07-01) — two-level rate tree shipped on local `main` (unpushed, `feat/gap-056`, 9 units); `RateCard` dropped, `RatePeriod` owns an inclusive date window + nullable min/max nights, two `btree_gist` EXCLUDEs; period-native everywhere. Subsumes BUG-014 |
+| [GAP-059](done/gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ✅ resolved (2026-07-02, local main unpushed) — 4 units: `derive_period_name` + loader names every synthesized period, field required + CHECK + `0017` backfill, required in dialog, one shared FE fallback |
 | [GAP-060](done/gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ✅ resolved (2026-07-02) — FE-only on local `main` (unpushed; `7f8fe63`, `f7bd8b9`, `fc27581`). Unit 1: rate-plan create/edit/duplicate/delete + period edit/delete + GAP-026 warning ported into the Workbench (add/duplicate no longer skeleton-blanks the page). Unit 2: renamed "Rates", dropped the Preview badge. Unit 3: deleted PricingTab + RatePlanDetailPanel, `/pricing`→Rates redirect, dropped the writer-only nav gate, pruned dead i18n. Full FE gate green (1642 tests) |
 | [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
 | [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
@@ -139,16 +145,10 @@ empty-state investigation._
 | [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
-| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ ⚠️ superseded by **GAP-070** (which drops groups); its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
+| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⏸ superseded-pending **GAP-070** (which drops groups) — its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067; drop when GAP-070 lands |
 | [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
 | [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
 | [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
-
-## Refactors
-
-| Id | Title | Status |
-|---|---|---|
-| [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate frontend boilerplate — `useCrudDialog`, FormDialog reset-effect wrapper, `toastError`/`apiErrorMessage`, one optimistic-update helper; decompose QuoteBuilder/QuoteResultLine | ⬜ from 2026-07-02 frontend complexity audit; mechanical, no behaviour change; coordinates with BUG-018 on shared mutation helpers |
 
 ## Open product questions
 

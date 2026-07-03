@@ -378,11 +378,12 @@ export async function deleteDamageClaimPhoto(
 // Security deposit (wf 8)
 // ----------------------------------------------------------------------
 
-// The endpoint returns the SD row or a literal `null` body (HTTP 200) when the
-// booking has none — the nullable parse handles both.
+// The endpoint returns the SD row (HTTP 200) or HTTP 204 when the booking has
+// none — `apiGet` yields `undefined` for the empty 204 body, so coalesce to
+// `null` before the nullable parse (the panel branches on `deposit === null`).
 export async function fetchSecurityDeposit(id: BookingId): Promise<SecurityDeposit | null> {
   const data = await apiGet<unknown>(`/bookings/${id}/security/deposit`);
-  return securityDepositSchema.nullable().parse(data);
+  return securityDepositSchema.nullable().parse(data ?? null);
 }
 
 // Release / claim return the Payment-aggregate track (the backend response);

@@ -43,15 +43,24 @@ def _url(booking: Booking) -> str:
 
 
 @pytest.mark.django_db
-def test_returns_null_when_no_security_deposit(
+def test_returns_204_with_empty_body_when_no_security_deposit(
     api_client: APIClient,
     accounts_user: User,
     booking: Booking,
 ) -> None:
+    """No SD → 204 with a genuinely empty body.
+
+    Regression: the view used to `Response(None)`, which DRF renders to an
+    *empty* byte body (not the literal `null`), so the FE's `response.json()`
+    threw and the panel showed "Couldn't load the security deposit". Assert on
+    `response.content` (the rendered bytes), not just `response.data` — the
+    old test checked `response.data is None`, which is `None` regardless of
+    what actually gets sent over the wire, so it never caught the bug.
+    """
     api_client.force_login(accounts_user)
     response = api_client.get(_url(booking))
-    assert response.status_code == 200, response.data
-    assert response.data is None
+    assert response.status_code == 204, response.data
+    assert response.content == b""
 
 
 @pytest.mark.django_db
@@ -131,7 +140,9 @@ def test_any_staff_may_read(
     )
     api_client.force_login(user)
     response = api_client.get(_url(booking))
-    assert response.status_code == 200, response.data
+    # No SD on this booking → 204 (the read is permitted, not forbidden — the
+    # accounts gate bites on writes, not this GET).
+    assert response.status_code == 204, response.data
 
 
 @pytest.mark.django_db

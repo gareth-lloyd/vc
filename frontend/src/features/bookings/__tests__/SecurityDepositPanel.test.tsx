@@ -56,8 +56,12 @@ function makeClaim(overrides: Partial<DamageClaim> = {}): DamageClaim {
 }
 
 function depositHandler(deposit: SecurityDeposit | null) {
+  // No deposit → the backend answers 204 with an *empty* body (not JSON
+  // `null`); reproducing that here guards the regression where the client's
+  // `response.json()` threw on the empty body and the panel showed an error
+  // instead of the empty state.
   return http.get(`/api/v1/bookings/${BOOKING_ID}/security/deposit`, () =>
-    HttpResponse.json(deposit),
+    deposit === null ? new HttpResponse(null, { status: 204 }) : HttpResponse.json(deposit),
   );
 }
 

@@ -207,8 +207,14 @@ def security_detail(request: Request, booking_pk: int) -> Response:
 
     Returns the booking's most-recent `SecurityDeposit` (incl. terminal, so the
     panel can show a final CAPTURED/RELEASED state — unlike `_get_active_sd`,
-    which excludes terminals), or HTTP 200 + `null` body when none exists (a 404
-    would be worse here; the FE schema parses the boundary as nullable).
+    which excludes terminals), or HTTP 204 when none exists (a 404 would be
+    worse here; the FE maps the empty 204 body to `null`).
+
+    NB: `Response(None)` is *not* an option for the empty case — DRF's
+    `JSONRenderer` renders `None` to an empty byte body (not the literal
+    `null`), and the browser's `response.json()` then throws on the empty
+    string, surfacing as the panel's "Couldn't load" error. 204 is the
+    unambiguous no-content signal the FE client already understands.
     """
     booking = get_object_or_404(Booking, pk=booking_pk)
     sd = (
@@ -218,7 +224,7 @@ def security_detail(request: Request, booking_pk: int) -> Response:
         .first()
     )
     if sd is None:
-        return Response(None)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     return Response(SecurityDepositSerializer(sd).data)
 
 

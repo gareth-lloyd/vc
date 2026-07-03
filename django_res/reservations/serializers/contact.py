@@ -110,7 +110,7 @@ class ContactEnquirySerializer(serializers.ModelSerializer[Enquiry]):
         if not bookings:
             return None
         best = max(bookings, key=lambda b: b.created_at)
-        return {"reference": best.reference, "status": best.status}
+        return {"id": best.pk, "reference": best.reference, "status": best.status}
 
 
 class ContactQuotationSerializer(serializers.ModelSerializer[Quotation]):

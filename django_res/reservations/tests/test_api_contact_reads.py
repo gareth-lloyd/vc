@@ -184,6 +184,8 @@ def test_contact_enquiries_includes_quote_count_and_converted_booking(
     row = next(r for r in response.json()["results"] if r["id"] == enquiry.pk)
     assert row["quote_count"] == 2
     assert row["converted_booking"]["reference"] == booking.reference
+    # FE links the converted-booking chip to /bookings/:id — needs the pk.
+    assert row["converted_booking"]["id"] == booking.pk
 
 
 @pytest.mark.django_db

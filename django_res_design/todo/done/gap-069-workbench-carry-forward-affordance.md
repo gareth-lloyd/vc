@@ -1,3 +1,19 @@
+> **✅ RESOLVED (2026-07-03)** — Problem: the carry-forward endpoint (promote a
+> projected future year into editable rate rows) was built and tested but had no
+> caller in the SPA — only a Django-admin action reached it. Fix: frontend-only.
+> Added the data layer (`carryForwardRatePlan` + `useCarryForwardRatePlan`) and a
+> `CarryForwardDialog`, wired into the rate workbench's "Nothing scheduled in
+> {year}" empty state: a writer-gated "Carry rates forward" button (offered only
+> when the active plan has a resolvable currency code and the target year isn't
+> in the past), with an optional uplift %. On success the new plan is selected
+> and the year fills in place. **No backend change** — endpoint, service,
+> permission, idempotency and 20-year guard already shipped. Landed on local
+> main (ff, unpushed): `f524142` (data layer + dialog), `e303050` (wiring),
+> `62f5f14` (Greek i18n parity). Deferred as scoped: `date_map` selector,
+> `allow_projection` opt-out, negative uplift/reductions, naming the anchor year.
+>
+> _Original ticket preserved below for context._
+
 # GAP-069 — Explicit carry-forward has no workbench affordance; the endpoint is unreachable from the SPA
 
 - **Severity:** 🟠 Gap (designed surface — the service, endpoint, and admin

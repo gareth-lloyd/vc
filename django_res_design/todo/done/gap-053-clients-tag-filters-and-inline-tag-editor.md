@@ -75,4 +75,4 @@ Two unshipped owner asks on the Clients surface:
 - Follows **GAP-047** (Clients list + direct/agent filter), **GAP-040** (tags +
   `?tags=` filter), **GAP-042** (`is_repeat_customer` derivation), **GAP-048**
   (tags excluded from Suppliers). Curated/ops-editable taxonomy stays in
-  [Q-021](../q-021-defaults-and-feature-taxonomy.md).
+  [Q-021](./q-021-defaults-and-feature-taxonomy.md).

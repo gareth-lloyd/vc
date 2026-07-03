@@ -89,8 +89,8 @@ Sensitive field edits on `Person` (PII, address, name) are tracked into `AuditLo
 > model yet; the entity that carries them is the unified **`accounts.Person`**
 > (GAP-045, delivered — there is no longer a Guest-vs-Contact split), with the model shape
 > and the Repeat-is-derived / PA-overlaps-the-link-role reconciliation settled in
-> [`todo/gap-040-customer-tags-taxonomy.md`](todo/done/gap-040-customer-tags-taxonomy.md)
-> and [`todo/gap-041-standing-linked-contacts.md`](todo/done/gap-041-standing-linked-contacts.md).
+> [`todo/gap-040-customer-tags-taxonomy.md`](../../todo/done/gap-040-customer-tags-taxonomy.md)
+> and [`todo/gap-041-standing-linked-contacts.md`](../../todo/done/gap-041-standing-linked-contacts.md).
 > Sensitive tags (Disability / Approach-with-care) may carry retention/consent
 > implications — cross-ref `todo/q-010-guest-data-retention.md`.
 

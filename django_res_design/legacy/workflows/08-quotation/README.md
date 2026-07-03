@@ -2,7 +2,7 @@
 
 The quotation is the priced offer that follows an enquiry. A quote is a set of property options (one or more villas at one or more date ranges) with line-item pricing, commission, discount, and inclusion text. Staff send it to the client; the client accepts; it becomes a booking.
 
-> **Legacy screens:** the real legacy UI for this domain was a 4-screen flow (`/quote → /client-details → /quote-generator → /rate-look-up`), absent from the analysed tree — see [`../legacy-quote-enquiry-reference.md`](../legacy-quote-enquiry-reference.md) for the corrected screen/flow spec and trust map.
+> **Legacy screens:** the real legacy UI for this domain was a 4-screen flow (`/quote → /client-details → /quote-generator → /rate-look-up`), absent from the analysed tree — see [`../legacy-quote-enquiry-reference.md`](../../quote-enquiry-reference.md) for the corrected screen/flow spec and trust map.
 
 ## Files
 

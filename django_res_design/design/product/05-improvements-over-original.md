@@ -50,7 +50,7 @@ The brief was: *reproduce familiar functionality and flow without slavish devoti
 > ⚠️ **CORRECTED (2026-07-02, GAP-010)** — "worked one villa at a time" is wrong: legacy supported
 > multi-villa quotes ("buried under Quotes & Enquiries → New Quote" is correct). The improvement
 > stands as a **UX** win (clear cart-vs-search separation), not a capability gap. Evidence:
-> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md) §3.4.
+> [`../workflows/legacy-quote-enquiry-reference.md`](../../legacy/quote-enquiry-reference.md) §3.4.
 
 **Was**: Quote-building UI was buried under "Quotes & Enquiries → New Quote" and worked one villa at a time, with no clear cart-vs-search separation.
 **Now**: A two-pane builder: left pane is the enquiry brief + villa search/filter; right pane is the cart of selected villas with per-line price overrides. Each result card shows live availability + computed price for the requested dates. Preview email before send. Optional 48h auto-hold on quoted villas at send time.

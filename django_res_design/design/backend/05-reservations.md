@@ -163,7 +163,7 @@ at 42 days = 2 × `SEARCH_FLEX_MAX`). The **intake model is untouched**:
 and seeds the builder window symmetrically (`date_from ± flexibility_days`).
 The mockup's wider Flex? vocabulary (`+/- 7 days` / `Flexible`) exceeds the
 0–3 intake cap — that widening + "Flexible" mode stays **deferred to
-[`todo/gap-050-enquiry-grid-inline-edits-and-controls.md`](todo/gap-050-enquiry-grid-inline-edits-and-controls.md)
+[`todo/gap-050-enquiry-grid-inline-edits-and-controls.md`](../../todo/gap-050-enquiry-grid-inline-edits-and-controls.md)
 item 7** (the builder itself doesn't need it; its window already runs to
 ±21 days).
 Known v1 limits (accepted): flexible/no-fixed-changeover villas offer no week

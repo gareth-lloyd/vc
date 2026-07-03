@@ -66,7 +66,7 @@ detail both render from a single source.
 "inquiries, quotes, **calls**", but there is **no call/activity-log model** in
 the backend. Either scope calls out of v1 or raise a separate modeling
 dependency (a lightweight activity/interaction log) — do not imply it exists.
-Cross-ref [Q-017](../q-017-comms-direction-signals-vs-spine-position.md) (comms
+Cross-ref [Q-017](./q-017-comms-direction-signals-vs-spine-position.md) (comms
 spine) as the natural home if pursued.
 
 ## Acceptance

@@ -4,7 +4,7 @@ Preserving the external IDs Zoho already issued against legacy rows is the
 critical-path integrations migration: they are the routing keys for every
 subsequent push, so dropping them makes the first post-cutover sync create
 duplicate Zoho records and orphan years of CRM activity. See
-`django_res_design/08-integrations.md` → "Migrating legacy external IDs" and
+`django_res_design/design/backend/08-integrations.md` → "Migrating legacy external IDs" and
 `data_migration/CUTOVER.md` step 4b.
 
 The legacy DB is the only home of these keys and is decommissioned shortly

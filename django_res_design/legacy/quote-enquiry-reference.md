@@ -43,25 +43,25 @@ The **SP names and behaviour match** — only the missing pages were the problem
 
 **Sound — grounded in surviving `ResService.cs`; do not re-derive:**
 
-- [`07-enquiry/enquiry-intake.md`](./07-enquiry/enquiry-intake.md) — `PostEnquireNew` /
+- [`07-enquiry/enquiry-intake.md`](./workflows/07-enquiry/enquiry-intake.md) — `PostEnquireNew` /
   `sp_villaEnquire`, public vs staff branching by `User=="WEBSITE"`, fire-and-forget Zoho push,
   the two notification emails.
-- [`08-quotation/persistence.md`](./08-quotation/persistence.md) — `ResQuotation` /
+- [`08-quotation/persistence.md`](./workflows/08-quotation/persistence.md) — `ResQuotation` /
   `sp_quotation_master`, `SaveQuotationDetails` / `sp_saveQuotationDetails`, commission math,
   denormalised client/agent snapshot.
-- [`08-quotation/transmission.md`](./08-quotation/transmission.md) — the **side effects** of send
+- [`08-quotation/transmission.md`](./workflows/08-quotation/transmission.md) — the **side effects** of send
   (`sp_updateEnquireStatus`=2, Zoho push, per-staff SMTP, CSS inlining). Its render-location claim
   was wrong — corrected below (§3.3) and banner-noted in the file itself.
-- [`07-enquiry/enquiry-management.md`](./07-enquiry/enquiry-management.md) — `GetEqnuireDetails`,
+- [`07-enquiry/enquiry-management.md`](./workflows/07-enquiry/enquiry-management.md) — `GetEqnuireDetails`,
   status setter. Correct backend; the list-screen UX it could not describe is §4's `/quote` screen.
 
-**Not adjudicated:** [`08-quotation/construction.md`](./08-quotation/construction.md) and
-[`08-quotation/lifecycle.md`](./08-quotation/lifecycle.md) were not verified by the GAP-010
+**Not adjudicated:** [`08-quotation/construction.md`](./workflows/08-quotation/construction.md) and
+[`08-quotation/lifecycle.md`](./workflows/08-quotation/lifecycle.md) were not verified by the GAP-010
 investigation — neither vouched sound nor corrected; apply the default caution for specs extracted
 from the post-deletion tree.
 
-**Target UX, not legacy:** [`../product-design/02-frontend-design.md`](../product-design/02-frontend-design.md)
-and [`../product-design/03-workflows.md`](../product-design/03-workflows.md) are prospective
+**Target UX, not legacy:** [`../product-design/02-frontend-design.md`](../design/product/02-frontend-design.md)
+and [`../product-design/03-workflows.md`](../design/product/03-workflows.md) are prospective
 designs; their legacy characterisations were written believing the §3.2 baseline (each carries a
 caveat banner).
 
@@ -108,7 +108,7 @@ supports an **Add** button and manual villa rows, and persists **multiple** vill
 quote via `SaveQuotationDetails(List<QuotationDetailsArgs>)` (`QuoteGenerator.razor:834,888`);
 `RateLookup` groups the rendered quote **by villa id** for multi-villa output. The rebuild's
 "first-class multi-villa cart" improvement
-([`05-improvements-over-original.md` #7](../product-design/05-improvements-over-original.md))
+([`05-improvements-over-original.md` #7](../design/product/05-improvements-over-original.md))
 stands as a **UX** improvement (cart-vs-search separation) — not because legacy was single-villa.
 (The other half of the same "Was" sentence — "buried under Quotes & Enquiries → New Quote" — **is**
 correct: that was the real navbar path.)
@@ -189,7 +189,7 @@ Quotes & Enquiries list columns — VC Ref / Name / Villa Name / Region / Enq/Qu
 Person / Holiday Dates / Flex? — match the legacy `/quote` grid; its New-Quote Overview mirrors the
 `ClientDetails` cards; its Rate Lookup mirrors the weeks/occupancy model). Use it as the **target**
 UX reference alongside the pinned legacy source; a deep component-level analysis of the mockup
-lives in [`../mock_up_analysis/01-new-res-system.md`](../mock_up_analysis/01-new-res-system.md).
+lives in [`../mock_up_analysis/01-new-res-system.md`](../design/mockups/01-new-res-system.md).
 The screen/flow re-derivation this enabled shipped
 as [GAP-038](../todo/done/gap-038-enquiry-quote-stacking-conversion-metric.md),
 [GAP-039](../todo/done/gap-039-enquiry-dashboard-enrichment.md),

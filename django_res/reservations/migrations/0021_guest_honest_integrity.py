@@ -1,6 +1,6 @@
 """Guest honest-integrity: optional email, E.164 phones, ACTIVE-only CHECKs.
 
-Triage gates the constraint add — see django_res_design/people-model-cleanup.md
+Triage gates the constraint add — see django_res_design/design/history/people-model-cleanup.md
 (Migration ordering). The data ops here operate only on rows the rebuild already
 wrote to Postgres; the legacy-cutover loaders produce clean data at import and
 never need the `@noemail.local` scrub.

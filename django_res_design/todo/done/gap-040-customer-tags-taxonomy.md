@@ -46,7 +46,7 @@ the enquiry and customer-profile screens
 **Decisions to settle before building:**
 - **Model shape** — a fixed choice set on the model vs. a `Tag` lookup +
   through-table (the latter lets ops curate the list; coordinate with the
-  feature-taxonomy approach in [Q-021](../q-021-defaults-and-feature-taxonomy.md)).
+  feature-taxonomy approach in [Q-021](./q-021-defaults-and-feature-taxonomy.md)).
 - **Which entity** carries them — `Guest` (booking-side traveller), `Contact`
   (CRM), or both. The Loom context is the sales/quote screen, which is
   guest-centric.
@@ -70,5 +70,5 @@ No soft delete — tags are added/removed directly; audit-register the change se
 
 - [GAP-042](gap-042-customer-360-profile-view.md) (profile view consumes tags),
   [GAP-041](gap-041-standing-linked-contacts.md) (PA overlap),
-  [Q-021](../q-021-defaults-and-feature-taxonomy.md) (taxonomy curation pattern),
+  [Q-021](./q-021-defaults-and-feature-taxonomy.md) (taxonomy curation pattern),
   [Q-010](../q-010-guest-data-retention.md) (sensitive-tag retention).

@@ -1,7 +1,7 @@
 """Base loader contract.
 
 A loader pulls rows from the legacy SQL Server, transforms them per the
-mapping in `django_res_design/09-departures.md`, and upserts into the new
+mapping in `django_res_design/design/departures.md`, and upserts into the new
 Django schema keyed on `legacy_id`.
 
 Loaders are idempotent: re-running creates nothing new on the second pass,

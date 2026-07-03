@@ -3,7 +3,7 @@
 Adds `Enquiry.contact_method` (stated preference, carried onto the Guest on
 resolve), back-creates a minimal `AGENT_PORTAL` enquiry for any orphaned
 quotation (rebuild data), then tightens `Quotation.enquiry` to PROTECT/NOT NULL.
-See django_res_design/people-model-cleanup.md.
+See django_res_design/design/history/people-model-cleanup.md.
 """
 
 from __future__ import annotations

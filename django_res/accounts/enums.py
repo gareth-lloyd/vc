@@ -122,7 +122,7 @@ class PhoneLabel(models.TextChoices):
 class ContactRole(models.TextChoices):
     # The first five reconcile the legacy VillaRoles taxonomy 1:1 (1=Owner,
     # 2=Agent, 3=Villa Admin, 4=Villa Manager, 5=Management Company — see
-    # django_res_design/product-design/07-api-schema-reconciliation.md; GAP-048).
+    # django_res_design/design/history/api-schema-reconciliation.md; GAP-048).
     # HOUSEKEEPER / OWNERS_REPRESENTATIVE have no legacy source — kept per
     # 10-decisions.md (the owner did not ask to remove them).
     OWNER = "owner", "Owner"

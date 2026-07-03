@@ -479,8 +479,8 @@ Kanban + list views, toggle in the header. Kanban is the default because enquiri
 > lead-status/date-range filters. The mockup's stage vocabulary (New Enquiry →
 > Progressing → Quote Sent → Follow-up; Dead+reason) must be reconciled with
 > `Enquiry.status`, and a **quotes-to-convert** metric surfaced. Tracked in
-> [`todo/gap-039-enquiry-dashboard-enrichment.md`](../todo/done/gap-039-enquiry-dashboard-enrichment.md)
-> and [`todo/gap-038-enquiry-quote-stacking-conversion-metric.md`](../todo/done/gap-038-enquiry-quote-stacking-conversion-metric.md).
+> [`todo/gap-039-enquiry-dashboard-enrichment.md`](../../todo/done/gap-039-enquiry-dashboard-enrichment.md)
+> and [`todo/gap-038-enquiry-quote-stacking-conversion-metric.md`](../../todo/done/gap-038-enquiry-quote-stacking-conversion-metric.md).
 - A "Lost" lane is reachable via overflow column (`▸ Lost (28)`) so it doesn't clutter.
 - List view is for power users who want sortable columns.
 

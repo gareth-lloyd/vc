@@ -198,7 +198,7 @@ Per-property bounded set of weekdays on which a booking may start. Many rows per
 | GET | `/properties/{id}/settings` | Currency, check-in/out, min nights, changeover day, pre-approval. Null fields inherit from `/property-groups/{id}/settings`. Also surfaces `timezone` **read-only** (sourced from the location). |
 | PATCH | `/properties/{id}/settings` | Update settings. `timezone` is read-only here — write it via `/location`. |
 | GET | `/properties/{id}/location` | Postal address, country, lat/lng, and `timezone`. Singleton sub-resource (no `POST`/`DELETE`); auto-provisioned with country/timezone derived from `region.country` on create/duplicate and lazily on first GET, so a property is never location-less. |
-| PATCH | `/properties/{id}/location` | Update location. Sole writer of `timezone` (a geographic fact of the place — see [FG-008](../todo/done/fg-008-property-timezone.md)). |
+| PATCH | `/properties/{id}/location` | Update location. Sole writer of `timezone` (a geographic fact of the place — see [FG-008](../../todo/done/fg-008-property-timezone.md)). |
 | GET | `/properties/{id}/capacity` | Headline guest/room counts (`guests`, `additional_guests`, `bedrooms`, `ensuites`, `bathrooms`, `size_sqm`). Singleton sub-resource (no `POST`/`DELETE`); auto-provisioned via `get_or_create` on first GET. |
 | PATCH | `/properties/{id}/capacity` | Update capacity. `guests = 0` (or no row) excludes the property from `?min_guests=` quote search — the quote builder surfaces a "capacity not set" hint rather than silently dropping it. |
 | GET | `/properties/{id}/finance` | Flat finance config: commission, tax, bank account, payment schedule, security-deposit policy. Null fields inherit from `/property-groups/{id}/finance`. See reconciliation issue #36 (5-OneToOne-children split collapsed to one flat model). |
@@ -310,7 +310,7 @@ Small curated taxonomy (airport, beach, restaurant, station, etc.) FK'd from `Pr
 >
 > Band writes are still validated serializer-side against the DB constraints
 > (band ranges are per-period; periods on a plan are EXCLUDE-disjoint). Open
-> follow-up: [`../todo/gap-059-rate-period-name-compulsory.md`](../todo/gap-059-rate-period-name-compulsory.md)
+> follow-up: [`../todo/gap-059-rate-period-name-compulsory.md`](../../todo/done/gap-059-rate-period-name-compulsory.md)
 > makes `name` required on period writes. The Extras and quote-helper endpoints
 > further down remain accurate; in the Discounts table, `pricing.Discount` is now
 > **property-scoped only** (the `card` FK went with `RateCard`), so the

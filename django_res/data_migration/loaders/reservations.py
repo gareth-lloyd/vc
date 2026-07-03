@@ -38,7 +38,7 @@ from reservations.phone import to_e164
 
 # Legacy VillaRoles id -> ContactRole. Verified 1:1 against the legacy DB dump
 # (1=Owner, 2=Agent, 3=Villa Admin, 4=Villa Manager, 5=Management Company; see
-# django_res_design/product-design/07-api-schema-reconciliation.md). Ids 3 & 5
+# django_res_design/design/history/api-schema-reconciliation.md). Ids 3 & 5
 # were previously collapsed to MANAGER / OWNERS_REPRESENTATIVE — a forward-only
 # correction (cutover has not run; next reload emits the right roles).
 _ROLE_MAP = {

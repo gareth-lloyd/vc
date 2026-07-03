@@ -154,7 +154,7 @@ class Quotation(AuditedModel):
         """SENT → ACCEPTED. Marks `line.is_selected=True` and, when the
         quotation is attached to an enquiry, flips that parent enquiry to
         CONVERTED inside the same atomic block — conversion is measured
-        per Enquiry (see `django_res_design/10-decisions.md`).
+        per Enquiry (see `django_res_design/design/decisions.md`).
         """
         # Lock + re-read before the guard: a stale instance (double-click,
         # concurrent convert) must not re-accept — or re-point the accepted

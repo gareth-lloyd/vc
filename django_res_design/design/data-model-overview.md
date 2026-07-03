@@ -181,4 +181,4 @@ flows are currently represented twice — once as a `Payment` row with
 `purpose=SECURITY_DEPOSIT`, once as a `SecurityDeposit` row. Whether
 `Payment` should be a generic ledger or the customer-facing money request
 (with `SECURITY_DEPOSIT` living only in `SecurityDeposit`) is an open
-decision — see [Q-016](todo/done/q-016-payment-ledger-vs-dedicated-models.md).
+decision — see [Q-016](../todo/done/q-016-payment-ledger-vs-dedicated-models.md).

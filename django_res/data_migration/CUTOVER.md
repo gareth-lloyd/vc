@@ -65,7 +65,7 @@ sync goes live (deferred to v1.1; the engine in `integrations/tasks.py` is
 `NotImplementedError` today, so **no push fires at the M1 cutover**), a
 missing id makes Zoho INSERT a new record instead of UPDATE, orphaning years
 of CRM activity. Capture them now or lose them. See
-`django_res_design/08-integrations.md` → "Migrating legacy external IDs".
+`django_res_design/design/backend/08-integrations.md` → "Migrating legacy external IDs".
 
 Verify continuity:
 
@@ -239,7 +239,7 @@ next full `loadlegacy` emits the right roles, so no back-migration is needed.
 (`accounts/enums.py`); the choices change is a state-only `AlterField`
 (`properties/0021_reconcile_contact_role_choices`, reversible). `housekeeper` and
 `owners_rep` remain valid roles with **no legacy source** (kept per
-`django_res_design/10-decisions.md`) — they are only ever set in the new system,
+`django_res_design/design/decisions.md`) — they are only ever set in the new system,
 never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
 `owner`.
 

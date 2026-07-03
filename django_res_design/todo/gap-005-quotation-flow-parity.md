@@ -27,7 +27,7 @@
 > survive (incl. preview-before-send, imagery, copy-to-Outlook, per-line discount, inclusions)
 > because `Booking.razor` is a component-sharing *sibling* — but the "one screen → three stages"
 > rationale does not. See
-> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md) §3.2/§4.
+> [`../workflows/legacy-quote-enquiry-reference.md`](../legacy/quote-enquiry-reference.md) §3.2/§4.
 
 Legacy `Booking.razor` (1,151 lines) is a single combined workspace:
 enquiry capture + quote pricing + full payment schedule + concierge +
@@ -247,8 +247,8 @@ travel agent stays a separate `accounts.Person` field via the existing
 
 ### M2 — Guest as a deduped directory (foundation for M3) ✅ done
 
-**Data model settled in [`../people-model-cleanup.md`](../people-model-cleanup.md)**
-(decisions logged in [`../10-decisions.md`](../10-decisions.md)). M2 is the
+**Data model settled in [`../people-model-cleanup.md`](../design/history/people-model-cleanup.md)**
+(decisions logged in [`../10-decisions.md`](../design/decisions.md)). M2 is the
 *implementation* of that record. In brief: `Guest.email` becomes optional and
 stays **non-unique**; `phone` normalized to E.164 (`phonenumbers`); contactability
 + actionable-preference CHECK constraints replace the fake email-required; the

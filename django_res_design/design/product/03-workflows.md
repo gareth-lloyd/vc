@@ -47,9 +47,9 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 > Time-waster), **linked contacts** (spouse/child/PA), and history accordions
 > (enquiries, quotes, previous bookings — "calls" has no backing model yet).
 > These are new CRM surfaces tracked in
-> [`todo/gap-040-customer-tags-taxonomy.md`](../todo/done/gap-040-customer-tags-taxonomy.md),
-> [`todo/gap-041-standing-linked-contacts.md`](../todo/done/gap-041-standing-linked-contacts.md),
-> [`todo/gap-042-customer-360-profile-view.md`](../todo/done/gap-042-customer-360-profile-view.md).
+> [`todo/gap-040-customer-tags-taxonomy.md`](../../todo/done/gap-040-customer-tags-taxonomy.md),
+> [`todo/gap-041-standing-linked-contacts.md`](../../todo/done/gap-041-standing-linked-contacts.md),
+> [`todo/gap-042-customer-360-profile-view.md`](../../todo/done/gap-042-customer-360-profile-view.md).
 
 2. **Guest section.** Fields: first name, last name, email (validated format, debounced duplicate-check that surfaces "We have an existing contact for jane@example.com — link?" with a *Link* / *Create new* choice), phone (libphonenumber formatted, country-inferred), preferred contact channel (email/phone/whatsapp). Linking to an existing contact is optimistic locally; saving the enquiry persists the link.
 
@@ -126,8 +126,8 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 > line, weeks × checked bands at save; held weeks stay non-selectable. The
 > as-built builder is single-column (criteria → results → shortlist), not the
 > two-pane/cart shape steps 1–5 sketch. See
-> [`todo/done/gap-043-quote-builder-multi-week-range.md`](../todo/done/gap-043-quote-builder-multi-week-range.md)
-> + [`todo/done/gap-044-occupancy-band-fanout-builder.md`](../todo/done/gap-044-occupancy-band-fanout-builder.md).
+> [`todo/done/gap-043-quote-builder-multi-week-range.md`](../../todo/done/gap-043-quote-builder-multi-week-range.md)
+> + [`todo/done/gap-044-occupancy-band-fanout-builder.md`](../../todo/done/gap-044-occupancy-band-fanout-builder.md).
 
 5. **Add to quote.** Clicking "Add" opens a small inline editor under the card: dates (pre-filled), price (pre-filled, overridable with "Override" toggle that forces a reason field), currency (per-site default, switchable), notes shown to guest (optional, e.g. "Owner offering 10% off for direct booking"), internal notes (not shown to guest). Saving adds the line to the quote draft in the cart-style summary at the bottom of the page.
 
@@ -642,9 +642,9 @@ Before the workflows themselves, a few system-wide patterns referenced repeatedl
 
 > ⚠️ **Stale entry points + rate-model shape (2026-07-02, GAP-056 / GAP-060).**
 > "Rate Cards" were retired by GAP-056 (model is now `Property → RatePlan →
-> RatePeriod → RateBand`; see the errata in [`04-pricing.md`](../04-pricing.md)).
+> RatePeriod → RateBand`; see the errata in [`04-pricing.md`](../backend/04-pricing.md)).
 > Rate/season editing lives in the **"Rates"** property tab (there is no separate
-> "Pricing" tab): [`todo/done/gap-060-kill-old-pricing-tab.md`](../todo/done/gap-060-kill-old-pricing-tab.md)
+> "Pricing" tab): [`todo/done/gap-060-kill-old-pricing-tab.md`](../../todo/done/gap-060-kill-old-pricing-tab.md)
 > retired the legacy Pricing tab and renamed the Workbench to **"Rates"**
 > (resolved 2026-07-02), so the "property detail → Pricing tab" entry point below
 > is now "property detail → Rates tab". The two-level Season/RateCard form described here is superseded by

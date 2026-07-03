@@ -71,7 +71,7 @@ customer) — see the type-badge requirement, owned by **GAP-052**.
     vendor concept (Settings → Concierge Settings → Suppliers, and Q-007). Two
     surfaces share the word — resolve the label (e.g. "Villa Suppliers" vs
     "Concierge Suppliers") so they don't read as the same list. Cross-ref
-    [Q-007](../q-007-concierge-supplier-directory.md).
+    [Q-007](./q-007-concierge-supplier-directory.md).
 - **Reconcile the role enum.** Re-introduce `villa_admin` /
   `management_company`; decide whether to keep `housekeeper` / `owners_rep`
   (plausible additions the owner didn't ask to remove) — **surface the mismatch,
@@ -111,5 +111,5 @@ Depends on **GAP-045** (Person), **GAP-046** (Organisation assignees + Companies
 directory), **GAP-047** (Clients directory the agents/customers move to).
 Type-badge surfacing → **GAP-052**; tag client-scoping → **GAP-053**. Relates to
 `workflows/05-directory/contact-roles.md` (its open role/group table-split
-question) and [Q-007](../q-007-concierge-supplier-directory.md) (the "Supplier"
+question) and [Q-007](./q-007-concierge-supplier-directory.md) (the "Supplier"
 name collision).

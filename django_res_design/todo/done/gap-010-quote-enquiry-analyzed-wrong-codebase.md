@@ -3,7 +3,7 @@
 > proved stood uncorrected in the live docs, and it couldn't retire while it was the only home of
 > the corrected reference content. **Fix:** §§1–4a (provenance, trust map, corrected claims,
 > 4-screen flow, mockup note) promoted to
-> [`workflows/legacy-quote-enquiry-reference.md`](../../workflows/legacy-quote-enquiry-reference.md)
+> [`workflows/legacy-quote-enquiry-reference.md`](../../legacy/quote-enquiry-reference.md)
 > — this file is now the historical record. Errata landed in the live docs: `workflows/README.md`
 > stubs bullet fixed in place (§3.1); `transmission.md` render claim corrected and its open
 > question struck (§3.3); `05-improvements-over-original.md` #7 re-grounded as UX-only (§3.4);

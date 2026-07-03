@@ -1,7 +1,7 @@
 """PII-redaction structlog processor.
 
 Defense in depth for the design mandate "never log email bodies / PII"
-(``django_res_design/09-departures.md``). Engineer discipline is the first
+(``django_res_design/design/departures.md``). Engineer discipline is the first
 line; this processor is the structural backstop that scrubs sensitive values
 out of every log line *before* it is rendered.
 

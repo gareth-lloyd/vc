@@ -45,7 +45,7 @@ export function PricingModeToggle({ propertyId, ratePlan, canWrite }: PricingMod
     <Button
       type="button"
       size="sm"
-      variant={byOccupancy ? "ghost" : "secondary"}
+      variant={byOccupancy ? "ghost" : "default"}
       aria-pressed={!byOccupancy}
       disabled={flatDisabled}
       onClick={() => setMode(false)}
@@ -73,7 +73,7 @@ export function PricingModeToggle({ propertyId, ratePlan, canWrite }: PricingMod
       <Button
         type="button"
         size="sm"
-        variant={byOccupancy ? "secondary" : "ghost"}
+        variant={byOccupancy ? "default" : "ghost"}
         aria-pressed={byOccupancy}
         disabled={!canWrite || update.isPending}
         onClick={() => setMode(true)}

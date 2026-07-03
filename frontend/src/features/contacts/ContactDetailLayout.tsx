@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useMatch, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
@@ -34,7 +34,7 @@ export interface ContactOutletContext {
   contact: Contact;
 }
 
-function HeaderActions({ contact }: { contact: Contact }) {
+function HeaderActions({ contact, listPath }: { contact: Contact; listPath: string }) {
   const { t } = useTranslation("contacts");
   const navigate = useNavigate();
   const canWrite = useHasReservationsRole();
@@ -46,7 +46,7 @@ function HeaderActions({ contact }: { contact: Contact }) {
     try {
       await deleteMutation.mutateAsync();
       toast.success(t("toasts.deleted"));
-      navigate("/contacts");
+      navigate(listPath);
     } catch (error) {
       const message = error instanceof ApiError ? error.detail : t("common:errors.generic");
       toast.error(message);
@@ -127,7 +127,6 @@ function RailSummary({ contact }: { contact: Contact }) {
         ) : null}
       </div>
       {contact.status ? <StatusBadge status={contact.status} /> : null}
-      <ContactTypeBadges types={contact.contact_types ?? []} />
       <RepeatBadge
         bookingCount={contact.booking_count ?? 0}
         isRepeat={contact.is_repeat_customer ?? false}
@@ -140,6 +139,14 @@ function RailSummary({ contact }: { contact: Contact }) {
 export function ContactDetailLayout() {
   const { t } = useTranslation("contacts");
   const { id } = useParams<{ id: string }>();
+  // The same layout serves /contacts/:id (Suppliers) and /clients/:id (Clients);
+  // match on the route pattern (not a loose prefix) so the breadcrumb label and
+  // delete redirect track which directory the user is in.
+  const isClientContext = useMatch("/clients/:id/*") != null;
+  const listPath = isClientContext ? "/clients" : "/contacts";
+  const listLabel = isClientContext
+    ? t("clients:headings.list_title")
+    : t("headings.suppliers_title");
   const query = useContact(id);
 
   if (query.isLoading) {
@@ -179,8 +186,15 @@ export function ContactDetailLayout() {
             ? contact.agency_detail.name
             : undefined
         }
-        breadcrumbs={[{ label: t("headings.list_title"), to: "/contacts" }, { label: name }]}
-        actions={<HeaderActions contact={contact} />}
+        breadcrumbs={[{ label: listLabel, to: listPath }, { label: name }]}
+        actions={<HeaderActions contact={contact} listPath={listPath} />}
+        meta={
+          contact.contact_types?.length ? (
+            <ContactTypeBadges types={contact.contact_types} />
+          ) : (
+            <span className="text-muted-foreground text-xs">{t("types.none")}</span>
+          )
+        }
       />
 
       <div className="border-border border-b px-6">

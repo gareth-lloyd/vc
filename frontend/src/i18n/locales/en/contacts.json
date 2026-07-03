@@ -80,6 +80,7 @@
     "time_waster": "Time waster"
   },
   "types": {
+    "none": "No roles recorded",
     "customer": "Customer",
     "agent": "Agent",
     "owner": "Owner",

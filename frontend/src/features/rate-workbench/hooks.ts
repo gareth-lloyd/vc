@@ -6,6 +6,7 @@ import { fetchRatePlanDetail, updateRateBand } from "@/features/properties/api";
 import type { RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import i18n from "@/i18n";
 import {
+  carryForwardRatePlan,
   createDiscount,
   createExtra,
   deleteDiscount,
@@ -14,7 +15,7 @@ import {
   updateDiscount,
   updateExtra,
 } from "./api";
-import type { DiscountWritePayload, ExtraWritePayload } from "./schemas";
+import type { CarryForwardPayload, DiscountWritePayload, ExtraWritePayload } from "./schemas";
 
 /**
  * Fan out one `useRatePlanDetail` query per season to assemble the whole rate
@@ -200,6 +201,22 @@ export function useDeleteDiscount(propertyId: PropertyId) {
     mutationFn: ({ discountId }: { discountId: number }) => deleteDiscount(discountId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.discounts(propertyId) });
+    },
+  });
+}
+
+/**
+ * Carry-forward (GAP-069): promote a projected future year into real editable
+ * rows. On success, invalidate the property's rate-plan list so the workbench
+ * fan-out picks up the newly-created plan and the year fills in place. Mirrors
+ * `useDuplicateRatePlan`'s invalidation shape (no manual detail-cache seeding).
+ */
+export function useCarryForwardRatePlan(propertyId: PropertyId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CarryForwardPayload) => carryForwardRatePlan(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
     },
   });
 }

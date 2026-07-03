@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight } from "lucide-react";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { useArrivalsToday, todayIso } from "../hooks";
+import { todayIso } from "@/lib/format/date";
+import { useArrivalsToday } from "../hooks";
 
 const MAX_ROWS = 6;
 

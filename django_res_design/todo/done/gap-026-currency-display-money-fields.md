@@ -11,6 +11,12 @@
 > Decision recorded in `10-decisions.md`. Multi-currency per property is
 > intentional — the currency is a display hint, not an enforced constraint.
 >
+> **Note (2026-07-03):** [GAP-070](../gap-070-remove-groups-global-property-defaults.md)
+> removes the group, so the "group-resolved `currency_code`" / "inherited-type amount
+> stays unadorned since its basis lives on the unseen group" behaviour changes — after
+> GAP-070 the property owns its currency directly. Preserve the `currency_code` adornment
+> against the property's own field when GAP-070 lands.
+>
 > _Original ticket preserved below for context._
 
 # GAP-026 — Show the property currency beside every money field

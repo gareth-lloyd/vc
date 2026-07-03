@@ -20,6 +20,7 @@ from pricing.serializers import (
     RatePlanDetailSerializer,
     RatePlanSerializer,
 )
+from pricing.serializers.rate import guard_period_editable
 from pricing.services.carryover import RateCarryoverService
 from properties.models import Property
 
@@ -181,6 +182,11 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     # columns), so a period date-edit needs no band repoint — the default
     # `perform_update` (a plain save) suffices.
 
+    def perform_destroy(self, instance: RatePeriod) -> None:
+        # A fully-elapsed period is a read-only record of what was charged.
+        guard_period_editable(instance)
+        instance.delete()
+
 
 class RatePeriodBandListCreateView(generics.ListCreateAPIView):
     """`GET / POST /periods/{id}/bands` — partyxprice bands under a period."""
@@ -200,6 +206,11 @@ class RatePeriodBandListCreateView(generics.ListCreateAPIView):
 class RateBandDetailView(generics.RetrieveUpdateDestroyAPIView):
     """`GET / PATCH / DELETE /bands/{id}` — flat alias (party/price only)."""
 
-    queryset = RateBand.objects.all()
+    queryset = RateBand.objects.select_related("period")
     serializer_class = RateBandSerializer
     permission_classes = [IsReservationsWriter]
+
+    def perform_destroy(self, instance: RateBand) -> None:
+        # Bands on a fully-elapsed period are locked along with the period.
+        guard_period_editable(instance.period)
+        instance.delete()

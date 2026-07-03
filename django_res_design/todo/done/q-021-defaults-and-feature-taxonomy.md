@@ -10,6 +10,11 @@
 > vocabulary) → [GAP-068](../gap-068-seed-group-finance-settings-defaults.md).
 > The "Villa Groups stay" decision below is preserved and carried into GAP-068.
 > No work remains here.
+>
+> **Note (2026-07-03):** the "Villa Groups stay" decision is later **reversed** by
+> [GAP-070](../gap-070-remove-groups-global-property-defaults.md) (drop groups +
+> inheritance; global `PropertyDefaults` singleton applied at creation), which
+> supersedes GAP-068. The confirmed default values still carry into GAP-070's seed.
 
 - **Severity:** Question (content/governance) + seeding
 - **Source:** 2026-06-11 new-villa setup transcript review

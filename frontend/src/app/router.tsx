@@ -54,6 +54,38 @@ const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.h
   }),
 );
 
+// Shared tab children for the person/contact detail layout. The same UI serves
+// both Suppliers (/contacts/:id) and Clients (/clients/:id): a client id resolves
+// against GET /contacts/{id} just like a supplier. Only the URL prefix (and the
+// layout's breadcrumb / back-target) differ. Sharing one array across two routes
+// is safe in React Router v7 — route ids are positional and the objects are never
+// mutated during route conversion.
+const contactDetailChildren = [
+  { index: true, element: <Navigate to="details" replace /> },
+  {
+    path: "details",
+    lazy: async () => {
+      const m = await import("@/features/contacts/tabs/DetailsTab");
+      return { Component: m.DetailsTab };
+    },
+  },
+  {
+    path: "properties",
+    lazy: async () => {
+      const m = await import("@/features/contacts/tabs/PropertiesTab");
+      return { Component: m.PropertiesTab };
+    },
+  },
+  { path: "notes", element: <ComingSoonTab tabName="Notes" /> },
+  {
+    path: "audit",
+    lazy: async () => {
+      const m = await import("@/features/contacts/tabs/AuditTab");
+      return { Component: m.AuditTab };
+    },
+  },
+];
+
 export const router = createBrowserRouter([
   {
     element: <BootGate />,
@@ -258,31 +290,7 @@ export const router = createBrowserRouter([
                           const m = await import("@/features/contacts/ContactDetailLayout");
                           return { Component: m.ContactDetailLayout };
                         },
-                        children: [
-                          { index: true, element: <Navigate to="details" replace /> },
-                          {
-                            path: "details",
-                            lazy: async () => {
-                              const m = await import("@/features/contacts/tabs/DetailsTab");
-                              return { Component: m.DetailsTab };
-                            },
-                          },
-                          {
-                            path: "properties",
-                            lazy: async () => {
-                              const m = await import("@/features/contacts/tabs/PropertiesTab");
-                              return { Component: m.PropertiesTab };
-                            },
-                          },
-                          { path: "notes", element: <ComingSoonTab tabName="Notes" /> },
-                          {
-                            path: "audit",
-                            lazy: async () => {
-                              const m = await import("@/features/contacts/tabs/AuditTab");
-                              return { Component: m.AuditTab };
-                            },
-                          },
-                        ],
+                        children: contactDetailChildren,
                       },
                       {
                         path: "/companies",
@@ -292,13 +300,24 @@ export const router = createBrowserRouter([
                         },
                       },
                       {
-                        // List-only (GAP-047): rows link to /contacts/:id; no
-                        // /clients/:id detail until GAP-042 builds the profile.
+                        // Client directory list; rows open /clients/:id (below) so
+                        // the Clients nav item stays active on the detail page.
                         path: "/clients",
                         lazy: async () => {
                           const m = await import("@/features/clients/ClientsListPage");
                           return { Component: m.ClientsListPage };
                         },
+                      },
+                      {
+                        // Client detail reuses the shared contact layout + tabs; the
+                        // /clients prefix (vs /contacts) is what keeps the correct
+                        // sidebar item highlighted and the breadcrumb pointing home.
+                        path: "/clients/:id",
+                        lazy: async () => {
+                          const m = await import("@/features/contacts/ContactDetailLayout");
+                          return { Component: m.ContactDetailLayout };
+                        },
+                        children: contactDetailChildren,
                       },
                       {
                         path: "/companies/:id",

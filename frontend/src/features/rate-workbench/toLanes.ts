@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
 import { assignLanes, bandEdges } from "@/lib/timeline/geometry";
-import { addDaysIso } from "@/lib/format/date";
+import { addDaysIso, formatDate } from "@/lib/format/date";
 import type {
   ChangeOverRule,
   Discount,
@@ -72,10 +72,16 @@ export interface WorkbenchBand {
   id: string;
   laneKey: LaneKey;
   /** ISO dates, both INCLUSIVE (the backend convention), nulls substituted
-   * with the window bounds so open-ended bands span the year. Display sites
-   * (aria labels, popovers) use these raw. */
+   * with the window bounds so open-ended bands span the year. Geometry uses
+   * these; display sites go through `bandDateRangeLabel` so a coerced bound
+   * reads "Year-round" / "—" rather than the window's Jan 1 / Dec 31. */
   dateFrom: string;
   dateTo: string;
+  /** True when the source record had a null bound the substitution above filled
+   * in — an inclusion/extra/discount open on that end. Drives the "Year-round"
+   * / em-dash display so the coerced window date is never announced as real. */
+  openStart?: boolean;
+  openEnd?: boolean;
   /** `dateTo + 1`, the band's EXCLUSIVE end. Geometry (`bandGeometry`,
    * `bandEdges`) treats its end as exclusive, so every geometry call must use
    * this — computed once here so render sites can't drift from the culling
@@ -99,6 +105,23 @@ export function bandTitle(band: WorkbenchBand, t: TFunction<"properties">): stri
   return band.laneKey === "changeover"
     ? t(`changeover_days.${band.meta.weekday ?? ""}`)
     : band.label;
+}
+
+/**
+ * A band's date-range label for the popover and accessible name. An open-ended
+ * band (an inclusion/extra/discount whose source bound was null) reads
+ * "Year-round" when open on both ends and substitutes an em-dash for the open
+ * side otherwise — never the window's Jan 1 / Dec 31 the null was coerced to.
+ * Shared so the hover card and aria label can't drift. Mirrors the services
+ * list's `formatBand` vocabulary.
+ */
+export function bandDateRangeLabel(band: WorkbenchBand, t: TFunction<"properties">): string {
+  if (band.openStart && band.openEnd) return t("rate_workbench.detail.year_round");
+  const open = t("rate_workbench.detail.open_end");
+  return t("rate_workbench.detail.band", {
+    from: band.openStart ? open : formatDate(band.dateFrom),
+    to: band.openEnd ? open : formatDate(band.dateTo),
+  });
 }
 
 export interface LaneModel {
@@ -129,6 +152,8 @@ interface RawBand {
   id: string;
   dateFrom: string;
   dateTo: string;
+  openStart?: boolean;
+  openEnd?: boolean;
   label: string;
   sourceId: number;
   meta: BandMeta;
@@ -260,6 +285,8 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     id: `service-${service.id}`,
     dateFrom: service.applies_from ?? windowFrom,
     dateTo: service.applies_to ?? windowLast,
+    openStart: service.applies_from == null,
+    openEnd: service.applies_to == null,
     label: service.name,
     sourceId: service.id,
     meta: { copy: service.copy },
@@ -269,6 +296,8 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     id: `extra-${extra.id}`,
     dateFrom: extra.applies_from ?? windowFrom,
     dateTo: extra.applies_to ?? windowLast,
+    openStart: extra.applies_from == null,
+    openEnd: extra.applies_to == null,
     label: extra.name,
     sourceId: extra.id,
     meta: {
@@ -282,6 +311,8 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
     id: `discount-${discount.id}`,
     dateFrom: discount.valid_from ?? windowFrom,
     dateTo: discount.valid_to ?? windowLast,
+    openStart: discount.valid_from == null,
+    openEnd: discount.valid_to == null,
     label: discount.name,
     sourceId: discount.id,
     meta: {

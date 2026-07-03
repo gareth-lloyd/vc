@@ -994,13 +994,35 @@
       "title": "Nothing scheduled in {{year}}",
       "body": "This property is configured, but none of it applies to the selected year. Try another year."
     },
+    "carry_forward": {
+      "button": "Carry rates forward",
+      "button_disabled_tooltip": "You do not have permission to change rates.",
+      "dialog_title": "Carry rates forward into {{year}}",
+      "dialog_description": "Copy this property's most recent earlier rates into {{year}} as editable rows, optionally raised by an uplift. You can adjust every figure afterwards.",
+      "summary": "Carry earlier rates forward into {{year}} · {{currency}}",
+      "uplift_label": "Uplift %",
+      "uplift_hint": "Raise every carried price by this percentage (0 to copy them unchanged).",
+      "submit": "Carry forward",
+      "submitting": "Carrying forward…",
+      "cancel": "Cancel",
+      "no_rates": "There are no earlier rates to carry forward for this property.",
+      "errors": {
+        "uplift_invalid": "Enter a valid uplift percentage.",
+        "uplift_negative": "The uplift can't be negative."
+      },
+      "toasts": {
+        "success": "Rates carried forward into {{year}}.",
+        "failed": "Couldn't carry rates forward. Please try again."
+      }
+    },
     "error": {
       "title": "Couldn't load rates",
       "body": "Something went wrong loading this property's rate configuration."
     },
     "band": {
       "aria": "{{label}}, {{from}} to {{to}}",
-      "add_after_aria": "Add a rate period starting {{date}}"
+      "add_after_aria": "Add a rate period starting {{date}}",
+      "aria_range": "{{label}}, {{range}}"
     },
     "detail": {
       "dates": "Dates",
@@ -1014,7 +1036,10 @@
       "code": "Code",
       "kind": "Kind",
       "copy": "Included",
-      "no_rates_yet": "No rates yet — add a band in the matrix below."
+      "no_rates_yet": "No rates yet — add a band in the matrix below.",
+      "year_round": "Year-round",
+      "open_end": "—",
+      "band": "{{from}} – {{to}}"
     },
     "matrix": {
       "title": "Rate matrix",
@@ -1049,7 +1074,12 @@
       "add_band": "Add band",
       "add_band_for": "Add band — {{period}}",
       "coverage_gap_intro": "{{period}}: unpriced party sizes",
-      "fill_gap_chip": "Add a band for parties {{range}}"
+      "fill_gap_chip": "Add a band for parties {{range}}",
+      "show_historical": "Show past periods ({{count}})",
+      "hide_historical": "Hide past periods",
+      "historical_badge": "Past",
+      "all_historical_title": "All rate periods have ended",
+      "all_historical_body": "Every rate period on this plan is in the past. Show them to review historical rates."
     },
     "probe": {
       "title": "Price probe",

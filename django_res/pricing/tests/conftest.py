@@ -82,6 +82,21 @@ def period(plan: RatePlan) -> RatePeriod:
 
 
 @pytest.fixture
+def future_period(plan: RatePlan) -> RatePeriod:
+    """A never-historical period for tests that mutate a stored period through
+    the API and expect success — the elapsed-period guard (GAP historical lock)
+    rejects edits to any period whose ``date_to`` is before today, so a
+    2026-dated fixture would rot once the wall clock passes it. 2099 keeps these
+    clock-independent. Disjoint from the shared ``period`` (same plan)."""
+    return RatePeriod.objects.create(
+        plan=plan,
+        name="Future",
+        date_from=date(2099, 6, 1),
+        date_to=date(2099, 8, 31),
+    )
+
+
+@pytest.fixture
 def flat_plan(property_: Property, gbp: Currency) -> RatePlan:
     """A flat-rate plan (party size ignored): one band per period, no occupancy."""
     return RatePlan.objects.create(

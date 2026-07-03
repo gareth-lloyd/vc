@@ -3,11 +3,14 @@ import type { PropertyId } from "@/lib/query/keys";
 import {
   discountSchema,
   extraSchema,
+  ratePlanDetailSchema,
   type Discount,
   type Extra,
+  type RatePlanDetail,
 } from "@/features/properties/schemas";
 import {
   priceQuoteSchema,
+  type CarryForwardPayload,
   type DiscountWritePayload,
   type ExtraWritePayload,
   type PriceProbeRequest,
@@ -53,6 +56,21 @@ export async function updateDiscount(
 
 export async function deleteDiscount(discountId: number): Promise<void> {
   await apiSend<void>("DELETE", `/discounts/${discountId}`);
+}
+
+// Carry-forward (GAP-069): promote a projected future year into real editable
+// rows. Returns the created plan in the RatePlanDetail shape (id + periods +
+// bands). A 409 `no_rate_available` means there is no prior year to carry from.
+export async function carryForwardRatePlan(
+  propertyId: PropertyId,
+  body: CarryForwardPayload,
+): Promise<RatePlanDetail> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/properties/${propertyId}/rate-plans:carry-forward`,
+    body,
+  );
+  return ratePlanDetailSchema.parse(data);
 }
 
 // Read-only live probe against the pricing engine (colon-verb custom action).

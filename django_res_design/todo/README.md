@@ -18,6 +18,11 @@ file is one ticket. Filenames encode `<bucket>-<id>-<short-slug>.md`.
   patterns / decompose god-modules before the copy count compounds.
 - **`inv-*`** — investigations the audit flagged as "noticed but didn't
   fully chase". Each becomes a ticket if it turns up a real issue.
+- **`spec-*`** — speculative design explorations. A model/architecture
+  option worked through (with alternatives considered and rejected) but
+  **not** a committed decision. Demand-driven: adopted only if the problem
+  it describes actually bites, or when that area is next opened. Records
+  the reasoning so it isn't re-litigated from scratch.
 
 ## Layout & status
 

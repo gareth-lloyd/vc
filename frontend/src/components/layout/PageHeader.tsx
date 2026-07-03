@@ -16,6 +16,8 @@ interface PageHeaderProps {
   className?: string;
   /** Optional eyebrow above the title — small muted uppercase label. */
   eyebrow?: ReactNode;
+  /** Optional content below the subtitle (e.g. status/role badges). */
+  meta?: ReactNode;
 }
 
 export function PageHeader({
@@ -25,6 +27,7 @@ export function PageHeader({
   actions,
   className,
   eyebrow,
+  meta,
 }: PageHeaderProps) {
   return (
     <header className={cn("relative px-6 pt-8 pb-6", className)}>
@@ -57,6 +60,7 @@ export function PageHeader({
           {subtitle ? (
             <p className="text-muted-foreground mt-2 max-w-2xl text-sm">{subtitle}</p>
           ) : null}
+          {meta ? <div className="mt-3">{meta}</div> : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>

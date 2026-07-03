@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ import {
   usePropertyServices,
   usePropertySettings,
 } from "@/features/properties/hooks";
+import { CarryForwardDialog } from "./components/CarryForwardDialog";
 import { PricingModeToggle } from "./components/PricingModeToggle";
 import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
 import { RatePlanFormDialog } from "@/features/properties/components/RatePlanFormDialog";
@@ -98,6 +99,8 @@ export function RateWorkbenchPage() {
   const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
   const [duplicatingSeason, setDuplicatingSeason] = useState<RatePlan | null>(null);
   const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
+  // Carry-forward (GAP-069): open state for the projected-year promotion dialog.
+  const [carryForwardOpen, setCarryForwardOpen] = useState(false);
 
   const handleDeleteSeason = async () => {
     if (!deletingSeason) return;
@@ -236,6 +239,35 @@ export function RateWorkbenchPage() {
     !!activeSeasonCurrencyCode &&
     propertyCurrencyCode.toUpperCase() !== activeSeasonCurrencyCode.toUpperCase();
 
+  // Carry-forward (GAP-069): in the empty-year (projected) state, a writer can
+  // promote an earlier year's rates into the year on screen. Offered only when
+  // the active plan has a resolvable currency CODE (the endpoint carries by
+  // Currency.code) and the target isn't in the past (the backend's window guard
+  // rejects `target_year < this_year`).
+  const carryForwardEligible = !!activeSeasonCurrencyCode && year >= new Date().getFullYear();
+  const carryForwardButton = canWrite ? (
+    <Button size="sm" onClick={() => setCarryForwardOpen(true)}>
+      {t("rate_workbench.carry_forward.button")}
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button size="sm" disabled>
+            {t("rate_workbench.carry_forward.button")}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("rate_workbench.carry_forward.button_disabled_tooltip")}</TooltipContent>
+    </Tooltip>
+  );
+  // If the active plan's currency vanishes while the dialog is open (e.g. a
+  // background refetch empties the plan list), close it — otherwise the stale
+  // `carryForwardOpen` flag could re-mount the dialog once a plan reappears.
+  useEffect(() => {
+    if (carryForwardOpen && !activeSeasonCurrencyCode) setCarryForwardOpen(false);
+  }, [carryForwardOpen, activeSeasonCurrencyCode]);
+
   let body: React.ReactNode;
   if (isLoading) {
     body = <Skeleton className="h-72 w-full" />;
@@ -303,6 +335,7 @@ export function RateWorkbenchPage() {
         <EmptyState
           title={t("rate_workbench.empty_year.title", { year })}
           description={t("rate_workbench.empty_year.body")}
+          action={carryForwardEligible ? carryForwardButton : undefined}
         />
       );
     } else {
@@ -532,6 +565,16 @@ export function RateWorkbenchPage() {
           open
           onOpenChange={setAddSeasonOpen}
           mode="create"
+        />
+      ) : null}
+      {carryForwardOpen && activeSeasonCurrencyCode ? (
+        <CarryForwardDialog
+          propertyId={property.id}
+          currencyCode={activeSeasonCurrencyCode}
+          targetYear={year}
+          open
+          onOpenChange={setCarryForwardOpen}
+          onCarried={(plan) => setMatrixRatePlanId(plan.id)}
         />
       ) : null}
       {editingSeason ? (

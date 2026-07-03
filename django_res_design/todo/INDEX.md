@@ -24,6 +24,11 @@ enquiry/quote/customer-profile cluster from the 2026-06-17 owner Loom; GAP-048 +
 GAP-052/053 are the contacts-directory cluster from the 2026-06-29 owner Loom
 follow-up.)
 
+_2026-07-03 additions (not in the 2026-07-02 count above): GAP-069
+(workbench carry-forward affordance) and SPEC-001 (rate-model date-authority
+exploration) from the far-future-rates investigation; GAP-070 (remove property
+groups) already landed on this branch. First `spec-*` ticket — see `README.md`._
+
 ---
 
 # Open / actionable
@@ -51,7 +56,7 @@ follow-up.)
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ demoted from footgun (low real-world risk today) |
+| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ demoted from footgun (low real-world risk today); ⚠️ mooted by **GAP-070** (deletes `effective()`) |
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) lives in one file | ⬜ |
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
@@ -69,6 +74,12 @@ follow-up.)
 | Id | Title | Status |
 |---|---|---|
 | [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md) | Consolidate repeated frontend boilerplate: CRUD-dialog state, FormDialog reset-effect, toast/error extraction, optimistic updates | ⬜ from 2026-07-02 frontend complexity audit; first `refactor-*` ticket (no behaviour change) |
+
+## Speculative
+
+| Id | Title | Status |
+|---|---|---|
+| [SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) | Make `RatePeriod` the sole date authority; `RatePlan` becomes a dateless regime bucket (drop `effective_from/to`) | 🔵 exploration from 2026-07-03 far-future-rates investigation; year-on-`RatePlan` alt considered + rejected (cross-year multi-regime stays); cheap interim = bind envelope to period union; related Q-022/Q-018/SMELL-021/22, GAP-069 |
 
 ## Surface gaps
 
@@ -126,7 +137,9 @@ follow-up.)
 | [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
-| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ carries the seeding half of Q-021; buildable now (deposit 30% / SD / commission % / 16:30 / 10:30); groups stay |
+| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ ⚠️ superseded by **GAP-070** (which drops groups); its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
+| [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
+| [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
 
 ## Refactors
 

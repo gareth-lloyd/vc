@@ -51,6 +51,13 @@ export interface MatrixModel {
 
 export const bandKey = (b: MatrixBand): string => `${b.minParty ?? "*"}|${b.maxParty ?? "*"}`;
 
+/** A period is historical once its whole window has elapsed (`date_to` before
+ * today). Historical periods are hidden by default and read-only when shown —
+ * the backend enforces the same lock (`RatePeriod.is_historical`). */
+export function isHistoricalPeriod(period: { date_to: string }, todayIso: string): boolean {
+  return period.date_to < todayIso;
+}
+
 /** Numeric party-band label ("2–4", "6"), or null when unbounded (let the caller translate). */
 export function bandLabel(b: MatrixBand): string | null {
   if (b.minParty == null && b.maxParty == null) return null;

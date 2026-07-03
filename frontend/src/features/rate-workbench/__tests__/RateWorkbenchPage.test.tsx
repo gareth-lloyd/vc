@@ -645,3 +645,146 @@ describe("RateWorkbenchPage — rate-plan lifecycle", () => {
     ).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// GAP-069: the carry-forward affordance. In the "Nothing scheduled" (projected)
+// state — a plan exists but has no rates for the year on screen — a writer can
+// promote an earlier year's rates into it. Gated on a resolvable currency code
+// and a non-past year (past years always fail the backend's window guard).
+// ---------------------------------------------------------------------------
+
+const pastSeason = { ...season, effective_from: "2025-06-01", effective_to: "2025-08-31" };
+
+function installProjectedHandlers() {
+  // A single plan whose only periods are in 2025; viewing 2026 (current year)
+  // gives the empty_year state with a real active plan (EUR currency).
+  installHandlers();
+  server.use(
+    http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([pastSeason]))),
+    http.get("/api/v1/rate-plans/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
+    ...emptyAncillaryHandlers(),
+  );
+}
+
+// The shared `installHandlers` seeds an always-on extra (no date bounds) that
+// tiles every year, so the empty_year state never appears. These blank the
+// ancillary config so only the rate plan drives whether a year is empty.
+function emptyAncillaryHandlers() {
+  return [
+    http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
+    http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
+    http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
+    http.get("/api/v1/properties/7/change-over-rules", () => HttpResponse.json(drfPage([]))),
+  ];
+}
+
+describe("RateWorkbenchPage — carry forward", () => {
+  it("offers an enabled carry-forward button in the empty-year state for a writer", async () => {
+    setUser("reservations");
+    installProjectedHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    await screen.findByText(/Nothing scheduled in 2026/i);
+    expect(await screen.findByRole("button", { name: "Carry rates forward" })).toBeEnabled();
+  });
+
+  it("disables the carry-forward button for a non-writer (never hides it)", async () => {
+    setUser("viewer");
+    installProjectedHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+
+    await screen.findByText(/Nothing scheduled in 2026/i);
+    expect(await screen.findByRole("button", { name: "Carry rates forward" })).toBeDisabled();
+  });
+
+  it("offers no carry-forward button when there is no rate plan to carry into", async () => {
+    setUser("reservations");
+    // Config exists (a 2025-only changeover rule) but no rate plan at all, so the
+    // 2026 view is empty and there is no active plan currency to carry.
+    server.use(
+      http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
+      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
+      http.get("/api/v1/properties/7/change-over-rules", () =>
+        HttpResponse.json(
+          drfPage([{ ...changeover, effective_from: "2025-06-01", effective_to: "2025-08-31" }]),
+        ),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    await screen.findByText(/Nothing scheduled in 2026/i);
+    expect(screen.queryByRole("button", { name: "Carry rates forward" })).toBeNull();
+  });
+
+  it("offers no carry-forward button for a past year (the backend window guard would reject it)", async () => {
+    setUser("reservations");
+    // Plan 100 prices 2026; viewing 2025 is empty, but a past target always 400s.
+    installHandlers();
+    server.use(...emptyAncillaryHandlers());
+    setup("/properties/casa-sur/rate-workbench?year=2025");
+
+    await screen.findByText(/Nothing scheduled in 2025/i);
+    expect(screen.queryByRole("button", { name: "Carry rates forward" })).toBeNull();
+  });
+
+  it("carries earlier rates forward, posting the currency code, and fills the year in place", async () => {
+    setUser("reservations");
+    installHandlers(); // plan 100 prices 2026; viewing 2027 is empty
+    let carried = false;
+    const posted: Array<Record<string, unknown>> = [];
+    const newPlan = {
+      id: 200,
+      property: 7,
+      name: "Carried forward 2027",
+      currency_code: "EUR",
+      effective_from: "2027-01-01",
+      effective_to: "2027-12-31",
+      is_active: true,
+    };
+    const newPlanDetail = {
+      ...newPlan,
+      periods: [
+        {
+          id: 800,
+          plan: 200,
+          name: "Carried",
+          date_from: "2027-06-01",
+          date_to: "2027-06-30",
+          is_active: true,
+          coverage_gaps: [],
+          bands: [{ id: 9, period: 800, min_party: 1, max_party: 8, nightly: "700" }],
+        },
+      ],
+    };
+    server.use(
+      http.post("/api/v1/properties/7/rate-plans:carry-forward", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        carried = true;
+        return HttpResponse.json(newPlanDetail, { status: 201 });
+      }),
+      // After the carry the list grows, so the fan-out picks up the new plan.
+      http.get("/api/v1/properties/7/rate-plans", () =>
+        HttpResponse.json(drfPage(carried ? [season, newPlan] : [season])),
+      ),
+      http.get("/api/v1/rate-plans/200", () => HttpResponse.json(newPlanDetail)),
+      ...emptyAncillaryHandlers(),
+    );
+    setup("/properties/casa-sur/rate-workbench?year=2027");
+
+    const user = userEvent.setup();
+    await screen.findByText(/Nothing scheduled in 2027/i);
+    await user.click(await screen.findByRole("button", { name: "Carry rates forward" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Carry forward" }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    // The endpoint resolves Currency.code, so the code string (not the FK id) is sent.
+    expect(posted[0]).toMatchObject({ currency: "EUR", target_year: 2027, uplift_pct: 0 });
+    // The new plan is selected and its 2027 rates now render in place.
+    expect(await screen.findByRole("button", { name: /Carried, 1 Jun 2027/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing scheduled in 2027/i)).not.toBeInTheDocument();
+  });
+});

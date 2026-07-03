@@ -13,20 +13,20 @@ import { MatrixEditor } from "../components/MatrixEditor";
 const ratePlanDetail: RatePlanDetail = {
   id: 100,
   property: 7,
-  name: "Summer 2026",
+  name: "Summer 2099",
   currency_code: "EUR",
   price_basis: "gross",
   prices_by_occupancy: true,
-  effective_from: "2026-06-01",
-  effective_to: "2026-08-31",
+  effective_from: "2099-06-01",
+  effective_to: "2099-08-31",
   is_active: true,
   periods: [
     {
       id: 500,
       plan: 100,
       name: "Early summer",
-      date_from: "2026-06-01",
-      date_to: "2026-06-28",
+      date_from: "2099-06-01",
+      date_to: "2099-06-28",
       is_active: true,
       coverage_gaps: [],
       bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650", weekly: "4200" }],
@@ -35,8 +35,8 @@ const ratePlanDetail: RatePlanDetail = {
       id: 501,
       plan: 100,
       name: "Peak",
-      date_from: "2026-06-29",
-      date_to: "2026-08-31",
+      date_from: "2099-06-29",
+      date_to: "2099-08-31",
       is_active: true,
       coverage_gaps: [],
       bands: [{ id: 2, period: 501, min_party: 5, max_party: 6, nightly: "900" }],
@@ -71,7 +71,7 @@ describe("MatrixEditor", () => {
     );
 
     renderEditor();
-    const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    const input = await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     await user.clear(input);
     await user.type(input, "700");
     await user.tab(); // blur commits
@@ -92,7 +92,7 @@ describe("MatrixEditor", () => {
     );
 
     renderEditor();
-    const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    const input = await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     await user.click(input);
     await user.tab();
 
@@ -124,8 +124,8 @@ describe("MatrixEditor", () => {
           id: 500,
           plan: 100,
           name: "Early summer",
-          date_from: "2026-06-01",
-          date_to: "2026-06-28",
+          date_from: "2099-06-01",
+          date_to: "2099-06-28",
           is_active: true,
           coverage_gaps: [],
           bands: [{ id: 1, period: 500, min_party: 2, max_party: 4, nightly: "650" }],
@@ -134,8 +134,8 @@ describe("MatrixEditor", () => {
           id: 501,
           plan: 100,
           name: "Peak",
-          date_from: "2026-06-29",
-          date_to: "2026-08-31",
+          date_from: "2099-06-29",
+          date_to: "2099-08-31",
           is_active: true,
           coverage_gaps: [],
           bands: [{ id: 2, period: 501, min_party: 3, max_party: 6, nightly: "1200" }],
@@ -152,13 +152,13 @@ describe("MatrixEditor", () => {
       />,
     );
     // Priced cell present; no "+" anywhere (every empty cell is covered).
-    expect(await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i)).toBeEnabled();
+    expect(await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i)).toBeEnabled();
     expect(screen.queryByRole("button", { name: /Add a price for this band/i })).toBeNull();
   });
 
   it("renders read-only cells (disabled inputs, no fill buttons) without write access", async () => {
     renderEditor(false);
-    const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    const input = await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     expect(input).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Add a price for this band/i })).toBeNull();
   });
@@ -167,8 +167,8 @@ describe("MatrixEditor", () => {
 describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
   it("renders both price inputs with party-qualified accessible names", async () => {
     renderEditor();
-    const nightly = await screen.findByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 2–4 pax");
-    const weekly = screen.getByLabelText("Weekly rate, 2026-06-01 to 2026-06-28, 2–4 pax");
+    const nightly = await screen.findByLabelText("Nightly rate, 2099-06-01 to 2099-06-28, 2–4 pax");
+    const weekly = screen.getByLabelText("Weekly rate, 2099-06-01 to 2099-06-28, 2–4 pax");
     expect(nightly).toHaveValue("650");
     expect(weekly).toHaveValue("4200");
   });
@@ -190,9 +190,9 @@ describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
       <MatrixEditor ratePlanId={100} seasons={[twoBands]} canWrite commission={null} tax={null} />,
     );
     expect(
-      await screen.findByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 2–4 pax"),
+      await screen.findByLabelText("Nightly rate, 2099-06-01 to 2099-06-28, 2–4 pax"),
     ).toHaveValue("650");
-    expect(screen.getByLabelText("Nightly rate, 2026-06-01 to 2026-06-28, 5–6 pax")).toHaveValue(
+    expect(screen.getByLabelText("Nightly rate, 2099-06-01 to 2099-06-28, 5–6 pax")).toHaveValue(
       "900",
     );
   });
@@ -216,10 +216,10 @@ describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
         tax={null}
       />,
     );
-    expect(await screen.findByLabelText(/Weekly rate, 2026-06-01 to 2026-06-28/i)).toHaveValue(
+    expect(await screen.findByLabelText(/Weekly rate, 2099-06-01 to 2099-06-28/i)).toHaveValue(
       "4550",
     );
-    expect(screen.getByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i)).toHaveValue("");
+    expect(screen.getByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i)).toHaveValue("");
   });
 
   it("PATCHes the rule with a new weekly (clearing POA) when the weekly cell is edited inline", async () => {
@@ -234,7 +234,7 @@ describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
     );
 
     renderEditor();
-    const input = await screen.findByLabelText(/Weekly rate, 2026-06-01 to 2026-06-28/i);
+    const input = await screen.findByLabelText(/Weekly rate, 2099-06-01 to 2099-06-28/i);
     await user.clear(input);
     await user.type(input, "4500");
     await user.tab(); // blur commits
@@ -256,7 +256,7 @@ describe("MatrixEditor — stacked nightly + weekly inline editors", () => {
     );
 
     renderEditor();
-    const input = await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    const input = await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     await user.clear(input);
     await user.type(input, "1,200");
     await user.tab();
@@ -389,7 +389,7 @@ describe("MatrixEditor — first-class band creation (Unit 4)", () => {
       <MatrixEditor ratePlanId={100} seasons={[unbounded]} canWrite commission={null} tax={null} />,
     );
     // The unbounded band leaves no party size to price — a "+" would only 4xx.
-    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     expect(screen.queryByRole("button", { name: /Add band — Early summer/i })).toBeNull();
   });
 
@@ -408,7 +408,7 @@ describe("MatrixEditor — first-class band creation (Unit 4)", () => {
     renderWithProviders(
       <MatrixEditor ratePlanId={100} seasons={[saturated]} canWrite commission={null} tax={null} />,
     );
-    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     expect(screen.queryByRole("button", { name: /Add band — Early summer/i })).toBeNull();
   });
 
@@ -538,7 +538,7 @@ describe("MatrixEditor — period edit + delete", () => {
 
   it("offers no period actions to a non-writer", async () => {
     renderEditor(false);
-    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
+    await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i);
     expect(screen.queryByRole("button", { name: "Period actions" })).toBeNull();
   });
 });
@@ -554,8 +554,8 @@ describe("MatrixEditor — flat pricing mode", () => {
         id: 500,
         plan: 100,
         name: "All year",
-        date_from: "2026-06-01",
-        date_to: "2026-08-31",
+        date_from: "2099-06-01",
+        date_to: "2099-08-31",
         is_active: true,
         coverage_gaps: [],
         bands: [{ id: 1, period: 500, min_party: 1, max_party: 8, nightly: "650" }],
@@ -575,7 +575,7 @@ describe("MatrixEditor — flat pricing mode", () => {
     renderWithProviders(
       <MatrixEditor ratePlanId={100} seasons={[flatPlan]} canWrite commission={null} tax={null} />,
     );
-    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-08-31/i);
+    await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-08-31/i);
     expect(screen.queryByRole("button", { name: /Add band —/i })).toBeNull();
   });
 
@@ -587,8 +587,71 @@ describe("MatrixEditor — flat pricing mode", () => {
     renderWithProviders(
       <MatrixEditor ratePlanId={100} seasons={[gappyFlat]} canWrite commission={null} tax={null} />,
     );
-    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-08-31/i);
+    await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-08-31/i);
     expect(screen.queryByText(/unpriced party sizes/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /Add a band for parties/i })).toBeNull();
+  });
+});
+
+// Historical periods (window fully elapsed) are hidden by default and, when
+// revealed via the toggle, are read-only (matching the backend lock). Fixtures
+// use 2020 (always past) / 2099 (always future) so the suite is clock-stable.
+describe("MatrixEditor — historical periods", () => {
+  const pastPeriod = {
+    id: 502,
+    plan: 100,
+    name: "Old summer",
+    date_from: "2020-06-01",
+    date_to: "2020-08-31",
+    is_active: true,
+    coverage_gaps: [],
+    bands: [{ id: 8, period: 502, min_party: 2, max_party: 4, nightly: "500" }],
+  };
+  const mixed: RatePlanDetail = {
+    ...ratePlanDetail,
+    periods: [pastPeriod, ratePlanDetail.periods[0]],
+  };
+
+  it("hides a historical period by default, keeping the current one", async () => {
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[mixed]} canWrite commission={null} tax={null} />,
+    );
+    // Current period visible; historical one absent.
+    expect(await screen.findByLabelText(/Nightly rate, 2099-06-01 to 2099-06-28/i)).toBeEnabled();
+    expect(screen.queryByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Show past periods (1)" })).toBeInTheDocument();
+  });
+
+  it("reveals historical periods read-only when the toggle is pressed", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[mixed]} canWrite commission={null} tax={null} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Show past periods (1)" }));
+
+    // The historical band's price input is now shown but disabled, and the row
+    // carries a "Past" marker instead of an actions menu.
+    const pastInput = await screen.findByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i);
+    expect(pastInput).toBeDisabled();
+    expect(screen.getByText("Past")).toBeInTheDocument();
+    // Only the live period keeps its lifecycle menu.
+    expect(screen.getAllByRole("button", { name: "Period actions" })).toHaveLength(1);
+
+    // The toggle flips back to a hide affordance.
+    await user.click(screen.getByRole("button", { name: "Hide past periods" }));
+    expect(screen.queryByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i)).toBeNull();
+  });
+
+  it("shows an all-ended empty state when every period is historical", async () => {
+    const user = userEvent.setup();
+    const allPast: RatePlanDetail = { ...ratePlanDetail, periods: [pastPeriod] };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[allPast]} canWrite commission={null} tax={null} />,
+    );
+    expect(await screen.findByText("All rate periods have ended")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show past periods (1)" }));
+    // Revealing them replaces the empty state with the (read-only) grid.
+    expect(screen.queryByText("All rate periods have ended")).toBeNull();
+    expect(await screen.findByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i)).toBeDisabled();
   });
 });

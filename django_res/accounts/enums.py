@@ -134,6 +134,26 @@ class ContactRole(models.TextChoices):
     OWNERS_REPRESENTATIVE = "owners_rep", "Owner's representative"
 
 
+class ContactType(models.TextChoices):
+    """Authoritative taxonomy for the derived `contact_types` API field
+    (GAP-052): every property role from `ContactRole` plus the synthetic
+    `CUSTOMER` capacity. `AGENT` is deliberately shared — a contact who is an
+    agency member and/or holds the property-agent role collapses to one badge,
+    so `AGENT`'s value equals `ContactRole.AGENT`'s. The role members mirror
+    `ContactRole`; the mirror is guarded by `test_contact_type_mirrors_contact_role`.
+    Not attached to a model field — it names the values `get_contact_types`
+    emits, nothing more."""
+
+    CUSTOMER = "customer", "Customer"
+    OWNER = "owner", "Owner"
+    MANAGER = "manager", "Villa Manager"
+    AGENT = "agent", "Agent"
+    VILLA_ADMIN = "villa_admin", "Villa Admin"
+    MANAGEMENT_COMPANY = "management_company", "Management Company"
+    HOUSEKEEPER = "housekeeper", "Housekeeper"
+    OWNERS_REPRESENTATIVE = "owners_rep", "Owner's representative"
+
+
 class OrgType(models.TextChoices):
     """Capacity partition for `accounts.Organisation`: one entity, screens
     scoped by type. AGENCY backs the B2B Companies directory (GAP-046);

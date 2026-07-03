@@ -18,3 +18,34 @@ export function contactDisplayName(contact: Contact): string {
 export function isClientContact(contact: Contact): boolean {
   return (contact.contact_types ?? []).some((type) => type === "customer" || type === "agent");
 }
+
+/**
+ * Contact-types that CAN hold a property (owners, managers, agents, and the
+ * other business roles). Gates the Properties tab: a pure client — no such
+ * type and no actual property link — has no properties to show, so the (empty)
+ * tab is hidden. Mirrors the backend `ContactRole` values plus the synthetic
+ * `agent` type (product decision: agents always get the tab).
+ */
+const PROPERTY_CAPABLE_TYPES = new Set([
+  "owner",
+  "manager",
+  "villa_admin",
+  "management_company",
+  "housekeeper",
+  "owners_rep",
+  "agent",
+]);
+
+/**
+ * True when the Properties tab should show: the contact either can hold
+ * properties by type, or actually has ≥1 property assignment (active or
+ * historical, via the server-derived `has_property_assignments`).
+ */
+export function contactCanHaveProperties(
+  contact: Pick<Contact, "contact_types" | "has_property_assignments">,
+): boolean {
+  return (
+    contact.has_property_assignments === true ||
+    (contact.contact_types ?? []).some((type) => PROPERTY_CAPABLE_TYPES.has(type))
+  );
+}

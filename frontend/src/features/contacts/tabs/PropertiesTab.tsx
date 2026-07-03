@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { Navigate, useNavigate, useOutletContext } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import i18n from "@/i18n";
 import { DataTable } from "@/components/data/DataTable";
@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import { useContactProperties } from "../hooks";
+import { contactCanHaveProperties } from "../display";
 import type { ContactPropertyAssignment } from "../schemas";
 import type { ContactOutletContext } from "../ContactDetailLayout";
 
@@ -68,7 +69,16 @@ export function PropertiesTab() {
   const { t } = useTranslation("contacts");
   const { contact } = useOutletContext<ContactOutletContext>();
   const navigate = useNavigate();
-  const query = useContactProperties(contact.id);
+  // A pure client has no Properties tab in the nav; if it reaches this route by
+  // a direct URL, bounce it to the details tab. Gate the fetch off the same
+  // condition (id → undefined disables the query) so we don't fire a request we
+  // won't render, while keeping the hook call unconditional (rules of hooks).
+  const applicable = contactCanHaveProperties(contact);
+  const query = useContactProperties(applicable ? contact.id : undefined);
+
+  if (!applicable) {
+    return <Navigate to="../details" replace />;
+  }
 
   if (query.isError) {
     return (

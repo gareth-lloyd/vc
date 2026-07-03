@@ -14,7 +14,7 @@ import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useContact, useDeleteContact } from "./hooks";
-import { contactDisplayName } from "./display";
+import { contactCanHaveProperties, contactDisplayName } from "./display";
 import { ContactFormDialog } from "./components/ContactFormDialog";
 import { TagChips } from "./components/TagChips";
 import { RepeatBadge } from "./components/RepeatBadge";
@@ -176,6 +176,12 @@ export function ContactDetailLayout() {
 
   const contact = query.data;
   const name = contactDisplayName(contact);
+  // Hide the Properties tab for a pure client — it has no properties to show,
+  // so the empty tab is just noise. The tab (and its route) stay defined; we
+  // only drop the nav entry, and PropertiesTab itself redirects a direct hit.
+  const visibleTabs = CONTACT_TABS.filter(
+    (tab) => tab.slug !== "properties" || contactCanHaveProperties(contact),
+  );
 
   return (
     <div>
@@ -199,7 +205,7 @@ export function ContactDetailLayout() {
 
       <div className="border-border border-b px-6">
         <nav className="flex gap-1" aria-label={t("headings.sections_aria")}>
-          {CONTACT_TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <NavLink
               key={tab.slug}
               to={tab.slug}

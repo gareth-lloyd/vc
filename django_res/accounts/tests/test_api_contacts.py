@@ -654,6 +654,41 @@ def test_contact_types_dedupes_role_and_active_only(api_client: APIClient, staff
 
 
 @pytest.mark.django_db
+def test_has_property_assignments_true_including_ended(api_client: APIClient, staff: User) -> None:
+    # Gate for the FE Properties tab: True when the contact has ANY property
+    # link, active or historical (an ended assignment still counts).
+    from datetime import date
+
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory
+
+    person = Person.objects.create(
+        first_name="Ended", last_name="Owner", kind=PersonKind.CONTACT.value
+    )
+    PropertyContactAssignmentFactory(
+        contact=person, role=ContactRole.OWNER, end_date=date(2020, 1, 1)
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["has_property_assignments"] is True
+
+
+@pytest.mark.django_db
+def test_has_property_assignments_false_for_pure_client(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    contact.kind = PersonKind.CUSTOMER.value
+    contact.save(update_fields=["kind"])
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["has_property_assignments"] is False
+
+
+@pytest.mark.django_db
 def test_retrieve_contact_types_is_query_pinned(api_client: APIClient, staff: User) -> None:
     # GAP-052: contact_types rides a correlated Subquery, not a per-row fetch —
     # query count stays flat regardless of how many active assignments exist.
@@ -701,6 +736,9 @@ def test_list_contact_types_query_count_is_flat(api_client: APIClient, staff: Us
     assert first["count"] == 1
     assert many["count"] == 5  # COUNT not inflated by roles
     assert sorted(many["results"][0]["contact_types"]) == ["customer", "manager", "owner"]
+    # has_property_assignments rides a correlated Exists in the same SELECT —
+    # present on every list row and does not add a query (pin held at 8 above).
+    assert many["results"][0]["has_property_assignments"] is True
 
 
 @pytest.mark.django_db

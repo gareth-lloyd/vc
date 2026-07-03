@@ -35,6 +35,7 @@ import {
   usePropertyServices,
   usePropertySettings,
 } from "@/features/properties/hooks";
+import { PricingModeToggle } from "./components/PricingModeToggle";
 import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
 import { RatePlanFormDialog } from "@/features/properties/components/RatePlanFormDialog";
 import type { PropertyDetail, RatePlan } from "@/features/properties/schemas";
@@ -324,6 +325,13 @@ export function RateWorkbenchPage() {
             {t("rate_workbench.matrix.title")}
           </h2>
           <div className="flex items-center gap-2">
+            {activeSeasonDetail ? (
+              <PricingModeToggle
+                propertyId={property.id}
+                ratePlan={activeSeasonDetail}
+                canWrite={canWrite}
+              />
+            ) : null}
             {/* Only when the plan has periods — a zero-period plan's create
                 affordance lives in the matrix empty state instead. Disabled,
                 never hidden, for non-writers (frontend/CLAUDE.md role gating). */}

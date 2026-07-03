@@ -684,6 +684,13 @@ class RateBandLoader(BaseLoader):
 
             for plan_pk, bands in bands_by_plan.items():
                 plan = plan_by_pk[plan_pk]
+                # Roll the flat-vs-occupancy shape up onto the plan: >1 distinct
+                # party bracket means the villa prices by occupancy (matches the
+                # engine's runtime test). Idempotent — re-runs converge.
+                by_occupancy = len({(b.min_party, b.max_party) for b in bands}) > 1
+                if plan.prices_by_occupancy != by_occupancy:
+                    plan.prices_by_occupancy = by_occupancy
+                    plan.save(update_fields=["prices_by_occupancy"])
                 # Per-band occurrence counter: a ragged band spans >1 segment, so
                 # namespace its clones `#seg{n}` (n = 1 for the 2nd segment) to
                 # keep legacy_ids distinct, mirroring `backfill_plan_periods`.

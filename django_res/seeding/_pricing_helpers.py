@@ -37,8 +37,6 @@ _SEASON_MULTIPLIERS = (Decimal("0.7"), Decimal("1.0"), Decimal("1.5"))
 # A couple of villas per run echo the legacy extreme low/peak ratios.
 _WIDE_SEASON_MULTIPLIERS = (Decimal("0.3"), Decimal("1.0"), Decimal("3.0"))
 
-_FLAT_BRACKETS: tuple[tuple[int, int, Decimal], ...] = ((1, 30, Decimal("1.0")),)
-
 # Free-text "what's included" copy in the legacy VillaSeason.Inclusion style
 # ("Daily housekeeping, welcome basket"). Cycled by villa index — never the
 # rng — so the pool can grow without perturbing the seeded rng stream.
@@ -147,12 +145,19 @@ def _merge_thin_segments(
     return merged or segments
 
 
+def flat_brackets(capacity: int) -> tuple[tuple[int, int, Decimal], ...]:
+    """The single full-span bracket for a flat (non-occupancy) plan: one price
+    for parties 1..capacity. Mirrors the data-migration loader, which sets a
+    non-occupancy villa's `max_party` to `capacity.guests` (not a magic 30)."""
+    return ((1, max(capacity, 1), Decimal("1.0")),)
+
+
 def build_seasonal_periods(
     plan: Any,
     base_nightly: Decimal,
     *,
     min_nights: int = 1,
-    brackets: tuple[tuple[int, int, Decimal], ...] = _FLAT_BRACKETS,
+    brackets: tuple[tuple[int, int, Decimal], ...] | None = None,
     wide_spread: bool = False,
 ) -> None:
     """One Low/Mid/Peak `RatePeriod` per season segment on `plan`, each with one
@@ -164,8 +169,14 @@ def build_seasonal_periods(
     `(night, party)` resolves to exactly one cell. `min_nights` lands on every
     period as a real per-period override — the engine reads it per-period.
     `max_nights` stays null.
+
+    `brackets` defaults to a single flat band spanning the villa's capacity
+    (`flat_brackets`); pass explicit party brackets for occupancy pricing.
     """
     assert plan.effective_to is not None  # factories/stages always set it
+    if brackets is None:
+        capacity = getattr(getattr(plan.property, "capacity", None), "guests", None) or 1
+        brackets = flat_brackets(capacity)
     multipliers = _WIDE_SEASON_MULTIPLIERS if wide_spread else _SEASON_MULTIPLIERS
     for seg_from, seg_to, season in _season_segments(plan.effective_from, plan.effective_to):
         period = RatePeriodFactory(

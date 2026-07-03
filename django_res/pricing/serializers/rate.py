@@ -114,6 +114,16 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
             )
 
         period = self._resolve_period()
+        if period is not None and self.instance is None and not period.plan.prices_by_occupancy:
+            if period.bands.exists():
+                raise serializers.ValidationError(
+                    {
+                        "prices_by_occupancy": (
+                            "This plan uses a single flat rate. Switch it to occupancy "
+                            "pricing to add party-size bands."
+                        ),
+                    },
+                )
         if period is not None and None not in (min_party, max_party):
             overlapping = RateBand.objects.filter(
                 period=period,
@@ -271,6 +281,7 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "currency",
             "currency_code",
             "price_basis",
+            "prices_by_occupancy",
             "fallback_nightly",
             "effective_from",
             "effective_to",
@@ -278,6 +289,23 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "notes",
         ]
         read_only_fields = ["id"]
+
+    def validate_prices_by_occupancy(self, value: bool) -> bool:
+        """Occupancy → flat is only safe once every period holds a single band.
+
+        Collapsing to flat is lossless only when there is nothing to collapse:
+        a period with several party bands has no single price to keep, so we
+        make the operator reduce it first rather than silently dropping bands.
+        Flat → occupancy (``value`` True) is always allowed.
+        """
+        if value or self.instance is None:
+            return value
+        multi = self.instance.periods.annotate(n=models.Count("bands")).filter(n__gt=1).exists()
+        if multi:
+            raise serializers.ValidationError(
+                "Reduce each period to a single band before switching to flat pricing.",
+            )
+        return value
 
 
 class RatePlanDetailSerializer(RatePlanSerializer):

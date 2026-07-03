@@ -35,7 +35,6 @@ from properties.factories import (
 from properties.models import Country
 from properties.services.changeover import ChangeoverService
 from seeding._pricing_helpers import (
-    _FLAT_BRACKETS,
     assign_commission,
     build_seasonal_periods,
     draw_base_nightly,
@@ -169,11 +168,22 @@ def _run(ctx: SeedContext) -> int:
         if dirty_settings:
             prop.settings.save(update_fields=dirty_settings)
         min_nights = ctx.knobs.constrained_min_nights if constrained else 1
-        plan = RatePlanFactory(property=prop, currency=currency, **plan_kwargs)
+        # Flat by default; a fraction of realistic villas price by occupancy.
+        # The `and` short-circuit keeps the happy profile off ctx.rng (its
+        # byte-for-byte output), and rolling here (before the plan row) keeps
+        # the ctx.rng stream identical — RatePlanFactory doesn't touch ctx.rng.
+        by_occupancy = ctx.knobs.realistic_pricing and (
+            ctx.rng.random() < ctx.knobs.pct_occupancy_bands
+        )
+        plan = RatePlanFactory(
+            property=prop, currency=currency, prices_by_occupancy=by_occupancy, **plan_kwargs
+        )
         seed_included_services(prop, i)
         if ctx.knobs.realistic_pricing:
-            brackets = _FLAT_BRACKETS
-            if ctx.rng.random() < ctx.knobs.pct_occupancy_bands:
+            # Flat → `brackets=None` (a single band over capacity); occupancy →
+            # contiguous party brackets up to the (bumped) capacity.
+            brackets = None
+            if by_occupancy:
                 # The factory hardcodes guests=8, which would collapse the
                 # natural 1-8 / 9-12 / 13+ brackets to a single band — bump
                 # capacity so the bands are real.
@@ -201,6 +211,7 @@ def _run(ctx: SeedContext) -> int:
                     currency=alt,
                     effective_from=plan.effective_from - timedelta(days=1),
                     effective_to=plan.effective_to,
+                    prices_by_occupancy=by_occupancy,
                 )
                 build_seasonal_periods(
                     alt_plan,

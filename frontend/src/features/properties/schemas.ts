@@ -487,6 +487,7 @@ export const ratePlanSchema = z.object({
   currency: z.number().nullable().optional(),
   currency_code: z.string().nullable().optional(),
   price_basis: z.enum(PROPERTY_PRICE_BASES).nullable().optional(),
+  prices_by_occupancy: z.boolean().optional(),
   effective_from: z.string().nullable().optional(),
   effective_to: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
@@ -702,6 +703,7 @@ export const ratePlanWriteInputSchema = z
     // `propertyServiceWriteInputSchema` above.
     effective_to: z.string().nullable().optional(),
     is_active: z.boolean().optional(),
+    prices_by_occupancy: z.boolean().optional(),
     notes: z.string().trim().optional(),
   })
   .refine((v) => !v.effective_to || v.effective_to >= v.effective_from, {

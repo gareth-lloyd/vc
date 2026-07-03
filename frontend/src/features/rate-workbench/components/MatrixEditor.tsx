@@ -107,9 +107,16 @@ export function MatrixEditor({
 
   const currencyCode = season?.currency_code ?? null;
   const priceBasis = season?.price_basis ?? null;
+  // Flat plans price one rate per period (party size ignored): the party
+  // columns collapse to a single "Flat rate" column and the occupancy-band
+  // affordances (trailing "+", coverage-gap chips) are hidden — adding a
+  // second band is a mode switch, not an in-grid action (the backend 400s it).
+  const pricesByOccupancy = season?.prices_by_occupancy ?? false;
 
   const matrix = useMemo(() => buildMatrix(periods), [periods]);
-  const gapPeriods = periods.filter((p) => (p.coverage_gaps ?? []).length > 0);
+  const gapPeriods = pricesByOccupancy
+    ? periods.filter((p) => (p.coverage_gaps ?? []).length > 0)
+    : [];
 
   const price = useOptimisticBandPrice(ratePlanId);
   const deleteRule = useDeleteRateBand(ratePlanId);
@@ -276,9 +283,11 @@ export function MatrixEditor({
                   const label = bandLabel(b);
                   return (
                     <th key={label ?? "any"} className="px-2 py-2 font-medium">
-                      {label != null
-                        ? t("rate_workbench.matrix.party_pax", { range: label })
-                        : t("rate_workbench.matrix.any_party")}
+                      {!pricesByOccupancy
+                        ? t("rate_workbench.matrix.flat_rate")
+                        : label != null
+                          ? t("rate_workbench.matrix.party_pax", { range: label })
+                          : t("rate_workbench.matrix.any_party")}
                     </th>
                   );
                 })}
@@ -308,6 +317,7 @@ export function MatrixEditor({
                     (b.max_party == null || b.max_party >= seed.minParty),
                 );
                 const showTrailingAdd =
+                  pricesByOccupancy &&
                   lastBandCol >= 0 &&
                   !seedCovered &&
                   !rowCells.some((c, i) => i > lastBandCol && c.fillable);

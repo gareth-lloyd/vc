@@ -28,6 +28,7 @@ class PricingConfig(AppConfig):
                 "name",
                 "currency_id",
                 "price_basis",
+                "prices_by_occupancy",
                 "fallback_nightly",
                 "effective_from",
                 "effective_to",

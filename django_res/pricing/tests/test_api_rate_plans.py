@@ -305,6 +305,85 @@ def test_period_coverage_gaps_reports_uncovered_ranges(
     assert response.json()["coverage_gaps"] == [[5, 8]]
 
 
+# --- Flat-vs-occupancy pricing mode -----------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_rate_plan_defaults_to_flat(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency
+) -> None:
+    """A new plan is flat (party size ignored) unless opted into occupancy."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={"name": "New", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    assert response.json()["prices_by_occupancy"] is False
+
+
+@pytest.mark.django_db
+def test_rate_plan_detail_exposes_pricing_mode(
+    api_client: APIClient, staff: User, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/rate-plans/{plan.pk}")
+    assert response.status_code == 200, response.content
+    assert response.json()["prices_by_occupancy"] is True
+
+
+@pytest.mark.django_db
+def test_switch_plan_to_flat_rejected_while_period_has_multiple_bands(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """Occupancy → flat is blocked until each period is reduced to one band."""
+    for lo, hi in ((1, 8), (9, 12)):
+        RateBand.objects.create(period=period, min_party=lo, max_party=hi, nightly=Decimal("200"))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}",
+        data={"prices_by_occupancy": False},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "prices_by_occupancy" in response.json()["field_errors"]
+    plan.refresh_from_db()
+    assert plan.prices_by_occupancy is True
+
+
+@pytest.mark.django_db
+def test_switch_plan_to_flat_allowed_with_single_band_per_period(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    RateBand.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("200"))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}",
+        data={"prices_by_occupancy": False},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    plan.refresh_from_db()
+    assert plan.prices_by_occupancy is False
+
+
+@pytest.mark.django_db
+def test_switch_flat_plan_to_occupancy_always_allowed(
+    api_client: APIClient, staff: User, flat_plan: RatePlan, flat_period: RatePeriod
+) -> None:
+    RateBand.objects.create(period=flat_period, min_party=1, max_party=8, nightly=Decimal("200"))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{flat_plan.pk}",
+        data={"prices_by_occupancy": True},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    flat_plan.refresh_from_db()
+    assert flat_plan.prices_by_occupancy is True
+
+
 # Touch a couple of variables to silence "unused" complaints from the linter.
 _ = (date, Decimal)
 

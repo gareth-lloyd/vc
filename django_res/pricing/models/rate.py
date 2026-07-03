@@ -32,6 +32,13 @@ class RatePlan(AuditedModel):
         choices=PriceBasis.choices,
         default=PriceBasis.GROSS,
     )
+    prices_by_occupancy = models.BooleanField(
+        default=False,
+        help_text=(
+            "False = one flat price per period (party size ignored); "
+            "True = per-party-size RateBands."
+        ),
+    )
     fallback_nightly = models.DecimalField(
         max_digits=12,
         decimal_places=2,

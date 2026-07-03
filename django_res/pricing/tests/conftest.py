@@ -58,12 +58,16 @@ def property_(db: None) -> Property:
 
 @pytest.fixture
 def plan(property_: Property, gbp: Currency) -> RatePlan:
+    # Occupancy-capable by default: most pricing tests exercise multi-band
+    # (party-bracket) pricing, which a flat plan forbids. The flat mode has its
+    # own `flat_plan` / `flat_period` fixtures below.
     return RatePlan.objects.create(
         property=property_,
         name="Summer 2026",
         currency=gbp,
         effective_from=date(2026, 1, 1),
         effective_to=date(2026, 12, 31),
+        prices_by_occupancy=True,
     )
 
 
@@ -72,6 +76,29 @@ def period(plan: RatePlan) -> RatePeriod:
     return RatePeriod.objects.create(
         plan=plan,
         name="Summer",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+    )
+
+
+@pytest.fixture
+def flat_plan(property_: Property, gbp: Currency) -> RatePlan:
+    """A flat-rate plan (party size ignored): one band per period, no occupancy."""
+    return RatePlan.objects.create(
+        property=property_,
+        name="Flat 2026",
+        currency=gbp,
+        effective_from=date(2026, 1, 1),
+        effective_to=date(2026, 12, 31),
+        prices_by_occupancy=False,
+    )
+
+
+@pytest.fixture
+def flat_period(flat_plan: RatePlan) -> RatePeriod:
+    return RatePeriod.objects.create(
+        plan=flat_plan,
+        name="All year",
         date_from=date(2026, 6, 1),
         date_to=date(2026, 8, 31),
     )

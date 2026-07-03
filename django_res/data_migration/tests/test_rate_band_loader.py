@@ -374,6 +374,41 @@ def test_load_rows_expands_occupancy_bands_with_gap_fallback(loaded_plan: RatePl
 
 
 @pytest.mark.django_db
+def test_load_rows_flags_occupancy_plan(loaded_plan: RatePlan) -> None:
+    """A banded (IsOccupationPrice) season ends up with >1 party bracket, so the
+    loader flags its RatePlan `prices_by_occupancy`."""
+    rows = [
+        _row(
+            ID=1,
+            IsOccupationPrice=True,
+            OccId=101,
+            OccupencyFrom=2,
+            OccupencyTo=4,
+            OccupencyPrice=Decimal("500"),
+        ),
+        _row(
+            ID=1,
+            IsOccupationPrice=True,
+            OccId=102,
+            OccupencyFrom=5,
+            OccupencyTo=6,
+            OccupencyPrice=Decimal("700"),
+        ),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+    loaded_plan.refresh_from_db()
+    assert loaded_plan.prices_by_occupancy is True
+
+
+@pytest.mark.django_db
+def test_load_rows_leaves_flat_plan_unflagged(loaded_plan: RatePlan) -> None:
+    """A season with a single full-span band stays flat (not by occupancy)."""
+    RateBandLoader()._load_rows([_row(ID=1)], LoadReport(loader="rate_rule"))
+    loaded_plan.refresh_from_db()
+    assert loaded_plan.prices_by_occupancy is False
+
+
+@pytest.mark.django_db
 def test_load_rows_null_bound_band_does_not_abort_load(loaded_plan: RatePlan) -> None:
     """A null-bound occupancy child would `None <= int` crash in the resolver
     if coerced; `_prepare_occupancy_rows` drops it so the whole load survives

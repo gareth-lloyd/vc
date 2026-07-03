@@ -247,3 +247,52 @@ def test_patch_band_does_not_overlap_against_itself(api_client: APIClient, rule:
         format="json",
     )
     assert response.status_code == 200, response.content
+
+
+# --- Flat-plan mode: a single band per period -------------------------------
+
+
+@pytest.mark.django_db
+def test_flat_plan_accepts_first_band(api_client: APIClient, flat_period: RatePeriod) -> None:
+    """A flat plan still needs its one price row — the first band is allowed."""
+    response = api_client.post(
+        f"/api/v1/periods/{flat_period.pk}/bands",
+        data=_valid_band(min_party=1, max_party=8),
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+
+
+@pytest.mark.django_db
+def test_flat_plan_rejects_second_band(api_client: APIClient, flat_period: RatePeriod) -> None:
+    """Adding a second (occupancy) band to a flat plan's period is rejected."""
+    first = api_client.post(
+        f"/api/v1/periods/{flat_period.pk}/bands",
+        data=_valid_band(min_party=1, max_party=8),
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    response = api_client.post(
+        f"/api/v1/periods/{flat_period.pk}/bands",
+        data=_valid_band(min_party=9, max_party=12),
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "prices_by_occupancy" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_occupancy_plan_accepts_second_band(api_client: APIClient, period: RatePeriod) -> None:
+    """The shared `period` hangs off an occupancy plan — second bands are fine."""
+    first = api_client.post(
+        f"/api/v1/periods/{period.pk}/bands",
+        data=_valid_band(min_party=1, max_party=8),
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    second = api_client.post(
+        f"/api/v1/periods/{period.pk}/bands",
+        data=_valid_band(min_party=9, max_party=12),
+        format="json",
+    )
+    assert second.status_code == 201, second.content

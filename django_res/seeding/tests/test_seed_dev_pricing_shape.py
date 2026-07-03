@@ -113,6 +113,13 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     # ---- Occupancy bands on a few villas ----
     banded_props = []
     for plan in plans:
+        multi_band = any(
+            len({(r.min_party, r.max_party) for r in period.bands.all()}) > 1
+            for period in plan.periods.all()
+        )
+        # The stored pricing mode must match the band shape: multi-band plans
+        # are flagged prices_by_occupancy, single-band (flat) plans are not.
+        assert plan.prices_by_occupancy is multi_band, plan
         for period in plan.periods.all():
             brackets = {(r.min_party, r.max_party) for r in period.bands.all()}
             if len(brackets) > 1:
@@ -125,6 +132,11 @@ def test_seed_dev_mixed_prices_realistically() -> None:
                 assert tops[-1] == plan.property.capacity.guests >= 10, ordered
                 break
     assert banded_props, "expected at least one occupancy-banded villa"
+    # And a flat villa's single band spans its capacity, not a magic 30.
+    flat_plan = next(p for p in plans if not p.prices_by_occupancy)
+    flat_bands = [b for period in flat_plan.periods.all() for b in period.bands.all()]
+    assert flat_bands
+    assert all(b.max_party == flat_plan.property.capacity.guests for b in flat_bands)
     prop = banded_props[0]
     quote_from = _aligned(prop, today + timedelta(days=45))
     quote = PricingEngine.quote(
@@ -182,6 +194,7 @@ def test_seed_dev_happy_keeps_legacy_pricing_shape() -> None:
         assert len(rules) == 1, plan
         assert rules[0].nightly in _LEGACY_NIGHTLY
         assert (rules[0].min_party, rules[0].max_party) == (1, 30)
+        assert plan.prices_by_occupancy is False
     # Every properties-stage villa gets a discount (showcase villas minted by
     # dashboard_activity never did, in any profile — hence ==4, not ==count).
     assert Discount.objects.count() == 4

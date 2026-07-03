@@ -16,6 +16,7 @@ const ratePlanDetail: RatePlanDetail = {
   name: "Summer 2026",
   currency_code: "EUR",
   price_basis: "gross",
+  prices_by_occupancy: true,
   effective_from: "2026-06-01",
   effective_to: "2026-08-31",
   is_active: true,
@@ -539,5 +540,55 @@ describe("MatrixEditor — period edit + delete", () => {
     renderEditor(false);
     await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-06-28/i);
     expect(screen.queryByRole("button", { name: "Period actions" })).toBeNull();
+  });
+});
+
+// A flat plan prices one rate per period (party size ignored): the party
+// column reads "Flat rate" and the occupancy-band affordances are gone.
+describe("MatrixEditor — flat pricing mode", () => {
+  const flatPlan: RatePlanDetail = {
+    ...ratePlanDetail,
+    prices_by_occupancy: false,
+    periods: [
+      {
+        id: 500,
+        plan: 100,
+        name: "All year",
+        date_from: "2026-06-01",
+        date_to: "2026-08-31",
+        is_active: true,
+        coverage_gaps: [],
+        bands: [{ id: 1, period: 500, min_party: 1, max_party: 8, nightly: "650" }],
+      },
+    ],
+  };
+
+  it("labels the single band column 'Flat rate', not a party range", async () => {
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[flatPlan]} canWrite commission={null} tax={null} />,
+    );
+    expect(await screen.findByRole("columnheader", { name: "Flat rate" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /pax/i })).toBeNull();
+  });
+
+  it("offers no trailing '+' to add an occupancy band on a flat plan", async () => {
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[flatPlan]} canWrite commission={null} tax={null} />,
+    );
+    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-08-31/i);
+    expect(screen.queryByRole("button", { name: /Add band —/i })).toBeNull();
+  });
+
+  it("hides coverage-gap chips on a flat plan", async () => {
+    const gappyFlat: RatePlanDetail = {
+      ...flatPlan,
+      periods: [{ ...flatPlan.periods[0], coverage_gaps: [[5, 8]] }],
+    };
+    renderWithProviders(
+      <MatrixEditor ratePlanId={100} seasons={[gappyFlat]} canWrite commission={null} tax={null} />,
+    );
+    await screen.findByLabelText(/Nightly rate, 2026-06-01 to 2026-08-31/i);
+    expect(screen.queryByText(/unpriced party sizes/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add a band for parties/i })).toBeNull();
   });
 });

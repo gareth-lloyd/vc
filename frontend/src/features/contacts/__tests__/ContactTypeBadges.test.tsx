@@ -15,6 +15,13 @@ describe("ContactTypeBadges", () => {
     expect(screen.getByText("mystery_role")).toBeInTheDocument();
   });
 
+  it("renders larger accent-filled chips in prominent mode", () => {
+    renderWithProviders(<ContactTypeBadges types={["owner"]} prominent />);
+    const badge = screen.getByText("Owner");
+    expect(badge).toHaveClass("text-sm");
+    expect(badge).toHaveStyle({ backgroundColor: "var(--accent-700)" });
+  });
+
   it("renders nothing when there are no types", () => {
     const { container } = renderWithProviders(<ContactTypeBadges types={[]} />);
     expect(container).toBeEmptyDOMElement();

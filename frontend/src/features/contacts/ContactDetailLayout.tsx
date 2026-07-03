@@ -190,7 +190,7 @@ export function ContactDetailLayout() {
         actions={<HeaderActions contact={contact} listPath={listPath} />}
         meta={
           contact.contact_types?.length ? (
-            <ContactTypeBadges types={contact.contact_types} />
+            <ContactTypeBadges types={contact.contact_types} prominent />
           ) : (
             <span className="text-muted-foreground text-xs">{t("types.none")}</span>
           )

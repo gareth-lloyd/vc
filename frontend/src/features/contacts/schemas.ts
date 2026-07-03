@@ -233,6 +233,8 @@ export const contactListFiltersSchema = z.object({
 // its own copy of the schema; it superseded the old `/guests/{id}/enquiries`
 // surface, which was retired in D4.
 export const contactConvertedBookingSchema = z.object({
+  // `id` lets the enquiry-history chip link to /bookings/:id/overview.
+  id: z.number(),
   reference: z.string(),
   status: bookingStatusSchema,
 });

@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Collapsible } from "@/components/ui/collapsible";
 import { bookingStatusLabel } from "@/features/bookings/schemas";
@@ -42,7 +43,12 @@ export function ContactEnquiryHistory({ contactId }: ContactEnquiryHistoryProps)
                 className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium">{row.reference}</span>
+                  <Link
+                    to={`/enquiries/${row.id}`}
+                    className="hover:text-primary truncate font-medium hover:underline"
+                  >
+                    {row.reference}
+                  </Link>
                   <StatusBadge status={enquiryStatusLabel(row.status)} />
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -51,9 +57,12 @@ export function ContactEnquiryHistory({ contactId }: ContactEnquiryHistoryProps)
                   </span>
                   {row.converted_booking ? (
                     <span className="flex items-center gap-1">
-                      <span className="text-muted-foreground text-xs">
+                      <Link
+                        to={`/bookings/${row.converted_booking.id}/overview`}
+                        className="text-muted-foreground hover:text-primary text-xs hover:underline"
+                      >
                         {row.converted_booking.reference}
-                      </span>
+                      </Link>
                       <StatusBadge status={bookingStatusLabel(row.converted_booking.status)} />
                     </span>
                   ) : null}

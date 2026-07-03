@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Collapsible } from "@/components/ui/collapsible";
 import { formatDate } from "@/lib/format/date";
@@ -50,7 +51,12 @@ export function ContactBookingHistory({ contactId }: ContactBookingHistoryProps)
                 className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium">{row.reference}</span>
+                  <Link
+                    to={`/bookings/${row.id}/overview`}
+                    className="hover:text-primary truncate font-medium hover:underline"
+                  >
+                    {row.reference}
+                  </Link>
                   <StatusBadge status={bookingStatusLabel(row.status)} />
                 </div>
                 <span className="text-muted-foreground shrink-0 text-xs">

@@ -51,7 +51,7 @@ follow-up.)
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ demoted from footgun (low real-world risk today) |
+| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⬜ demoted from footgun (low real-world risk today); ⚠️ mooted by **GAP-070** (deletes `effective()`) |
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) lives in one file | ⬜ |
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
@@ -126,7 +126,9 @@ follow-up.)
 | [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
-| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ carries the seeding half of Q-021; buildable now (deposit 30% / SD / commission % / 16:30 / 10:30); groups stay |
+| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⬜ ⚠️ superseded by **GAP-070** (which drops groups); its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
+| [GAP-069](gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ⬜ FE-only; endpoint/service/admin action all built (`…:carry-forward`), no SPA caller; button + uplift field, calls live endpoint |
+| [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
 
 ## Refactors
 

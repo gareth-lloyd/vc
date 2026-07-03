@@ -49,3 +49,8 @@ and add a service-level migration to normalise existing data.
 
 None — but coordinate with the PropertyFinance / PropertySettings
 factories so the new contract is honoured everywhere.
+
+> **⚠️ Mooted by [GAP-070](gap-070-remove-groups-global-property-defaults.md)** —
+> GAP-070 deletes `effective()` (defaults become a create-time snapshot, no runtime
+> inheritance), so the `""`-vs-`NULL` ambiguity disappears entirely. Close this on
+> GAP-070 landing; don't build the option-1 fix if GAP-070 is going ahead.

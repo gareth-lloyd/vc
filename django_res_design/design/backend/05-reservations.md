@@ -1,5 +1,10 @@
 # 05 — Reservations
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 The reservation lifecycle: guest captures, enquiries, quotations, bookings, concierge, terms acceptance. Booking state machine details and availability strategy live in `06-availability.md`.
 
 ## File layout

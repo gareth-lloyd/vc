@@ -1,5 +1,10 @@
 # 01 — Accounts
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 System users (staff login) and contacts (owners, property managers, agents — many never log in).
 
 ## Models

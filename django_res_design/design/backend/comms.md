@@ -1,5 +1,10 @@
 # 10 — Communications (Email)
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 Separate `comms` app. Owns transactional email templating, rendering, persistence, and per-user "send as agent" SMTP profiles. Other apps emit Django signals; `comms` listens and dispatches.
 
 ## Why this exists

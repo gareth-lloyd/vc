@@ -1,5 +1,10 @@
 # 08 — Integrations
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 Pulls the integration/sync metadata (`ZohoId`, `SyncId`, `IsSync`, `OldVillaId`, `LastSyncedAt`) out of every domain model into a single `integrations` app. Domain models stay clean; sync state is observable in one place.
 
 ## File layout

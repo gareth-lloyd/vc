@@ -1,5 +1,10 @@
 # 03 — Property Finance Configuration
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 Models the per-property and per-group financial configuration that the legacy `VillaFinance` god object embedded inline on `VillaMaster`. Lives inside the `properties` app under `models/finance.py`.
 
 ## Approach

@@ -1,5 +1,10 @@
 # 01 — Domain Model
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 This document maps the entities, relationships, and statuses the Django + DRF backend will model. It is derived from the original .NET / Blazor schema (56 tables, deeply embedded settings) but collapsed and renamed for cleaner Django ORM modelling.
 
 Each section gives: the **entity name**, **key fields** (representative — not exhaustive), **purpose**, and **notable behaviour**. Status enums and cross-cutting conventions follow at the end.

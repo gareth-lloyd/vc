@@ -1,5 +1,10 @@
 # 00 — Overview
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 ## Project goal
 
 Rebuild the existing .NET / Blazor Server villa-rental management system (`ResSystem/`) as a Django REST API backend and a React single-page-application frontend. The new system must feel functionally familiar to current operators while improving the worst friction points in the original.

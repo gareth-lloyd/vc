@@ -1,5 +1,10 @@
 # 06 — Verification & Open Questions
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 ## How to validate this design package
 
 Before implementation begins, walk the design through the following checks.

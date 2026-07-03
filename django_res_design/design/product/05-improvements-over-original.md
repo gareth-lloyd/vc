@@ -1,5 +1,10 @@
 # 05 — Improvements Over the Original
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 This document catalogs every place the redesign deliberately diverges from the .NET / Blazor system, with the rationale. Use it during stakeholder review to confirm each change is desired before implementation.
 
 The brief was: *reproduce familiar functionality and flow without slavish devotion to the original design*. Everything below is an intentional improvement, not an accident of rewrite.

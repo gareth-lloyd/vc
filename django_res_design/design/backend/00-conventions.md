@@ -1,5 +1,10 @@
 # 00 — Cross-cutting Conventions
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 Shared rules that every app obeys. Put the abstract bases in a `core` app (no models of its own; just `models/base.py`, `middleware.py`, `signals.py`).
 
 ## Abstract base models

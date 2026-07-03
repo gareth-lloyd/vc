@@ -1,5 +1,10 @@
 # 04 — REST API Surface (Specification)
 
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
+
 This document is a **table-of-contents level inventory** of endpoints the Django + DRF backend must expose. Payload schemas, status code enumeration, and DRF code are explicitly out of scope — they belong to the implementation phase. This file lists *what endpoints exist*, not *what they accept and return*.
 
 ---

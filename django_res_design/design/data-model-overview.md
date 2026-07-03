@@ -1,12 +1,18 @@
 # Data Model Overview
 
+> **Canonical: what the backend is today.** This is the living, as-built map of
+> the `django_res/` data model — the doc to trust when the field-level specs
+> under [`backend/`](backend/) (frozen design-time rationale) disagree with it.
+> The full truth is this doc + the code in `django_res/` + the open work in
+> [`../todo/INDEX.md`](../todo/INDEX.md). Keep it in sync with the code.
+
 A descriptive map of the backend data model in `django_res/`: the
 fundamental building blocks, how they fit together, and the cross-cutting
 patterns that recur across apps.
 
 This is orientation, not a spec — keep it in sync with the code as the
 model evolves. Known issues and planned changes live in
-[`todo/`](todo/INDEX.md); this document only describes what exists.
+[`../todo/`](../todo/INDEX.md); this document only describes what exists.
 
 ---
 

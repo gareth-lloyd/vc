@@ -1,9 +1,9 @@
 # 02 — Frontend Design (React SPA)
 
-> ⚠️ **Target design, not legacy description (2026-07-02, GAP-010).** This spec is prospective.
-> Where it characterises the *legacy* UI, treat that with caution: it was written against a
-> `ResSystem@main` tree missing the real quote/enquiry screens. For what legacy actually did, see
-> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md).
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
 
 A ground-up redesign of the Villa Collective ops tool as a React SPA backed by the Django REST API. This document is the screen-by-screen spec an engineer should be able to build from. Wireframes are described as ASCII; nothing here assumes a specific Figma file.
 

@@ -1,23 +1,9 @@
 # 04 — Pricing
 
-> ⚠️ **Stale rate-model sections (2026-07-02, GAP-056 / SMELL-019).** The "Rate model"
-> below (and the `rate.py` line in the file layout) still describes the retired
-> three-level `RatePlan → RateCard → RateRule` shape. The implemented model is
-> **`Property → RatePlan → RatePeriod → RateBand`**: `RateCard` was dropped;
-> `RatePeriod` owns the (inclusive) date axis plus nullable `min_nights`/`max_nights`;
-> `RateBand` is the per-party-band price row (renamed from `RateRule`); two
-> `btree_gist` EXCLUDEs make overlapping periods and ragged bands structurally
-> impossible. Authoritative sketches:
-> [`todo/done/gap-056-rate-model-restructure-property-period-band.md`](todo/done/gap-056-rate-model-restructure-property-period-band.md)
-> and [`todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md`](todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md).
-> GAP-059 (2026-07-02) made `RatePeriod.name` a **compulsory** operator label
-> (CHECK `rateperiod_name_not_blank`; legacy/blank rows backfilled with a
-> deterministic date-span placeholder, e.g. "3 Jul–21 Aug" — see
-> [`todo/done/gap-059-rate-period-name-compulsory.md`](todo/done/gap-059-rate-period-name-compulsory.md)). The retired names recur
-> throughout this document (rate-model section, `Discount.card` FK, the engine
-> walkthrough's card-ordering step, serializer/dialog names) — read them with the
-> restructure applied; where this doc and the code disagree, the code and the two
-> done-tickets above are authoritative.
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
 
 The pricing app is a pure library: given a property, dates, party size, and currency, return a Quote. It has no knowledge of bookings, enquiries, or payments — those import from here.
 

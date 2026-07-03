@@ -1,10 +1,9 @@
 # React SPA Workflow Specification — Villa Rental Management System
 
-> ⚠️ **Target design, not legacy description (2026-07-02, GAP-010).** This spec is prospective.
-> Where it characterises the *legacy* flows (including its "departures from the original"), treat
-> that with caution: it was written against a `ResSystem@main` tree missing the real quote/enquiry
-> screens. For what legacy actually did, see
-> [`../workflows/legacy-quote-enquiry-reference.md`](../workflows/legacy-quote-enquiry-reference.md).
+> **Design-time spec — frozen 2026-07-03.** Rationale for the design as
+> conceived; not a live description of the built system. Current truth:
+> [`../data-model-overview.md`](../data-model-overview.md) + the code in
+> `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
 
 This document defines user-facing workflows for the new Django REST + React SPA replacement for the Blazor ResSystem. Each workflow specifies entry points, screen-by-screen steps, decision branches, state transitions, side effects, permissions, failure modes, and deliberate departures from the original.
 

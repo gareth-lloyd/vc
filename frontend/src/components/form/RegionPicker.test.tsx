@@ -57,6 +57,17 @@ describe("RegionPicker", () => {
     expect(screen.getByRole("option", { name: "Crete (GR)" })).toBeInTheDocument();
   });
 
+  it("offers an All-regions row that clears the value when clearable", async () => {
+    installRegions();
+    let picked: number | null = 7;
+    renderWithProviders(
+      <RegionPicker value={7} onChange={(id) => (picked = id)} countryIso2="ES" clearable />,
+    );
+    await openPicker();
+    await userEvent.click(await screen.findByRole("option", { name: "All regions" }));
+    expect(picked).toBeNull();
+  });
+
   it("reports the picked region id as a number", async () => {
     installRegions();
     let picked: number | null = null;

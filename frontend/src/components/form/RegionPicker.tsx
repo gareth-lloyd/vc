@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Select,
   SelectContent,
@@ -9,10 +10,18 @@ import {
 import { useRegions } from "@/features/availability/hooks";
 import type { Region } from "@/features/properties/schemas";
 
+// Radix SelectItem forbids an empty-string value, so the clearable "All
+// regions" row maps to/from this sentinel.
+const ALL_VALUE = "__all__";
+
 interface RegionPickerProps {
   id?: string;
   value: number | null | undefined;
-  onChange: (value: number) => void;
+  // Receives null only when `clearable` and the "All regions" row is picked.
+  onChange: (value: number | null) => void;
+  // Offer an "All regions" row that clears the selection (filter-style
+  // callers); without it a null value renders the placeholder.
+  clearable?: boolean;
   // Scope the options to one country — pass whichever the caller holds.
   // Narrowing is client-side (the full list is fetched once, like
   // CountryPicker) so an out-of-scope current value can stay visible.
@@ -28,12 +37,14 @@ export function RegionPicker({
   id,
   value,
   onChange,
+  clearable,
   countryId,
   countryIso2,
   hasProperties,
   placeholder,
   disabled,
 }: RegionPickerProps) {
+  const { t } = useTranslation("common");
   const regionsQuery = useRegions(hasProperties ? { hasProperties } : undefined);
   const scoped = countryId != null || !!countryIso2;
 
@@ -62,14 +73,15 @@ export function RegionPicker({
 
   return (
     <Select
-      value={value != null ? String(value) : ""}
-      onValueChange={(v) => onChange(Number(v))}
+      value={value != null ? String(value) : clearable ? ALL_VALUE : ""}
+      onValueChange={(v) => onChange(v === ALL_VALUE ? null : Number(v))}
       disabled={disabled || regionsQuery.isLoading}
     >
       <SelectTrigger id={id}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
+        {clearable ? <SelectItem value={ALL_VALUE}>{t("filters.any_region")}</SelectItem> : null}
         {options.map((r) => (
           <SelectItem key={r.id} value={String(r.id)}>
             {label(r)}

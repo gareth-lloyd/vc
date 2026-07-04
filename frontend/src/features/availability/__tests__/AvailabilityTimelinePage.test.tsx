@@ -48,7 +48,9 @@ function installTaxonomyHandlers() {
   server.use(
     http.get("/api/v1/regions", () =>
       HttpResponse.json(
-        drfPage([{ id: 1, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza" }]),
+        drfPage([
+          { id: 1, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza", is_active: true },
+        ]),
       ),
     ),
     http.get("/api/v1/countries", () =>

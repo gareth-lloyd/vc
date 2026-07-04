@@ -375,6 +375,10 @@ export interface RegionListFilters {
   // Only regions that actually hold properties (quote-builder criteria
   // dropdown); server-side opt-in narrowing, false behaves like absent.
   hasProperties?: boolean;
+  // Scope to one country: `country` is the FK id, `countryIso2` the
+  // case-insensitive ISO code — pass whichever the caller holds.
+  country?: number;
+  countryIso2?: string;
 }
 
 export async function fetchRegions(filters: RegionListFilters = {}): Promise<Paginated<Region>> {
@@ -383,6 +387,8 @@ export async function fetchRegions(filters: RegionListFilters = {}): Promise<Pag
       ordering: "name",
       page_size: TAXONOMY_PAGE_SIZE,
       has_properties: filters.hasProperties || undefined,
+      country: filters.country,
+      country_iso2: filters.countryIso2,
     },
   });
   return regionsResponseSchema.parse(data);

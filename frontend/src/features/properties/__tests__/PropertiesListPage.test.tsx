@@ -28,8 +28,22 @@ describe("PropertiesListPage", () => {
       http.get("/api/v1/regions", () =>
         HttpResponse.json(
           drfPage([
-            { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza-7" },
-            { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca-9" },
+            {
+              id: 7,
+              country: 1,
+              country_iso2: "ES",
+              name: "Ibiza",
+              slug: "ibiza-7",
+              is_active: true,
+            },
+            {
+              id: 9,
+              country: 1,
+              country_iso2: "ES",
+              name: "Mallorca",
+              slug: "mallorca-9",
+              is_active: true,
+            },
           ]),
         ),
       ),

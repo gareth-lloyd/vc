@@ -17,7 +17,9 @@ function stubTaxonomies() {
       HttpResponse.json(drfPage([{ id: 2, name: "Portfolio A", is_active: true }])),
     ),
     http.get("/api/v1/regions", () =>
-      HttpResponse.json(drfPage([{ id: 3, name: "Tuscany", slug: "tuscany", country: null }])),
+      HttpResponse.json(
+        drfPage([{ id: 3, name: "Tuscany", slug: "tuscany", country: null, is_active: true }]),
+      ),
     ),
   );
 }

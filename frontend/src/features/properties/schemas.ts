@@ -299,6 +299,7 @@ export const regionSchema = z.object({
   country_iso2: z.string().nullable().optional(),
   name: z.string(),
   slug: z.string(),
+  is_active: z.boolean(),
 });
 export type Region = z.infer<typeof regionSchema>;
 

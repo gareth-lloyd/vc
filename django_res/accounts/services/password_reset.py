@@ -48,7 +48,11 @@ def _build_reset_url(token: str) -> str:
 
 class PasswordResetTokenExpired(DomainError):
     code = "password_reset_token_expired"
-    status_code = 401
+    # 400, not 401: the frontend API client treats every 401 as a dead session
+    # and fires the global unauthorized redirect, which would fight the reset
+    # page's own "link expired" UI. A reset token is a one-time artifact, not a
+    # session credential, so a stale one is a bad request, not an auth failure.
+    status_code = 400
 
 
 class PasswordResetTokenInvalid(DomainError):
@@ -90,7 +94,12 @@ class PasswordResetService:
         on failure; both are 4xx-level errors, not 5xx.
         """
         user_id = _verify_token(token)
-        user = User.objects.get(pk=user_id, is_active=True)
+        try:
+            user = User.objects.get(pk=user_id, is_active=True)
+        except User.DoesNotExist as exc:
+            # Token was validly signed, but the user was deleted or deactivated
+            # after signing. Degrade to a 400 invalid-token rather than a 500.
+            raise PasswordResetTokenInvalid() from exc
         user.set_password(new_password)
         user.save(update_fields=["password"])
         return user

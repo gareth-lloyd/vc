@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 interface Crumb {
   label: string;
@@ -29,6 +30,10 @@ export function PageHeader({
   eyebrow,
   meta,
 }: PageHeaderProps) {
+  // Drives the browser tab title. Assumes at most one PageHeader is mounted per
+  // screen (the last to mount wins) — true across the app today.
+  useDocumentTitle(title);
+
   return (
     <header className={cn("relative px-6 pt-8 pb-6", className)}>
       {breadcrumbs?.length ? (

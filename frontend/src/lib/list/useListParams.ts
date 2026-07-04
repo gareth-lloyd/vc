@@ -40,18 +40,24 @@ export function useListParams() {
     return () => clearTimeout(handle);
   }, [search, currentQ, setParams]);
 
-  const updateParam = (key: string, value: string | undefined) => {
+  // Multi-key variant for dependent filters (e.g. changing country must also
+  // clear region) — one setParams call, so one history entry.
+  const updateParams = (entries: Record<string, string | undefined>) => {
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (value && value !== ALL_VALUE) next.set(key, value);
-        else next.delete(key);
+        for (const [key, value] of Object.entries(entries)) {
+          if (value && value !== ALL_VALUE) next.set(key, value);
+          else next.delete(key);
+        }
         next.delete("page");
         return next;
       },
       { replace: true },
     );
   };
+
+  const updateParam = (key: string, value: string | undefined) => updateParams({ [key]: value });
 
   const goToPage = (zeroBased: number) => {
     setParams(
@@ -65,5 +71,5 @@ export function useListParams() {
     );
   };
 
-  return { params, setParams, search, setSearch, updateParam, goToPage };
+  return { params, setParams, search, setSearch, updateParam, updateParams, goToPage };
 }

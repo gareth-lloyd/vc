@@ -23,6 +23,7 @@ import { propertyDetailsPath } from "@/lib/routes";
 import { useCountries } from "@/features/admin/countries/hooks";
 import { useRegions } from "@/features/availability/hooks";
 import { TAXONOMY_PAGE_SIZE } from "./api";
+import { regionOptionsForCountry } from "./regionOptions";
 import { CreatePropertyDialog } from "./components/CreatePropertyDialog";
 import { propertyColumns } from "./columns";
 import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
@@ -73,14 +74,12 @@ export function PropertiesListPage() {
   ];
 
   // Region value is the globally-unique id (slug/name are unique only per
-  // country, so both repeat across countries); the label carries the country
-  // ISO to disambiguate same-named regions. filter_region accepts id or slug.
+  // country, so both repeat across countries); options scope to the chosen
+  // country so impossible combos are never offered. filter_region accepts
+  // id or slug.
   const regionOptions = [
     { value: ALL_VALUE, label: t("common:filters.any_region") },
-    ...(regionsQuery.data?.results ?? []).map((r) => ({
-      value: String(r.id),
-      label: r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
-    })),
+    ...regionOptionsForCountry(regionsQuery.data?.results ?? [], filters.country, filters.region),
   ];
 
   const statusOptions = [
@@ -110,18 +109,23 @@ export function PropertiesListPage() {
     return () => clearTimeout(handle);
   }, [search, filters.q, setParams]);
 
-  const updateParam = (key: string, value: string | undefined) => {
+  // Multi-key so dependent filters clear together in one history entry
+  // (changing country must also clear region).
+  const updateParams = (entries: Record<string, string | undefined>) => {
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (value && value !== ALL_VALUE) next.set(key, value);
-        else next.delete(key);
+        for (const [key, value] of Object.entries(entries)) {
+          if (value && value !== ALL_VALUE) next.set(key, value);
+          else next.delete(key);
+        }
         next.delete("page");
         return next;
       },
       { replace: true },
     );
   };
+  const updateParam = (key: string, value: string | undefined) => updateParams({ [key]: value });
 
   const goToPage = (zeroBased: number) => {
     setParams(
@@ -188,7 +192,9 @@ export function PropertiesListPage() {
                 // Option values are uppercase iso2 (as the API returns); old
                 // lowercase bookmarks must still display their selection.
                 value={filters.country?.toUpperCase() ?? ALL_VALUE}
-                onValueChange={(v) => updateParam("country", v)}
+                // A region from another country can no longer match — clear
+                // it in the same history entry.
+                onValueChange={(v) => updateParams({ country: v, region: undefined })}
               >
                 <SelectTrigger className="w-[160px]" aria-label={t("list.filter_country_aria")}>
                   <SelectValue />

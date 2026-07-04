@@ -32,13 +32,22 @@ class CountryFilter(filters.FilterSet):
 
 
 class RegionFilter(filters.FilterSet):
-    """Filters supported by `GET /regions` (same rationale as CountryFilter)."""
+    """Filters supported by `GET /regions` (same rationale as CountryFilter).
+
+    `country` (FK id) / `country_iso2` (case-insensitive, matching the iexact
+    iso2 lookups elsewhere) scope the list to one country so pickers never
+    offer impossible country+region combinations. `country` is a NumberFilter,
+    not the auto-generated ModelChoiceFilter: a stale id (countries hard-delete
+    under `merge_country`) should yield an empty list, not a 400.
+    """
 
     has_properties = filters.BooleanFilter(method="filter_has_properties")
+    country = filters.NumberFilter(field_name="country_id")
+    country_iso2 = filters.CharFilter(field_name="country__iso2", lookup_expr="iexact")
 
     class Meta:
         model = Region
-        fields = ["has_properties"]
+        fields = ["country", "has_properties"]
 
     def filter_has_properties(
         self, qs: QuerySet[Region], name: str, value: bool

@@ -95,6 +95,48 @@ class TestRegionsHasProperties:
         assert resp.status_code == 200
         assert _region_ids(resp.json()) == [in_use_region.pk]
 
+    def test_country_id_scopes_regions(self, api_client: APIClient, country: Country) -> None:
+        other = Country.objects.exclude(pk=country.pk).first()
+        assert other is not None
+        mine = cast(Region, RegionFactory(country=country, name="Algarve"))
+        RegionFactory(country=other, name="Provence")
+        resp = api_client.get("/api/v1/regions", {"country": str(country.pk), "page_size": "300"})
+        assert resp.status_code == 200
+        assert _region_ids(resp.json()) == [mine.pk]
+
+    def test_country_iso2_scopes_regions_case_insensitively(
+        self, api_client: APIClient, country: Country
+    ) -> None:
+        other = Country.objects.exclude(pk=country.pk).first()
+        assert other is not None
+        mine = cast(Region, RegionFactory(country=country, name="Algarve"))
+        RegionFactory(country=other, name="Provence")
+        resp = api_client.get(
+            "/api/v1/regions", {"country_iso2": country.iso2.lower(), "page_size": "300"}
+        )
+        assert resp.status_code == 200
+        assert _region_ids(resp.json()) == [mine.pk]
+
+    def test_unknown_country_id_returns_empty_not_400(
+        self, api_client: APIClient, in_use_region: Region
+    ) -> None:
+        """Stale ids happen (countries hard-delete under merge_country); a
+        picker fed a dead bookmark should see an empty list, not an error."""
+        resp = api_client.get("/api/v1/regions", {"country": "999999", "page_size": "300"})
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 0
+
+    def test_country_composes_with_has_properties(
+        self, api_client: APIClient, in_use_region: Region, country: Country
+    ) -> None:
+        RegionFactory(country=country, name="Shetland")  # unused, same country
+        resp = api_client.get(
+            "/api/v1/regions",
+            {"country": str(country.pk), "has_properties": "true", "page_size": "300"},
+        )
+        assert resp.status_code == 200
+        assert _region_ids(resp.json()) == [in_use_region.pk]
+
     def test_ordering_param_still_honoured(self, api_client: APIClient, country: Country) -> None:
         """Regression guard: adding the filterset must not displace the
         globally-configured OrderingFilter (the frontend sends

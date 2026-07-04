@@ -72,6 +72,10 @@ class ProfileKnobs:
     # Enquiry-only paths (no quotation at all):
     pct_enquiry_lost_only: float = 0.0
     pct_enquiry_contacted_only: float = 0.0
+    # Fraction of seeded enquiries assigned to a sales (RESERVATIONS) staff
+    # owner by the `enquiry_assignees` stage; the rest stay an unassigned
+    # queue. Defaults on so every profile (happy/mixed/chaos) gets owners.
+    pct_enquiry_assigned: float = 0.8
     repeat_guest_pool_size: int = 0
     # Spread of booking date_from around today (±N days). 0 = legacy
     # (always near today). Larger = wider arrival calendar.

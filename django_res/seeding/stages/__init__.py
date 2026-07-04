@@ -18,6 +18,7 @@ from seeding.stages import (
     concierge_items,  # noqa: F401
     contacts,  # noqa: F401
     dashboard_activity,  # noqa: F401
+    enquiry_assignees,  # noqa: F401
     extra_quotations,  # noqa: F401
     features,  # noqa: F401
     gallery,  # noqa: F401

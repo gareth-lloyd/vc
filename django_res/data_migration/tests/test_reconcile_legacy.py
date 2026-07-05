@@ -199,6 +199,47 @@ def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.Monke
     assert client_check.expected_gap == 1
 
 
+@pytest.mark.django_db
+def test_room_placement_check_counts_preserved_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GAP-065: legacy rooms with a non-NULL PlacementId reconcile against
+    rooms that landed with a preserved `placement_note` — the no-loss gate.
+    Runs both real Room checks together: the plain-count query is a substring
+    of the placement one, so the scripted needles must key the placement check
+    on "PlacementId" (and list it first) to avoid first-substring collisions.
+    """
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+    from properties.factories import RoomFactory
+
+    RoomFactory(legacy_id="1", placement_note="First floor")
+    RoomFactory(legacy_id="2", placement_note="Guest house")
+    RoomFactory(legacy_id="3")  # legacy NULL PlacementId → no note
+    # placement_note is API-writable: a staff note on a NON-legacy room during
+    # the cutover window must not shift the gap into a false BLOCKER.
+    RoomFactory(placement_note="Staff-entered note")
+
+    by_label = {c.label: c for c in _CHECKS}
+    placement_check = by_label["Room placement (GAP-065)"]
+    assert placement_check.loaded_count is not None
+    assert placement_check.loaded_count(placement_check.model) == 2
+    assert "PlacementId IS NOT NULL" in placement_check.legacy_query
+
+    room_checks = [c for c in _CHECKS if c.model.__name__ == "Room"]
+    _patch(
+        monkeypatch,
+        room_checks,
+        responses={
+            # Order matters: the fake cursor matches first-substring, and the
+            # plain Room needle is a substring of the placement query.
+            "PlacementId IS NOT NULL": 2 + placement_check.expected_gap,
+            # The plain Room check counts ALL loaded rooms (4 incl. the
+            # staff-created one) — only the placement check is slice-limited.
+            "COUNT(*) FROM VillaRooms": 4 + by_label["Room"].expected_gap,
+        },
+    )
+    output = _run()
+    assert "BLOCKER" not in output
+
+
 # --- --integrations flag (P0b) ---
 
 

@@ -5,14 +5,105 @@ from typing import cast
 import pytest
 
 from data_migration.base import LoadReport
-from data_migration.loaders.property_children import PropertyFeatureMappingLoader
+from data_migration.loaders.property_children import PropertyFeatureMappingLoader, RoomLoader
 from properties.factories import FeatureFactory, PropertyFactory
 from properties.models.features import Feature
 from properties.models.property import Property
+from properties.models.rooms import Room
 
 
 def _row(*, FeatureId: object, VillaId: object, MappingOrder: object) -> dict[str, object]:
     return {"FeatureId": FeatureId, "VillaId": VillaId, "MappingOrder": MappingOrder}
+
+
+def _room_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "Id": 1,
+        "VillaId": "500",
+        "Name": "Master Suite",
+        "WebsiteDescription": "",
+        "VCNotes": "",
+        "IsEnsuit": 0,
+        "SortOrder": 0,
+        "BedDouble": 1,
+        "BedTwinDouble": 0,
+        "BedTwin": 0,
+        "BedSingle": 0,
+        "BedBunk": 0,
+        "BedSofa": 0,
+        "BedChildrens": 0,
+        "PlacementName": None,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.django_db
+class TestRoomLoaderPlacement:
+    """GAP-065 — the loader reads the joined `VillaRoomsPlacement.Name`,
+    preserves it verbatim in `placement_note` and parses the two axes."""
+
+    def test_placement_name_is_preserved_and_parsed(self) -> None:
+        PropertyFactory(legacy_id="500")
+        report = LoadReport(loader="room")
+        RoomLoader()._load_rows(
+            [_room_row(PlacementName="  First floor of the guest house ")], report
+        )
+
+        assert report.errors == []
+        room = Room.objects.get(legacy_id="1")
+        assert room.placement_note == "First floor of the guest house"
+        assert room.placement == "guest_house"
+        assert room.floor == "first"
+
+    def test_bare_floor_implies_main_house(self) -> None:
+        PropertyFactory(legacy_id="500")
+        RoomLoader()._load_rows([_room_row(PlacementName="First foor")], LoadReport(loader="room"))
+        room = Room.objects.get(legacy_id="1")
+        assert room.placement == "main_house"
+        assert room.floor == "first"
+
+    def test_null_placement_loads_room_with_all_location_blank(self) -> None:
+        # No more hardcoded MAIN_HOUSE: unknown stays honestly unknown.
+        PropertyFactory(legacy_id="500")
+        report = LoadReport(loader="room")
+        RoomLoader()._load_rows([_room_row(PlacementName=None)], report)
+
+        assert report.created == 1
+        room = Room.objects.get(legacy_id="1")
+        assert room.placement == ""
+        assert room.floor == ""
+        assert room.placement_note == ""
+
+    def test_unparseable_placement_survives_in_note_only(self) -> None:
+        PropertyFactory(legacy_id="500")
+        RoomLoader()._load_rows([_room_row(PlacementName="Upper level")], LoadReport(loader="room"))
+        room = Room.objects.get(legacy_id="1")
+        assert room.placement == ""
+        assert room.floor == ""
+        assert room.placement_note == "Upper level"  # the no-loss guarantee
+
+    def test_rerun_is_idempotent(self) -> None:
+        PropertyFactory(legacy_id="500")
+        loader = RoomLoader()
+        first = LoadReport(loader="room")
+        loader._load_rows([_room_row(PlacementName="Ground floor")], first)
+        second = LoadReport(loader="room")
+        loader._load_rows([_room_row(PlacementName="Ground floor")], second)
+
+        assert (first.created, first.updated) == (1, 0)
+        assert (second.created, second.updated) == (0, 1)
+        assert Room.objects.filter(legacy_id="1").count() == 1
+
+    def test_since_clause_is_alias_qualified(self) -> None:
+        # `loadlegacy --since` appends a WHERE via `_apply_since`; with the
+        # placement JOIN in the FROM, an unqualified `UpdatedAt` would be
+        # ambiguous SQL. The dict-row tests never execute SQL, so pin the
+        # generated query text itself.
+        loader = RoomLoader(since="2026-01-01T00:00:00")
+        sql = loader._apply_since(loader.legacy_query)
+        assert sql.endswith("WHERE r.UpdatedAt > '2026-01-01T00:00:00'")
+        assert " UpdatedAt >" not in sql.replace("r.UpdatedAt", "")
 
 
 @pytest.mark.django_db

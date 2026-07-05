@@ -13,7 +13,8 @@ from typing import Any
 from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
-from properties.enums import ImageKind, RoomPlacement
+from data_migration.placement_parsing import parse_placement
+from properties.enums import ImageKind
 from properties.models.features import Feature
 from properties.models.geo import NearbyPlaceType, PropertyNearbyPlace
 from properties.models.images import PropertyImage
@@ -24,21 +25,32 @@ from properties.models.rooms import Room, RoomBeds
 class RoomLoader(BaseLoader):
     name = "room"
     target_model = Room
+    # GAP-065: LEFT JOIN so rooms with a NULL PlacementId still load; the raw
+    # placement string is preserved verbatim in `placement_note` (no-loss
+    # guarantee) and parsed into the two location axes.
     legacy_query = (
-        "SELECT Id, VillaId, Name, WebsiteDescription, VCNotes, IsEnsuit, SortOrder, "
-        "BedDouble, BedTwinDouble, BedTwin, BedSingle, BedBunk, BedSofa, BedChildrens "
-        "FROM VillaRooms"
+        "SELECT r.Id, r.VillaId, r.Name, r.WebsiteDescription, r.VCNotes, r.IsEnsuit, "
+        "r.SortOrder, r.BedDouble, r.BedTwinDouble, r.BedTwin, r.BedSingle, r.BedBunk, "
+        "r.BedSofa, r.BedChildrens, p.Name AS PlacementName "
+        "FROM VillaRooms r LEFT JOIN VillaRoomsPlacement p ON p.Id = r.PlacementId"
     )
+    # With two tables in the FROM, an unqualified `UpdatedAt` from
+    # `_apply_since` would be ambiguous SQL.
+    since_column = "r.UpdatedAt"
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
         if prop is None:
             return None
         name = (row.get("Name") or "").strip()[:128] or f"Room {row['Id']}"
+        placement_note = (row.get("PlacementName") or "").strip()[:255]
+        placement, floor = parse_placement(placement_note)
         return {
             "property": prop,
             "name": name,
-            "placement": RoomPlacement.MAIN_HOUSE,
+            "placement": placement,
+            "floor": floor,
+            "placement_note": placement_note,
             "website_description": (row.get("WebsiteDescription") or "").strip(),
             "vc_notes": (row.get("VCNotes") or "").strip(),
             "is_ensuite": bool(row.get("IsEnsuit")),

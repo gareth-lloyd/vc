@@ -41,14 +41,24 @@ Features import only themselves, `src/lib/`, and `src/components/` — never
 another feature. What lint enforces is the cross-feature ban specifically:
 `eslint-plugin-boundaries` (`eslint.config.js`) errors on any
 feature→feature import whose pair is not in `ALLOWED_EDGES`
-(`boundaries.allowlist.js`), a **shrink-only ratchet** of pre-existing
-coupling (the backend import-linter model, FG-013). Entries may be removed as
-edges are paid down, never added — the one exception is a documented relabel
-when shared code moves to its true home feature. A vitest guard
-(`src/test/boundaries.test.ts`) fails if an entry goes stale, so paid-down
-edges must be deleted. New cross-feature needs go to `src/lib/domain/`
-(shared Zod schemas/labels) or `src/components/` (shared UI). Test files are
-exempt (cross-feature MSW handlers and scaffolding are fine there).
+(`boundaries.allowlist.js`), the enumerated coupling (the backend import-linter
+model, FG-013). A vitest guard (`src/test/boundaries.test.ts`) fails if any
+listed edge goes stale, so paid-down edges must be deleted.
+
+The allowlist is **tiered** (GAP-072): `ALLOWED_EDGES` is the union of two
+exported maps that eslint consumes together.
+
+- **`SANCTIONED_EDGES`** — stable, intentional architecture (audit-trail
+  widgets, user/contact pickers, dashboards aggregating downstream work). Not
+  expected to shrink; an entry changes only with a documented decision.
+- **`DEBT_EDGES`** — coupling we still intend to pay down. **Shrink-only**:
+  entries may be removed as debt clears, never added.
+
+Neither tier accepts new edges for new needs. New cross-feature code goes to
+`src/lib/domain/` (shared Zod schemas/labels), `src/lib/geo/` (taxonomy), or
+`src/components/` (shared UI). The measured feature graph has **no mutual
+(two-way) pairs**. Test files are exempt (cross-feature MSW handlers and
+scaffolding are fine there).
 
 **Geo/taxonomy is shared, not feature-owned (GAP-072).** Regions, collections
 and countries are reference data read by properties, availability, clients and

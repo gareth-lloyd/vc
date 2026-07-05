@@ -10,7 +10,7 @@ export const ALLOWED_EDGES = {
   // (useRegions/useCollections) moved to their true home (GAP-063 Unit 3).
   clients: ["contacts", "properties"],
   companies: ["audit"],
-  contacts: ["audit", "bookings", "companies", "properties"],
+  contacts: ["audit", "bookings", "companies"],
   dashboard: ["bookings", "enquiries"],
   enquiries: ["bookings", "contacts", "quotations", "users"],
   "owner-portal": ["auth"],

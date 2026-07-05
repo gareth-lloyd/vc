@@ -1,7 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import i18n from "@/i18n";
 import { StatusBadge } from "@/components/data/StatusBadge";
-import { PROPERTY_CONTACT_ROLES } from "@/features/properties/schemas";
+import { PROPERTY_CONTACT_ROLES } from "@/lib/domain/contactRoles";
 import { ContactTypeBadges } from "./components/ContactTypeBadges";
 import { contactDisplayName } from "./display";
 import type { ContactListItem } from "./schemas";

@@ -20,6 +20,7 @@ from properties.models import (
     PropertyDescription,
     PropertyImage,
 )
+from properties.services.defaults import snapshot_defaults
 from properties.services.location import ensure_property_location
 
 if TYPE_CHECKING:
@@ -73,8 +74,10 @@ class PropertyLifecycleService:
     def duplicate(cls, property: Property, *, new_slug: str | None = None) -> Property:
         """Clone the villa + its descriptions and image rows.
 
-        Rate plans, bookings, holds, and finance config are intentionally not
-        cloned — the operator wires those up post-duplicate.
+        Rate plans, bookings, and holds are intentionally not cloned — the
+        operator wires those up post-duplicate. Settings/finance are NOT copied
+        from the original either: the clone gets a fresh snapshot of the global
+        `PropertyDefaults`, exactly like an API-created property (GAP-070).
         """
         original_pk = property.pk
         features = list(property.features.values_list("pk", flat=True))
@@ -106,6 +109,7 @@ class PropertyLifecycleService:
         # properties (which provision on create) rather than relying on a later
         # lazy heal.
         ensure_property_location(clone)
+        snapshot_defaults(clone)
         return clone
 
     # ------------------------------------------------------------------

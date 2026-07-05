@@ -30,6 +30,7 @@ from properties.serializers import (
     PropertyWriteSerializer,
 )
 from properties.services import PropertyAvailabilityService, PropertyLifecycleService
+from properties.services.defaults import snapshot_defaults
 from properties.services.location import ensure_property_location
 
 if TYPE_CHECKING:
@@ -125,6 +126,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
             # Provision a default location so the new property's address/timezone
             # are immediately editable (consistent with the loader/factory).
             ensure_property_location(instance)
+            # Snapshot the global PropertyDefaults into concrete settings/finance
+            # rows (GAP-070) — after this, the property owns its values outright.
+            snapshot_defaults(instance)
         read_serializer = PropertyDetailSerializer(instance)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 

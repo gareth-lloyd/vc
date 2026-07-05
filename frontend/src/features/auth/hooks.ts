@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
-import { useOwnerStore } from "@/features/owner-portal/ownerStore";
+import { runLogoutCleanups } from "@/lib/auth/logoutCleanup";
 import {
   confirmPasswordReset,
   confirmTfaEnrollment,
@@ -117,7 +117,9 @@ export function useLogout() {
     mutationFn: () => logout(),
     onSuccess: () => {
       useAuthStore.getState().clear();
-      useOwnerStore.getState().clear();
+      // Feature-owned session state (e.g. the owner-portal store) clears via
+      // the registry — auth must not import other features (GAP-063).
+      runLogoutCleanups();
       resetAuthQueryCache(queryClient);
     },
   });

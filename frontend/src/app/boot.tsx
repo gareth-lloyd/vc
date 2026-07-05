@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
+import { runLogoutCleanups } from "@/lib/auth/logoutCleanup";
 import { resetAuthQueryCache } from "@/features/auth/resetAuthQueryCache";
 import { primeCsrfCookie } from "@/lib/api/client";
 import { useMe } from "@/features/auth/hooks";
@@ -100,7 +101,9 @@ function AuthenticatedBoot() {
       // storm), which is why resetAuthQueryCache uses removeQueries rather than
       // clear — it drops cached data without kicking a refetch.
       setUnauthenticated();
-      useOwnerStore.getState().clear();
+      // Same registry useLogout runs — both session-drop paths (explicit
+      // logout, expiry 401) must clear feature-owned session state.
+      runLogoutCleanups();
       if (!current.startsWith("/login")) {
         navigate("/login", { replace: true, state: { next: current } });
       }

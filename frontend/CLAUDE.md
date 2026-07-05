@@ -80,7 +80,11 @@ response type. Custom actions use colon-verb syntax:
   boot-level 401 handler all funnel through `resetAuthQueryCache`
   (`features/auth/resetAuthQueryCache.ts`) — never a hand-picked prefix
   allowlist, which leaks one user's cached data into the next session. Any new
-  auth transition must call it too.
+  auth transition must call it too. Feature-owned session **stores** clear via
+  `registerLogoutCleanup` (`lib/auth/logoutCleanup.ts`) — register at module
+  scope in an eagerly-imported module (reference: `owner-portal/ownerStore.ts`);
+  both session-drop paths (logout, expiry 401) run the registry. Never have
+  auth import a feature's store directly (GAP-063 boundary).
 
 ### Form dialog pattern (create / edit)
 

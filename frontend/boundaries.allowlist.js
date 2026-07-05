@@ -4,7 +4,6 @@
 // enforced by src/test/boundaries.test.ts.
 export const ALLOWED_EDGES = {
   admin: ["users"],
-  auth: ["owner-portal"],
   availability: ["admin", "properties"],
   bookings: ["audit", "auth"],
   // clients→availability relabelled to clients→properties when the geo hooks

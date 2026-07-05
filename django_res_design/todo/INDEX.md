@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-05, recounted from files): **120 done** (115 resolved + 5 dropped), **41 open**
+Scoreboard (2026-07-05, recounted from files): **121 done** (116 resolved + 5 dropped), **41 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model

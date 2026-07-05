@@ -273,6 +273,86 @@ class TestRoomWrite:
         assert room.ensuite_type == ""
 
 
+class TestRoomLocationAPI:
+    """GAP-065 — placement (building), floor and placement_note on the API."""
+
+    def test_get_includes_location_fields(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        room.placement = "guest_house"
+        room.floor = "first"
+        room.placement_note = "First floor of the guest house"
+        room.save()
+        api_client.force_authenticate(staff)
+        data = api_client.get(_room_url(room)).json()
+        assert data["placement"] == "guest_house"
+        assert data["floor"] == "first"
+        assert data["placement_note"] == "First floor of the guest house"
+
+    def test_post_with_name_only_leaves_location_blank(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.post(_rooms_url(prop), {"name": "Attic room"}, format="json")
+        assert resp.status_code == 201, resp.content
+        data = resp.json()
+        assert data["placement"] == ""
+        assert data["floor"] == ""
+        assert data["placement_note"] == ""
+
+    def test_patch_sets_and_blank_clears_placement_and_floor(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(
+            _room_url(room), {"placement": "cottage", "floor": "second"}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        room.refresh_from_db()
+        assert room.placement == "cottage"
+        assert room.floor == "second"
+
+        resp = api_client.patch(_room_url(room), {"placement": "", "floor": ""}, format="json")
+        assert resp.status_code == 200, resp.content
+        room.refresh_from_db()
+        assert room.placement == ""
+        assert room.floor == ""
+
+    def test_invalid_floor_is_400(self, api_client: APIClient, staff: User, room: Room) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(_room_url(room), {"floor": "mezzanine"}, format="json")
+        assert resp.status_code == 400
+        assert "floor" in resp.json()["field_errors"]
+
+    def test_placement_note_is_writable(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        # Staff clear a confirmed-split note via the API (FE editing
+        # deferred; the bare admin registration isn't a staff workflow).
+        room.placement_note = "First foor"
+        room.save()
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(_room_url(room), {"placement_note": ""}, format="json")
+        assert resp.status_code == 200, resp.content
+        room.refresh_from_db()
+        assert room.placement_note == ""
+
+    def test_patch_without_location_fields_leaves_them_alone(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        room.placement = "bungalow"
+        room.floor = "ground"
+        room.placement_note = "Ground floor bungalow"
+        room.save()
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(_room_url(room), {"name": "Renamed"}, format="json")
+        assert resp.status_code == 200, resp.content
+        room.refresh_from_db()
+        assert room.placement == "bungalow"
+        assert room.floor == "ground"
+        assert room.placement_note == "Ground floor bungalow"
+
+
 class TestRoomAttributeCatalogEndpoint:
     def test_anonymous_read(self, api_client: APIClient) -> None:
         resp = api_client.get("/api/v1/room-attributes")

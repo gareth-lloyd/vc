@@ -531,11 +531,27 @@
       }
     },
     "placements": {
+      "not_set": "Not set",
       "main_house": "Main house",
       "guest_house": "Guest house",
       "pool_house": "Pool house",
-      "annex": "Annex",
+      "annex": "Annexe",
+      "cottage": "Cottage",
+      "bungalow": "Bungalow",
+      "studio": "Studio",
       "other": "Other"
+    },
+    "floors": {
+      "unspecified": "Not set",
+      "lower_ground": "Lower ground floor",
+      "ground": "Ground floor",
+      "first": "First floor",
+      "second": "Second floor",
+      "third_plus": "Third floor or above"
+    },
+    "groups": {
+      "label": "{{building}} · {{floor}}",
+      "unassigned": "No location set"
     },
     "ensuite_types": {
       "unknown": "Unknown",
@@ -579,6 +595,7 @@
         "name": "Name",
         "name_placeholder": "Master bedroom",
         "placement": "Placement",
+        "floor": "Floor",
         "is_ensuite": "Ensuite",
         "ensuite_type": "Ensuite type",
         "access": "Access",
@@ -589,6 +606,7 @@
         "vc_notes": "Internal notes"
       },
       "retired_badge": "Retired",
+      "placement_note_helper": "Imported placement note: “{{note}}”",
       "actions": {
         "cancel": "Cancel",
         "save": "Save",

@@ -122,14 +122,27 @@ export {
 } from "@/features/admin/tags/schemas";
 export type { Feature as PropertyFeature, FeatureCategory } from "@/features/admin/tags/schemas";
 
+// GAP-065: the building axis. Blank means "unknown / not specified" (the
+// backend dropped the defaulted main_house lie). Tuple order doubles as the
+// grouped rooms-list display order.
 export const ROOM_PLACEMENTS = [
   "main_house",
   "guest_house",
   "pool_house",
   "annex",
+  "cottage",
+  "bungalow",
+  "studio",
   "other",
 ] as const;
 export type RoomPlacement = (typeof ROOM_PLACEMENTS)[number];
+export const roomPlacementSchema = z.enum(ROOM_PLACEMENTS);
+
+// GAP-065: the floor ladder, bottom→top; blank = unknown. Tuple order doubles
+// as the grouped rooms-list display order within a building.
+export const ROOM_FLOORS = ["lower_ground", "ground", "first", "second", "third_plus"] as const;
+export type RoomFloor = (typeof ROOM_FLOORS)[number];
+export const roomFloorSchema = z.enum(ROOM_FLOORS);
 
 // GAP-064 room facets. Blank means "unknown / not specified" on both — the
 // backend stores "" and a non-blank ensuite_type auto-refines `is_ensuite` to
@@ -187,7 +200,12 @@ export const propertyRoomSchema = z.object({
   id: z.number(),
   property: z.number(),
   name: z.string(),
-  placement: z.enum(ROOM_PLACEMENTS),
+  // GAP-065 location axes; blank = unknown. Defaulted so older fixtures parse.
+  placement: roomPlacementSchema.or(z.literal("")).optional().default(""),
+  floor: roomFloorSchema.or(z.literal("")).optional().default(""),
+  // Read-only preserved legacy placement string (GAP-065). API-writable but
+  // deliberately NOT in the write schema — the form only displays it.
+  placement_note: z.string().optional().default(""),
   website_description: z.string().nullable().optional(),
   vc_notes: z.string().nullable().optional(),
   is_ensuite: z.boolean(),
@@ -313,13 +331,16 @@ export type PropertyServiceWriteInput = z.infer<typeof propertyServiceWriteInput
 
 export const propertyRoomWriteInputSchema = z.object({
   name: z.string().trim().min(1, { message: "properties:errors.room_name_required" }).max(128),
-  placement: z.enum(ROOM_PLACEMENTS),
+  // GAP-065 location axes + GAP-064 facets: blank-able enums, NOT `.optional()`
+  // — PATCH must be able to send `""` to clear a previously-set value (same
+  // clearing trap as `website_description`/`vc_notes` below). `placement_note`
+  // is deliberately absent: the form never writes it (absent on PATCH ⇒
+  // untouched server-side).
+  placement: roomPlacementSchema.or(z.literal("")),
+  floor: roomFloorSchema.or(z.literal("")),
   website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
-  // GAP-064 facets: blank-able enums, NOT `.optional()` — PATCH must be able to
-  // send `""` to clear a previously-set value (same clearing trap as
-  // `website_description`/`vc_notes` below).
   ensuite_type: ensuiteTypeSchema.or(z.literal("")),
   access: roomAccessSchema.or(z.literal("")),
   // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,

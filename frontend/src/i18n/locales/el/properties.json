@@ -531,11 +531,27 @@
       }
     },
     "placements": {
+      "not_set": "Δεν έχει οριστεί",
       "main_house": "Κύρια κατοικία",
       "guest_house": "Ξενώνας",
       "pool_house": "Σπίτι πισίνας",
       "annex": "Παράρτημα",
+      "cottage": "Αγροικία",
+      "bungalow": "Μπανγκαλόου",
+      "studio": "Στούντιο",
       "other": "Άλλο"
+    },
+    "floors": {
+      "unspecified": "Δεν έχει οριστεί",
+      "lower_ground": "Ημιυπόγειο",
+      "ground": "Ισόγειο",
+      "first": "Πρώτος όροφος",
+      "second": "Δεύτερος όροφος",
+      "third_plus": "Τρίτος όροφος ή ψηλότερα"
+    },
+    "groups": {
+      "label": "{{building}} · {{floor}}",
+      "unassigned": "Χωρίς καθορισμένη θέση"
     },
     "ensuite_types": {
       "unknown": "Άγνωστο",
@@ -579,6 +595,7 @@
         "name": "Όνομα",
         "name_placeholder": "Κύριο υπνοδωμάτιο",
         "placement": "Τοποθεσία",
+        "floor": "Όροφος",
         "is_ensuite": "Με ιδιωτικό μπάνιο",
         "ensuite_type": "Τύπος ιδιωτικού μπάνιου",
         "access": "Πρόσβαση",
@@ -589,6 +606,7 @@
         "vc_notes": "Εσωτερικές σημειώσεις"
       },
       "retired_badge": "Αποσυρμένο",
+      "placement_note_helper": "Εισηγμένη σημείωση τοποθεσίας: «{{note}}»",
       "actions": {
         "cancel": "Ακύρωση",
         "save": "Αποθήκευση",

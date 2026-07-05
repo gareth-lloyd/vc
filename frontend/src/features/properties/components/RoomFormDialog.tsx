@@ -25,12 +25,14 @@ import { useCreatePropertyRoom, useRoomAttributes, useUpdatePropertyRoom } from 
 import {
   ENSUITE_TYPES,
   ROOM_ACCESS,
+  ROOM_FLOORS,
   ROOM_PLACEMENTS,
   propertyRoomWriteInputSchema,
   type EnsuiteType,
   type PropertyRoom,
   type PropertyRoomWriteInput,
   type RoomAccess,
+  type RoomFloor,
   type RoomPlacement,
 } from "../schemas";
 import { fieldErrorText } from "@/lib/forms/fieldError";
@@ -64,7 +66,10 @@ const EMPTY_BEDS = {
 
 const CREATE_DEFAULTS: PropertyRoomWriteInput = {
   name: "",
-  placement: "main_house",
+  // Blank = "not set" (GAP-065): a new room must not mint a defaulted
+  // main_house the user never chose.
+  placement: "",
+  floor: "",
   website_description: "",
   vc_notes: "",
   is_ensuite: false,
@@ -78,6 +83,7 @@ function defaultsFromRoom(room: PropertyRoom): PropertyRoomWriteInput {
   return {
     name: room.name,
     placement: room.placement,
+    floor: room.floor,
     website_description: room.website_description ?? "",
     vc_notes: room.vc_notes ?? "",
     is_ensuite: room.is_ensuite,
@@ -99,6 +105,8 @@ function defaultsFromRoom(room: PropertyRoom): PropertyRoomWriteInput {
 // the way in/out of the form.
 const ENSUITE_TYPE_NONE = "unknown";
 const ACCESS_NONE = "unspecified";
+const PLACEMENT_NONE = "not_set";
+const FLOOR_NONE = "unspecified";
 
 const BED_FIELDS = [
   "double",
@@ -155,7 +163,8 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
     }
   };
 
-  const placement = form.watch("placement");
+  const placement = form.watch("placement") ?? "";
+  const floor = form.watch("floor") ?? "";
   const isEnsuite = form.watch("is_ensuite") ?? false;
   const ensuiteType = form.watch("ensuite_type") ?? "";
   const access = form.watch("access") ?? "";
@@ -221,24 +230,59 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="property-room-placement">{t("rooms.dialog.fields.placement")}</Label>
-            <Select
-              value={placement}
-              onValueChange={(v) => form.setValue("placement", v as RoomPlacement)}
-            >
-              <SelectTrigger id="property-room-placement">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROOM_PLACEMENTS.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {t(`rooms.placements.${p}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="property-room-placement">{t("rooms.dialog.fields.placement")}</Label>
+              <Select
+                value={placement === "" ? PLACEMENT_NONE : placement}
+                onValueChange={(v) =>
+                  form.setValue("placement", v === PLACEMENT_NONE ? "" : (v as RoomPlacement))
+                }
+              >
+                <SelectTrigger id="property-room-placement">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PLACEMENT_NONE}>{t("rooms.placements.not_set")}</SelectItem>
+                  {ROOM_PLACEMENTS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {t(`rooms.placements.${p}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="property-room-floor">{t("rooms.dialog.fields.floor")}</Label>
+              <Select
+                value={floor === "" ? FLOOR_NONE : floor}
+                onValueChange={(v) =>
+                  form.setValue("floor", v === FLOOR_NONE ? "" : (v as RoomFloor))
+                }
+              >
+                <SelectTrigger id="property-room-floor">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FLOOR_NONE}>{t("rooms.floors.unspecified")}</SelectItem>
+                  {ROOM_FLOORS.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {t(`rooms.floors.${f}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {!isCreate && props.room.placement_note ? (
+            // Preserved legacy placement string (GAP-065) — display-only; the
+            // form never writes placement_note, so a PATCH leaves it untouched.
+            <p className="text-muted-foreground text-sm">
+              {t("rooms.dialog.placement_note_helper", { note: props.room.placement_note })}
+            </p>
+          ) : null}
 
           <div className="flex items-center gap-2">
             <Checkbox

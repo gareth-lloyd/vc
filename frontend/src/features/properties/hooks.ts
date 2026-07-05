@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, type PropertyId, type RatePlanId } from "@/lib/query/keys";
+import { invalidatePropertyAvailability } from "@/lib/query/invalidate";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import {
   activateProperty,
@@ -62,6 +63,7 @@ import {
   updatePropertyBlock,
   updatePropertyCapacity,
   updatePropertyContact,
+  updateProperty,
   updatePropertyFeatures,
   updatePropertyFinance,
   updatePropertyImage,
@@ -456,25 +458,11 @@ export function usePropertyAvailabilityCalendar(
   });
 }
 
-function invalidateAvailability(queryClient: QueryClient, propertyId: number) {
-  // The calendar cells and the holds list (which prefills the edit dialog)
-  // are independent query trees — a block write must refresh both.
-  queryClient.invalidateQueries({
-    queryKey: queryKeys.properties.availabilityRoot(propertyId),
-  });
-  queryClient.invalidateQueries({
-    queryKey: queryKeys.properties.holdsRoot(propertyId),
-  });
-  // The multi-villa timeline reads the same holds through its own key —
-  // without this, a block write shows up there only after the staleTime.
-  queryClient.invalidateQueries({ queryKey: queryKeys.availability.all() });
-}
-
 export function useCreatePropertyBlock(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: AvailabilityBlockWriteInput) => createPropertyBlock(propertyId, input),
-    onSuccess: () => invalidateAvailability(queryClient, propertyId),
+    onSuccess: () => invalidatePropertyAvailability(queryClient, propertyId),
   });
 }
 
@@ -488,7 +476,7 @@ export function useUpdatePropertyBlock(propertyId: number) {
   return useMutation({
     mutationFn: ({ blockId, input }: UpdatePropertyBlockVars) =>
       updatePropertyBlock(blockId, input),
-    onSuccess: () => invalidateAvailability(queryClient, propertyId),
+    onSuccess: () => invalidatePropertyAvailability(queryClient, propertyId),
   });
 }
 
@@ -496,7 +484,7 @@ export function useDeletePropertyBlock(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ blockId }: { blockId: number }) => deletePropertyBlock(blockId),
-    onSuccess: () => invalidateAvailability(queryClient, propertyId),
+    onSuccess: () => invalidatePropertyAvailability(queryClient, propertyId),
   });
 }
 
@@ -679,7 +667,7 @@ export function useUpdatePropertyCapacity(propertyId: number) {
       // The list rows carry a derived `capacity` block (read by the quote
       // builder), so refresh every list cache. `detail` doesn't expose
       // capacity, so it's intentionally left alone.
-      queryClient.invalidateQueries({ queryKey: [...queryKeys.properties.all(), "list"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.lists() });
     },
   });
 }
@@ -750,12 +738,32 @@ export function useDeleteChangeOverRule(propertyId: number) {
   });
 }
 
+export function useUpdateProperty(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { region: number }) => updateProperty(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(propertyId) });
+      // Region shows up in list filtering, so stale list pages must refetch.
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.properties.all(), "list"] });
+    },
+  });
+}
+
 export function useUpdatePropertyFeatures(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (featureIds: number[]) => updatePropertyFeatures(propertyId, featureIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(propertyId) });
+    onSuccess: (updated) => {
+      // feature_ids ride the DETAIL payload (there is no features sub-query),
+      // and routes key the detail query by id or slug — write the fresh
+      // response into both variants instead of invalidating the detail(id)
+      // prefix, which would blow away every open tab plus the availability
+      // caches (BUG-018 sibling smell).
+      queryClient.setQueryData(queryKeys.properties.detail(updated.id), updated);
+      if (updated.slug) {
+        queryClient.setQueryData(queryKeys.properties.detail(updated.slug), updated);
+      }
     },
   });
 }
@@ -768,7 +776,9 @@ function invalidatePropertyDetail(
   if (property.slug) {
     queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(property.slug) });
   }
-  queryClient.invalidateQueries({ queryKey: queryKeys.properties.all() });
+  // Lists only — the bare ["properties"] root would nuke every OTHER
+  // property's detail subtree too (BUG-018 sibling smell).
+  queryClient.invalidateQueries({ queryKey: queryKeys.properties.lists() });
 }
 
 export function useActivateProperty(property: { id: number; slug?: string | null }) {
@@ -804,7 +814,10 @@ export function useConfirmPropertyAvailability(property: { id: number; slug?: st
     mutationFn: () => confirmPropertyAvailability(property.id),
     onSuccess: () => {
       invalidatePropertyDetail(queryClient, property);
-      invalidateAvailability(queryClient, property.id);
+      // The detail(id) prefix above already covers the per-property
+      // availability/holds/bookings roots; only the cross-property
+      // timeline/weekly-prices tree lives outside it.
+      queryClient.invalidateQueries({ queryKey: queryKeys.availability.all() });
     },
   });
 }

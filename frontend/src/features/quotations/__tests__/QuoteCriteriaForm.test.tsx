@@ -16,9 +16,9 @@ const countries = [
 ];
 
 const regions = [
-  { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza" },
-  { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca" },
-  { id: 11, country: 2, country_iso2: "GR", name: "Crete", slug: "crete" },
+  { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza", is_active: true },
+  { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca", is_active: true },
+  { id: 11, country: 2, country_iso2: "GR", name: "Crete", slug: "crete", is_active: true },
 ];
 
 // The selects must only offer geo values that can match a property, so both

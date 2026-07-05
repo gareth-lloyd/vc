@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RegionPicker } from "@/components/form/RegionPicker";
 import { useCountries } from "@/features/admin/countries/hooks";
 import { useRegions } from "@/features/properties/hooks";
 import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
@@ -87,19 +88,10 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
   const regionCtrl = useController({ control: form.control, name: "region" });
   const selectedCountry = countryCtrl.field.value;
 
+  // The region options themselves live in RegionPicker (scoped by the chosen
+  // country); the list is only needed here to decide clearing on country
+  // change. Same query key as the picker's fetch, so no extra request.
   const allRegions = useMemo(() => regionsQuery.data?.results ?? [], [regionsQuery.data]);
-  // Dependent select: a chosen country narrows the region options (matched
-  // client-side on country_iso2 — the in-use list is small). Without a
-  // country, labels carry the ISO to disambiguate same-named regions.
-  const regionOptions = useMemo(() => {
-    const rows = selectedCountry
-      ? allRegions.filter((r) => r.country_iso2 === selectedCountry)
-      : allRegions;
-    return rows.map((r) => ({
-      value: String(r.id),
-      label: !selectedCountry && r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
-    }));
-  }, [allRegions, selectedCountry]);
 
   const handleCountryChange = (value: string) => {
     const iso2 = value === ALL_VALUE ? "" : value;
@@ -238,22 +230,16 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="qcf-region">{t("builder.criteria.region")}</Label>
-          <Select
-            value={regionCtrl.field.value || ALL_VALUE}
-            onValueChange={(v) => regionCtrl.field.onChange(v === ALL_VALUE ? "" : v)}
-          >
-            <SelectTrigger id="qcf-region" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>{t("common:filters.any_region")}</SelectItem>
-              {regionOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <RegionPicker
+            id="qcf-region"
+            clearable
+            hasProperties
+            countryIso2={selectedCountry || undefined}
+            value={regionCtrl.field.value ? Number(regionCtrl.field.value) : null}
+            onChange={(regionId) =>
+              regionCtrl.field.onChange(regionId == null ? "" : String(regionId))
+            }
+          />
         </div>
       </div>
 

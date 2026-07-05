@@ -106,6 +106,11 @@ const COUNTRIES = [
   { id: 2, iso2: "IT", iso3: "ITA", name: "Italy", is_active: true, sort_order: 0 },
 ];
 
+const REGIONS = [
+  { id: 31, country: 1, country_iso2: "GB", name: "Cornwall", slug: "cornwall", is_active: true },
+  { id: 32, country: 2, country_iso2: "IT", name: "Tuscany", slug: "tuscany", is_active: true },
+];
+
 function setReservationsUser() {
   useAuthStore.getState().setMe(
     {
@@ -159,6 +164,7 @@ function installBaseHandlers(property = makeProperty()) {
     http.get("/api/v1/properties/9/finance", () => HttpResponse.json(makeFinance())),
     http.get("/api/v1/properties/9/location", () => HttpResponse.json(makeLocation())),
     http.get("/api/v1/countries", () => HttpResponse.json(drfPage(COUNTRIES))),
+    http.get("/api/v1/regions", () => HttpResponse.json(drfPage(REGIONS))),
   );
 }
 
@@ -339,6 +345,62 @@ describe("SettingsTab", () => {
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
     expect((lastPatchBody as unknown as Record<string, unknown>).locality_town).toBe("Penzance");
+    useAuthStore.getState().clear();
+  });
+
+  it("PATCHes the property root with the region only when it changed", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+
+    let locationBody: Record<string, unknown> | null = null;
+    let rootBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/location", async ({ request }) => {
+        locationBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeLocation());
+      }),
+      http.patch("/api/v1/properties/9", async ({ request }) => {
+        rootBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeProperty({ region: 31 }));
+      }),
+    );
+
+    setup();
+    // Scoped by the address country (GB) — only Cornwall on offer.
+    await userEvent.click(await screen.findByRole("combobox", { name: /listing region/i }));
+    expect(screen.queryByRole("option", { name: /Tuscany/ })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("option", { name: "Cornwall" }));
+    const save = screen.getByRole("button", { name: /save location/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(rootBody).not.toBeNull());
+    expect(rootBody).toEqual({ region: 31 });
+    // A region-only change must not fire a redundant address PATCH.
+    expect(locationBody).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("shows a toast when the address saves but the region PATCH fails", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    const errorSpy = vi.spyOn(toast, "error");
+    server.use(
+      http.patch("/api/v1/properties/9/location", () => HttpResponse.json(makeLocation())),
+      http.patch("/api/v1/properties/9", () => new HttpResponse(null, { status: 500 })),
+    );
+
+    setup();
+    await userEvent.click(await screen.findByRole("combobox", { name: /listing region/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Cornwall" }));
+    const save = screen.getByRole("button", { name: /save location/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/address was saved.*region/i)),
+    );
+    errorSpy.mockRestore();
     useAuthStore.getState().clear();
   });
 

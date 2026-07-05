@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys, type EnquiryId } from "@/lib/query/keys";
+import { invalidateEnquiryDependents, invalidateQuotationDependents } from "@/lib/query/invalidate";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import {
@@ -59,23 +60,18 @@ export function useEnquiryNotes(id: EnquiryId | undefined) {
 function onDetailUpdated(queryClient: QueryClient, enquiryId: EnquiryId, updated: EnquiryDetail) {
   queryClient.setQueryData(queryKeys.enquiries.detail(enquiryId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.activity(enquiryId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
-  // The status tab-bar badges count by status, so any transition restains them.
-  queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
+  // Lists, status-count badges, dashboard and the linked person's/agent's
+  // contact sub-tabs (BUG-018).
+  invalidateEnquiryDependents(queryClient, updated);
 }
 
 export function useCreateEnquiry() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: EnquiryWriteInput) => createEnquiry(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
-      // A new enquiry is always `new` status — restain the status tab-bar
-      // badges, matching onDetailUpdated and the useCreateQuotation precedent.
-      queryClient.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
-    },
+    // The new enquiry appears on lists/badges/dashboard and on the linked
+    // person's contact Enquiries tab (BUG-018).
+    onSuccess: (created) => invalidateEnquiryDependents(queryClient, created),
   });
 }
 
@@ -123,7 +119,19 @@ export function useConvertEnquiry(enquiryId: EnquiryId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (quotation: number) => convertEnquiry(enquiryId, quotation),
-    onSuccess: (updated) => onDetailUpdated(queryClient, enquiryId, updated),
+    onSuccess: (updated, quotation) => {
+      onDetailUpdated(queryClient, enquiryId, updated);
+      // The accepted quotation's status flips server-side too (BUG-018).
+      // enquiry/guest/agent are null: the enquiry half is covered by
+      // onDetailUpdated above, and passing the enquiry id here would
+      // re-invalidate the detail key it just setQueryData'd.
+      invalidateQuotationDependents(queryClient, {
+        id: quotation,
+        enquiry: null,
+        guest: null,
+        agent: null,
+      });
+    },
   });
 }
 

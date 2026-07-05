@@ -7,8 +7,8 @@ import { drfPage } from "@/test/drf";
 import { RegionChips } from "../RegionChips";
 
 const regions = [
-  { id: 7, country: 1, name: "Tuscany", slug: "tuscany" },
-  { id: 9, country: 1, name: "Amalfi Coast", slug: "amalfi" },
+  { id: 7, country: 1, name: "Tuscany", slug: "tuscany", is_active: true },
+  { id: 9, country: 1, name: "Amalfi Coast", slug: "amalfi", is_active: true },
 ];
 
 describe("RegionChips", () => {

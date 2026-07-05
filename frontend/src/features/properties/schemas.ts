@@ -338,27 +338,16 @@ export interface PropertyFilters {
   page?: number;
 }
 
-// Minimal taxonomy rows for filter dropdowns (`GET /regions`, `/collections`).
-export const regionSchema = z.object({
-  id: z.number(),
-  country: z.number().nullable().optional(),
-  country_iso2: z.string().nullable().optional(),
-  name: z.string(),
-  slug: z.string(),
-  is_active: z.boolean(),
-});
-export type Region = z.infer<typeof regionSchema>;
-
-export const regionsResponseSchema = paginated(regionSchema);
-
-export const collectionSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  slug: z.string(),
-});
-export type Collection = z.infer<typeof collectionSchema>;
-
-export const collectionsResponseSchema = paginated(collectionSchema);
+// Region/collection taxonomy now lives in lib/geo (GAP-072); re-exported here
+// for intra-feature consumers that still import from properties/schemas.
+export {
+  regionSchema,
+  regionsResponseSchema,
+  collectionSchema,
+  collectionsResponseSchema,
+  type Region,
+  type Collection,
+} from "@/lib/geo/schemas";
 
 // FK-picker rows for the create-property form (`GET /property-categories`,
 // `/property-groups`). Only `id` + `name` are needed to pick; Zod strips the

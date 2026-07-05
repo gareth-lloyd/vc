@@ -17,10 +17,10 @@ import {
 import { cn } from "@/lib/cn";
 import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
-import { useCountries } from "@/features/admin/countries/hooks";
-import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
-import { regionOptionsForCountry } from "@/features/properties/regionOptions";
-import { PROPERTIES_PAGE_SIZE, useCollections, useRegions } from "@/features/properties/hooks";
+import { useCountries, useCollections, useRegions } from "@/lib/geo/hooks";
+import { TAXONOMY_PAGE_SIZE } from "@/lib/geo/api";
+import { regionOptionsForCountry } from "@/lib/geo/regionOptions";
+import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
 import { useMultiAvailability, useTimelineProperties, useWeeklyPrices } from "./hooks";
 import { monthSpanLabel } from "./monthSpan";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";

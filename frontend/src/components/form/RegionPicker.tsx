@@ -7,8 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRegions } from "@/features/properties/hooks";
-import type { Region } from "@/features/properties/schemas";
+import { useRegions } from "@/lib/geo/hooks";
+import type { Region } from "@/lib/geo/schemas";
 
 // Radix SelectItem forbids an empty-string value, so the clearable "All
 // regions" row maps to/from this sentinel.

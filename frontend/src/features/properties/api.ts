@@ -1,15 +1,14 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
+import { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections } from "@/lib/geo/api";
 import {
   availabilityCalendarResponseSchema,
   availabilityHoldsResponseSchema,
   availabilityHoldSchema,
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
-  collectionsResponseSchema,
   propertyCategoriesResponseSchema,
   propertyGroupsResponseSchema,
-  regionsResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
@@ -43,7 +42,6 @@ import {
   type AvailabilityHold,
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
-  type Collection,
   type DescriptionSection,
   type Discount,
   type Extra,
@@ -67,7 +65,6 @@ import {
   type PropertyListItem,
   type PropertyLocation,
   type PropertyLocationWriteInput,
-  type Region,
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
   type PropertyService,
@@ -377,40 +374,11 @@ export async function fetchPropertyContacts(
   return propertyContactsResponseSchema.parse(data);
 }
 
-// Filter dropdowns need every row in one request — the default page size of
-// 50 would silently truncate the lists as the portfolio grows. Exported for
-// callers whose fetch layer doesn't bake it in (e.g. the countries lookup).
-export const TAXONOMY_PAGE_SIZE = 500;
-
-export interface RegionListFilters {
-  // Only regions that actually hold properties (quote-builder criteria
-  // dropdown); server-side opt-in narrowing, false behaves like absent.
-  hasProperties?: boolean;
-  // Scope to one country: `country` is the FK id, `countryIso2` the
-  // case-insensitive ISO code — pass whichever the caller holds.
-  country?: number;
-  countryIso2?: string;
-}
-
-export async function fetchRegions(filters: RegionListFilters = {}): Promise<Paginated<Region>> {
-  const data = await apiGet<unknown>("/regions", {
-    query: {
-      ordering: "name",
-      page_size: TAXONOMY_PAGE_SIZE,
-      has_properties: filters.hasProperties || undefined,
-      country: filters.country,
-      country_iso2: filters.countryIso2,
-    },
-  });
-  return regionsResponseSchema.parse(data);
-}
-
-export async function fetchCollections(): Promise<Paginated<Collection>> {
-  const data = await apiGet<unknown>("/collections", {
-    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
-  });
-  return collectionsResponseSchema.parse(data);
-}
+// Region/collection fetchers now live in lib/geo (GAP-072); re-exported here
+// for intra-feature consumers and the in-feature API tests. TAXONOMY_PAGE_SIZE
+// is imported at the top (fetchRoomAttributes pages with it) and re-exported.
+export { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections };
+export type { RegionListFilters } from "@/lib/geo/schemas";
 
 export async function fetchPropertyCategories(): Promise<Paginated<PropertyCategory>> {
   // Model `Meta.ordering` already sorts by (sort_order, name); fetch the whole

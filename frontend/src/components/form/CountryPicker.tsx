@@ -6,7 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCountries } from "@/features/admin/countries/hooks";
+import { useCountries } from "@/lib/geo/hooks";
 
 // Load the full list in one request — the default page size would truncate the
 // ~250-row country list. Capped server-side by ConfigurablePageSizePagination.

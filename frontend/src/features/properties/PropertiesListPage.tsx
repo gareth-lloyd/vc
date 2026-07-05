@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
-import { useCountries } from "@/features/admin/countries/hooks";
+import { useCountries } from "@/lib/geo/hooks";
 import { TAXONOMY_PAGE_SIZE } from "./api";
 import { regionOptionsForCountry } from "./regionOptions";
 import { CreatePropertyDialog } from "./components/CreatePropertyDialog";

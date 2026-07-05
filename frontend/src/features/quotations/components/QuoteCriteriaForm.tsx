@@ -16,9 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RegionPicker } from "@/components/form/RegionPicker";
-import { useCountries } from "@/features/admin/countries/hooks";
-import { useRegions } from "@/features/properties/hooks";
-import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
+import { useCountries, useRegions } from "@/lib/geo/hooks";
+import { TAXONOMY_PAGE_SIZE } from "@/lib/geo/api";
 import { type QuoteCriteriaInput, type QuoteSearchForm, quoteSearchFormSchema } from "../schemas";
 import { searchFormToCriteria } from "../searchCriteria";
 

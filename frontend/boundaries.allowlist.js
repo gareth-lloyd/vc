@@ -4,16 +4,14 @@
 // enforced by src/test/boundaries.test.ts.
 export const ALLOWED_EDGES = {
   admin: ["users"],
-  availability: ["admin", "properties"],
+  availability: ["properties"],
   bookings: ["audit", "auth"],
-  // clients→availability relabelled to clients→properties when the geo hooks
-  // (useRegions/useCollections) moved to their true home (GAP-063 Unit 3).
-  clients: ["contacts", "properties"],
+  clients: ["contacts"],
   companies: ["audit"],
   contacts: ["audit", "bookings", "companies"],
   dashboard: ["bookings", "enquiries"],
   enquiries: ["bookings", "contacts", "users"],
   "owner-portal": ["auth"],
   properties: ["admin", "audit", "contacts"],
-  quotations: ["admin", "bookings", "contacts", "enquiries", "properties"],
+  quotations: ["bookings", "contacts", "enquiries", "properties"],
 };

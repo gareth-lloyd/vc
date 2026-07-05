@@ -50,6 +50,16 @@ edges must be deleted. New cross-feature needs go to `src/lib/domain/`
 (shared Zod schemas/labels) or `src/components/` (shared UI). Test files are
 exempt (cross-feature MSW handlers and scaffolding are fine there).
 
+**Geo/taxonomy is shared, not feature-owned (GAP-072).** Regions, collections
+and countries are reference data read by properties, availability, clients and
+quotations plus the shared `RegionPicker`/`CountryPicker`. Their read side —
+schemas, list fetchers, and the `useRegions`/`useCollections`/`useCountries`
+hooks — lives in `src/lib/geo/` so any feature can consume it without an
+allowlist edge. Country **CRUD** (create/update/delete + the detail fetch and
+write schema) stays in `features/admin/countries` — editing the catalog is an
+admin concern. Old feature homes (`properties/{schemas,api,hooks,regionOptions}`,
+`admin/countries/schemas`) re-export from `lib/geo` for intra-feature callers.
+
 rate-workbench is a `properties` sub-feature
 (`features/properties/rate-workbench/`), not a standalone feature (GAP-063
 decided fold over promotion: its 29 imports were one-way into properties).

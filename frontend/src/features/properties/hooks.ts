@@ -30,7 +30,6 @@ import {
   deleteRatePlan,
   duplicateRatePlan,
   fetchChangeOverRules,
-  fetchCollections,
   fetchNearbyPlaceTypes,
   fetchProperties,
   fetchProperty,
@@ -53,8 +52,6 @@ import {
   fetchPropertyRatePlans,
   fetchPropertySettings,
   fetchRatePlanDetail,
-  fetchRegions,
-  type RegionListFilters,
   fetchRoomAttributes,
   reorderPropertyImages,
   reorderPropertyRooms,
@@ -122,16 +119,9 @@ export function usePropertyGroups() {
   return useQuery({ queryKey: queryKeys.propertyGroups.list(), queryFn: fetchPropertyGroups });
 }
 
-export function useRegions(filters?: RegionListFilters) {
-  return useQuery({
-    queryKey: queryKeys.regions.list(filters),
-    queryFn: () => fetchRegions(filters),
-  });
-}
-
-export function useCollections() {
-  return useQuery({ queryKey: queryKeys.collections.list(), queryFn: fetchCollections });
-}
+// Region/collection hooks now live in lib/geo (GAP-072); re-exported here for
+// intra-feature consumers that still import from properties/hooks.
+export { useRegions, useCollections } from "@/lib/geo/hooks";
 
 export function useCreateProperty() {
   const queryClient = useQueryClient();

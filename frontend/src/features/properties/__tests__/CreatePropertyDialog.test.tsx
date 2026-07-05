@@ -13,9 +13,6 @@ function stubTaxonomies() {
     http.get("/api/v1/property-categories", () =>
       HttpResponse.json(drfPage([{ id: 1, name: "Villa", slug: "villa", is_active: true }])),
     ),
-    http.get("/api/v1/property-groups", () =>
-      HttpResponse.json(drfPage([{ id: 2, name: "Portfolio A", is_active: true }])),
-    ),
     http.get("/api/v1/regions", () =>
       HttpResponse.json(drfPage([{ id: 3, name: "Tuscany", slug: "tuscany", country: null }])),
     ),
@@ -25,8 +22,6 @@ function stubTaxonomies() {
 async function pickFks() {
   await userEvent.click(screen.getByRole("combobox", { name: /category/i }));
   await userEvent.click(await screen.findByRole("option", { name: "Villa" }));
-  await userEvent.click(screen.getByRole("combobox", { name: /group/i }));
-  await userEvent.click(await screen.findByRole("option", { name: "Portfolio A" }));
   await userEvent.click(screen.getByRole("combobox", { name: /region/i }));
   await userEvent.click(await screen.findByRole("option", { name: "Tuscany" }));
 }
@@ -37,7 +32,7 @@ const LocationProbe = () => {
 };
 
 describe("CreatePropertyDialog", () => {
-  it("auto-derives slug + display name, posts the six fields, and navigates to the new villa", async () => {
+  it("auto-derives slug + display name, posts the five fields, and navigates to the new villa", async () => {
     stubTaxonomies();
     let postBody: Record<string, unknown> | null = null;
     server.use(
@@ -68,7 +63,6 @@ describe("CreatePropertyDialog", () => {
       display_name: "Villa Aurora",
       slug: "villa-aurora",
       category: 1,
-      group: 2,
       region: 3,
     });
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/properties/77"));

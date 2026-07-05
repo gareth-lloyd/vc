@@ -18,7 +18,6 @@ const propertyFixture = {
   status: "active",
   channel: "direct",
   category: null,
-  group: null,
   region: null,
   feature_ids: [],
   legacy_id: null,

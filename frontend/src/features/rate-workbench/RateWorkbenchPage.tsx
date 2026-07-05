@@ -455,7 +455,7 @@ export function RateWorkbenchPage() {
 
   // The property's pricing currency: seasons carry the authoritative currency
   // (both the `currency` FK id and its `currency_code`, set together), but the
-  // property settings row often leaves the FK null (only the group resolves one).
+  // property settings row often leaves the FK null.
   // Read both from a single season so the inspector's amount adornments (code)
   // and the extra dialog's currency default (id) stay consistent; fall back to
   // the settings code for display.
@@ -465,7 +465,7 @@ export function RateWorkbenchPage() {
   // Every currency an ACTIVE rate plan prices in — the extra dialog warns when
   // an extra's currency is outside this set (the engine only quotes in active
   // plans' currencies and hard-filters extras by quote currency). If any active
-  // plan inherits its currency (null FK, group-resolved code), the universe is
+  // plan leaves its currency FK null (code-only), the universe is
   // unknowable by id — pass undefined so the hint stays silent rather than
   // firing falsely.
   const planCurrencyIds = useMemo(() => {

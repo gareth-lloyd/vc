@@ -35,7 +35,7 @@ interface CommonProps {
   currencyCode?: string | null;
   /** GAP-035 net↔gross derivation inputs. `priceBasis` is the season's
    * `price_basis` (what the typed figure represents); `commission`/`tax` are the
-   * property's group-resolved effective policy. When all are present the form
+   * property's effective policy. When all are present the form
    * shows the derived counterpart (owner net for a GROSS plan, guest price for a
    * NET plan) live beside each price input. Absent → no hint, no behaviour change. */
   priceBasis?: string | null;

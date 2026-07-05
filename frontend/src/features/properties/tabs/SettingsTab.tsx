@@ -61,7 +61,10 @@ interface SettingsContext {
   property: PropertyDetail;
 }
 
-const INHERIT_VALUE = "__inherit__";
+// Radix Select forbids an empty item value, so the blank "—" option carries a
+// sentinel that the change handler maps to null (unset — the backend fallback
+// then applies, e.g. changeover ANY, prices GROSS).
+const UNSET_VALUE = "__unset__";
 const CALC_TYPES = ["percent", "fixed"] as const;
 
 // IANA zones straight from the runtime; the backend validates against zoneinfo.
@@ -182,9 +185,9 @@ function OperationalForm({
             {t("settings.operational.fields.availability_default")}
           </Label>
           <Select
-            value={availability ?? INHERIT_VALUE}
+            value={availability ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("availability_default", v === INHERIT_VALUE ? null : v, {
+              form.setValue("availability_default", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -194,7 +197,7 @@ function OperationalForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {PROPERTY_AVAILABILITY_DEFAULTS.map((v) => (
                 <SelectItem key={v} value={v}>
                   {t(`availability_defaults.${v}`)}
@@ -209,9 +212,9 @@ function OperationalForm({
             {t("settings.operational.fields.changeover_day")}
           </Label>
           <Select
-            value={changeoverDay ?? INHERIT_VALUE}
+            value={changeoverDay ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("changeover_day", v === INHERIT_VALUE ? null : v, {
+              form.setValue("changeover_day", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -221,7 +224,7 @@ function OperationalForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {PROPERTY_CHANGEOVER_DAYS.map((d) => (
                 <SelectItem key={d} value={d}>
                   {t(`changeover_days.${d}`)}
@@ -275,9 +278,9 @@ function OperationalForm({
             {t("settings.operational.fields.prices_entered_as")}
           </Label>
           <Select
-            value={pricesAs ?? INHERIT_VALUE}
+            value={pricesAs ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("prices_entered_as", v === INHERIT_VALUE ? null : v, {
+              form.setValue("prices_entered_as", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -287,7 +290,7 @@ function OperationalForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {PROPERTY_PRICE_BASES.map((p) => (
                 <SelectItem key={p} value={p}>
                   {t(`price_bases.${p}`)}
@@ -405,8 +408,8 @@ function FinanceForm({
 
   // GAP-026: adorn each amount with the unit it's denominated in — the
   // property's effective currency for a `fixed` amount, "%" for a `percent`
-  // one. An inherited (null) type resolves its basis from the group, which the
-  // client can't see here, so it stays unadorned rather than guess.
+  // one. An unset (null) type has no basis to adorn with, so it stays
+  // unadorned rather than guess.
   const settings = usePropertySettings(propertyId);
   const currencyCode = settings.data?.currency_code ?? null;
   const amountAdornment = (type: string | null): string | null =>
@@ -436,9 +439,9 @@ function FinanceForm({
             {t("settings.finance.fields.commission_calculation_type")}
           </Label>
           <Select
-            value={commissionType ?? INHERIT_VALUE}
+            value={commissionType ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("commission_calculation_type", v === INHERIT_VALUE ? null : v, {
+              form.setValue("commission_calculation_type", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -448,7 +451,7 @@ function FinanceForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {CALC_TYPES.map((c) => (
                 <SelectItem key={c} value={c}>
                   {t(`calc_types.${c}`)}
@@ -495,9 +498,9 @@ function FinanceForm({
             {t("settings.finance.fields.deposit_calculation_type")}
           </Label>
           <Select
-            value={depositType ?? INHERIT_VALUE}
+            value={depositType ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("deposit_calculation_type", v === INHERIT_VALUE ? null : v, {
+              form.setValue("deposit_calculation_type", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -507,7 +510,7 @@ function FinanceForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {CALC_TYPES.map((c) => (
                 <SelectItem key={c} value={c}>
                   {t(`calc_types.${c}`)}
@@ -549,9 +552,9 @@ function FinanceForm({
             {t("settings.finance.fields.security_deposit_calculation_type")}
           </Label>
           <Select
-            value={securityType ?? INHERIT_VALUE}
+            value={securityType ?? UNSET_VALUE}
             onValueChange={(v) =>
-              form.setValue("security_deposit_calculation_type", v === INHERIT_VALUE ? null : v, {
+              form.setValue("security_deposit_calculation_type", v === UNSET_VALUE ? null : v, {
                 shouldDirty: true,
               })
             }
@@ -561,7 +564,7 @@ function FinanceForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INHERIT_VALUE}>{t("common.inherit")}</SelectItem>
+              <SelectItem value={UNSET_VALUE}>{t("common.unset")}</SelectItem>
               {CALC_TYPES.map((c) => (
                 <SelectItem key={c} value={c}>
                   {t(`calc_types.${c}`)}

@@ -27,7 +27,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { slugify } from "@/lib/format/slug";
 import { propertyDetailsPath } from "@/lib/routes";
-import { useCreateProperty, usePropertyCategories, usePropertyGroups } from "../hooks";
+import { useCreateProperty, usePropertyCategories } from "../hooks";
 import { useRegions } from "@/features/availability/hooks";
 import { propertyCreateInputSchema, type PropertyCreateInput } from "../schemas";
 
@@ -42,7 +42,6 @@ const CREATE_DEFAULTS: PropertyCreateInput = {
   slug: "",
   // `0` is the unselected sentinel — the schema's `.min(1)` rejects it.
   category: 0,
-  group: 0,
   region: 0,
 };
 
@@ -55,7 +54,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
     defaultValues: CREATE_DEFAULTS,
   });
   const categoryCtrl = useController({ control: form.control, name: "category" });
-  const groupCtrl = useController({ control: form.control, name: "group" });
   const regionCtrl = useController({ control: form.control, name: "region" });
 
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
@@ -65,7 +63,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
   const [displayNameEdited, setDisplayNameEdited] = useState(false);
 
   const categories = usePropertyCategories();
-  const groups = usePropertyGroups();
   const regions = useRegions();
   const createMutation = useCreateProperty();
 
@@ -107,7 +104,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
   };
 
   const categoryOptions = categories.data?.results ?? [];
-  const groupOptions = groups.data?.results ?? [];
   const regionOptions = regions.data?.results ?? [];
 
   return (
@@ -190,30 +186,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
             {form.formState.errors.category ? (
               <p className="text-destructive text-sm" role="alert">
                 {fieldErrorText(t, form.formState.errors.category.message)}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="create-group">{t("create.fields.group")}</Label>
-            <Select
-              value={groupCtrl.field.value ? String(groupCtrl.field.value) : ""}
-              onValueChange={(v) => groupCtrl.field.onChange(Number(v))}
-            >
-              <SelectTrigger id="create-group" aria-label={t("create.fields.group")}>
-                <SelectValue placeholder={t("create.fields.group_placeholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {groupOptions.map((g) => (
-                  <SelectItem key={g.id} value={String(g.id)}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.group ? (
-              <p className="text-destructive text-sm" role="alert">
-                {fieldErrorText(t, form.formState.errors.group.message)}
               </p>
             ) : null}
           </div>

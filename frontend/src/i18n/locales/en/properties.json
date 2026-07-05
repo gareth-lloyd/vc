@@ -23,8 +23,6 @@
       "slug_help": "Used in the villa's URL. Auto-filled from the name — you can change it.",
       "category": "Category",
       "category_placeholder": "Select a category",
-      "group": "Group",
-      "group_placeholder": "Select a group",
       "region": "Region",
       "region_placeholder": "Select a region"
     },
@@ -37,7 +35,6 @@
       "slug_required": "Slug is required",
       "slug_invalid": "Use only lowercase letters, numbers and dashes",
       "category_required": "Pick a category",
-      "group_required": "Pick a group",
       "region_required": "Pick a region"
     }
   },
@@ -960,7 +957,6 @@
     "rate_period_max_nights_lt_min": "Maximum nights can't be below minimum nights"
   },
   "common": {
-    "inherit": "Inherit",
     "unset": "—"
   },
   "rate_workbench": {

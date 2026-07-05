@@ -41,7 +41,6 @@ import {
   fetchPropertyDiscounts,
   fetchPropertyExtras,
   fetchPropertyFinance,
-  fetchPropertyGroups,
   fetchPropertyHolds,
   fetchPropertyImages,
   fetchPropertyLocation,
@@ -110,10 +109,6 @@ export function usePropertyCategories() {
     queryKey: queryKeys.propertyCategories.list(),
     queryFn: fetchPropertyCategories,
   });
-}
-
-export function usePropertyGroups() {
-  return useQuery({ queryKey: queryKeys.propertyGroups.list(), queryFn: fetchPropertyGroups });
 }
 
 export function useCreateProperty() {

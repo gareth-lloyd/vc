@@ -56,7 +56,6 @@ export const propertyListItemSchema = z.object({
   status: z.string(),
   channel: z.string().nullable().optional(),
   category: z.number().nullable().optional(),
-  group: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
   capacity: propertyListCapacitySchema.nullable().optional(),
   // Whether the row is free across the request's date_from..date_to window;
@@ -313,9 +312,9 @@ export type Collection = z.infer<typeof collectionSchema>;
 
 export const collectionsResponseSchema = paginated(collectionSchema);
 
-// FK-picker rows for the create-property form (`GET /property-categories`,
-// `/property-groups`). Only `id` + `name` are needed to pick; Zod strips the
-// other serializer fields. Widen these when a consumer actually needs more.
+// FK-picker rows for the create-property form (`GET /property-categories`).
+// Only `id` + `name` are needed to pick; Zod strips the other serializer
+// fields. Widen these when a consumer actually needs more.
 export const propertyCategorySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -324,15 +323,7 @@ export type PropertyCategory = z.infer<typeof propertyCategorySchema>;
 
 export const propertyCategoriesResponseSchema = paginated(propertyCategorySchema);
 
-export const propertyGroupSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-});
-export type PropertyGroup = z.infer<typeof propertyGroupSchema>;
-
-export const propertyGroupsResponseSchema = paginated(propertyGroupSchema);
-
-// Write shape for creating a property (GAP-049). Only the six fields the
+// Write shape for creating a property (GAP-049). Only the five fields the
 // backend requires — `licence_number`/`channel`/`features`/`legacy_id` are
 // optional or server-defaulted and are filled in later on the edit tabs
 // (incremental-onboarding posture, GAP-024). FK fields default to the `0`
@@ -351,7 +342,6 @@ export const propertyCreateInputSchema = z.object({
     .max(255)
     .regex(/^[a-z0-9-]+$/, { message: "properties:create.errors.slug_invalid" }),
   category: z.number().int().min(1, { message: "properties:create.errors.category_required" }),
-  group: z.number().int().min(1, { message: "properties:create.errors.group_required" }),
   region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
 });
 export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
@@ -725,16 +715,15 @@ export const propertySettingsSchema = z.object({
   min_nights_rental_note: z.string().nullable().optional(),
   prices_entered_as: z.string().nullable().optional(),
   // IANA timezone, sourced from the property's location; null when the
-  // property has no location row yet. Not inheritable from the group.
+  // property has no location row yet.
   timezone: z.string().nullable().optional(),
-  // Read-only group-resolved currency as a string code (GAP-026): the effective
-  // currency money inputs commit to, with the raw `currency` FK's inheritance
-  // already applied. Null when neither property nor group sets a currency.
+  // Read-only effective currency as a string code (GAP-026): the currency
+  // money inputs commit to. Null when the property sets no currency.
   currency_code: z.string().nullable().optional(),
   // GAP-034: the owner's online (non-iCal) calendar webpage; null when unset.
   calendar_url: z.string().nullable().optional(),
-  // GAP-035 rate-entry derivation context (read-only). The group-resolved
-  // default basis pre-fills a new season's `price_basis`; the effective
+  // GAP-035 rate-entry derivation context (read-only). The effective default
+  // basis pre-fills a new season's `price_basis`; the effective
   // commission + tax policy drive the rate-band form's net↔gross derivation.
   prices_entered_as_effective: z.string().nullable().optional(),
   commission: z

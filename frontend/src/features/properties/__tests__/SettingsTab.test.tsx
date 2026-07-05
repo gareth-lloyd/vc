@@ -21,7 +21,6 @@ function makeProperty(overrides: Record<string, unknown> = {}) {
     status: "active",
     channel: "direct",
     category: null,
-    group: null,
     region: null,
     feature_ids: [],
     legacy_id: null,
@@ -217,6 +216,64 @@ describe("SettingsTab", () => {
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
     expect((lastPatchBody as unknown as Record<string, unknown>).min_nights_rental).toBe(5);
+    useAuthStore.getState().clear();
+  });
+
+  it("renders '—' for an unset select and PATCHes explicit null on reset (GAP-070)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ changeover_day: null })),
+      ),
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ changeover_day: null }));
+      }),
+    );
+
+    setup();
+    // Populate direction: an API null must render the "—" option (the
+    // post-GAP-070 default state), not a blank/crashing Radix trigger.
+    const changeover = await screen.findByRole("combobox", { name: /changeover day/i });
+    expect(changeover).toHaveTextContent("—");
+
+    // Reset direction: picking "—" must PATCH an explicit null (backend
+    // fallback applies) — not the sentinel string, not a dropped key.
+    await userEvent.click(screen.getByRole("combobox", { name: /availability default/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "—" }));
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).availability_default).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("PATCHes explicit null when a finance calc type is reset to '—' (GAP-070)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/9/finance", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeFinance({ commission_calculation_type: null }));
+      }),
+    );
+
+    setup();
+    await userEvent.click(await screen.findByRole("combobox", { name: /commission type/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "—" }));
+    const save = screen.getByRole("button", { name: /save finance/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect(
+      (lastPatchBody as unknown as Record<string, unknown>).commission_calculation_type,
+    ).toBeNull();
     useAuthStore.getState().clear();
   });
 

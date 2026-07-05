@@ -72,7 +72,6 @@ export const ownerPropertySchema = z.object({
   slug: z.string(),
   status: z.string(),
   category: z.number().nullable(),
-  group: z.number().nullable(),
   region: z.number().nullable(),
   guests: z.number().nullable(),
   bedrooms: z.number().nullable(),

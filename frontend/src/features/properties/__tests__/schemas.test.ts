@@ -85,11 +85,10 @@ describe("propertyCreateInputSchema", () => {
     display_name: "Villa Aurora",
     slug: "villa-aurora",
     category: 1,
-    group: 2,
     region: 3,
   };
 
-  it("accepts the six required fields", () => {
+  it("accepts the five required fields", () => {
     expect(propertyCreateInputSchema.parse(valid)).toMatchObject(valid);
   });
 
@@ -99,7 +98,7 @@ describe("propertyCreateInputSchema", () => {
   });
 
   it("rejects an unselected FK (the 0 sentinel)", () => {
-    for (const field of ["category", "group", "region"] as const) {
+    for (const field of ["category", "region"] as const) {
       const result = propertyCreateInputSchema.safeParse({ ...valid, [field]: 0 });
       expect(result.success, field).toBe(false);
     }

@@ -8,7 +8,6 @@ import {
   changeOverRulesResponseSchema,
   collectionsResponseSchema,
   propertyCategoriesResponseSchema,
-  propertyGroupsResponseSchema,
   regionsResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
@@ -57,7 +56,6 @@ import {
   type PropertyCreateInput,
   type PropertyDescription,
   type PropertyDetail,
-  type PropertyGroup,
   type PropertyFilters,
   type PropertyFinance,
   type PropertyFinanceWriteInput,
@@ -402,13 +400,6 @@ export async function fetchPropertyCategories(): Promise<Paginated<PropertyCateg
     query: { page_size: TAXONOMY_PAGE_SIZE },
   });
   return propertyCategoriesResponseSchema.parse(data);
-}
-
-export async function fetchPropertyGroups(): Promise<Paginated<PropertyGroup>> {
-  const data = await apiGet<unknown>("/property-groups", {
-    query: { page_size: TAXONOMY_PAGE_SIZE },
-  });
-  return propertyGroupsResponseSchema.parse(data);
 }
 
 export async function fetchPropertyHolds(

@@ -787,7 +787,7 @@
     "empty": {
       "no_finance": "Finance is not configured for this property.",
       "no_contact": "No owner has been assigned to this property.",
-      "no_commission_terms": "No commission terms on file for this property or its group."
+      "no_commission_terms": "No commission terms on file for this property."
     },
     "fields": {
       "name": "Name",

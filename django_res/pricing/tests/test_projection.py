@@ -231,3 +231,137 @@ def test_project_none_without_anchor(property_: Property, gbp: Currency) -> None
         )
         is None
     )
+
+
+# --- BUG-016 period-id rule -------------------------------------------------
+
+
+def _collision_anchor(
+    property_: Property, gbp: Currency, late_feb_bracket: tuple[int, int]
+) -> tuple[RatePeriod, RatePeriod]:
+    """Anchor whose Feb-29 span collides with its neighbour after mapping."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    late_feb = RatePeriod.objects.create(
+        plan=plan, name="Late Feb", date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
+    )
+    RateBand.objects.create(
+        period=late_feb,
+        min_party=late_feb_bracket[0],
+        max_party=late_feb_bracket[1],
+        nightly=Decimal("100.00"),
+    )
+    early_march = RatePeriod.objects.create(
+        plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
+    )
+    RateBand.objects.create(period=early_march, min_party=1, max_party=8, nightly=Decimal("150.00"))
+    return late_feb, early_march
+
+
+@pytest.mark.django_db
+def test_project_single_parentage_periods_keep_source_pks(
+    property_: Property, gbp: Currency
+) -> None:
+    """A clean carry (collision fully shadows the loser's contested day) keeps
+    every projected period on its source pk — full traceability."""
+    late_feb, early_march = _collision_anchor(property_, gbp, late_feb_bracket=(1, 8))
+    ctx = RateProjectionService.project(
+        property=property_, date_from=date(2025, 2, 1), currency=gbp, date_map=keep_calendar_date
+    )
+    assert ctx is not None
+    # Late Feb absorbs the contested 1 Mar (same bracket, lower pk); Early
+    # March survives as one fragment. Both are single-parentage, pks free.
+    assert [(p.pk, p.date_from, p.date_to) for p in ctx.periods] == [
+        (late_feb.pk, date(2025, 2, 25), date(2025, 3, 1)),
+        (early_march.pk, date(2025, 3, 2), date(2025, 3, 7)),
+    ]
+
+
+@pytest.mark.django_db
+def test_project_mixed_parentage_period_gets_negative_synthetic_id(
+    property_: Property, gbp: Currency
+) -> None:
+    """The contested day regroups bands from two source periods: no single
+    parent pk to keep, so it gets a deterministic negative id. Band ids stay
+    the source rule pks throughout."""
+    late_feb, early_march = _collision_anchor(property_, gbp, late_feb_bracket=(1, 4))
+    ctx = RateProjectionService.project(
+        property=property_, date_from=date(2025, 2, 1), currency=gbp, date_map=keep_calendar_date
+    )
+    assert ctx is not None
+    assert [(p.pk, p.date_from, p.date_to) for p in ctx.periods] == [
+        (late_feb.pk, date(2025, 2, 25), date(2025, 2, 28)),
+        (-1, date(2025, 3, 1), date(2025, 3, 1)),
+        (early_march.pk, date(2025, 3, 2), date(2025, 3, 7)),
+    ]
+    # bands_by_period is keyed on the synthetic id; band ids = source rule pks.
+    mixed = ctx.bands_by_period[-1]
+    assert {band.pk for band in mixed} == set(
+        RateBand.objects.filter(period__plan=late_feb.plan).values_list("pk", flat=True)
+    )
+
+
+@pytest.mark.django_db
+def test_project_second_fragment_of_reused_parent_gets_negative_id(
+    property_: Property, gbp: Currency
+) -> None:
+    """When the weekday map lands a band on both sides of an earlier claim,
+    its two fragments share one source period — only the first (date order)
+    keeps the pk."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    late_feb = RatePeriod.objects.create(
+        plan=plan, name="Late Feb", date_from=date(2024, 2, 26), date_to=date(2024, 2, 29)
+    )
+    RateBand.objects.create(period=late_feb, min_party=1, max_party=8, nightly=Decimal("100.00"))
+    early_march = RatePeriod.objects.create(
+        plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 10)
+    )
+    RateBand.objects.create(period=early_march, min_party=1, max_party=8, nightly=Decimal("150.00"))
+    ctx = RateProjectionService.project(
+        property=property_,
+        date_from=date(2027, 2, 1),
+        currency=gbp,
+        date_map=shift_to_changeover_weekday,
+    )
+    assert ctx is not None
+    # Early March maps to [26 Feb - 7 Mar], Late Feb claims [1 - 4 Mar]:
+    # Early March's leading fragment keeps its pk, the trailing one gets -1.
+    assert [(p.pk, p.date_from, p.date_to) for p in ctx.periods] == [
+        (early_march.pk, date(2027, 2, 26), date(2027, 2, 28)),
+        (late_feb.pk, date(2027, 3, 1), date(2027, 3, 4)),
+        (-1, date(2027, 3, 5), date(2027, 3, 7)),
+    ]
+
+
+@pytest.mark.django_db
+def test_project_keeps_fallback_only_context_when_no_approved_bands(
+    property_: Property, gbp: Currency, anchor_plan: RateBand
+) -> None:
+    """An anchor whose active periods carry no approved bands still projects:
+    the engine prices such a context at the plan's fallback_nightly, exactly
+    like the real-plan shape it mirrors. Returning None here would flip a
+    priced guide quote into NoRateAvailable."""
+    plan = anchor_plan.period.plan
+    plan.fallback_nightly = Decimal("120.00")
+    plan.save(update_fields=["fallback_nightly"])
+    anchor_plan.is_approved = False
+    anchor_plan.save(update_fields=["is_approved"])
+
+    ctx = RateProjectionService.project(
+        property=property_, date_from=date(2028, 7, 4), currency=gbp
+    )
+    assert ctx is not None
+    assert ctx.periods == []
+    assert ctx.bands_by_period == {}
+    assert ctx.plan.fallback_nightly == Decimal("120.00")

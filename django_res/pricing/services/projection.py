@@ -14,11 +14,24 @@ This module owns three things:
 * `PricingContext`, the (plan, periods, bands_by_period) triple the engine
   consumes whether it came from the database (real) or a projection (synthesized).
 
-The synthesized plan / periods / rules are **unsaved** model instances whose `pk`
-is set to the source row's pk. That gives the quote breakdown free traceability
-(`QuoteLine.band_id` / `winning_period_id` point at the real anchor rows) without
-ever touching the database. See `04-pricing.md` "Projected pricing for future
-years".
+The synthesized plan / periods / rules are **unsaved** model instances built
+from the shared BUG-016 flattener (`pricing.services.flattening`), so a
+projected grid is byte-identical to the rows `RateCarryoverService.materialise`
+would persist — parity by construction, pinned by
+`test_cross_producer_equivalence`.
+
+Traceability: a band's `pk` is its source rule's pk (fragments of one rule
+share it — safe, the flat grid is disjoint), and a period keeps its source
+period's pk when all its bands descend from that one period and the pk is
+still free. Any other flat period (a collision regrouping, or a second
+fragment of an already-used parent) gets a deterministic **negative**
+synthetic id (-1, -2, ... in date order; real pks are positive, so they can
+never collide). Those negative ids flow into persisted quote snapshots
+(`QuoteLine.period_id` / `breakdown["winning_period_id"]`) for collision
+fragments; the FE treats an unknown period id as label-less, and the old lazy
+path's provenance for such fragments was already misleading (it pointed at a
+period whose stored dates were the unflattened originals). See
+`04-pricing.md` "Projected pricing for future years".
 """
 
 from __future__ import annotations
@@ -30,6 +43,8 @@ from decimal import Decimal
 from typing import Any
 
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from pricing.services.flattening import SourceBand, flatten_rate_grid
+from pricing.services.period_names import uniform_or_derived_name
 
 # A date-map shifts a single source date by `year_delta` whole years into the
 # target year. It is applied independently to each rule endpoint, so it must be a
@@ -134,6 +149,48 @@ def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, l
     return [(period, bands_by_period.get(period.pk, [])) for period in periods]
 
 
+@dataclass(frozen=True)
+class _AnchorRef:
+    """Flattener payload: the real anchor rows a flat cell descends from."""
+
+    rule: RateBand
+    period: RatePeriod
+
+
+def map_anchor_sources[P](
+    periods_with_rules: list[tuple[RatePeriod, list[RateBand]]],
+    year_delta: int,
+    date_map: DateMap,
+    payload: Callable[[RatePeriod, RateBand], P],
+) -> list[SourceBand[P]]:
+    """The flattener inputs for carrying an anchor year forward by `year_delta`.
+
+    The ONE place the date mapping and the precedence key are decided for both
+    rate-grid producers (BUG-016): projection and the carry-forward
+    materialiser call this (over `load_anchor_periods_with_rules` output) with
+    different payloads but identical geometry, so their grids can't drift
+    apart. `precedence=(rule.pk,)` is the lowest-pk tie-break
+    `pick_band_for_night` applies to colliding bands. A period whose only
+    bands are unapproved contributes nothing (it could never price a night
+    anyway).
+    """
+    sources: list[SourceBand[P]] = []
+    for period, rules in periods_with_rules:
+        new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
+        for rule in rules:
+            sources.append(
+                SourceBand(
+                    date_from=new_from,
+                    date_to=new_to,
+                    min_party=rule.min_party,
+                    max_party=rule.max_party,
+                    precedence=(rule.pk,),
+                    payload=payload(period, rule),
+                )
+            )
+    return sources
+
+
 class RateProjectionService:
     """Derive a guide-rate `PricingContext` for a year that has no rate plan."""
 
@@ -196,6 +253,21 @@ class RateProjectionService:
         year_delta = target_year - source_year
         factor = Decimal("1") + uplift
 
+        # Same geometry, same flattener, same precedence as the carry-forward
+        # materialiser — via the shared builder, so the projected grid and the
+        # rows `materialise` would write are identical by construction. An
+        # empty grid (anchor's bands all unapproved) still projects: the
+        # engine prices such a context at the plan's `fallback_nightly`,
+        # exactly like its real-plan counterpart.
+        flattened = flatten_rate_grid(
+            map_anchor_sources(
+                periods_with_rules,
+                year_delta,
+                date_map,
+                lambda period, rule: _AnchorRef(rule=rule, period=period),
+            )
+        )
+
         proj_plan = RatePlan(
             id=anchor.pk,
             property_id=anchor.property_id,
@@ -214,35 +286,57 @@ class RateProjectionService:
 
         proj_periods: list[RatePeriod] = []
         bands_by_period: dict[int, list[RateBand]] = {}
-        for period, rules in periods_with_rules:
-            new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
+        used_ids: set[int] = set()
+        next_synthetic = 0
+        for flat_period in flattened.periods:  # date order
+            # Period-id rule (see module docstring): single-parentage periods
+            # keep the source pk for traceability while it's free; everything
+            # else gets the next negative synthetic id. `bands_by_period` is
+            # keyed on these ids, so uniqueness is load-bearing.
+            parent_pks = {band.source.payload.period.pk for band in flat_period.bands}
+            if len(parent_pks) == 1 and (parent_pk := next(iter(parent_pks))) not in used_ids:
+                period_id: int = parent_pk
+            else:
+                next_synthetic -= 1
+                period_id = next_synthetic
+            used_ids.add(period_id)
+
+            # bands[0] is the winner (lowest source pk): its parent period
+            # donates min/max nights, matching the materialised twin.
+            winner_period = flat_period.bands[0].source.payload.period
             proj_periods.append(
                 RatePeriod(
-                    id=period.pk,
+                    id=period_id,
                     plan_id=anchor.pk,
-                    name=period.name,
-                    date_from=new_from,
-                    date_to=new_to,
-                    min_nights=period.min_nights,
-                    max_nights=period.max_nights,
-                    is_active=period.is_active,
+                    name=uniform_or_derived_name(
+                        (band.source.payload.period.name for band in flat_period.bands),
+                        flat_period.date_from,
+                        flat_period.date_to,
+                    ),
+                    date_from=flat_period.date_from,
+                    date_to=flat_period.date_to,
+                    min_nights=winner_period.min_nights,
+                    max_nights=winner_period.max_nights,
+                    is_active=True,
                 )
             )
-            # Bands inherit the period's (shifted) dates; only party/price shift
-            # per band.
-            bands_by_period[period.pk] = [
-                RateBand(
-                    id=rule.pk,
-                    period_id=period.pk,
-                    is_approved=True,
-                    min_party=rule.min_party,
-                    max_party=rule.max_party,
-                    nightly=apply_uplift(rule.nightly, factor),
-                    weekly=apply_uplift(rule.weekly, factor),
-                    is_poa=rule.is_poa,
+            proj_bands: list[RateBand] = []
+            for band in flat_period.bands:
+                rule = band.source.payload.rule
+                proj_bands.append(
+                    RateBand(
+                        id=rule.pk,
+                        period_id=period_id,
+                        is_approved=True,
+                        min_party=band.min_party,
+                        max_party=band.max_party,
+                        nightly=apply_uplift(rule.nightly, factor),
+                        weekly=apply_uplift(rule.weekly, factor),
+                        is_poa=rule.is_poa,
+                    )
                 )
-                for rule in rules
-            ]
+            bands_by_period[period_id] = proj_bands
+        assert len(used_ids) == len(proj_periods)  # ids are unique by construction
 
         projection = {
             "source_plan_id": anchor.pk,

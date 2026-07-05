@@ -7,6 +7,7 @@ prints a summary — and that `--property-id` scopes to one villa.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from io import StringIO
 from typing import TYPE_CHECKING, cast
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, cast
 import httpx
 import pytest
 import respx
+import time_machine
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
@@ -25,6 +27,17 @@ if TYPE_CHECKING:
     from properties.models import Property, PropertyCalendarFeed
 
 pytestmark = pytest.mark.django_db
+
+# The mocked feed carries literal July-2026 events and the ingest window opens
+# at "today", so the clock must sit before the fixtures for events to import.
+FROZEN_TODAY = "2026-06-01"
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock() -> Iterator[None]:
+    with time_machine.travel(FROZEN_TODAY, tick=False):
+        yield
+
 
 _ICS = (
     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\n"

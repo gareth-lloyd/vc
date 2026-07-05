@@ -152,32 +152,6 @@ def test_row_to_band_skips_zero_length_range(loaded_plan: RatePlan) -> None:
 
 
 @pytest.mark.django_db
-def test_row_to_band_party_intervals_prefers_first_valid(loaded_plan: RatePlan) -> None:
-    """Resolver upper interval starts above capacity → fall back to the lower one."""
-    band = _row_to_band(
-        _row(PartySize=None, _party_intervals=[(9, None), (1, 3)]),
-        loaded_plan,
-    )
-    assert band is not None
-    assert (band.min_party, band.max_party) == (1, 3)
-
-
-@pytest.mark.django_db
-def test_row_to_band_party_intervals_unbounded_uses_capacity(loaded_plan: RatePlan) -> None:
-    band = _row_to_band(
-        _row(PartySize=None, _party_intervals=[(5, None)]),
-        loaded_plan,
-    )
-    assert band is not None
-    assert (band.min_party, band.max_party) == (5, 8)
-
-
-@pytest.mark.django_db
-def test_row_to_band_party_intervals_all_emptied_by_capacity(loaded_plan: RatePlan) -> None:
-    assert _row_to_band(_row(PartySize=None, _party_intervals=[(9, None)]), loaded_plan) is None
-
-
-@pytest.mark.django_db
 def test_row_to_band_occupancy_band_uses_range_and_price(loaded_plan: RatePlan) -> None:
     """An occupancy band row carries its (from, to) party range and its own
     weekly/nightly price straight through to the band."""
@@ -198,17 +172,6 @@ def test_row_to_band_occupancy_band_open_top_clamps_to_capacity(loaded_plan: Rat
     band = _row_to_band(_row(_occ_band=(6, None), WeeklyPrice=Decimal("700")), loaded_plan)
     assert band is not None
     assert (band.min_party, band.max_party) == (6, 8)
-
-
-@pytest.mark.django_db
-def test_row_to_band_party_intervals_override_occ_band(loaded_plan: RatePlan) -> None:
-    """A resolver party-clip (`_party_intervals`) wins over the raw band range."""
-    band = _row_to_band(
-        _row(_occ_band=(2, 8), _party_intervals=[(5, 8)], WeeklyPrice=Decimal("500")),
-        loaded_plan,
-    )
-    assert band is not None
-    assert (band.min_party, band.max_party) == (5, 8)
 
 
 def test_apply_since_is_a_noop() -> None:
@@ -255,7 +218,8 @@ def test_load_rows_purge_deletes_newly_dropped_row(loaded_plan: RatePlan) -> Non
     )
     assert RateBand.objects.count() == 2
 
-    # Legacy row 1 grew to fully cover row 2 → resolver drops 2; the purge
+    # Legacy row 1 grew to fully cover row 2 → the flattener fully shadows
+    # 2 (shadowed_dropped, not the resolver's counter); the purge
     # frees row 2's old span so row 1's expansion can't trip the EXCLUDE
     # constraint — convergence in one run, no report.errors.
     second = LoadReport(loader="rate_rule")
@@ -477,6 +441,85 @@ def test_load_rows_creates_disjoint_periods_for_overlapping_party_rows(
     # GAP-059: every synthesized period carries the derived date-span name
     # (legacy has no period-name column to draw from).
     assert [p.name for p in periods] == ["1\u201310 Jun", "11\u201320 Jun"]
+
+
+@pytest.mark.django_db
+def test_load_rows_mid_punch_keeps_both_sides(loaded_plan: RatePlan) -> None:
+    """A winner strictly inside a loser's span splits the loser: BOTH remainders
+    persist (BUG-016 canonical semantics — the old resolver clipped to the
+    larger side), the later-date fragment namespaced `#seg1`."""
+    rows = [
+        _row(ID=1, FromDate=date(2025, 6, 10), ToDate=date(2025, 6, 12)),
+        _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 30)),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    by_span = {
+        (b.period.date_from, b.period.date_to): b.legacy_id
+        for b in RateBand.objects.select_related("period")
+    }
+    assert by_span == {
+        (date(2025, 6, 1), date(2025, 6, 9)): "2",
+        (date(2025, 6, 10), date(2025, 6, 12)): "1",
+        (date(2025, 6, 13), date(2025, 6, 30)): "2#seg1",
+    }
+
+
+@pytest.mark.django_db
+def test_load_rows_single_day_remainder_persisted(loaded_plan: RatePlan) -> None:
+    """A collision leaving a one-day remainder persists it as a single-day
+    period (the old resolver's strict `<` remainder rule dropped it)."""
+    rows = [
+        _row(ID=1, FromDate=date(2025, 6, 2), ToDate=date(2025, 6, 10)),
+        _row(ID=2, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10)),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    by_span = {
+        (b.period.date_from, b.period.date_to): b.legacy_id
+        for b in RateBand.objects.select_related("period")
+    }
+    assert by_span == {
+        (date(2025, 6, 1), date(2025, 6, 1)): "2",
+        (date(2025, 6, 2), date(2025, 6, 10)): "1",
+    }
+
+
+@pytest.mark.django_db
+def test_load_rows_party_split_loser_keeps_all_brackets(loaded_plan: RatePlan) -> None:
+    """Identical dates, winner (3,3), loser (1, capacity): the loser persists
+    BOTH uncovered brackets (the old transform picked only the first surviving
+    interval), bare legacy_id on the LOWEST bracket, `#seg1` on the upper."""
+    rows = [
+        _row(ID=1, PartySize=3),
+        _row(ID=2, PartySize=None),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    bands = {b.legacy_id: (b.min_party, b.max_party) for b in RateBand.objects.all()}
+    assert bands == {"1": (3, 3), "2": (1, 2), "2#seg1": (4, 8)}
+    # One shared date span — all three bands hang off a single period.
+    assert RatePeriod.objects.filter(plan=loaded_plan).count() == 1
+
+
+@pytest.mark.django_db
+def test_load_rows_approved_later_row_beats_unapproved_earlier(loaded_plan: RatePlan) -> None:
+    """Precedence is (not approved, id, disc): an approved higher-ID row wins
+    the contested span over an unapproved lower-ID one."""
+    rows = [
+        _row(ID=1, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 10), IsApprove=False),
+        _row(ID=2, FromDate=date(2025, 6, 5), ToDate=date(2025, 6, 20), IsApprove=True),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    by_span = {
+        (b.period.date_from, b.period.date_to): b.legacy_id
+        for b in RateBand.objects.select_related("period")
+    }
+    assert by_span == {
+        (date(2025, 6, 1), date(2025, 6, 4)): "1",
+        (date(2025, 6, 5), date(2025, 6, 20)): "2",
+    }
 
 
 @pytest.mark.django_db

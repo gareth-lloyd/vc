@@ -235,8 +235,13 @@ _CHECKS: list[_Check] = [
         # fragment-inflation mechanism is unchanged, but there is no longer a
         # transitional `save()` shim or `backfill_plan_periods` pass: the
         # `RateBandLoader._load_rows` builds each plan's disjoint `RatePeriod`
-        # date axis directly via `segment_card_rules`. The old 3462+265 breakdown
-        # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
+        # date axis directly via the shared `flatten_rate_grid`. The old
+        # 3462+265 breakdown (see CUTOVER.md "Rate rule overlap resolution") no
+        # longer holds as-is. 3727 is also pre-BUG-016: the split-not-clip
+        # flattener keeps fragments the old clip-only resolver discarded
+        # (interior-collision far sides, single-day remainders, extra
+        # party-split brackets), shifting row counts again — recalibrate at the
+        # next legacy dry-run.
         expected_gap=3727,
     ),
     _Check(

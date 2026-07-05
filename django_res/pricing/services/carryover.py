@@ -15,8 +15,8 @@ or the carry-forward endpoint.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -25,38 +25,31 @@ from django.db import transaction
 
 from core.exceptions import NoRateAvailable
 from pricing.models import RateBand, RatePeriod, RatePlan
-from pricing.services.extras import date_ranges_overlap
-from pricing.services.period_names import derive_period_name
+from pricing.services.flattening import flatten_rate_grid
+from pricing.services.period_names import uniform_or_derived_name
 from pricing.services.projection import (
     DateMap,
     RateProjectionService,
     apply_uplift,
     keep_calendar_date,
     load_anchor_periods_with_rules,
-    map_range,
+    map_anchor_sources,
     shift_to_changeover_weekday,
 )
-from pricing.services.segmentation import segment_card_rules
 
 logger = structlog.get_logger(__name__)
 
 
-@dataclass
-class _Band:
-    """A projected party band with its (date-mapped) span and carried metadata.
+@dataclass(frozen=True)
+class _CarriedRate:
+    """The flattener payload: prices + metadata a materialised row carries.
 
-    Feeds both the collision resolver (`_unclaimed_segments`) and the date
-    segmentation (`segment_card_rules`, which reads `date_from`/`date_to`/
-    `min_party`/`max_party`). `min_nights`/`max_nights` and `period_name` ride
-    along from the band's source period so the materialised period can carry
-    them (GAP-059: the curated label survives the yearly carry).
+    `min_nights`/`max_nights` and `period_name` ride along from the band's
+    source period so the materialised period can carry them (GAP-059: the
+    curated label survives the yearly carry).
     """
 
     source_pk: int
-    date_from: date
-    date_to: date
-    min_party: int
-    max_party: int
     nightly: Decimal | None
     weekly: Decimal | None
     is_poa: bool
@@ -64,37 +57,6 @@ class _Band:
     min_nights: int | None
     max_nights: int | None
     period_name: str
-
-
-def _unclaimed_segments(band: _Band, claimed: list[_Band]) -> list[tuple[date, date]]:
-    """Date sub-ranges of a mapped band not covered by any party-overlapping
-    already-claimed segment, in date order.
-
-    Date-mapping can land adjacent source periods on top of each other (a
-    leap-year range spanning Feb 29 keeps its span while the calendar loses a
-    day; the weekday map can shift neighbours in opposite directions by up to
-    3 days each), and the periods-disjoint EXCLUDE would turn that into an
-    `IntegrityError`. Bands claim space in ascending source-pk order — the same
-    precedence `pick_band_for_night` gives colliding in-memory projected bands —
-    so the materialised rows price every night exactly as the projection would.
-    A remainder can sit on either side of a claim (or both, splitting the band
-    into two rows).
-    """
-    segments = [(band.date_from, band.date_to)]
-    for prev in claimed:
-        if band.min_party > prev.max_party or band.max_party < prev.min_party:
-            continue
-        survivors: list[tuple[date, date]] = []
-        for lo, hi in segments:
-            if not date_ranges_overlap(lo, hi, prev.date_from, prev.date_to):
-                survivors.append((lo, hi))
-                continue
-            if lo < prev.date_from:
-                survivors.append((lo, prev.date_from - timedelta(days=1)))
-            if prev.date_to < hi:
-                survivors.append((prev.date_to + timedelta(days=1), hi))
-        segments = survivors
-    return sorted(segments)
 
 
 class RateCarryoverService:
@@ -141,52 +103,49 @@ class RateCarryoverService:
         year_delta = target_year - anchor.effective_from.year
         factor = Decimal("1") + uplift
 
-        # Flatten the anchor into projected bands: each period's dates mapped
-        # forward, each band's prices uplifted. `source_pk` preserves the
-        # precedence `pick_band_for_night` gives colliding projected bands
-        # (lowest pk wins), and each band carries its source period's min/max
-        # nights so the materialised period can too (parity with `project`,
-        # which copies them). Only active periods / approved bands — the exact
-        # set a real quote prices — via the shared batched loader.
-        projected: list[_Band] = []
-        for period, rules in load_anchor_periods_with_rules(anchor):
-            new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
-            for rule in rules:
-                projected.append(
-                    _Band(
-                        source_pk=rule.pk,
-                        date_from=new_from,
-                        date_to=new_to,
-                        min_party=rule.min_party,
-                        max_party=rule.max_party,
-                        nightly=apply_uplift(rule.nightly, factor),
-                        weekly=apply_uplift(rule.weekly, factor),
-                        is_poa=rule.is_poa,
-                        notes=rule.notes,
-                        min_nights=period.min_nights,
-                        max_nights=period.max_nights,
-                        period_name=period.name,
-                    )
-                )
+        # Project the anchor into flattener inputs via the shared builder —
+        # the same geometry and precedence the projection uses, so the
+        # materialised rows price every night exactly as the projection would.
+        # Only active periods / approved bands — the exact set a real quote
+        # prices — via the shared batched loader; prices are uplifted here.
+        sources = map_anchor_sources(
+            load_anchor_periods_with_rules(anchor),
+            year_delta,
+            date_map,
+            lambda period, rule: _CarriedRate(
+                source_pk=rule.pk,
+                nightly=apply_uplift(rule.nightly, factor),
+                weekly=apply_uplift(rule.weekly, factor),
+                is_poa=rule.is_poa,
+                notes=rule.notes,
+                min_nights=period.min_nights,
+                max_nights=period.max_nights,
+                period_name=period.name,
+            ),
+        )
 
-        # Resolve date-mapping collisions in source-pk order into a
-        # (date x party)-disjoint band set. Inclusive periods (GAP-056) admit
-        # single-day segments (lo == hi); only inverted ranges (lo > hi, when a
-        # claim abuts a boundary) are dropped.
-        # `disjoint` doubles as the running claim set `_unclaimed_segments` reads
-        # to trim later bands, and as the final input to `segment_card_rules`.
-        disjoint: list[_Band] = []
-        for band in sorted(projected, key=lambda b: b.source_pk):
-            segments = [(lo, hi) for lo, hi in _unclaimed_segments(band, disjoint) if lo <= hi]
-            if not segments:
-                logger.info(
-                    "pricing.carryover.rule_skipped",
-                    source_rule_id=band.source_pk,
-                    reason="date_map_collision_emptied_range",
-                )
-                continue
-            for lo, hi in segments:
-                disjoint.append(replace(band, date_from=lo, date_to=hi))
+        # Date-mapping can land adjacent source periods on top of each other
+        # (a leap-year range spanning Feb 29 keeps its span while the calendar
+        # loses a day; the weekday map can shift neighbours in opposite
+        # directions by up to 3 days each), and the periods-disjoint EXCLUDE
+        # would turn that into an `IntegrityError`. The shared flattener
+        # (BUG-016) resolves collisions into the (date x party)-disjoint grid;
+        # a band only vanishes when every one of its cells was claimed.
+        flattened = flatten_rate_grid(sources)
+        for dropped in flattened.dropped_sources:
+            logger.info(
+                "pricing.carryover.rule_skipped",
+                source_rule_id=dropped.payload.source_pk,
+                reason="date_map_collision_emptied_range",
+            )
+        for clipped in flattened.party_clipped:
+            # The band survives but with a mutated party bracket — leave an
+            # audit trail so a carried year's shape drift is explicable.
+            logger.info(
+                "pricing.carryover.rule_party_clipped",
+                source_rule_id=clipped.payload.source_pk,
+                reason="date_map_collision_clipped_party_bracket",
+            )
 
         with transaction.atomic():
             new_plan = RatePlan.objects.create(
@@ -206,40 +165,35 @@ class RateCarryoverService:
                 # that already persist across years — nothing to carry per-plan.
                 notes=f"Carried forward from plan #{anchor.pk} ({anchor.effective_from.year}).",
             )
-            # Group the disjoint bands onto a shared disjoint RatePeriod date axis
-            # (ragged party-disjoint bands fan out into per-segment periods, like
-            # the loader/backfill). `disjoint` is pk-ordered, so a segment's bands
-            # are too and `bands[0]` (lowest pk) carries the winning min/max nights.
-            for seg in segment_card_rules(disjoint).segments:
-                bands: tuple[_Band, ...] = seg.rules
-                # GAP-059: keep the curated label when the segment's bands all
-                # descend from one source period (the common carry); a segment
-                # that regrouped bands from different periods has no single
-                # name to copy — fall back to the same date-span placeholder
-                # the loader and backfill use.
-                source_names = {band.period_name for band in bands}
+            # One RatePeriod per flat period. `bands` is winner-first
+            # (precedence order), so bands[0] (lowest source pk) carries the
+            # winning min/max nights.
+            for flat_period in flattened.periods:
+                # GAP-059 name rule lives in `uniform_or_derived_name`.
+                winner = flat_period.bands[0].source.payload
                 new_period = RatePeriod.objects.create(
                     plan=new_plan,
-                    name=(
-                        source_names.pop()
-                        if len(source_names) == 1
-                        else derive_period_name(seg.date_from, seg.date_to)
+                    name=uniform_or_derived_name(
+                        (band.source.payload.period_name for band in flat_period.bands),
+                        flat_period.date_from,
+                        flat_period.date_to,
                     ),
-                    date_from=seg.date_from,
-                    date_to=seg.date_to,
-                    min_nights=bands[0].min_nights,
-                    max_nights=bands[0].max_nights,
+                    date_from=flat_period.date_from,
+                    date_to=flat_period.date_to,
+                    min_nights=winner.min_nights,
+                    max_nights=winner.max_nights,
                 )
-                for band in bands:
+                for band in flat_period.bands:
+                    carried = band.source.payload
                     RateBand.objects.create(
                         period=new_period,
                         min_party=band.min_party,
                         max_party=band.max_party,
-                        nightly=band.nightly,
-                        weekly=band.weekly,
-                        is_poa=band.is_poa,
+                        nightly=carried.nightly,
+                        weekly=carried.weekly,
+                        is_poa=carried.is_poa,
                         is_approved=True,
                         is_locked=False,
-                        notes=band.notes,
+                        notes=carried.notes,
                     )
         return new_plan

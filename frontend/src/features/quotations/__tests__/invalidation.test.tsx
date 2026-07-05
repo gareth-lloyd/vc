@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "@/test/render";
 import { server } from "@/test/msw/server";
 import { invalidatedKeys } from "@/test/invalidation";
 import { queryKeys } from "@/lib/query/keys";
@@ -60,15 +61,6 @@ const lineFixture = {
   hold: { id: 1, date_from: "2026-07-01", date_to: "2026-07-08", expires_at: null },
 };
 
-function makeClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: 0, staleTime: 0 },
-      mutations: { retry: false },
-    },
-  });
-}
-
 function wrapperFor(queryClient: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -84,7 +76,7 @@ describe("useConvertQuotation — BUG-018 cross-entity fan-out", () => {
         HttpResponse.json(bookingFixture),
       ),
     );
-    const queryClient = makeClient();
+    const queryClient = createTestQueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useConvertQuotation(quotationFixture), {
       wrapper: wrapperFor(queryClient),
@@ -115,7 +107,7 @@ describe("useConvertQuotation — BUG-018 cross-entity fan-out", () => {
         HttpResponse.json(bookingFixture),
       ),
     );
-    const queryClient = makeClient();
+    const queryClient = createTestQueryClient();
     const { result } = renderHook(() => useConvertQuotation(quotationFixture), {
       wrapper: wrapperFor(queryClient),
     });
@@ -134,7 +126,7 @@ describe("useSendQuotation — BUG-018 cross-entity fan-out", () => {
         HttpResponse.json({ ...quotationFixture, agent: null }),
       ),
     );
-    const queryClient = makeClient();
+    const queryClient = createTestQueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useSendQuotation(QUOTATION_ID), {
       wrapper: wrapperFor(queryClient),
@@ -158,7 +150,7 @@ describe("useWithdrawQuotation — BUG-018 cross-entity fan-out", () => {
         HttpResponse.json({ ...quotationFixture, status: "cancelled" }),
       ),
     );
-    const queryClient = makeClient();
+    const queryClient = createTestQueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useWithdrawQuotation(QUOTATION_ID), {
       wrapper: wrapperFor(queryClient),
@@ -185,7 +177,7 @@ describe("useHoldQuotationLine — BUG-018 availability fan-out", () => {
         HttpResponse.json(lineFixture),
       ),
     );
-    const queryClient = makeClient();
+    const queryClient = createTestQueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useHoldQuotationLine(QUOTATION_ID, quotationFixture), {
       wrapper: wrapperFor(queryClient),

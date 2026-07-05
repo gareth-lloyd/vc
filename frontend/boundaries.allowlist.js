@@ -12,7 +12,7 @@ export const ALLOWED_EDGES = {
   companies: ["audit"],
   contacts: ["audit", "bookings", "companies"],
   dashboard: ["bookings", "enquiries"],
-  enquiries: ["bookings", "contacts", "quotations", "users"],
+  enquiries: ["bookings", "contacts", "users"],
   "owner-portal": ["auth"],
   properties: ["admin", "audit", "contacts"],
   quotations: ["admin", "bookings", "contacts", "enquiries", "properties"],

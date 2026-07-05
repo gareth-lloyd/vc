@@ -9,7 +9,9 @@ import { createTestQueryClient, renderWithProviders } from "@/test/render";
 import { useAuthStore } from "@/features/auth/store";
 import type { UserMe } from "@/features/auth/schemas";
 import { EnquiryDetailLayout } from "../EnquiryDetailLayout";
+import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
 import type { QuotationDetail } from "@/features/quotations/schemas";
+import type { EnquiryDetail } from "../schemas";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -109,7 +111,7 @@ function asViewerUser() {
 function setup(initial: string) {
   return renderWithProviders(
     <Routes>
-      <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+      <Route path="/enquiries/:id" element={<EnquiryDetailLayout quoteBuilder={QuoteBuilder} />} />
       <Route path="/enquiries/:id/details" element={<Navigate to=".." relative="path" replace />} />
       <Route
         path="/enquiries/:id/activity"
@@ -132,6 +134,40 @@ afterEach(() => {
 });
 
 describe("EnquiryDetailLayout", () => {
+  // The quote builder is injected by the route as a slot (GAP-072) so enquiries
+  // doesn't import quotations. This seam test pins the contract the router
+  // composes against: the layout mounts the slot with the enquiry and an
+  // onComplete callback.
+  it("mounts the injected quote builder with the enquiry and an onComplete handler", async () => {
+    asReservationsUser();
+    server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
+
+    const received: { enquiry?: EnquiryDetail; onComplete?: () => void } = {};
+    function StubBuilder({
+      enquiry,
+      onComplete,
+    }: {
+      enquiry: EnquiryDetail;
+      onComplete: () => void;
+    }) {
+      received.enquiry = enquiry;
+      received.onComplete = onComplete;
+      return <div data-testid="stub-builder">stub</div>;
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/enquiries/:id" element={<EnquiryDetailLayout quoteBuilder={StubBuilder} />} />
+      </Routes>,
+      { route: "/enquiries/7" },
+    );
+
+    // baseEnquiry is live with no quotes → the builder auto-opens and the slot mounts.
+    await screen.findByTestId("stub-builder");
+    expect(received.enquiry?.id).toBe(7);
+    expect(typeof received.onComplete).toBe("function");
+  });
+
   it("renders the reference, status and guest name", async () => {
     asReservationsUser();
     server.use(http.get("/api/v1/enquiries/7", () => HttpResponse.json(baseEnquiry)));
@@ -304,7 +340,10 @@ describe("EnquiryDetailLayout", () => {
       <>
         <NavTo id={8} />
         <Routes>
-          <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+          <Route
+            path="/enquiries/:id"
+            element={<EnquiryDetailLayout quoteBuilder={QuoteBuilder} />}
+          />
         </Routes>
       </>,
       { route: "/enquiries/7" },
@@ -378,7 +417,10 @@ describe("EnquiryDetailLayout", () => {
     );
     renderWithProviders(
       <Routes>
-        <Route path="/enquiries/:id" element={<EnquiryDetailLayout />} />
+        <Route
+          path="/enquiries/:id"
+          element={<EnquiryDetailLayout quoteBuilder={QuoteBuilder} />}
+        />
       </Routes>,
       { route: "/enquiries/7", queryClient },
     );

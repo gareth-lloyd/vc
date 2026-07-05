@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -20,7 +20,6 @@ import { useEnquiry, useReopenEnquiry } from "./hooks";
 import { AssignDialog } from "./components/AssignDialog";
 import { CloseDialog } from "./components/CloseDialog";
 import { EnquiryQuoteStack } from "./components/EnquiryQuoteStack";
-import { QuoteBuilder } from "@/features/quotations/components/QuoteBuilder";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { NotesTab } from "./tabs/NotesTab";
 import { CustomerProfilePanel } from "@/features/contacts/components/CustomerProfilePanel";
@@ -33,6 +32,15 @@ import {
 } from "./schemas";
 
 type DialogKind = "assign" | "close" | "reopen" | null;
+
+// The quote builder is injected by the route (`src/app/router.tsx` composes it
+// alongside this layout) rather than imported directly, so enquiries no longer
+// depends on quotations (GAP-072 — kills the enquiries→quotations edge; the
+// quote-is-downstream-of-enquiry direction stays as quotations→enquiries).
+// The slot type deliberately narrows QuoteBuilder's real
+// `onComplete?: (q: QuotationDetail) => void` to `() => void`: this call site
+// only needs the "done" signal to collapse the builder, not the committed quote.
+type QuoteBuilderSlot = ComponentType<{ enquiry: EnquiryDetail; onComplete: () => void }>;
 
 interface EnquiryActionsProps {
   enquiry: EnquiryDetail;
@@ -159,10 +167,12 @@ function QuotesSection({
   enquiry,
   building,
   setBuilding,
+  quoteBuilder: QuoteBuilder,
 }: {
   enquiry: EnquiryDetail;
   building: boolean;
   setBuilding: (value: boolean) => void;
+  quoteBuilder: QuoteBuilderSlot;
 }) {
   const { t } = useTranslation("enquiries");
   const isFinal = isFinalStatus(enquiry.status);
@@ -209,7 +219,7 @@ function QuotesSection({
   );
 }
 
-export function EnquiryDetailLayout() {
+export function EnquiryDetailLayout({ quoteBuilder }: { quoteBuilder: QuoteBuilderSlot }) {
   const { t } = useTranslation("enquiries");
   const { id } = useParams<{ id: string }>();
   const query = useEnquiry(id);
@@ -306,6 +316,7 @@ export function EnquiryDetailLayout() {
           enquiry={enquiry}
           building={building}
           setBuilding={setBuilding}
+          quoteBuilder={quoteBuilder}
         />
       </TwoColumn>
 

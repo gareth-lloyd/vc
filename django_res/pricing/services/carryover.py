@@ -25,7 +25,7 @@ from django.db import transaction
 
 from core.exceptions import NoRateAvailable
 from pricing.models import RateBand, RatePeriod, RatePlan
-from pricing.services.flattening import SourceBand, flatten_rate_grid
+from pricing.services.flattening import flatten_rate_grid
 from pricing.services.period_names import uniform_or_derived_name
 from pricing.services.projection import (
     DateMap,
@@ -33,7 +33,7 @@ from pricing.services.projection import (
     apply_uplift,
     keep_calendar_date,
     load_anchor_periods_with_rules,
-    map_range,
+    map_anchor_sources,
     shift_to_changeover_weekday,
 )
 
@@ -103,36 +103,26 @@ class RateCarryoverService:
         year_delta = target_year - anchor.effective_from.year
         factor = Decimal("1") + uplift
 
-        # Project the anchor into flattener inputs: each period's dates mapped
-        # forward, each band's prices uplifted. `precedence=(rule.pk,)` is the
-        # exact tie-break `pick_band_for_night` applies to colliding in-memory
-        # projected bands (lowest pk wins), so the materialised rows price
-        # every night exactly as the projection would. Only active periods /
-        # approved bands — the exact set a real quote prices — via the shared
-        # batched loader.
-        sources: list[SourceBand[_CarriedRate]] = []
-        for period, rules in load_anchor_periods_with_rules(anchor):
-            new_from, new_to = map_range(period.date_from, period.date_to, year_delta, date_map)
-            for rule in rules:
-                sources.append(
-                    SourceBand(
-                        date_from=new_from,
-                        date_to=new_to,
-                        min_party=rule.min_party,
-                        max_party=rule.max_party,
-                        precedence=(rule.pk,),
-                        payload=_CarriedRate(
-                            source_pk=rule.pk,
-                            nightly=apply_uplift(rule.nightly, factor),
-                            weekly=apply_uplift(rule.weekly, factor),
-                            is_poa=rule.is_poa,
-                            notes=rule.notes,
-                            min_nights=period.min_nights,
-                            max_nights=period.max_nights,
-                            period_name=period.name,
-                        ),
-                    )
-                )
+        # Project the anchor into flattener inputs via the shared builder —
+        # the same geometry and precedence the projection uses, so the
+        # materialised rows price every night exactly as the projection would.
+        # Only active periods / approved bands — the exact set a real quote
+        # prices — via the shared batched loader; prices are uplifted here.
+        sources = map_anchor_sources(
+            load_anchor_periods_with_rules(anchor),
+            year_delta,
+            date_map,
+            lambda period, rule: _CarriedRate(
+                source_pk=rule.pk,
+                nightly=apply_uplift(rule.nightly, factor),
+                weekly=apply_uplift(rule.weekly, factor),
+                is_poa=rule.is_poa,
+                notes=rule.notes,
+                min_nights=period.min_nights,
+                max_nights=period.max_nights,
+                period_name=period.name,
+            ),
+        )
 
         # Date-mapping can land adjacent source periods on top of each other
         # (a leap-year range spanning Feb 29 keeps its span while the calendar

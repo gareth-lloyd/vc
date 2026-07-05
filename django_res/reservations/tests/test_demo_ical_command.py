@@ -8,6 +8,7 @@ import *logic* itself is covered exhaustively by `test_ical_ingest.py`.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from io import StringIO
 from typing import cast
@@ -15,6 +16,7 @@ from typing import cast
 import httpx
 import pytest
 import respx
+import time_machine
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import override_settings
@@ -28,6 +30,17 @@ from reservations.management.commands.demo_ical import GUEST_EMAIL, PROPERTY_SLU
 from reservations.models import OwnerBlock
 
 pytestmark = pytest.mark.django_db
+
+# The mocked feed carries literal July-2026 events and the ingest window opens
+# at "today", so the clock must sit before the fixtures for events to import.
+FROZEN_TODAY = "2026-06-01"
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock() -> Iterator[None]:
+    with time_machine.travel(FROZEN_TODAY, tick=False):
+        yield
+
 
 _FEED_URL = "https://demo.test/calendar.ics"
 

@@ -7,12 +7,14 @@ awareness-feed rows, conflict signal, and availability surface.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
 import respx
+import time_machine
 from django.utils import timezone
 
 from integrations.enums import SyncProvider, SyncStatus
@@ -38,6 +40,16 @@ if TYPE_CHECKING:
     from reservations.models import TermsVersion
 
 pytestmark = pytest.mark.django_db
+
+# The mocked feeds carry literal July-2026 events and the ingest window opens
+# at "today", so the clock must sit before the fixtures for events to import.
+FROZEN_TODAY = "2026-06-01"
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock() -> Iterator[None]:
+    with time_machine.travel(FROZEN_TODAY, tick=False):
+        yield
 
 
 def _ics(*ranges: tuple[str, str], uid_prefix: str = "evt") -> str:

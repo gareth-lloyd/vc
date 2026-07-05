@@ -334,7 +334,7 @@ is where the dry-run calibration happens), not just here.
 | Source table              | Expected gap | Reason |
 |---------------------------|--------------|--------|
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
-| `VillaFinance`            | 1236         | 413 contact-default rows are per-contact templates, not per-villa rows (the GAP-070 unit-6 owner-contact fallback applies them to villas with no `VillaFinance` row of their own); 676 parent-child override rows have no schema equivalent. |
+| `VillaFinance`            | 1236 *(placeholder)* | **Recalibrate at the first post-GAP-070 dry-run.** 1236 was exact while loaded matched the `VillaId IS NOT NULL` universe 1:1 (413 contact-default template rows + 676 parent-child override rows, neither with a per-villa home). The GAP-070 owner-contact fallback now also *creates* a `PropertyFinance` row for each financeless villa with a live OWNER assignment, so the true gap is 1236 minus that fallback count — only derivable against the live dump. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
 | `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3727 *(placeholder)* | **BUG-013**: RateRule now loads from two legacy sources, so the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents (see [Occupancy-band pricing](#occupancy-band-pricing-bug-013)). `3727` is a **placeholder to recalibrate at the first post-BUG-013 dry-run** — it can only be derived against the live dump. The true gap nets synthetic base-weekly gap-fallback rules (no legacy row) against dropped priceless/invalid-band/overlap-covered rows and rows on the 67 unloaded seasons; the old 3462 + 265 breakdown no longer holds as-is. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
@@ -466,7 +466,11 @@ it by design: overlap resolution needs the whole season's row set, so it
 always does a full reload (see "Rate rule overlap resolution" above).
 `booking_charge_item` likewise ignores it (with a warning) —
 `VillaBookingDetails` has no `UpdatedAt`, and the removal sweep needs the
-full row set to detect deletions.
+full row set to detect deletions. `property_defaults` **skips entirely** on
+`--since` (with a warning): the loader re-applies the legacy
+`VillaConfigPropertyDefault` singleton onto `PropertyDefaults` (pk=1 — it
+deliberately has no `legacy_id`), and a delta run must not clobber edits
+staff made through `PATCH /property-defaults` during the cutover window.
 
 ## 7. England → GB merge
 

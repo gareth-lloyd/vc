@@ -44,14 +44,20 @@ _PROPERTY_STATUS_MAP = {
     4: PropertyStatus.ARCHIVED,
 }
 
+# Legacy changeover columns (`VillaMaster.SettingChangeoverDayId`,
+# `VillaConfigPropertyDefault.ChangeOverDay`) store `ChangeOverDays.Code`,
+# NOT the table's identity Id — the Blazor selects bind `Item1 = [Code]`
+# (`PropertyService.GetChangeOverDays` selects `[Code], [Name]`). Seeded
+# codes: -1 = Open/flexible, 0 = Sunday, 1 = Monday .. 6 = Saturday.
 _DAY_MAP = {
+    -1: PrefilledChangeOverDay.ANY,
+    0: PrefilledChangeOverDay.SUN,
     1: PrefilledChangeOverDay.MON,
     2: PrefilledChangeOverDay.TUE,
     3: PrefilledChangeOverDay.WED,
     4: PrefilledChangeOverDay.THU,
     5: PrefilledChangeOverDay.FRI,
     6: PrefilledChangeOverDay.SAT,
-    7: PrefilledChangeOverDay.SUN,
 }
 
 
@@ -181,7 +187,9 @@ class PropertyLoader(BaseLoader):
         )
 
     def _write_settings(self, prop: Property, row: dict[str, Any]) -> None:
-        changeover = _DAY_MAP.get(row.get("SettingChangeoverDayId") or 0)
+        # NOT `or 0` — 0 is a real code (Sunday), only NULL means unset.
+        day_code = row.get("SettingChangeoverDayId")
+        changeover = _DAY_MAP.get(day_code) if day_code is not None else None
         currency = (
             Currency.objects.filter(legacy_id=str(row["SettingCurrencyId"])).first()
             if row.get("SettingCurrencyId")

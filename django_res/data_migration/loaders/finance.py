@@ -3,20 +3,25 @@
 VillaFinance is a multi-purpose table:
 - `VillaId > 0` rows → per-property `PropertyFinance` (PropertyFinanceLoader).
 - `VillaId IS NULL/0, ContactId NOT NULL, ParentId NULL` rows are per-contact
-  defaults (see `_fetch_contact_default_finance`; the GAP-070 unit-6 fallback
-  applies them to villas that have no VillaFinance row of their own).
+  defaults (`_fetch_contact_default_finance`); PropertyFinanceLoader applies
+  them concretely to villas that have no VillaFinance row of their own
+  (GAP-070 decision 7).
 - `VillaId IS NULL/0, ParentId NOT NULL` rows are parent-child overrides;
   not migrated (no schema equivalent).
 """
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
+import structlog
+from django.db import transaction
 from django.utils import timezone
 
+from accounts.enums import ContactRole
 from accounts.models import Person
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
@@ -30,12 +35,15 @@ from properties.enums import (
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
+from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import PropertyFinance
 from properties.models.property import Property
 from reservations.enums import QuotationStatus
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
+
+logger = structlog.get_logger(__name__)
 
 _COMMISSION_TYPE_MAP = {
     1: CommissionCalcType.PERCENT,
@@ -154,12 +162,107 @@ class PropertyFinanceLoader(BaseLoader):
     """VillaFinance -> PropertyFinance (one row per VillaId).
 
     PropertyFinance is a OneToOne with property as primary key, so we upsert
-    via property, not legacy_id. Group-level rows (no VillaId) are skipped.
+    via property, not legacy_id. After the per-villa pass, villas with no
+    VillaFinance row of their own get their primary-OWNER contact's default
+    template written concretely (GAP-070 decision 7) — pre-GAP-070 those
+    defaults reached the villa via GroupFinance + ``effective()`` at read
+    time; post-GAP-070 the resolution happens once, at load time.
     """
 
     name = "property_finance"
     target_model = PropertyFinance
     legacy_query = f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance WHERE VillaId IS NOT NULL"
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        super()._load_rows(rows, report)
+        # A villa whose legacy row appeared in THIS pass is never
+        # fallback-filled — even when its write errored into report.errors
+        # (a template row masking a persistent write failure would freeze
+        # wrong money terms with only a buried error line as a clue).
+        seen = {str(r["VillaId"]) for r in rows if r.get("VillaId")}
+        self._apply_contact_defaults(report, exclude_legacy_ids=seen)
+
+    def _by_contact(self) -> dict[str, dict[str, Any]]:
+        # One legacy round trip per load, shared by the per-villa merge and
+        # the fallback pass; fetched lazily on first use.
+        if not hasattr(self, "_by_contact_cache"):
+            self._by_contact_cache = _fetch_contact_default_finance()
+        return self._by_contact_cache
+
+    def _apply_contact_defaults(
+        self,
+        report: LoadReport,
+        *,
+        exclude_legacy_ids: Collection[str] = frozenset(),
+    ) -> None:
+        """Fill financeless villas from their owner-contact default template.
+
+        Only creates rows where none exist, so the per-villa pass is never
+        overwritten and re-runs are idempotent (create-only: a template edit
+        in legacy after the row is written does NOT propagate — the rows
+        carry no origin marker to refresh by). Non-migrated properties (no
+        legacy_id) are out of scope — they get rows via `snapshot_defaults`.
+        """
+        villas = (
+            Property.objects.filter(legacy_id__isnull=False, finance__isnull=True)
+            .exclude(legacy_id="")
+            .exclude(legacy_id__in=exclude_legacy_ids)
+        )
+        if not villas.exists():
+            return
+        outcomes = {"applied": 0, "contact_only": 0, "skipped": 0}
+        with transaction.atomic():
+            for prop in villas:
+                try:
+                    with transaction.atomic():
+                        outcomes[self._fallback_one(prop, report)] += 1
+                except Exception as exc:  # isolate one bad villa from the rest
+                    report.errors.append((str(prop.legacy_id), repr(exc)))
+        # Deliberately not folded into report.skipped: the loadlegacy summary
+        # row reconciles against the legacy `VillaId IS NOT NULL` count, and
+        # these are Postgres-side villas, not legacy rows.
+        logger.info(
+            "data_migration.finance_contact_defaults_applied",
+            applied=outcomes["applied"],
+            contact_only=outcomes["contact_only"],
+            skipped=outcomes["skipped"],
+        )
+
+    def _fallback_one(self, prop: Property, report: LoadReport) -> str:
+        # Live assignments only, primary preferred, deterministic tie-break;
+        # a primary owner without a legacy_id can't match a template, so the
+        # filter lets a migrated non-primary owner resolve instead.
+        owner = (
+            PropertyContactAssignment.objects.filter(
+                property=prop,
+                role=ContactRole.OWNER,
+                end_date__isnull=True,
+                contact__legacy_id__isnull=False,
+            )
+            .exclude(contact__legacy_id="")
+            .order_by("-is_primary", "pk")
+            .values_list("contact__legacy_id", "contact_id")
+            .first()
+        )
+        if owner is None:
+            return "skipped"
+        owner_legacy_id, owner_pk = owner
+        if not owner_legacy_id:  # filtered above; narrows the Optional for mypy
+            return "skipped"
+        template = self._by_contact().get(owner_legacy_id)
+        if template is None:
+            # Owner known but no legacy template: still record the finance
+            # contact (the old GroupFinance mirror carried the contact even
+            # without one); NULL policy columns read as the frozen floor,
+            # which equals the old GroupFinance schema defaults.
+            PropertyFinance.objects.create(property=prop, contact_id=owner_pk)
+            report.created += 1
+            return "contact_only"
+        defaults = _finance_defaults(template)
+        defaults["contact_id"] = owner_pk
+        PropertyFinance.objects.create(property=prop, **defaults)
+        report.created += 1
+        return "applied"
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
@@ -172,6 +275,17 @@ class PropertyFinanceLoader(BaseLoader):
             else None
         )
         defaults = _finance_defaults(row)
+        # GAP-070 parity: pre-cutover, a NULL/"" field on a villa's own row
+        # resolved through the owner-contact default template at read time
+        # (GroupFinance + effective()). Reproduce that merge concretely —
+        # own value wins unless it is None/"" (0/False are own values).
+        template = self._by_contact().get(str(row["ContactId"])) if row.get("ContactId") else None
+        if template is not None:
+            template_defaults = _finance_defaults(template)
+            for field, own in defaults.items():
+                fallback = template_defaults.get(field)
+                if (own is None or own == "") and fallback not in (None, ""):
+                    defaults[field] = fallback
         defaults["contact"] = contact
 
         _, created = PropertyFinance.objects.update_or_create(

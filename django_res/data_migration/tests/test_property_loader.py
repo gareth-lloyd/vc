@@ -101,3 +101,27 @@ def test_process_row_creates_property_with_sentinel_when_fks_missing(
     loader._process_row(_row(RegionId=999), report)
     p = Property.objects.get(legacy_id="100")
     assert p.region.legacy_id == "__unknown__"
+
+
+@pytest.mark.django_db
+def test_changeover_day_maps_the_code_domain(category: PropertyCategory) -> None:
+    """`SettingChangeoverDayId` stores `ChangeOverDays.Code` (the Blazor
+    select binds `[Code]`, not the identity Id): -1 = Open/flexible,
+    0 = Sunday, 1 = Monday .. 6 = Saturday. 0 is a real value — it must land
+    as SUN, not be dropped as falsy."""
+    from properties.enums import PrefilledChangeOverDay
+    from properties.models.settings import PropertySettings
+
+    loader = PropertyLoader()
+    loader._process_row(_row(SettingChangeoverDayId=0), LoadReport(loader=loader.name))
+    settings = PropertySettings.objects.get(property__legacy_id="100")
+    assert settings.changeover_day == PrefilledChangeOverDay.SUN
+
+    loader._process_row(
+        _row(Id=101, SettingChangeoverDayId=-1),
+        LoadReport(loader=loader.name),
+    )
+    assert (
+        PropertySettings.objects.get(property__legacy_id="101").changeover_day
+        == PrefilledChangeOverDay.ANY
+    )

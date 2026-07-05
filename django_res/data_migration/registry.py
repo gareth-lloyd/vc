@@ -13,6 +13,7 @@ from data_migration.loaders.bookings import (
     PaymentLoader,
 )
 from data_migration.loaders.country import CountryLoader
+from data_migration.loaders.defaults import PropertyDefaultsLoader
 from data_migration.loaders.finance import (
     PropertyFinanceLoader,
     QuotationLineLoader,
@@ -63,6 +64,9 @@ LOADERS: dict[str, type[Loader]] = {
     NearbyPlaceTypeLoader.name: NearbyPlaceTypeLoader,
     FeatureCategoryLoader.name: FeatureCategoryLoader,
     FeatureLoader.name: FeatureLoader,
+    # Singleton config — needs CurrencyLoader (resolves the default currency
+    # by legacy_id) but nothing downstream depends on it.
+    PropertyDefaultsLoader.name: PropertyDefaultsLoader,
     UserLoader.name: UserLoader,
     ContactLoader.name: ContactLoader,
     ContactEmailLoader.name: ContactEmailLoader,

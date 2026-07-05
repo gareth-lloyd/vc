@@ -250,12 +250,19 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
         "PropertyFinance",
-        # 413 contact-default rows are per-contact templates, not per-villa
-        # rows (the unit-6 owner-contact fallback applies them to villas with
-        # no VillaFinance row of their own — those villas count under the
-        # VillaId IS NOT NULL universe either way); 676 parent-child override
-        # rows have no schema equivalent.
+        # 1236 is a PLACEHOLDER to recalibrate at the first post-GAP-070
+        # dry-run (BUG-013 precedent). It was exact while the loaded side
+        # matched the legacy `VillaId IS NOT NULL` universe 1:1: the 1236 =
+        # 413 contact-default template rows (VillaId NULL, no per-villa
+        # equivalent) + 676 parent-child override rows (no schema home) +
+        # skips. The owner-contact fallback now ALSO creates a PropertyFinance
+        # row for each financeless villa with a live OWNER assignment, so the
+        # true gap is 1236 minus that fallback count — only derivable against
+        # the live dump. `loaded_count` scopes to migrated properties so
+        # rows snapshotted onto organically-created properties can't skew
+        # the gap between dry-runs.
         expected_gap=1236,
+        loaded_count=lambda m: m._default_manager.filter(property__legacy_id__isnull=False).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",

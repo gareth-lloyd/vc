@@ -24,8 +24,11 @@ Strategy:
 - The RatePlan owns no rate rows directly: `RateBandLoader` builds the plan's
   disjoint `RatePeriod` date axis (via the shared `segment_card_rules`
   segmentation) and hangs each party band off its covering period.
-- One VillaSeasonRate -> at most one RateBand: `resolve_rate_band_overlaps`
-  trims/drops overlapping legacy rows before the upsert (legacy had no
+- One VillaSeasonRate -> one RateBand per surviving fragment:
+  `resolve_rate_band_overlaps` pre-normalises the legacy rows (junk filter,
+  checkout-convention boundary trim); the conflict policy is the shared
+  `pricing.services.flattening` grid flattener's — split, not clip, so an
+  interior collision keeps both sides of the loser (BUG-016; legacy had no
   precedence concept — see "Rate rule overlap resolution" in
   data_migration/CUTOVER.md).
 - Occupancy bands (BUG-013): a VillaSeasonRate flagged `IsOccupationPrice`
@@ -51,10 +54,9 @@ from data_migration.base import BaseLoader, LoadReport
 from pricing.models.currency import Currency
 from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from pricing.services.currency import default_currency, settings_currency
-from pricing.services.extras import date_ranges_overlap
+from pricing.services.flattening import SourceBand, flatten_rate_grid
 from pricing.services.intervals import Interval, intervals_overlap, subtract_intervals
 from pricing.services.period_names import derive_period_name
-from pricing.services.segmentation import segment_card_rules
 from properties.models.property import Property
 from properties.models.services import PropertyService
 
@@ -103,18 +105,17 @@ class OverlapResolution:
     rows: list[dict[str, Any]]
     trimmed: int
     dropped: int
-    party_clipped: int
 
 
 @dataclass
 class _WorkRow:
-    """Mutable working copy of one legacy row during resolution.
+    """Mutable working copy of one legacy row during pre-normalisation.
 
     `party_intervals` is the row's authoritative party coverage: inclusive
     `(low, high)` brackets, `high=None` meaning "up to property capacity" —
     treated as unbounded so the resolver stays pure (capacity is resolved
-    later, in `transform`). Conflict checks and clips operate on the whole
-    set, so whichever interval `transform` later picks is conflict-free.
+    later, in `_row_to_band`). The boundary trim is gated on party overlap
+    across the whole set.
     """
 
     id: int
@@ -123,66 +124,44 @@ class _WorkRow:
     date_from: date
     date_to: date
     party_intervals: list[Interval]
-    approved: bool
     disc: str
-    party_clipped: bool = False
 
 
 def _party_overlap(a: _WorkRow, b: _WorkRow) -> bool:
     return any(intervals_overlap(i, j) for i in a.party_intervals for j in b.party_intervals)
 
 
-def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | None:
-    """Largest valid remainder of the loser's date span minus the winner's.
-
-    Clip-only: when the winner sits strictly inside the loser, the smaller
-    side is discarded rather than splitting into two rows. Remainders must
-    satisfy the model's strict `date_from < date_to`, mirroring transform's
-    skip rule.
-    """
-    left = (loser.date_from, winner.date_from - timedelta(days=1))
-    right = (winner.date_to + timedelta(days=1), loser.date_to)
-    candidates = [span for span in (left, right) if span[0] < span[1]]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda span: span[1] - span[0])
-
-
-def _subtract_party(intervals: list[Interval], winner: list[Interval]) -> list[Interval]:
-    """Remainders of `intervals` minus every winner interval, highest bracket
-    first. `transform` prefers the first interval; lower ones are fallbacks
-    for when property capacity empties it (`None` upper bound = capacity,
-    unknown here)."""
-    return sorted(subtract_intervals(intervals, winner), key=lambda iv: iv[0], reverse=True)
-
-
 def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
-    """Resolve legacy VillaSeasonRate overlaps before loading.
+    """Pre-normalise legacy VillaSeasonRate rows before loading.
 
     Legacy had no precedence concept (its per-night lookup was an unordered
     `TOP 1`), so overlapping rows are data noise to resolve, not behaviour to
     preserve. Policy (user-confirmed, see CUTOVER.md):
 
     1. Pre-filter rows `transform()` would skip (junk dates, no price and not
-       POA) so they can neither trim nor be trimmed.
+       POA) so they can neither trim nor be trimmed. Within a season, exact
+       duplicates sharing a `_legacy_id` discriminator are dropped (keep the
+       first) — unreachable off real SQL PKs, but dirty input must not reach
+       the flattener's duplicate-precedence ValueError.
     2. Boundary trim: legacy stored checkout-style contiguous bands (the next
        row starts on the day the previous one ends) but the new model is
        inclusive on both ends — trim one day off the earlier row's end.
        Compares *original* FromDates (never modified), so chains trim cleanly
        and the pass is order-independent.
-    3. Conflict resolution: approved rows claim space before unapproved ones;
-       within each tier the lowest legacy ID wins. Losers are clipped to the
-       uncovered remainder or dropped when fully covered. Rows with identical
-       date spans clip the party bracket instead, recording the surviving
-       intervals on `_party_intervals`.
+    3. Conflict resolution happens later, in `_load_rows`, via the shared
+       `pricing.services.flattening` grid flattener (BUG-016) — after
+       `_row_to_band`'s capacity clamp, so brackets are concrete.
 
-    Pure function of the input row set — deterministic, order-independent,
-    DB-free. One input row maps to zero or one output rows, legacy ID
-    unchanged.
+    Pure function of the input row set — DB-free, and deterministic /
+    order-independent for PK-unique input (the duplicate-disc dedupe is
+    keep-first, so pathological same-disc rows with differing payloads would
+    be input-order-dependent; real SQL PKs make that unreachable). One input
+    row maps to zero or one output rows, legacy ID unchanged.
     """
-    trimmed = dropped = party_clipped = 0
+    trimmed = dropped = 0
 
     groups: dict[Any, list[_WorkRow]] = defaultdict(list)
+    seen_discs: dict[Any, set[str]] = defaultdict(set)
     for row in rows:
         date_from = _as_date(row.get("FromDate"))
         date_to = _as_date(row.get("ToDate"))
@@ -197,7 +176,15 @@ def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
         else:
             party = int(row.get("PartySize") or 0)
             intervals = [(party, party)] if party > 0 else [(1, None)]
-        groups[row.get("SeasonId")].append(
+        # Unique discriminator: a band's OccId can numerically collide with a
+        # simple row's ID within a season; `_legacy_id` is unique per row.
+        disc = str(row.get("_legacy_id") or row["ID"])
+        season = row.get("SeasonId")
+        if disc in seen_discs[season]:
+            dropped += 1
+            continue
+        seen_discs[season].add(disc)
+        groups[season].append(
             _WorkRow(
                 id=int(row["ID"]),
                 row=row,
@@ -205,17 +192,12 @@ def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
                 date_from=date_from,
                 date_to=date_to,
                 party_intervals=intervals,
-                approved=bool(row.get("IsApprove")),
-                # Unique tiebreak: a band's OccId can numerically collide with a
-                # simple row's ID within a season, which would make the conflict
-                # sort input-order-dependent. `_legacy_id` is unique per row.
-                disc=str(row.get("_legacy_id") or row["ID"]),
+                disc=disc,
             )
         )
 
     kept_all: list[_WorkRow] = []
     for items in groups.values():
-        survivors: list[_WorkRow] = []
         for item in items:
             if any(
                 other is not item
@@ -228,53 +210,15 @@ def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
             if item.date_to <= item.date_from:
                 dropped += 1
             else:
-                survivors.append(item)
-
-        kept: list[_WorkRow] = []
-        for item in sorted(survivors, key=lambda it: (not it.approved, it.id, it.disc)):
-            alive = True
-            for winner in kept:
-                if not _party_overlap(item, winner):
-                    continue
-                if not date_ranges_overlap(
-                    item.date_from, item.date_to, winner.date_from, winner.date_to
-                ):
-                    continue
-                if (item.date_from, item.date_to) == (winner.date_from, winner.date_to):
-                    remainders = _subtract_party(item.party_intervals, winner.party_intervals)
-                    if not remainders:
-                        alive = False
-                        dropped += 1
-                        break
-                    item.party_intervals = remainders
-                    item.party_clipped = True
-                    party_clipped += 1
-                    continue
-                remainder = _date_remainder(item, winner)
-                if remainder is None:
-                    alive = False
-                    dropped += 1
-                    break
-                item.date_from, item.date_to = remainder
-                trimmed += 1
-            if alive:
-                kept.append(item)
-        kept_all.extend(kept)
+                kept_all.append(item)
 
     out_rows: list[dict[str, Any]] = []
     for item in sorted(kept_all, key=lambda it: (it.id, it.disc)):
         out = dict(item.row)
         out["FromDate"] = item.date_from
         out["ToDate"] = item.date_to
-        if item.party_clipped:
-            out["_party_intervals"] = item.party_intervals
         out_rows.append(out)
-    return OverlapResolution(
-        rows=out_rows,
-        trimmed=trimmed,
-        dropped=dropped,
-        party_clipped=party_clipped,
-    )
+    return OverlapResolution(rows=out_rows, trimmed=trimmed, dropped=dropped)
 
 
 class RatePlanLoader(BaseLoader):
@@ -467,13 +411,13 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 @dataclass
 class _Band:
-    """One resolved legacy row as a party band on a date span.
+    """One pre-normalised legacy row as a party band on a date span.
 
-    A lightweight value object `segment_card_rules` accepts (it reads only
-    `date_from`/`date_to`/`min_party`/`max_party`); the price/identity fields
-    ride along so `_load_rows` can materialise the `RateBand` once its covering
-    `RatePeriod` is known. Not frozen — segmentation keys on `id()`, never on
-    value equality.
+    The `SourceBand` payload `_load_rows` feeds the flattener: the span/bracket
+    fields become the flattener's axes, `sort_id` and `legacy_id` (the unique
+    per-row discriminator) build its precedence key, and the price fields ride
+    along so the winning fragments can materialise `RateBand` rows once their
+    covering `RatePeriod` is known.
     """
 
     date_from: date
@@ -486,16 +430,17 @@ class _Band:
     is_approved: bool
     notes: str
     legacy_id: str
+    sort_id: int
 
 
 def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
-    """Resolve one overlap-resolved legacy row into a `_Band`, or `None` to skip.
+    """Resolve one pre-normalised legacy row into a `_Band`, or `None` to skip.
 
-    Pure per-row band computation (capacity clamp, party-interval / occupancy
-    handling, price/POA logic) — the plan supplies the property capacity
+    Pure per-row band computation (capacity clamp, occupancy-band handling,
+    price/POA logic) — the plan supplies the property capacity
     (`plan.property.capacity.guests`) the upper bound falls back to. Same junk
     filters as before: inverted/zero-span dates, priceless non-POA rows, and
-    party intervals fully emptied by the real capacity all yield `None`.
+    brackets fully emptied by the real capacity all yield `None`.
     """
     date_from = _as_date(row.get("FromDate"))
     date_to = _as_date(row.get("ToDate"))
@@ -513,22 +458,16 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         min_party, max_party = 1, cap
     else:
         min_party, max_party = party, party
-    intervals = row.get("_party_intervals")
-    if intervals is None and row.get("_occ_band") is not None:
+    occ_band = row.get("_occ_band")
+    if occ_band is not None:
         # Occupancy band / gap-fallback row: its explicit (from, to) range is
-        # the party bracket, unless the resolver already clipped it.
-        intervals = [row["_occ_band"]]
-    if intervals:
-        # The resolver clipped this row's party bracket (or it's an explicit
-        # occupancy range); pick the first interval that survives the
-        # property's real capacity.
-        for low, high in intervals:
-            effective_high = cap if high is None else high
-            if low <= effective_high:
-                min_party, max_party = low, effective_high
-                break
-        else:
+        # the party bracket; an open top (`None`) clamps to capacity, and a
+        # bracket the real capacity empties is junk.
+        low, high = occ_band
+        effective_high = cap if high is None else high
+        if low > effective_high:
             return None
+        min_party, max_party = low, effective_high
     nightly, weekly, price, is_poa = _row_prices(row)
     if not (nightly or weekly or price or is_poa):
         return None
@@ -552,6 +491,7 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         is_approved=bool(row.get("IsApprove")),
         notes=(row.get("Description") or "").strip(),
         legacy_id=str(legacy_id),
+        sort_id=int(row["ID"]),
     )
 
 
@@ -564,11 +504,12 @@ class RateBandLoader(BaseLoader):
       JOINs the child table and `_prepare_occupancy_rows` expands a banded
       parent into one rule per band plus base-weekly gap fallbacks, keyed on a
       namespaced `legacy_id` (`occ-*`). See `_prepare_occupancy_rows`.
-    - `resolve_rate_band_overlaps` runs over the expanded row set first, so the
-      surviving rows are jointly (date x party)-disjoint per season; `_load_rows`
-      then builds each plan's disjoint `RatePeriod` date axis with
-      `segment_card_rules` and hangs the bands off their covering periods. Each
-      run is a full replace (purge legacy-loaded rules + periods, rebuild).
+    - `resolve_rate_band_overlaps` pre-normalises the expanded row set (junk
+      filter, boundary trim); `_load_rows` then resolves conflicts and builds
+      each plan's disjoint `RatePeriod` date axis via the shared
+      `flatten_rate_grid` (BUG-016, precedence `(not approved, id, disc)`) and
+      hangs the surviving fragments off their covering periods. Each run is a
+      full replace (purge legacy-loaded rules + periods, rebuild).
     - max_party falls back to the property's capacity when PartySize is null.
     """
 
@@ -613,25 +554,27 @@ class RateBandLoader(BaseLoader):
         with last run's spans under the `rateperiod_no_overlap` /
         `raterule_bands_no_overlap` EXCLUDE constraints (in-place upserts could:
         a row expanding into — or swapping spans with — a sibling's old range
-        would trip mid-run). `segment_card_rules` returns date-disjoint segments
-        per plan, and `resolve_rate_band_overlaps` already made the rows
-        (date x party)-disjoint per season, so the bands within any one segment
-        are party-disjoint — both EXCLUDEs hold by construction. A band whose
-        span a sibling's date boundary bisects appears in >1 segment (a ragged
-        card): its first fragment keeps the legacy_id, later ones are namespaced
-        `#seg{n}` (mirroring the Unit 2 backfill). UI-created periods (legacy_id
-        NULL) and the bands hanging off them survive untouched; a UI band added
-        to a *legacy* period is cascade-deleted with that period (loaders run at
-        cutover, before staff editing, so that window is closed in practice).
-        A full rebuild — rather than sparing such bands — is what keeps re-runs
-        clear of the `rateperiod_no_overlap` EXCLUDE (a spared legacy period
-        would collide with the freshly re-segmented one for the same span).
+        would trip mid-run). `flatten_rate_grid` resolves each plan's
+        pre-normalised bands into a (date x party)-disjoint grid (BUG-016) —
+        both EXCLUDEs hold by construction. A band surviving in >1 flat cell
+        (bisected by a sibling's boundary, or party-split by a winner) is
+        fragmented: its first fragment keeps the legacy_id, later ones are
+        namespaced `#seg{n}` in `(period date_from, min_party)` order.
+        UI-created periods (legacy_id NULL) and the bands hanging off them
+        survive untouched; a UI band added to a *legacy* period is
+        cascade-deleted with that period (loaders run at cutover, before staff
+        editing, so that window is closed in practice). A full rebuild — rather
+        than sparing such bands — is what keeps re-runs clear of the
+        `rateperiod_no_overlap` EXCLUDE (a spared legacy period would collide
+        with the freshly re-segmented one for the same span).
         """
         rows = _prepare_occupancy_rows(rows)
         resolution = resolve_rate_band_overlaps(rows)
         created = 0
         periods_created = 0
         rule_fragments = 0
+        shadowed_dropped = 0
+        party_clipped = 0
         with transaction.atomic():
             purged, _ = RateBand.objects.filter(legacy_id__isnull=False).delete()
             RatePeriod.objects.filter(legacy_id__isnull=False).delete()
@@ -672,36 +615,48 @@ class RateBandLoader(BaseLoader):
                 if plan.prices_by_occupancy != by_occupancy:
                     plan.prices_by_occupancy = by_occupancy
                     plan.save(update_fields=["prices_by_occupancy"])
-                # Per-band occurrence counter: a ragged band spans >1 segment, so
-                # namespace its clones `#seg{n}` (n = 1 for the 2nd segment) to
-                # keep legacy_ids distinct, mirroring `backfill_plan_periods`.
-                occurrences: dict[int, int] = defaultdict(int)
-                for i, seg in enumerate(segment_card_rules(bands).segments):
+                # Conflict resolution (BUG-016): the shared flattener resolves
+                # the plan's bands into a (date x party)-disjoint grid,
+                # approved-first / lowest-legacy-ID precedence, split not clip.
+                sources = [
+                    SourceBand(
+                        date_from=b.date_from,
+                        date_to=b.date_to,
+                        min_party=b.min_party,
+                        max_party=b.max_party,
+                        precedence=(not b.is_approved, b.sort_id, b.legacy_id),
+                        payload=b,
+                    )
+                    for b in bands
+                ]
+                flat = flatten_rate_grid(sources)
+                shadowed_dropped += len(flat.dropped_sources)
+                party_clipped += len(flat.party_clipped)
+                for i, flat_period in enumerate(flat.periods):
                     # GAP-059: legacy has no period-name column (the season
                     # name lands on RatePlan), so synthesize the placeholder
                     # from the segment span — pure on the dates, keeping
                     # re-runs byte-identical.
                     period = RatePeriod.objects.create(
                         plan=plan,
-                        name=derive_period_name(seg.date_from, seg.date_to),
-                        date_from=seg.date_from,
-                        date_to=seg.date_to,
+                        name=derive_period_name(flat_period.date_from, flat_period.date_to),
+                        date_from=flat_period.date_from,
+                        date_to=flat_period.date_to,
                         legacy_id=f"{plan.legacy_id}:p{i}",
                     )
                     periods_created += 1
-                    for band in seg.rules:
-                        seen = occurrences[id(band)]
-                        occurrences[id(band)] += 1
-                        if seen == 0:
+                    for flat_band in flat_period.bands:
+                        band = flat_band.source.payload
+                        if flat_band.fragment_index == 0:
                             legacy_id = band.legacy_id
                             created += 1
                         else:
-                            legacy_id = f"{band.legacy_id}#seg{seen}"
+                            legacy_id = f"{band.legacy_id}#seg{flat_band.fragment_index}"
                             rule_fragments += 1
                         RateBand.objects.create(
                             period=period,
-                            min_party=band.min_party,
-                            max_party=band.max_party,
+                            min_party=flat_band.min_party,
+                            max_party=flat_band.max_party,
                             nightly=band.nightly,
                             weekly=band.weekly,
                             is_poa=band.is_poa,
@@ -714,7 +669,8 @@ class RateBandLoader(BaseLoader):
             "data_migration.rate_rule_overlaps_resolved",
             trimmed=resolution.trimmed,
             dropped=resolution.dropped,
-            party_clipped=resolution.party_clipped,
+            shadowed_dropped=shadowed_dropped,
+            party_clipped=party_clipped,
             purged=purged,
             periods_created=periods_created,
             rule_fragments=rule_fragments,

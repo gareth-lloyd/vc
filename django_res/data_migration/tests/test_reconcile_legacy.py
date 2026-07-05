@@ -353,6 +353,9 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["CollectionMembership"] == 308
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
+    # Pre-BUG-016 placeholder: the split-not-clip flattener changes RateBand
+    # row counts — recalibrate at the next legacy dry-run (comment in
+    # reconcile_legacy._CHECKS), don't trust 3727.
     assert by_label["RateBand"] == 3727
     assert by_label["Property"] == 1
     assert by_label["PropertyContactAssignment"] == 1

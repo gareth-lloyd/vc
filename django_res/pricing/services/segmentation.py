@@ -16,9 +16,11 @@ reported. Parity holds by construction: the union of segment dates equals the
 union of rule dates (no night added or dropped), and each rule attaches to
 exactly the segments it originally covered.
 
-Kept dependency-free (operates on any object exposing ``date_from``, ``date_to``,
-``min_party``, ``max_party``) so it is shared by both the Django data-migration
-backfill and the ``data_migration`` loader, and is trivially unit-testable.
+Kept free of Django/model imports (pure logic on any object exposing
+``date_from``, ``date_to``, ``min_party``, ``max_party``, plus the stdlib-only
+``pricing.services.intervals`` algebra) so it is shared by both the Django
+data-migration backfill and the ``data_migration`` loader, and is trivially
+unit-testable.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from itertools import pairwise
 from typing import Any, Protocol
+
+from pricing.services.intervals import intervals_overlap
 
 _ONE_DAY = timedelta(days=1)
 
@@ -152,7 +156,7 @@ def segment_card_rules(rules: Iterable[_RuleLike]) -> SegmentationResult:
         for i in range(len(members)):
             for j in range(i + 1, len(members)):
                 a, b = members[i], members[j]
-                if a.min_party <= b.max_party and b.min_party <= a.max_party:
+                if intervals_overlap((a.min_party, a.max_party), (b.min_party, b.max_party)):
                     pair = frozenset((id(a), id(b)))
                     if pair in seen_pairs:
                         continue

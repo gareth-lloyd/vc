@@ -52,6 +52,7 @@ from pricing.models.currency import Currency
 from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from pricing.services.currency import default_currency, settings_currency
 from pricing.services.extras import date_ranges_overlap
+from pricing.services.intervals import Interval, intervals_overlap, subtract_intervals
 from pricing.services.period_names import derive_period_name
 from pricing.services.segmentation import segment_card_rules
 from properties.models.property import Property
@@ -105,9 +106,6 @@ class OverlapResolution:
     party_clipped: int
 
 
-_Interval = tuple[int, int | None]
-
-
 @dataclass
 class _WorkRow:
     """Mutable working copy of one legacy row during resolution.
@@ -124,18 +122,14 @@ class _WorkRow:
     orig_from: date
     date_from: date
     date_to: date
-    party_intervals: list[_Interval]
+    party_intervals: list[Interval]
     approved: bool
     disc: str
     party_clipped: bool = False
 
 
-def _intervals_overlap(a: _Interval, b: _Interval) -> bool:
-    return (a[1] is None or b[0] <= a[1]) and (b[1] is None or a[0] <= b[1])
-
-
 def _party_overlap(a: _WorkRow, b: _WorkRow) -> bool:
-    return any(_intervals_overlap(i, j) for i in a.party_intervals for j in b.party_intervals)
+    return any(intervals_overlap(i, j) for i in a.party_intervals for j in b.party_intervals)
 
 
 def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | None:
@@ -154,24 +148,12 @@ def _date_remainder(loser: _WorkRow, winner: _WorkRow) -> tuple[date, date] | No
     return max(candidates, key=lambda span: span[1] - span[0])
 
 
-def _subtract_party(intervals: list[_Interval], winner: list[_Interval]) -> list[_Interval]:
+def _subtract_party(intervals: list[Interval], winner: list[Interval]) -> list[Interval]:
     """Remainders of `intervals` minus every winner interval, highest bracket
     first. `transform` prefers the first interval; lower ones are fallbacks
     for when property capacity empties it (`None` upper bound = capacity,
     unknown here)."""
-    remaining = list(intervals)
-    for wlo, whi in winner:
-        survivors: list[_Interval] = []
-        for lo, hi in remaining:
-            if not _intervals_overlap((lo, hi), (wlo, whi)):
-                survivors.append((lo, hi))
-                continue
-            if whi is not None and (hi is None or whi < hi):
-                survivors.append((whi + 1, hi))
-            if lo < wlo:
-                survivors.append((lo, wlo - 1))
-        remaining = survivors
-    return sorted(remaining, key=lambda iv: iv[0], reverse=True)
+    return sorted(subtract_intervals(intervals, winner), key=lambda iv: iv[0], reverse=True)
 
 
 def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
@@ -211,7 +193,7 @@ def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
         band = row.get("_occ_band")
         if band is not None:
             # Occupancy-band / gap-fallback rows carry an explicit party range.
-            intervals: list[_Interval] = [band]
+            intervals: list[Interval] = [band]
         else:
             party = int(row.get("PartySize") or 0)
             intervals = [(party, party)] if party > 0 else [(1, None)]
@@ -381,15 +363,14 @@ class RatePlanLoader(BaseLoader):
             )
 
 
-def _party_gaps(bands: list[_Interval]) -> list[_Interval]:
+def _party_gaps(bands: list[Interval]) -> list[Interval]:
     """Inclusive party ranges NOT covered by any band — the complement of the
-    bands over ``[1, ∞)``, as disjoint brackets in ascending order. Delegates to
-    the resolver's `_subtract_party` (subtract every band from the whole range)
-    so the interval-complement logic lives in one place. Because bands have
-    finite highs, the result always ends in an open-topped gap (``high=None``);
+    bands over ``[1, ∞)``, as disjoint brackets in ascending order (the shared
+    `subtract_intervals` over the whole range). Because bands have finite
+    highs, the result always ends in an open-topped gap (``high=None``);
     `transform` clamps that to the property capacity (a fully-covered range
     yields a gap whose low exceeds capacity, which `transform` then drops)."""
-    return sorted(_subtract_party([(1, None)], bands), key=lambda iv: iv[0])
+    return subtract_intervals([(1, None)], bands)
 
 
 def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -474,7 +455,7 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             band["IsPOA"] = False
             out.append(band)
 
-        gap_bands: list[_Interval] = [(frm, to) for frm, to, _, _ in bands]
+        gap_bands: list[Interval] = [(frm, to) for frm, to, _, _ in bands]
         for k, gap in enumerate(_party_gaps(gap_bands)):
             fallback = dict(parent)
             fallback["_legacy_id"] = f"occ-fb-{pid}-{k}"
